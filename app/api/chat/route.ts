@@ -3,64 +3,70 @@ import { createClient } from "@/lib/supabase-server";
 import { Groq } from "groq-sdk";
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY!,
 });
 
 export async function POST(req: Request) {
   try {
-    const { message, conversationId } = await req.json();
+    const { message, conversationId } =
+      await req.json();
 
-    if (!message || !message.trim()) {
+    if (!message?.trim()) {
       return NextResponse.json(
         {
           error: "Message is required.",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    const supabase = await createClient();
+    const supabase =
+      await createClient();
 
-    // Check logged-in user
+    // ==========================================
+    // 1. GET CURRENT LOGGED-IN USER
+    // ==========================================
+
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
 
-    if (authError) {
-      console.error("Supabase Auth Error:", authError);
-
+    if (authError || !user) {
       return NextResponse.json(
         {
-          error: "Authentication error.",
-          details: authError.message,
+          error: "Unauthorized",
         },
-        { status: 401 }
+        {
+          status: 401,
+        }
       );
     }
 
-    if (!user) {
-      return NextResponse.json(
-        {
-          error: "You are not logged in.",
-        },
-        { status: 401 }
-      );
-    }
+    let chatId =
+      conversationId;
 
-    let chatId = conversationId;
+    // ==========================================
+    // 2. CREATE NEW CONVERSATION
+    // ==========================================
 
-    // Create a new conversation
     if (!chatId) {
-      const { data: conversation, error: conversationError } =
-        await supabase
-          .from("conversations")
-          .insert({
-            title: message.trim().substring(0, 40),
-            user_id: user.id,
-          })
-          .select()
-          .single();
+      const {
+        data: conversation,
+        error: conversationError,
+      } = await supabase
+        .from("conversations")
+        .insert({
+          title: message.substring(
+            0,
+            40
+          ),
+          user_id: user.id,
+        })
+        .select()
+        .single();
 
       if (conversationError) {
         console.error(
@@ -69,26 +75,73 @@ export async function POST(req: Request) {
         );
 
         return NextResponse.json(
-  {
-    error: "Failed to create conversation.",
-    details: conversationError.message,
-    code: conversationError.code,
-    hint: conversationError.hint,
-  },
-  { status: 500 }
-);
+          {
+            error:
+              "Failed to create conversation",
+          },
+          {
+            status: 500,
+          }
+        );
       }
 
-      chatId = conversation.id;
+      chatId =
+        conversation.id;
     }
 
-    // Save user message
-    const { error: userMessageError } = await supabase
+    // ==========================================
+    // 3. GET PREVIOUS CONVERSATION MESSAGES
+    // ==========================================
+
+    const {
+      data: previousMessages,
+      error: historyError,
+    } = await supabase
+      .from("messages")
+      .select(
+        "role, content, created_at"
+      )
+      .eq(
+        "conversation_id",
+        chatId
+      )
+      .order(
+        "created_at",
+        {
+          ascending: true,
+        }
+      );
+
+    if (historyError) {
+      console.error(
+        "History Error:",
+        historyError
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            "Failed to load conversation history",
+        },
+        {
+          status: 500,
+        }
+      );
+    }
+
+    // ==========================================
+    // 4. SAVE USER'S NEW MESSAGE
+    // ==========================================
+
+    const {
+      error: userMessageError,
+    } = await supabase
       .from("messages")
       .insert({
-        conversation_id: chatId,
+        conversation_id:
+          chatId,
         role: "user",
-        content: message.trim(),
+        content: message,
       });
 
     if (userMessageError) {
@@ -99,56 +152,84 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         {
-          error: "Failed to save your message.",
-          details: userMessageError.message,
+          error:
+            "Failed to save your message",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
-    // Ask Groq
+    // ==========================================
+    // 5. BUILD AI CONVERSATION HISTORY
+    // ==========================================
+
+    const chatMessages = [
+      {
+        role: "system" as const,
+        content:
+          "You are SaMi Assist, an intelligent AI business assistant created by SaMi Technologies. You help businesses manage their operations, understand their data, make better decisions, and complete tasks. Be professional, accurate, helpful, and concise. Remember information provided earlier in the current conversation and use it when answering future questions.",
+      },
+
+      ...(previousMessages || []).map(
+        (msg) => ({
+          role:
+            msg.role === "user"
+              ? ("user" as const)
+              : ("assistant" as const),
+
+          content:
+            msg.content,
+        })
+      ),
+
+      {
+        role: "user" as const,
+        content: message,
+      },
+    ];
+
+    // ==========================================
+    // 6. ASK GROQ
+    // ==========================================
+
     const completion =
-      await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+      await groq.chat.completions.create(
+        {
+          model:
+            "llama-3.3-70b-versatile",
 
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are SaMi Assist, an intelligent AI business assistant created by SaMi Technologies. Always be professional, helpful, accurate and concise.",
-          },
-          {
-            role: "user",
-            content: message.trim(),
-          },
-        ],
+          messages:
+            chatMessages,
 
-        temperature: 0.7,
-        max_tokens: 1024,
-      });
+          temperature: 0.7,
+
+          max_tokens: 1024,
+        }
+      );
 
     const reply =
-      completion.choices[0]?.message?.content?.trim();
+      completion
+        .choices[0]
+        ?.message
+        ?.content ??
+      "Sorry, I couldn't generate a response.";
 
-    if (!reply) {
-      return NextResponse.json(
-        {
-          error:
-            "The AI did not return a response.",
-        },
-        { status: 500 }
-      );
-    }
+    // ==========================================
+    // 7. SAVE AI RESPONSE
+    // ==========================================
 
-    // Save AI response
-    const { error: aiMessageError } =
-      await supabase
-        .from("messages")
-        .insert({
-          conversation_id: chatId,
-          role: "ai",
-          content: reply,
-        });
+    const {
+      error: aiMessageError,
+    } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id:
+          chatId,
+        role: "ai",
+        content: reply,
+      });
 
     if (aiMessageError) {
       console.error(
@@ -159,33 +240,37 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           error:
-            "AI responded, but the response could not be saved.",
-          details: aiMessageError.message,
+            "Failed to save AI response",
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
-    // Return successful response
+    // ==========================================
+    // 8. RETURN RESPONSE
+    // ==========================================
+
     return NextResponse.json({
-      success: true,
       reply,
-      conversationId: chatId,
+      conversationId:
+        chatId,
     });
   } catch (error) {
     console.error(
-      "Chat API Unexpected Error:",
+      "Chat API Error:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while processing your message.",
+          "Internal Server Error",
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
