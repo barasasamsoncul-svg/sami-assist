@@ -69,12 +69,14 @@ export async function POST(req: Request) {
         );
 
         return NextResponse.json(
-          {
-            error: "Failed to create conversation.",
-            details: conversationError.message,
-          },
-          { status: 500 }
-        );
+  {
+    error: "Failed to create conversation.",
+    details: conversationError.message,
+    code: conversationError.code,
+    hint: conversationError.hint,
+  },
+  { status: 500 }
+);
       }
 
       chatId = conversation.id;
