@@ -1,42 +1,83 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Send } from "lucide-react";
 
 type Message = {
-  sender: "user" | "ai";
-  text: string;
+  id?: string;
+  role: "user" | "ai";
+  content: string;
 };
 
-export default function ChatWindow() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      sender: "ai",
-      text: "👋 Welcome to SaMi Assist! How can I help you today?",
-    },
-  ]);
+type Props = {
+  conversationId: string | null;
+  onConversationCreated: (id: string) => void;
+};
 
+export default function ChatWindow({
+  conversationId,
+  onConversationCreated,
+}: Props) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [messages]);
+
+  // Load conversation messages
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([
+        {
+          role: "ai",
+          content: "👋 Welcome to SaMi Assist! Start a new conversation.",
+        },
+      ]);
+      return;
+    }
+
+    loadMessages(conversationId);
+  }, [conversationId]);
+
+  async function loadMessages(id: string) {
+    try {
+      const res = await fetch(`/api/messages/${id}`);
+
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      setMessages(data);
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  async function sendMessage() {
+    if (!input.trim() || loading) return;
 
     const prompt = input;
 
-    // Show the user's message immediately
     setMessages((prev) => [
       ...prev,
       {
-        sender: "user",
-        text: prompt,
+        role: "user",
+        content: prompt,
       },
     ]);
 
     setInput("");
+    setLoading(true);
 
     try {
-      const response = await fetch("/api/chat", {
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -47,19 +88,17 @@ export default function ChatWindow() {
         }),
       });
 
-      const data = await response.json();
+      const data = await res.json();
 
-      // Save conversation ID for future messages
       if (!conversationId && data.conversationId) {
-        setConversationId(data.conversationId);
+        onConversationCreated(data.conversationId);
       }
 
-      // Show AI reply
       setMessages((prev) => [
         ...prev,
         {
-          sender: "ai",
-          text: data.reply,
+          role: "ai",
+          content: data.reply,
         },
       ]);
     } catch (error) {
@@ -68,12 +107,14 @@ export default function ChatWindow() {
       setMessages((prev) => [
         ...prev,
         {
-          sender: "ai",
-          text: "❌ Sorry, I couldn't reach the AI server.",
+          role: "ai",
+          content: "❌ Sorry, something went wrong.",
         },
       ]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }
 
   return (
     <div className="flex h-[75vh] flex-col rounded-3xl bg-white shadow-xl">
@@ -89,19 +130,31 @@ export default function ChatWindow() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 space-y-4 overflow-y-auto bg-gray-50 p-6">
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`max-w-xl rounded-2xl px-5 py-4 ${
-              message.sender === "user"
-                ? "ml-auto bg-blue-600 text-white"
-                : "bg-white text-gray-900 shadow"
-            }`}
-          >
-            {message.text}
-          </div>
-        ))}
+      <div className="flex-1 overflow-y-auto bg-gray-50 p-6">
+        <div className="space-y-4">
+          {messages.map((message, index) => (
+            <div
+              key={message.id ?? index}
+              className={`max-w-xl rounded-2xl px-5 py-4 ${
+                message.role === "user"
+                  ? "ml-auto bg-blue-600 text-white"
+                  : "bg-white text-gray-900 shadow"
+              }`}
+            >
+              {message.content}
+            </div>
+          ))}
+
+          {loading && (
+            <div className="max-w-xl rounded-2xl bg-white px-5 py-4 shadow">
+              <span className="animate-pulse">
+                SaMi is thinking...
+              </span>
+            </div>
+          )}
+
+          <div ref={bottomRef} />
+        </div>
       </div>
 
       {/* Input */}
@@ -110,7 +163,7 @@ export default function ChatWindow() {
           <input
             type="text"
             value={input}
-            placeholder="Ask SaMi AI anything..."
+            placeholder="Ask SaMi Assist anything..."
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -122,7 +175,8 @@ export default function ChatWindow() {
 
           <button
             onClick={sendMessage}
-            className="rounded-xl bg-blue-600 p-4 text-white transition hover:bg-blue-700"
+            disabled={loading}
+            className="rounded-xl bg-blue-600 p-4 text-white transition hover:bg-blue-700 disabled:opacity-50"
           >
             <Send size={20} />
           </button>

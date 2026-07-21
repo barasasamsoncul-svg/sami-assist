@@ -13,7 +13,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleLogin(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
     setLoading(true);
@@ -21,10 +21,9 @@ export default function LoginPage() {
 
     const { error } = await signIn(email, password);
 
-    setLoading(false);
-
     if (error) {
       setError(error.message);
+      setLoading(false);
       return;
     }
 
@@ -45,8 +44,10 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-5">
-
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Email
@@ -82,13 +83,11 @@ export default function LoginPage() {
           )}
 
           <button
-            type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white hover:bg-blue-700 disabled:bg-blue-400"
+            className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-400"
           >
             {loading ? "Signing In..." : "Login"}
           </button>
-
         </form>
 
         <p className="mt-6 text-center text-sm text-gray-500">
@@ -97,7 +96,7 @@ export default function LoginPage() {
             href="/auth/register"
             className="font-semibold text-blue-600 hover:underline"
           >
-            Register
+            Create one
           </a>
         </p>
 
