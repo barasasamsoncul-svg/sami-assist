@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import ChatWindow from "../dashboard/ChatWindow";
 import ChatHistory from "../dashboard/ChatHistory";
-import Customers from "../dashboard/Customers";
+import Customers from "../dashboard/customers";
 import TopBar from "./TopBar";
 
 import {
