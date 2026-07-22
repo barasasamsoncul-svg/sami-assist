@@ -5,20 +5,16 @@ import { useEffect, useState } from "react";
 
 import ChatWindow from "../dashboard/ChatWindow";
 import ChatHistory from "../dashboard/ChatHistory";
+import Customers from "../dashboard/Customers";
 import TopBar from "./TopBar";
 
 import {
   LayoutDashboard,
   MessageSquare,
+  Users,
   FolderOpen,
   BarChart3,
   Settings,
-  Users,
-  FileText,
-  CreditCard,
-  TrendingUp,
-  ArrowUpRight,
-  Plus,
 } from "lucide-react";
 
 type Conversation = {
@@ -34,9 +30,10 @@ type Profile = {
   created_at: string;
 };
 
-type View =
+type ActivePage =
   | "dashboard"
   | "chat"
+  | "customers"
   | "documents"
   | "analytics"
   | "settings";
@@ -63,12 +60,14 @@ export default function DashboardLayout() {
   ] = useState(true);
 
   const [
-    activeView,
-    setActiveView,
-  ] = useState<View>("dashboard");
+    activePage,
+    setActivePage,
+  ] = useState<ActivePage>(
+    "dashboard"
+  );
 
   // ==========================================
-  // LOAD DATA
+  // LOAD PROFILE & CONVERSATIONS
   // ==========================================
 
   useEffect(() => {
@@ -76,11 +75,16 @@ export default function DashboardLayout() {
     loadConversations();
   }, []);
 
+  // ==========================================
+  // LOAD USER PROFILE
+  // ==========================================
+
   async function loadProfile() {
     try {
-      const response = await fetch(
-        "/api/profile"
-      );
+      const response =
+        await fetch(
+          "/api/profile"
+        );
 
       if (!response.ok) {
         throw new Error(
@@ -102,11 +106,16 @@ export default function DashboardLayout() {
     }
   }
 
+  // ==========================================
+  // LOAD CONVERSATIONS
+  // ==========================================
+
   async function loadConversations() {
     try {
-      const response = await fetch(
-        "/api/conversations"
-      );
+      const response =
+        await fetch(
+          "/api/conversations"
+        );
 
       if (!response.ok) {
         throw new Error(
@@ -127,13 +136,17 @@ export default function DashboardLayout() {
   }
 
   // ==========================================
-  // CHAT FUNCTIONS
+  // START NEW CHAT
   // ==========================================
 
   function newChat() {
     setSelectedId(null);
-    setActiveView("chat");
+    setActivePage("chat");
   }
+
+  // ==========================================
+  // CONVERSATION CREATED
+  // ==========================================
 
   function handleConversationCreated(
     id: string
@@ -143,21 +156,31 @@ export default function DashboardLayout() {
     loadConversations();
   }
 
+  // ==========================================
+  // SELECT EXISTING CONVERSATION
+  // ==========================================
+
   function handleSelectConversation(
     id: string
   ) {
     setSelectedId(id);
-    setActiveView("chat");
+    setActivePage("chat");
   }
 
   // ==========================================
   // NAVIGATION
   // ==========================================
 
-  function navigateTo(
-    view: View
+  function handleNavigation(
+    page: ActivePage
   ) {
-    setActiveView(view);
+    setActivePage(page);
+
+    // When leaving the chat,
+    // clear the selected conversation.
+    if (page !== "chat") {
+      setSelectedId(null);
+    }
   }
 
   return (
@@ -169,7 +192,9 @@ export default function DashboardLayout() {
 
       <aside className="flex w-72 flex-col bg-gray-900 p-6 text-white">
 
-        {/* LOGO */}
+        {/* ====================================
+            LOGO
+        ==================================== */}
 
         <div className="mb-10 flex items-center gap-3">
 
@@ -182,6 +207,7 @@ export default function DashboardLayout() {
           />
 
           <div>
+
             <h2 className="text-lg font-bold">
               SaMi Assist
             </h2>
@@ -189,11 +215,14 @@ export default function DashboardLayout() {
             <p className="text-xs text-gray-400">
               AI Workspace
             </p>
+
           </div>
 
         </div>
 
-        {/* NAVIGATION */}
+        {/* ====================================
+            NAVIGATION
+        ==================================== */}
 
         <nav className="space-y-3">
 
@@ -201,113 +230,145 @@ export default function DashboardLayout() {
 
           <button
             onClick={() =>
-              navigateTo(
+              handleNavigation(
                 "dashboard"
               )
             }
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
-              activeView ===
-              "dashboard"
-                ? "bg-blue-600"
+              activePage === "dashboard"
+                ? "bg-blue-600 hover:bg-blue-700"
                 : "hover:bg-gray-800"
             }`}
           >
+
             <LayoutDashboard
               size={20}
             />
 
             Dashboard
+
           </button>
 
           {/* AI CHAT */}
 
           <button
             onClick={() =>
-              navigateTo("chat")
+              handleNavigation(
+                "chat"
+              )
             }
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
-              activeView ===
-              "chat"
-                ? "bg-blue-600"
+              activePage === "chat"
+                ? "bg-blue-600 hover:bg-blue-700"
                 : "hover:bg-gray-800"
             }`}
           >
+
             <MessageSquare
               size={20}
             />
 
             AI Chat
+
+          </button>
+
+          {/* CUSTOMERS */}
+
+          <button
+            onClick={() =>
+              handleNavigation(
+                "customers"
+              )
+            }
+            className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
+              activePage === "customers"
+                ? "bg-blue-600 hover:bg-blue-700"
+                : "hover:bg-gray-800"
+            }`}
+          >
+
+            <Users
+              size={20}
+            />
+
+            Customers
+
           </button>
 
           {/* DOCUMENTS */}
 
           <button
             onClick={() =>
-              navigateTo(
+              handleNavigation(
                 "documents"
               )
             }
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
-              activeView ===
-              "documents"
-                ? "bg-blue-600"
+              activePage === "documents"
+                ? "bg-blue-600 hover:bg-blue-700"
                 : "hover:bg-gray-800"
             }`}
           >
+
             <FolderOpen
               size={20}
             />
 
             Documents
+
           </button>
 
           {/* ANALYTICS */}
 
           <button
             onClick={() =>
-              navigateTo(
+              handleNavigation(
                 "analytics"
               )
             }
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
-              activeView ===
-              "analytics"
-                ? "bg-blue-600"
+              activePage === "analytics"
+                ? "bg-blue-600 hover:bg-blue-700"
                 : "hover:bg-gray-800"
             }`}
           >
+
             <BarChart3
               size={20}
             />
 
             Analytics
+
           </button>
 
           {/* SETTINGS */}
 
           <button
             onClick={() =>
-              navigateTo(
+              handleNavigation(
                 "settings"
               )
             }
             className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left font-medium transition ${
-              activeView ===
-              "settings"
-                ? "bg-blue-600"
+              activePage === "settings"
+                ? "bg-blue-600 hover:bg-blue-700"
                 : "hover:bg-gray-800"
             }`}
           >
+
             <Settings
               size={20}
             />
 
             Settings
+
           </button>
 
         </nav>
 
-        {/* USER PROFILE */}
+        {/* ====================================
+            USER PROFILE
+        ==================================== */}
 
         <div className="mt-auto pt-10">
 
@@ -315,23 +376,32 @@ export default function DashboardLayout() {
 
             {loadingProfile ? (
               <>
+
                 <div className="h-5 w-32 animate-pulse rounded bg-gray-700" />
 
                 <div className="mt-2 h-4 w-44 animate-pulse rounded bg-gray-700" />
+
               </>
             ) : profile ? (
               <>
+
                 <p className="font-semibold">
+
                   {profile.full_name ||
                     "SaMi Assist User"}
+
                 </p>
 
                 <p className="mt-1 text-sm text-gray-400">
+
                   {profile.email}
+
                 </p>
+
               </>
             ) : (
               <>
+
                 <p className="font-semibold">
                   SaMi Assist User
                 </p>
@@ -339,6 +409,7 @@ export default function DashboardLayout() {
                 <p className="text-sm text-gray-400">
                   Account
                 </p>
+
               </>
             )}
 
@@ -354,356 +425,143 @@ export default function DashboardLayout() {
 
       <main className="flex-1 bg-gray-100 p-8">
 
+        {/* ====================================
+            TOP BAR
+        ==================================== */}
+
         <TopBar />
 
         {/* ====================================
-            OVERVIEW DASHBOARD
+            DASHBOARD PAGE
         ==================================== */}
 
-        {activeView ===
+        {activePage ===
           "dashboard" && (
           <div className="mt-8">
 
-            {/* WELCOME */}
+            <h1 className="text-3xl font-bold text-gray-900">
+              Dashboard
+            </h1>
 
-            <div className="mb-8">
+            <p className="mt-2 text-gray-500">
+              Welcome back to SaMi Assist.
+              Manage your business from one
+              AI-powered workspace.
+            </p>
 
-              <h1 className="text-3xl font-bold text-gray-900">
+            {/* DASHBOARD CARDS */}
 
-                Welcome back,{" "}
-
-                {profile?.full_name
-                  ?.split(" ")[0] ||
-                  "there"} 👋
-
-              </h1>
-
-              <p className="mt-2 text-gray-500">
-
-                Here's what's happening
-                across your business
-                workspace.
-
-              </p>
-
-            </div>
-
-            {/* QUICK STATS */}
-
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-
-              {/* CUSTOMERS */}
+            <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-4">
 
               <div className="rounded-2xl bg-white p-6 shadow-sm">
 
-                <div className="flex items-center justify-between">
-
-                  <div className="rounded-xl bg-blue-100 p-3">
-
-                    <Users
-                      size={22}
-                      className="text-blue-600"
-                    />
-
-                  </div>
-
-                  <ArrowUpRight
-                    size={18}
-                    className="text-gray-400"
-                  />
-
-                </div>
-
-                <p className="mt-5 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Customers
                 </p>
 
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">
-                  0
-                </h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  —
+                </p>
 
                 <p className="mt-2 text-xs text-gray-400">
-                  No customers added yet
+                  Customer management
+                  coming from live data
                 </p>
 
               </div>
 
-              {/* INVOICES */}
-
               <div className="rounded-2xl bg-white p-6 shadow-sm">
 
-                <div className="flex items-center justify-between">
-
-                  <div className="rounded-xl bg-purple-100 p-3">
-
-                    <FileText
-                      size={22}
-                      className="text-purple-600"
-                    />
-
-                  </div>
-
-                  <ArrowUpRight
-                    size={18}
-                    className="text-gray-400"
-                  />
-
-                </div>
-
-                <p className="mt-5 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Invoices
                 </p>
 
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">
-                  0
-                </h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  —
+                </p>
 
                 <p className="mt-2 text-xs text-gray-400">
-                  No invoices created yet
+                  Invoice management
+                  coming soon
                 </p>
 
               </div>
 
-              {/* PAYMENTS */}
-
               <div className="rounded-2xl bg-white p-6 shadow-sm">
 
-                <div className="flex items-center justify-between">
-
-                  <div className="rounded-xl bg-green-100 p-3">
-
-                    <CreditCard
-                      size={22}
-                      className="text-green-600"
-                    />
-
-                  </div>
-
-                  <ArrowUpRight
-                    size={18}
-                    className="text-gray-400"
-                  />
-
-                </div>
-
-                <p className="mt-5 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Payments
                 </p>
 
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">
-                  KSh 0
-                </h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  —
+                </p>
 
                 <p className="mt-2 text-xs text-gray-400">
-                  No payments recorded
+                  Payment tracking
+                  coming soon
                 </p>
 
               </div>
-
-              {/* CASHFLOW */}
 
               <div className="rounded-2xl bg-white p-6 shadow-sm">
 
-                <div className="flex items-center justify-between">
-
-                  <div className="rounded-xl bg-orange-100 p-3">
-
-                    <TrendingUp
-                      size={22}
-                      className="text-orange-600"
-                    />
-
-                  </div>
-
-                  <ArrowUpRight
-                    size={18}
-                    className="text-gray-400"
-                  />
-
-                </div>
-
-                <p className="mt-5 text-sm text-gray-500">
+                <p className="text-sm text-gray-500">
                   Cashflow
                 </p>
 
-                <h3 className="mt-1 text-3xl font-bold text-gray-900">
-                  KSh 0
-                </h3>
+                <p className="mt-2 text-3xl font-bold text-gray-900">
+                  —
+                </p>
 
                 <p className="mt-2 text-xs text-gray-400">
-                  No financial data yet
+                  Cashflow insights
+                  coming soon
                 </p>
 
               </div>
 
             </div>
 
-            {/* LOWER SECTION */}
+            {/* WELCOME SECTION */}
 
-            <div className="mt-8 grid gap-6 lg:grid-cols-3">
+            <div className="mt-8 rounded-2xl bg-white p-8 shadow-sm">
 
-              {/* AI ASSISTANT CARD */}
+              <h2 className="text-xl font-bold text-gray-900">
+                Welcome to SaMi Assist
+              </h2>
 
-              <div className="rounded-2xl bg-gray-900 p-7 text-white lg:col-span-2">
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-500">
+                Your AI-powered business workspace.
+                Use AI Chat to work with your
+                business information, or use the
+                Customers module to manage your
+                customer relationships.
+              </p>
 
-                <div className="flex items-start justify-between">
-
-                  <div>
-
-                    <p className="text-sm font-medium text-blue-400">
-                      SaMi AI
-                    </p>
-
-                    <h2 className="mt-2 text-2xl font-bold">
-                      Your business assistant
-                    </h2>
-
-                    <p className="mt-3 max-w-xl text-gray-400">
-
-                      Ask SaMi about your
-                      business, customers,
-                      invoices, payments,
-                      documents, and more.
-
-                    </p>
-
-                  </div>
-
-                  <MessageSquare
-                    size={32}
-                    className="text-blue-400"
-                  />
-
-                </div>
+              <div className="mt-6 flex flex-wrap gap-3">
 
                 <button
                   onClick={() =>
-                    navigateTo("chat")
-                  }
-                  className="mt-6 flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-medium transition hover:bg-blue-700"
-                >
-
-                  Open AI Chat
-
-                  <ArrowUpRight
-                    size={18}
-                  />
-
-                </button>
-
-              </div>
-
-              {/* QUICK ACTIONS */}
-
-              <div className="rounded-2xl bg-white p-7 shadow-sm">
-
-                <h2 className="text-lg font-bold text-gray-900">
-                  Quick Actions
-                </h2>
-
-                <div className="mt-5 space-y-3">
-
-                  <button
-                    onClick={() =>
-                      navigateTo(
-                        "chat"
-                      )
-                    }
-                    className="flex w-full items-center gap-3 rounded-xl border border-gray-200 p-3 text-left transition hover:bg-gray-50"
-                  >
-
-                    <Plus
-                      size={18}
-                      className="text-blue-600"
-                    />
-
-                    <span className="text-sm font-medium">
-                      Start new AI chat
-                    </span>
-
-                  </button>
-
-                  <button
-                    className="flex w-full items-center gap-3 rounded-xl border border-gray-200 p-3 text-left transition hover:bg-gray-50"
-                  >
-
-                    <Users
-                      size={18}
-                      className="text-blue-600"
-                    />
-
-                    <span className="text-sm font-medium">
-                      Add customer
-                    </span>
-
-                  </button>
-
-                  <button
-                    className="flex w-full items-center gap-3 rounded-xl border border-gray-200 p-3 text-left transition hover:bg-gray-50"
-                  >
-
-                    <FileText
-                      size={18}
-                      className="text-blue-600"
-                    />
-
-                    <span className="text-sm font-medium">
-                      Create invoice
-                    </span>
-
-                  </button>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* RECENT ACTIVITY */}
-
-            <div className="mt-8 rounded-2xl bg-white p-7 shadow-sm">
-
-              <div className="flex items-center justify-between">
-
-                <div>
-
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Recent Activity
-                  </h2>
-
-                  <p className="mt-1 text-sm text-gray-500">
-                    Your latest workspace activity
-                  </p>
-
-                </div>
-
-                <button
-                  onClick={() =>
-                    navigateTo(
+                    handleNavigation(
                       "chat"
                     )
                   }
-                  className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-medium text-white transition hover:bg-blue-700"
                 >
                   Open AI Chat
                 </button>
 
-              </div>
-
-              <div className="mt-6 rounded-xl border border-dashed border-gray-200 p-8 text-center">
-
-                <MessageSquare
-                  size={28}
-                  className="mx-auto text-gray-300"
-                />
-
-                <p className="mt-3 text-sm font-medium text-gray-600">
-                  No recent activity
-                </p>
-
-                <p className="mt-1 text-xs text-gray-400">
-                  Your business activity will appear here.
-                </p>
+                <button
+                  onClick={() =>
+                    handleNavigation(
+                      "customers"
+                    )
+                  }
+                  className="rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+                >
+                  Manage Customers
+                </button>
 
               </div>
 
@@ -713,12 +571,13 @@ export default function DashboardLayout() {
         )}
 
         {/* ====================================
-            AI CHAT
+            AI CHAT PAGE
         ==================================== */}
 
-        {activeView ===
-          "chat" && (
+        {activePage === "chat" && (
           <div className="mt-6 flex gap-6">
+
+            {/* CHAT */}
 
             <div className="flex-1">
 
@@ -732,6 +591,8 @@ export default function DashboardLayout() {
               />
 
             </div>
+
+            {/* CHAT HISTORY */}
 
             <ChatHistory
               conversations={
@@ -752,77 +613,110 @@ export default function DashboardLayout() {
         )}
 
         {/* ====================================
-            DOCUMENTS
+            CUSTOMERS PAGE
         ==================================== */}
 
-        {activeView ===
+        {activePage ===
+          "customers" && (
+          <Customers />
+        )}
+
+        {/* ====================================
+            DOCUMENTS PAGE
+        ==================================== */}
+
+        {activePage ===
           "documents" && (
-          <div className="mt-8 rounded-2xl bg-white p-10 shadow-sm">
+          <div className="mt-8">
 
-            <FolderOpen
-              size={40}
-              className="text-blue-600"
-            />
+            <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
 
-            <h1 className="mt-5 text-2xl font-bold">
-              Documents
-            </h1>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
 
-            <p className="mt-2 text-gray-500">
-              Document management will be
-              available here.
-            </p>
+                <FolderOpen
+                  size={28}
+                  className="text-gray-400"
+                />
+
+              </div>
+
+              <h2 className="mt-5 text-xl font-bold text-gray-900">
+                Documents
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+                Document management and AI-powered
+                document search will be available
+                here.
+              </p>
+
+            </div>
 
           </div>
         )}
 
         {/* ====================================
-            ANALYTICS
+            ANALYTICS PAGE
         ==================================== */}
 
-        {activeView ===
+        {activePage ===
           "analytics" && (
-          <div className="mt-8 rounded-2xl bg-white p-10 shadow-sm">
+          <div className="mt-8">
 
-            <BarChart3
-              size={40}
-              className="text-blue-600"
-            />
+            <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
 
-            <h1 className="mt-5 text-2xl font-bold">
-              Analytics
-            </h1>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
 
-            <p className="mt-2 text-gray-500">
-              Business analytics and
-              reporting will be available
-              here.
-            </p>
+                <BarChart3
+                  size={28}
+                  className="text-gray-400"
+                />
+
+              </div>
+
+              <h2 className="mt-5 text-xl font-bold text-gray-900">
+                Analytics
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+                Business analytics and AI-powered
+                insights will be available here.
+              </p>
+
+            </div>
 
           </div>
         )}
 
         {/* ====================================
-            SETTINGS
+            SETTINGS PAGE
         ==================================== */}
 
-        {activeView ===
+        {activePage ===
           "settings" && (
-          <div className="mt-8 rounded-2xl bg-white p-10 shadow-sm">
+          <div className="mt-8">
 
-            <Settings
-              size={40}
-              className="text-blue-600"
-            />
+            <div className="rounded-2xl bg-white p-12 text-center shadow-sm">
 
-            <h1 className="mt-5 text-2xl font-bold">
-              Settings
-            </h1>
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
 
-            <p className="mt-2 text-gray-500">
-              Workspace and account settings
-              will be available here.
-            </p>
+                <Settings
+                  size={28}
+                  className="text-gray-400"
+                />
+
+              </div>
+
+              <h2 className="mt-5 text-xl font-bold text-gray-900">
+                Settings
+              </h2>
+
+              <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+                Account and workspace settings
+                will be available here.
+              </p>
+
+            </div>
 
           </div>
         )}
