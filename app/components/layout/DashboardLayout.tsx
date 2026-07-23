@@ -237,6 +237,7 @@ export default function DashboardLayout() {
         fixed lg:relative inset-y-0 left-0 z-50 flex w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-6 text-white shadow-2xl transition-transform duration-300 ease-in-out flex-shrink-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
         lg:translate-x-0
+        ${activePage === "chat" ? "hidden lg:hidden" : ""}
       `}
     >
       {isMobile && (
@@ -611,7 +612,7 @@ export default function DashboardLayout() {
       case "chat":
         return (
           <div className="flex h-full">
-            {/* Chat Sidebar - Desktop */}
+            {/* Chat Sidebar - Desktop always visible */}
             <div className="hidden lg:block flex-shrink-0">
               <ChatSidebar />
             </div>
@@ -674,20 +675,20 @@ export default function DashboardLayout() {
       <Overlay />
       <ChatSidebarOverlay />
 
-      {/* Main Sidebar - Desktop always visible, Mobile slides in */}
+      {/* Main Sidebar - Hidden when in chat mode */}
       <MainSidebar />
 
       {/* Mobile Chat Sidebar */}
       <MobileChatSidebar />
 
-      {/* Main Content - Flex:1 takes remaining space beside sidebar */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* TopBar */}
         <div className="flex-shrink-0 bg-white/80 backdrop-blur-md dark:bg-gray-900/80 border-b border-gray-200/80 dark:border-gray-800/80">
           <TopBar />
         </div>
 
-        {/* Page Content - Fills remaining space */}
+        {/* Page Content */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {renderPageContent()}
         </div>
