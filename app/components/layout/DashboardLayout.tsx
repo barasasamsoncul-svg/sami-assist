@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
-import ChatHistory from "../dashboard/ChatHistory";
 import Customers from "../dashboard/customers";
 import {
   LayoutDashboard,
@@ -19,6 +18,12 @@ import {
   ArrowLeft,
   Plus,
   User,
+  Search,
+  Bell,
+  Moon,
+  Sun,
+  LogOut,
+  HelpCircle,
 } from "lucide-react";
 
 type Conversation = {
@@ -52,7 +57,9 @@ export default function DashboardLayout() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [activePage, setActivePage] = useState<ActivePage>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isDark, setIsDark] = useState(false);
 
   // ==========================================
   // DETECT MOBILE
@@ -66,6 +73,7 @@ export default function DashboardLayout() {
         setSidebarOpen(true);
       } else {
         setSidebarOpen(false);
+        setChatSidebarOpen(false);
       }
     };
 
@@ -73,6 +81,25 @@ export default function DashboardLayout() {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  // ==========================================
+  // DARK MODE
+  // ==========================================
+
+  useEffect(() => {
+    const isDarkMode = localStorage.getItem("theme") === "dark" ||
+      (!localStorage.getItem("theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    
+    setIsDark(isDarkMode);
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = !isDark;
+    setIsDark(newTheme);
+    document.documentElement.classList.toggle("dark", newTheme);
+    localStorage.setItem("theme", newTheme ? "dark" : "light");
+  };
 
   // ==========================================
   // LOAD PROFILE & CONVERSATIONS
@@ -122,12 +149,13 @@ export default function DashboardLayout() {
   function handleConversationCreated(id: string) {
     setSelectedId(id);
     loadConversations();
+    if (isMobile) setChatSidebarOpen(false);
   }
 
   function handleSelectConversation(id: string) {
     setSelectedId(id);
     setActivePage("chat");
-    if (isMobile) setSidebarOpen(false);
+    if (isMobile) setChatSidebarOpen(false);
   }
 
   function handleConversationUpdate(id: string, title: string) {
@@ -170,7 +198,7 @@ export default function DashboardLayout() {
   function newChat() {
     setSelectedId(null);
     setActivePage("chat");
-    if (isMobile) setSidebarOpen(false);
+    if (isMobile) setChatSidebarOpen(false);
   }
 
   function handleNavigation(page: ActivePage) {
@@ -182,7 +210,10 @@ export default function DashboardLayout() {
   function goBackToDashboard() {
     setActivePage("dashboard");
     setSelectedId(null);
-    if (isMobile) setSidebarOpen(false);
+    if (isMobile) {
+      setSidebarOpen(false);
+      setChatSidebarOpen(false);
+    }
   }
 
   // ==========================================
@@ -405,7 +436,33 @@ export default function DashboardLayout() {
   );
 
   // ==========================================
-  // OVERLAY (Mobile)
+  // MOBILE CHAT SIDEBAR OVERLAY
+  // ==========================================
+
+  const ChatSidebarOverlay = () => (
+    <div
+      className={`
+        fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 lg:hidden
+        ${chatSidebarOpen ? "opacity-100" : "pointer-events-none opacity-0"}
+      `}
+      onClick={() => setChatSidebarOpen(false)}
+      aria-hidden="true"
+    />
+  );
+
+  const MobileChatSidebar = () => (
+    <div
+      className={`
+        fixed inset-y-0 left-0 z-50 w-72 transform overflow-y-auto transition-transform duration-300 ease-in-out lg:hidden
+        ${chatSidebarOpen ? "translate-x-0" : "-translate-x-full"}
+      `}
+    >
+      <ChatSidebar />
+    </div>
+  );
+
+  // ==========================================
+  // OVERLAY (Main Sidebar Mobile)
   // ==========================================
 
   const Overlay = () => (
@@ -417,6 +474,83 @@ export default function DashboardLayout() {
       onClick={() => setSidebarOpen(false)}
       aria-hidden="true"
     />
+  );
+
+  // ==========================================
+  // TOP BAR (Integrated)
+  // ==========================================
+
+  const TopBar = () => (
+    <div className="flex items-center justify-between px-4 py-3 lg:px-8 lg:py-4">
+      <div className="flex items-center gap-3">
+        {activePage === "chat" ? (
+          // In chat mode - show hamburger only on mobile
+          <>
+            <button
+              onClick={() => setChatSidebarOpen(true)}
+              className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
+              aria-label="Open chat sidebar"
+            >
+              <Menu size={24} />
+            </button>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400 lg:hidden">
+              AI Chat
+            </span>
+          </>
+        ) : (
+          // Not in chat - show main sidebar hamburger
+          <>
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
+              aria-label="Open sidebar"
+            >
+              <Menu size={24} />
+            </button>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400 lg:hidden">
+              {activePage.charAt(0).toUpperCase() + activePage.slice(1)}
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Right side - Search, Theme, Profile */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Search - Desktop */}
+        <div className="hidden md:flex items-center gap-2 rounded-xl border border-gray-300/70 bg-white/50 px-3 py-2 transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gray-700/70 dark:bg-gray-800/50">
+          <Search size={18} className="text-gray-400 dark:text-gray-500" />
+          <input
+            type="text"
+            placeholder="Search..."
+            className="w-32 border-none bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400 dark:text-gray-200 dark:placeholder:text-gray-500 lg:w-48"
+          />
+        </div>
+
+        {/* Search - Mobile */}
+        <button className="rounded-xl p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden">
+          <Search size={20} />
+        </button>
+
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          className="rounded-xl p-2 text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+        >
+          {isDark ? <Sun size={20} /> : <Moon size={20} />}
+        </button>
+
+        {/* Profile */}
+        <div className="flex items-center gap-2">
+          <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-blue-700 text-sm font-medium text-white">
+            {profile?.full_name?.[0] || "S"}
+          </div>
+          <button className="hidden lg:block rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:shadow-lg hover:shadow-blue-500/25">
+            {profile?.full_name || "Account"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 
   // ==========================================
@@ -485,30 +619,13 @@ export default function DashboardLayout() {
       case "chat":
         return (
           <div className="flex h-full flex-col lg:flex-row">
-            {/* Chat Sidebar - Left (Desktop) */}
+            {/* Chat Sidebar - Desktop */}
             <div className="hidden lg:block flex-shrink-0">
               <ChatSidebar />
             </div>
 
-            {/* Chat Window - Right */}
+            {/* Chat Window - Takes remaining space */}
             <div className="flex-1 flex flex-col min-h-0">
-              {/* Mobile: Chat header with back and new chat */}
-              <div className="flex items-center gap-2 p-3 lg:hidden">
-                <button
-                  onClick={goBackToDashboard}
-                  className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                >
-                  <ArrowLeft size={16} />
-                  <span>Back</span>
-                </button>
-                <button
-                  onClick={newChat}
-                  className="ml-auto rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-                >
-                  + New Chat
-                </button>
-              </div>
-
               <div className="flex-1 min-h-0">
                 <ChatWindow
                   conversationId={selectedId}
@@ -561,33 +678,24 @@ export default function DashboardLayout() {
 
   return (
     <div className="fixed inset-0 flex bg-gray-50 dark:bg-gray-950 overflow-hidden">
+      {/* Overlays */}
       <Overlay />
+      <ChatSidebarOverlay />
 
       {/* Main Sidebar */}
       <MainSidebar />
 
-      {/* Main Content - Takes remaining space, no scroll */}
+      {/* Mobile Chat Sidebar */}
+      <MobileChatSidebar />
+
+      {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* TopBar - Fixed */}
+        {/* TopBar - Integrated */}
         <div className="flex-shrink-0 bg-white/80 backdrop-blur-md dark:bg-gray-900/80 border-b border-gray-200/80 dark:border-gray-800/80">
-          <div className="flex items-center justify-between px-4 py-3 lg:px-8 lg:py-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
-                aria-label="Open sidebar"
-              >
-                <Menu size={24} />
-              </button>
-              <span className="text-sm font-medium text-gray-500 dark:text-gray-400 lg:hidden">
-                {activePage.charAt(0).toUpperCase() + activePage.slice(1)}
-              </span>
-            </div>
-            <TopBar />
-          </div>
+          <TopBar />
         </div>
 
-        {/* Page Content - Fills remaining space */}
+        {/* Page Content */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {renderPageContent()}
         </div>
