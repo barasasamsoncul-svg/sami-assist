@@ -206,7 +206,7 @@ export default function DashboardLayout() {
   const MainSidebar = () => (
     <aside
       className={`
-        fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-6 text-white shadow-2xl transition-transform duration-300 ease-in-out lg:static lg:translate-x-0
+        fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-6 text-white shadow-2xl transition-transform duration-300 ease-in-out
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
       `}
     >
@@ -428,7 +428,7 @@ export default function DashboardLayout() {
     switch (activePage) {
       case "dashboard":
         return (
-          <div className="mt-6 lg:mt-8">
+          <div className="h-full overflow-y-auto p-6 lg:p-8">
             <div className="mb-8">
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white lg:text-3xl">
                 Dashboard
@@ -485,32 +485,32 @@ export default function DashboardLayout() {
 
       case "chat":
         return (
-          <div className="mt-4 lg:mt-6">
-            <div className="flex flex-col gap-4 lg:flex-row">
-              {/* Chat Sidebar - Left */}
-              <div className="hidden lg:block flex-shrink-0">
-                <ChatSidebar />
+          <div className="flex h-full flex-col lg:flex-row">
+            {/* Chat Sidebar - Left (Desktop) */}
+            <div className="hidden lg:block flex-shrink-0">
+              <ChatSidebar />
+            </div>
+
+            {/* Chat Window - Right */}
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Mobile: Chat header with back and new chat */}
+              <div className="flex items-center gap-2 p-3 lg:hidden">
+                <button
+                  onClick={goBackToDashboard}
+                  className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                >
+                  <ArrowLeft size={16} />
+                  <span>Back</span>
+                </button>
+                <button
+                  onClick={newChat}
+                  className="ml-auto rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+                >
+                  + New Chat
+                </button>
               </div>
 
-              {/* Chat Window - Right */}
-              <div className="flex-1 min-w-0">
-                {/* Mobile: Chat header with back and new chat */}
-                <div className="mb-3 flex items-center gap-2 lg:hidden">
-                  <button
-                    onClick={goBackToDashboard}
-                    className="flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                  >
-                    <ArrowLeft size={16} />
-                    <span>Back</span>
-                  </button>
-                  <button
-                    onClick={newChat}
-                    className="ml-auto rounded-xl bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
-                  >
-                    + New Chat
-                  </button>
-                </div>
-
+              <div className="flex-1 min-h-0">
                 <ChatWindow
                   conversationId={selectedId}
                   onConversationCreated={handleConversationCreated}
@@ -522,7 +522,11 @@ export default function DashboardLayout() {
         );
 
       case "customers":
-        return <Customers />;
+        return (
+          <div className="h-full overflow-y-auto p-6 lg:p-8">
+            <Customers />
+          </div>
+        );
 
       default:
         const pageConfig = {
@@ -535,7 +539,7 @@ export default function DashboardLayout() {
         const Icon = config.icon;
 
         return (
-          <div className="mt-6 lg:mt-8">
+          <div className="h-full overflow-y-auto p-6 lg:p-8">
             <div className="rounded-2xl bg-white/80 p-8 text-center shadow-sm backdrop-blur-sm dark:bg-gray-800/80 lg:p-12">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-700">
                 <Icon size={28} className="text-gray-400 dark:text-gray-500" />
@@ -553,24 +557,25 @@ export default function DashboardLayout() {
   };
 
   // ==========================================
-  // MAIN RETURN
+  // MAIN RETURN - Fixed App Layout
   // ==========================================
 
   return (
-    <div className="flex min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="fixed inset-0 flex bg-gray-50 dark:bg-gray-950 overflow-hidden">
       <Overlay />
 
       {/* Main Sidebar */}
       <MainSidebar />
 
-      {/* Main Content */}
-      <main className="flex-1 min-h-screen overflow-x-hidden">
-        <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-md dark:bg-gray-900/80">
+      {/* Main Content - Takes remaining space, no scroll */}
+      <main className="flex-1 flex flex-col min-w-0 min-h-0">
+        {/* TopBar - Fixed */}
+        <div className="flex-shrink-0 bg-white/80 backdrop-blur-md dark:bg-gray-900/80 border-b border-gray-200/80 dark:border-gray-800/80">
           <div className="flex items-center justify-between px-4 py-3 lg:px-8 lg:py-4">
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(true)}
-                className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+                className="rounded-lg p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden"
                 aria-label="Open sidebar"
               >
                 <Menu size={24} />
@@ -583,7 +588,8 @@ export default function DashboardLayout() {
           </div>
         </div>
 
-        <div className="px-4 pb-8 sm:px-6 lg:px-8">
+        {/* Page Content - Fills remaining space */}
+        <div className="flex-1 min-h-0 overflow-hidden">
           {renderPageContent()}
         </div>
       </main>
