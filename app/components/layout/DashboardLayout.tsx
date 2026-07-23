@@ -22,8 +22,6 @@ import {
   Bell,
   Moon,
   Sun,
-  LogOut,
-  HelpCircle,
 } from "lucide-react";
 
 type Conversation = {
@@ -236,8 +234,9 @@ export default function DashboardLayout() {
   const MainSidebar = () => (
     <aside
       className={`
-        fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-6 text-white shadow-2xl transition-transform duration-300 ease-in-out
+        fixed lg:relative inset-y-0 left-0 z-50 flex w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-6 text-white shadow-2xl transition-transform duration-300 ease-in-out flex-shrink-0
         ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        lg:translate-x-0
       `}
     >
       {isMobile && (
@@ -331,7 +330,7 @@ export default function DashboardLayout() {
   // ==========================================
 
   const ChatSidebar = () => (
-    <div className="flex h-full w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-4 text-white shadow-xl">
+    <div className="flex h-full w-72 flex-col bg-gradient-to-b from-[#0a1628] to-[#1a2a4a] p-4 text-white shadow-xl flex-shrink-0">
       {/* Back Button */}
       <button
         onClick={goBackToDashboard}
@@ -484,7 +483,6 @@ export default function DashboardLayout() {
     <div className="flex items-center justify-between px-4 py-3 lg:px-8 lg:py-4">
       <div className="flex items-center gap-3">
         {activePage === "chat" ? (
-          // In chat mode - show hamburger only on mobile
           <>
             <button
               onClick={() => setChatSidebarOpen(true)}
@@ -498,7 +496,6 @@ export default function DashboardLayout() {
             </span>
           </>
         ) : (
-          // Not in chat - show main sidebar hamburger
           <>
             <button
               onClick={() => setSidebarOpen(true)}
@@ -514,9 +511,7 @@ export default function DashboardLayout() {
         )}
       </div>
 
-      {/* Right side - Search, Theme, Profile */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Search - Desktop */}
         <div className="hidden md:flex items-center gap-2 rounded-xl border border-gray-300/70 bg-white/50 px-3 py-2 transition-all focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 dark:border-gray-700/70 dark:bg-gray-800/50">
           <Search size={18} className="text-gray-400 dark:text-gray-500" />
           <input
@@ -526,12 +521,10 @@ export default function DashboardLayout() {
           />
         </div>
 
-        {/* Search - Mobile */}
         <button className="rounded-xl p-2 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 md:hidden">
           <Search size={20} />
         </button>
 
-        {/* Theme Toggle */}
         <button
           onClick={toggleTheme}
           className="rounded-xl p-2 text-gray-600 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
@@ -540,7 +533,6 @@ export default function DashboardLayout() {
           {isDark ? <Sun size={20} /> : <Moon size={20} />}
         </button>
 
-        {/* Profile */}
         <div className="flex items-center gap-2">
           <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-blue-700 text-sm font-medium text-white">
             {profile?.full_name?.[0] || "S"}
@@ -618,7 +610,7 @@ export default function DashboardLayout() {
 
       case "chat":
         return (
-          <div className="flex h-full flex-col lg:flex-row">
+          <div className="flex h-full">
             {/* Chat Sidebar - Desktop */}
             <div className="hidden lg:block flex-shrink-0">
               <ChatSidebar />
@@ -682,20 +674,20 @@ export default function DashboardLayout() {
       <Overlay />
       <ChatSidebarOverlay />
 
-      {/* Main Sidebar */}
+      {/* Main Sidebar - Desktop always visible, Mobile slides in */}
       <MainSidebar />
 
       {/* Mobile Chat Sidebar */}
       <MobileChatSidebar />
 
-      {/* Main Content */}
+      {/* Main Content - Flex:1 takes remaining space beside sidebar */}
       <main className="flex-1 flex flex-col min-w-0 min-h-0">
-        {/* TopBar - Integrated */}
+        {/* TopBar */}
         <div className="flex-shrink-0 bg-white/80 backdrop-blur-md dark:bg-gray-900/80 border-b border-gray-200/80 dark:border-gray-800/80">
           <TopBar />
         </div>
 
-        {/* Page Content */}
+        {/* Page Content - Fills remaining space */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {renderPageContent()}
         </div>
