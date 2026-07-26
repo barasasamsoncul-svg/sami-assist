@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    const user = await getAuthenticatedUser();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -21,29 +16,12 @@ export async function GET() {
       );
     }
 
-    const {
-      data: profile,
-      error: profileError,
-    } = await supabase
-      .from("profiles")
-      .select(
-        "id, full_name, email, created_at"
-      )
-      .eq("id", user.id)
-      .single();
-
-    if (profileError) {
-      return NextResponse.json(
-        {
-          error: profileError.message,
-        },
-        {
-          status: 500,
-        }
-      );
-    }
-
-    return NextResponse.json(profile);
+    return NextResponse.json({
+      id: user.id,
+      full_name: user.fullName,
+      email: user.email,
+      created_at: null,
+    });
   } catch (error) {
     console.error(
       "Profile API Error:",
