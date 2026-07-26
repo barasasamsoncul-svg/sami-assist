@@ -1,32 +1,47 @@
-import { createClient } from "@/lib/supabase-server";
 import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 export async function GET() {
-  const supabase = await createClient();
+  try {
+    // Get the currently signed-in user
+    const user = await getAuthenticatedUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
 
-  if (!user) {
-    return NextResponse.json(
-      { error: "Unauthorized" },
-      { status: 401 }
+    // Find the business and connect to its tenant database
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    // Get conversations from THIS business's tenant database
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM conversations
+      ORDER BY created_at DESC
+      `
     );
-  }
 
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    return NextResponse.json(result.rows);
+  } catch (error) {
+    console.error(
+      "Conversations API Error:",
+      error
+    );
 
-  if (error) {
     return NextResponse.json(
-      { error: error.message },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load conversations.",
+      },
       { status: 500 }
     );
   }
-
-  return NextResponse.json(data);
 }
