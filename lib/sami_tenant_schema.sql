@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict DiPmXn8TcbIywgbwWprdUUgLLH0l9Xzq6d4TbxwjVPW1pwvabcWIhLdhkz69kyE
+
 
 -- Dumped from database version 18.4
 -- Dumped by pg_dump version 18.4
@@ -369,5 +369,5 @@ ALTER TABLE ONLY public.payments
 -- PostgreSQL database dump complete
 --
 
-\unrestrict DiPmXn8TcbIywgbwWprdUUgLLH0l9Xzq6d4TbxwjVPW1pwvabcWIhLdhkz69kyE
+
 
