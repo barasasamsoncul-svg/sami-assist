@@ -1,6 +1,9 @@
 import { randomUUID } from "crypto";
 import { postgresAdmin } from "./postgres-admin";
-import { createTenantDatabase } from "./database-provisioning";
+import {
+  createTenantDatabase,
+  initializeTenantDatabase,
+} from "./database-provisioning";
 
 interface ProvisionBusinessInput {
   businessName: string;
@@ -17,11 +20,10 @@ export async function provisionBusiness({
   email,
   phone,
 }: ProvisionBusinessInput) {
-  const client = await postgresAdmin.connect();
-
   const businessId = randomUUID();
 
-  const databaseName = `sami_tenant_${businessId.replace(/-/g, "")}`;
+  const databaseName =
+    `sami_tenant_${businessId.replace(/-/g, "")}`;
 
   const databaseHost =
     process.env.POSTGRES_HOST || "localhost";
@@ -42,37 +44,54 @@ export async function provisionBusiness({
     );
   }
 
-  try {
-    await client.query("BEGIN");
+  // =====================================================
+  // STEP 1: Create the business record
+  // =====================================================
 
-    // 1. Create the business in sami_control
-    await client.query(
-      `
-      INSERT INTO businesses (
-        id,
-        name,
-        slug,
-        email,
-        phone,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6)
-      `,
-      [
-        businessId,
-        businessName,
-        businessSlug,
-        email || null,
-        phone || null,
-        "active",
-      ]
+  await postgresAdmin.query(
+    `
+    INSERT INTO businesses (
+      id,
+      name,
+      slug,
+      email,
+      phone,
+      status
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [
+      businessId,
+      businessName,
+      businessSlug,
+      email || null,
+      phone || null,
+      "active",
+    ]
+  );
+
+  try {
+    // ===================================================
+    // STEP 2: Create the tenant database
+    // ===================================================
+
+    await createTenantDatabase(
+      databaseName
     );
 
-    // 2. Create the tenant database
-    await createTenantDatabase(databaseName);
+    // ===================================================
+    // STEP 3: Initialize the tenant database
+    // ===================================================
 
-    // 3. Register the tenant database
-    await client.query(
+    await initializeTenantDatabase(
+      databaseName
+    );
+
+    // ===================================================
+    // STEP 4: Register tenant database
+    // ===================================================
+
+    await postgresAdmin.query(
       `
       INSERT INTO database_registry (
         business_id,
@@ -96,8 +115,11 @@ export async function provisionBusiness({
       ]
     );
 
-    // 4. Connect the owner to the business
-    await client.query(
+    // ===================================================
+    // STEP 5: Connect owner to business
+    // ===================================================
+
+    await postgresAdmin.query(
       `
       INSERT INTO business_users (
         business_id,
@@ -113,8 +135,11 @@ export async function provisionBusiness({
       ]
     );
 
-    // 5. Create the default subscription
-    await client.query(
+    // ===================================================
+    // STEP 6: Create default subscription
+    // ===================================================
+
+    await postgresAdmin.query(
       `
       INSERT INTO subscriptions (
         business_id,
@@ -130,7 +155,9 @@ export async function provisionBusiness({
       ]
     );
 
-    await client.query("COMMIT");
+    // ===================================================
+    // SUCCESS
+    // ===================================================
 
     return {
       success: true,
@@ -138,10 +165,26 @@ export async function provisionBusiness({
       databaseName,
     };
   } catch (error) {
-    await client.query("ROLLBACK");
+    console.error(
+      "Business provisioning failed:",
+      error
+    );
+
+    // If provisioning fails after the business record
+    // was created, remove the business record.
+    //
+    // Because business_users, database_registry,
+    // and subscriptions reference the business with
+    // ON DELETE CASCADE, this cleans up those records
+    // as well if they were created.
+    await postgresAdmin.query(
+      `
+      DELETE FROM businesses
+      WHERE id = $1
+      `,
+      [businessId]
+    );
 
     throw error;
-  } finally {
-    client.release();
   }
 }
