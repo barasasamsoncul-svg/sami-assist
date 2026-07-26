@@ -81,7 +81,22 @@ export default function TopBar() {
   // ==========================================
   // RENDER
   // ==========================================
+  async function handleLogout() {
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+      });
 
+      if (!response.ok) {
+        throw new Error("Logout failed.");
+      }
+
+      window.location.href = "/auth/login";
+    } catch (error) {
+      console.error("Logout error:", error);
+      alert("Failed to log out. Please try again.");
+    }
+  }
   return (
     <header className="relative flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-md transition-all dark:border-gray-800/80 dark:bg-gray-900/80 sm:px-6 sm:py-4">
       
@@ -291,12 +306,13 @@ export default function TopBar() {
                   <HelpCircle size={16} />
                   Help
                 </button>
-              </div>
-              <div className="border-t border-gray-200 p-2 dark:border-gray-700">
-                <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20">
-                  <LogOut size={16} />
-                  Sign Out
-                </button>
+              <button
+  onClick={handleLogout}
+  className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-red-600 transition hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+>
+  <LogOut size={16} />
+  Sign Out
+</button>
               </div>
             </div>
           )}
