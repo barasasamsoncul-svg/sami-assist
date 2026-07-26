@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signIn } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,15 +18,32 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    const { error } = await signIn(email, password);
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-    if (error) {
-      setError(error.message);
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setError(data.error || "Login failed.");
+        setLoading(false);
+        return;
+      }
+
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("Something went wrong. Please try again.");
       setLoading(false);
-      return;
     }
-
-    router.push("/dashboard");
   }
 
   return (
@@ -44,10 +60,8 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-5"
-        >
+        <form onSubmit={handleSubmit} className="space-y-5">
+
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Email
@@ -59,6 +73,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-blue-600 focus:outline-none"
+              placeholder="you@example.com"
             />
           </div>
 
@@ -73,6 +88,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-blue-600 focus:outline-none"
+              placeholder="Your password"
             />
           </div>
 
@@ -83,6 +99,7 @@ export default function LoginPage() {
           )}
 
           <button
+            type="submit"
             disabled={loading}
             className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-400"
           >
