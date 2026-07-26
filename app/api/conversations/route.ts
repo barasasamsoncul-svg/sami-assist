@@ -1,10 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 export async function GET() {
   try {
-    // Get the currently signed-in user
     const user = await getAuthenticatedUser();
 
     if (!user) {
@@ -14,11 +13,9 @@ export async function GET() {
       );
     }
 
-    // Find the business and connect to its tenant database
     const { pool } =
       await getTenantDatabaseForUser(user.id);
 
-    // Get conversations from THIS business's tenant database
     const result = await pool.query(
       `
       SELECT *
@@ -30,7 +27,7 @@ export async function GET() {
     return NextResponse.json(result.rows);
   } catch (error) {
     console.error(
-      "Conversations API Error:",
+      "Conversations GET API Error:",
       error
     );
 
@@ -40,6 +37,66 @@ export async function GET() {
           error instanceof Error
             ? error.message
             : "Failed to load conversations.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: NextRequest
+) {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    const {
+      title,
+    } = body;
+
+    const conversationTitle =
+      title?.trim() || "New Conversation";
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(
+      `
+      INSERT INTO conversations (
+        title
+      )
+      VALUES ($1)
+      RETURNING *
+      `,
+      [
+        conversationTitle,
+      ]
+    );
+
+    return NextResponse.json(
+      result.rows[0],
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error(
+      "Conversations POST API Error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create conversation.",
       },
       { status: 500 }
     );
