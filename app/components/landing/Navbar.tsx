@@ -1,10 +1,15 @@
 import Image from "next/image";
+import Link from "next/link";
+
 export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200/50 bg-white/80 backdrop-blur-lg">
       <nav className="mx-auto flex h-20 max-w-7xl items-center justify-between px-8">
         {/* Logo */}
-        <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          className="flex items-center gap-3"
+        >
           <Image
             src="/logo.png"
             alt="SaMi Technologies"
@@ -22,13 +27,16 @@ export default function Navbar() {
               by SaMi Technologies
             </p>
           </div>
-        </div>
+        </Link>
 
         {/* Navigation Links */}
         <div className="hidden items-center gap-8 md:flex">
-          <a href="#" className="font-medium text-blue-600">
+          <Link
+            href="/"
+            className="font-medium text-blue-600"
+          >
             Home
-          </a>
+          </Link>
 
           <a
             href="#features"
@@ -54,13 +62,19 @@ export default function Navbar() {
 
         {/* Right Side */}
         <div className="flex items-center gap-3">
-          <button className="rounded-lg px-5 py-2 font-medium text-gray-700 transition hover:bg-gray-100">
+          <Link
+            href="/auth/login"
+            className="rounded-lg px-5 py-2 font-medium text-gray-700 transition hover:bg-gray-100"
+          >
             Sign In
-          </button>
+          </Link>
 
-          <button className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-blue-700">
+          <Link
+            href="/auth/register"
+            className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg transition hover:bg-blue-700"
+          >
             Start Free
-          </button>
+          </Link>
         </div>
       </nav>
     </header>
