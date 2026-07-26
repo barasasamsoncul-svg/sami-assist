@@ -22,6 +22,7 @@ import {
   Bell,
   Moon,
   Sun,
+  LogOut,
 } from "lucide-react";
 
 type Conversation = {
@@ -58,6 +59,8 @@ export default function DashboardLayout() {
   const [chatSidebarOpen, setChatSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isDark, setIsDark] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // ==========================================
   // DETECT MOBILE
@@ -98,6 +101,27 @@ export default function DashboardLayout() {
     document.documentElement.classList.toggle("dark", newTheme);
     localStorage.setItem("theme", newTheme ? "dark" : "light");
   };
+  const handleLogout = async () => {
+  if (isLoggingOut) return;
+
+  setIsLoggingOut(true);
+
+  try {
+    const response = await fetch("/api/auth/logout", {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error("Logout failed.");
+    }
+
+    window.location.href = "/auth/login";
+  } catch (error) {
+    console.error("Logout error:", error);
+    setIsLoggingOut(false);
+    alert("Failed to log out. Please try again.");
+  }
+};
 
   // ==========================================
   // LOAD PROFILE & CONVERSATIONS
@@ -534,14 +558,50 @@ export default function DashboardLayout() {
           {isDark ? <Sun size={20} /> : <Moon size={20} />}
         </button>
 
-        <div className="flex items-center gap-2">
-          <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-blue-700 text-sm font-medium text-white">
-            {profile?.full_name?.[0] || "S"}
-          </div>
-          <button className="hidden lg:block rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:shadow-lg hover:shadow-blue-500/25">
-            {profile?.full_name || "Account"}
-          </button>
-        </div>
+       <div className="relative flex items-center gap-2">
+  <div className="hidden sm:flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-blue-700 text-sm font-medium text-white">
+    {profile?.full_name?.[0] || "S"}
+  </div>
+
+  <button
+    onClick={() => setIsProfileOpen((prev) => !prev)}
+    className="hidden lg:flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2 text-sm font-medium text-white transition hover:shadow-lg hover:shadow-blue-500/25"
+  >
+    <span>{profile?.full_name || "Account"}</span>
+    <ChevronRight
+      size={16}
+      className={`transition-transform ${
+        isProfileOpen ? "rotate-90" : ""
+      }`}
+    />
+  </button>
+
+  {isProfileOpen && (
+    <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-xl border border-gray-200 bg-white p-2 shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+      <div className="border-b border-gray-200 px-3 py-3 dark:border-gray-700">
+        <p className="font-semibold text-gray-900 dark:text-white">
+          {profile?.full_name || "SaMi Assist User"}
+        </p>
+
+        <p className="mt-1 truncate text-sm text-gray-500 dark:text-gray-400">
+          {profile?.email || ""}
+        </p>
+      </div>
+
+      <div className="pt-2">
+        <button
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-900/20"
+        >
+          <LogOut size={18} />
+
+          {isLoggingOut ? "Signing out..." : "Sign Out"}
+        </button>
+      </div>
+    </div>
+  )}
+</div>
       </div>
     </div>
   );
