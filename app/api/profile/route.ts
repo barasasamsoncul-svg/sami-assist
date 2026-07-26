@@ -20,13 +20,10 @@ export async function GET() {
       id: user.id,
       full_name: user.fullName,
       email: user.email,
-      created_at: null,
+      created_at: user.createdAt,
     });
   } catch (error) {
-    console.error(
-      "Profile API Error:",
-      error
-    );
+    console.error("Profile API Error:", error);
 
     return NextResponse.json(
       {

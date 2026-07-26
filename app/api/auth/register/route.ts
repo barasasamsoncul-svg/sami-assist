@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { registerUser } from "@/lib/user-registration";
+import { provisionBusiness } from "@/lib/provision-business";
 
 export async function POST(request: NextRequest) {
   try {
@@ -9,21 +10,54 @@ export async function POST(request: NextRequest) {
       email,
       password,
       fullName,
+      businessName,
+      businessSlug,
+      phone,
     } = body;
 
-    const result = await registerUser({
+    if (!businessName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Business name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const user = await registerUser({
       email,
       password,
       fullName,
     });
 
+    const result = await provisionBusiness({
+      businessName,
+      businessSlug,
+      ownerUserId: user.userId,
+      email,
+      phone,
+    });
+
     return NextResponse.json(
-      result,
+      {
+        success: true,
+        user: {
+          id: user.userId,
+          email: user.email,
+          fullName: user.fullName,
+        },
+        business: {
+          id: result.businessId,
+          name: businessName,
+          databaseName: result.databaseName,
+        },
+      },
       { status: 201 }
     );
   } catch (error) {
     console.error(
-      "Registration error:",
+      "Registration and provisioning error:",
       error
     );
 
