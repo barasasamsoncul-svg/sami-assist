@@ -1,61 +1,45 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 export async function GET() {
   try {
-    const supabase = await createClient();
+    // Get the currently signed-in user
+    const user = await getAuthenticatedUser();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
       );
     }
 
-    const {
-      data: customers,
-      error,
-    } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", {
-        ascending: false,
-      });
+    // Connect to this user's business tenant database
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    if (error) {
-      console.error(
-        "Customers fetch error:",
-        error
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to load customers",
-        },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(
-      customers || []
+    // Get customers belonging to this business
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM customers
+      ORDER BY created_at DESC
+      `
     );
+
+    return NextResponse.json(result.rows);
   } catch (error) {
     console.error(
-      "Customers API error:",
+      "Customers fetch error:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to load customers.",
       },
       { status: 500 }
     );
@@ -66,8 +50,7 @@ export async function POST(
   req: Request
 ) {
   try {
-    const body =
-      await req.json();
+    const body = await req.json();
 
     const {
       company_name,
@@ -81,21 +64,16 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            "Company name is required",
+            "Company name is required.",
         },
         { status: 400 }
       );
     }
 
-    const supabase =
-      await createClient();
+    // Get the currently signed-in user
+    const user = await getAuthenticatedUser();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -104,60 +82,48 @@ export async function POST(
       );
     }
 
-    const {
-      data: customer,
-      error,
-    } = await supabase
-      .from("customers")
-      .insert({
-        user_id: user.id,
-        company_name:
-          company_name.trim(),
-        contact_name:
-          contact_name?.trim() ||
-          null,
-        email:
-          email?.trim() ||
-          null,
-        phone:
-          phone?.trim() ||
-          null,
-        address:
-          address?.trim() ||
-          null,
-      })
-      .select()
-      .single();
+    // Connect to this user's business tenant database
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    if (error) {
-      console.error(
-        "Customer creation error:",
-        error
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create customer",
-        },
-        { status: 500 }
-      );
-    }
+    // Create customer in the business tenant database
+    const result = await pool.query(
+      `
+      INSERT INTO customers (
+        company_name,
+        contact_name,
+        email,
+        phone,
+        address
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [
+        company_name.trim(),
+        contact_name?.trim() || null,
+        email?.trim() || null,
+        phone?.trim() || null,
+        address?.trim() || null,
+      ]
+    );
 
     return NextResponse.json(
-      customer,
+      result.rows[0],
       { status: 201 }
     );
   } catch (error) {
     console.error(
-      "Customer API error:",
+      "Customer creation error:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to create customer.",
       },
       { status: 500 }
     );
