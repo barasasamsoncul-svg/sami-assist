@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 // ==========================================
 // GET ALL INVOICES
@@ -7,19 +8,13 @@ import { createClient } from "@/lib/supabase-server";
 
 export async function GET() {
   try {
-    const supabase =
-      await createClient();
-
     // ==========================================
-    // GET LOGGED-IN USER
+    // 1. GET LOGGED-IN USER
     // ==========================================
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -31,74 +26,74 @@ export async function GET() {
     }
 
     // ==========================================
-    // GET INVOICES
+    // 2. CONNECT TO USER'S TENANT DATABASE
     // ==========================================
 
-    const {
-      data: invoices,
-      error,
-    } = await supabase
-      .from("invoices")
-      .select(
-        `
-        *,
-        customers (
-          id,
-          company_name,
-          contact_name,
-          email,
-          phone
-        ),
-        invoice_items (
-          id,
-          description,
-          quantity,
-          unit_price,
-          total
-        )
-        `
-      )
-      .eq(
-        "user_id",
-        user.id
-      )
-      .order(
-        "created_at",
-        {
-          ascending: false,
-        }
-      );
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    if (error) {
-      console.error(
-        "Invoices fetch error:",
-        error
-      );
+    // ==========================================
+    // 3. GET INVOICES
+    // ==========================================
 
-      return NextResponse.json(
-        {
-          error:
-            "Failed to load invoices",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const result = await pool.query(
+      `
+      SELECT
+        i.*,
+
+        json_build_object(
+          'id', c.id,
+          'company_name', c.company_name,
+          'contact_name', c.contact_name,
+          'email', c.email,
+          'phone', c.phone
+        ) AS customer,
+
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', ii.id,
+                'description', ii.description,
+                'quantity', ii.quantity,
+                'unit_price', ii.unit_price,
+                'total', ii.total
+              )
+              ORDER BY ii.id
+            )
+            FROM invoice_items ii
+            WHERE ii.invoice_id = i.id
+          ),
+          '[]'::json
+        ) AS invoice_items
+
+      FROM invoices i
+
+      LEFT JOIN customers c
+        ON c.id = i.customer_id
+
+      WHERE i.user_id = $1
+
+      ORDER BY i.created_at DESC
+      `,
+      [user.id]
+    );
 
     return NextResponse.json(
-      invoices || []
+      result.rows
     );
   } catch (error) {
     console.error(
-      "Invoices API error:",
+      "Invoices GET API error:",
       error
     );
 
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Failed to load invoices",
       },
       {
         status: 500,
@@ -115,6 +110,10 @@ export async function POST(
   req: Request
 ) {
   try {
+    // ==========================================
+    // 1. READ REQUEST
+    // ==========================================
+
     const body =
       await req.json();
 
@@ -128,7 +127,7 @@ export async function POST(
     } = body;
 
     // ==========================================
-    // VALIDATION
+    // 2. VALIDATE CUSTOMER
     // ==========================================
 
     if (!customer_id) {
@@ -142,6 +141,10 @@ export async function POST(
         }
       );
     }
+
+    // ==========================================
+    // 3. VALIDATE ITEMS
+    // ==========================================
 
     if (
       !Array.isArray(items) ||
@@ -159,21 +162,17 @@ export async function POST(
     }
 
     // ==========================================
-    // GET LOGGED-IN USER
+    // 4. GET LOGGED-IN USER
     // ==========================================
 
-    const supabase =
-      await createClient();
+    const user =
+      await getAuthenticatedUser();
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
-          error: "Unauthorized",
+          error:
+            "Unauthorized",
         },
         {
           status: 401,
@@ -182,28 +181,35 @@ export async function POST(
     }
 
     // ==========================================
-    // VERIFY CUSTOMER BELONGS TO USER
+    // 5. CONNECT TO TENANT DATABASE
     // ==========================================
 
-    const {
-      data: customer,
-      error: customerError,
-    } = await supabase
-      .from("customers")
-      .select("id")
-      .eq(
-        "id",
-        customer_id
-      )
-      .eq(
-        "user_id",
+    const { pool } =
+      await getTenantDatabaseForUser(
         user.id
-      )
-      .single();
+      );
+
+    // ==========================================
+    // 6. VERIFY CUSTOMER
+    // ==========================================
+
+    const customerResult =
+      await pool.query(
+        `
+        SELECT id
+        FROM customers
+        WHERE id = $1
+          AND user_id = $2
+        LIMIT 1
+        `,
+        [
+          customer_id,
+          user.id,
+        ]
+      );
 
     if (
-      customerError ||
-      !customer
+      customerResult.rowCount === 0
     ) {
       return NextResponse.json(
         {
@@ -217,7 +223,7 @@ export async function POST(
     }
 
     // ==========================================
-    // PREPARE INVOICE ITEMS
+    // 7. PREPARE INVOICE ITEMS
     // ==========================================
 
     const invoiceItems =
@@ -255,7 +261,7 @@ export async function POST(
       );
 
     // ==========================================
-    // VALIDATE ITEMS
+    // 8. VALIDATE ITEMS
     // ==========================================
 
     const invalidItem =
@@ -279,17 +285,18 @@ export async function POST(
     }
 
     // ==========================================
-    // CALCULATE TOTALS
+    // 9. CALCULATE TOTALS
     // ==========================================
 
     const subtotal =
       invoiceItems.reduce(
         (
-          sum,
-          item
+          sum: number,
+          item: {
+            total: number;
+          }
         ) =>
-          sum +
-          item.total,
+          sum + item.total,
         0
       );
 
@@ -313,238 +320,206 @@ export async function POST(
       taxAmount;
 
     // ==========================================
-    // GENERATE INVOICE NUMBER
+    // 10. GENERATE INVOICE NUMBER
     // ==========================================
 
-    const {
-      count,
-      error: countError,
-    } = await supabase
-      .from("invoices")
-      .select(
-        "id",
-        {
-          count: "exact",
-          head: true,
-        }
-      )
-      .eq(
-        "user_id",
-        user.id
+    const countResult =
+      await pool.query(
+        `
+        SELECT COUNT(*)::int AS count
+        FROM invoices
+        WHERE user_id = $1
+        `,
+        [user.id]
       );
 
-    if (countError) {
-      console.error(
-        "Invoice count error:",
-        countError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to generate invoice number",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const invoiceCount =
+      Number(
+        countResult.rows[0]?.count
+      ) || 0;
 
     const invoiceNumber =
       `INV-${String(
-        (count || 0) + 1
+        invoiceCount + 1
       ).padStart(
         4,
         "0"
       )}`;
 
     // ==========================================
-    // CREATE INVOICE
+    // 11. CREATE INVOICE
     // ==========================================
 
-    const {
-      data: invoice,
-      error: invoiceError,
-    } = await supabase
-      .from("invoices")
-      .insert({
-        user_id:
+    const invoiceResult =
+      await pool.query(
+        `
+        INSERT INTO invoices
+        (
+          user_id,
+          customer_id,
+          invoice_number,
+          issue_date,
+          due_date,
+          status,
+          subtotal,
+          tax,
+          total,
+          amount_paid,
+          notes
+        )
+        VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11
+        )
+        RETURNING *
+        `,
+        [
           user.id,
-
-        customer_id,
-
-        invoice_number:
+          customer_id,
           invoiceNumber,
-
-        issue_date:
           issue_date ||
-          new Date()
-            .toISOString()
-            .split("T")[0],
-
-        due_date:
+            new Date()
+              .toISOString()
+              .split("T")[0],
           due_date ||
-          null,
-
-        status:
+            null,
           "draft",
-
-        subtotal,
-
-        tax:
+          subtotal,
           taxAmount,
-
-        total,
-
-        amount_paid:
+          total,
           0,
-
-        notes:
           notes?.trim() ||
-          null,
-      })
-      .select()
-      .single();
-
-    if (invoiceError) {
-      console.error(
-        "Invoice creation error:",
-        invoiceError
+            null,
+        ]
       );
 
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create invoice",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const invoice =
+      invoiceResult.rows[0];
 
     // ==========================================
-    // CREATE INVOICE ITEMS
+    // 12. CREATE INVOICE ITEMS
     // ==========================================
 
-    const itemsWithInvoiceId =
-      invoiceItems.map(
-        (item) => ({
-          invoice_id:
+    try {
+      for (
+        const item of invoiceItems
+      ) {
+        await pool.query(
+          `
+          INSERT INTO invoice_items
+          (
+            invoice_id,
+            description,
+            quantity,
+            unit_price,
+            total
+          )
+          VALUES
+          (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5
+          )
+          `,
+          [
             invoice.id,
-
-          description:
             item.description,
-
-          quantity:
             item.quantity,
-
-          unit_price:
             item.unit_price,
-
-          total:
             item.total,
-        })
-      );
-
-    const {
-      error: itemsError,
-    } = await supabase
-      .from(
-        "invoice_items"
-      )
-      .insert(
-        itemsWithInvoiceId
-      );
-
-    if (itemsError) {
+          ]
+        );
+      }
+    } catch (itemsError) {
       console.error(
         "Invoice items creation error:",
         itemsError
       );
 
       // Remove invoice if
-      // items failed to save.
-      await supabase
-        .from("invoices")
-        .delete()
-        .eq(
-          "id",
-          invoice.id
-        )
-        .eq(
-          "user_id",
-          user.id
-        );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create invoice items",
-        },
-        {
-          status: 500,
-        }
+      // item creation failed.
+      await pool.query(
+        `
+        DELETE FROM invoices
+        WHERE id = $1
+          AND user_id = $2
+        `,
+        [
+          invoice.id,
+          user.id,
+        ]
       );
+
+      throw itemsError;
     }
 
     // ==========================================
-    // GET COMPLETE CREATED INVOICE
+    // 13. GET COMPLETE INVOICE
     // ==========================================
 
-    const {
-      data: completeInvoice,
-      error:
-        completeInvoiceError,
-    } = await supabase
-      .from("invoices")
-      .select(
+    const completeResult =
+      await pool.query(
         `
-        *,
-        customers (
-          id,
-          company_name,
-          contact_name,
-          email,
-          phone
-        ),
-        invoice_items (
-          id,
-          description,
-          quantity,
-          unit_price,
-          total
-        )
-        `
-      )
-      .eq(
-        "id",
-        invoice.id
-      )
-      .eq(
-        "user_id",
-        user.id
-      )
-      .single();
+        SELECT
+          i.*,
 
-    if (
-      completeInvoiceError
-    ) {
-      console.error(
-        "Complete invoice fetch error:",
-        completeInvoiceError
-      );
+          json_build_object(
+            'id', c.id,
+            'company_name', c.company_name,
+            'contact_name', c.contact_name,
+            'email', c.email,
+            'phone', c.phone
+          ) AS customer,
 
-      return NextResponse.json(
-        invoice,
-        {
-          status: 201,
-        }
+          COALESCE(
+            (
+              SELECT json_agg(
+                json_build_object(
+                  'id', ii.id,
+                  'description', ii.description,
+                  'quantity', ii.quantity,
+                  'unit_price', ii.unit_price,
+                  'total', ii.total
+                )
+                ORDER BY ii.id
+              )
+              FROM invoice_items ii
+              WHERE ii.invoice_id = i.id
+            ),
+            '[]'::json
+          ) AS invoice_items
+
+        FROM invoices i
+
+        LEFT JOIN customers c
+          ON c.id = i.customer_id
+
+        WHERE i.id = $1
+          AND i.user_id = $2
+
+        LIMIT 1
+        `,
+        [
+          invoice.id,
+          user.id,
+        ]
       );
-    }
 
     return NextResponse.json(
-      completeInvoice,
+      completeResult.rows[0] ||
+        invoice,
       {
         status: 201,
       }
@@ -558,7 +533,9 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
