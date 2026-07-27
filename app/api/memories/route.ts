@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 /**
  * GET
@@ -8,15 +9,10 @@ import { createClient } from "@/lib/supabase-server";
  */
 export async function GET() {
   try {
-    const supabase = await createClient();
+    // Get logged-in user from SaMi session
+    const user = await getAuthenticatedUser();
 
-    // Get logged-in user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -27,40 +23,23 @@ export async function GET() {
       );
     }
 
+    // Connect to the user's business tenant database
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
     // Fetch user's memories
-    const {
-      data: memories,
-      error,
-    } = await supabase
-      .from("memories")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("importance", {
-        ascending: false,
-      })
-      .order("created_at", {
-        ascending: false,
-      });
-
-    if (error) {
-      console.error(
-        "Fetch Memories Error:",
-        error
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to fetch memories",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM ai_memory
+      WHERE user_id = $1
+      ORDER BY importance DESC, created_at DESC
+      `,
+      [user.id]
+    );
 
     return NextResponse.json(
-      memories || []
+      result.rows
     );
   } catch (error) {
     console.error(
@@ -71,7 +50,9 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
@@ -115,16 +96,10 @@ export async function POST(
       );
     }
 
-    const supabase =
-      await createClient();
+    // Get logged-in user from SaMi session
+    const user = await getAuthenticatedUser();
 
-    // Get logged-in user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -135,67 +110,65 @@ export async function POST(
       );
     }
 
+    // Connect to the user's business tenant database
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
     // Check if similar memory already exists
-    const {
-      data: existingMemory,
-    } = await supabase
-      .from("memories")
-      .select("id, memory")
-      .eq("user_id", user.id)
-      .eq(
-        "memory",
-        memory.trim()
-      )
-      .maybeSingle();
+    const existingResult =
+      await pool.query(
+        `
+        SELECT id, memory
+        FROM ai_memory
+        WHERE user_id = $1
+          AND memory = $2
+        LIMIT 1
+        `,
+        [
+          user.id,
+          memory.trim(),
+        ]
+      );
 
     // Avoid duplicates
-    if (existingMemory) {
+    if (existingResult.rowCount > 0) {
       return NextResponse.json({
         success: true,
         memory:
-          existingMemory,
+          existingResult.rows[0],
         message:
           "Memory already exists",
       });
     }
 
     // Save memory
-    const {
-      data: newMemory,
-      error,
-    } = await supabase
-      .from("memories")
-      .insert({
-        user_id: user.id,
-        memory:
+    const newMemoryResult =
+      await pool.query(
+        `
+        INSERT INTO ai_memory
+          (
+            user_id,
+            memory,
+            category,
+            importance
+          )
+        VALUES
+          ($1, $2, $3, $4)
+        RETURNING *
+        `,
+        [
+          user.id,
           memory.trim(),
-        category,
-        importance,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error(
-        "Create Memory Error:",
-        error
+          category,
+          importance,
+        ]
       );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to create memory",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
 
     return NextResponse.json(
       {
         success: true,
-        memory: newMemory,
+        memory:
+          newMemoryResult.rows[0],
       },
       {
         status: 201,
@@ -210,7 +183,9 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
