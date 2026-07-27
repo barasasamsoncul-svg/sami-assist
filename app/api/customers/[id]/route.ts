@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 type RouteContext = {
   params: Promise<{
@@ -29,19 +30,13 @@ export async function GET(
       );
     }
 
-    const supabase =
-      await createClient();
-
     // ==========================================
     // GET CURRENT LOGGED-IN USER
     // ==========================================
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -53,30 +48,30 @@ export async function GET(
     }
 
     // ==========================================
-    // GET CUSTOMER
-    // Only return the customer's own record
+    // CONNECT TO USER'S BUSINESS TENANT DATABASE
     // ==========================================
 
-    const {
-      data: customer,
-      error: customerError,
-    } = await supabase
-      .from("customers")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .single();
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    if (customerError) {
-      console.error(
-        "Customer fetch error:",
-        customerError
-      );
+    // ==========================================
+    // GET CUSTOMER
+    // ==========================================
 
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM customers
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
       return NextResponse.json(
         {
-          error:
-            "Customer not found",
+          error: "Customer not found",
         },
         {
           status: 404,
@@ -89,7 +84,7 @@ export async function GET(
     // ==========================================
 
     return NextResponse.json(
-      customer
+      result.rows[0]
     );
   } catch (error) {
     console.error(
@@ -100,7 +95,9 @@ export async function GET(
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
@@ -123,8 +120,7 @@ export async function DELETE(
     if (!id) {
       return NextResponse.json(
         {
-          error:
-            "Customer ID is required",
+          error: "Customer ID is required",
         },
         {
           status: 400,
@@ -132,19 +128,13 @@ export async function DELETE(
       );
     }
 
-    const supabase =
-      await createClient();
-
     // ==========================================
     // GET CURRENT LOGGED-IN USER
     // ==========================================
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         {
           error: "Unauthorized",
@@ -156,35 +146,39 @@ export async function DELETE(
     }
 
     // ==========================================
-    // DELETE CUSTOMER
-    // Only the logged-in user's customer
-    // can be deleted
+    // CONNECT TO USER'S BUSINESS TENANT DATABASE
     // ==========================================
 
-    const {
-      error: deleteError,
-    } = await supabase
-      .from("customers")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", user.id);
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    if (deleteError) {
-      console.error(
-        "Customer deletion error:",
-        deleteError
-      );
+    // ==========================================
+    // DELETE CUSTOMER
+    // ==========================================
 
+    const result = await pool.query(
+      `
+      DELETE FROM customers
+      WHERE id = $1
+      RETURNING id
+      `,
+      [id]
+    );
+
+    if (result.rowCount === 0) {
       return NextResponse.json(
         {
-          error:
-            "Failed to delete customer",
+          error: "Customer not found",
         },
         {
-          status: 500,
+          status: 404,
         }
       );
     }
+
+    // ==========================================
+    // SUCCESS
+    // ==========================================
 
     return NextResponse.json({
       success: true,
@@ -200,7 +194,9 @@ export async function DELETE(
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
