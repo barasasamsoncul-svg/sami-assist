@@ -131,7 +131,7 @@ export async function POST(
       );
 
     // Avoid duplicates
-    if (existingResult.rowCount > 0) {
+    if ((existingResult.rowCount ?? 0) > 0)  {
       return NextResponse.json({
         success: true,
         memory:
