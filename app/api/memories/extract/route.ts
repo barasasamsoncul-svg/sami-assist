@@ -255,10 +255,10 @@ ${message}
         continue;
       }
 
-      const memory =
+      const content =
         item.memory.trim();
 
-      if (!memory) {
+      if (!content) {
         continue;
       }
 
@@ -297,15 +297,15 @@ ${message}
       const existingResult =
         await pool.query(
           `
-          SELECT id, memory
+          SELECT id, content
           FROM ai_memory
           WHERE user_id = $1
-            AND memory = $2
+            AND content = $2
           LIMIT 1
           `,
           [
             user.id,
-            memory,
+            content,
           ]
         );
 
@@ -328,7 +328,7 @@ ${message}
         INSERT INTO ai_memory
           (
             user_id,
-            memory,
+            content,
             category,
             importance
           )
@@ -337,7 +337,7 @@ ${message}
         `,
         [
           user.id,
-          memory,
+          content,
           category,
           importance,
         ]
