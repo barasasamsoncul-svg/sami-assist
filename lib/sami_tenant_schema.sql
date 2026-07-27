@@ -44,13 +44,13 @@ CREATE TABLE public.ai_memory (
 -- Name: conversations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.conversations (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    title character varying(255),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    title VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-
 
 --
 -- Name: customers; Type: TABLE; Schema: public; Owner: -
