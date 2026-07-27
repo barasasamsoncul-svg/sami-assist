@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
-import { Groq } from "groq-sdk";
+import Groq from "groq-sdk";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -8,157 +9,125 @@ const groq = new Groq({
 
 export async function POST(req: Request) {
   try {
-    const { message, conversationId } =
-      await req.json();
+    const { message, conversationId } = await req.json();
 
     if (!message?.trim()) {
       return NextResponse.json(
-        {
-          error: "Message is required.",
-        },
-        {
-          status: 400,
-        }
+        { error: "Message is required." },
+        { status: 400 }
       );
     }
-
-    const supabase = await createClient();
 
     // ==========================================
     // 1. GET CURRENT LOGGED-IN USER
     // ==========================================
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthenticatedUser();
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
-        {
-          error: "Unauthorized",
-        },
-        {
-          status: 401,
-        }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
+
+    // ==========================================
+    // 2. CONNECT TO USER'S BUSINESS DATABASE
+    // ==========================================
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
 
     let chatId = conversationId;
 
     // ==========================================
-    // 2. CREATE NEW CONVERSATION
+    // 3. CREATE NEW CONVERSATION
     // ==========================================
 
     if (!chatId) {
-      const {
-        data: conversation,
-        error: conversationError,
-      } = await supabase
-        .from("conversations")
-        .insert({
-          title: message.substring(0, 40),
-          user_id: user.id,
-        })
-        .select()
-        .single();
+      const conversationResult = await pool.query(
+        `
+        INSERT INTO conversations
+          (title, user_id)
+        VALUES
+          ($1, $2)
+        RETURNING *
+        `,
+        [
+          message.substring(0, 40),
+          user.id,
+        ]
+      );
 
-      if (conversationError) {
-        console.error(
-          "Conversation Creation Error:",
-          conversationError
-        );
+      chatId = conversationResult.rows[0].id;
+    } else {
+      // ==========================================
+      // 4. VERIFY CONVERSATION BELONGS TO USER
+      // ==========================================
 
+      const conversationResult = await pool.query(
+        `
+        SELECT id
+        FROM conversations
+        WHERE id = $1
+          AND user_id = $2
+        LIMIT 1
+        `,
+        [
+          chatId,
+          user.id,
+        ]
+      );
+
+      if (conversationResult.rowCount === 0) {
         return NextResponse.json(
           {
-            error: "Failed to create conversation",
+            error: "Conversation not found.",
           },
-          {
-            status: 500,
-          }
+          { status: 404 }
         );
       }
-
-      chatId = conversation.id;
     }
 
     // ==========================================
-    // 3. GET CURRENT CONVERSATION HISTORY
+    // 5. GET CONVERSATION HISTORY
     // ==========================================
 
-    const {
-      data: previousMessages,
-      error: historyError,
-    } = await supabase
-      .from("messages")
-      .select("role, content, created_at")
-      .eq("conversation_id", chatId)
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (historyError) {
-      console.error(
-        "History Error:",
-        historyError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to load conversation history",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const historyResult = await pool.query(
+      `
+      SELECT role, content, created_at
+      FROM messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC
+      `,
+      [chatId]
+    );
 
     // ==========================================
-    // 4. GET PERMANENT MEMORIES
+    // 6. GET PERMANENT USER MEMORIES
     // ==========================================
 
-    const {
-      data: memories,
-      error: memoryError,
-    } = await supabase
-      .from("memories")
-      .select(
-        "id, memory, category, importance"
-      )
-      .eq("user_id", user.id)
-      .order("importance", {
-        ascending: false,
-      })
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(100);
-
-    if (memoryError) {
-      console.error(
-        "Memory Fetch Error:",
-        memoryError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to load your memories",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    const memoryResult = await pool.query(
+      `
+      SELECT
+        id,
+        memory,
+        category,
+        importance
+      FROM ai_memory
+      WHERE user_id = $1
+      ORDER BY importance DESC, created_at DESC
+      LIMIT 100
+      `,
+      [user.id]
+    );
 
     // ==========================================
-    // 5. FORMAT PERMANENT MEMORIES
+    // 7. FORMAT MEMORY CONTEXT
     // ==========================================
 
     const memoryContext =
-      memories && memories.length > 0
-        ? memories
+      memoryResult.rows.length > 0
+        ? memoryResult.rows
             .map(
               (item, index) =>
                 `${index + 1}. [${item.category}] ${item.memory}`
@@ -167,38 +136,25 @@ export async function POST(req: Request) {
         : "No permanent memories have been saved yet.";
 
     // ==========================================
-    // 6. SAVE USER MESSAGE
+    // 8. SAVE USER MESSAGE
     // ==========================================
 
-    const {
-      error: userMessageError,
-    } = await supabase
-      .from("messages")
-      .insert({
-        conversation_id: chatId,
-        role: "user",
-        content: message,
-      });
-
-    if (userMessageError) {
-      console.error(
-        "User Message Error:",
-        userMessageError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to save your message",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    await pool.query(
+      `
+      INSERT INTO messages
+        (conversation_id, role, content)
+      VALUES
+        ($1, $2, $3)
+      `,
+      [
+        chatId,
+        "user",
+        message,
+      ]
+    );
 
     // ==========================================
-    // 7. BUILD SYSTEM PROMPT
+    // 9. BUILD SYSTEM PROMPT
     // ==========================================
 
     const systemPrompt = `
@@ -236,7 +192,7 @@ ${memoryContext}
 `;
 
     // ==========================================
-    // 8. BUILD AI CHAT HISTORY
+    // 10. BUILD AI CHAT HISTORY
     // ==========================================
 
     const chatMessages = [
@@ -245,16 +201,14 @@ ${memoryContext}
         content: systemPrompt,
       },
 
-      ...(previousMessages || []).map(
-        (msg) => ({
-          role:
-            msg.role === "user"
-              ? ("user" as const)
-              : ("assistant" as const),
+      ...historyResult.rows.map((msg) => ({
+        role:
+          msg.role === "user"
+            ? ("user" as const)
+            : ("assistant" as const),
 
-          content: msg.content,
-        })
-      ),
+        content: msg.content,
+      })),
 
       {
         role: "user" as const,
@@ -263,13 +217,12 @@ ${memoryContext}
     ];
 
     // ==========================================
-    // 9. ASK GROQ
+    // 11. ASK GROQ
     // ==========================================
 
     const completion =
       await groq.chat.completions.create({
-        model:
-          "llama-3.3-70b-versatile",
+        model: "llama-3.3-70b-versatile",
 
         messages: chatMessages,
 
@@ -283,75 +236,46 @@ ${memoryContext}
       "Sorry, I couldn't generate a response.";
 
     // ==========================================
-    // 10. SAVE AI RESPONSE
+    // 12. SAVE AI RESPONSE
     // ==========================================
 
-    const {
-      error: aiMessageError,
-    } = await supabase
-      .from("messages")
-      .insert({
-        conversation_id: chatId,
-        role: "ai",
-        content: reply,
-      });
-
-    if (aiMessageError) {
-      console.error(
-        "AI Message Error:",
-        aiMessageError
-      );
-
-      return NextResponse.json(
-        {
-          error:
-            "Failed to save AI response",
-        },
-        {
-          status: 500,
-        }
-      );
-    }
+    await pool.query(
+      `
+      INSERT INTO messages
+        (conversation_id, role, content)
+      VALUES
+        ($1, $2, $3)
+      `,
+      [
+        chatId,
+        "ai",
+        reply,
+      ]
+    );
 
     // ==========================================
-    // 11. AUTOMATIC MEMORY EXTRACTION
-    // ==========================================
-    //
-    // We call the memory engine AFTER the
-    // conversation is successfully saved.
-    //
-    // This allows SaMi to learn important
-    // information from the user's message.
-    //
-    // Memory extraction is intentionally
-    // non-blocking. If it fails, the user
-    // still receives the AI response.
+    // 13. AUTOMATIC MEMORY EXTRACTION
     // ==========================================
 
     try {
-      const memoryResponse =
-        await fetch(
-          `${req.headers.get("origin") ?? ""}/api/memories/extract`,
-          {
-            method: "POST",
+      const memoryResponse = await fetch(
+        `${req.headers.get("origin") ?? ""}/api/memories/extract`,
+        {
+          method: "POST",
 
-            headers: {
-              "Content-Type":
-                "application/json",
+          headers: {
+            "Content-Type": "application/json",
 
-              Cookie:
-                req.headers.get(
-                  "cookie"
-                ) ?? "",
-            },
+            Cookie:
+              req.headers.get("cookie") ?? "",
+          },
 
-            body: JSON.stringify({
-              message,
-              conversationId:
-                chatId,
-            }),
-          }
-        );
+          body: JSON.stringify({
+            message,
+            conversationId: chatId,
+          }),
+        }
+      );
 
       if (!memoryResponse.ok) {
         console.error(
@@ -367,7 +291,7 @@ ${memoryContext}
     }
 
     // ==========================================
-    // 12. RETURN RESPONSE
+    // 14. RETURN RESPONSE
     // ==========================================
 
     return NextResponse.json({
@@ -383,7 +307,9 @@ ${memoryContext}
     return NextResponse.json(
       {
         error:
-          "Internal Server Error",
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
       },
       {
         status: 500,
