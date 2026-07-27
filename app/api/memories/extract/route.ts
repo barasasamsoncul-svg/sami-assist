@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase-server";
-import { Groq } from "groq-sdk";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import Groq from "groq-sdk";
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY!,
@@ -24,8 +25,7 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json(
         {
-          error:
-            "Message is required.",
+          error: "Message is required.",
         },
         {
           status: 400,
@@ -34,30 +34,16 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 2. GET SUPABASE CLIENT
+    // 2. GET LOGGED-IN USER
     // ==========================================
 
-    const supabase =
-      await createClient();
+    const user =
+      await getAuthenticatedUser();
 
-    // ==========================================
-    // 3. GET LOGGED-IN USER
-    // ==========================================
-
-    const {
-      data: { user },
-      error: authError,
-    } =
-      await supabase.auth.getUser();
-
-    if (
-      authError ||
-      !user
-    ) {
+    if (!user) {
       return NextResponse.json(
         {
-          error:
-            "Unauthorized",
+          error: "Unauthorized",
         },
         {
           status: 401,
@@ -66,24 +52,32 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
+    // 3. CONNECT TO USER'S TENANT DATABASE
+    // ==========================================
+
+    const { pool } =
+      await getTenantDatabaseForUser(
+        user.id
+      );
+
+    // ==========================================
     // 4. ASK GROQ TO ANALYZE THE MESSAGE
     // ==========================================
 
     const completion =
-      await groq.chat.completions.create(
-        {
-          model:
-            "llama-3.3-70b-versatile",
+      await groq.chat.completions.create({
+        model:
+          "llama-3.3-70b-versatile",
 
-          temperature: 0,
+        temperature: 0,
 
-          max_tokens: 500,
+        max_tokens: 500,
 
-          messages: [
-            {
-              role: "system",
+        messages: [
+          {
+            role: "system",
 
-              content: `
+            content: `
 You are the SaMi Assist Memory Engine.
 
 Your job is to identify important, useful, long-term facts that the USER explicitly provides.
@@ -146,21 +140,19 @@ other
 
 Importance must be a number from 1 to 10.
 `,
+          },
 
-            },
+          {
+            role: "user",
 
-            {
-              role: "user",
-
-              content: `
+            content: `
 User message:
 
 ${message}
 `,
-            },
-          ],
-        }
-      );
+          },
+        ],
+      });
 
     const rawContent =
       completion
@@ -183,7 +175,6 @@ ${message}
     let cleanedContent =
       rawContent;
 
-    // Remove markdown code fences
     cleanedContent =
       cleanedContent
         .replace(
@@ -303,41 +294,27 @@ ${message}
       // 9. CHECK FOR DUPLICATE MEMORY
       // ========================================
 
-      const {
-        data: existingMemory,
-        error: duplicateError,
-      } = await supabase
-        .from("memories")
-        .select(
-          "id, memory"
-        )
-        .eq(
-          "user_id",
-          user.id
-        )
-        .eq(
-          "memory",
-          memory
-        )
-        .maybeSingle();
-
-      if (
-        duplicateError
-      ) {
-        console.error(
-          "Duplicate Check Error:",
-          duplicateError
+      const existingResult =
+        await pool.query(
+          `
+          SELECT id, memory
+          FROM ai_memory
+          WHERE user_id = $1
+            AND memory = $2
+          LIMIT 1
+          `,
+          [
+            user.id,
+            memory,
+          ]
         );
-
-        continue;
-      }
 
       // ========================================
       // 10. SKIP DUPLICATES
       // ========================================
 
       if (
-        existingMemory
+        (existingResult.rowCount ?? 0) > 0
       ) {
         continue;
       }
@@ -346,31 +323,25 @@ ${message}
       // 11. SAVE NEW MEMORY
       // ========================================
 
-      const {
-        error: insertError,
-      } = await supabase
-        .from("memories")
-        .insert({
-          user_id:
-            user.id,
-
+      await pool.query(
+        `
+        INSERT INTO ai_memory
+          (
+            user_id,
+            memory,
+            category,
+            importance
+          )
+        VALUES
+          ($1, $2, $3, $4)
+        `,
+        [
+          user.id,
           memory,
-
           category,
-
           importance,
-        });
-
-      if (
-        insertError
-      ) {
-        console.error(
-          "Memory Insert Error:",
-          insertError
-        );
-
-        continue;
-      }
+        ]
+      );
 
       savedCount++;
     }
@@ -381,11 +352,9 @@ ${message}
 
     return NextResponse.json({
       success: true,
-      saved:
-        savedCount,
+      saved: savedCount,
       conversationId:
-        conversationId ??
-        null,
+        conversationId ?? null,
     });
   } catch (error) {
     console.error(
@@ -396,7 +365,9 @@ ${message}
     return NextResponse.json(
       {
         error:
-          "Failed to process memory.",
+          error instanceof Error
+            ? error.message
+            : "Failed to process memory.",
       },
       {
         status: 500,
