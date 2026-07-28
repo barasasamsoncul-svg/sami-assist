@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 3. CONNECT TO USER TENANT DATABASE
+    // 3. CONNECT TO USER'S TENANT DATABASE
     // ==========================================
 
     const { pool } =
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       );
 
     // ==========================================
-    // 4. ASK GROQ TO ANALYZE MESSAGE
+    // 4. ASK GROQ TO ANALYZE THE MESSAGE
     // ==========================================
 
     const completion =
@@ -161,6 +161,10 @@ ${message}
         ?.content
         ?.trim();
 
+    // ==========================================
+    // 5. NO MEMORY FOUND
+    // ==========================================
+
     if (!rawContent) {
       return NextResponse.json({
         success: true,
@@ -169,11 +173,14 @@ ${message}
     }
 
     // ==========================================
-    // 5. CLEAN AI JSON RESPONSE
+    // 6. CLEAN AI JSON RESPONSE
     // ==========================================
 
-    const cleanedContent =
-      rawContent
+    let cleanedContent =
+      rawContent;
+
+    cleanedContent =
+      cleanedContent
         .replace(
           /^```json/i,
           ""
@@ -189,7 +196,7 @@ ${message}
         .trim();
 
     // ==========================================
-    // 6. PARSE JSON
+    // 7. PARSE JSON
     // ==========================================
 
     let memoryData: {
@@ -224,7 +231,7 @@ ${message}
     }
 
     // ==========================================
-    // 7. CHECK MEMORY RESULT
+    // 8. CHECK IF THERE IS ANYTHING TO REMEMBER
     // ==========================================
 
     if (
@@ -241,7 +248,7 @@ ${message}
     }
 
     // ==========================================
-    // 8. SAVE MEMORIES
+    // 9. SAVE EACH MEMORY
     // ==========================================
 
     let savedCount = 0;
@@ -266,7 +273,7 @@ ${message}
         continue;
       }
 
-      const memoryType =
+      const category =
         typeof item.category ===
         "string"
           ? item.category
@@ -277,6 +284,7 @@ ${message}
           item.importance
         );
 
+      // Keep importance between 1 and 10
       if (
         Number.isNaN(
           importance
@@ -294,26 +302,34 @@ ${message}
       );
 
       // ========================================
-      // 9. CHECK FOR DUPLICATE MEMORY
+      // 10. CHECK FOR DUPLICATE MEMORY
+      //
+      // Tenant database already belongs to
+      // the authenticated user/business.
+      //
+      // ai_memory schema uses:
+      // memory_type
+      // content
+      // importance
+      //
+      // There is NO user_id column.
       // ========================================
 
       const existingResult =
         await pool.query(
           `
-          SELECT id
+          SELECT id, content
           FROM ai_memory
           WHERE content = $1
-            AND memory_type = $2
           LIMIT 1
           `,
           [
             memory,
-            memoryType,
           ]
         );
 
       // ========================================
-      // 10. SKIP DUPLICATES
+      // 11. SKIP DUPLICATES
       // ========================================
 
       if (
@@ -323,33 +339,23 @@ ${message}
       }
 
       // ========================================
-      // 11. SAVE NEW MEMORY
+      // 12. SAVE NEW MEMORY
       // ========================================
 
       await pool.query(
         `
         INSERT INTO ai_memory
-        (
-          memory_type,
-          content,
-          source_type,
-          source_id,
-          importance
-        )
+          (
+            memory_type,
+            content,
+            importance
+          )
         VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5
-        )
+          ($1, $2, $3)
         `,
         [
-          memoryType,
+          category,
           memory,
-          "conversation",
-          conversationId ?? null,
           importance,
         ]
       );
@@ -358,7 +364,7 @@ ${message}
     }
 
     // ==========================================
-    // 12. RETURN RESULT
+    // 13. RETURN RESULT
     // ==========================================
 
     return NextResponse.json({
