@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
 
     // ==========================================
-    // 3. CONNECT TO USER'S TENANT DATABASE
+    // 3. CONNECT TO USER TENANT DATABASE
     // ==========================================
 
     const { pool } =
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       );
 
     // ==========================================
-    // 4. ASK GROQ TO ANALYZE THE MESSAGE
+    // 4. ASK GROQ TO ANALYZE MESSAGE
     // ==========================================
 
     const completion =
@@ -172,11 +172,8 @@ ${message}
     // 5. CLEAN AI JSON RESPONSE
     // ==========================================
 
-    let cleanedContent =
-      rawContent;
-
-    cleanedContent =
-      cleanedContent
+    const cleanedContent =
+      rawContent
         .replace(
           /^```json/i,
           ""
@@ -195,7 +192,14 @@ ${message}
     // 6. PARSE JSON
     // ==========================================
 
-    let memoryData;
+    let memoryData: {
+      shouldRemember?: boolean;
+      memories?: Array<{
+        memory?: string;
+        category?: string;
+        importance?: number;
+      }>;
+    };
 
     try {
       memoryData =
@@ -220,7 +224,7 @@ ${message}
     }
 
     // ==========================================
-    // 7. CHECK IF THERE IS ANYTHING TO REMEMBER
+    // 7. CHECK MEMORY RESULT
     // ==========================================
 
     if (
@@ -237,7 +241,7 @@ ${message}
     }
 
     // ==========================================
-    // 8. SAVE EACH MEMORY
+    // 8. SAVE MEMORIES
     // ==========================================
 
     let savedCount = 0;
@@ -255,14 +259,14 @@ ${message}
         continue;
       }
 
-      const content =
+      const memory =
         item.memory.trim();
 
-      if (!content) {
+      if (!memory) {
         continue;
       }
 
-      const category =
+      const memoryType =
         typeof item.category ===
         "string"
           ? item.category
@@ -273,7 +277,6 @@ ${message}
           item.importance
         );
 
-      // Keep importance between 1 and 10
       if (
         Number.isNaN(
           importance
@@ -297,15 +300,15 @@ ${message}
       const existingResult =
         await pool.query(
           `
-          SELECT id, content
+          SELECT id
           FROM ai_memory
-          WHERE user_id = $1
-            AND content = $2
+          WHERE content = $1
+            AND memory_type = $2
           LIMIT 1
           `,
           [
-            user.id,
-            content,
+            memory,
+            memoryType,
           ]
         );
 
@@ -326,19 +329,27 @@ ${message}
       await pool.query(
         `
         INSERT INTO ai_memory
-          (
-            user_id,
-            content,
-            category,
-            importance
-          )
+        (
+          memory_type,
+          content,
+          source_type,
+          source_id,
+          importance
+        )
         VALUES
-          ($1, $2, $3, $4)
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5
+        )
         `,
         [
-          user.id,
-          content,
-          category,
+          memoryType,
+          memory,
+          "conversation",
+          conversationId ?? null,
           importance,
         ]
       );
