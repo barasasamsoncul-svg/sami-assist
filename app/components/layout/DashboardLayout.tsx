@@ -1213,22 +1213,16 @@ export default function DashboardLayout() {
       case "dashboard":
         return <DashboardHome />;
 
-     <div className="flex h-full min-h-0 flex-col overflow-hidden">
-  {/* CHAT HEADER */}
-  <div className="flex-shrink-0">
-    {/* Header */}
-  </div>
-
-  {/* MESSAGES - ONLY THIS AREA SCROLLS */}
-  <div className="min-h-0 flex-1 overflow-y-auto">
-    {/* Messages */}
-  </div>
-
-  {/* MESSAGE INPUT - FIXED AT BOTTOM */}
-  <div className="flex-shrink-0">
-    {/* Input */}
-  </div>
-</div>
+    case "chat":
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <ChatWindow
+        conversationId={selectedId}
+        onConversationCreated={handleConversationCreated}
+        onConversationUpdate={handleConversationUpdate}
+      />
+    </div>
+  );
       case "customers":
         return (
           <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
