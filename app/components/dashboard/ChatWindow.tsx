@@ -421,14 +421,14 @@ export default function ChatWindow({
   // RENDER
   // ==========================================
 
-  return (
-    <div className="flex h-[85vh] flex-col rounded-2xl border border-gray-200/80 bg-white/80 shadow-2xl backdrop-blur-sm dark:border-gray-800/80 dark:bg-gray-900/80 sm:h-[80vh] md:h-[75vh]">
+return (
+  <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950">
       
       {/* ====================================
           HEADER
       ==================================== */}
 
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-4 dark:border-gray-700 sm:px-6">
+<div className="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-950 sm:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
             <Sparkles size={20} className="text-white" />
@@ -464,11 +464,11 @@ export default function ChatWindow({
           MESSAGES
       ==================================== */}
 
-      <div
-        ref={messagesContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto bg-gray-50/50 px-4 py-4 dark:bg-gray-900/50 sm:px-6"
-      >
+   <div
+  ref={messagesContainerRef}
+  onScroll={handleScroll}
+  className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6"
+>
         <div className="mx-auto max-w-4xl space-y-4">
           {messages.map((message, index) => renderMessage(message, index))}
 
@@ -495,7 +495,7 @@ export default function ChatWindow({
         {showScrollButton && (
           <button
             onClick={() => scrollToBottom(true)}
-            className="fixed bottom-28 left-1/2 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:bg-blue-700 hover:scale-110 active:scale-95"
+           className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
             aria-label="Scroll to bottom"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -509,7 +509,7 @@ export default function ChatWindow({
           INPUT
       ==================================== */}
 
-      <div className="border-t border-gray-200 bg-white/50 p-3 backdrop-blur-sm dark:border-gray-700 dark:bg-gray-900/50 sm:p-4">
+    <div className="flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4">
         <div className="mx-auto max-w-4xl">
           {/* Attachment preview */}
           {attachment && (
