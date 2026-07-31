@@ -1020,15 +1020,45 @@ const HistorySidebar = () => (
       case "dashboard":
         return <DashboardHome />;
 
-   case "chat":
+  case "chat":
   return (
     <div className="flex h-full min-h-0">
       <div className="flex min-h-0 flex-1 flex-col">
-        <ChatWindow
-          conversationId={selectedId}
-          onConversationCreated={handleConversationCreated}
-          onConversationUpdate={handleConversationUpdate}
-        />
+        {!selectedId ? (
+          // New chat - centered view
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-3xl mx-auto">
+              {/* Welcome message */}
+              <div className="text-center mb-8">
+                <div className="flex justify-center mb-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-lg shadow-blue-500/25">
+                    <Sparkles size={28} className="text-white" />
+                  </div>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">What can I help with?</h2>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">Ask me anything about your business</p>
+              </div>
+
+              {/* Chat input centered */}
+              <div className="w-full">
+                <ChatWindow
+                  conversationId={null}
+                  onConversationCreated={handleConversationCreated}
+                  onConversationUpdate={handleConversationUpdate}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Existing chat - full width
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ChatWindow
+              conversationId={selectedId}
+              onConversationCreated={handleConversationCreated}
+              onConversationUpdate={handleConversationUpdate}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

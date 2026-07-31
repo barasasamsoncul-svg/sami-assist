@@ -494,7 +494,7 @@ if (!conversationId && data.conversationId && onConversationUpdate) {
   // ==========================================
 
 return (
-  <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950">
+  <div className={`flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950 ${!conversationId ? 'max-w-3xl mx-auto' : ''}`}>
       
 
       {/* ====================================
@@ -504,7 +504,7 @@ return (
    <div
   ref={messagesContainerRef}
   onScroll={handleScroll}
-  className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6"
+  className={`relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6 ${!conversationId ? 'px-2' : ''}`}
 >
         <div className="mx-auto max-w-4xl space-y-4">
           {messages.map((message, index) => renderMessage(message, index))}
@@ -546,7 +546,7 @@ return (
           INPUT
       ==================================== */}
 
-    <div className="flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4">
+   <div className={`flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4 ${!conversationId ? 'px-2' : ''}`}>
         <div className="mx-auto max-w-4xl">
           {/* Attachment preview */}
           {attachment && (
