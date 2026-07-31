@@ -99,7 +99,7 @@ export default function ChatWindow({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   // ==========================================
@@ -121,11 +121,11 @@ export default function ChatWindow({
   // ==========================================
 
   const handleScroll = () => {
-    if (!messagesContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShowScrollButton(!isNearBottom);
-  };
+  if (!messagesContainerRef.current) return;
+  const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+  const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+  setShowScrollButton(!isNearBottom);
+};
 
   // ==========================================
   // LOAD MESSAGES
@@ -334,88 +334,122 @@ export default function ChatWindow({
   // ==========================================
 
   const renderMessage = (message: Message, index: number) => {
-    const isUser = message.role === "user";
-    const isAI = message.role === "ai";
-    const messageId = message.id || `${message.role}-${index}`;
+  const isUser = message.role === "user";
+  const isAI = message.role === "ai";
+  const messageId = message.id || `${message.role}-${index}`;
 
-    return (
-      <div
-        key={messageId}
-        className={`group flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
-      >
-        {/* Avatar - AI */}
-        {isAI && (
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
-            <Bot size={16} className="text-white" />
-          </div>
-        )}
+  // Format AI response with markdown-like styling
+  const formatContent = (content: string) => {
+    if (isUser) return content;
+    
+    // Split by numbered lists, bullet points, and paragraphs
+    const lines = content.split('\n');
+    return lines.map((line, i) => {
+      // Check for numbered lists (1., 2., etc.)
+      if (/^\d+\./.test(line.trim())) {
+        return <div key={i} className="flex gap-2 mt-1">
+          <span className="text-blue-500 font-semibold">{line.match(/^\d+/)?.[0]}.</span>
+          <span>{line.replace(/^\d+\.\s*/, '')}</span>
+        </div>;
+      }
+      // Check for bullet points (- or •)
+      if (/^[\-•]\s/.test(line.trim())) {
+        return <div key={i} className="flex gap-2 mt-1 ml-2">
+          <span className="text-blue-400">•</span>
+          <span>{line.replace(/^[\-•]\s*/, '')}</span>
+        </div>;
+      }
+      // Check for headings (bold text)
+      if (line.trim() && /[A-Z]/.test(line.trim()[0]) && line.length < 60 && !line.endsWith('.')) {
+        return <div key={i} className="font-semibold text-gray-800 dark:text-gray-200 mt-3">{line}</div>;
+      }
+      // Empty line
+      if (!line.trim()) {
+        return <div key={i} className="h-2" />;
+      }
+      // Regular paragraph
+      return <p key={i} className="leading-relaxed">{line}</p>;
+    });
+  };
 
-        {/* Message bubble */}
-        <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"} sm:max-w-[75%]`}>
-          <div
-            className={`relative rounded-2xl px-4 py-3 shadow-sm ${
-              isUser
-                ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white"
-                : "bg-white text-gray-900 shadow-md dark:bg-gray-800 dark:text-gray-100"
-            }`}
-          >
-            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
-              {message.content}
-            </p>
+  return (
+    <div
+      key={messageId}
+      className={`group flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
+    >
+      {/* Avatar - AI */}
+      {isAI && (
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
+          <Bot size={16} className="text-white" />
+        </div>
+      )}
 
-            {/* Message actions - AI only */}
-            {isAI && (
-              <div className="absolute -bottom-2 -right-2 flex gap-1 rounded-lg bg-white/90 p-1 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700/90">
-                <button
-                  onClick={() => copyMessage(message.content, messageId)}
-                  className="rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600"
-                  aria-label="Copy message"
-                >
-                  {copiedId === messageId ? (
-                    <Check size={14} className="text-green-500" />
-                  ) : (
-                    <Copy size={14} className="text-gray-500 dark:text-gray-400" />
-                  )}
-                </button>
-                <button
-                  onClick={() => giveFeedback(index, "like")}
-                  className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                    message.feedback === "like" ? "text-blue-500" : "text-gray-500 dark:text-gray-400"
-                  }`}
-                  aria-label="Like"
-                >
-                  <ThumbsUp size={14} />
-                </button>
-                <button
-                  onClick={() => giveFeedback(index, "dislike")}
-                  className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                    message.feedback === "dislike" ? "text-red-500" : "text-gray-500 dark:text-gray-400"
-                  }`}
-                  aria-label="Dislike"
-                >
-                  <ThumbsDown size={14} />
-                </button>
-              </div>
-            )}
+      {/* Message bubble */}
+      <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"} sm:max-w-[75%]`}>
+        <div
+          className={`relative rounded-2xl px-4 py-3 shadow-sm ${
+            isUser
+              ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+              : "bg-white text-gray-900 shadow-md dark:bg-gray-800 dark:text-gray-100"
+          }`}
+        >
+          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
+            {isAI ? formatContent(message.content) : message.content}
           </div>
 
-          {/* Timestamp */}
-          {message.timestamp && (
-            <span className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${isUser ? "pr-1" : "pl-1"}`}>
-              {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
+          {/* Message actions - AI only */}
+          {isAI && (
+            <div className="absolute -bottom-2 -right-2 flex gap-1 rounded-lg bg-white/90 p-1 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700/90">
+              <button
+                onClick={() => copyMessage(message.content, messageId)}
+                className="rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600"
+                aria-label="Copy message"
+              >
+                {copiedId === messageId ? (
+                  <Check size={14} className="text-green-500" />
+                ) : (
+                  <Copy size={14} className="text-gray-500 dark:text-gray-400" />
+                )}
+              </button>
+              <button
+                onClick={() => giveFeedback(index, "like")}
+                className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                  message.feedback === "like" ? "text-blue-500" : "text-gray-500 dark:text-gray-400"
+                }`}
+                aria-label="Like"
+              >
+                <ThumbsUp size={14} />
+              </button>
+              <button
+                onClick={() => giveFeedback(index, "dislike")}
+                className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                  message.feedback === "dislike" ? "text-red-500" : "text-gray-500 dark:text-gray-400"
+                }`}
+                aria-label="Dislike"
+              >
+                <ThumbsDown size={14} />
+              </button>
+            </div>
           )}
         </div>
 
-        {/* Avatar - User */}
-        {isUser && (
-          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-700 shadow-lg">
-            <User size={16} className="text-white" />
-          </div>
+        {/* Timestamp */}
+        {message.timestamp && (
+          <span className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${isUser ? "pr-1" : "pl-1"}`}>
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
         )}
       </div>
-    );
-  };
+
+      {/* Avatar - User */}
+      {isUser && (
+        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-700 shadow-lg">
+          <User size={16} className="text-white" />
+        </div>
+      )}
+    </div>
+  );
+};
 
   // ==========================================
   // RENDER
@@ -459,14 +493,14 @@ return (
         {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
-            onClick={() => scrollToBottom(true)}
-           className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
-            aria-label="Scroll to bottom"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-          </button>
+  onClick={() => scrollToBottom(true)}
+  className="absolute bottom-28 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2.5 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
+  aria-label="Scroll to bottom"
+>
+  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+  </svg>
+</button>
         )}
       </div>
 
@@ -513,24 +547,34 @@ return (
             />
 
             {/* Input */}
-            <div className="flex-1">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                disabled={loading}
-                placeholder="Ask SaMi Assist anything..."
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !loading) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 sm:text-base"
-                aria-label="Type your message"
-              />
-            </div>
+<div className="flex-1">
+  <textarea
+    ref={inputRef as any}
+    value={input}
+    disabled={loading}
+    placeholder="Ask SaMi Assist anything..."
+    onChange={(e) => setInput(e.target.value)}
+    onKeyDown={(e) => {
+      if (e.key === "Enter" && !e.shiftKey && !loading) {
+        e.preventDefault();
+        sendMessage();
+      }
+    }}
+    rows={1}
+    className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 sm:text-base"
+    style={{
+      minHeight: "52px",
+      maxHeight: "200px",
+      overflowY: "auto",
+    }}
+    onInput={(e) => {
+      const target = e.target as HTMLTextAreaElement;
+      target.style.height = "auto";
+      target.style.height = Math.min(target.scrollHeight, 200) + "px";
+    }}
+    aria-label="Type your message"
+  />
+</div>
 
             {/* Voice input */}
             <button
