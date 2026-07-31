@@ -424,28 +424,6 @@ export default function ChatWindow({
 return (
   <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950">
       
-      {/* ====================================
-          HEADER
-      ==================================== */}
-
-      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
-
-        <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            onClick={() => conversationId && loadMessages(conversationId)}
-            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
-            aria-label="Refresh"
-          >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button
-            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
-            aria-label="More options"
-          >
-            <MoreVertical size={18} />
-          </button>
-        </div>
-      </div>
 
       {/* ====================================
           MESSAGES
