@@ -493,16 +493,17 @@ const HistorySidebar = () => (
     />
 
     {/* Sidebar */}
-    <div
-      className={`
-        fixed inset-y-0 right-0 z-50
-        w-[380px] transform
-        bg-[#07111f] text-white
-        shadow-2xl
-        transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
-        ${isHistoryOpen ? "translate-x-0" : "translate-x-full"}
-      `}
-    >
+   <div
+  className={`
+    fixed inset-y-0 right-0 z-50
+    w-[380px] transform
+    bg-[#07111f] text-white
+    shadow-2xl
+    flex flex-col max-h-full overflow-hidden
+    transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
+    ${isHistoryOpen ? "translate-x-0" : "translate-x-full"}
+  `}
+>
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-5">
         <div>
