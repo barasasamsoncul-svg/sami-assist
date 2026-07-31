@@ -217,27 +217,27 @@ export default function DashboardLayout() {
   }
 
   async function loadConversations() {
-    try {
-      const response =
-        await fetch("/api/conversations");
-
-      if (!response.ok) {
-        throw new Error(
-          "Failed to load conversations"
-        );
+  try {
+    const response = await fetch("/api/conversations");
+    if (!response.ok) throw new Error("Failed to load conversations");
+    const data = await response.json();
+    
+    // Process conversations to truncate long titles
+    const processed = data.map((conv: Conversation) => {
+      if (!conv.title || conv.title === "New conversation") {
+        return conv;
       }
-
-      const data =
-        await response.json();
-
-      setConversations(data);
-    } catch (error) {
-      console.error(
-        "Conversation loading error:",
-        error
-      );
-    }
+      if (conv.title.length > 45) {
+        return { ...conv, title: conv.title.substring(0, 42) + "..." };
+      }
+      return conv;
+    });
+    
+    setConversations(processed);
+  } catch (error) {
+    console.error("Conversation loading error:", error);
   }
+}
 function toggleHistory() {
   setIsHistoryOpen(!isHistoryOpen);
 }

@@ -99,9 +99,32 @@ export default function ChatWindow({
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-
+// Helper to generate conversation title from first message
+function generateConversationTitle(message: string): string {
+  const clean = message.trim();
+  
+  // If short, use as is
+  if (clean.length <= 40) return clean;
+  
+  // Try to extract key phrase - first 5-6 words
+  const words = clean.split(' ');
+  
+  // Take first 6 words or less
+  const titleWords = words.slice(0, Math.min(6, words.length));
+  let title = titleWords.join(' ');
+  
+  // If still too long, truncate
+  if (title.length > 50) {
+    title = title.substring(0, 47) + '...';
+  } else if (words.length > 6) {
+    title = title + '...';
+  }
+  
+  // Capitalize first letter
+  return title.charAt(0).toUpperCase() + title.slice(1);
+}
   // ==========================================
   // SCROLL TO BOTTOM
   // ==========================================
@@ -147,33 +170,47 @@ export default function ChatWindow({
     loadMessages(conversationId);
   }, [conversationId]);
 
-  async function loadMessages(id: string) {
-    try {
-      const res = await fetch(`/api/messages/${id}`);
-      const data = await res.json();
+async function loadMessages(id: string) {
+  try {
+    const res = await fetch(`/api/messages/${id}`);
+    const data = await res.json();
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to load conversation.");
-      }
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to load conversation.");
+    }
 
-      setMessages(data.length > 0 ? data : [
+    // If no messages, show welcome
+    if (!data || data.length === 0) {
+      setMessages([
         {
           role: "ai",
           content: "💬 Welcome back! How can I help you today?",
           timestamp: new Date().toISOString(),
         },
       ]);
-    } catch (error) {
-      console.error("Load messages error:", error);
-      setMessages([
-        {
-          role: "ai",
-          content: "❌ I couldn't load this conversation. Please try refreshing.",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      return;
     }
+
+    // Sort messages by timestamp if available
+    const sortedMessages = data.sort((a: Message, b: Message) => {
+      if (a.timestamp && b.timestamp) {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      }
+      return 0;
+    });
+
+    setMessages(sortedMessages);
+  } catch (error) {
+    console.error("Load messages error:", error);
+    setMessages([
+      {
+        role: "ai",
+        content: "❌ I couldn't load this conversation. Please try refreshing.",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
   }
+}
 
   // ==========================================
   // VOICE RECOGNITION
@@ -272,14 +309,15 @@ export default function ChatWindow({
         throw new Error("The AI returned an empty response.");
       }
 
-      if (!conversationId && data.conversationId) {
-        onConversationCreated(data.conversationId);
-      }
+     if (!conversationId && data.conversationId) {
+  onConversationCreated(data.conversationId);
+}
 
-      if (!conversationId && data.conversationId && onConversationUpdate) {
-        const title = prompt.length > 30 ? prompt.substring(0, 30) + "..." : prompt;
-        onConversationUpdate(data.conversationId, title);
-      }
+if (!conversationId && data.conversationId && onConversationUpdate) {
+  // Generate a proper summary title
+  const title = generateConversationTitle(prompt);
+  onConversationUpdate(data.conversationId, title);
+}
 
       setMessages((prev) => [
         ...prev,
