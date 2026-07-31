@@ -428,20 +428,7 @@ return (
           HEADER
       ==================================== */}
 
-<div className="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-950 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
-            <Sparkles size={20} className="text-white" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900 dark:text-white sm:text-xl">
-              SaMi AI Assistant
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {loading ? "Thinking..." : isTyping ? "Typing..." : "Online"}
-            </p>
-          </div>
-        </div>
+      <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-900 sm:px-6">
 
         <div className="flex items-center gap-1 sm:gap-2">
           <button

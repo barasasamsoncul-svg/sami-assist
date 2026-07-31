@@ -383,7 +383,7 @@ function toggleHistory() {
       <div className="flex items-center gap-3">
         <div className="relative">
           <Image
-            src="/logo.png"
+            src="/logo2.png"
             alt="SaMi"
             width={44}
             height={44}
