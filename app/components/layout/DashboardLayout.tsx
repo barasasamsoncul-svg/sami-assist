@@ -26,6 +26,7 @@ import {
   Activity,
   FileText,
   Zap,
+  Package,
 } from "lucide-react";
 
 type Conversation = {
@@ -48,6 +49,8 @@ type ActivePage =
   | "dashboard"
   | "chat"
   | "customers"
+  | "invoices"
+  | "inventory"
   | "documents"
   | "analytics"
   | "settings";
@@ -330,37 +333,15 @@ export default function DashboardLayout() {
   // ==========================================
 
   const navItems = [
-    {
-      id: "dashboard",
-      label: "Overview",
-      icon: LayoutDashboard,
-    },
-    {
-      id: "chat",
-      label: "AI Workspace",
-      icon: MessageSquare,
-    },
-    {
-      id: "customers",
-      label: "Customers",
-      icon: Users,
-    },
-    {
-      id: "documents",
-      label: "Documents",
-      icon: FolderOpen,
-    },
-    {
-      id: "analytics",
-      label: "Analytics",
-      icon: BarChart3,
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      icon: Settings,
-    },
-  ] as const;
+  { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+  { id: "chat", label: "AI Workspace", icon: MessageSquare },
+  { id: "customers", label: "Customers", icon: Users },
+  { id: "invoices", label: "Invoices", icon: FileText },
+  { id: "inventory", label: "Inventory", icon: Package },
+  { id: "documents", label: "Documents", icon: FolderOpen },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "settings", label: "Settings", icon: Settings },
+] as const;
 
   // ==========================================
   // MAIN SIDEBAR
@@ -369,25 +350,20 @@ export default function DashboardLayout() {
   const MainSidebar = () => (
     <aside
       className={`
-        fixed inset-y-0 left-0 z-50
-        flex w-[280px] flex-col
-        border-r border-white/10
-        bg-[#07111f]
-        text-white
-        shadow-2xl
-        transition-transform duration-300
-        lg:relative lg:translate-x-0
-        ${
-          sidebarOpen
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }
-        ${
-          activePage === "chat"
-            ? "lg:hidden"
-            : ""
-        }
-      `}
+  fixed inset-y-0 left-0 z-50
+  flex w-[280px] flex-col
+  border-r border-white/10
+  bg-[#07111f]
+  text-white
+  shadow-2xl
+  transition-transform duration-300
+  lg:relative lg:translate-x-0
+  ${
+    sidebarOpen
+      ? "translate-x-0"
+      : "-translate-x-full"
+  }
+`}
     >
       {isMobile && (
         <button
@@ -491,7 +467,20 @@ export default function DashboardLayout() {
           );
         })}
       </nav>
-
+{/* SEARCH */}
+<div className="px-4 py-2">
+  <div className="relative">
+    <Search
+      size={16}
+      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+    />
+    <input
+      type="text"
+      placeholder="Search..."
+      className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
+    />
+  </div>
+</div>
       {/* AI STATUS */}
 
       <div className="mx-4 mb-5 rounded-2xl border border-blue-500/10 bg-blue-500/[0.06] p-4">
@@ -764,38 +753,25 @@ export default function DashboardLayout() {
 
  const TopBar = () => (
   <header className="flex h-[72px] flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
-    <div className="flex items-center gap-4 flex-1">
-      {/* LOGO */}
-      <div className="flex items-center gap-3">
-        <Image
-          src="/logo.png"
-          alt="SaMi"
-          width={40}
-          height={40}
-          className="rounded-xl"
-        />
-        <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">
-          SaMi
-        </span>
-      </div>
-
-      {/* SEARCH */}
-      <div className="flex-1 max-w-2xl">
-        <div className="relative">
-          <Search
-            size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-          />
-          <input
-            type="text"
-            placeholder="Search anything..."
-            className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-white dark:focus:bg-gray-900"
-          />
-        </div>
+    {/* LEFT - Page Name */}
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
+      >
+        <Menu size={21} />
+      </button>
+      <div>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+          {activePage === "dashboard" ? "Overview" : activePage.charAt(0).toUpperCase() + activePage.slice(1)}
+        </h1>
+        <p className="text-xs text-gray-400">
+          {activePage === "dashboard" ? "Your business workspace" : `Manage your ${activePage}`}
+        </p>
       </div>
     </div>
 
-    {/* RIGHT SIDE - Only Sign Out */}
+    {/* RIGHT - Theme + Sign Out */}
     <div className="flex items-center gap-2">
       <button
         onClick={toggleTheme}
@@ -814,7 +790,7 @@ export default function DashboardLayout() {
       </button>
     </div>
   </header>
-)
+);
 
   // ==========================================
   // DASHBOARD OVERVIEW
@@ -1124,7 +1100,38 @@ export default function DashboardLayout() {
           <ChatSidebar />
         </div>
       )}
-
+case "invoices":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-3xl border border-gray-200/70 bg-white p-10 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-16">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/10">
+            <FileText size={28} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">Invoices</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+            Invoice management coming soon.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+case "inventory":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-3xl border border-gray-200/70 bg-white p-10 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-16">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/10">
+            <Package size={28} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">Inventory</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+            Inventory management coming soon.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
       {/* Chat window */}
       <div className="min-w-0 flex-1 overflow-hidden">
         <ChatWindow
