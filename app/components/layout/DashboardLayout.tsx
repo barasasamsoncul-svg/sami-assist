@@ -1100,7 +1100,18 @@ export default function DashboardLayout() {
           <ChatSidebar />
         </div>
       )}
-case "invoices":
+
+      {/* Chat window */}
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <ChatWindow
+          conversationId={selectedId}
+          onConversationCreated={handleConversationCreated}
+          onConversationUpdate={handleConversationUpdate}
+        />
+      </div>
+    </div>
+  );
+  case "invoices":
   return (
     <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
       <div className="mx-auto max-w-7xl">
@@ -1129,16 +1140,6 @@ case "inventory":
             Inventory management coming soon.
           </p>
         </div>
-      </div>
-    </div>
-  );
-      {/* Chat window */}
-      <div className="min-w-0 flex-1 overflow-hidden">
-        <ChatWindow
-          conversationId={selectedId}
-          onConversationCreated={handleConversationCreated}
-          onConversationUpdate={handleConversationUpdate}
-        />
       </div>
     </div>
   );
