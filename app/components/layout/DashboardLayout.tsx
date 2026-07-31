@@ -348,90 +348,84 @@ export default function DashboardLayout() {
   // ==========================================
 
   const MainSidebar = () => (
-    <aside
-      className={`
-  fixed inset-y-0 left-0 z-50
-  flex w-[280px] flex-col
-  border-r border-white/10
-  bg-[#07111f]
-  text-white
-  shadow-2xl
-  transition-transform duration-300
-  lg:relative lg:translate-x-0
-  ${
-    sidebarOpen
-      ? "translate-x-0"
-      : "-translate-x-full"
-  }
-`}
-    >
-      {isMobile && (
-        <button
-          onClick={() =>
-            setSidebarOpen(false)
-          }
-          className="absolute right-4 top-4 rounded-xl p-2 text-gray-400 hover:bg-white/10 hover:text-white"
-        >
-          <X size={20} />
-        </button>
-      )}
+  <aside
+    className={`
+      fixed inset-y-0 left-0 z-50
+      flex w-[280px] flex-col
+      border-r border-white/10
+      bg-[#07111f]
+      text-white
+      shadow-2xl
+      transition-transform duration-300
+      lg:relative lg:translate-x-0
+      ${
+        sidebarOpen
+          ? "translate-x-0"
+          : "-translate-x-full"
+      }
+    `}
+  >
+    {isMobile && (
+      <button
+        onClick={() => setSidebarOpen(false)}
+        className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-white/10 hover:text-white"
+      >
+        <X size={20} />
+      </button>
+    )}
 
-      {/* BRAND */}
-
-      <div className="px-6 pb-8 pt-7">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Image
-              src="/logo.png"
-              alt="SaMi"
-              width={44}
-              height={44}
-              className="rounded-xl"
-            />
-
-            <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
-              <Sparkles
-                size={9}
-                className="text-white"
-              />
-            </div>
-          </div>
-
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">
-              SaMi
-            </h1>
-
-            <p className="text-xs text-slate-500">
-              AI Business Workspace
-            </p>
+    {/* ===== FIXED HEADER ===== */}
+    <div className="flex-shrink-0 px-6 pb-4 pt-7">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <Image
+            src="/logo.png"
+            alt="SaMi"
+            width={44}
+            height={44}
+            className="rounded-xl"
+          />
+          <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
+            <Sparkles size={9} className="text-white" />
           </div>
         </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight">SaMi</h1>
+          <p className="text-xs text-slate-500">AI Business Workspace</p>
+        </div>
       </div>
+    </div>
 
-      {/* WORKSPACE LABEL */}
-
-      <div className="px-4">
-        <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-          Workspace
-        </p>
+    {/* ===== FIXED SEARCH ===== */}
+    <div className="flex-shrink-0 px-4 pb-4">
+      <div className="relative">
+        <Search
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+        />
+        <input
+          type="text"
+          placeholder="Search..."
+          className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
+        />
       </div>
+    </div>
 
-      {/* NAVIGATION */}
+    {/* ===== SCROLLABLE NAVIGATION ===== */}
+    <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+        Workspace
+      </p>
 
-      <nav className="flex-1 space-y-1 px-4">
+      <nav className="space-y-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-
-          const isActive =
-            activePage === item.id;
+          const isActive = activePage === item.id;
 
           return (
             <button
               key={item.id}
-              onClick={() =>
-                handleNavigation(item.id)
-              }
+              onClick={() => handleNavigation(item.id)}
               className={`
                 group flex w-full items-center
                 gap-3 rounded-xl px-4 py-3
@@ -452,88 +446,32 @@ export default function DashboardLayout() {
                     : "text-slate-500 group-hover:text-slate-300"
                 }
               />
-
-              <span className="flex-1">
-                {item.label}
-              </span>
-
+              <span className="flex-1">{item.label}</span>
               {isActive && (
-                <ChevronRight
-                  size={15}
-                  className="text-white/60"
-                />
+                <ChevronRight size={15} className="text-white/60" />
               )}
             </button>
           );
         })}
       </nav>
-{/* SEARCH */}
-<div className="px-4 py-2">
-  <div className="relative">
-    <Search
-      size={16}
-      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-    />
-    <input
-      type="text"
-      placeholder="Search..."
-      className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
-    />
-  </div>
-</div>
-      {/* AI STATUS */}
+    </div>
 
-      <div className="mx-4 mb-5 rounded-2xl border border-blue-500/10 bg-blue-500/[0.06] p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-500/10">
-            <Bot
-              size={18}
-              className="text-blue-400"
-            />
-          </div>
-
-          <div>
-            <p className="text-xs font-semibold text-white">
-              SaMi AI
-            </p>
-
-            <div className="mt-1 flex items-center gap-1.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-
-              <span className="text-[10px] text-slate-500">
-                Online and ready
-              </span>
-            </div>
-          </div>
+    {/* ===== FIXED PROFILE ===== */}
+    <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
+      <div className="flex items-center gap-3 rounded-xl p-2">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+          {profile?.full_name?.[0]?.toUpperCase() || "S"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-white">
+            {loadingProfile ? "Loading..." : profile?.full_name || "SaMi User"}
+          </p>
+          <p className="truncate text-xs text-slate-500">{profile?.email || "Account"}</p>
         </div>
       </div>
-
-      {/* PROFILE */}
-
-      <div className="border-t border-white/[0.06] p-4">
-        <div className="flex items-center gap-3 rounded-xl p-2">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-            {profile?.full_name?.[0]?.toUpperCase() ||
-              "S"}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-white">
-              {loadingProfile
-                ? "Loading..."
-                : profile?.full_name ||
-                  "SaMi User"}
-            </p>
-
-            <p className="truncate text-xs text-slate-500">
-              {profile?.email ||
-                "Account"}
-            </p>
-          </div>
-        </div>
-      </div>
-    </aside>
-  );
+    </div>
+  </aside>
+);
 
   // ==========================================
   // CHAT SIDEBAR
