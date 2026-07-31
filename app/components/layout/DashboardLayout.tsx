@@ -17,7 +17,6 @@ import {
   ChevronRight,
   ArrowLeft,
   Plus,
-  User,
   Search,
   Moon,
   Sun,
@@ -65,8 +64,6 @@ export default function DashboardLayout() {
     useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isDark, setIsDark] = useState(false);
-  const [isProfileOpen, setIsProfileOpen] =
-    useState(false);
   const [isLoggingOut, setIsLoggingOut] =
     useState(false);
 
@@ -765,154 +762,59 @@ export default function DashboardLayout() {
   // TOP BAR
   // ==========================================
 
-  const TopBar = () => (
-    <header className="flex h-[72px] flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
+ const TopBar = () => (
+  <header className="flex h-[72px] flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
+    <div className="flex items-center gap-4 flex-1">
+      {/* LOGO */}
       <div className="flex items-center gap-3">
-        {activePage === "chat" ? (
-          <>
-            <button
-              onClick={() =>
-                setChatSidebarOpen(true)
-              }
-              className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-800 dark:hover:text-white lg:hidden"
-            >
-              <Menu size={21} />
-            </button>
-
-            <div className="lg:hidden">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                AI Workspace
-              </p>
-
-              <p className="text-[10px] text-gray-400">
-                SaMi AI
-              </p>
-            </div>
-          </>
-        ) : (
-          <>
-            <button
-              onClick={() =>
-                setSidebarOpen(true)
-              }
-              className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
-            >
-              <Menu size={21} />
-            </button>
-
-            <div className="lg:hidden">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                {activePage ===
-                "dashboard"
-                  ? "Overview"
-                  : activePage
-                      .charAt(0)
-                      .toUpperCase() +
-                    activePage.slice(1)}
-              </p>
-            </div>
-          </>
-        )}
+        <Image
+          src="/logo.png"
+          alt="SaMi"
+          width={40}
+          height={40}
+          className="rounded-xl"
+        />
+        <span className="text-lg font-bold text-gray-900 dark:text-white hidden sm:block">
+          SaMi
+        </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        {/* SEARCH */}
-
-        <div className="hidden h-10 items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 md:flex dark:border-gray-800 dark:bg-gray-900">
+      {/* SEARCH */}
+      <div className="flex-1 max-w-2xl">
+        <div className="relative">
           <Search
-            size={16}
-            className="text-gray-400"
+            size={18}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
           />
-
           <input
             type="text"
-            placeholder="Search workspace..."
-            className="w-44 bg-transparent text-xs text-gray-800 outline-none placeholder:text-gray-400 dark:text-white"
+            placeholder="Search anything..."
+            className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-800 outline-none transition focus:border-blue-500 focus:bg-white dark:border-gray-800 dark:bg-gray-900 dark:text-white dark:focus:bg-gray-900"
           />
         </div>
-
-        {/* THEME */}
-
-        <button
-          onClick={toggleTheme}
-          className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-        >
-          {isDark ? (
-            <Sun size={18} />
-          ) : (
-            <Moon size={18} />
-          )}
-        </button>
-
-        {/* PROFILE */}
-
-        <div className="relative">
-          <button
-            onClick={() =>
-              setIsProfileOpen(
-                (prev) => !prev
-              )
-            }
-            className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-2 py-1.5 transition hover:border-gray-300 dark:border-gray-800 dark:bg-gray-900"
-          >
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-xs font-semibold text-white">
-              {profile?.full_name?.[0]?.toUpperCase() ||
-                "S"}
-            </div>
-
-            <div className="hidden text-left sm:block">
-              <p className="max-w-[120px] truncate text-xs font-semibold text-gray-900 dark:text-white">
-                {profile?.full_name ||
-                  "SaMi User"}
-              </p>
-
-              <p className="text-[10px] text-gray-400">
-                Account
-              </p>
-            </div>
-
-            <ChevronRight
-              size={14}
-              className={`hidden text-gray-400 transition-transform sm:block ${
-                isProfileOpen
-                  ? "rotate-90"
-                  : ""
-              }`}
-            />
-          </button>
-
-          {isProfileOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900">
-              <div className="border-b border-gray-100 p-4 dark:border-gray-800">
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {profile?.full_name ||
-                    "SaMi User"}
-                </p>
-
-                <p className="mt-1 truncate text-xs text-gray-500">
-                  {profile?.email || ""}
-                </p>
-              </div>
-
-              <div className="p-2">
-                <button
-                  onClick={handleLogout}
-                  disabled={isLoggingOut}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                >
-                  <LogOut size={17} />
-
-                  {isLoggingOut
-                    ? "Signing out..."
-                    : "Sign out"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
-    </header>
-  );
+    </div>
+
+    {/* RIGHT SIDE - Only Sign Out */}
+    <div className="flex items-center gap-2">
+      <button
+        onClick={toggleTheme}
+        className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+      >
+        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+      </button>
+
+      <button
+        onClick={handleLogout}
+        disabled={isLoggingOut}
+        className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+      >
+        <LogOut size={17} />
+        {isLoggingOut ? "Signing out..." : "Sign out"}
+      </button>
+    </div>
+  </header>
+)
 
   // ==========================================
   // DASHBOARD OVERVIEW
