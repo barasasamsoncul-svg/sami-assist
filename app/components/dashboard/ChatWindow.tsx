@@ -501,10 +501,10 @@ return (
           MESSAGES
       ==================================== */}
 
-   <div
+ <div
   ref={messagesContainerRef}
   onScroll={handleScroll}
-  className={`relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6 ${!conversationId ? 'px-2' : ''}`}
+  className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6"
 >
         <div className="mx-auto max-w-4xl space-y-4">
           {messages.map((message, index) => renderMessage(message, index))}
