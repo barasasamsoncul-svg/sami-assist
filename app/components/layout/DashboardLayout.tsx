@@ -27,6 +27,7 @@ import {
   FileText,
   Zap,
   Package,
+  History,
 } from "lucide-react";
 
 type Conversation = {
@@ -69,6 +70,7 @@ export default function DashboardLayout() {
   const [isDark, setIsDark] = useState(false);
   const [isLoggingOut, setIsLoggingOut] =
     useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   // ==========================================
   // DETECT MOBILE
@@ -236,7 +238,9 @@ export default function DashboardLayout() {
       );
     }
   }
-
+function toggleHistory() {
+  setIsHistoryOpen(!isHistoryOpen);
+}
   // ==========================================
   // CONVERSATION HANDLERS
   // ==========================================
@@ -472,196 +476,158 @@ export default function DashboardLayout() {
     </div>
   </aside>
 );
+// ==========================================
+// HISTORY SIDEBAR (Right side)
+// ==========================================
 
-  // ==========================================
-  // CHAT SIDEBAR
-  // ==========================================
+const HistorySidebar = () => (
+  <>
+    {/* Overlay */}
+    <div
+      className={`
+        fixed inset-0 z-40 bg-black/60 backdrop-blur-sm
+        transition-opacity duration-300
+        ${isHistoryOpen ? "opacity-100" : "pointer-events-none opacity-0"}
+      `}
+      onClick={() => setIsHistoryOpen(false)}
+    />
 
-  const ChatSidebar = () => (
-    <div className="flex h-full w-[280px] flex-shrink-0 flex-col border-r border-white/[0.06] bg-[#07111f] text-white">
-      {/* BACK */}
-
-      <div className="p-4">
+    {/* Sidebar */}
+    <div
+      className={`
+        fixed inset-y-0 right-0 z-50
+        w-[380px] transform
+        bg-[#07111f] text-white
+        shadow-2xl
+        transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
+        ${isHistoryOpen ? "translate-x-0" : "translate-x-full"}
+      `}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-5">
+        <div>
+          <h2 className="text-lg font-bold">Conversation History</h2>
+          <p className="text-xs text-slate-500">Search and browse your past chats</p>
+        </div>
         <button
-          onClick={goBackToDashboard}
-          className="group flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+          onClick={() => setIsHistoryOpen(false)}
+          className="rounded-xl p-2 text-gray-400 transition hover:bg-white/10 hover:text-white"
         >
-          <ArrowLeft
-            size={17}
-            className="transition-transform group-hover:-translate-x-1"
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="p-4">
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
           />
-
-          <span>Back to Overview</span>
-        </button>
-      </div>
-
-      {/* CHAT HEADER */}
-
-      <div className="border-b border-white/[0.06] px-5 pb-5 pt-2">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
-            <Bot
-              size={20}
-              className="text-white"
-            />
-          </div>
-
-          <div>
-            <h2 className="text-sm font-semibold">
-              AI Workspace
-            </h2>
-
-            <p className="text-[10px] text-slate-500">
-              Your intelligent business assistant
-            </p>
-          </div>
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
+          />
         </div>
       </div>
 
-      {/* NEW CHAT */}
-
-      <div className="p-4">
-        <button
-          onClick={newChat}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 transition hover:bg-blue-500 active:scale-[0.98]"
-        >
-          <Plus size={18} />
-          New conversation
-        </button>
-      </div>
-
-      {/* HISTORY */}
-
-      <div className="flex-1 overflow-y-auto px-4">
-        <div className="mb-3 flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
-            Conversations
-          </p>
-
-          <span className="text-[10px] text-slate-600">
-            {conversations.length}
-          </span>
-        </div>
-
+      {/* Conversation List */}
+      <div className="flex-1 overflow-y-auto px-4 pb-6">
         {conversations.length === 0 ? (
-          <div className="flex flex-col items-center px-5 py-12 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.04]">
-              <MessageSquare
-                size={20}
-                className="text-slate-600"
-              />
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+              <MessageSquare size={22} className="text-slate-600" />
             </div>
-
-            <p className="mt-4 text-sm font-medium text-slate-400">
-              No conversations yet
-            </p>
-
-            <p className="mt-1 text-xs leading-relaxed text-slate-600">
-              Start a conversation with
-              SaMi AI.
-            </p>
+            <p className="mt-4 text-sm font-medium text-slate-400">No conversations yet</p>
+            <p className="mt-1 text-xs text-slate-600">Start a new chat with SaMi AI</p>
           </div>
         ) : (
-          <div className="space-y-1">
-            {conversations.map(
-              (chat) => (
+          <div className="space-y-4">
+            {/* Today */}
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                Today
+              </p>
+              {conversations.slice(0, 3).map((chat) => (
                 <button
                   key={chat.id}
-                  onClick={() =>
-                    handleSelectConversation(
-                      chat.id
-                    )
-                  }
+                  onClick={() => {
+                    handleSelectConversation(chat.id);
+                    setIsHistoryOpen(false);
+                  }}
                   className={`
-                    flex w-full items-center gap-3
-                    rounded-xl px-3 py-3
-                    text-left text-sm
-                    transition
-                    ${
-                      selectedId ===
-                      chat.id
-                        ? "bg-blue-600/15 text-blue-300"
-                        : "text-slate-400 hover:bg-white/[0.04] hover:text-white"
+                    flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition
+                    ${selectedId === chat.id
+                      ? "bg-blue-600/15 text-blue-300"
+                      : "text-slate-400 hover:bg-white/[0.04] hover:text-white"
                     }
                   `}
                 >
-                  <MessageSquare
-                    size={15}
-                    className="flex-shrink-0"
-                  />
-
-                  <span className="truncate">
-                    {chat.title ||
-                      "New conversation"}
+                  <MessageSquare size={15} className="flex-shrink-0" />
+                  <span className="truncate text-sm font-medium">
+                    {chat.title || "New conversation"}
                   </span>
+                  <span className="ml-auto text-[10px] text-slate-600">2:30 PM</span>
                 </button>
-              )
+              ))}
+            </div>
+
+            {/* Yesterday */}
+            {conversations.length > 3 && (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                  Yesterday
+                </p>
+                {conversations.slice(3, 6).map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => {
+                      handleSelectConversation(chat.id);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <MessageSquare size={15} className="flex-shrink-0" />
+                    <span className="truncate text-sm font-medium">
+                      {chat.title || "New conversation"}
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600">10:15 AM</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Older */}
+            {conversations.length > 6 && (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                  Older
+                </p>
+                {conversations.slice(6).map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => {
+                      handleSelectConversation(chat.id);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <MessageSquare size={15} className="flex-shrink-0" />
+                    <span className="truncate text-sm font-medium">
+                      {chat.title || "New conversation"}
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600">Mar 15</span>
+                  </button>
+                ))}
+              </div>
             )}
           </div>
         )}
       </div>
-
-      {/* CHAT SIDEBAR PROFILE */}
-
-      <div className="border-t border-white/[0.06] p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-600/20 text-xs font-semibold text-blue-400">
-            {profile?.full_name?.[0]?.toUpperCase() ||
-              "S"}
-          </div>
-
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium text-white">
-              {profile?.full_name ||
-                "SaMi User"}
-            </p>
-
-            <p className="truncate text-[10px] text-slate-600">
-              {profile?.email || ""}
-            </p>
-          </div>
-        </div>
-      </div>
     </div>
-  );
-
-  // ==========================================
-  // MOBILE CHAT SIDEBAR
-  // ==========================================
-
-  const MobileChatSidebar = () => (
-    <>
-      <div
-        className={`
-          fixed inset-0 z-40 bg-black/60
-          backdrop-blur-sm lg:hidden
-          ${
-            chatSidebarOpen
-              ? "opacity-100"
-              : "pointer-events-none opacity-0"
-          }
-        `}
-        onClick={() =>
-          setChatSidebarOpen(false)
-        }
-      />
-
-      <div
-        className={`
-          fixed inset-y-0 left-0 z-50
-          transform transition-transform
-          duration-300 lg:hidden
-          ${
-            chatSidebarOpen
-              ? "translate-x-0"
-              : "-translate-x-full"
-          }
-        `}
-      >
-        <ChatSidebar />
-      </div>
-    </>
-  );
+  </>
+);
 
   // ==========================================
   // MAIN SIDEBAR OVERLAY
@@ -691,23 +657,33 @@ export default function DashboardLayout() {
 
  const TopBar = () => (
   <header className="flex h-[72px] flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
-    {/* LEFT - Page Name */}
-    <div className="flex items-center gap-3">
-      <button
-        onClick={() => setSidebarOpen(true)}
-        className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
-      >
-        <Menu size={21} />
-      </button>
-      <div>
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-          {activePage === "dashboard" ? "Overview" : activePage.charAt(0).toUpperCase() + activePage.slice(1)}
-        </h1>
-        <p className="text-xs text-gray-400">
-          {activePage === "dashboard" ? "Your business workspace" : `Manage your ${activePage}`}
-        </p>
-      </div>
-    </div>
+   {/* LEFT - Page Name with History Icon */}
+<div className="flex items-center gap-3">
+  <button
+    onClick={() => setSidebarOpen(true)}
+    className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
+  >
+    <Menu size={21} />
+  </button>
+  
+  {activePage === "chat" && (
+    <button
+      onClick={toggleHistory}
+      className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+    >
+      <History size={20} />
+    </button>
+  )}
+  
+  <div>
+    <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
+      {activePage === "dashboard" ? "Overview" : activePage.charAt(0).toUpperCase() + activePage.slice(1)}
+    </h1>
+    <p className="text-xs text-gray-400">
+      {activePage === "dashboard" ? "Your business workspace" : `Manage your ${activePage}`}
+    </p>
+  </div>
+</div>
 
     {/* RIGHT - Theme + Sign Out */}
     <div className="flex items-center gap-2">
@@ -1029,18 +1005,10 @@ export default function DashboardLayout() {
       case "dashboard":
         return <DashboardHome />;
 
-    case "chat":
+   case "chat":
   return (
-    <div className="flex h-full min-h-0 overflow-hidden">
-      {/* Desktop conversation sidebar */}
-      {!isMobile && (
-        <div className="w-[300px] flex-shrink-0 border-r border-white/10">
-          <ChatSidebar />
-        </div>
-      )}
-
-      {/* Chat window */}
-      <div className="min-w-0 flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col">
         <ChatWindow
           conversationId={selectedId}
           onConversationCreated={handleConversationCreated}
@@ -1164,9 +1132,7 @@ case "inventory":
       <Overlay />
 
       <MainSidebar />
-
-      <MobileChatSidebar />
-
+      <HistorySidebar />
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopBar />
 
