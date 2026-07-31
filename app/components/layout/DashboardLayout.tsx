@@ -655,57 +655,71 @@ const HistorySidebar = () => (
   // TOP BAR
   // ==========================================
 
- const TopBar = () => (
-  <header className="flex h-[72px] flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
-   {/* LEFT - Page Name with History Icon */}
-<div className="flex items-center gap-3">
-  <button
-    onClick={() => setSidebarOpen(true)}
-    className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
-  >
-    <Menu size={21} />
-  </button>
-  
-  {activePage === "chat" && (
-    <button
-      onClick={toggleHistory}
-      className="rounded-xl p-2 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
-    >
-      <History size={20} />
-    </button>
-  )}
-  
-  <div>
-    <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-      {activePage === "dashboard" ? "Overview" : activePage.charAt(0).toUpperCase() + activePage.slice(1)}
-    </h1>
-    <p className="text-xs text-gray-400">
-      {activePage === "dashboard" ? "Your business workspace" : `Manage your ${activePage}`}
-    </p>
-  </div>
-</div>
-
-    {/* RIGHT - Theme + Sign Out */}
-    <div className="flex items-center gap-2">
+    const TopBar = () => (
+  <header className="flex h-10 flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
+    {/* LEFT - Page Name */}
+    <div className="flex items-center gap-3">
       <button
-        onClick={toggleTheme}
-        className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+        onClick={() => setSidebarOpen(true)}
+        className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
       >
-        {isDark ? <Sun size={18} /> : <Moon size={18} />}
+        <Menu size={18} />
       </button>
+      
+      <div className="flex items-center gap-2">
+        <h1 className="text-sm font-semibold text-gray-900 dark:text-white">
+          {activePage === "dashboard" ? "Overview" : 
+           activePage === "chat" ? "SaMi" :
+           activePage.charAt(0).toUpperCase() + activePage.slice(1)}
+        </h1>
+        {activePage === "chat" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[10px] text-gray-400">Online</span>
+          </span>
+        )}
+      </div>
+    </div>
 
-      <button
-        onClick={handleLogout}
-        disabled={isLoggingOut}
-        className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
-      >
-        <LogOut size={17} />
-        {isLoggingOut ? "Signing out..." : "Sign out"}
-      </button>
+    {/* RIGHT - Chat actions or Theme + Sign Out */}
+    <div className="flex items-center gap-1.5">
+      {activePage === "chat" ? (
+        <>
+          <button
+            onClick={newChat}
+            className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 active:scale-[0.98]"
+          >
+            <Plus size={14} />
+            New
+          </button>
+          <button
+            onClick={toggleHistory}
+            className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <History size={18} />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={toggleTheme}
+            className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-1.5 rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+          >
+            <LogOut size={14} />
+            {isLoggingOut ? "..." : "Sign out"}
+          </button>
+        </>
+      )}
     </div>
   </header>
 );
-
   // ==========================================
   // DASHBOARD OVERVIEW
   // ==========================================
