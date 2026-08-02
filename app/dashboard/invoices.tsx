@@ -1256,8 +1256,30 @@ function CreateInvoiceModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  type Product = {
+    id: string;
+    name: string;
+    description?: string | null;
+    sku?: string | null;
+    product_type: string;
+    unit_price: number | string;
+    tax_rate: number | string;
+    is_active: boolean;
+  };
+
+  type InvoiceItemForm = {
+    product_id: string;
+    description: string;
+    quantity: string;
+    unit_price: string;
+    tax_rate: string;
+  };
+
   const [customers, setCustomers] =
     useState<Customer[]>([]);
+
+  const [products, setProducts] =
+    useState<Product[]>([]);
 
   const [customerId, setCustomerId] =
     useState("");
@@ -1268,8 +1290,11 @@ function CreateInvoiceModal({
   const [notes, setNotes] =
     useState("");
 
-  const [items, setItems] = useState([
+  const [items, setItems] = useState<
+    InvoiceItemForm[]
+  >([
     {
+      product_id: "",
       description: "",
       quantity: "1",
       unit_price: "0",
@@ -1277,33 +1302,113 @@ function CreateInvoiceModal({
     },
   ]);
 
+  const [loadingCustomers, setLoadingCustomers] =
+    useState(true);
+
+  const [loadingProducts, setLoadingProducts] =
+    useState(true);
+
   const [saving, setSaving] =
     useState(false);
 
   const [error, setError] =
     useState("");
 
+  // ==========================================
+  // LOAD CUSTOMERS + PRODUCTS
+  // ==========================================
+
   useEffect(() => {
-    fetch("/api/customers", {
-      credentials: "include",
-    })
-      .then((response) =>
-        response.json()
-      )
-      .then((data) => {
-        if (Array.isArray(data.customers)) {
-          setCustomers(data.customers);
+    let cancelled = false;
+
+    async function loadData() {
+      try {
+        setLoadingCustomers(true);
+        setLoadingProducts(true);
+        setError("");
+
+        const [
+          customersResponse,
+          productsResponse,
+        ] = await Promise.all([
+          fetch("/api/customers", {
+            credentials: "include",
+          }),
+
+          fetch("/api/products", {
+            credentials: "include",
+          }),
+        ]);
+
+        const customersData =
+          await customersResponse.json();
+
+        const productsData =
+          await productsResponse.json();
+
+        if (!customersResponse.ok) {
+          throw new Error(
+            customersData.error ||
+              "Failed to load customers"
+          );
         }
-      })
-      .catch(() => {
-        setCustomers([]);
-      });
+
+        if (!productsResponse.ok) {
+          throw new Error(
+            productsData.error ||
+              "Failed to load products"
+          );
+        }
+
+        if (!cancelled) {
+          setCustomers(
+            Array.isArray(
+              customersData.customers
+            )
+              ? customersData.customers
+              : []
+          );
+
+          setProducts(
+            Array.isArray(
+              productsData.products
+            )
+              ? productsData.products
+              : []
+          );
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Failed to load invoice data"
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingCustomers(false);
+          setLoadingProducts(false);
+        }
+      }
+    }
+
+    loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  // ==========================================
+  // ADD ITEM
+  // ==========================================
 
   const addItem = () => {
     setItems((current) => [
       ...current,
       {
+        product_id: "",
         description: "",
         quantity: "1",
         unit_price: "0",
@@ -1311,6 +1416,10 @@ function CreateInvoiceModal({
       },
     ]);
   };
+
+  // ==========================================
+  // REMOVE ITEM
+  // ==========================================
 
   const removeItem = (index: number) => {
     setItems((current) =>
@@ -1321,9 +1430,14 @@ function CreateInvoiceModal({
     );
   };
 
+  // ==========================================
+  // UPDATE ITEM
+  // ==========================================
+
   const updateItem = (
     index: number,
     field:
+      | "product_id"
       | "description"
       | "quantity"
       | "unit_price"
@@ -1342,38 +1456,118 @@ function CreateInvoiceModal({
     );
   };
 
+  // ==========================================
+  // SELECT PRODUCT / SERVICE
+  // ==========================================
+
+  const selectProduct = (
+    index: number,
+    productId: string
+  ) => {
+    if (!productId) {
+      updateItem(
+        index,
+        "product_id",
+        ""
+      );
+      return;
+    }
+
+    const product =
+      products.find(
+        (item) =>
+          item.id === productId
+      );
+
+    if (!product) {
+      return;
+    }
+
+    setItems((current) =>
+      current.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              product_id: product.id,
+              description:
+                product.description?.trim() ||
+                product.name,
+              unit_price:
+                String(product.unit_price),
+              tax_rate:
+                String(product.tax_rate),
+            }
+          : item
+      )
+    );
+  };
+
+  // ==========================================
+  // LINE CALCULATIONS
+  // ==========================================
+
+  const getLineSubtotal = (
+    item: InvoiceItemForm
+  ) => {
+    const quantity =
+      Number(item.quantity) || 0;
+
+    const unitPrice =
+      Number(item.unit_price) || 0;
+
+    return quantity * unitPrice;
+  };
+
+  const getLineTax = (
+    item: InvoiceItemForm
+  ) => {
+    const lineSubtotal =
+      getLineSubtotal(item);
+
+    const taxRate =
+      Number(item.tax_rate) || 0;
+
+    return (
+      lineSubtotal *
+      (taxRate / 100)
+    );
+  };
+
+  const getLineTotal = (
+    item: InvoiceItemForm
+  ) => {
+    return (
+      getLineSubtotal(item) +
+      getLineTax(item)
+    );
+  };
+
   const subtotal = items.reduce(
     (sum, item) =>
-      sum +
-      Number(item.quantity || 0) *
-        Number(item.unit_price || 0),
+      sum + getLineSubtotal(item),
     0
   );
 
   const tax = items.reduce(
-    (sum, item) => {
-      const line =
-        Number(item.quantity || 0) *
-        Number(item.unit_price || 0);
-
-      return (
-        sum +
-        line *
-          (Number(
-            item.tax_rate || 0
-          ) /
-            100)
-      );
-    },
+    (sum, item) =>
+      sum + getLineTax(item),
     0
   );
 
   const total = subtotal + tax;
 
+  // ==========================================
+  // SUBMIT INVOICE
+  // ==========================================
+
   const submit = async () => {
     try {
       setSaving(true);
       setError("");
+
+      // ----------------------------------------
+      // CUSTOMER
+      // ----------------------------------------
 
       if (!customerId) {
         throw new Error(
@@ -1381,16 +1575,48 @@ function CreateInvoiceModal({
         );
       }
 
-      if (
-        items.some(
-          (item) =>
-            !item.description.trim()
-        )
-      ) {
+      // ----------------------------------------
+      // ITEMS
+      // ----------------------------------------
+
+      if (items.length === 0) {
         throw new Error(
-          "Every invoice item needs a description."
+          "Add at least one invoice item."
         );
       }
+
+      const invalidItem =
+        items.find((item) => {
+          const quantity =
+            Number(item.quantity);
+
+          const unitPrice =
+            Number(item.unit_price);
+
+          const taxRate =
+            Number(item.tax_rate);
+
+          return (
+            !item.description.trim() ||
+            !Number.isFinite(quantity) ||
+            quantity <= 0 ||
+            !Number.isFinite(unitPrice) ||
+            unitPrice < 0 ||
+            !Number.isFinite(taxRate) ||
+            taxRate < 0 ||
+            taxRate > 100
+          );
+        });
+
+      if (invalidItem) {
+        throw new Error(
+          "Check every invoice item. Description, quantity, price and tax must be valid."
+        );
+      }
+
+      // ----------------------------------------
+      // CREATE
+      // ----------------------------------------
 
       const response = await fetch(
         "/api/invoices",
@@ -1403,22 +1629,28 @@ function CreateInvoiceModal({
           },
           body: JSON.stringify({
             customer_id: customerId,
+
             due_date:
               dueDate || null,
-            notes: notes || null,
-            items: items.map((item) => ({
-              description:
-                item.description.trim(),
-              quantity: Number(
-                item.quantity
-              ),
-              unit_price: Number(
-                item.unit_price
-              ),
-              tax_rate: Number(
-                item.tax_rate
-              ),
-            })),
+
+            notes:
+              notes.trim() || null,
+
+            items: items.map(
+              (item) => ({
+                description:
+                  item.description.trim(),
+
+                quantity:
+                  Number(item.quantity),
+
+                unit_price:
+                  Number(item.unit_price),
+
+                tax_rate:
+                  Number(item.tax_rate),
+              })
+            ),
           }),
         }
       );
@@ -1445,259 +1677,438 @@ function CreateInvoiceModal({
     }
   };
 
+  // ==========================================
+  // UI
+  // ==========================================
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl dark:bg-gray-900">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
-          <div>
-            <h3 className="font-semibold text-gray-900 dark:text-white">
-              New Invoice
-            </h3>
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-gray-900">
 
-            <p className="mt-1 text-xs text-gray-500">
-              Create an invoice for a customer.
+        {/* HEADER */}
+
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Create invoice
+            </h2>
+
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Create an invoice for your customer.
             </p>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white"
+            className="rounded-lg px-2 py-1 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            Close
+            ✕
           </button>
         </div>
 
-        <div className="space-y-6 p-5">
-          {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
-              {error}
-            </div>
-          )}
+        {/* BODY */}
 
-          <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-              Customer
-            </label>
+        <div className="overflow-y-auto p-5">
+          <div className="space-y-6">
 
-            <select
-              value={customerId}
-              onChange={(e) =>
-                setCustomerId(
-                  e.target.value
-                )
-              }
-              className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            >
-              <option value="">
-                Select customer
-              </option>
+            {/* ERROR */}
 
-              {customers.map(
-                (customer) => (
-                  <option
-                    key={customer.id}
-                    value={customer.id}
-                  >
-                    {
-                      customer.company_name
-                    }
-                  </option>
-                )
-              )}
-            </select>
-          </div>
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-900/40 dark:bg-red-950/20 dark:text-red-400">
+                {error}
+              </div>
+            )}
 
-          <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-              Due date
-            </label>
+            {/* CUSTOMER */}
 
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) =>
-                setDueDate(
-                  e.target.value
-                )
-              }
-              className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            />
-          </div>
-
-          <div>
-            <div className="mb-3 flex items-center justify-between">
+            <div>
               <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                Items
+                Customer
               </label>
 
-              <button
-                type="button"
-                onClick={addItem}
-                className="text-xs font-medium text-gray-900 dark:text-white"
+              <select
+                value={customerId}
+                onChange={(e) =>
+                  setCustomerId(
+                    e.target.value
+                  )
+                }
+                disabled={
+                  loadingCustomers
+                }
+                className="mt-2 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
               >
-                + Add item
-              </button>
+                <option value="">
+                  {loadingCustomers
+                    ? "Loading customers..."
+                    : "Select customer"}
+                </option>
+
+                {customers.map(
+                  (customer) => (
+                    <option
+                      key={customer.id}
+                      value={customer.id}
+                    >
+                      {customer.company_name}
+                      {customer.contact_name
+                        ? ` — ${customer.contact_name}`
+                        : ""}
+                    </option>
+                  )
+                )}
+              </select>
             </div>
 
-            <div className="space-y-3">
-              {items.map(
-                (item, index) => (
-                  <div
-                    key={index}
-                    className="rounded-xl border border-gray-200 p-3 dark:border-gray-700"
-                  >
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input
-                        value={
-                          item.description
-                        }
-                        onChange={(e) =>
-                          updateItem(
-                            index,
-                            "description",
-                            e.target.value
-                          )
-                        }
-                        placeholder="Description"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      />
+            {/* DUE DATE */}
 
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={
-                          item.quantity
-                        }
-                        onChange={(e) =>
-                          updateItem(
-                            index,
-                            "quantity",
-                            e.target.value
-                          )
-                        }
-                        placeholder="Quantity"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      />
+            <div>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                Due date
+              </label>
 
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={
-                          item.unit_price
-                        }
-                        onChange={(e) =>
-                          updateItem(
-                            index,
-                            "unit_price",
-                            e.target.value
-                          )
-                        }
-                        placeholder="Unit price"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      />
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) =>
+                  setDueDate(
+                    e.target.value
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              />
+            </div>
 
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={
-                          item.tax_rate
-                        }
-                        onChange={(e) =>
-                          updateItem(
-                            index,
-                            "tax_rate",
-                            e.target.value
-                          )
-                        }
-                        placeholder="Tax %"
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-                      />
+            {/* ITEMS */}
+
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Invoice items
+                  </h3>
+
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Select a product/service or enter a custom item.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={addItem}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  <Plus size={14} />
+                  Add item
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                {items.map(
+                  (item, index) => (
+                    <div
+                      key={index}
+                      className="rounded-xl border border-gray-200 p-4 dark:border-gray-700"
+                    >
+                      <div className="space-y-4">
+
+                        {/* PRODUCT */}
+
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                            Product / Service
+                          </label>
+
+                          <select
+                            value={
+                              item.product_id
+                            }
+                            onChange={(e) =>
+                              selectProduct(
+                                index,
+                                e.target.value
+                              )
+                            }
+                            disabled={
+                              loadingProducts
+                            }
+                            className="mt-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                          >
+                            <option value="">
+                              {loadingProducts
+                                ? "Loading products..."
+                                : products.length ===
+                                    0
+                                  ? "No products yet — enter a custom item below"
+                                  : "Select product/service"}
+                            </option>
+
+                            {products.map(
+                              (product) => (
+                                <option
+                                  key={
+                                    product.id
+                                  }
+                                  value={
+                                    product.id
+                                  }
+                                >
+                                  {product.name}
+                                  {product.sku
+                                    ? ` (${product.sku})`
+                                    : ""}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </div>
+
+                        {/* DESCRIPTION */}
+
+                        <div>
+                          <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                            Description
+                          </label>
+
+                          <input
+                            value={
+                              item.description
+                            }
+                            onChange={(e) =>
+                              updateItem(
+                                index,
+                                "description",
+                                e.target.value
+                              )
+                            }
+                            placeholder="Description"
+                            className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                          />
+                        </div>
+
+                        {/* QUANTITY / PRICE / TAX */}
+
+                        <div className="grid gap-3 sm:grid-cols-3">
+
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                              Quantity
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0.01"
+                              step="0.01"
+                              value={
+                                item.quantity
+                              }
+                              onChange={(e) =>
+                                updateItem(
+                                  index,
+                                  "quantity",
+                                  e.target.value
+                                )
+                              }
+                              className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                              Unit price
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={
+                                item.unit_price
+                              }
+                              onChange={(e) =>
+                                updateItem(
+                                  index,
+                                  "unit_price",
+                                  e.target.value
+                                )
+                              }
+                              className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                              Tax rate %
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={
+                                item.tax_rate
+                              }
+                              onChange={(e) =>
+                                updateItem(
+                                  index,
+                                  "tax_rate",
+                                  e.target.value
+                                )
+                              }
+                              className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* LINE SUMMARY */}
+
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 px-3 py-3 dark:bg-gray-800/60">
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Line subtotal:{" "}
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              {money(
+                                getLineSubtotal(
+                                  item
+                                )
+                              )}
+                            </span>
+
+                            <span className="mx-2">
+                              +
+                            </span>
+
+                            Tax:{" "}
+                            <span className="font-medium text-gray-700 dark:text-gray-200">
+                              {money(
+                                getLineTax(
+                                  item
+                                )
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                            Line total:{" "}
+                            {money(
+                              getLineTotal(
+                                item
+                              )
+                            )}
+                          </div>
+                        </div>
+
+                        {/* REMOVE */}
+
+                        {items.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removeItem(
+                                index
+                              )
+                            }
+                            className="text-xs font-medium text-red-500 hover:text-red-600"
+                          >
+                            Remove item
+                          </button>
+                        )}
+                      </div>
                     </div>
-
-                    {items.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          removeItem(index)
-                        }
-                        className="mt-2 text-xs text-red-500"
-                      >
-                        Remove item
-                      </button>
-                    )}
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-              Notes
-            </label>
-
-            <textarea
-              value={notes}
-              onChange={(e) =>
-                setNotes(
-                  e.target.value
-                )
-              }
-              rows={3}
-              placeholder="Optional notes..."
-              className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-            />
-          </div>
-
-          <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800/60">
-            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
-              <span>Subtotal</span>
-              <span>
-                {money(subtotal)}
-              </span>
+                  )
+                )}
+              </div>
             </div>
 
-            <div className="mt-2 flex justify-between text-sm text-gray-600 dark:text-gray-300">
-              <span>Tax</span>
-              <span>
-                {money(tax)}
-              </span>
+            {/* NOTES */}
+
+            <div>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                Notes
+              </label>
+
+              <textarea
+                value={notes}
+                onChange={(e) =>
+                  setNotes(
+                    e.target.value
+                  )
+                }
+                rows={3}
+                placeholder="Optional notes."
+                className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              />
             </div>
 
-            <div className="mt-3 flex justify-between border-t border-gray-200 pt-3 text-sm font-semibold text-gray-900 dark:border-gray-700 dark:text-white">
-              <span>Total</span>
-              <span>
-                {money(total)}
-              </span>
+            {/* TOTALS */}
+
+            <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800/60">
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
+                <span>
+                  Subtotal
+                </span>
+
+                <span>
+                  {money(subtotal)}
+                </span>
+              </div>
+
+              <div className="mt-2 flex justify-between text-sm text-gray-600 dark:text-gray-300">
+                <span>
+                  Tax
+                </span>
+
+                <span>
+                  {money(tax)}
+                </span>
+              </div>
+
+              <div className="mt-3 flex justify-between border-t border-gray-200 pt-3 text-base font-semibold text-gray-900 dark:border-gray-700 dark:text-white">
+                <span>
+                  Total
+                </span>
+
+                <span>
+                  {money(total)}
+                </span>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <button
-              onClick={onClose}
-              className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200"
-            >
-              Cancel
-            </button>
+        {/* FOOTER */}
 
-            <button
-              onClick={submit}
-              disabled={saving}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-gray-900"
-            >
-              {saving && (
-                <Loader2
-                  size={16}
-                  className="animate-spin"
-                />
-              )}
-              Create invoice
-            </button>
-          </div>
+        <div className="flex flex-col-reverse gap-2 border-t border-gray-200 px-5 py-4 sm:flex-row sm:justify-end dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-700 dark:border-gray-700 dark:text-gray-200"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={submit}
+            disabled={
+              saving ||
+              loadingCustomers
+            }
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-gray-900"
+          >
+            {saving && (
+              <Loader2
+                size={16}
+                className="animate-spin"
+              />
+            )}
+
+            {saving
+              ? "Creating..."
+              : "Create invoice"}
+          </button>
         </div>
       </div>
     </div>
