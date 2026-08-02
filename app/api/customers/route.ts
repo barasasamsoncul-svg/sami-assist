@@ -44,9 +44,9 @@ export async function GET() {
       `
     );
 
-    return NextResponse.json(
-      result.rows
-    );
+   return NextResponse.json({
+  customers: result.rows,
+});
   } catch (error) {
     console.error(
       "Customers fetch error:",
