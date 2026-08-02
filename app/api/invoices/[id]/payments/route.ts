@@ -2,458 +2,148 @@ import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-type RouteContext = {
-  params: Promise<{
-    id: string;
-  }>;
-};
+type Context = { params: Promise<{ id: string }> };
 
-const ALLOWED_PAYMENT_STATUSES = [
-  "completed",
-  "pending",
-  "failed",
-  "refunded",
-];
+async function refreshInvoice(pool: any, invoiceId: string) {
+  const invoiceResult = await pool.query(
+    `SELECT id, total_amount, amount_paid, amount_due, status FROM invoices WHERE id = $1 FOR UPDATE`,
+    [invoiceId],
+  );
 
-const ALLOWED_PAYMENT_METHODS = [
-  "cash",
-  "mpesa",
-  "bank_transfer",
-  "card",
-  "cheque",
-  "other",
-];
+  if (invoiceResult.rowCount !== 1) return null;
 
-// ==========================================
-// GET PAYMENT HISTORY
-// ==========================================
+  const invoice = invoiceResult.rows[0];
+  const paymentResult = await pool.query(
+    `
+    SELECT COALESCE(SUM(amount), 0) AS paid
+    FROM payments
+    WHERE invoice_id = $1
+      AND status = 'completed'
+    `,
+    [invoiceId],
+  );
 
-export async function GET(
-  _req: Request,
-  context: RouteContext
-) {
+  const paid = Number(paymentResult.rows[0].paid || 0);
+  const total = Number(invoice.total_amount || 0);
+  const due = Math.max(total - paid, 0);
+
+  let status = invoice.status;
+  if (status !== "cancelled") {
+    if (due <= 0) status = "paid";
+    else if (paid > 0) status = "partial";
+    else if (status === "paid" || status === "partial") status = "sent";
+  }
+
+  await pool.query(
+    `
+    UPDATE invoices
+    SET amount_paid = $2,
+        amount_due = $3,
+        status = $4,
+        updated_at = NOW()
+    WHERE id = $1
+    `,
+    [invoiceId, paid.toFixed(2), due.toFixed(2), status],
+  );
+
+  return { paid, due, status };
+}
+
+export async function GET(_req: Request, context: Context) {
   try {
     const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    const { id } = await context.params;
 
-    const { pool } =
-      await getTenantDatabaseForUser(user.id);
-
-    const { id: invoiceId } =
-      await context.params;
-
-    const invoiceResult =
-      await pool.query(
-        `
-        SELECT
-          id,
-          invoice_number,
-          total_amount,
-          amount_paid,
-          amount_due,
-          status
-        FROM invoices
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [invoiceId]
-      );
-
-    if (invoiceResult.rowCount === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Invoice not found",
-        },
-        { status: 404 }
-      );
-    }
-
-    const paymentsResult =
-      await pool.query(
-        `
-        SELECT
-          id,
-          amount,
-          payment_method,
-          transaction_reference,
-          payment_date,
-          status,
-          notes,
-          created_at
-        FROM payments
-        WHERE invoice_id = $1
-        ORDER BY payment_date DESC, created_at DESC
-        `,
-        [invoiceId]
-      );
-
-    return NextResponse.json({
-      success: true,
-      invoice: invoiceResult.rows[0],
-      payments: paymentsResult.rows,
-    });
-  } catch (error) {
-    console.error(
-      "Get invoice payments API error:",
-      error
+    const result = await pool.query(
+      `SELECT * FROM payments WHERE invoice_id = $1 ORDER BY payment_date DESC`,
+      [id],
     );
 
+    return NextResponse.json({ payments: result.rows });
+  } catch (error) {
     return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load payments",
-      },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : "Failed to load payments" },
+      { status: 500 },
     );
   }
 }
 
-// ==========================================
-// RECORD PAYMENT
-// ==========================================
-
-export async function POST(
-  req: Request,
-  context: RouteContext
-) {
-  try {
+export async function POST(req: Request, context: Context) {
+  const client = await (async () => {
     const user = await getAuthenticatedUser();
+    if (!user) return null;
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    return pool.connect();
+  })();
 
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+  try {
+    if (!client) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { id: invoiceId } =
-      await context.params;
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    const { id } = await context.params;
     const body = await req.json();
 
-    const {
-      amount,
-      payment_method = "other",
-      transaction_reference,
-      payment_date,
-      status = "completed",
-      notes,
-    } = body;
+    const amount = Number(body.amount);
+    const method = String(body.payment_method || "other");
+    const reference = String(body.transaction_reference ?? "").trim() || null;
+    const notes = String(body.notes ?? "").trim() || null;
 
-    // ==========================================
-    // VALIDATE AMOUNT
-    // ==========================================
-
-    const paymentAmount = Number(amount);
-
-    if (
-      !Number.isFinite(paymentAmount) ||
-      paymentAmount <= 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Payment amount must be greater than zero",
-        },
-        { status: 400 }
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Payment amount must be greater than zero." }, { status: 400 });
     }
 
-    // ==========================================
-    // VALIDATE PAYMENT METHOD
-    // ==========================================
+    await client.query("BEGIN");
 
-    if (
-      !ALLOWED_PAYMENT_METHODS.includes(
-        payment_method
-      )
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid payment method",
-        },
-        { status: 400 }
-      );
-    }
+    const invoice = await client.query(
+      `SELECT id, total_amount, amount_paid, amount_due, status FROM invoices WHERE id = $1 FOR UPDATE`,
+      [id],
+    );
 
-    // ==========================================
-    // VALIDATE PAYMENT STATUS
-    // ==========================================
-
-    if (
-      !ALLOWED_PAYMENT_STATUSES.includes(
-        status
-      )
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Invalid payment status",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { pool } =
-      await getTenantDatabaseForUser(user.id);
-
-    const client = await pool.connect();
-
-    try {
-      await client.query("BEGIN");
-
-      // ==========================================
-      // LOCK INVOICE
-      // ==========================================
-
-      const invoiceResult =
-        await client.query(
-          `
-          SELECT
-            id,
-            invoice_number,
-            total_amount,
-            amount_paid,
-            amount_due,
-            status
-          FROM invoices
-          WHERE id = $1
-          FOR UPDATE
-          `,
-          [invoiceId]
-        );
-
-      if (invoiceResult.rowCount === 0) {
-        await client.query("ROLLBACK");
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Invoice not found",
-          },
-          { status: 404 }
-        );
-      }
-
-      const invoice =
-        invoiceResult.rows[0];
-
-      // ==========================================
-      // DON'T ACCEPT PAYMENTS ON CANCELLED INVOICES
-      // ==========================================
-
-      if (
-        invoice.status === "cancelled"
-      ) {
-        await client.query("ROLLBACK");
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Cannot record a payment against a cancelled invoice",
-          },
-          { status: 400 }
-        );
-      }
-
-      // ==========================================
-      // DON'T OVERPAY THE INVOICE
-      // ==========================================
-
-      const currentAmountDue =
-        Number(invoice.amount_due);
-
-      if (
-        paymentAmount >
-        currentAmountDue
-      ) {
-        await client.query("ROLLBACK");
-
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "Payment cannot be greater than the outstanding invoice balance",
-            amount_due: currentAmountDue,
-            attempted_payment:
-              paymentAmount,
-          },
-          { status: 400 }
-        );
-      }
-
-      // ==========================================
-      // INSERT PAYMENT
-      // ==========================================
-
-      const paymentResult =
-        await client.query(
-          `
-          INSERT INTO payments (
-            invoice_id,
-            amount,
-            payment_method,
-            transaction_reference,
-            payment_date,
-            status,
-            notes
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            COALESCE($5::timestamptz, NOW()),
-            $6,
-            $7
-          )
-          RETURNING *
-          `,
-          [
-            invoiceId,
-            paymentAmount,
-            payment_method,
-            transaction_reference
-              ? String(
-                  transaction_reference
-                ).trim()
-              : null,
-            payment_date || null,
-            status,
-            notes
-              ? String(notes).trim()
-              : null,
-          ]
-        );
-
-      // ==========================================
-      // RECALCULATE COMPLETED PAYMENTS
-      // ==========================================
-
-      const totalsResult =
-        await client.query(
-          `
-          SELECT
-            COALESCE(
-              SUM(
-                CASE
-                  WHEN status = 'completed'
-                  THEN amount
-                  ELSE 0
-                END
-              ),
-              0
-            ) AS amount_paid
-          FROM payments
-          WHERE invoice_id = $1
-          `,
-          [invoiceId]
-        );
-
-      const amountPaid =
-        Number(
-          totalsResult.rows[0].amount_paid
-        );
-
-      const totalAmount =
-        Number(invoice.total_amount);
-
-      const amountDue =
-        Math.max(
-          totalAmount - amountPaid,
-          0
-        );
-
-      // ==========================================
-      // DETERMINE INVOICE STATUS
-      // ==========================================
-
-      let invoiceStatus =
-        invoice.status;
-
-      if (amountDue <= 0) {
-        invoiceStatus = "paid";
-      } else if (amountPaid > 0) {
-        invoiceStatus = "partial";
-      } else if (
-        invoice.status === "paid" ||
-        invoice.status === "partial"
-      ) {
-        invoiceStatus = "sent";
-      }
-
-      // ==========================================
-      // UPDATE INVOICE BALANCE
-      // ==========================================
-
-      const updatedInvoiceResult =
-        await client.query(
-          `
-          UPDATE invoices
-          SET
-            amount_paid = $1,
-            amount_due = $2,
-            status = $3,
-            updated_at = NOW()
-          WHERE id = $4
-          RETURNING *
-          `,
-          [
-            amountPaid,
-            amountDue,
-            invoiceStatus,
-            invoiceId,
-          ]
-        );
-
-      await client.query("COMMIT");
-
-      return NextResponse.json(
-        {
-          success: true,
-          payment:
-            paymentResult.rows[0],
-          invoice:
-            updatedInvoiceResult.rows[0],
-        },
-        { status: 201 }
-      );
-    } catch (error) {
+    if (invoice.rowCount !== 1) {
       await client.query("ROLLBACK");
-      throw error;
-    } finally {
-      client.release();
+      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
     }
-  } catch (error) {
-    console.error(
-      "Record invoice payment API error:",
-      error
+
+    if (invoice.rows[0].status === "cancelled") {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Cancelled invoices cannot receive payments." }, { status: 400 });
+    }
+
+    const due = Number(invoice.rows[0].amount_due);
+    if (amount > due + 0.005) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: `Payment exceeds the outstanding balance of ${due.toFixed(2)}.` }, { status: 400 });
+    }
+
+    await client.query(
+      `
+      INSERT INTO payments (
+        invoice_id, amount, payment_method,
+        transaction_reference, payment_date, status, notes
+      )
+      VALUES ($1, $2, $3, $4, COALESCE($5::timestamptz, NOW()), 'completed', $6)
+      `,
+      [id, amount.toFixed(2), method, reference, body.payment_date || null, notes],
     );
 
+    const totals = await refreshInvoice(client, id);
+    await client.query("COMMIT");
+
+    return NextResponse.json({ success: true, totals }, { status: 201 });
+  } catch (error) {
+    try { await client?.query("ROLLBACK"); } catch {}
+    console.error("Payment POST error:", error);
     return NextResponse.json(
-      {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to record payment",
-      },
-      { status: 500 }
+      { error: error instanceof Error ? error.message : "Failed to record payment" },
+      { status: 500 },
     );
+  } finally {
+    client?.release();
   }
 }
