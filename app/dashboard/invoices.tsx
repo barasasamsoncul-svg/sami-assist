@@ -136,8 +136,12 @@ function statusClasses(status: InvoiceStatus) {
 }
 
 function isActuallyOverdue(invoice: Invoice) {
-  if (!invoice.due_date) return false;
+  // Draft invoices are never overdue.
+  if (invoice.status === "draft") {
+    return false;
+  }
 
+  // Paid and cancelled invoices are never overdue.
   if (
     invoice.status === "paid" ||
     invoice.status === "cancelled"
@@ -145,11 +149,32 @@ function isActuallyOverdue(invoice: Invoice) {
     return false;
   }
 
-  return (
-    Number(invoice.amount_due) > 0 &&
-    new Date(invoice.due_date) <
-      new Date()
+  // No due date means there is nothing to mark overdue.
+  if (!invoice.due_date) {
+    return false;
+  }
+
+  // An invoice with no outstanding balance cannot be overdue.
+  if (Number(invoice.amount_due) <= 0) {
+    return false;
+  }
+
+  // Compare calendar dates, not timestamps.
+  // This prevents an invoice due today from being
+  // incorrectly marked overdue at midnight.
+  const today = new Date();
+
+  const todayDate = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
   );
+
+  const dueDate = new Date(
+    `${invoice.due_date}T00:00:00`
+  );
+
+  return dueDate < todayDate;
 }
 
 export default function Invoices() {
