@@ -96,6 +96,7 @@ export default function ChatWindow({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [hasStarted, setHasStarted] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -275,7 +276,7 @@ async function loadMessages(id: string) {
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
-
+    setHasStarted(true);
     const prompt = input.trim();
     const userMessage: Message = {
       role: "user",

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
+import Invoices from "@/app/dashboard/invoices";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -1071,9 +1072,7 @@ const HistorySidebar = () => (
             <FileText size={28} className="text-blue-600 dark:text-blue-400" />
           </div>
           <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">Invoices</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
-            Invoice management coming soon.
-          </p>
+          <Invoices />
         </div>
       </div>
     </div>
