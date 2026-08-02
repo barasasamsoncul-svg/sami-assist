@@ -8,45 +8,41 @@ import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 export async function GET() {
   try {
-    // ==========================================
-    // 1. GET LOGGED-IN USER
-    // ==========================================
-
     const user = await getAuthenticatedUser();
 
     if (!user) {
       return NextResponse.json(
-        {
-          error: "Unauthorized",
-        },
-        {
-          status: 401,
-        }
+        { error: "Unauthorized" },
+        { status: 401 }
       );
     }
-
-    // ==========================================
-    // 2. CONNECT TO USER'S TENANT DATABASE
-    // ==========================================
 
     const { pool } =
       await getTenantDatabaseForUser(user.id);
 
-    // ==========================================
-    // 3. GET INVOICES
-    // ==========================================
-
-    const result = await pool.query(
-      `
+    const result = await pool.query(`
       SELECT
-        i.*,
+        i.id,
+        i.invoice_number,
+        i.issue_date,
+        i.due_date,
+        i.status,
+        i.subtotal,
+        i.tax_amount,
+        i.total_amount,
+        i.amount_paid,
+        i.amount_due,
+        i.notes,
+        i.created_at,
+        i.updated_at,
 
         json_build_object(
           'id', c.id,
           'company_name', c.company_name,
           'contact_name', c.contact_name,
           'email', c.email,
-          'phone', c.phone
+          'phone', c.phone,
+          'address', c.address
         ) AS customer,
 
         COALESCE(
@@ -57,9 +53,11 @@ export async function GET() {
                 'description', ii.description,
                 'quantity', ii.quantity,
                 'unit_price', ii.unit_price,
-                'total', ii.total
+                'tax_rate', ii.tax_rate,
+                'tax_amount', ii.tax_amount,
+                'line_total', ii.line_total
               )
-              ORDER BY ii.id
+              ORDER BY ii.created_at ASC
             )
             FROM invoice_items ii
             WHERE ii.invoice_id = i.id
@@ -69,19 +67,16 @@ export async function GET() {
 
       FROM invoices i
 
-      LEFT JOIN customers c
+      INNER JOIN customers c
         ON c.id = i.customer_id
 
-      WHERE i.user_id = $1
-
       ORDER BY i.created_at DESC
-      `,
-      [user.id]
-    );
+    `);
 
-    return NextResponse.json(
-      result.rows
-    );
+    return NextResponse.json({
+      success: true,
+      invoices: result.rows,
+    });
   } catch (error) {
     console.error(
       "Invoices GET API error:",
@@ -90,14 +85,13 @@ export async function GET() {
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message
             : "Failed to load invoices",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
@@ -106,44 +100,42 @@ export async function GET() {
 // CREATE INVOICE
 // ==========================================
 
-export async function POST(
-  req: Request
-) {
+export async function POST(req: Request) {
   try {
-    // ==========================================
-    // 1. READ REQUEST
-    // ==========================================
+    const user = await getAuthenticatedUser();
 
-    const body =
-      await req.json();
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await req.json();
 
     const {
       customer_id,
       issue_date,
       due_date,
-      tax,
       notes,
       items,
     } = body;
 
     // ==========================================
-    // 2. VALIDATE CUSTOMER
+    // VALIDATE CUSTOMER
     // ==========================================
 
     if (!customer_id) {
       return NextResponse.json(
         {
-          error:
-            "Customer is required",
+          error: "Customer is required",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
     // ==========================================
-    // 3. VALIDATE ITEMS
+    // VALIDATE ITEMS
     // ==========================================
 
     if (
@@ -155,375 +147,396 @@ export async function POST(
           error:
             "At least one invoice item is required",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
     // ==========================================
-    // 4. GET LOGGED-IN USER
-    // ==========================================
-
-    const user =
-      await getAuthenticatedUser();
-
-    if (!user) {
-      return NextResponse.json(
-        {
-          error:
-            "Unauthorized",
-        },
-        {
-          status: 401,
-        }
-      );
-    }
-
-    // ==========================================
-    // 5. CONNECT TO TENANT DATABASE
+    // CONNECT TO TENANT DATABASE
     // ==========================================
 
     const { pool } =
-      await getTenantDatabaseForUser(
-        user.id
-      );
+      await getTenantDatabaseForUser(user.id);
 
-    // ==========================================
-    // 6. VERIFY CUSTOMER
-    // ==========================================
-
-    const customerResult =
-      await pool.query(
-        `
-        SELECT id
-        FROM customers
-        WHERE id = $1
-          AND user_id = $2
-        LIMIT 1
-        `,
-        [
-          customer_id,
-          user.id,
-        ]
-      );
-
-    if (
-      customerResult.rowCount === 0
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Customer not found",
-        },
-        {
-          status: 404,
-        }
-      );
-    }
-
-    // ==========================================
-    // 7. PREPARE INVOICE ITEMS
-    // ==========================================
-
-    const invoiceItems =
-      items.map(
-        (item: any) => {
-          const quantity =
-            Number(
-              item.quantity
-            ) || 0;
-
-          const unitPrice =
-            Number(
-              item.unit_price
-            ) || 0;
-
-          const total =
-            quantity *
-            unitPrice;
-
-          return {
-            description:
-              String(
-                item.description ||
-                  ""
-              ).trim(),
-
-            quantity,
-
-            unit_price:
-              unitPrice,
-
-            total,
-          };
-        }
-      );
-
-    // ==========================================
-    // 8. VALIDATE ITEMS
-    // ==========================================
-
-    const invalidItem =
-      invoiceItems.find(
-        (item) =>
-          !item.description ||
-          item.quantity <= 0 ||
-          item.unit_price < 0
-      );
-
-    if (invalidItem) {
-      return NextResponse.json(
-        {
-          error:
-            "Each invoice item must have a description, valid quantity, and valid price",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    // ==========================================
-    // 9. CALCULATE TOTALS
-    // ==========================================
-
-    const subtotal =
-      invoiceItems.reduce(
-        (
-          sum: number,
-          item: {
-            total: number;
-          }
-        ) =>
-          sum + item.total,
-        0
-      );
-
-    const taxAmount =
-      Number(tax) || 0;
-
-    if (taxAmount < 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Tax cannot be negative",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const total =
-      subtotal +
-      taxAmount;
-
-    // ==========================================
-    // 10. GENERATE INVOICE NUMBER
-    // ==========================================
-
-    const countResult =
-      await pool.query(
-        `
-        SELECT COUNT(*)::int AS count
-        FROM invoices
-        WHERE user_id = $1
-        `,
-        [user.id]
-      );
-
-    const invoiceCount =
-      Number(
-        countResult.rows[0]?.count
-      ) || 0;
-
-    const invoiceNumber =
-      `INV-${String(
-        invoiceCount + 1
-      ).padStart(
-        4,
-        "0"
-      )}`;
-
-    // ==========================================
-    // 11. CREATE INVOICE
-    // ==========================================
-
-    const invoiceResult =
-      await pool.query(
-        `
-        INSERT INTO invoices
-        (
-          user_id,
-          customer_id,
-          invoice_number,
-          issue_date,
-          due_date,
-          status,
-          subtotal,
-          tax,
-          total,
-          amount_paid,
-          notes
-        )
-        VALUES
-        (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11
-        )
-        RETURNING *
-        `,
-        [
-          user.id,
-          customer_id,
-          invoiceNumber,
-          issue_date ||
-            new Date()
-              .toISOString()
-              .split("T")[0],
-          due_date ||
-            null,
-          "draft",
-          subtotal,
-          taxAmount,
-          total,
-          0,
-          notes?.trim() ||
-            null,
-        ]
-      );
-
-    const invoice =
-      invoiceResult.rows[0];
-
-    // ==========================================
-    // 12. CREATE INVOICE ITEMS
-    // ==========================================
+    const client = await pool.connect();
 
     try {
-      for (
-        const item of invoiceItems
-      ) {
-        await pool.query(
+      // ==========================================
+      // START TRANSACTION
+      // ==========================================
+
+      await client.query("BEGIN");
+
+      // ==========================================
+      // VERIFY CUSTOMER
+      // ==========================================
+
+      const customerResult =
+        await client.query(
           `
-          INSERT INTO invoice_items
-          (
+          SELECT
+            id,
+            company_name,
+            contact_name,
+            email,
+            phone,
+            address
+          FROM customers
+          WHERE id = $1
+          LIMIT 1
+          `,
+          [customer_id]
+        );
+
+      if (customerResult.rowCount === 0) {
+        await client.query("ROLLBACK");
+
+        return NextResponse.json(
+          {
+            error: "Customer not found",
+          },
+          { status: 404 }
+        );
+      }
+
+      // ==========================================
+      // PREPARE ITEMS
+      // ==========================================
+
+      const preparedItems = [];
+
+      for (const item of items) {
+        const description = String(
+          item.description ?? ""
+        ).trim();
+
+        const quantity =
+          Number(item.quantity);
+
+        const unitPrice =
+          Number(item.unit_price);
+
+        const taxRate =
+          Number(item.tax_rate ?? 0);
+
+        if (!description) {
+          await client.query("ROLLBACK");
+
+          return NextResponse.json(
+            {
+              error:
+                "Each invoice item requires a description",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (
+          !Number.isFinite(quantity) ||
+          quantity <= 0
+        ) {
+          await client.query("ROLLBACK");
+
+          return NextResponse.json(
+            {
+              error:
+                "Each invoice item must have a quantity greater than zero",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (
+          !Number.isFinite(unitPrice) ||
+          unitPrice < 0
+        ) {
+          await client.query("ROLLBACK");
+
+          return NextResponse.json(
+            {
+              error:
+                "Each invoice item must have a valid unit price",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (
+          !Number.isFinite(taxRate) ||
+          taxRate < 0 ||
+          taxRate > 100
+        ) {
+          await client.query("ROLLBACK");
+
+          return NextResponse.json(
+            {
+              error:
+                "Tax rate must be between 0 and 100",
+            },
+            { status: 400 }
+          );
+        }
+
+        const lineSubtotal =
+          quantity * unitPrice;
+
+        const lineTax =
+          lineSubtotal *
+          (taxRate / 100);
+
+        const lineTotal =
+          lineSubtotal + lineTax;
+
+        preparedItems.push({
+          description,
+          quantity,
+          unitPrice,
+          taxRate,
+          taxAmount: lineTax,
+          lineTotal,
+        });
+      }
+
+      // ==========================================
+      // CALCULATE INVOICE TOTALS
+      // ==========================================
+
+      const subtotal =
+        preparedItems.reduce(
+          (sum, item) =>
+            sum + item.quantity * item.unitPrice,
+          0
+        );
+
+      const taxAmount =
+        preparedItems.reduce(
+          (sum, item) =>
+            sum + item.taxAmount,
+          0
+        );
+
+      const totalAmount =
+        subtotal + taxAmount;
+
+      const amountPaid = 0;
+
+      const amountDue =
+        totalAmount - amountPaid;
+
+      // ==========================================
+      // GENERATE INVOICE NUMBER
+      // ==========================================
+
+      const numberResult =
+        await client.query(`
+          SELECT invoice_number
+          FROM invoices
+          ORDER BY created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `);
+
+      let nextNumber = 1;
+
+     if ((numberResult.rowCount ?? 0) > 0) {
+        const latestNumber =
+          String(
+            numberResult.rows[0]
+              .invoice_number
+          );
+
+        const match =
+          latestNumber.match(
+            /^INV-(\d+)$/
+          );
+
+        if (match) {
+          nextNumber =
+            Number(match[1]) + 1;
+        }
+      }
+
+      const invoiceNumber =
+        `INV-${String(
+          nextNumber
+        ).padStart(4, "0")}`;
+
+      // ==========================================
+      // CREATE INVOICE
+      // ==========================================
+
+      const invoiceResult =
+        await client.query(
+          `
+          INSERT INTO invoices (
+            customer_id,
+            invoice_number,
+            issue_date,
+            due_date,
+            status,
+            subtotal,
+            tax_amount,
+            total_amount,
+            amount_paid,
+            amount_due,
+            notes
+          )
+          VALUES (
+            $1,
+            $2,
+            COALESCE($3::date, CURRENT_DATE),
+            $4,
+            'draft',
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10
+          )
+          RETURNING *
+          `,
+          [
+            customer_id,
+            invoiceNumber,
+            issue_date || null,
+            due_date || null,
+            subtotal,
+            taxAmount,
+            totalAmount,
+            amountPaid,
+            amountDue,
+            notes
+              ? String(notes).trim()
+              : null,
+          ]
+        );
+
+      const invoice =
+        invoiceResult.rows[0];
+
+      // ==========================================
+      // CREATE INVOICE ITEMS
+      // ==========================================
+
+      for (const item of preparedItems) {
+        await client.query(
+          `
+          INSERT INTO invoice_items (
             invoice_id,
             description,
             quantity,
             unit_price,
-            total
+            tax_rate,
+            tax_amount,
+            line_total
           )
-          VALUES
-          (
+          VALUES (
             $1,
             $2,
             $3,
             $4,
-            $5
+            $5,
+            $6,
+            $7
           )
           `,
           [
             invoice.id,
             item.description,
             item.quantity,
-            item.unit_price,
-            item.total,
+            item.unitPrice,
+            item.taxRate,
+            item.taxAmount,
+            item.lineTotal,
           ]
         );
       }
-    } catch (itemsError) {
-      console.error(
-        "Invoice items creation error:",
-        itemsError
-      );
 
-      // Remove invoice if
-      // item creation failed.
-      await pool.query(
-        `
-        DELETE FROM invoices
-        WHERE id = $1
-          AND user_id = $2
-        `,
-        [
-          invoice.id,
-          user.id,
-        ]
-      );
+      // ==========================================
+      // COMMIT
+      // ==========================================
 
-      throw itemsError;
-    }
+      await client.query("COMMIT");
 
-    // ==========================================
-    // 13. GET COMPLETE INVOICE
-    // ==========================================
+      // ==========================================
+      // RETURN COMPLETE INVOICE
+      // ==========================================
 
-    const completeResult =
-      await pool.query(
-        `
-        SELECT
-          i.*,
+      const completeResult =
+        await pool.query(
+          `
+          SELECT
+            i.id,
+            i.invoice_number,
+            i.issue_date,
+            i.due_date,
+            i.status,
+            i.subtotal,
+            i.tax_amount,
+            i.total_amount,
+            i.amount_paid,
+            i.amount_due,
+            i.notes,
+            i.created_at,
+            i.updated_at,
 
-          json_build_object(
-            'id', c.id,
-            'company_name', c.company_name,
-            'contact_name', c.contact_name,
-            'email', c.email,
-            'phone', c.phone
-          ) AS customer,
+            json_build_object(
+              'id', c.id,
+              'company_name', c.company_name,
+              'contact_name', c.contact_name,
+              'email', c.email,
+              'phone', c.phone,
+              'address', c.address
+            ) AS customer,
 
-          COALESCE(
-            (
-              SELECT json_agg(
-                json_build_object(
-                  'id', ii.id,
-                  'description', ii.description,
-                  'quantity', ii.quantity,
-                  'unit_price', ii.unit_price,
-                  'total', ii.total
+            COALESCE(
+              (
+                SELECT json_agg(
+                  json_build_object(
+                    'id', ii.id,
+                    'description', ii.description,
+                    'quantity', ii.quantity,
+                    'unit_price', ii.unit_price,
+                    'tax_rate', ii.tax_rate,
+                    'tax_amount', ii.tax_amount,
+                    'line_total', ii.line_total
+                  )
+                  ORDER BY ii.created_at ASC
                 )
-                ORDER BY ii.id
-              )
-              FROM invoice_items ii
-              WHERE ii.invoice_id = i.id
-            ),
-            '[]'::json
-          ) AS invoice_items
+                FROM invoice_items ii
+                WHERE ii.invoice_id = i.id
+              ),
+              '[]'::json
+            ) AS invoice_items
 
-        FROM invoices i
+          FROM invoices i
 
-        LEFT JOIN customers c
-          ON c.id = i.customer_id
+          INNER JOIN customers c
+            ON c.id = i.customer_id
 
-        WHERE i.id = $1
-          AND i.user_id = $2
+          WHERE i.id = $1
 
-        LIMIT 1
-        `,
-        [
-          invoice.id,
-          user.id,
-        ]
+          LIMIT 1
+          `,
+          [invoice.id]
+        );
+
+      return NextResponse.json(
+        {
+          success: true,
+          invoice:
+            completeResult.rows[0] ||
+            invoice,
+        },
+        { status: 201 }
       );
-
-    return NextResponse.json(
-      completeResult.rows[0] ||
-        invoice,
-      {
-        status: 201,
-      }
-    );
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error(
       "Create invoice API error:",
@@ -532,14 +545,13 @@ export async function POST(
 
     return NextResponse.json(
       {
+        success: false,
         error:
           error instanceof Error
             ? error.message
             : "Internal Server Error",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
