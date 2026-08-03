@@ -31,13 +31,14 @@ export async function POST(request: NextRequest) {
       fullName,
     });
 
-    const result = await provisionBusiness({
-      businessName,
-      businessSlug,
-      ownerUserId: user.userId,
-      email,
-      phone,
-    });
+ const result = await provisionBusiness({
+  businessName,
+  businessSlug,
+  ownerUserId: user.userId,
+  email,
+  phone,
+  appKeys: [],
+});
 
     return NextResponse.json(
       {
