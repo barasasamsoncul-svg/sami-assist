@@ -1,44 +1,51 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { registerUser } from "@/lib/user-registration";
-import { provisionBusiness } from "@/lib/provision-business";
 
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
+    const body = await req.json();
 
     const {
       email,
       password,
       fullName,
-      businessName,
-      businessSlug,
-      phone,
     } = body;
 
-    if (!businessName) {
+    if (!fullName?.trim()) {
       return NextResponse.json(
         {
           success: false,
-          error: "Business name is required.",
+          error: "Full name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!email?.trim()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Email is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!password) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Password is required.",
         },
         { status: 400 }
       );
     }
 
     const user = await registerUser({
-      email,
+      email: email.trim(),
       password,
-      fullName,
+      fullName: fullName.trim(),
     });
-
- const result = await provisionBusiness({
-  businessName,
-  businessSlug,
-  ownerUserId: user.userId,
-  email,
-  phone,
-  appKeys: [],
-});
 
     return NextResponse.json(
       {
@@ -48,19 +55,11 @@ export async function POST(request: NextRequest) {
           email: user.email,
           fullName: user.fullName,
         },
-        business: {
-          id: result.businessId,
-          name: businessName,
-          databaseName: result.databaseName,
-        },
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error(
-      "Registration and provisioning error:",
-      error
-    );
+    console.error("Registration error:", error);
 
     return NextResponse.json(
       {
@@ -70,7 +69,7 @@ export async function POST(request: NextRequest) {
             ? error.message
             : "Registration failed.",
       },
-      { status: 400 }
+      { status: 500 }
     );
   }
 }
