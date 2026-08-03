@@ -4,6 +4,7 @@ import {
   createTenantDatabase,
   initializeTenantDatabase,
 } from "./database-provisioning";
+import { saveEnabledApps } from "./enabled-apps";
 
 interface ProvisionBusinessInput {
   businessName: string;
@@ -11,6 +12,8 @@ interface ProvisionBusinessInput {
   ownerUserId: string;
   email?: string;
   phone?: string;
+  businessType?: string;
+  appKeys: unknown;
 }
 
 export async function provisionBusiness({
@@ -19,6 +22,8 @@ export async function provisionBusiness({
   ownerUserId,
   email,
   phone,
+  businessType,
+  appKeys,
 }: ProvisionBusinessInput) {
   const businessId = randomUUID();
 
@@ -75,17 +80,13 @@ export async function provisionBusiness({
     // STEP 2: Create the tenant database
     // ===================================================
 
-    await createTenantDatabase(
-      databaseName
-    );
+    await createTenantDatabase(databaseName);
 
     // ===================================================
     // STEP 3: Initialize the tenant database
     // ===================================================
 
-    await initializeTenantDatabase(
-      databaseName
-    );
+    await initializeTenantDatabase(databaseName);
 
     // ===================================================
     // STEP 4: Register tenant database
@@ -156,6 +157,15 @@ export async function provisionBusiness({
     );
 
     // ===================================================
+    // STEP 7: Save selected SaMi apps
+    // ===================================================
+
+    const enabledApps = await saveEnabledApps(
+      businessId,
+      appKeys
+    );
+
+    // ===================================================
     // SUCCESS
     // ===================================================
 
@@ -163,6 +173,8 @@ export async function provisionBusiness({
       success: true,
       businessId,
       databaseName,
+      businessType: businessType || null,
+      appKeys: enabledApps,
     };
   } catch (error) {
     console.error(
@@ -173,10 +185,10 @@ export async function provisionBusiness({
     // If provisioning fails after the business record
     // was created, remove the business record.
     //
-    // Because business_users, database_registry,
-    // and subscriptions reference the business with
-    // ON DELETE CASCADE, this cleans up those records
-    // as well if they were created.
+    // business_users, database_registry,
+    // subscriptions and business_apps reference
+    // the business and are cleaned up by ON DELETE CASCADE.
+
     await postgresAdmin.query(
       `
       DELETE FROM businesses

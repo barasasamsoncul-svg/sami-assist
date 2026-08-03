@@ -1,0 +1,2136 @@
+
+
+========================================
+FILE: lib\sami_tenant_schema.sql
+========================================
+
+--
+-- PostgreSQL database dump
+--
+
+
+
+-- Dumped from database version 18.4
+-- Dumped by pg_dump version 18.4
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: ai_memory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.ai_memory (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    memory_type character varying(100) NOT NULL,
+    content text NOT NULL,
+    source_type character varying(100),
+    source_id uuid,
+    importance integer DEFAULT 5 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ai_memory_importance_check CHECK (((importance >= 1) AND (importance <= 10)))
+);
+
+
+--
+-- Name: conversations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    title VARCHAR(255),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+--
+-- Name: customers; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.customers (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_name character varying(255) NOT NULL,
+    contact_name character varying(255),
+    email character varying(255),
+    phone character varying(50),
+    address text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: documents; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.documents (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    file_name character varying(255) NOT NULL,
+    file_type character varying(100),
+    file_size bigint,
+    storage_path text NOT NULL,
+    uploaded_by uuid,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: employees; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employees (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    employee_number character varying(100),
+    full_name character varying(255) NOT NULL,
+    email character varying(255),
+    phone character varying(50),
+    job_title character varying(255),
+    department character varying(255),
+    employment_status character varying(50) DEFAULT 'active'::character varying NOT NULL,
+    hire_date date,
+    salary numeric(15,2),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: inventory; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.inventory (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    product_id uuid NOT NULL,
+    quantity numeric(15,2) DEFAULT 0 NOT NULL,
+    reorder_level numeric(15,2) DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: invoice_items; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoice_items (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    invoice_id uuid NOT NULL,
+    description text NOT NULL,
+    quantity numeric(15,2) DEFAULT 1 NOT NULL,
+    unit_price numeric(15,2) DEFAULT 0 NOT NULL,
+    tax_rate numeric(5,2) DEFAULT 0 NOT NULL,
+    tax_amount numeric(15,2) DEFAULT 0 NOT NULL,
+    line_total numeric(15,2) DEFAULT 0 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: invoices; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.invoices (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    customer_id uuid NOT NULL,
+    invoice_number character varying(100) NOT NULL,
+    issue_date date DEFAULT CURRENT_DATE NOT NULL,
+    due_date date,
+    status character varying(50) DEFAULT 'draft'::character varying NOT NULL,
+    subtotal numeric(15,2) DEFAULT 0 NOT NULL,
+    tax_amount numeric(15,2) DEFAULT 0 NOT NULL,
+    total_amount numeric(15,2) DEFAULT 0 NOT NULL,
+    amount_paid numeric(15,2) DEFAULT 0 NOT NULL,
+    amount_due numeric(15,2) DEFAULT 0 NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: messages; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.messages (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    conversation_id uuid NOT NULL,
+    role character varying(50) NOT NULL,
+    content text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: payments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.payments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    invoice_id uuid NOT NULL,
+    amount numeric(15,2) NOT NULL,
+    payment_method character varying(50) DEFAULT 'other'::character varying NOT NULL,
+    transaction_reference character varying(255),
+    payment_date timestamp with time zone DEFAULT now() NOT NULL,
+    status character varying(50) DEFAULT 'completed'::character varying NOT NULL,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: products; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.products (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    sku character varying(100),
+    product_type character varying(50) DEFAULT 'service'::character varying NOT NULL,
+    unit_price numeric(15,2) DEFAULT 0 NOT NULL,
+    tax_rate numeric(5,2) DEFAULT 0 NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: ai_memory ai_memory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.ai_memory
+    ADD CONSTRAINT ai_memory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: conversations conversations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.conversations
+    ADD CONSTRAINT conversations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customers customers_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.customers
+    ADD CONSTRAINT customers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: documents documents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.documents
+    ADD CONSTRAINT documents_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employees employees_employee_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_employee_number_key UNIQUE (employee_number);
+
+
+--
+-- Name: employees employees_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory inventory_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory
+    ADD CONSTRAINT inventory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: inventory inventory_product_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory
+    ADD CONSTRAINT inventory_product_id_key UNIQUE (product_id);
+
+
+--
+-- Name: invoice_items invoice_items_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_items
+    ADD CONSTRAINT invoice_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: invoices invoices_invoice_number_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_invoice_number_key UNIQUE (invoice_number);
+
+
+--
+-- Name: invoices invoices_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payments payments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: products products_sku_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_sku_key UNIQUE (sku);
+
+
+--
+-- Name: inventory inventory_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.inventory
+    ADD CONSTRAINT inventory_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id) ON DELETE CASCADE;
+
+
+--
+-- Name: invoice_items invoice_items_invoice_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoice_items
+    ADD CONSTRAINT invoice_items_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES public.invoices(id) ON DELETE CASCADE;
+
+
+--
+-- Name: invoices invoices_customer_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.invoices
+    ADD CONSTRAINT invoices_customer_id_fkey FOREIGN KEY (customer_id) REFERENCES public.customers(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: messages messages_conversation_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.messages
+    ADD CONSTRAINT messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: payments payments_invoice_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.payments
+    ADD CONSTRAINT payments_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES public.invoices(id) ON DELETE RESTRICT;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
+
+
+
+
+========================================
+FILE: lib\tenant-db.ts
+========================================
+
+import { Pool } from "pg";
+import { postgresAdmin } from "./postgres-admin";
+
+const tenantPools = new Map<string, Pool>();
+
+export async function getTenantDatabaseForUser(
+  userId: string
+) {
+  const result = await postgresAdmin.query(
+    `
+    SELECT
+      b.id AS business_id,
+      b.name AS business_name,
+      b.slug AS business_slug,
+      b.status AS business_status,
+      dr.database_name,
+      dr.database_host,
+      dr.database_port,
+      dr.database_user,
+      dr.database_password_encrypted,
+      dr.status AS database_status
+    FROM business_users bu
+    INNER JOIN businesses b
+      ON b.id = bu.business_id
+    INNER JOIN database_registry dr
+      ON dr.business_id = b.id
+    WHERE bu.user_id = $1
+      AND b.status = 'active'
+      AND dr.status = 'active'
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error(
+      "No active business or tenant database is assigned to this user."
+    );
+  }
+
+  const tenant = result.rows[0];
+
+  const existingPool = tenantPools.get(
+    tenant.database_name
+  );
+
+  if (existingPool) {
+    return {
+      pool: existingPool,
+      business: {
+        id: tenant.business_id,
+        name: tenant.business_name,
+        slug: tenant.business_slug,
+      },
+      databaseName: tenant.database_name,
+    };
+  }
+
+  const pool = new Pool({
+    host: tenant.database_host,
+    port: Number(tenant.database_port),
+    user: tenant.database_user,
+    password:
+      tenant.database_password_encrypted,
+    database: tenant.database_name,
+
+    ssl: {
+      rejectUnauthorized: false,
+    },
+
+    max: 10,
+
+    idleTimeoutMillis: 30_000,
+
+    connectionTimeoutMillis: 10_000,
+  });
+
+  tenantPools.set(
+    tenant.database_name,
+    pool
+  );
+
+  return {
+    pool,
+    business: {
+      id: tenant.business_id,
+      name: tenant.business_name,
+      slug: tenant.business_slug,
+    },
+    databaseName: tenant.database_name,
+  };
+}
+
+
+========================================
+FILE: lib\provision-business.ts
+========================================
+
+import { randomUUID } from "crypto";
+import { postgresAdmin } from "./postgres-admin";
+import {
+  createTenantDatabase,
+  initializeTenantDatabase,
+} from "./database-provisioning";
+
+interface ProvisionBusinessInput {
+  businessName: string;
+  businessSlug: string;
+  ownerUserId: string;
+  email?: string;
+  phone?: string;
+}
+
+export async function provisionBusiness({
+  businessName,
+  businessSlug,
+  ownerUserId,
+  email,
+  phone,
+}: ProvisionBusinessInput) {
+  const businessId = randomUUID();
+
+  const databaseName =
+    `sami_tenant_${businessId.replace(/-/g, "")}`;
+
+  const databaseHost =
+    process.env.POSTGRES_HOST || "localhost";
+
+  const databasePort = Number(
+    process.env.POSTGRES_PORT || 5432
+  );
+
+  const databaseUser =
+    process.env.POSTGRES_ADMIN_USER || "postgres";
+
+  const databasePassword =
+    process.env.POSTGRES_ADMIN_PASSWORD;
+
+  if (!databasePassword) {
+    throw new Error(
+      "POSTGRES_ADMIN_PASSWORD is not configured."
+    );
+  }
+
+  // =====================================================
+  // STEP 1: Create the business record
+  // =====================================================
+
+  await postgresAdmin.query(
+    `
+    INSERT INTO businesses (
+      id,
+      name,
+      slug,
+      email,
+      phone,
+      status
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [
+      businessId,
+      businessName,
+      businessSlug,
+      email || null,
+      phone || null,
+      "active",
+    ]
+  );
+
+  try {
+    // ===================================================
+    // STEP 2: Create the tenant database
+    // ===================================================
+
+    await createTenantDatabase(
+      databaseName
+    );
+
+    // ===================================================
+    // STEP 3: Initialize the tenant database
+    // ===================================================
+
+    await initializeTenantDatabase(
+      databaseName
+    );
+
+    // ===================================================
+    // STEP 4: Register tenant database
+    // ===================================================
+
+    await postgresAdmin.query(
+      `
+      INSERT INTO database_registry (
+        business_id,
+        database_name,
+        database_host,
+        database_port,
+        database_user,
+        database_password_encrypted,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        businessId,
+        databaseName,
+        databaseHost,
+        databasePort,
+        databaseUser,
+        databasePassword,
+        "active",
+      ]
+    );
+
+    // ===================================================
+    // STEP 5: Connect owner to business
+    // ===================================================
+
+    await postgresAdmin.query(
+      `
+      INSERT INTO business_users (
+        business_id,
+        user_id,
+        role
+      )
+      VALUES ($1, $2, $3)
+      `,
+      [
+        businessId,
+        ownerUserId,
+        "owner",
+      ]
+    );
+
+    // ===================================================
+    // STEP 6: Create default subscription
+    // ===================================================
+
+    await postgresAdmin.query(
+      `
+      INSERT INTO subscriptions (
+        business_id,
+        plan,
+        status
+      )
+      VALUES ($1, $2, $3)
+      `,
+      [
+        businessId,
+        "free",
+        "active",
+      ]
+    );
+
+    // ===================================================
+    // SUCCESS
+    // ===================================================
+
+    return {
+      success: true,
+      businessId,
+      databaseName,
+    };
+  } catch (error) {
+    console.error(
+      "Business provisioning failed:",
+      error
+    );
+
+    // If provisioning fails after the business record
+    // was created, remove the business record.
+    //
+    // Because business_users, database_registry,
+    // and subscriptions reference the business with
+    // ON DELETE CASCADE, this cleans up those records
+    // as well if they were created.
+    await postgresAdmin.query(
+      `
+      DELETE FROM businesses
+      WHERE id = $1
+      `,
+      [businessId]
+    );
+
+    throw error;
+  }
+}
+
+
+========================================
+FILE: app\api\business\provision\route.ts
+========================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { provisionBusiness } from "@/lib/provision-business";
+
+export async function POST(
+  request: NextRequest
+) {
+  try {
+    const user =
+      await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const body =
+      await request.json();
+
+    const {
+      businessName,
+      businessSlug,
+      email,
+      phone,
+    } = body;
+
+    if (!businessName) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Business name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const slug =
+      businessSlug ||
+      businessName
+        .toLowerCase()
+        .trim()
+        .replace(
+          /[^a-z0-9]+/g,
+          "-"
+        )
+        .replace(
+          /^-+|-+$/g,
+          "");
+
+    const result =
+      await provisionBusiness({
+        businessName,
+        businessSlug: slug,
+        ownerUserId: user.id,
+        email:
+          email || user.email,
+        phone,
+      });
+
+    return NextResponse.json(
+      result,
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error(
+      "Business provisioning error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Business provisioning failed.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+
+========================================
+FILE: app\onboarding\business\page.tsx
+========================================
+
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function BusinessOnboardingPage() {
+  const router = useRouter();
+
+  const [businessName, setBusinessName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  function createSlug(name: string) {
+    return name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  async function handleSubmit(
+    e: React.FormEvent
+  ) {
+    e.preventDefault();
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const businessSlug =
+        createSlug(businessName);
+
+      const response = await fetch(
+        "/api/business/provision",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            businessName,
+            businessSlug,
+            email,
+            phone,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        setError(
+          data.error ||
+            "Business setup failed."
+        );
+        setLoading(false);
+        return;
+      }
+
+      alert(
+        "Business created successfully!"
+      );
+
+      router.push("/dashboard");
+    } catch (error) {
+      console.error(
+        "Business provisioning error:",
+        error
+      );
+
+      setError(
+        "Something went wrong. Please try again."
+      );
+
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-gray-100 px-6">
+      <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-xl">
+
+        <div className="mb-8 text-center">
+          <h1 className="text-3xl font-bold text-gray-900">
+            Set Up Your Business
+          </h1>
+
+          <p className="mt-2 text-gray-500">
+            Create your workspace in SaMi Assist
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-5"
+        >
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Business Name
+            </label>
+
+            <input
+              type="text"
+              required
+              value={businessName}
+              onChange={(e) =>
+                setBusinessName(e.target.value)
+              }
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-blue-600 focus:outline-none"
+              placeholder="SaMi Technologies"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Business Email
+            </label>
+
+            <input
+              type="email"
+              value={email}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-blue-600 focus:outline-none"
+              placeholder="business@example.com"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Business Phone
+            </label>
+
+            <input
+              type="tel"
+              value={phone}
+              onChange={(e) =>
+                setPhone(e.target.value)
+              }
+              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-gray-900 focus:border-blue-600 focus:outline-none"
+              placeholder="+254..."
+            />
+          </div>
+
+          {error && (
+            <div className="rounded-xl bg-red-100 p-3 text-red-700">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-xl bg-blue-600 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:bg-blue-400"
+          >
+            {loading
+              ? "Setting Up Business..."
+              : "Create Business"}
+          </button>
+        </form>
+
+      </div>
+    </main>
+  );
+}
+
+
+========================================
+FILE: app\components\layout\DashboardLayout.tsx
+========================================
+
+"use client";
+
+import Image from "next/image";
+import { useEffect, useState } from "react";
+import ChatWindow from "../dashboard/ChatWindow";
+import Customers from "../dashboard/customers";
+import Invoices from "@/app/dashboard/invoices";
+import {
+  LayoutDashboard,
+  MessageSquare,
+  Users,
+  FolderOpen,
+  BarChart3,
+  Settings,
+  Menu,
+  X,
+  Sparkles,
+  ChevronRight,
+  ArrowLeft,
+  Plus,
+  Search,
+  Moon,
+  Sun,
+  LogOut,
+  Bot,
+  ArrowUpRight,
+  Activity,
+  FileText,
+  Zap,
+  Package,
+  History,
+} from "lucide-react";
+
+type Conversation = {
+  id: string;
+  title: string;
+  created_at?: string;
+  updated_at?: string;
+  pinned?: boolean;
+  archived?: boolean;
+};
+
+type Profile = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  created_at: string;
+};
+
+type ActivePage =
+  | "dashboard"
+  | "chat"
+  | "customers"
+  | "invoices"
+  | "inventory"
+  | "documents"
+  | "analytics"
+  | "settings";
+
+export default function DashboardLayout() {
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [activePage, setActivePage] =
+    useState<ActivePage>("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatSidebarOpen, setChatSidebarOpen] =
+    useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isDark, setIsDark] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] =
+    useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // ==========================================
+  // DETECT MOBILE
+  // ==========================================
+
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 1024;
+
+      setIsMobile(mobile);
+
+      if (!mobile) {
+        setSidebarOpen(true);
+      } else {
+        setSidebarOpen(false);
+        setChatSidebarOpen(false);
+      }
+    };
+
+    checkMobile();
+
+    window.addEventListener(
+      "resize",
+      checkMobile
+    );
+
+    return () =>
+      window.removeEventListener(
+        "resize",
+        checkMobile
+      );
+  }, []);
+
+  // ==========================================
+  // THEME
+  // ==========================================
+
+  useEffect(() => {
+    const savedTheme =
+      localStorage.getItem("theme");
+
+    const prefersDark =
+      window.matchMedia(
+        "(prefers-color-scheme: dark)"
+      ).matches;
+
+    const darkMode =
+      savedTheme === "dark" ||
+      (!savedTheme && prefersDark);
+
+    setIsDark(darkMode);
+
+    document.documentElement.classList.toggle(
+      "dark",
+      darkMode
+    );
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = !isDark;
+
+    setIsDark(newTheme);
+
+    document.documentElement.classList.toggle(
+      "dark",
+      newTheme
+    );
+
+    localStorage.setItem(
+      "theme",
+      newTheme ? "dark" : "light"
+    );
+  };
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+
+    try {
+      const response = await fetch(
+        "/api/auth/logout",
+        {
+          method: "POST",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Logout failed.");
+      }
+
+      window.location.href =
+        "/auth/login";
+    } catch (error) {
+      console.error(
+        "Logout error:",
+        error
+      );
+
+      setIsLoggingOut(false);
+
+      alert(
+        "Failed to log out. Please try again."
+      );
+    }
+  };
+
+  // ==========================================
+  // LOAD PROFILE & CONVERSATIONS
+  // ==========================================
+
+  useEffect(() => {
+    loadProfile();
+    loadConversations();
+  }, []);
+
+  async function loadProfile() {
+    try {
+      const response =
+        await fetch("/api/profile");
+
+      if (!response.ok) {
+        throw new Error(
+          "Failed to load profile"
+        );
+      }
+
+      const data =
+        await response.json();
+
+      setProfile(data);
+    } catch (error) {
+      console.error(
+        "Profile loading error:",
+        error
+      );
+    } finally {
+      setLoadingProfile(false);
+    }
+  }
+
+  async function loadConversations() {
+  try {
+    const response = await fetch("/api/conversations");
+    if (!response.ok) throw new Error("Failed to load conversations");
+    const data = await response.json();
+    
+    // Process conversations to truncate long titles
+    const processed = data.map((conv: Conversation) => {
+      if (!conv.title || conv.title === "New conversation") {
+        return conv;
+      }
+      if (conv.title.length > 45) {
+        return { ...conv, title: conv.title.substring(0, 42) + "..." };
+      }
+      return conv;
+    });
+    
+    setConversations(processed);
+  } catch (error) {
+    console.error("Conversation loading error:", error);
+  }
+}
+function toggleHistory() {
+  setIsHistoryOpen(!isHistoryOpen);
+}
+  // ==========================================
+  // CONVERSATION HANDLERS
+  // ==========================================
+
+  function handleConversationCreated(
+    id: string
+  ) {
+    setSelectedId(id);
+
+    loadConversations();
+
+    if (isMobile) {
+      setChatSidebarOpen(false);
+    }
+  }
+
+  function handleSelectConversation(
+    id: string
+  ) {
+    setSelectedId(id);
+    setActivePage("chat");
+
+    if (isMobile) {
+      setChatSidebarOpen(false);
+    }
+  }
+
+  function handleConversationUpdate(
+    id: string,
+    title: string
+  ) {
+    setConversations((prev) =>
+      prev.map((conversation) =>
+        conversation.id === id
+          ? {
+              ...conversation,
+              title,
+            }
+          : conversation
+      )
+    );
+  }
+
+  function handleDeleteConversation(
+    id: string
+  ) {
+    setConversations((prev) =>
+      prev.filter(
+        (conversation) =>
+          conversation.id !== id
+      )
+    );
+
+    if (selectedId === id) {
+      setSelectedId(null);
+    }
+  }
+
+  function newChat() {
+    setSelectedId(null);
+    setActivePage("chat");
+
+    if (isMobile) {
+      setChatSidebarOpen(false);
+    }
+  }
+
+  function handleNavigation(
+    page: ActivePage
+  ) {
+    setActivePage(page);
+
+    if (page !== "chat") {
+      setSelectedId(null);
+    }
+
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  }
+
+  function goBackToDashboard() {
+    setActivePage("dashboard");
+    setSelectedId(null);
+
+    if (isMobile) {
+      setSidebarOpen(false);
+      setChatSidebarOpen(false);
+    }
+  }
+
+  // ==========================================
+  // NAVIGATION
+  // ==========================================
+
+  const navItems = [
+  { id: "dashboard", label: "Overview", icon: LayoutDashboard },
+  { id: "chat", label: "AI Workspace", icon: MessageSquare },
+  { id: "customers", label: "Customers", icon: Users },
+  { id: "invoices", label: "Invoices", icon: FileText },
+  { id: "inventory", label: "Inventory", icon: Package },
+  { id: "documents", label: "Documents", icon: FolderOpen },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "settings", label: "Settings", icon: Settings },
+] as const;
+
+  // ==========================================
+  // MAIN SIDEBAR
+  // ==========================================
+
+  const MainSidebar = () => (
+  <aside
+    className={`
+      fixed inset-y-0 left-0 z-50
+      flex w-[280px] flex-col
+      border-r border-white/10
+      bg-[#07111f]
+      text-white
+      shadow-2xl
+      transition-transform duration-300
+      lg:relative lg:translate-x-0
+      ${
+        sidebarOpen
+          ? "translate-x-0"
+          : "-translate-x-full"
+      }
+    `}
+  >
+    {isMobile && (
+      <button
+        onClick={() => setSidebarOpen(false)}
+        className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-white/10 hover:text-white"
+      >
+        <X size={20} />
+      </button>
+    )}
+
+    {/* ===== FIXED HEADER ===== */}
+    <div className="flex-shrink-0 px-6 pb-4 pt-7">
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <Image
+            src="/logo2.png"
+            alt="SaMi"
+            width={44}
+            height={44}
+            className="rounded-xl"
+          />
+          <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
+            <Sparkles size={9} className="text-white" />
+          </div>
+        </div>
+        <div>
+          <h1 className="text-lg font-bold tracking-tight">SaMi</h1>
+          <p className="text-xs text-slate-500">AI Business Workspace</p>
+        </div>
+      </div>
+    </div>
+
+    {/* ===== FIXED SEARCH ===== */}
+    <div className="flex-shrink-0 px-4 pb-4">
+      <div className="relative">
+        <Search
+          size={16}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+        />
+        <input
+          type="text"
+          placeholder="Search..."
+          className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
+        />
+      </div>
+    </div>
+
+    {/* ===== SCROLLABLE NAVIGATION ===== */}
+    <div className="flex-1 overflow-y-auto px-4 pb-4">
+      <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+        Workspace
+      </p>
+
+      <nav className="space-y-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activePage === item.id;
+
+          return (
+            <button
+              key={item.id}
+              onClick={() => handleNavigation(item.id)}
+              className={`
+                group flex w-full items-center
+                gap-3 rounded-xl px-4 py-3
+                text-left text-sm font-medium
+                transition-all
+                ${
+                  isActive
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
+                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                }
+              `}
+            >
+              <Icon
+                size={19}
+                className={
+                  isActive
+                    ? "text-white"
+                    : "text-slate-500 group-hover:text-slate-300"
+                }
+              />
+              <span className="flex-1">{item.label}</span>
+              {isActive && (
+                <ChevronRight size={15} className="text-white/60" />
+              )}
+            </button>
+          );
+        })}
+      </nav>
+    </div>
+
+    {/* ===== FIXED PROFILE ===== */}
+    <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
+      <div className="flex items-center gap-3 rounded-xl p-2">
+        <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+          {profile?.full_name?.[0]?.toUpperCase() || "S"}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-white">
+            {loadingProfile ? "Loading..." : profile?.full_name || "SaMi User"}
+          </p>
+          <p className="truncate text-xs text-slate-500">{profile?.email || "Account"}</p>
+        </div>
+      </div>
+    </div>
+  </aside>
+);
+// ==========================================
+// HISTORY SIDEBAR (Right side)
+// ==========================================
+
+const HistorySidebar = () => (
+  <>
+    {/* Overlay */}
+    <div
+      className={`
+        fixed inset-0 z-40 bg-black/60 backdrop-blur-sm
+        transition-opacity duration-300
+        ${isHistoryOpen ? "opacity-100" : "pointer-events-none opacity-0"}
+      `}
+      onClick={() => setIsHistoryOpen(false)}
+    />
+
+    {/* Sidebar */}
+   <div
+  className={`
+    fixed inset-y-0 right-0 z-50
+    w-[380px] transform
+    bg-[#07111f] text-white
+    shadow-2xl
+    flex flex-col max-h-full overflow-hidden
+    transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
+    ${isHistoryOpen ? "translate-x-0" : "translate-x-full"}
+  `}
+>
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-5">
+        <div>
+          <h2 className="text-lg font-bold">Conversation History</h2>
+          <p className="text-xs text-slate-500">Search and browse your past chats</p>
+        </div>
+        <button
+          onClick={() => setIsHistoryOpen(false)}
+          className="rounded-xl p-2 text-gray-400 transition hover:bg-white/10 hover:text-white"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      {/* Search */}
+      <div className="p-4">
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+          />
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
+          />
+        </div>
+      </div>
+
+      {/* Conversation List */}
+      <div className="flex-1 overflow-y-auto px-4 pb-6">
+        {conversations.length === 0 ? (
+          <div className="flex flex-col items-center py-16 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+              <MessageSquare size={22} className="text-slate-600" />
+            </div>
+            <p className="mt-4 text-sm font-medium text-slate-400">No conversations yet</p>
+            <p className="mt-1 text-xs text-slate-600">Start a new chat with SaMi AI</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Today */}
+            <div>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                Today
+              </p>
+              {conversations.slice(0, 3).map((chat) => (
+                <button
+                  key={chat.id}
+                  onClick={() => {
+                    handleSelectConversation(chat.id);
+                    setIsHistoryOpen(false);
+                  }}
+                  className={`
+                    flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition
+                    ${selectedId === chat.id
+                      ? "bg-blue-600/15 text-blue-300"
+                      : "text-slate-400 hover:bg-white/[0.04] hover:text-white"
+                    }
+                  `}
+                >
+                  <MessageSquare size={15} className="flex-shrink-0" />
+                  <span className="truncate text-sm font-medium">
+                    {chat.title || "New conversation"}
+                  </span>
+                  <span className="ml-auto text-[10px] text-slate-600">2:30 PM</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Yesterday */}
+            {conversations.length > 3 && (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                  Yesterday
+                </p>
+                {conversations.slice(3, 6).map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => {
+                      handleSelectConversation(chat.id);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <MessageSquare size={15} className="flex-shrink-0" />
+                    <span className="truncate text-sm font-medium">
+                      {chat.title || "New conversation"}
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600">10:15 AM</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Older */}
+            {conversations.length > 6 && (
+              <div>
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                  Older
+                </p>
+                {conversations.slice(6).map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => {
+                      handleSelectConversation(chat.id);
+                      setIsHistoryOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-slate-400 transition hover:bg-white/[0.04] hover:text-white"
+                  >
+                    <MessageSquare size={15} className="flex-shrink-0" />
+                    <span className="truncate text-sm font-medium">
+                      {chat.title || "New conversation"}
+                    </span>
+                    <span className="ml-auto text-[10px] text-slate-600">Mar 15</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  </>
+);
+
+  // ==========================================
+  // MAIN SIDEBAR OVERLAY
+  // ==========================================
+
+  const Overlay = () => (
+    <div
+      className={`
+        fixed inset-0 z-40 bg-black/60
+        backdrop-blur-sm lg:hidden
+        ${
+          sidebarOpen &&
+          activePage !== "chat"
+            ? "opacity-100"
+            : "pointer-events-none opacity-0"
+        }
+      `}
+      onClick={() =>
+        setSidebarOpen(false)
+      }
+    />
+  );
+
+  // ==========================================
+  // TOP BAR
+  // ==========================================
+
+    const TopBar = () => (
+  <header className="flex h-10 flex-shrink-0 items-center justify-between border-b border-gray-200/70 bg-white/90 px-4 backdrop-blur-xl dark:border-gray-800/70 dark:bg-gray-950/90 lg:px-7">
+    {/* LEFT - Page Name */}
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800 lg:hidden"
+      >
+        <Menu size={18} />
+      </button>
+      
+      <div className="flex items-center gap-2">
+        <h1 className="text-sm font-semibold text-gray-900 dark:text-white">
+          {activePage === "dashboard" ? "Overview" : 
+           activePage === "chat" ? "SaMi" :
+           activePage.charAt(0).toUpperCase() + activePage.slice(1)}
+        </h1>
+        {activePage === "chat" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            <span className="text-[10px] text-gray-400">Online</span>
+          </span>
+        )}
+      </div>
+    </div>
+
+    {/* RIGHT - Chat actions or Theme + Sign Out */}
+    <div className="flex items-center gap-1.5">
+      {activePage === "chat" ? (
+        <>
+          <button
+            onClick={newChat}
+            className="flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 active:scale-[0.98]"
+          >
+            <Plus size={14} />
+            New
+          </button>
+          <button
+            onClick={toggleHistory}
+            className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <History size={18} />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            onClick={toggleTheme}
+            className="rounded-xl p-1.5 text-gray-500 transition hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+            className="flex items-center gap-1.5 rounded-xl bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition hover:bg-red-100 disabled:opacity-50 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50"
+          >
+            <LogOut size={14} />
+            {isLoggingOut ? "..." : "Sign out"}
+          </button>
+        </>
+      )}
+    </div>
+  </header>
+);
+  // ==========================================
+  // DASHBOARD OVERVIEW
+  // ==========================================
+
+  const DashboardHome = () => (
+    <div className="h-full overflow-y-auto">
+      <div className="mx-auto max-w-[1600px] p-5 sm:p-7 lg:p-9">
+        {/* HEADER */}
+
+        <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div>
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                Workspace
+              </span>
+
+              <span className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                All systems operational
+              </span>
+            </div>
+
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+              Good to see you,{" "}
+              {profile?.full_name
+                ?.split(" ")[0] ||
+                "there"}
+              .
+            </h1>
+
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+              Your business workspace is
+              ready. Use SaMi AI to work
+              smarter, manage customers,
+              and turn information into
+              action.
+            </p>
+          </div>
+
+          <button
+            onClick={() =>
+              handleNavigation("chat")
+            }
+            className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-500 active:scale-[0.98]"
+          >
+            <Sparkles size={17} />
+            Open SaMi AI
+          </button>
+        </div>
+
+        {/* STAT CARDS */}
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            {
+              title: "Customers",
+              value: "—",
+              subtitle:
+                "Customer records",
+              icon: Users,
+            },
+            {
+              title: "Conversations",
+              value:
+                conversations.length,
+              subtitle:
+                "AI conversations",
+              icon: MessageSquare,
+            },
+            {
+              title: "Documents",
+              value: "—",
+              subtitle:
+                "Business documents",
+              icon: FileText,
+            },
+            {
+              title: "AI Activity",
+              value: "Active",
+              subtitle:
+                "Workspace status",
+              icon: Activity,
+            },
+          ].map((stat) => {
+            const Icon = stat.icon;
+
+            return (
+              <div
+                key={stat.title}
+                className="group rounded-2xl border border-gray-200/70 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-800 dark:bg-gray-900"
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-500/10">
+                    <Icon
+                      size={19}
+                      className="text-blue-600 dark:text-blue-400"
+                    />
+                  </div>
+
+                  <ArrowUpRight
+                    size={16}
+                    className="text-gray-300 transition group-hover:text-blue-500"
+                  />
+                </div>
+
+                <p className="mt-5 text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {stat.title}
+                </p>
+
+                <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+                  {stat.value}
+                </p>
+
+                <p className="mt-1 text-[11px] text-gray-400">
+                  {stat.subtitle}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* MAIN WORKSPACE */}
+
+        <div className="mt-6 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
+          {/* AI HERO */}
+
+          <div className="relative overflow-hidden rounded-3xl bg-[#07111f] p-7 text-white shadow-xl sm:p-9">
+            <div className="relative z-10 max-w-2xl">
+              <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-600">
+                <Sparkles size={21} />
+              </div>
+
+              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-blue-400">
+                Your AI workspace
+              </p>
+
+              <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
+                Work with your
+                business using AI.
+              </h2>
+
+              <p className="mt-4 max-w-lg text-sm leading-relaxed text-slate-400">
+                Ask questions, explore
+                your business information,
+                manage conversations, and
+                let SaMi help you turn
+                everyday work into
+                intelligent action.
+              </p>
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                <button
+                  onClick={() =>
+                    handleNavigation(
+                      "chat"
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold transition hover:bg-blue-500"
+                >
+                  <MessageSquare
+                    size={16}
+                  />
+                  Start chatting
+                </button>
+
+                <button
+                  onClick={() =>
+                    handleNavigation(
+                      "customers"
+                    )
+                  }
+                  className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10"
+                >
+                  <Users size={16} />
+                  View customers
+                </button>
+              </div>
+            </div>
+
+            <div className="absolute -right-24 -top-24 h-80 w-80 rounded-full bg-blue-600/10 blur-3xl" />
+
+            <div className="absolute -bottom-32 right-20 h-80 w-80 rounded-full bg-indigo-600/10 blur-3xl" />
+
+            <div className="absolute bottom-6 right-7 hidden opacity-10 lg:block">
+              <Bot size={150} />
+            </div>
+          </div>
+
+          {/* QUICK ACTIONS */}
+
+          <div className="rounded-3xl border border-gray-200/70 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">
+                  Quick actions
+                </h3>
+
+                <p className="mt-1 text-xs text-gray-400">
+                  Jump into your workspace
+                </p>
+              </div>
+
+              <Zap
+                size={19}
+                className="text-blue-500"
+              />
+            </div>
+
+            <div className="mt-6 space-y-2">
+              {[
+                {
+                  label: "Start a new AI chat",
+                  description:
+                    "Ask SaMi anything",
+                  icon: MessageSquare,
+                  action: () =>
+                    handleNavigation(
+                      "chat"
+                    ),
+                },
+                {
+                  label: "Manage customers",
+                  description:
+                    "View your customer records",
+                  icon: Users,
+                  action: () =>
+                    handleNavigation(
+                      "customers"
+                    ),
+                },
+                {
+                  label: "Explore documents",
+                  description:
+                    "Organize business files",
+                  icon: FolderOpen,
+                  action: () =>
+                    handleNavigation(
+                      "documents"
+                    ),
+                },
+                {
+                  label: "View analytics",
+                  description:
+                    "Understand your business",
+                  icon: BarChart3,
+                  action: () =>
+                    handleNavigation(
+                      "analytics"
+                    ),
+                },
+              ].map((action) => {
+                const Icon = action.icon;
+
+                return (
+                  <button
+                    key={action.label}
+                    onClick={action.action}
+                    className="group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gray-100 transition group-hover:bg-blue-50 dark:bg-gray-800 dark:group-hover:bg-blue-500/10">
+                      <Icon
+                        size={17}
+                        className="text-gray-500 group-hover:text-blue-600 dark:text-gray-400 dark:group-hover:text-blue-400"
+                      />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-800 dark:text-gray-200">
+                        {action.label}
+                      </p>
+
+                      <p className="mt-0.5 text-[10px] text-gray-400">
+                        {action.description}
+                      </p>
+                    </div>
+
+                    <ChevronRight
+                      size={15}
+                      className="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500"
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ==========================================
+  // PAGE CONTENT
+  // ==========================================
+
+  const renderPageContent = () => {
+    switch (activePage) {
+      case "dashboard":
+        return <DashboardHome />;
+
+  case "chat":
+  return (
+    <div className="flex h-full min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col">
+        {!selectedId ? (
+          // New chat - centered view
+          <div className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+            <div className="w-full max-w-3xl mx-auto">
+              {/* Welcome message */}
+              <div className="text-center mb-8">
+                <div className="flex justify-center mb-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 shadow-lg shadow-blue-500/25">
+                    <Sparkles size={28} className="text-white" />
+                  </div>
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">What can I help with?</h2>
+                <p className="mt-2 text-gray-500 dark:text-gray-400">Ask me anything about your business</p>
+              </div>
+
+              {/* Chat input centered */}
+              <div className="w-full">
+                <ChatWindow
+                  conversationId={null}
+                  onConversationCreated={handleConversationCreated}
+                  onConversationUpdate={handleConversationUpdate}
+                />
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Existing chat - full width
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ChatWindow
+              conversationId={selectedId}
+              onConversationCreated={handleConversationCreated}
+              onConversationUpdate={handleConversationUpdate}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+  case "invoices":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-3xl border border-gray-200/70 bg-white p-10 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-16">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/10">
+            <FileText size={28} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">Invoices</h2>
+          <Invoices />
+        </div>
+      </div>
+    </div>
+  );
+case "inventory":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-3xl border border-gray-200/70 bg-white p-10 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-16">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/10">
+            <Package size={28} className="text-blue-600 dark:text-blue-400" />
+          </div>
+          <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">Inventory</h2>
+          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">
+            Inventory management coming soon.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+      case "customers":
+        return (
+          <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+            <Customers />
+          </div>
+        );
+
+      default:
+        const pageConfig = {
+          documents: {
+            icon: FolderOpen,
+            title: "Documents",
+            desc: "Organize your business documents and prepare them for AI-powered search.",
+          },
+          analytics: {
+            icon: BarChart3,
+            title: "Analytics",
+            desc: "Understand your business performance with intelligent analytics and insights.",
+          },
+          settings: {
+            icon: Settings,
+            title: "Settings",
+            desc: "Manage your SaMi workspace, account, and application preferences.",
+          },
+        };
+
+        const config =
+          pageConfig[
+            activePage as keyof typeof pageConfig
+          ];
+
+        const Icon = config.icon;
+
+        return (
+          <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+            <div className="mx-auto max-w-5xl">
+              <div className="mb-8">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-blue-600 dark:text-blue-400">
+                  Workspace
+                </p>
+
+                <h1 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+                  {config.title}
+                </h1>
+
+                <p className="mt-2 max-w-xl text-sm text-gray-500 dark:text-gray-400">
+                  {config.desc}
+                </p>
+              </div>
+
+              <div className="rounded-3xl border border-gray-200/70 bg-white p-10 text-center shadow-sm dark:border-gray-800 dark:bg-gray-900 sm:p-16">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-500/10">
+                  <Icon
+                    size={28}
+                    className="text-blue-600 dark:text-blue-400"
+                  />
+                </div>
+
+                <h2 className="mt-6 text-xl font-bold text-gray-900 dark:text-white">
+                  {config.title}
+                </h2>
+
+                <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+                  This workspace module
+                  is ready for the next
+                  stage of development.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+    }
+  };
+
+  // ==========================================
+  // MAIN LAYOUT
+  // ==========================================
+
+  return (
+    <div className="fixed inset-0 flex overflow-hidden bg-gray-50 dark:bg-gray-950">
+      <Overlay />
+
+      <MainSidebar />
+      <HistorySidebar />
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <TopBar />
+
+        <div className="min-h-0 flex-1 overflow-hidden">
+          {renderPageContent()}
+        </div>
+      </main>
+    </div>
+  );
+}
