@@ -1,6 +1,7 @@
-CREATE TABLE IF NOT EXISTS public.customers (
+﻿CREATE TABLE IF NOT EXISTS public.customers (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(255) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    contact_name VARCHAR(255),
     email VARCHAR(255),
     phone VARCHAR(50),
     billing_address TEXT,
@@ -8,6 +9,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 CREATE TABLE IF NOT EXISTS public.invoices (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE RESTRICT,
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.invoices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 CREATE TABLE IF NOT EXISTS public.invoice_items (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id UUID NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
@@ -35,6 +38,7 @@ CREATE TABLE IF NOT EXISTS public.invoice_items (
     line_total NUMERIC(15,2) NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     invoice_id UUID NOT NULL REFERENCES public.invoices(id) ON DELETE RESTRICT,
@@ -46,6 +50,12 @@ CREATE TABLE IF NOT EXISTS public.payments (
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_invoices_customer ON public.invoices(customer_id);
-CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice ON public.invoice_items(invoice_id);
-CREATE INDEX IF NOT EXISTS idx_payments_invoice ON public.payments(invoice_id);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_customer
+    ON public.invoices(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice
+    ON public.invoice_items(invoice_id);
+
+CREATE INDEX IF NOT EXISTS idx_payments_invoice
+    ON public.payments(invoice_id);
