@@ -1,7 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { registerUser } from "@/lib/user-registration";
 import { provisionBusiness } from "@/lib/provision-business";
-import { saveEnabledApps } from "@/lib/enabled-apps";
 import { normalizeAppKeys } from "@/lib/sami-apps";
 
 export async function POST(req: Request) {
@@ -79,13 +78,8 @@ export async function POST(req: Request) {
       ownerUserId: user.userId,
       email: email.trim(),
       phone: phone?.trim() || "",
-      appKeys: [],
+      appKeys: selectedApps,
     });
-
-    await saveEnabledApps(
-      result.businessId,
-      selectedApps
-    );
 
     return NextResponse.json(
       {
