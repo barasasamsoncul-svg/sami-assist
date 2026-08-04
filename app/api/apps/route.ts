@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getEnabledAppsForUser } from "@/lib/enabled-apps";
-import { SAMI_APPS } from "@/lib/sami-apps";
+import { getApp } from "@/lib/sami-apps";
 
 export async function GET() {
   try {
@@ -9,7 +9,10 @@ export async function GET() {
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized." },
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
         { status: 401 }
       );
     }
@@ -17,15 +20,15 @@ export async function GET() {
     const { businessId, appKeys } =
       await getEnabledAppsForUser(user.id);
 
+    const apps = appKeys
+      .map((appKey) => getApp(appKey))
+      .filter(Boolean);
+
     return NextResponse.json({
       success: true,
       businessId,
-
-      // Full catalog — used by onboarding and app management.
-      apps: SAMI_APPS,
-
-      // Currently enabled apps — used by the dashboard/workspace.
       appKeys,
+      apps,
     });
   } catch (error) {
     console.error("Apps API error:", error);
