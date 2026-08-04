@@ -2,122 +2,89 @@ import fs from "fs/promises";
 import path from "path";
 import { Pool } from "pg";
 import { postgresAdmin } from "./postgres-admin";
+import { getAppSchemaPath } from "./app-registry";
 
-export async function createTenantDatabase(
-  databaseName: string
-) {
-  // Validate database name
+export async function createTenantDatabase(databaseName: string) {
   if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
     throw new Error("Invalid database name.");
   }
 
-  // Check whether database already exists
   const existingDatabase = await postgresAdmin.query(
-    `
-    SELECT 1
-    FROM pg_database
-    WHERE datname = $1
-    `,
+    `SELECT 1 FROM pg_database WHERE datname = $1`,
     [databaseName]
   );
 
-  if (
-    existingDatabase.rowCount &&
-    existingDatabase.rowCount > 0
-  ) {
-    throw new Error(
-      `Database "${databaseName}" already exists.`
-    );
+  if (existingDatabase.rowCount && existingDatabase.rowCount > 0) {
+    throw new Error(`Database "${databaseName}" already exists.`);
   }
 
-  // PostgreSQL does not allow parameters
-  // for database identifiers.
-  // The name has already been strictly validated.
-  await postgresAdmin.query(
-    `CREATE DATABASE "${databaseName}"`
-  );
+  await postgresAdmin.query(`CREATE DATABASE "${databaseName}"`);
 
-  return {
-    success: true,
-    databaseName,
-  };
+  return { success: true, databaseName };
 }
 
 export async function initializeTenantDatabase(
-  databaseName: string
+  databaseName: string,
+  appKeys: string[] = []
 ) {
   if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
     throw new Error("Invalid database name.");
   }
 
-  const databaseHost =
-    process.env.POSTGRES_HOST ||
-    "localhost";
+  const host = process.env.POSTGRES_HOST || "localhost";
+  const port = Number(process.env.POSTGRES_PORT || 5432);
+  const user = process.env.POSTGRES_ADMIN_USER || "postgres";
+  const password = process.env.POSTGRES_ADMIN_PASSWORD;
 
-  const databasePort = Number(
-    process.env.POSTGRES_PORT || 5432
-  );
-
-  const databaseUser =
-    process.env.POSTGRES_ADMIN_USER ||
-    "postgres";
-
-  const databasePassword =
-    process.env.POSTGRES_ADMIN_PASSWORD;
-
-  if (!databasePassword) {
-    throw new Error(
-      "POSTGRES_ADMIN_PASSWORD is not configured."
-    );
+  if (!password) {
+    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
   }
 
-  // Load the exact tenant schema
-  // generated from sami_tenant_template.
-  const schemaPath = path.join(
-    process.cwd(),
-    "lib",
-    "sami_tenant_schema.sql"
-  );
+  const corePath = path.join(process.cwd(), "lib", "sami_tenant_core.sql");
+  const coreSql = await fs.readFile(corePath, "utf8");
 
-  const schemaSql =
-    await fs.readFile(
-      schemaPath,
-      "utf8"
-    );
+  const pool = new Pool({
+    host, port, user, password, database: databaseName,
+    ssl: { rejectUnauthorized: false },
+    max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000,
+  });
 
-  // Connect directly to the newly created
-  // tenant database.
-  const tenantPool = new Pool({
-  host: databaseHost,
+  const uniqueAppKeys = [...new Set(
+    appKeys.filter((key) => typeof key === "string")
+      .map((key) => key.trim()).filter(Boolean)
+  )];
 
-  port: databasePort,
-
-  user: databaseUser,
-
-  password: databasePassword,
-
-  database: databaseName,
-
-  ssl: {
-    rejectUnauthorized: false,
-  },
-
-  max: 2,
-
-  idleTimeoutMillis: 30_000,
-
-  connectionTimeoutMillis: 10_000,
-});
+  const installedApps: string[] = [];
+  const pendingApps: string[] = [];
 
   try {
-    // Execute the complete tenant schema.
-    await tenantPool.query(schemaSql);
+    // Core is always installed.
+    await pool.query(coreSql);
+
+    // Each selected app installs only its own schema.
+    for (const appKey of uniqueAppKeys) {
+      const schemaPath = getAppSchemaPath(appKey);
+
+      if (!schemaPath) {
+        pendingApps.push(appKey);
+        console.log(`Schema not implemented yet: ${appKey}`);
+        continue;
+      }
+
+      const schemaSql = await fs.readFile(schemaPath, "utf8");
+      await pool.query(schemaSql);
+      installedApps.push(appKey);
+      console.log(`Initialized app schema: ${appKey}`);
+    }
 
     return {
       success: true,
       databaseName,
+      appKeys: uniqueAppKeys,
+      installedApps,
+      pendingApps,
     };
   } finally {
-    await tenantPool.end();
+    await pool.end();
   }
 }

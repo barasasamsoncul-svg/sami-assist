@@ -20,16 +20,21 @@ export async function GET() {
     const business = await getBusinessForUser(user.id);
     const appIds = await getEnabledAppIds(business.id);
 
-    return NextResponse.json({ success: true, business, appIds });
+    return NextResponse.json({
+      success: true,
+      business,
+      appIds,
+    });
   } catch (error) {
     console.error("App selection GET error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error
-          ? error.message
-          : "Failed to load app selection.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load app selection.",
       },
       { status: 500 }
     );
@@ -48,28 +53,36 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const rawIds = body?.appIds ?? body?.selectedAppIds;
+    const rawIds = body?.appKeys ?? body?.appIds ?? body?.selectedAppIds;
 
     if (!Array.isArray(rawIds)) {
       return NextResponse.json(
-        { success: false, error: "appIds must be an array." },
+        { success: false, error: "appKeys must be an array." },
         { status: 400 }
       );
     }
 
     const business = await getBusinessForUser(user.id);
-    const appIds = await saveEnabledAppIds(business.id, rawIds);
+    const appKeys = await saveEnabledAppIds(
+      business.id,
+      rawIds
+    );
 
-    return NextResponse.json({ success: true, business, appIds });
+    return NextResponse.json({
+      success: true,
+      business,
+      appKeys,
+    });
   } catch (error) {
     console.error("App selection POST error:", error);
 
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error
-          ? error.message
-          : "Failed to save app selection.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to save app selection.",
       },
       { status: 500 }
     );

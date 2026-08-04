@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { provisionBusiness } from "@/lib/provision-business";
+import { normalizeAppKeys } from "@/lib/sami-apps";
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,11 +41,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!Array.isArray(appKeys) || appKeys.length === 0) {
+    const selectedAppKeys = normalizeAppKeys(appKeys);
+
+    if (selectedAppKeys.length === 0) {
       return NextResponse.json(
         {
           success: false,
-          error: "Please select at least one SaMi app.",
+          error: "Please select at least one valid SaMi app.",
         },
         { status: 400 }
       );
@@ -77,17 +80,14 @@ export async function POST(request: NextRequest) {
         businessType.trim()
           ? businessType.trim()
           : undefined,
-      appKeys,
+      appKeys: selectedAppKeys,
     });
 
     return NextResponse.json(result, {
       status: 201,
     });
   } catch (error) {
-    console.error(
-      "Business provisioning error:",
-      error
-    );
+    console.error("Business provisioning error:", error);
 
     return NextResponse.json(
       {

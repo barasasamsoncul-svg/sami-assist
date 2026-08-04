@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
-import { getEnabledAppsForUser } from "@/lib/enabled-apps";
 import { SAMI_APPS } from "@/lib/sami-apps";
 
 export async function GET() {
@@ -9,26 +8,20 @@ export async function GET() {
 
     if (!user) {
       return NextResponse.json(
-        { success: false, error: "Unauthorized." },
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
         { status: 401 }
       );
     }
 
-    const { businessId, appKeys } =
-      await getEnabledAppsForUser(user.id);
-
     return NextResponse.json({
       success: true,
-      businessId,
-
-      // Full catalog — used by onboarding and app management.
       apps: SAMI_APPS,
-
-      // Currently enabled apps — used by the dashboard/workspace.
-      appKeys,
     });
   } catch (error) {
-    console.error("Apps API error:", error);
+    console.error("SaMi app catalog error:", error);
 
     return NextResponse.json(
       {
@@ -36,7 +29,7 @@ export async function GET() {
         error:
           error instanceof Error
             ? error.message
-            : "Unable to load SaMi apps.",
+            : "Unable to load SaMi app catalog.",
       },
       { status: 500 }
     );

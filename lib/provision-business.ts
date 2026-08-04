@@ -5,6 +5,7 @@ import {
   initializeTenantDatabase,
 } from "./database-provisioning";
 import { saveEnabledApps } from "./enabled-apps";
+import { normalizeAppKeys } from "./sami-apps";
 
 interface ProvisionBusinessInput {
   businessName: string;
@@ -14,6 +15,22 @@ interface ProvisionBusinessInput {
   phone?: string;
   businessType?: string;
   appKeys: unknown;
+}
+
+async function dropTenantDatabase(databaseName: string) {
+  // databaseName is generated internally, but quote it as an identifier anyway.
+  const safeName = databaseName.replace(/"/g, '""');
+
+  try {
+    await postgresAdmin.query(
+      `DROP DATABASE IF EXISTS "${safeName}" WITH (FORCE)`
+    );
+  } catch (error) {
+    console.error(
+      `Failed to clean up tenant database "${databaseName}":`,
+      error
+    );
+  }
 }
 
 export async function provisionBusiness({
@@ -26,32 +43,24 @@ export async function provisionBusiness({
   appKeys,
 }: ProvisionBusinessInput) {
   const businessId = randomUUID();
+  const databaseName = `sami_tenant_${businessId.replace(/-/g, "")}`;
 
-  const databaseName =
-    `sami_tenant_${businessId.replace(/-/g, "")}`;
-
-  const databaseHost =
-    process.env.POSTGRES_HOST || "localhost";
-
-  const databasePort = Number(
-    process.env.POSTGRES_PORT || 5432
-  );
-
+  const databaseHost = process.env.POSTGRES_HOST || "localhost";
+  const databasePort = Number(process.env.POSTGRES_PORT || 5432);
   const databaseUser =
     process.env.POSTGRES_ADMIN_USER || "postgres";
-
   const databasePassword =
     process.env.POSTGRES_ADMIN_PASSWORD;
 
   if (!databasePassword) {
-    throw new Error(
-      "POSTGRES_ADMIN_PASSWORD is not configured."
-    );
+    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
   }
 
-  // =====================================================
-  // STEP 1: Create the business record
-  // =====================================================
+  const selectedApps = normalizeAppKeys(appKeys);
+
+  if (selectedApps.length === 0) {
+    throw new Error("Please select at least one valid SaMi app.");
+  }
 
   await postgresAdmin.query(
     `
@@ -75,23 +84,20 @@ export async function provisionBusiness({
     ]
   );
 
+  let tenantDatabaseCreated = false;
+
   try {
-    // ===================================================
-    // STEP 2: Create the tenant database
-    // ===================================================
-
+    // Create the isolated database for this business.
     await createTenantDatabase(databaseName);
+    tenantDatabaseCreated = true;
 
-    // ===================================================
-    // STEP 3: Initialize the tenant database
-    // ===================================================
+    // Install core tables plus only the selected app schemas.
+    await initializeTenantDatabase(
+      databaseName,
+      selectedApps
+    );
 
-    await initializeTenantDatabase(databaseName);
-
-    // ===================================================
-    // STEP 4: Register tenant database
-    // ===================================================
-
+    // Register the tenant database in the control database.
     await postgresAdmin.query(
       `
       INSERT INTO database_registry (
@@ -116,10 +122,7 @@ export async function provisionBusiness({
       ]
     );
 
-    // ===================================================
-    // STEP 5: Connect owner to business
-    // ===================================================
-
+    // Connect the authenticated owner to the business.
     await postgresAdmin.query(
       `
       INSERT INTO business_users (
@@ -129,17 +132,10 @@ export async function provisionBusiness({
       )
       VALUES ($1, $2, $3)
       `,
-      [
-        businessId,
-        ownerUserId,
-        "owner",
-      ]
+      [businessId, ownerUserId, "owner"]
     );
 
-    // ===================================================
-    // STEP 6: Create default subscription
-    // ===================================================
-
+    // Give every new business the free plan initially.
     await postgresAdmin.query(
       `
       INSERT INTO subscriptions (
@@ -149,25 +145,14 @@ export async function provisionBusiness({
       )
       VALUES ($1, $2, $3)
       `,
-      [
-        businessId,
-        "free",
-        "active",
-      ]
+      [businessId, "free", "active"]
     );
 
-    // ===================================================
-    // STEP 7: Save selected SaMi apps
-    // ===================================================
-
+    // Single source of truth for enabled apps.
     const enabledApps = await saveEnabledApps(
       businessId,
-      appKeys
+      selectedApps
     );
-
-    // ===================================================
-    // SUCCESS
-    // ===================================================
 
     return {
       success: true,
@@ -177,25 +162,18 @@ export async function provisionBusiness({
       appKeys: enabledApps,
     };
   } catch (error) {
-    console.error(
-      "Business provisioning failed:",
-      error
-    );
+    console.error("Business provisioning failed:", error);
 
-    // If provisioning fails after the business record
-    // was created, remove the business record.
-    //
-    // business_users, database_registry,
-    // subscriptions and business_apps reference
-    // the business and are cleaned up by ON DELETE CASCADE.
-
+    // Remove control-plane records created during this attempt.
     await postgresAdmin.query(
-      `
-      DELETE FROM businesses
-      WHERE id = $1
-      `,
+      `DELETE FROM businesses WHERE id = $1`,
       [businessId]
     );
+
+    // Prevent orphan tenant databases.
+    if (tenantDatabaseCreated) {
+      await dropTenantDatabase(databaseName);
+    }
 
     throw error;
   }
