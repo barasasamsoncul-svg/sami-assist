@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS public.customers (
     contact_name VARCHAR(255),
     email VARCHAR(255),
     phone VARCHAR(50),
-    billing_address TEXT,
+    address TEXT,
     status VARCHAR(50) NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
