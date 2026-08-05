@@ -19,10 +19,7 @@ const groq = new Groq({
 
 export async function POST(req: Request) {
   try {
-    const {
-      message,
-      conversationId,
-    } = await req.json();
+    const { message, conversationId } = await req.json();
 
     if (
       !message ||
@@ -39,8 +36,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const user =
-      await getAuthenticatedUser();
+    const user = await getAuthenticatedUser();
 
     if (!user) {
       return NextResponse.json(
@@ -57,70 +53,58 @@ export async function POST(req: Request) {
       pool,
       business,
       databaseName,
-    } =
-      await getTenantDatabaseForUser(
-        user.id
-      );
+    } = await getTenantDatabaseForUser(user.id);
 
-    let chatId =
-      conversationId;
+    let chatId = conversationId;
 
     if (!chatId) {
-      const conversationResult =
-        await pool.query(
-          `
-          INSERT INTO conversations
-            (
-              user_id,
-              title
-            )
-          VALUES
-            ($1, $2)
-          RETURNING id
-          `,
-          [
-            user.id,
-            message
-              .trim()
-              .substring(0, 40),
-          ]
-        );
+      const conversationResult = await pool.query(
+        `
+        INSERT INTO conversations
+          (
+            user_id,
+            title
+          )
+        VALUES
+          ($1, $2)
+        RETURNING id
+        `,
+        [
+          user.id,
+          message.trim().substring(0, 40),
+        ]
+      );
 
-      chatId =
-        conversationResult
-          .rows[0]
-          .id;
+      chatId = conversationResult.rows[0].id;
     }
 
-    const historyResult =
-      await pool.query(
-        `
-        SELECT
-          role,
-          content,
-          created_at
-        FROM messages
-        WHERE conversation_id = $1
-        ORDER BY created_at ASC
-        `,
-        [chatId]
-      );
+    const historyResult = await pool.query(
+      `
+      SELECT
+        role,
+        content,
+        created_at
+      FROM messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC
+      `,
+      [chatId]
+    );
 
-    const memoryResult =
-      await pool.query(
-        `
-        SELECT
-          id,
-          memory_type,
-          content,
-          importance
-        FROM ai_memory
-        ORDER BY
-          importance DESC,
-          created_at DESC
-        LIMIT 100
-        `
-      );
+    const memoryResult = await pool.query(
+      `
+      SELECT
+        id,
+        memory_type,
+        content,
+        importance
+      FROM ai_memory
+      ORDER BY
+        importance DESC,
+        created_at DESC
+      LIMIT 100
+      `
+    );
 
     const memoryContext =
       memoryResult.rows.length > 0
@@ -143,14 +127,12 @@ export async function POST(req: Request) {
      * =====================================================
      * BUSINESS DATABASE INTELLIGENCE
      *
-     * This dynamically inspects the current tenant database.
+     * The AI reads the authenticated user's isolated
+     * tenant database dynamically.
      *
-     * It does NOT assume the user has Sales, CRM, Invoicing,
-     * Inventory, etc.
-     *
-     * It discovers whatever tables actually exist in this
-     * user's isolated database and retrieves the tables most
-     * relevant to the user's question.
+     * It does not assume every business has the same apps.
+     * Only tables actually installed in this tenant database
+     * are available to the AI.
      * =====================================================
      */
 
@@ -203,13 +185,13 @@ DATABASE RULES:
 
 6. Do not assume that every SaMi app is installed.
 
-7. The database may contain different tables for different businesses because users choose their apps during registration.
+7. Different businesses can have different apps because users choose their apps during registration.
 
-8. If the user asks about sales, use sales-related tables if they exist.
+8. If the user asks about sales, use available sales-related tables.
 
-9. If the user asks about invoices, use invoice-related tables if they exist.
+9. If the user asks about invoices, use available invoice-related tables.
 
-10. If the user asks about customers, use customer-related tables if they exist.
+10. If the user asks about customers, use available customer-related tables.
 
 11. If the user asks about inventory, products, employees, expenses, CRM, projects, or another business area, use the relevant available tables.
 
@@ -236,9 +218,17 @@ BUSINESS DATABASE CONTEXT:
 ${businessDataContext}
 `;
 
-    const chatMessages = [
+    /*
+     * Explicitly type the messages as Groq/OpenAI-compatible
+     * chat completion messages.
+     *
+     * This fixes the TypeScript error where role was being
+     * inferred as possibly "tool".
+     */
+
+    const chatMessages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [
       {
-        role: "system" as const,
+        role: "system",
         content: systemPrompt,
       },
 
@@ -248,45 +238,40 @@ ${businessDataContext}
             role: string;
             content: string;
           }
-        ) => ({
-          role:
-            msg.role === "user"
-              ? ("user" as const)
-              : ("assistant" as const),
+        ): Groq.Chat.Completions.ChatCompletionMessageParam => {
+          if (msg.role === "assistant") {
+            return {
+              role: "assistant",
+              content: msg.content,
+            };
+          }
 
-          content:
-            msg.content,
-        })
+          return {
+            role: "user",
+            content: msg.content,
+          };
+        }
       ),
 
       {
-        role: "user" as const,
-        content:
-          message.trim(),
+        role: "user",
+        content: message.trim(),
       },
     ];
 
     const completion =
-      await groq.chat.completions.create(
-        {
-          model:
-            "llama-3.3-70b-versatile",
+      await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
 
-          messages:
-            chatMessages,
+        messages: chatMessages,
 
-          temperature: 0.2,
+        temperature: 0.2,
 
-          max_tokens: 2048,
-        }
-      );
+        max_tokens: 2048,
+      });
 
     const reply =
-      completion
-        .choices[0]
-        ?.message
-        ?.content
-        ?.trim() ||
+      completion.choices[0]?.message?.content?.trim() ||
       "Sorry, I couldn't generate a response.";
 
     await pool.query(
@@ -312,37 +297,27 @@ ${businessDataContext}
      */
 
     try {
-      const origin =
-        req.headers.get(
-          "origin"
-        );
+      const origin = req.headers.get("origin");
 
       if (origin) {
-        const memoryResponse =
-          await fetch(
-            `${origin}/api/memories/extract`,
-            {
-              method: "POST",
+        const memoryResponse = await fetch(
+          `${origin}/api/memories/extract`,
+          {
+            method: "POST",
 
-              headers: {
-                "Content-Type":
-                  "application/json",
+            headers: {
+              "Content-Type": "application/json",
 
-                Cookie:
-                  req.headers.get(
-                    "cookie"
-                  ) || "",
-              },
+              Cookie:
+                req.headers.get("cookie") || "",
+            },
 
-              body: JSON.stringify({
-                message:
-                  message.trim(),
-
-                conversationId:
-                  chatId,
-              }),
-            }
-          );
+            body: JSON.stringify({
+              message: message.trim(),
+              conversationId: chatId,
+            }),
+          }
+        );
 
         if (!memoryResponse.ok) {
           console.error(
