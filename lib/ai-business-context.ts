@@ -1,261 +1,121 @@
-﻿import type { Pool } from "pg";
+import type { Pool } from "pg";
 
-type TableInfo = {
+export type BusinessTable = { table_name: string; columns: string[] };
+export type BusinessForeignKey = {
   table_name: string;
-  columns: string[];
+  column_name: string;
+  foreign_table_name: string;
+  foreign_column_name: string;
+};
+export type BusinessSchema = {
+  tables: BusinessTable[];
+  foreignKeys: BusinessForeignKey[];
 };
 
-const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "about",
-  "what",
-  "show",
-  "tell",
-  "me",
-  "my",
-  "our",
-  "business",
-  "data",
-  "please",
-  "can",
-  "you",
-  "give",
-  "get",
-  "how",
-  "many",
-  "much",
-  "is",
-  "are",
-  "was",
-  "were",
-  "do",
-  "does",
-  "of",
-  "in",
-  "on",
-  "to",
-  "from",
-  "with",
-  "a",
-  "an",
-]);
-
-function tokenize(text: string): string[] {
-  return [...new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9_]+/g, " ")
-      .split(/\s+/)
-      .map((word) => word.trim())
-      .filter((word) => word.length >= 3 && !STOP_WORDS.has(word))
-  )];
-}
-
-function quoteIdentifier(identifier: string): string {
-  return `"${identifier.replace(/"/g, '""')}"`;
-}
-
-function scoreTable(
-  table: TableInfo,
-  words: string[]
-): number {
-  const tableWords = tokenize(table.table_name.replace(/_/g, " "));
-
-  let score = 0;
-
-  for (const word of words) {
-    if (tableWords.includes(word)) {
-      score += 10;
-    }
-
-    if (
-      tableWords.some(
-        (tableWord) =>
-          tableWord.includes(word) ||
-          word.includes(tableWord)
-      )
-    ) {
-      score += 4;
-    }
-
-    for (const column of table.columns) {
-      const columnWords = tokenize(column.replace(/_/g, " "));
-
-      if (columnWords.includes(word)) {
-        score += 3;
-      }
-
-      if (
-        columnWords.some(
-          (columnWord) =>
-            columnWord.includes(word) ||
-            word.includes(columnWord)
-        )
-      ) {
-        score += 1;
-      }
-    }
-  }
-
-  return score;
-}
-
-async function getTenantTables(
-  pool: Pool
-): Promise<TableInfo[]> {
-  const result = await pool.query(`
-    SELECT
-      c.table_name,
-      c.column_name
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'public'
-      AND c.table_name NOT IN (
-        'messages',
-        'conversations',
-        'ai_memory'
-      )
-    ORDER BY c.table_name, c.ordinal_position
-  `);
-
-  const tables = new Map<string, string[]>();
-
-  for (const row of result.rows) {
-    if (!tables.has(row.table_name)) {
-      tables.set(row.table_name, []);
-    }
-
-    tables.get(row.table_name)!.push(row.column_name);
-  }
-
-  return [...tables.entries()].map(
-    ([table_name, columns]) => ({
-      table_name,
-      columns,
-    })
-  );
-}
-
 function cleanValue(value: unknown): unknown {
-  if (value === null || value === undefined) {
-    return null;
-  }
-
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-
-  if (
-    typeof value === "string" &&
-    value.length > 500
-  ) {
-    return value.substring(0, 500) + "...";
-  }
-
-  if (
-    typeof value === "object"
-  ) {
-    try {
-      const json = JSON.stringify(value);
-
-      if (json.length > 1000) {
-        return json.substring(0, 1000) + "...";
-      }
-
-      return value;
-    } catch {
-      return String(value);
-    }
-  }
-
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "string" && value.length > 1000)
+    return value.substring(0, 1000) + "...";
   return value;
 }
 
-async function readTable(
-  pool: Pool,
-  table: TableInfo,
-  limit = 50
-) {
-  const tableName = quoteIdentifier(table.table_name);
+export async function getBusinessSchema(pool: Pool): Promise<BusinessSchema> {
+  const columns = await pool.query(`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name NOT IN ('messages','conversations','ai_memory')
+    ORDER BY table_name, ordinal_position
+  `);
 
-  const result = await pool.query(
-    `SELECT * FROM ${tableName} LIMIT $1`,
-    [limit]
-  );
+  const fks = await pool.query(`
+    SELECT tc.table_name, kcu.column_name,
+           ccu.table_name AS foreign_table_name,
+           ccu.column_name AS foreign_column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON tc.constraint_name = ccu.constraint_name
+      AND tc.table_schema = ccu.table_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+  `);
 
-  return result.rows.map((row) => {
-    const cleaned: Record<string, unknown> = {};
+  const map = new Map<string,string[]>();
+  for (const row of columns.rows) {
+    if (!map.has(row.table_name)) map.set(row.table_name, []);
+    map.get(row.table_name)!.push(row.column_name);
+  }
 
-    for (const [key, value] of Object.entries(row)) {
-      cleaned[key] = cleanValue(value);
-    }
-
-    return cleaned;
-  });
+  return {
+    tables: [...map.entries()].map(([table_name, columns]) => ({table_name, columns})),
+    foreignKeys: fks.rows,
+  };
 }
 
-export async function getBusinessDataContext(
-  pool: Pool,
-  userMessage: string
-): Promise<string> {
-  const tables = await getTenantTables(pool);
+export function schemaToPrompt(schema: BusinessSchema): string {
+  const tables = schema.tables.length
+    ? schema.tables.map(t => `TABLE "${t.table_name}"\nCOLUMNS: ${t.columns.join(", ")}`).join("\n\n")
+    : "No business application tables are installed.";
 
-  if (tables.length === 0) {
-    return "No business application tables are currently available.";
+  const relations = schema.foreignKeys.length
+    ? schema.foreignKeys.map(f =>
+        `"${f.table_name}"."${f.column_name}" -> "${f.foreign_table_name}"."${f.foreign_column_name}"`
+      ).join("\n")
+    : "No foreign-key relationships found.";
+
+  return `BUSINESS DATABASE SCHEMA\n\n${tables}\n\nFOREIGN-KEY RELATIONSHIPS\n${relations}`;
+}
+
+export function validateReadOnlySql(sql: string): string {
+  let q = sql.trim()
+    .replace(/^```(?:sql)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  if (!q) throw new Error("AI did not produce a SQL query.");
+  if (q.includes(";")) throw new Error("Multiple SQL statements are not allowed.");
+  if (!/^(SELECT|WITH)\b/i.test(q))
+    throw new Error("Only SELECT or WITH queries are allowed.");
+
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|EXECUTE|PREPARE|SET|RESET|PG_SLEEP)\b/i.test(q))
+    throw new Error("Unsafe SQL was rejected.");
+
+  if (/\b(pg_catalog|information_schema|pg_toast)\b/i.test(q))
+    throw new Error("System catalogs are not allowed.");
+
+  if (q.length > 12000) throw new Error("Generated SQL is too large.");
+  return q;
+}
+
+export async function executeBusinessQuery(
+  pool: Pool, sql: string
+): Promise<Record<string,unknown>[]> {
+  const safe = validateReadOnlySql(sql);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL statement_timeout = '5000ms'");
+    await client.query("SET LOCAL lock_timeout = '1000ms'");
+    await client.query("SET TRANSACTION READ ONLY");
+
+    const result = await client.query(safe);
+    await client.query("ROLLBACK");
+
+    return result.rows.map(row => {
+      const clean: Record<string,unknown> = {};
+      for (const [k,v] of Object.entries(row)) clean[k] = cleanValue(v);
+      return clean;
+    });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
   }
-
-  const words = tokenize(userMessage);
-
-  const scored = tables
-    .map((table) => ({
-      table,
-      score: scoreTable(table, words),
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  const relevant = scored
-    .filter((item) => item.score > 0)
-    .slice(0, 6);
-
-  const selected =
-    relevant.length > 0
-      ? relevant
-      : scored.slice(0, 4);
-
-  const sections: string[] = [];
-
-  sections.push(
-    "AVAILABLE BUSINESS TABLES:\n" +
-      tables
-        .map(
-          (table) =>
-            `- ${table.table_name}: ${table.columns.join(", ")}`
-        )
-        .join("\n")
-  );
-
-  for (const item of selected) {
-    try {
-      const rows = await readTable(
-        pool,
-        item.table,
-        50
-      );
-
-      sections.push(
-        `\nTABLE: ${item.table.table_name}\n` +
-          `COLUMNS: ${item.table.columns.join(", ")}\n` +
-          `ROWS (${rows.length}):\n` +
-          JSON.stringify(rows, null, 2)
-      );
-    } catch (error) {
-      console.error(
-        `Could not read table ${item.table.table_name}:`,
-        error
-      );
-    }
-  }
-
-  return sections.join("\n");
 }
