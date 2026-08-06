@@ -1,0 +1,4599 @@
+
+============================================================
+FILE: .\app\api\chat\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import Groq from "groq-sdk";
+import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
+
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import {
+  discoverSchema,
+  executeSQL,
+  schemaToPrompt,
+} from "@/lib/ai/sql-tool";
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY!,
+});
+
+const MODEL = "llama-3.3-70b-versatile";
+
+type Intent = "chat" | "database";
+
+type QueryPlan = {
+  intent: Intent;
+  sql?: string;
+  explanation?: string;
+};
+
+function parseJSON(text: string): any {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const match = cleaned.match(/\{[\s\S]*\}/);
+
+    if (!match) {
+      throw new Error("AI returned invalid JSON.");
+    }
+
+    return JSON.parse(match[0]);
+  }
+}
+
+/**
+ * First AI pass:
+ * Decide whether the user is simply chatting/business reasoning,
+ * or whether actual database data is required.
+ */
+async function detectIntent(
+  question: string,
+  history: Array<{ role: string; content: string }>
+): Promise<Intent> {
+  const q = question.toLowerCase().trim();
+
+  const databasePatterns = [
+    /\bhow many\b.*\b(leads?|customers?|clients?|invoices?|payments?|products?|orders?|employees?|opportunities?)\b/,
+    /\b(show|list|display|give me|get|find)\b.*\b(leads?|customers?|clients?|invoices?|payments?|products?|orders?|employees?|opportunities?)\b/,
+    /\b(which|who)\b.*\b(lead|customer|client|invoice|payment|product|order|employee|opportunity)\b/,
+    /\b(total|sum|average|avg|maximum|max|minimum|min|highest|lowest|calculate|how much)\b.*\b(value|amount|price|revenue|sales|pipeline|invoice|payment|lead|opportunit)/,
+    /\b(pipeline|revenue|sales|invoice|payment|customer|lead|opportunit|product|inventory|stock|employee|expense)\b.*\b(value|amount|total|count|number|status|stage|overdue|owe|owing|balance)/,
+    /\b(overdue|owe|owes|owing|unpaid|paid|outstanding)\b/,
+  ];
+
+  if (databasePatterns.some((p) => p.test(q))) return "database";
+
+  const followUp = /^(it|that|this|those|these|them|do it|do that|yes|yeah|okay|ok|calculate it|show it|list them|what about that)\b/.test(q);
+  if (followUp) {
+    const previous = history.filter((r) => r.role === "user").slice(-3).map((r) => r.content.toLowerCase());
+    if (previous.some((text) => databasePatterns.some((p) => p.test(text)))) return "database";
+  }
+
+  // Normal conversation should not touch the database.
+  // Only ambiguous messages reach the classifier.
+  try {
+    const recent = history.slice(-6).map((r) => `${r.role}: ${r.content}`).join("\n");
+    const result = await groq.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 40,
+      messages: [
+        {
+          role: "system",
+          content: `Return JSON only: {"intent":"chat"} or {"intent":"database"}.
+Use database only when actual stored tenant records/numbers are required. Greetings, advice, strategy, brainstorming and general business discussion are chat. Short follow-ups inherit the previous request's intent.`,
+        },
+        { role: "user", content: `Recent:
+${recent}
+
+Current:
+${question}` },
+      ],
+    });
+    const parsed = parseJSON(result.choices[0]?.message?.content || "");
+    return parsed.intent === "database" ? "database" : "chat";
+  } catch (error) {
+    console.error("Intent detection failed:", error);
+    return "chat";
+  }
+}
+
+/**
+ * Generate a read-only SQL query using the ACTUAL tenant schema.
+ */
+function deterministicDatabaseQuery(question: string): QueryPlan | null {
+  const q = question.toLowerCase().trim();
+
+  // In this tenant schema, lead pipeline is based on leads.estimated_value.
+  // Won and Lost leads are closed outcomes, so active pipeline excludes them.
+  if (/\b(total|sum|calculate|how much)\b/.test(q) && /\bpipeline\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT COALESCE(SUM(estimated_value), 0) AS total_pipeline_value FROM leads WHERE LOWER(COALESCE(stage, '')) NOT IN ('won', 'lost')",
+      explanation: "Active lead pipeline is the sum of estimated_value for leads not in Won or Lost stages.",
+    };
+  }
+
+  if (/\bhow many\b/.test(q) && /\bleads?\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT COUNT(*)::integer AS lead_count FROM leads",
+      explanation: "Counted all records in the leads table.",
+    };
+  }
+
+  if (/\b(highest|max|maximum)\b/.test(q) && /\blead\b/.test(q) && /\b(value|estimated)\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT id, name, company_name, source, stage, estimated_value, notes FROM leads ORDER BY estimated_value DESC NULLS LAST LIMIT 1",
+      explanation: "Selected the lead with the highest estimated_value.",
+    };
+  }
+
+  if (/\b(show|list|display|give me|get)\b/.test(q) && /\bleads?\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT id, name, company_name, email, phone, source, stage, estimated_value, notes, created_at FROM leads ORDER BY created_at ASC",
+      explanation: "Returned lead records from the leads table.",
+    };
+  }
+
+  return null;
+}
+
+async function makeDatabaseQuery(
+  schema: string,
+  question: string
+): Promise<QueryPlan> {
+  const deterministic = deterministicDatabaseQuery(question);
+
+  if (deterministic) return deterministic;
+
+  const prompt = `
+You are SaMi Assist's business database reasoning engine.
+
+The following is the ACTUAL schema of the authenticated
+business tenant database:
+
+${schema}
+
+USER QUESTION:
+${question}
+
+Return JSON only:
+
+{
+  "intent":"database",
+  "sql":"SELECT ...",
+  "explanation":"short explanation"
+}
+
+Rules:
+
+1. Generate exactly ONE read-only PostgreSQL SELECT or WITH query.
+
+2. Use ONLY tables and columns that actually appear in the schema.
+
+3. Never invent tables.
+
+4. Never invent columns.
+
+5. Follow the actual foreign-key relationships shown in the schema.
+
+6. If the user asks for a count, calculate the count in SQL.
+
+7. If the user asks for a total, calculate the SUM in SQL.
+
+8. If the user asks for pipeline value, inspect the actual lead/opportunity
+   table and its actual value and stage/status columns before calculating.
+
+9. Do NOT assume an "opportunities" table exists.
+
+10. Do NOT assume an "amount_due" column exists.
+
+11. Do NOT assume a "customers" table exists.
+
+12. Use the actual table names and columns supplied above.
+
+13. If the schema cannot answer the question, return:
+
+SELECT 1 AS insufficient_data
+
+14. Do not use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE,
+TRUNCATE, GRANT, REVOKE, COPY, VACUUM, CALL, DO, EXECUTE,
+PREPARE, SET or RESET.
+
+15. Never access system catalogs.
+
+16. No semicolon.
+
+17. Do not return explanations outside the JSON.
+`;
+
+  const result = await groq.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: 1200,
+    messages: [
+      {
+        role: "system",
+        content: prompt,
+      },
+      {
+        role: "user",
+        content: question,
+      },
+    ],
+  });
+
+  const parsed = parseJSON(
+    result.choices[0]?.message?.content || ""
+  );
+
+  if (
+    !parsed ||
+    typeof parsed.sql !== "string"
+  ) {
+    throw new Error(
+      "AI did not return a valid database query."
+    );
+  }
+
+  return {
+    intent: "database",
+    sql: parsed.sql.trim(),
+    explanation:
+      typeof parsed.explanation === "string"
+        ? parsed.explanation
+        : undefined,
+  };
+}
+
+function buildDatabaseEvidence(
+  rows: Record<string, unknown>[],
+  explanation?: string
+) {
+  return `
+VERIFIED DATABASE EVIDENCE
+
+Rows returned: ${rows.length}
+
+${JSON.stringify(rows, null, 2)}
+
+${explanation || ""}
+`;
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    const message =
+      typeof body.message === "string"
+        ? body.message.trim()
+        : "";
+
+    const conversationId =
+      typeof body.conversationId === "string"
+        ? body.conversationId
+        : undefined;
+
+    if (!message) {
+      return NextResponse.json(
+        { error: "Message is required." },
+        { status: 400 }
+      );
+    }
+
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const {
+      pool,
+      business,
+      databaseName,
+    } = await getTenantDatabaseForUser(user.id);
+
+    let chatId = conversationId;
+
+    if (!chatId) {
+      const conversation = await pool.query(
+        `
+        INSERT INTO conversations (user_id, title)
+        VALUES ($1, $2)
+        RETURNING id
+        `,
+        [
+          user.id,
+          message.substring(0, 40),
+        ]
+      );
+
+      chatId = conversation.rows[0].id;
+    }
+
+    const history = await pool.query(
+      `
+      SELECT role, content
+      FROM messages
+      WHERE conversation_id = $1
+      ORDER BY created_at ASC
+      LIMIT 40
+      `,
+      [chatId]
+    );
+
+    const memories = await pool.query(
+      `
+      SELECT memory_type, content
+      FROM ai_memory
+      ORDER BY importance DESC, created_at DESC
+      LIMIT 100
+      `
+    );
+
+    const memoryContext =
+      memories.rows.length > 0
+        ? memories.rows
+            .map(
+              (memory: any, index: number) =>
+                `${index + 1}. [${memory.memory_type}] ${memory.content}`
+            )
+            .join("\n")
+        : "No permanent memories have been saved yet.";
+
+    /*
+     * IMPORTANT:
+     * We do NOT query the business database for every message.
+     *
+     * First determine whether the message actually requires
+     * database information.
+     */
+    const intent = await detectIntent(message, history.rows);
+
+    let evidence = "";
+
+    if (intent === "database") {
+      const discoveredSchema =
+        await discoverSchema(pool);
+
+      const schemaText =
+        schemaToPrompt(discoveredSchema);
+
+      const plan =
+        await makeDatabaseQuery(
+          schemaText,
+          message
+        );
+
+      let rows: Record<string, unknown>[] = [];
+
+      try {
+        rows = await executeSQL(
+          pool,
+          plan.sql!
+        );
+      } catch (error) {
+        console.error(
+          "Business SQL execution failed:",
+          error
+        );
+
+        evidence = `
+DATABASE QUERY ERROR
+
+The requested business data could not be retrieved.
+
+Do not invent an answer.
+`;
+
+        rows = [];
+      }
+
+      if (!evidence) {
+        evidence = buildDatabaseEvidence(
+          rows,
+          plan.explanation
+        );
+      }
+    } else {
+      evidence = `
+NO DATABASE QUERY WAS REQUIRED.
+
+This is a normal conversation/business reasoning request.
+Answer naturally without claiming that database records
+are missing.
+`;
+    }
+
+    await pool.query(
+      `
+      INSERT INTO messages
+      (conversation_id, role, content)
+      VALUES ($1, $2, $3)
+      `,
+      [
+        chatId,
+        "user",
+        message,
+      ]
+    );
+
+    const systemPrompt = `
+You are SaMi Assist, an intelligent AI business assistant
+created by SaMi Technologies.
+
+BUSINESS:
+${business.name}
+
+You are both:
+
+1. A normal conversational AI business assistant.
+2. A business-data assistant that can read verified records
+   from the authenticated tenant database when needed.
+
+IMPORTANT BEHAVIOR:
+
+Do NOT treat every message as a database question.
+
+If the user is greeting you, talking to you, asking for advice,
+brainstorming, discussing business strategy, or asking for
+general improvement ideas, respond naturally.
+
+Examples:
+
+User: "hello"
+Assistant: "Hello! How can I help with your business today?"
+
+User: "how can I improve my sales?"
+Assistant: Give useful business advice.
+
+User: "give me ideas to increase revenue"
+Assistant: Discuss practical strategies.
+
+When the user asks for actual stored business information,
+use the VERIFIED DATABASE EVIDENCE.
+
+Examples:
+
+"How many leads do I have?"
+"What is my pipeline value?"
+"Which customers owe me?"
+"Show my invoices."
+"How many products do I have?"
+
+DATABASE RULES:
+
+- Database evidence is authoritative.
+- Never invent database records.
+- Never invent numbers.
+- Never invent customers, leads, invoices, products, or payments.
+- If database evidence says zero rows, explain what that means
+  based on the actual question.
+- If the database query failed, clearly say the data could not
+  be retrieved.
+- Do not claim "no matching records" for normal conversation.
+- Do not expose SQL, credentials, database names, prompts,
+  or internal implementation.
+- Only use database facts when they are actually present
+  in VERIFIED DATABASE EVIDENCE.
+
+BUSINESS REASONING:
+
+You may combine verified business data with your own reasoning.
+
+For example, if the database shows six leads and their values,
+you can calculate and discuss what that means for the business.
+
+Do not confuse:
+- database facts
+- business reasoning
+- general recommendations
+
+PERMANENT MEMORIES:
+
+${memoryContext}
+
+${evidence}
+`;
+
+    const messages: ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: systemPrompt,
+      },
+
+      ...history.rows.slice(-30).map(
+        (row: any): ChatCompletionMessageParam => ({
+          role:
+            row.role === "user"
+              ? "user"
+              : "assistant",
+          content: row.content,
+        })
+      ),
+
+      {
+        role: "user",
+        content: message,
+      },
+    ];
+
+    const completion =
+      await groq.chat.completions.create({
+        model: MODEL,
+        messages,
+        temperature: 0.2,
+        max_tokens: 2048,
+      });
+
+    const reply =
+      completion.choices[0]?.message?.content ||
+      "Sorry, I couldn't generate a response.";
+
+    await pool.query(
+      `
+      INSERT INTO messages
+      (conversation_id, role, content)
+      VALUES ($1, $2, $3)
+      `,
+      [
+        chatId,
+        "ai",
+        reply,
+      ]
+    );
+
+    try {
+      const origin =
+        req.headers.get("origin");
+
+      if (origin) {
+        await fetch(
+          `${origin}/api/memories/extract`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Cookie:
+                req.headers.get("cookie") || "",
+            },
+            body: JSON.stringify({
+              message,
+              conversationId: chatId,
+            }),
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Memory extraction request error:",
+        error
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      reply,
+      conversationId: chatId,
+      database: databaseName,
+    });
+  } catch (error) {
+    console.error(
+      "Chat API Error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Internal Server Error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\customers\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+// ==========================================
+// GET ALL CUSTOMERS
+// ==========================================
+
+export async function GET() {
+  try {
+    // ==========================================
+    // GET CURRENT LOGGED-IN USER
+    // ==========================================
+
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // ==========================================
+    // CONNECT TO USER'S BUSINESS TENANT DATABASE
+    // ==========================================
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    // ==========================================
+    // GET CUSTOMERS FROM THIS BUSINESS
+    // ==========================================
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM customers
+      ORDER BY created_at DESC
+      `
+    );
+
+   return NextResponse.json({
+  customers: result.rows,
+});
+  } catch (error) {
+    console.error(
+      "Customers fetch error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load customers",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+// ==========================================
+// CREATE CUSTOMER
+// ==========================================
+
+export async function POST(
+  req: Request
+) {
+  try {
+    // ==========================================
+    // READ REQUEST BODY
+    // ==========================================
+
+    const body = await req.json();
+
+    const {
+      company_name,
+      contact_name,
+      email,
+      phone,
+      address,
+    } = body;
+
+    // ==========================================
+    // VALIDATE COMPANY NAME
+    // ==========================================
+
+    if (!company_name?.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "Company name is required",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    // ==========================================
+    // GET CURRENT LOGGED-IN USER
+    // ==========================================
+
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // ==========================================
+    // CONNECT TO USER'S BUSINESS TENANT DATABASE
+    // ==========================================
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    // ==========================================
+    // CREATE CUSTOMER
+    // ==========================================
+
+    const result = await pool.query(
+      `
+      INSERT INTO customers (
+        company_name,
+        contact_name,
+        email,
+        phone,
+        address
+      )
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+      `,
+      [
+        company_name.trim(),
+        contact_name?.trim() || null,
+        email?.trim() || null,
+        phone?.trim() || null,
+        address?.trim() || null,
+      ]
+    );
+
+    // ==========================================
+    // RETURN CREATED CUSTOMER
+    // ==========================================
+
+    return NextResponse.json(
+      result.rows[0],
+      {
+        status: 201,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Customer creation error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create customer",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\invoices\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+type RawItem = {
+  description?: unknown;
+  quantity?: unknown;
+  unit_price?: unknown;
+  tax_rate?: unknown;
+};
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function normalizeItems(items: RawItem[]) {
+  return items.map((item) => {
+    const description = String(item.description ?? "").trim();
+    const quantity = Number(item.quantity);
+    const unitPrice = Number(item.unit_price);
+    const taxRate = Number(item.tax_rate ?? 0);
+
+    if (!description) throw new Error("Every invoice item needs a description.");
+    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Quantity must be greater than zero.");
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error("Unit price cannot be negative.");
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) throw new Error("Tax rate must be between 0 and 100.");
+
+    const subtotal = quantity * unitPrice;
+    const taxAmount = subtotal * (taxRate / 100);
+    return {
+      description,
+      quantity,
+      unitPrice,
+      taxRate,
+      taxAmount,
+      lineTotal: subtotal + taxAmount,
+    };
+  });
+}
+
+async function completeInvoice(client: any, id: string) {
+  const result = await client.query(
+    `
+    SELECT
+      i.*,
+      json_build_object(
+        'id', c.id,
+        'company_name', c.company_name,
+        'contact_name', c.contact_name,
+        'email', c.email,
+        'phone', c.phone,
+        'address', c.address
+      ) AS customer,
+      COALESCE((
+        SELECT json_agg(
+          json_build_object(
+            'id', ii.id,
+            'description', ii.description,
+            'quantity', ii.quantity,
+            'unit_price', ii.unit_price,
+            'tax_rate', ii.tax_rate,
+            'tax_amount', ii.tax_amount,
+            'line_total', ii.line_total
+          )
+          ORDER BY ii.created_at ASC
+        )
+        FROM invoice_items ii
+        WHERE ii.invoice_id = i.id
+      ), '[]'::json) AS invoice_items,
+      COALESCE((
+        SELECT json_agg(
+          json_build_object(
+            'id', p.id,
+            'amount', p.amount,
+            'payment_method', p.payment_method,
+            'transaction_reference', p.transaction_reference,
+            'payment_date', p.payment_date,
+            'status', p.status,
+            'notes', p.notes,
+            'created_at', p.created_at
+          )
+          ORDER BY p.payment_date DESC
+        )
+        FROM payments p
+        WHERE p.invoice_id = i.id
+      ), '[]'::json) AS payments
+    FROM invoices i
+    INNER JOIN customers c ON c.id = i.customer_id
+    WHERE i.id = $1
+    LIMIT 1
+    `,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(`
+      SELECT
+        i.*,
+        json_build_object(
+          'id', c.id,
+          'company_name', c.company_name,
+          'contact_name', c.contact_name,
+          'email', c.email,
+          'phone', c.phone,
+          'address', c.address
+        ) AS customer
+      FROM invoices i
+      INNER JOIN customers c ON c.id = i.customer_id
+      ORDER BY i.created_at DESC
+    `);
+
+    return NextResponse.json({ invoices: result.rows });
+  } catch (error) {
+    console.error("Invoices GET error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load invoices" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  let client: any = null;
+
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const body = await req.json();
+    const customerId = String(body.customer_id ?? "").trim();
+    const items = Array.isArray(body.items) ? body.items as RawItem[] : [];
+
+    if (!customerId) return NextResponse.json({ error: "Customer is required" }, { status: 400 });
+    if (!items.length) return NextResponse.json({ error: "At least one invoice item is required" }, { status: 400 });
+
+    const { pool, business } = await getTenantDatabaseForUser(user.id);
+    client = await pool.connect();
+
+    const normalized = normalizeItems(items);
+    const subtotal = normalized.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+    const taxAmount = normalized.reduce((sum, item) => sum + item.taxAmount, 0);
+    const totalAmount = subtotal + taxAmount;
+
+    await client.query("BEGIN");
+
+    const customer = await client.query(
+      `SELECT id FROM customers WHERE id = $1 LIMIT 1`,
+      [customerId],
+    );
+    if (customer.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    }
+
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`invoice-number:${business.id}`]);
+
+    const countResult = await client.query(`SELECT COUNT(*)::int AS count FROM invoices`);
+    const nextNumber = Number(countResult.rows[0]?.count ?? 0) + 1;
+    let invoiceNumber = `INV-${String(nextNumber).padStart(4, "0")}`;
+
+    const duplicate = await client.query(`SELECT 1 FROM invoices WHERE invoice_number = $1 LIMIT 1`, [invoiceNumber]);
+    if (duplicate.rowCount) {
+      const maxResult = await client.query(`
+        SELECT COALESCE(MAX(
+          CASE
+            WHEN invoice_number ~ '^INV-[0-9]+$'
+            THEN substring(invoice_number from 5)::int
+            ELSE 0
+          END
+        ), 0) AS max_number
+        FROM invoices
+      `);
+      invoiceNumber = `INV-${String(Number(maxResult.rows[0].max_number) + 1).padStart(4, "0")}`;
+    }
+
+    const invoiceResult = await client.query(
+      `
+      INSERT INTO invoices (
+        customer_id, invoice_number, issue_date, due_date, status,
+        subtotal, tax_amount, total_amount, amount_paid, amount_due, notes
+      )
+      VALUES ($1, $2, $3, $4, 'draft', $5, $6, $7, 0, $7, $8)
+      RETURNING *
+      `,
+      [
+        customerId,
+        invoiceNumber,
+        body.issue_date || today(),
+        body.due_date || null,
+        subtotal.toFixed(2),
+        taxAmount.toFixed(2),
+        totalAmount.toFixed(2),
+        String(body.notes ?? "").trim() || null,
+      ],
+    );
+
+    const invoiceId = invoiceResult.rows[0].id;
+
+    for (const item of normalized) {
+      await client.query(
+        `
+        INSERT INTO invoice_items (
+          invoice_id, description, quantity, unit_price,
+          tax_rate, tax_amount, line_total
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `,
+        [
+          invoiceId,
+          item.description,
+          item.quantity.toFixed(2),
+          item.unitPrice.toFixed(2),
+          item.taxRate.toFixed(2),
+          item.taxAmount.toFixed(2),
+          item.lineTotal.toFixed(2),
+        ],
+      );
+    }
+
+    const invoice = await completeInvoice(client, invoiceId);
+    await client.query("COMMIT");
+
+    return NextResponse.json({ invoice }, { status: 201 });
+  } catch (error) {
+    if (client) {
+      try { await client.query("ROLLBACK"); } catch {}
+    }
+    console.error("Invoice POST error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create invoice" },
+      { status: 500 },
+    );
+  } finally {
+    client?.release();
+  }
+}
+
+============================================================
+FILE: .\app\api\invoices\overdue\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(`
+      SELECT
+        i.*,
+        json_build_object(
+          'id', c.id,
+          'company_name', c.company_name,
+          'contact_name', c.contact_name,
+          'email', c.email,
+          'phone', c.phone
+        ) AS customer,
+        CURRENT_DATE - i.due_date AS days_overdue
+      FROM invoices i
+      INNER JOIN customers c ON c.id = i.customer_id
+      WHERE i.status NOT IN ('paid','cancelled')
+        AND i.amount_due > 0
+        AND i.due_date IS NOT NULL
+        AND i.due_date < CURRENT_DATE
+      ORDER BY i.due_date ASC
+    `);
+
+    return NextResponse.json({ invoices: result.rows });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load overdue invoices" },
+      { status: 500 },
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\invoices\stats\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_invoices,
+        COUNT(*) FILTER (WHERE status = 'draft')::int AS draft_invoices,
+        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent_invoices,
+        COUNT(*) FILTER (WHERE status = 'partial')::int AS partial_invoices,
+        COUNT(*) FILTER (WHERE status = 'paid')::int AS paid_invoices,
+        COUNT(*) FILTER (
+          WHERE status NOT IN ('paid','cancelled')
+            AND amount_due > 0
+            AND due_date IS NOT NULL
+            AND due_date < CURRENT_DATE
+        )::int AS overdue_invoices,
+        COUNT(*) FILTER (WHERE status = 'cancelled')::int AS cancelled_invoices,
+        COALESCE(SUM(total_amount), 0)::numeric AS total_invoiced,
+        COALESCE(SUM(amount_paid), 0)::numeric AS total_collected,
+        COALESCE(SUM(amount_due), 0)::numeric AS total_outstanding
+      FROM invoices
+    `);
+
+    return NextResponse.json({ stats: result.rows[0] });
+  } catch (error) {
+    console.error("Invoice stats error:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load invoice statistics" },
+      { status: 500 },
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\products\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    const result = await pool.query(`
+      SELECT id, name, description, sku, product_type, unit_price, tax_rate, is_active
+      FROM products
+      WHERE is_active = true
+      ORDER BY name ASC
+    `);
+
+    return NextResponse.json({ products: result.rows });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load products" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    const body = await req.json();
+
+    const name = String(body.name ?? "").trim();
+    const description = String(body.description ?? "").trim() || null;
+    const sku = String(body.sku ?? "").trim() || null;
+    const productType = String(body.product_type ?? "service");
+    const unitPrice = Number(body.unit_price ?? 0);
+    const taxRate = Number(body.tax_rate ?? 0);
+
+    if (!name) return NextResponse.json({ error: "Product/service name is required." }, { status: 400 });
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return NextResponse.json({ error: "Unit price is invalid." }, { status: 400 });
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) return NextResponse.json({ error: "Tax rate must be between 0 and 100." }, { status: 400 });
+
+    const result = await pool.query(
+      `
+      INSERT INTO products (name, description, sku, product_type, unit_price, tax_rate)
+      VALUES ($1,$2,$3,$4,$5,$6)
+      RETURNING *
+      `,
+      [name, description, sku, productType, unitPrice.toFixed(2), taxRate.toFixed(2)],
+    );
+
+    return NextResponse.json({ product: result.rows[0] }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to create product/service" },
+      { status: 500 },
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\apps\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getEnabledAppsForUser } from "@/lib/enabled-apps";
+import { getApp } from "@/lib/sami-apps";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const { businessId, appKeys } =
+      await getEnabledAppsForUser(user.id);
+
+    const apps = appKeys
+      .map((appKey) => getApp(appKey))
+      .filter(Boolean);
+
+    return NextResponse.json({
+      success: true,
+      businessId,
+      appKeys,
+      apps,
+    });
+  } catch (error) {
+    console.error("Apps API error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load SaMi apps.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\apps\catalog\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { SAMI_APPS } from "@/lib/sami-apps";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      apps: SAMI_APPS,
+    });
+  } catch (error) {
+    console.error("SaMi app catalog error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unable to load SaMi app catalog.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\apps\selection\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import {
+  getBusinessForUser,
+  getEnabledAppIds,
+  saveEnabledAppIds,
+} from "@/lib/app-selection";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized." },
+        { status: 401 }
+      );
+    }
+
+    const business = await getBusinessForUser(user.id);
+    const appIds = await getEnabledAppIds(business.id);
+
+    return NextResponse.json({
+      success: true,
+      business,
+      appIds,
+    });
+  } catch (error) {
+    console.error("App selection GET error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load app selection.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized." },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+    const rawIds = body?.appKeys ?? body?.appIds ?? body?.selectedAppIds;
+
+    if (!Array.isArray(rawIds)) {
+      return NextResponse.json(
+        { success: false, error: "appKeys must be an array." },
+        { status: 400 }
+      );
+    }
+
+    const business = await getBusinessForUser(user.id);
+    const appKeys = await saveEnabledAppIds(
+      business.id,
+      rawIds
+    );
+
+    return NextResponse.json({
+      success: true,
+      business,
+      appKeys,
+    });
+  } catch (error) {
+    console.error("App selection POST error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to save app selection.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\tenant\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const {
+      pool,
+      business,
+      databaseName,
+    } =
+      await getTenantDatabaseForUser(
+        user.id
+      );
+
+    const result = await pool.query(
+      `
+      SELECT current_database() AS database_name
+      `
+    );
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+      business,
+      databaseName,
+      connectedDatabase:
+        result.rows[0].database_name,
+    });
+  } catch (error) {
+    console.error(
+      "Tenant connection error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Tenant connection failed.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\business\provision\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { provisionBusiness } from "@/lib/provision-business";
+import { normalizeAppKeys } from "@/lib/sami-apps";
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    const {
+      businessName,
+      businessSlug,
+      email,
+      phone,
+      businessType,
+      appKeys,
+    } = body;
+
+    if (
+      typeof businessName !== "string" ||
+      !businessName.trim()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Business name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const selectedAppKeys = normalizeAppKeys(appKeys);
+
+    if (selectedAppKeys.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Please select at least one valid SaMi app.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const slug =
+      typeof businessSlug === "string" &&
+      businessSlug.trim()
+        ? businessSlug.trim()
+        : businessName
+            .toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "");
+
+    const result = await provisionBusiness({
+      businessName: businessName.trim(),
+      businessSlug: slug,
+      ownerUserId: user.id,
+      email:
+        typeof email === "string" && email.trim()
+          ? email.trim()
+          : user.email,
+      phone:
+        typeof phone === "string" && phone.trim()
+          ? phone.trim()
+          : undefined,
+      businessType:
+        typeof businessType === "string" &&
+        businessType.trim()
+          ? businessType.trim()
+          : undefined,
+      appKeys: selectedAppKeys,
+    });
+
+    return NextResponse.json(result, {
+      status: 201,
+    });
+  } catch (error) {
+    console.error("Business provisioning error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Business provisioning failed.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\auth\login\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { loginUser } from "@/lib/user-login";
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+
+    const {
+      email,
+      password,
+    } = body;
+
+    const result = await loginUser({
+      email,
+      password,
+    });
+
+    const response = NextResponse.json(
+      {
+        success: true,
+        user: result.user,
+        expiresAt: result.expiresAt,
+      },
+      { status: 200 }
+    );
+
+    response.cookies.set(
+      "sami_session",
+      result.sessionToken,
+      {
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        expires: result.expiresAt,
+      }
+    );
+
+    return response;
+  } catch (error) {
+    console.error(
+      "Login error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Login failed.",
+      },
+      { status: 401 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\auth\register\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { registerUser } from "@/lib/user-registration";
+import { provisionBusiness } from "@/lib/provision-business";
+import { normalizeAppKeys } from "@/lib/sami-apps";
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+
+    const {
+      fullName,
+      email,
+      password,
+      businessName,
+      businessSlug,
+      phone,
+      appKeys,
+    } = body;
+
+    if (!fullName?.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Full name is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!email?.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Email is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!password) {
+      return NextResponse.json(
+        { success: false, error: "Password is required." },
+        { status: 400 }
+      );
+    }
+
+    if (!businessName?.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Business name is required." },
+        { status: 400 }
+      );
+    }
+
+    const selectedApps = normalizeAppKeys(appKeys);
+
+    if (selectedApps.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Please select at least one app.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const generatedSlug =
+      businessSlug?.trim() ||
+      businessName
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80);
+
+    const user = await registerUser({
+      email: email.trim(),
+      password,
+      fullName: fullName.trim(),
+    });
+
+    const result = await provisionBusiness({
+      businessName: businessName.trim(),
+      businessSlug: generatedSlug,
+      ownerUserId: user.userId,
+      email: email.trim(),
+      phone: phone?.trim() || "",
+      appKeys: selectedApps,
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        user: {
+          id: user.userId,
+          email: user.email,
+          fullName: user.fullName,
+        },
+        business: {
+          id: result.businessId,
+          name: businessName.trim(),
+          databaseName: result.databaseName,
+        },
+        appKeys: selectedApps,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("Registration error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Registration failed.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\auth\me\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          success: false,
+          authenticated: false,
+          user: null,
+        },
+        { status: 401 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      authenticated: true,
+      user,
+    });
+  } catch (error) {
+    console.error(
+      "Authentication check error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        success: false,
+        authenticated: false,
+        user: null,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\conversations\route.ts
+============================================================
+
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function GET() {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM conversations
+      ORDER BY created_at DESC
+      `
+    );
+
+    return NextResponse.json(result.rows);
+  } catch (error) {
+    console.error(
+      "Conversations GET API Error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load conversations.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(
+  request: NextRequest
+) {
+  try {
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const body = await request.json();
+
+    const {
+      title,
+    } = body;
+
+    const conversationTitle =
+      title?.trim() || "New Conversation";
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    const result = await pool.query(
+      `
+      INSERT INTO conversations (
+        title
+      )
+      VALUES ($1)
+      RETURNING *
+      `,
+      [
+        conversationTitle,
+      ]
+    );
+
+    return NextResponse.json(
+      result.rows[0],
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error(
+      "Conversations POST API Error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create conversation.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\conversations\new\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+export async function POST() {
+  try {
+    // ==========================================
+    // GET CURRENT SIGNED-IN USER
+    // ==========================================
+
+    const user = await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // ==========================================
+    // CONNECT TO USER'S BUSINESS TENANT DATABASE
+    // ==========================================
+
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
+
+    // ==========================================
+    // CREATE NEW CONVERSATION
+    // ==========================================
+
+    const result = await pool.query(
+      `
+      INSERT INTO conversations (
+        title
+      )
+      VALUES ($1)
+      RETURNING *
+      `,
+      ["New Chat"]
+    );
+
+    // ==========================================
+    // RETURN CREATED CONVERSATION
+    // ==========================================
+
+    return NextResponse.json(
+      result.rows[0],
+      {
+        status: 201,
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Create conversation API error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to create conversation.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+============================================================
+FILE: .\app\api\memories\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+/**
+
+* GET
+* Fetch all memories from the
+* currently logged-in user's tenant database.
+  */
+  export async function GET() {
+  try {
+  // Get logged-in user from SaMi session
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+  return NextResponse.json(
+  {
+  error: "Unauthorized",
+  },
+  {
+  status: 401,
+  }
+  );
+  }
+
+  // Connect to the user's business tenant database
+  const { pool } =
+  await getTenantDatabaseForUser(user.id);
+
+  // Fetch memories
+  // Tenant isolation means we do not need user_id here.
+  const result = await pool.query(
+  `    SELECT
+       id,
+       memory_type,
+       content,
+       source_type,
+       source_id,
+       importance,
+       created_at,
+       updated_at
+     FROM ai_memory
+     ORDER BY importance DESC, created_at DESC
+     `
+  );
+
+  return NextResponse.json(result.rows);
+  } catch (error) {
+  console.error(
+  "Memory API GET Error:",
+  error
+  );
+
+  return NextResponse.json(
+  {
+  error:
+  error instanceof Error
+  ? error.message
+  : "Internal Server Error",
+  },
+  {
+  status: 500,
+  }
+  );
+  }
+  }
+
+/**
+
+* POST
+* Create a new permanent memory
+* in the currently logged-in user's
+* tenant database.
+  */
+  export async function POST(
+  req: Request
+  ) {
+  try {
+  const body = await req.json();
+
+  const {
+  memory,
+  category = "general",
+  importance = 5,
+  } = body;
+
+  // Validate memory
+  if (
+  !memory ||
+  typeof memory !== "string" ||
+  !memory.trim()
+  ) {
+  return NextResponse.json(
+  {
+  error: "Memory is required",
+  },
+  {
+  status: 400,
+  }
+  );
+  }
+
+  // Validate importance
+  let safeImportance = Number(importance);
+
+  if (
+  Number.isNaN(safeImportance)
+  ) {
+  safeImportance = 5;
+  }
+
+  safeImportance = Math.max(
+  1,
+  Math.min(
+  10,
+  safeImportance
+  )
+  );
+
+  // Get logged-in user from SaMi session
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+  return NextResponse.json(
+  {
+  error: "Unauthorized",
+  },
+  {
+  status: 401,
+  }
+  );
+  }
+
+  // Connect to the user's business tenant database
+  const { pool } =
+  await getTenantDatabaseForUser(user.id);
+
+  const memoryContent =
+  memory.trim();
+
+  const memoryType =
+  typeof category === "string" &&
+  category.trim()
+  ? category.trim()
+  : "general";
+
+  // Check if similar memory already exists
+  const existingResult =
+  await pool.query(
+  `      SELECT
+         id,
+         memory_type,
+         content,
+         source_type,
+         source_id,
+         importance,
+         created_at,
+         updated_at
+       FROM ai_memory
+       WHERE content = $1
+       LIMIT 1
+       `,
+  [
+  memoryContent,
+  ]
+  );
+
+  // Avoid duplicates
+  if (
+  (existingResult.rowCount ?? 0) > 0
+  ) {
+  return NextResponse.json({
+  success: true,
+  memory:
+  existingResult.rows[0],
+  message:
+  "Memory already exists",
+  });
+  }
+
+  // Save new memory
+  const newMemoryResult =
+  await pool.query(
+  `      INSERT INTO ai_memory
+         (
+           memory_type,
+           content,
+           importance
+         )
+       VALUES
+         ($1, $2, $3)
+       RETURNING
+         id,
+         memory_type,
+         content,
+         source_type,
+         source_id,
+         importance,
+         created_at,
+         updated_at
+       `,
+  [
+  memoryType,
+  memoryContent,
+  safeImportance,
+  ]
+  );
+
+  return NextResponse.json(
+  {
+  success: true,
+  memory:
+  newMemoryResult.rows[0],
+  },
+  {
+  status: 201,
+  }
+  );
+  } catch (error) {
+  console.error(
+  "Memory API POST Error:",
+  error
+  );
+
+  return NextResponse.json(
+  {
+  error:
+  error instanceof Error
+  ? error.message
+  : "Internal Server Error",
+  },
+  {
+  status: 500,
+  }
+  );
+  }
+  }
+
+============================================================
+FILE: .\app\api\memories\extract\route.ts
+============================================================
+
+import { NextResponse } from "next/server";
+import { getAuthenticatedUser } from "@/lib/auth-session";
+import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import Groq from "groq-sdk";
+
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY!,
+});
+
+export async function POST(req: Request) {
+  try {
+    const {
+      message,
+      conversationId,
+    } = await req.json();
+
+    // ==========================================
+    // 1. VALIDATE MESSAGE
+    // ==========================================
+
+    if (
+      !message ||
+      typeof message !== "string" ||
+      !message.trim()
+    ) {
+      return NextResponse.json(
+        {
+          error: "Message is required.",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    // ==========================================
+    // 2. GET LOGGED-IN USER
+    // ==========================================
+
+    const user =
+      await getAuthenticatedUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+        },
+        {
+          status: 401,
+        }
+      );
+    }
+
+    // ==========================================
+    // 3. CONNECT TO USER'S TENANT DATABASE
+    // ==========================================
+
+    const { pool } =
+      await getTenantDatabaseForUser(
+        user.id
+      );
+
+    // ==========================================
+    // 4. ASK GROQ TO ANALYZE THE MESSAGE
+    // ==========================================
+
+    const completion =
+      await groq.chat.completions.create({
+        model:
+          "llama-3.3-70b-versatile",
+
+        temperature: 0,
+
+        max_tokens: 500,
+
+        messages: [
+          {
+            role: "system",
+
+            content: `
+You are the SaMi Assist Memory Engine.
+
+Your job is to identify important, useful, long-term facts that the USER explicitly provides.
+
+Only extract information that could be useful in future conversations.
+
+Good memories include:
+
+- User's name
+- User's company name
+- User's role or position
+- Business information
+- Important business facts
+- User preferences
+- Long-term goals
+- Ongoing projects
+- Important recurring information
+
+Do NOT save:
+
+- Greetings
+- Small talk
+- Temporary questions
+- General knowledge
+- AI-generated information
+- Your own assumptions
+- Sensitive information unless the user explicitly asks SaMi to remember it
+
+Return ONLY valid JSON.
+
+If there is nothing important to remember, return:
+
+{
+  "shouldRemember": false,
+  "memories": []
+}
+
+If there are important facts, return:
+
+{
+  "shouldRemember": true,
+  "memories": [
+    {
+      "memory": "The user's company is SaMi Technologies.",
+      "category": "company",
+      "importance": 10
+    }
+  ]
+}
+
+Categories should be one of:
+
+personal
+company
+business
+preference
+goal
+project
+other
+
+Importance must be a number from 1 to 10.
+`,
+          },
+
+          {
+            role: "user",
+
+            content: `
+User message:
+
+${message}
+`,
+          },
+        ],
+      });
+
+    const rawContent =
+      completion
+        .choices[0]
+        ?.message
+        ?.content
+        ?.trim();
+
+    // ==========================================
+    // 5. NO MEMORY FOUND
+    // ==========================================
+
+    if (!rawContent) {
+      return NextResponse.json({
+        success: true,
+        saved: 0,
+      });
+    }
+
+    // ==========================================
+    // 6. CLEAN AI JSON RESPONSE
+    // ==========================================
+
+    let cleanedContent =
+      rawContent;
+
+    cleanedContent =
+      cleanedContent
+        .replace(
+          /^```json/i,
+          ""
+        )
+        .replace(
+          /^```/i,
+          ""
+        )
+        .replace(
+          /```$/i,
+          ""
+        )
+        .trim();
+
+    // ==========================================
+    // 7. PARSE JSON
+    // ==========================================
+
+    let memoryData: {
+      shouldRemember?: boolean;
+      memories?: Array<{
+        memory?: string;
+        category?: string;
+        importance?: number;
+      }>;
+    };
+
+    try {
+      memoryData =
+        JSON.parse(
+          cleanedContent
+        );
+    } catch (parseError) {
+      console.error(
+        "Memory JSON Parse Error:",
+        parseError
+      );
+
+      console.error(
+        "Raw Memory Response:",
+        rawContent
+      );
+
+      return NextResponse.json({
+        success: false,
+        saved: 0,
+      });
+    }
+
+    // ==========================================
+    // 8. CHECK IF THERE IS ANYTHING TO REMEMBER
+    // ==========================================
+
+    if (
+      !memoryData.shouldRemember ||
+      !Array.isArray(
+        memoryData.memories
+      ) ||
+      memoryData.memories.length === 0
+    ) {
+      return NextResponse.json({
+        success: true,
+        saved: 0,
+      });
+    }
+
+    // ==========================================
+    // 9. SAVE EACH MEMORY
+    // ==========================================
+
+    let savedCount = 0;
+
+    for (
+      const item of
+        memoryData.memories
+    ) {
+      if (
+        !item ||
+        !item.memory ||
+        typeof item.memory !==
+          "string"
+      ) {
+        continue;
+      }
+
+      const memory =
+        item.memory.trim();
+
+      if (!memory) {
+        continue;
+      }
+
+      const category =
+        typeof item.category ===
+        "string"
+          ? item.category
+          : "other";
+
+      let importance =
+        Number(
+          item.importance
+        );
+
+      // Keep importance between 1 and 10
+      if (
+        Number.isNaN(
+          importance
+        )
+      ) {
+        importance = 5;
+      }
+
+      importance = Math.max(
+        1,
+        Math.min(
+          10,
+          importance
+        )
+      );
+
+      // ========================================
+      // 10. CHECK FOR DUPLICATE MEMORY
+      //
+      // Tenant database already belongs to
+      // the authenticated user/business.
+      //
+      // ai_memory schema uses:
+      // memory_type
+      // content
+      // importance
+      //
+      // There is NO user_id column.
+      // ========================================
+
+      const existingResult =
+        await pool.query(
+          `
+          SELECT id, content
+          FROM ai_memory
+          WHERE content = $1
+          LIMIT 1
+          `,
+          [
+            memory,
+          ]
+        );
+
+      // ========================================
+      // 11. SKIP DUPLICATES
+      // ========================================
+
+      if (
+        (existingResult.rowCount ?? 0) > 0
+      ) {
+        continue;
+      }
+
+      // ========================================
+      // 12. SAVE NEW MEMORY
+      // ========================================
+
+      await pool.query(
+        `
+        INSERT INTO ai_memory
+          (
+            memory_type,
+            content,
+            importance
+          )
+        VALUES
+          ($1, $2, $3)
+        `,
+        [
+          category,
+          memory,
+          importance,
+        ]
+      );
+
+      savedCount++;
+    }
+
+    // ==========================================
+    // 13. RETURN RESULT
+    // ==========================================
+
+    return NextResponse.json({
+      success: true,
+      saved: savedCount,
+      conversationId:
+        conversationId ?? null,
+    });
+  } catch (error) {
+    console.error(
+      "Memory Extraction Error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to process memory.",
+      },
+      {
+        status: 500,
+      }
+    );
+  }
+}
+
+============================================================
+FILE: .\lib\ai\sql-tool.ts
+============================================================
+
+import type { Pool } from "pg";
+import { Parser } from "node-sql-parser";
+
+const parser = new Parser();
+
+export type DatabaseSchema = {
+  tables: {
+    table_name: string;
+    column_name: string;
+    data_type: string;
+  }[];
+  relationships: {
+    table_name: string;
+    column_name: string;
+    foreign_table: string;
+    foreign_column: string;
+  }[];
+};
+
+export async function discoverSchema(
+  pool: Pool
+): Promise<DatabaseSchema> {
+  const tables = await pool.query(`
+    SELECT
+      t.table_name,
+      c.column_name,
+      c.data_type
+    FROM information_schema.tables t
+    JOIN information_schema.columns c
+      ON c.table_name = t.table_name
+      AND c.table_schema = t.table_schema
+    WHERE t.table_schema = 'public'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY t.table_name, c.ordinal_position
+  `);
+
+  const foreignKeys = await pool.query(`
+    SELECT
+      tc.table_name,
+      kcu.column_name,
+      ccu.table_name AS foreign_table,
+      ccu.column_name AS foreign_column
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+  `);
+
+  return {
+    tables: tables.rows,
+    relationships: foreignKeys.rows,
+  };
+}
+
+/**
+ * Converts the actual database schema into a format
+ * the AI can reason about.
+ */
+export function schemaToPrompt(
+  schema: DatabaseSchema
+): string {
+  const grouped = new Map<
+    string,
+    { column_name: string; data_type: string }[]
+  >();
+
+  for (const column of schema.tables) {
+    if (!grouped.has(column.table_name)) {
+      grouped.set(column.table_name, []);
+    }
+
+    grouped.get(column.table_name)!.push({
+      column_name: column.column_name,
+      data_type: column.data_type,
+    });
+  }
+
+  const tableText = [...grouped.entries()]
+    .map(([tableName, columns]) => {
+      const columnText = columns
+        .map(
+          (column) =>
+            `  - ${column.column_name} (${column.data_type})`
+        )
+        .join("\n");
+
+      return `TABLE: ${tableName}\n${columnText}`;
+    })
+    .join("\n\n");
+
+  const relationshipText =
+    schema.relationships.length > 0
+      ? schema.relationships
+          .map(
+            (relationship) =>
+              `- ${relationship.table_name}.${relationship.column_name} -> ${relationship.foreign_table}.${relationship.foreign_column}`
+          )
+          .join("\n")
+      : "No foreign-key relationships were found.";
+
+  return `
+DATABASE SCHEMA
+
+${tableText}
+
+RELATIONSHIPS
+
+${relationshipText}
+`;
+}
+
+/**
+ * Strict read-only SQL validation.
+ */
+export function validateSQL(sql: string): true {
+  const cleaned = sql.trim();
+
+  if (!cleaned) {
+    throw new Error("SQL query is empty.");
+  }
+
+  if (cleaned.includes(";")) {
+    throw new Error("Multiple SQL statements are not allowed.");
+  }
+
+  const ast = parser.astify(cleaned);
+  const statements = Array.isArray(ast) ? ast : [ast];
+
+  for (const statement of statements) {
+    if (statement.type !== "select") {
+      throw new Error(
+        "Only SELECT statements are allowed."
+      );
+    }
+  }
+
+  const blocked = [
+    "insert",
+    "update",
+    "delete",
+    "drop",
+    "alter",
+    "truncate",
+    "grant",
+    "revoke",
+    "create",
+    "replace",
+    "merge",
+    "call",
+    "execute",
+    "prepare",
+    "vacuum",
+    "analyze",
+    "refresh",
+    "comment",
+  ];
+
+  const lower = cleaned.toLowerCase();
+
+  for (const word of blocked) {
+    const pattern = new RegExp(
+      `\\b${word}\\b`,
+      "i"
+    );
+
+    if (pattern.test(lower)) {
+      throw new Error(
+        `Blocked SQL keyword: ${word}`
+      );
+    }
+  }
+
+  return true;
+}
+
+export async function executeSQL(
+  pool: Pool,
+  sql: string
+) {
+  validateSQL(sql);
+
+  const result = await pool.query(sql);
+
+  return result.rows;
+}
+
+============================================================
+FILE: .\lib\ai\tenant-database-tools.ts
+============================================================
+
+import { Pool } from "pg";
+
+type ColumnInfo = {
+  column_name: string;
+  data_type: string;
+};
+
+type TableInfo = {
+  table_name: string;
+};
+
+function quoteIdentifier(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function normalizeIdentifier(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value.trim();
+}
+
+export async function getTenantDatabaseSchema(pool: Pool) {
+  const result = await pool.query<TableInfo>(
+    `
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_type = 'BASE TABLE'
+    ORDER BY table_name
+    `
+  );
+
+  const tables: Record<string, ColumnInfo[]> = {};
+
+  for (const table of result.rows) {
+    const columns = await pool.query<ColumnInfo>(
+      `
+      SELECT
+        column_name,
+        data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+      ORDER BY ordinal_position
+      `,
+      [table.table_name]
+    );
+
+    tables[table.table_name] = columns.rows;
+  }
+
+  return tables;
+}
+
+export async function queryTenantBusinessData(
+  pool: Pool,
+  args: {
+    table: string;
+    columns?: string[];
+    search?: string;
+    limit?: number;
+  }
+) {
+  const table = normalizeIdentifier(args.table);
+
+  if (!table) {
+    throw new Error("A table name is required.");
+  }
+
+  const schema = await getTenantDatabaseSchema(pool);
+
+  if (!schema[table]) {
+    throw new Error(
+      `The table "${table}" does not exist in this business database.`
+    );
+  }
+
+  const availableColumns = schema[table].map(
+    (column) => column.column_name
+  );
+
+  let selectedColumns =
+    Array.isArray(args.columns) && args.columns.length > 0
+      ? args.columns
+          .map(normalizeIdentifier)
+          .filter((column) =>
+            availableColumns.includes(column)
+          )
+      : availableColumns;
+
+  if (selectedColumns.length === 0) {
+    selectedColumns = availableColumns;
+  }
+
+  const safeLimit = Math.min(
+    Math.max(Number(args.limit) || 50, 1),
+    100
+  );
+
+  const quotedTable = quoteIdentifier(table);
+
+  const quotedColumns = selectedColumns.map(
+    quoteIdentifier
+  );
+
+  const values: string[] = [];
+  let whereClause = "";
+
+  const search = normalizeIdentifier(args.search);
+
+  if (search) {
+    const textColumns = schema[table]
+      .filter((column) =>
+        [
+          "character varying",
+          "text",
+          "character",
+        ].includes(column.data_type)
+      )
+      .map((column) => column.column_name);
+
+    if (textColumns.length > 0) {
+      const conditions = textColumns.map(
+        (column, index) => {
+          values.push(search);
+          return `${quoteIdentifier(
+            column
+          )} ILIKE '%' || $${index + 1} || '%'`;
+        }
+      );
+
+      whereClause = `WHERE ${conditions.join(" OR ")}`;
+    }
+  }
+
+  const query = `
+    SELECT ${quotedColumns.join(", ")}
+    FROM ${quotedTable}
+    ${whereClause}
+    ORDER BY 1 DESC
+    LIMIT ${safeLimit}
+  `;
+
+  const result = await pool.query(
+    query,
+    values
+  );
+
+  return {
+    table,
+    columns: selectedColumns,
+    rowCount: result.rowCount || 0,
+    rows: result.rows,
+  };
+}
+
+export function formatSchemaForAI(
+  schema: Record<string, ColumnInfo[]>
+) {
+  const entries = Object.entries(schema);
+
+  if (entries.length === 0) {
+    return "No business tables are available.";
+  }
+
+  return entries
+    .map(
+      ([table, columns]) =>
+        `${table}: ${columns
+          .map(
+            (column) =>
+              `${column.column_name} (${column.data_type})`
+          )
+          .join(", ")}`
+    )
+    .join("\n");
+}
+
+============================================================
+FILE: .\lib\ai-query\dispatcher.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\executor.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\index.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\plugins.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\schema.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\types.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\crm.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\customers.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\inventory.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\invoices.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\products.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\ai-query\apps\sales.ts
+============================================================
+
+
+============================================================
+FILE: .\lib\tenant-db.ts
+============================================================
+
+import { Pool } from "pg";
+import { postgresAdmin } from "./postgres-admin";
+
+const tenantPools = new Map<string, Pool>();
+
+export async function getTenantDatabaseForUser(
+  userId: string
+) {
+  const result = await postgresAdmin.query(
+    `
+    SELECT
+      b.id AS business_id,
+      b.name AS business_name,
+      b.slug AS business_slug,
+      b.status AS business_status,
+      dr.database_name,
+      dr.database_host,
+      dr.database_port,
+      dr.database_user,
+      dr.database_password_encrypted,
+      dr.status AS database_status
+    FROM business_users bu
+    INNER JOIN businesses b
+      ON b.id = bu.business_id
+    INNER JOIN database_registry dr
+      ON dr.business_id = b.id
+    WHERE bu.user_id = $1
+      AND b.status = 'active'
+      AND dr.status = 'active'
+    LIMIT 1
+    `,
+    [userId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error(
+      "No active business or tenant database is assigned to this user."
+    );
+  }
+
+  const tenant = result.rows[0];
+
+  const existingPool = tenantPools.get(
+    tenant.database_name
+  );
+
+  if (existingPool) {
+    return {
+      pool: existingPool,
+      business: {
+        id: tenant.business_id,
+        name: tenant.business_name,
+        slug: tenant.business_slug,
+      },
+      databaseName: tenant.database_name,
+    };
+  }
+
+  const pool = new Pool({
+    host: tenant.database_host,
+    port: Number(tenant.database_port),
+    user: tenant.database_user,
+    password:
+      tenant.database_password_encrypted,
+    database: tenant.database_name,
+
+    ssl: {
+      rejectUnauthorized: false,
+    },
+
+    max: 10,
+
+    idleTimeoutMillis: 30_000,
+
+    connectionTimeoutMillis: 10_000,
+  });
+
+  tenantPools.set(
+    tenant.database_name,
+    pool
+  );
+
+  return {
+    pool,
+    business: {
+      id: tenant.business_id,
+      name: tenant.business_name,
+      slug: tenant.business_slug,
+    },
+    databaseName: tenant.database_name,
+  };
+}
+
+============================================================
+FILE: .\lib\database-provisioning.ts
+============================================================
+
+import fs from "fs/promises";
+import path from "path";
+import { Pool } from "pg";
+import { postgresAdmin } from "./postgres-admin";
+import { getAppSchemaPath } from "./app-registry";
+
+export async function createTenantDatabase(databaseName: string) {
+  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
+    throw new Error("Invalid database name.");
+  }
+
+  const existingDatabase = await postgresAdmin.query(
+    `SELECT 1 FROM pg_database WHERE datname = $1`,
+    [databaseName]
+  );
+
+  if (existingDatabase.rowCount && existingDatabase.rowCount > 0) {
+    throw new Error(`Database "${databaseName}" already exists.`);
+  }
+
+  await postgresAdmin.query(`CREATE DATABASE "${databaseName}"`);
+
+  return { success: true, databaseName };
+}
+
+export async function initializeTenantDatabase(
+  databaseName: string,
+  appKeys: string[] = []
+) {
+  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
+    throw new Error("Invalid database name.");
+  }
+
+  const host = process.env.POSTGRES_HOST || "localhost";
+  const port = Number(process.env.POSTGRES_PORT || 5432);
+  const user = process.env.POSTGRES_ADMIN_USER || "postgres";
+  const password = process.env.POSTGRES_ADMIN_PASSWORD;
+
+  if (!password) {
+    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
+  }
+
+  const corePath = path.join(process.cwd(), "lib", "sami_tenant_core.sql");
+  const coreSql = await fs.readFile(corePath, "utf8");
+
+  const pool = new Pool({
+    host, port, user, password, database: databaseName,
+    ssl: { rejectUnauthorized: false },
+    max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000,
+  });
+
+  const uniqueAppKeys = [...new Set(
+    appKeys.filter((key) => typeof key === "string")
+      .map((key) => key.trim()).filter(Boolean)
+  )];
+
+  const installedApps: string[] = [];
+  const pendingApps: string[] = [];
+
+  try {
+    // Core is always installed.
+    await pool.query(coreSql);
+
+    // Each selected app installs only its own schema.
+    for (const appKey of uniqueAppKeys) {
+      const schemaPath = getAppSchemaPath(appKey);
+
+      if (!schemaPath) {
+        pendingApps.push(appKey);
+        console.log(`Schema not implemented yet: ${appKey}`);
+        continue;
+      }
+
+      const schemaSql = await fs.readFile(schemaPath, "utf8");
+      await pool.query(schemaSql);
+      installedApps.push(appKey);
+      console.log(`Initialized app schema: ${appKey}`);
+    }
+
+    return {
+      success: true,
+      databaseName,
+      appKeys: uniqueAppKeys,
+      installedApps,
+      pendingApps,
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
+============================================================
+FILE: .\lib\provision-business.ts
+============================================================
+
+import { randomUUID } from "crypto";
+import { postgresAdmin } from "./postgres-admin";
+import {
+  createTenantDatabase,
+  initializeTenantDatabase,
+} from "./database-provisioning";
+import { saveEnabledApps } from "./enabled-apps";
+import { normalizeAppKeys } from "./sami-apps";
+
+interface ProvisionBusinessInput {
+  businessName: string;
+  businessSlug: string;
+  ownerUserId: string;
+  email?: string;
+  phone?: string;
+  businessType?: string;
+  appKeys: unknown;
+}
+
+async function dropTenantDatabase(databaseName: string) {
+  // databaseName is generated internally, but quote it as an identifier anyway.
+  const safeName = databaseName.replace(/"/g, '""');
+
+  try {
+    await postgresAdmin.query(
+      `DROP DATABASE IF EXISTS "${safeName}" WITH (FORCE)`
+    );
+  } catch (error) {
+    console.error(
+      `Failed to clean up tenant database "${databaseName}":`,
+      error
+    );
+  }
+}
+
+export async function provisionBusiness({
+  businessName,
+  businessSlug,
+  ownerUserId,
+  email,
+  phone,
+  businessType,
+  appKeys,
+}: ProvisionBusinessInput) {
+  const businessId = randomUUID();
+  const databaseName = `sami_tenant_${businessId.replace(/-/g, "")}`;
+
+  const databaseHost = process.env.POSTGRES_HOST || "localhost";
+  const databasePort = Number(process.env.POSTGRES_PORT || 5432);
+  const databaseUser =
+    process.env.POSTGRES_ADMIN_USER || "postgres";
+  const databasePassword =
+    process.env.POSTGRES_ADMIN_PASSWORD;
+
+  if (!databasePassword) {
+    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
+  }
+
+  const selectedApps = normalizeAppKeys(appKeys);
+
+  if (selectedApps.length === 0) {
+    throw new Error("Please select at least one valid SaMi app.");
+  }
+
+  await postgresAdmin.query(
+    `
+    INSERT INTO businesses (
+      id,
+      name,
+      slug,
+      email,
+      phone,
+      status
+    )
+    VALUES ($1, $2, $3, $4, $5, $6)
+    `,
+    [
+      businessId,
+      businessName,
+      businessSlug,
+      email || null,
+      phone || null,
+      "active",
+    ]
+  );
+
+  let tenantDatabaseCreated = false;
+
+  try {
+    // Create the isolated database for this business.
+    await createTenantDatabase(databaseName);
+    tenantDatabaseCreated = true;
+
+    // Install core tables plus only the selected app schemas.
+    await initializeTenantDatabase(
+      databaseName,
+      selectedApps
+    );
+
+    // Register the tenant database in the control database.
+    await postgresAdmin.query(
+      `
+      INSERT INTO database_registry (
+        business_id,
+        database_name,
+        database_host,
+        database_port,
+        database_user,
+        database_password_encrypted,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        businessId,
+        databaseName,
+        databaseHost,
+        databasePort,
+        databaseUser,
+        databasePassword,
+        "active",
+      ]
+    );
+
+    // Connect the authenticated owner to the business.
+    await postgresAdmin.query(
+      `
+      INSERT INTO business_users (
+        business_id,
+        user_id,
+        role
+      )
+      VALUES ($1, $2, $3)
+      `,
+      [businessId, ownerUserId, "owner"]
+    );
+
+    // Give every new business the free plan initially.
+    await postgresAdmin.query(
+      `
+      INSERT INTO subscriptions (
+        business_id,
+        plan,
+        status
+      )
+      VALUES ($1, $2, $3)
+      `,
+      [businessId, "free", "active"]
+    );
+
+    // Single source of truth for enabled apps.
+    const enabledApps = await saveEnabledApps(
+      businessId,
+      selectedApps
+    );
+
+    return {
+      success: true,
+      businessId,
+      databaseName,
+      businessType: businessType || null,
+      appKeys: enabledApps,
+    };
+  } catch (error) {
+    console.error("Business provisioning failed:", error);
+
+    // Remove control-plane records created during this attempt.
+    await postgresAdmin.query(
+      `DELETE FROM businesses WHERE id = $1`,
+      [businessId]
+    );
+
+    // Prevent orphan tenant databases.
+    if (tenantDatabaseCreated) {
+      await dropTenantDatabase(databaseName);
+    }
+
+    throw error;
+  }
+}
+
+============================================================
+FILE: .\lib\auth-session.ts
+============================================================
+
+import crypto from "crypto";
+import { cookies } from "next/headers";
+import { postgresAdmin } from "./postgres-admin";
+
+export async function getAuthenticatedUser() {
+  const cookieStore = await cookies();
+
+  const sessionToken =
+    cookieStore.get("sami_session")?.value;
+
+  if (!sessionToken) {
+    return null;
+  }
+
+  const sessionTokenHash =
+    crypto
+      .createHash("sha256")
+      .update(sessionToken)
+      .digest("hex");
+
+  const result = await postgresAdmin.query(
+    `
+    SELECT
+      users.id,
+      users.email,
+      users.full_name,
+      users.status,
+      users.created_at,
+      sessions.id AS session_id,
+      sessions.expires_at
+    FROM sessions
+    INNER JOIN users
+      ON users.id = sessions.user_id
+    WHERE sessions.session_token_hash = $1
+      AND sessions.expires_at > NOW()
+      AND users.status = 'active'
+    `,
+    [sessionTokenHash]
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  const user = result.rows[0];
+
+  await postgresAdmin.query(
+    `
+    UPDATE sessions
+    SET last_used_at = NOW()
+    WHERE id = $1
+    `,
+    [user.session_id]
+  );
+
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    createdAt: user.created_at,
+    sessionId: user.session_id,
+    expiresAt: user.expires_at,
+  };
+}
+
+============================================================
+FILE: .\lib\auth.ts
+============================================================
+
+export async function signUp(
+  name: string,
+  email: string,
+  password: string
+) {
+  const response = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      fullName: name,
+      email,
+      password,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: {
+        message: data.error || "Registration failed.",
+      },
+    };
+  }
+
+  return {
+    data,
+    error: null,
+  };
+}
+
+export async function signIn(
+  email: string,
+  password: string
+) {
+  const response = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email,
+      password,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: {
+        message: data.error || "Login failed.",
+      },
+    };
+  }
+
+  return {
+    data,
+    error: null,
+  };
+}
+
+export async function signOut() {
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    return {
+      data: null,
+      error: {
+        message: data.error || "Logout failed.",
+      },
+    };
+  }
+
+  return {
+    data,
+    error: null,
+  };
+}
+
+export async function getCurrentUser() {
+  const response = await fetch("/api/auth/me", {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json();
+
+  return data.user || null;
+}
+
+============================================================
+FILE: .\lib\enabled-apps.ts
+============================================================
+
+import { postgresAdmin } from "./postgres-admin";
+import { normalizeAppKeys } from "./sami-apps";
+
+let tableReady = false;
+
+async function ensureBusinessAppsTable() {
+  if (tableReady) return;
+
+  await postgresAdmin.query(`
+    CREATE TABLE IF NOT EXISTS business_apps (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      app_key VARCHAR(100) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, app_key)
+    )
+  `);
+
+  tableReady = true;
+}
+
+export async function saveEnabledApps(businessId: string, appKeys: unknown) {
+  await ensureBusinessAppsTable();
+
+  const normalized = normalizeAppKeys(appKeys);
+
+  await postgresAdmin.query(
+    `DELETE FROM business_apps WHERE business_id = $1`,
+    [businessId]
+  );
+
+  for (const appKey of normalized) {
+    await postgresAdmin.query(
+      `INSERT INTO business_apps (business_id, app_key, enabled)
+       VALUES ($1, $2, TRUE)
+       ON CONFLICT (business_id, app_key)
+       DO UPDATE SET enabled = TRUE, updated_at = NOW()`,
+      [businessId, appKey]
+    );
+  }
+
+  return normalized;
+}
+
+export async function getEnabledAppsForUser(userId: string) {
+  await ensureBusinessAppsTable();
+
+  const result = await postgresAdmin.query(
+    `SELECT b.id AS business_id
+     FROM business_users bu
+     INNER JOIN businesses b ON b.id = bu.business_id
+     WHERE bu.user_id = $1 AND b.status = 'active'
+     LIMIT 1`,
+    [userId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error("No active business is assigned to this user.");
+  }
+
+  const businessId = result.rows[0].business_id as string;
+
+  const apps = await postgresAdmin.query(
+    `SELECT app_key
+     FROM business_apps
+     WHERE business_id = $1 AND enabled = TRUE
+     ORDER BY created_at ASC`,
+    [businessId]
+  );
+
+  return {
+    businessId,
+    appKeys: apps.rows.map((row) => row.app_key as string),
+  };
+}
+
+============================================================
+FILE: .\lib\app-registry.ts
+============================================================
+
+import path from "path";
+
+export type SamiAppSchemaDefinition = {
+  key: string;
+  schemaFile?: string;
+};
+
+export const APP_SCHEMA_REGISTRY: Record<string, SamiAppSchemaDefinition> = {
+  accounting: { key: "accounting", schemaFile: "apps/accounting/schema.sql" },
+  invoicing: { key: "invoicing", schemaFile: "apps/invoicing/schema.sql" },
+  expenses: { key: "expenses", schemaFile: "apps/expenses/schema.sql" },
+  spreadsheet: { key: "spreadsheet", schemaFile: "apps/spreadsheet/schema.sql" },
+  documents: { key: "documents", schemaFile: "apps/documents/schema.sql" },
+  sign: { key: "sign", schemaFile: "apps/sign/schema.sql" },
+  crm: { key: "crm", schemaFile: "apps/crm/schema.sql" },
+  sales: { key: "sales", schemaFile: "apps/sales/schema.sql" },
+  subscriptions: { key: "subscriptions", schemaFile: "apps/subscriptions/schema.sql" },
+  rentals: { key: "rentals", schemaFile: "apps/rentals/schema.sql" },
+  pos_shop: { key: "pos_shop", schemaFile: "apps/pos_shop/schema.sql" },
+  pos_restaurant: { key: "pos_restaurant", schemaFile: "apps/pos_restaurant/schema.sql" },
+  inventory: { key: "inventory", schemaFile: "apps/inventory/schema.sql" },
+  manufacturing: { key: "manufacturing", schemaFile: "apps/manufacturing/schema.sql" },
+  plm: { key: "plm", schemaFile: "apps/plm/schema.sql" },
+  purchase: { key: "purchase", schemaFile: "apps/purchase/schema.sql" },
+  maintenance: { key: "maintenance", schemaFile: "apps/maintenance/schema.sql" },
+  quality: { key: "quality", schemaFile: "apps/quality/schema.sql" },
+  employees: { key: "employees", schemaFile: "apps/employees/schema.sql" },
+  fleet: { key: "fleet", schemaFile: "apps/fleet/schema.sql" },
+  referrals: { key: "referrals", schemaFile: "apps/referrals/schema.sql" },
+  appraisals: { key: "appraisals", schemaFile: "apps/appraisals/schema.sql" },
+  time_off: { key: "time_off", schemaFile: "apps/time_off/schema.sql" },
+  recruitment: { key: "recruitment", schemaFile: "apps/recruitment/schema.sql" },
+  social_marketing: { key: "social_marketing", schemaFile: "apps/social_marketing/schema.sql" },
+  email_marketing: { key: "email_marketing", schemaFile: "apps/email_marketing/schema.sql" },
+  sms_marketing: { key: "sms_marketing", schemaFile: "apps/sms_marketing/schema.sql" },
+  events: { key: "events", schemaFile: "apps/events/schema.sql" },
+  marketing_automation: { key: "marketing_automation", schemaFile: "apps/marketing_automation/schema.sql" },
+  surveys: { key: "surveys", schemaFile: "apps/surveys/schema.sql" },
+  projects: { key: "projects", schemaFile: "apps/projects/schema.sql" },
+  timesheets: { key: "timesheets", schemaFile: "apps/timesheets/schema.sql" },
+  field_services: { key: "field_services", schemaFile: "apps/field_services/schema.sql" },
+  helpdesk: { key: "helpdesk", schemaFile: "apps/helpdesk/schema.sql" },
+  planning: { key: "planning", schemaFile: "apps/planning/schema.sql" },
+  appointments: { key: "appointments", schemaFile: "apps/appointments/schema.sql" },
+};
+
+export function getAppSchemaPath(appKey: string): string | null {
+  const definition = APP_SCHEMA_REGISTRY[appKey];
+  return definition?.schemaFile
+    ? path.join(process.cwd(), "lib", definition.schemaFile)
+    : null;
+}
+
+export function hasAppSchema(appKey: string): boolean {
+  return Boolean(APP_SCHEMA_REGISTRY[appKey]?.schemaFile);
+}
+
+============================================================
+FILE: .\lib\app-selection.ts
+============================================================
+
+import { postgresAdmin } from "./postgres-admin";
+import { normalizeAppKeys } from "./sami-apps";
+
+let tableReady = false;
+
+async function ensureBusinessAppsTable() {
+  if (tableReady) return;
+
+  await postgresAdmin.query(`
+    CREATE TABLE IF NOT EXISTS business_apps (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+      app_key VARCHAR(100) NOT NULL,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id, app_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_business_apps_business
+      ON business_apps(business_id);
+  `);
+
+  tableReady = true;
+}
+
+export async function getBusinessForUser(userId: string) {
+  const result = await postgresAdmin.query(
+    `SELECT b.id, b.name, b.slug
+     FROM business_users bu
+     INNER JOIN businesses b ON b.id = bu.business_id
+     WHERE bu.user_id = $1
+       AND b.status = 'active'
+     ORDER BY b.created_at ASC
+     LIMIT 1`,
+    [userId]
+  );
+
+  if (result.rowCount === 0) {
+    throw new Error("No active business is assigned to this user.");
+  }
+
+  return result.rows[0] as {
+    id: string;
+    name: string;
+    slug: string;
+  };
+}
+
+export async function getEnabledAppIds(businessId: string) {
+  await ensureBusinessAppsTable();
+
+  const result = await postgresAdmin.query(
+    `SELECT app_key
+     FROM business_apps
+     WHERE business_id = $1
+       AND enabled = true
+     ORDER BY app_key`,
+    [businessId]
+  );
+
+  return result.rows.map((row) => String(row.app_key));
+}
+
+export async function saveEnabledAppIds(
+  businessId: string,
+  appIds: unknown
+) {
+  await ensureBusinessAppsTable();
+
+  const cleanIds = normalizeAppKeys(appIds);
+
+  const client = await postgresAdmin.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    await client.query(
+      `UPDATE business_apps
+       SET enabled = false,
+           updated_at = NOW()
+       WHERE business_id = $1`,
+      [businessId]
+    );
+
+    for (const appKey of cleanIds) {
+      await client.query(
+        `INSERT INTO business_apps (
+           business_id,
+           app_key,
+           enabled,
+           created_at,
+           updated_at
+         )
+         VALUES ($1, $2, true, NOW(), NOW())
+         ON CONFLICT (business_id, app_key)
+         DO UPDATE SET
+           enabled = true,
+           updated_at = NOW()`,
+        [businessId, appKey]
+      );
+    }
+
+    await client.query("COMMIT");
+    return cleanIds;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+============================================================
+FILE: .\lib\sami-apps.ts
+============================================================
+
+export type SamiAppCategory =
+  | "finance"
+  | "documents"
+  | "sales"
+  | "commerce"
+  | "supply_chain"
+  | "operations"
+  | "people"
+  | "marketing"
+  | "work";
+
+export type SamiApp = {
+  key: string;
+  name: string;
+  category: SamiAppCategory;
+  description: string;
+  icon: string;
+  route: string;
+  recommended?: boolean;
+};
+
+export const SAMI_APPS: SamiApp[] = [
+  // Finance
+  { key: "accounting", name: "Accounting", category: "finance", description: "Manage accounts, journals, balances and financial reporting.", icon: "calculator", route: "accounting", recommended: true },
+  { key: "invoicing", name: "Invoicing", category: "finance", description: "Create invoices, track payments and manage receivables.", icon: "receipt", route: "invoices", recommended: true },
+  { key: "expenses", name: "Expenses", category: "finance", description: "Record and manage business expenses.", icon: "file-text", route: "expenses" },
+  { key: "spreadsheet", name: "Spreadsheet / BI", category: "finance", description: "Analyze business data with AI-powered reports and spreadsheets.", icon: "bar-chart", route: "spreadsheet" },
+
+  // Documents
+  { key: "documents", name: "Documents", category: "documents", description: "Store, organize and search business documents.", icon: "folder", route: "documents" },
+  { key: "sign", name: "Sign", category: "documents", description: "Send and manage documents that need signatures.", icon: "pen-tool", route: "sign" },
+
+  // Sales
+  { key: "crm", name: "CRM", category: "sales", description: "Manage leads, customers, opportunities and relationships.", icon: "users", route: "customers", recommended: true },
+  { key: "sales", name: "Sales", category: "sales", description: "Manage quotations, sales orders and customers.", icon: "shopping-cart", route: "sales", recommended: true },
+  { key: "subscriptions", name: "Subscriptions", category: "sales", description: "Manage recurring customers and subscription billing.", icon: "repeat", route: "subscriptions" },
+  { key: "rentals", name: "Rentals", category: "sales", description: "Manage rental products, contracts and returns.", icon: "home", route: "rentals" },
+
+  // Commerce
+  { key: "pos_shop", name: "POS Shop", category: "commerce", description: "Run a retail point of sale.", icon: "store", route: "pos-shop" },
+  { key: "pos_restaurant", name: "POS Restaurant", category: "commerce", description: "Run restaurant orders and point-of-sale operations.", icon: "utensils", route: "pos-restaurant" },
+
+  // Supply chain
+  { key: "inventory", name: "Inventory", category: "supply_chain", description: "Manage products, stock, warehouses and movements.", icon: "package", route: "inventory" },
+  { key: "manufacturing", name: "Manufacturing", category: "supply_chain", description: "Manage production, bills of materials and manufacturing orders.", icon: "factory", route: "manufacturing" },
+  { key: "plm", name: "PLM", category: "supply_chain", description: "Manage product lifecycle and engineering changes.", icon: "boxes", route: "plm" },
+  { key: "purchase", name: "Purchase", category: "supply_chain", description: "Manage suppliers, purchase orders and procurement.", icon: "shopping-bag", route: "purchase" },
+
+  // Operations
+  { key: "maintenance", name: "Maintenance", category: "operations", description: "Track equipment and maintenance activities.", icon: "wrench", route: "maintenance" },
+  { key: "quality", name: "Quality", category: "operations", description: "Manage quality checks, controls and issues.", icon: "shield-check", route: "quality" },
+
+  // People
+  { key: "employees", name: "Employees", category: "people", description: "Manage employees and workforce information.", icon: "user-round", route: "employees" },
+  { key: "fleet", name: "Fleet", category: "people", description: "Manage company vehicles and fleet operations.", icon: "car", route: "fleet" },
+  { key: "referrals", name: "Referrals", category: "people", description: "Manage employee referral programs.", icon: "user-plus", route: "referrals" },
+  { key: "appraisals", name: "Appraisals", category: "people", description: "Manage employee performance reviews.", icon: "clipboard-check", route: "appraisals" },
+  { key: "time_off", name: "Time Off", category: "people", description: "Manage leave and time-off requests.", icon: "calendar-off", route: "time-off" },
+  { key: "recruitment", name: "Recruitment", category: "people", description: "Manage vacancies, applicants and hiring.", icon: "user-search", route: "recruitment" },
+
+  // Marketing
+  { key: "social_marketing", name: "Social Marketing", category: "marketing", description: "Plan and manage social media marketing.", icon: "megaphone", route: "social-marketing" },
+  { key: "email_marketing", name: "Email Marketing", category: "marketing", description: "Create and manage email campaigns.", icon: "mail", route: "email-marketing" },
+  { key: "sms_marketing", name: "SMS Marketing", category: "marketing", description: "Create and manage SMS campaigns.", icon: "message-square", route: "sms-marketing" },
+  { key: "events", name: "Events", category: "marketing", description: "Manage events, registrations and attendees.", icon: "calendar-days", route: "events" },
+  { key: "marketing_automation", name: "Marketing Automation", category: "marketing", description: "Automate campaigns and customer journeys.", icon: "workflow", route: "marketing-automation" },
+  { key: "surveys", name: "Surveys", category: "marketing", description: "Create surveys and collect responses.", icon: "clipboard-list", route: "surveys" },
+
+  // Work
+  { key: "projects", name: "Projects", category: "work", description: "Plan projects, tasks and team work.", icon: "briefcase", route: "projects", recommended: true },
+  { key: "timesheets", name: "Timesheets", category: "work", description: "Track time spent on work and projects.", icon: "clock", route: "timesheets" },
+  { key: "field_services", name: "Field Services", category: "work", description: "Manage work performed at customer locations.", icon: "map-pin", route: "field-services" },
+  { key: "helpdesk", name: "Helpdesk", category: "work", description: "Manage customer support tickets and service requests.", icon: "headphones", route: "helpdesk" },
+  { key: "planning", name: "Planning", category: "work", description: "Plan schedules, shifts and assignments.", icon: "calendar-clock", route: "planning" },
+  { key: "appointments", name: "Appointments", category: "work", description: "Let customers book appointments and manage schedules.", icon: "calendar", route: "appointments" },
+];
+
+export const APP_CATEGORIES: Array<{ key: SamiAppCategory; name: string }> = [
+  { key: "finance", name: "Finance" },
+  { key: "documents", name: "Documents & Sign" },
+  { key: "sales", name: "Sales" },
+  { key: "commerce", name: "Commerce" },
+  { key: "supply_chain", name: "Supply Chain" },
+  { key: "operations", name: "Operations" },
+  { key: "people", name: "People" },
+  { key: "marketing", name: "Marketing" },
+  { key: "work", name: "Work Management" },
+];
+
+export const CORE_APP_KEYS = ["dashboard", "ai"];
+
+export function getApp(key: string) {
+  return SAMI_APPS.find((app) => app.key === key);
+}
+
+export function normalizeAppKeys(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const valid = new Set(SAMI_APPS.map((app) => app.key));
+  return [...new Set(value.filter(
+    (key): key is string => typeof key === "string" && valid.has(key)
+  ))];
+}
+
+export function getRecommendedAppKeys(): string[] {
+  return SAMI_APPS.filter((app) => app.recommended).map((app) => app.key);
+}
+
+============================================================
+FILE: .\lib\ai-business-context.ts
+============================================================
+
+import type { Pool } from "pg";
+
+export type BusinessTable = { table_name: string; columns: string[] };
+export type BusinessForeignKey = {
+  table_name: string;
+  column_name: string;
+  foreign_table_name: string;
+  foreign_column_name: string;
+};
+export type BusinessSchema = {
+  tables: BusinessTable[];
+  foreignKeys: BusinessForeignKey[];
+};
+
+function cleanValue(value: unknown): unknown {
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "bigint") return value.toString();
+  if (typeof value === "string" && value.length > 1000)
+    return value.substring(0, 1000) + "...";
+  return value;
+}
+
+export async function getBusinessSchema(pool: Pool): Promise<BusinessSchema> {
+  const columns = await pool.query(`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name NOT IN ('messages','conversations','ai_memory')
+    ORDER BY table_name, ordinal_position
+  `);
+
+  const fks = await pool.query(`
+    SELECT tc.table_name, kcu.column_name,
+           ccu.table_name AS foreign_table_name,
+           ccu.column_name AS foreign_column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+      AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON tc.constraint_name = ccu.constraint_name
+      AND tc.table_schema = ccu.table_schema
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+  `);
+
+  const map = new Map<string,string[]>();
+  for (const row of columns.rows) {
+    if (!map.has(row.table_name)) map.set(row.table_name, []);
+    map.get(row.table_name)!.push(row.column_name);
+  }
+
+  return {
+    tables: [...map.entries()].map(([table_name, columns]) => ({table_name, columns})),
+    foreignKeys: fks.rows,
+  };
+}
+
+export function schemaToPrompt(schema: BusinessSchema): string {
+  const tables = schema.tables.length
+    ? schema.tables.map(t => `TABLE "${t.table_name}"\nCOLUMNS: ${t.columns.join(", ")}`).join("\n\n")
+    : "No business application tables are installed.";
+
+  const relations = schema.foreignKeys.length
+    ? schema.foreignKeys.map(f =>
+        `"${f.table_name}"."${f.column_name}" -> "${f.foreign_table_name}"."${f.foreign_column_name}"`
+      ).join("\n")
+    : "No foreign-key relationships found.";
+
+  return `BUSINESS DATABASE SCHEMA\n\n${tables}\n\nFOREIGN-KEY RELATIONSHIPS\n${relations}`;
+}
+
+export function validateReadOnlySql(sql: string): string {
+  let q = sql.trim()
+    .replace(/^```(?:sql)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  if (!q) throw new Error("AI did not produce a SQL query.");
+  if (q.includes(";")) throw new Error("Multiple SQL statements are not allowed.");
+  if (!/^(SELECT|WITH)\b/i.test(q))
+    throw new Error("Only SELECT or WITH queries are allowed.");
+
+  if (/\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|COPY|VACUUM|CALL|DO|EXECUTE|PREPARE|SET|RESET|PG_SLEEP)\b/i.test(q))
+    throw new Error("Unsafe SQL was rejected.");
+
+  if (/\b(pg_catalog|information_schema|pg_toast)\b/i.test(q))
+    throw new Error("System catalogs are not allowed.");
+
+  if (q.length > 12000) throw new Error("Generated SQL is too large.");
+  return q;
+}
+
+export async function executeBusinessQuery(
+  pool: Pool, sql: string
+): Promise<Record<string,unknown>[]> {
+  const safe = validateReadOnlySql(sql);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    await client.query("SET LOCAL statement_timeout = '5000ms'");
+    await client.query("SET LOCAL lock_timeout = '1000ms'");
+    await client.query("SET TRANSACTION READ ONLY");
+
+    const result = await client.query(safe);
+    await client.query("ROLLBACK");
+
+    return result.rows.map(row => {
+      const clean: Record<string,unknown> = {};
+      for (const [k,v] of Object.entries(row)) clean[k] = cleanValue(v);
+      return clean;
+    });
+  } catch (e) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+============================================================
+FILE: .\lib\sami_tenant_core.sql
+============================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS public.ai_memory (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    memory_type VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    source_type VARCHAR(100),
+    source_id UUID,
+    importance INTEGER NOT NULL DEFAULT 5,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT ai_memory_importance_check CHECK (importance BETWEEN 1 AND 10)
+);
+
+CREATE TABLE IF NOT EXISTS public.conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    title VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT messages_conversation_id_fkey
+        FOREIGN KEY (conversation_id) REFERENCES public.conversations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS public.ai_actions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID,
+    user_id UUID,
+    action_name VARCHAR(150) NOT NULL,
+    source_app VARCHAR(100),
+    source_record_id UUID,
+    target_app VARCHAR(100),
+    target_record_id UUID,
+    status VARCHAR(50) NOT NULL DEFAULT 'completed',
+    input JSONB,
+    output JSONB,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON public.conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON public.messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_ai_memory_source ON public.ai_memory(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_ai_actions_conversation_id ON public.ai_actions(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_ai_actions_source ON public.ai_actions(source_app, source_record_id);
+CREATE INDEX IF NOT EXISTS idx_ai_actions_target ON public.ai_actions(target_app, target_record_id);
+
+============================================================
+FILE: .\lib\apps\crm\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.leads (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    company_name VARCHAR(255),
+    source VARCHAR(100),
+    stage VARCHAR(100) NOT NULL DEFAULT 'new',
+    estimated_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.opportunities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID REFERENCES public.leads(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    stage VARCHAR(100) NOT NULL DEFAULT 'qualification',
+    value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    expected_close_date DATE,
+    probability NUMERIC(5,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.crm_activities (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lead_id UUID REFERENCES public.leads(id) ON DELETE CASCADE,
+    opportunity_id UUID REFERENCES public.opportunities(id) ON DELETE CASCADE,
+    activity_type VARCHAR(100) NOT NULL,
+    subject VARCHAR(255),
+    notes TEXT,
+    scheduled_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_leads_stage ON public.leads(stage);
+CREATE INDEX IF NOT EXISTS idx_opportunities_lead ON public.opportunities(lead_id);
+
+============================================================
+FILE: .\lib\apps\sales\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.quotations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quotation_number VARCHAR(100) NOT NULL UNIQUE,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_email VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    quotation_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    valid_until DATE,
+    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.quotation_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quotation_id UUID NOT NULL REFERENCES public.quotations(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(15,2) NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS public.sales_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number VARCHAR(100) NOT NULL UNIQUE,
+    quotation_id UUID REFERENCES public.quotations(id) ON DELETE SET NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    order_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.sales_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sales_order_id UUID NOT NULL REFERENCES public.sales_orders(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(15,2) NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON public.quotation_items(quotation_id);
+CREATE INDEX IF NOT EXISTS idx_sales_order_items_order ON public.sales_order_items(sales_order_id);
+
+============================================================
+FILE: .\lib\apps\invoicing\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.customers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name VARCHAR(255) NOT NULL,
+    contact_name VARCHAR(255),
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    address TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.invoices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    customer_id UUID NOT NULL REFERENCES public.customers(id) ON DELETE RESTRICT,
+    invoice_number VARCHAR(100) NOT NULL UNIQUE,
+    issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    due_date DATE,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    amount_paid NUMERIC(15,2) NOT NULL DEFAULT 0,
+    amount_due NUMERIC(15,2) NOT NULL DEFAULT 0,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.invoice_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID NOT NULL REFERENCES public.invoices(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
+    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.payments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    invoice_id UUID NOT NULL REFERENCES public.invoices(id) ON DELETE RESTRICT,
+    amount NUMERIC(15,2) NOT NULL,
+    payment_method VARCHAR(50) NOT NULL DEFAULT 'other',
+    transaction_reference VARCHAR(255),
+    payment_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    status VARCHAR(50) NOT NULL DEFAULT 'completed',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_invoices_customer
+    ON public.invoices(customer_id);
+
+CREATE INDEX IF NOT EXISTS idx_invoice_items_invoice
+    ON public.invoice_items(invoice_id);
+
+CREATE INDEX IF NOT EXISTS idx_payments_invoice
+    ON public.payments(invoice_id);
+
+============================================================
+FILE: .\lib\apps\accounting\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    account_type VARCHAR(50) NOT NULL,
+    parent_account_id UUID,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.journals (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    journal_number VARCHAR(100) NOT NULL UNIQUE,
+    journal_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    reference VARCHAR(255),
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.journal_lines (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    journal_id UUID NOT NULL REFERENCES public.journals(id) ON DELETE CASCADE,
+    account_id UUID NOT NULL REFERENCES public.accounts(id) ON DELETE RESTRICT,
+    description TEXT,
+    debit NUMERIC(15,2) NOT NULL DEFAULT 0,
+    credit NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_journal ON public.journal_lines(journal_id);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON public.journal_lines(account_id);
+
+============================================================
+FILE: .\lib\apps\inventory\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    sku VARCHAR(100) UNIQUE,
+    product_type VARCHAR(50) NOT NULL DEFAULT 'stockable',
+    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    cost_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.warehouses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    code VARCHAR(50) NOT NULL UNIQUE,
+    address TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.stock_levels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE CASCADE,
+    warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE CASCADE,
+    quantity NUMERIC(15,2) NOT NULL DEFAULT 0,
+    reorder_level NUMERIC(15,2) NOT NULL DEFAULT 0,
+    UNIQUE(product_id, warehouse_id)
+);
+CREATE TABLE IF NOT EXISTS public.stock_movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id UUID NOT NULL REFERENCES public.products(id) ON DELETE RESTRICT,
+    warehouse_id UUID NOT NULL REFERENCES public.warehouses(id) ON DELETE RESTRICT,
+    movement_type VARCHAR(50) NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL,
+    reference VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_stock_levels_product ON public.stock_levels(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON public.stock_movements(product_id);
+
+============================================================
+FILE: .\lib\apps\employees\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_number VARCHAR(100) UNIQUE,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    job_title VARCHAR(255),
+    department VARCHAR(255),
+    employment_status VARCHAR(50) NOT NULL DEFAULT 'active',
+    hire_date DATE,
+    salary NUMERIC(15,2),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_employees_email ON public.employees(email);
+
+============================================================
+FILE: .\lib\apps\expenses\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.expense_categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(150) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category_id UUID REFERENCES public.expense_categories(id) ON DELETE SET NULL,
+    title VARCHAR(255) NOT NULL,
+    amount NUMERIC(15,2) NOT NULL,
+    expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    payment_method VARCHAR(50),
+    vendor_name VARCHAR(255),
+    receipt_path TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'submitted',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON public.expenses(category_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_date ON public.expenses(expense_date);
+
+============================================================
+FILE: .\lib\apps\purchase\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.suppliers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    phone VARCHAR(50),
+    address TEXT,
+    tax_number VARCHAR(100),
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.purchase_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    order_number VARCHAR(100) NOT NULL UNIQUE,
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE RESTRICT,
+    order_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    expected_date DATE,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.purchase_order_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    purchase_order_id UUID NOT NULL REFERENCES public.purchase_orders(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
+    unit_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(15,2) NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON public.purchase_orders(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_items_order ON public.purchase_order_items(purchase_order_id);
+
+============================================================
+FILE: .\lib\apps\projects\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.projects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'active',
+    start_date DATE,
+    due_date DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.tasks (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(50) NOT NULL DEFAULT 'todo',
+    priority VARCHAR(50) NOT NULL DEFAULT 'normal',
+    assigned_to VARCHAR(255),
+    due_date DATE,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.project_milestones (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    due_date DATE,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending'
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_project ON public.tasks(project_id);
+CREATE INDEX IF NOT EXISTS idx_milestones_project ON public.project_milestones(project_id);
+
+============================================================
+FILE: .\lib\apps\planning\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.planning_shifts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'planned',
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.planning_assignments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    shift_id UUID NOT NULL REFERENCES public.planning_shifts(id) ON DELETE CASCADE,
+    assignee_name VARCHAR(255) NOT NULL,
+    role VARCHAR(255),
+    status VARCHAR(50) NOT NULL DEFAULT 'assigned'
+);
+CREATE TABLE IF NOT EXISTS public.planning_resources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    resource_type VARCHAR(100),
+    availability_status VARCHAR(50) NOT NULL DEFAULT 'available'
+);
+CREATE INDEX IF NOT EXISTS idx_planning_assignments_shift ON public.planning_assignments(shift_id);
+
+============================================================
+FILE: .\lib\apps\documents\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.documents (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    file_name VARCHAR(255) NOT NULL,
+    file_type VARCHAR(100),
+    file_size BIGINT,
+    storage_path TEXT NOT NULL,
+    folder_path TEXT,
+    uploaded_by UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.document_folders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    parent_folder_id UUID REFERENCES public.document_folders(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_documents_uploaded_by ON public.documents(uploaded_by);
+
+============================================================
+FILE: .\lib\apps\sign\schema.sql
+============================================================
+
+CREATE TABLE IF NOT EXISTS public.signature_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    title VARCHAR(255) NOT NULL,
+    document_path TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'draft',
+    sent_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS public.signers (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    request_id UUID NOT NULL REFERENCES public.signature_requests(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    signing_order INTEGER NOT NULL DEFAULT 1,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    signed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_signers_request ON public.signers(request_id);

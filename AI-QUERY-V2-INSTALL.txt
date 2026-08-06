@@ -1,0 +1,65 @@
+SAMI AI QUERY V2 — INSTALLATION
+
+1. Replace the empty files under:
+   lib/ai-query/
+
+2. Replace:
+   app/api/chat/route.ts
+
+3. Add:
+   app/api/chat/confirm/route.ts
+
+4. Your existing tenant schema already contains ai_actions, so no new
+   table is required if the tenant schema was applied successfully.
+
+5. Install node-sql-parser if it is not already installed:
+   npm install node-sql-parser
+
+BEHAVIOR
+
+READ:
+  "How many invoices do I have?"
+  -> reads tenant database
+  -> answers with verified data
+
+CREATE:
+  "Create a customer called ABC Ltd..."
+  -> creates a pending action
+  -> DOES NOT save yet
+  -> returns confirmationRequired=true and actionId
+
+UPDATE:
+  "Change ABC Ltd phone to..."
+  -> creates a pending action
+  -> DOES NOT save yet
+  -> returns confirmationRequired=true and actionId
+
+CONFIRM:
+  POST /api/chat/confirm
+  { "actionId": "..." }
+
+Only that confirmation endpoint executes the stored parameterized query.
+
+DELETE:
+  AI deletion is intentionally disabled.
+
+IMPORTANT FRONTEND CONTRACT
+
+When /api/chat returns:
+  confirmationRequired: true
+  actionId: "..."
+
+the chat UI must show a Confirm button.
+
+When the user clicks Confirm:
+  POST /api/chat/confirm
+  body: { actionId }
+
+The endpoint returns:
+  success
+  reply
+  result
+
+Pending confirmations expire after 15 minutes.
+
+The action is also checked against the authenticated user_id before execution.
