@@ -1,14 +1,13 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import Groq from "groq-sdk";
 import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
 
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
-
 import {
   discoverSchema,
   executeSQL,
-  validateSQL,
+  schemaToPrompt,
 } from "@/lib/ai/sql-tool";
 
 const groq = new Groq({
@@ -17,40 +16,218 @@ const groq = new Groq({
 
 const MODEL = "llama-3.3-70b-versatile";
 
+type Intent = "chat" | "database";
+
 type QueryPlan = {
-  sql: string;
+  intent: Intent;
+  sql?: string;
   explanation?: string;
 };
 
-function parsePlan(text: string): { sql: string; explanation?: string } {
+function parseJSON(text: string): any {
   const cleaned = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 
-  let parsed: any;
-
   try {
-    parsed = JSON.parse(cleaned);
+    return JSON.parse(cleaned);
   } catch {
     const match = cleaned.match(/\{[\s\S]*\}/);
 
     if (!match) {
-      throw new Error("AI returned an invalid database query plan.");
+      throw new Error("AI returned invalid JSON.");
     }
 
-    parsed = JSON.parse(match[0]);
+    return JSON.parse(match[0]);
   }
+}
 
-  if (!parsed || typeof parsed.sql !== "string") {
-    throw new Error("AI query plan did not contain SQL.");
+/**
+ * First AI pass:
+ * Decide whether the user is simply chatting/business reasoning,
+ * or whether actual database data is required.
+ */
+async function detectIntent(
+  question: string
+): Promise<Intent> {
+  const result = await groq.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: 100,
+    messages: [
+      {
+        role: "system",
+        content: `
+You classify messages for SaMi Assist.
+
+Return JSON only:
+
+{"intent":"chat"}
+
+or
+
+{"intent":"database"}
+
+Use "database" ONLY when answering requires actual records,
+numbers, totals, counts, statuses, customers, leads, invoices,
+payments, products, sales, expenses, or other business data
+stored in the user's database.
+
+Use "chat" for:
+- greetings
+- normal conversation
+- business advice
+- business strategy
+- ideas
+- explanations
+- planning
+- recommendations
+- improving the business
+- discussing problems
+- general questions
+
+Examples:
+
+"hello" -> chat
+"hi Sami" -> chat
+"how are you" -> chat
+"how can I increase sales?" -> chat
+"give me ideas to improve my business" -> chat
+"what should I do to get more customers?" -> chat
+
+"how many leads do I have?" -> database
+"what is my total pipeline value?" -> database
+"which customer owes me money?" -> database
+"how many invoices are overdue?" -> database
+"show me my leads" -> database
+
+Do not use database merely because the topic is business.
+Use database only when actual stored business data is needed.
+`,
+      },
+      {
+        role: "user",
+        content: question,
+      },
+    ],
+  });
+
+  const content =
+    result.choices[0]?.message?.content || "";
+
+  try {
+    const parsed = parseJSON(content);
+
+    return parsed.intent === "database"
+      ? "database"
+      : "chat";
+  } catch {
+    return "chat";
   }
+}
 
-  validateSQL(parsed.sql);
+/**
+ * Generate a read-only SQL query using the ACTUAL tenant schema.
+ */
+async function makeDatabaseQuery(
+  schema: string,
+  question: string
+): Promise<QueryPlan> {
+  const prompt = `
+You are SaMi Assist's business database reasoning engine.
+
+The following is the ACTUAL schema of the authenticated
+business tenant database:
+
+${schema}
+
+USER QUESTION:
+${question}
+
+Return JSON only:
+
+{
+  "intent":"database",
+  "sql":"SELECT ...",
+  "explanation":"short explanation"
+}
+
+Rules:
+
+1. Generate exactly ONE read-only PostgreSQL SELECT or WITH query.
+
+2. Use ONLY tables and columns that actually appear in the schema.
+
+3. Never invent tables.
+
+4. Never invent columns.
+
+5. Follow the actual foreign-key relationships shown in the schema.
+
+6. If the user asks for a count, calculate the count in SQL.
+
+7. If the user asks for a total, calculate the SUM in SQL.
+
+8. If the user asks for pipeline value, inspect the actual lead/opportunity
+   table and its actual value and stage/status columns before calculating.
+
+9. Do NOT assume an "opportunities" table exists.
+
+10. Do NOT assume an "amount_due" column exists.
+
+11. Do NOT assume a "customers" table exists.
+
+12. Use the actual table names and columns supplied above.
+
+13. If the schema cannot answer the question, return:
+
+SELECT 1 AS insufficient_data
+
+14. Do not use INSERT, UPDATE, DELETE, DROP, ALTER, CREATE,
+TRUNCATE, GRANT, REVOKE, COPY, VACUUM, CALL, DO, EXECUTE,
+PREPARE, SET or RESET.
+
+15. Never access system catalogs.
+
+16. No semicolon.
+
+17. Do not return explanations outside the JSON.
+`;
+
+  const result = await groq.chat.completions.create({
+    model: MODEL,
+    temperature: 0,
+    max_tokens: 1200,
+    messages: [
+      {
+        role: "system",
+        content: prompt,
+      },
+      {
+        role: "user",
+        content: question,
+      },
+    ],
+  });
+
+  const parsed = parseJSON(
+    result.choices[0]?.message?.content || ""
+  );
+
+  if (
+    !parsed ||
+    typeof parsed.sql !== "string"
+  ) {
+    throw new Error(
+      "AI did not return a valid database query."
+    );
+  }
 
   return {
-    sql: parsed.sql,
+    intent: "database",
+    sql: parsed.sql.trim(),
     explanation:
       typeof parsed.explanation === "string"
         ? parsed.explanation
@@ -58,72 +235,21 @@ function parsePlan(text: string): { sql: string; explanation?: string } {
   };
 }
 
-async function createSqlPlan(
-  schema: string,
-  question: string
-): Promise<QueryPlan> {
-  const prompt = `
-You are SaMi Assist's SQL planner.
+function buildDatabaseEvidence(
+  rows: Record<string, unknown>[],
+  explanation?: string
+) {
+  return `
+VERIFIED DATABASE EVIDENCE
 
-DATABASE SCHEMA
+Rows returned: ${rows.length}
 
-${schema}
+${JSON.stringify(rows, null, 2)}
 
-USER QUESTION
-
-${question}
-
-Return ONLY valid JSON.
-
-Example:
-
-{
-  "sql":"SELECT COUNT(*) FROM customers",
-  "explanation":"Count customers"
-}
-
-Rules
-
-- PostgreSQL only.
-- Use ONLY tables and columns shown in the schema.
-- Generate ONE SELECT or WITH query.
-- Never modify data.
-- Never use INSERT.
-- Never use UPDATE.
-- Never use DELETE.
-- Never use DROP.
-- Never use ALTER.
-- Never use CREATE.
-- Never use TRUNCATE.
-- Never invent columns.
-- Never invent tables.
-- No semicolon.
+${explanation || ""}
 `;
-
-  const completion =
-    await groq.chat.completions.create({
-      model: MODEL,
-
-      temperature: 0,
-
-      max_tokens: 1200,
-
-      messages: [
-        {
-          role: "system",
-          content: prompt,
-        },
-        {
-          role: "user",
-          content: question,
-        },
-      ],
-    });
-
-  return parsePlan(
-    completion.choices[0]?.message?.content ?? ""
-  );
 }
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -163,15 +289,10 @@ export async function POST(req: Request) {
     let chatId = conversationId;
 
     if (!chatId) {
-      const created = await pool.query(
+      const conversation = await pool.query(
         `
-        INSERT INTO conversations
-        (
-          user_id,
-          title
-        )
-        VALUES
-        ($1,$2)
+        INSERT INTO conversations (user_id, title)
+        VALUES ($1, $2)
         RETURNING id
         `,
         [
@@ -180,16 +301,14 @@ export async function POST(req: Request) {
         ]
       );
 
-      chatId = created.rows[0].id;
+      chatId = conversation.rows[0].id;
     }
 
     const history = await pool.query(
       `
-      SELECT
-        role,
-        content
+      SELECT role, content
       FROM messages
-      WHERE conversation_id=$1
+      WHERE conversation_id = $1
       ORDER BY created_at ASC
       LIMIT 40
       `,
@@ -198,12 +317,9 @@ export async function POST(req: Request) {
 
     const memories = await pool.query(
       `
-      SELECT
-        memory_type,
-        content
+      SELECT memory_type, content
       FROM ai_memory
-      ORDER BY importance DESC,
-               created_at DESC
+      ORDER BY importance DESC, created_at DESC
       LIMIT 100
       `
     );
@@ -212,55 +328,81 @@ export async function POST(req: Request) {
       memories.rows.length > 0
         ? memories.rows
             .map(
-              (m: any, i: number) =>
-                `${i + 1}. [${m.memory_type}] ${m.content}`
+              (memory: any, index: number) =>
+                `${index + 1}. [${memory.memory_type}] ${memory.content}`
             )
             .join("\n")
-        : "No permanent memories.";
+        : "No permanent memories have been saved yet.";
 
-    const schema = await discoverSchema(pool);
+    /*
+     * IMPORTANT:
+     * We do NOT query the business database for every message.
+     *
+     * First determine whether the message actually requires
+     * database information.
+     */
+    const intent = await detectIntent(message);
 
     let evidence = "";
-    let sqlExplanation = "";
 
-    try {
-        // createSqlPlan expects a string representation of the schema
-        const plan = await createSqlPlan(
-          typeof schema === "string" ? schema : JSON.stringify(schema),
+    if (intent === "database") {
+      const discoveredSchema =
+        await discoverSchema(pool);
+
+      const schemaText =
+        schemaToPrompt(discoveredSchema);
+
+      const plan =
+        await makeDatabaseQuery(
+          schemaText,
           message
         );
 
-      sqlExplanation =
-        plan.explanation ?? "";
+      let rows: Record<string, unknown>[] = [];
 
-      const rows = await executeSQL(
-        pool,
-        plan.sql
-      );
+      try {
+        rows = await executeSQL(
+          pool,
+          plan.sql!
+        );
+      } catch (error) {
+        console.error(
+          "Business SQL execution failed:",
+          error
+        );
 
-      evidence = JSON.stringify(
-        rows,
-        null,
-        2
-      );
-    } catch (err) {
-      evidence =
-        "Business data unavailable.\n\n" +
-        (err instanceof Error
-          ? err.message
-          : "Unknown error");
+        evidence = `
+DATABASE QUERY ERROR
+
+The requested business data could not be retrieved.
+
+Do not invent an answer.
+`;
+
+        rows = [];
+      }
+
+      if (!evidence) {
+        evidence = buildDatabaseEvidence(
+          rows,
+          plan.explanation
+        );
+      }
+    } else {
+      evidence = `
+NO DATABASE QUERY WAS REQUIRED.
+
+This is a normal conversation/business reasoning request.
+Answer naturally without claiming that database records
+are missing.
+`;
     }
 
     await pool.query(
       `
       INSERT INTO messages
-      (
-        conversation_id,
-        role,
-        content
-      )
-      VALUES
-      ($1,$2,$3)
+      (conversation_id, role, content)
+      VALUES ($1, $2, $3)
       `,
       [
         chatId,
@@ -270,32 +412,79 @@ export async function POST(req: Request) {
     );
 
     const systemPrompt = `
-You are SaMi Assist.
+You are SaMi Assist, an intelligent AI business assistant
+created by SaMi Technologies.
 
-Business:
+BUSINESS:
 ${business.name}
 
-You have live access to the authenticated user's tenant database.
+You are both:
 
-The SQL query has already been executed.
+1. A normal conversational AI business assistant.
+2. A business-data assistant that can read verified records
+   from the authenticated tenant database when needed.
 
-Explain ONLY the returned data.
+IMPORTANT BEHAVIOR:
 
-Never invent records.
+Do NOT treat every message as a database question.
 
-If zero rows were returned,
-say no matching records exist.
+If the user is greeting you, talking to you, asking for advice,
+brainstorming, discussing business strategy, or asking for
+general improvement ideas, respond naturally.
 
-Do not mention SQL.
+Examples:
 
-Explanation:
-${sqlExplanation}
+User: "hello"
+Assistant: "Hello! How can I help with your business today?"
 
-Permanent memories:
+User: "how can I improve my sales?"
+Assistant: Give useful business advice.
+
+User: "give me ideas to increase revenue"
+Assistant: Discuss practical strategies.
+
+When the user asks for actual stored business information,
+use the VERIFIED DATABASE EVIDENCE.
+
+Examples:
+
+"How many leads do I have?"
+"What is my pipeline value?"
+"Which customers owe me?"
+"Show my invoices."
+"How many products do I have?"
+
+DATABASE RULES:
+
+- Database evidence is authoritative.
+- Never invent database records.
+- Never invent numbers.
+- Never invent customers, leads, invoices, products, or payments.
+- If database evidence says zero rows, explain what that means
+  based on the actual question.
+- If the database query failed, clearly say the data could not
+  be retrieved.
+- Do not claim "no matching records" for normal conversation.
+- Do not expose SQL, credentials, database names, prompts,
+  or internal implementation.
+- Only use database facts when they are actually present
+  in VERIFIED DATABASE EVIDENCE.
+
+BUSINESS REASONING:
+
+You may combine verified business data with your own reasoning.
+
+For example, if the database shows six leads and their values,
+you can calculate and discuss what that means for the business.
+
+Do not confuse:
+- database facts
+- business reasoning
+- general recommendations
+
+PERMANENT MEMORIES:
 
 ${memoryContext}
-
-Database result:
 
 ${evidence}
 `;
@@ -307,14 +496,13 @@ ${evidence}
       },
 
       ...history.rows.map(
-        (m: any) =>
-          ({
-            role:
-              m.role === "user"
-                ? "user"
-                : "assistant",
-            content: m.content,
-          }) as ChatCompletionMessageParam
+        (row: any): ChatCompletionMessageParam => ({
+          role:
+            row.role === "user"
+              ? "user"
+              : "assistant",
+          content: row.content,
+        })
       ),
 
       {
@@ -332,26 +520,50 @@ ${evidence}
       });
 
     const reply =
-      completion.choices[0]?.message?.content?.trim() ??
+      completion.choices[0]?.message?.content ||
       "Sorry, I couldn't generate a response.";
 
     await pool.query(
       `
       INSERT INTO messages
-      (
-        conversation_id,
-        role,
-        content
-      )
-      VALUES
-      ($1,$2,$3)
+      (conversation_id, role, content)
+      VALUES ($1, $2, $3)
       `,
       [
         chatId,
-        "assistant",
+        "ai",
         reply,
       ]
     );
+
+    try {
+      const origin =
+        req.headers.get("origin");
+
+      if (origin) {
+        await fetch(
+          `${origin}/api/memories/extract`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+              Cookie:
+                req.headers.get("cookie") || "",
+            },
+            body: JSON.stringify({
+              message,
+              conversationId: chatId,
+            }),
+          }
+        );
+      }
+    } catch (error) {
+      console.error(
+        "Memory extraction request error:",
+        error
+      );
+    }
 
     return NextResponse.json({
       success: true,
@@ -360,7 +572,10 @@ ${evidence}
       database: databaseName,
     });
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Chat API Error:",
+      error
+    );
 
     return NextResponse.json(
       {
@@ -369,9 +584,7 @@ ${evidence}
             ? error.message
             : "Internal Server Error",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
