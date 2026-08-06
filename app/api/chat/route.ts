@@ -50,80 +50,53 @@ function parseJSON(text: string): any {
  * or whether actual database data is required.
  */
 async function detectIntent(
-  question: string
+  question: string,
+  history: Array<{ role: string; content: string }>
 ): Promise<Intent> {
-  const result = await groq.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: 100,
-    messages: [
-      {
-        role: "system",
-        content: `
-You classify messages for SaMi Assist.
+  const q = question.toLowerCase().trim();
 
-Return JSON only:
+  const databasePatterns = [
+    /\bhow many\b.*\b(leads?|customers?|clients?|invoices?|payments?|products?|orders?|employees?|opportunities?)\b/,
+    /\b(show|list|display|give me|get|find)\b.*\b(leads?|customers?|clients?|invoices?|payments?|products?|orders?|employees?|opportunities?)\b/,
+    /\b(which|who)\b.*\b(lead|customer|client|invoice|payment|product|order|employee|opportunity)\b/,
+    /\b(total|sum|average|avg|maximum|max|minimum|min|highest|lowest|calculate|how much)\b.*\b(value|amount|price|revenue|sales|pipeline|invoice|payment|lead|opportunit)/,
+    /\b(pipeline|revenue|sales|invoice|payment|customer|lead|opportunit|product|inventory|stock|employee|expense)\b.*\b(value|amount|total|count|number|status|stage|overdue|owe|owing|balance)/,
+    /\b(overdue|owe|owes|owing|unpaid|paid|outstanding)\b/,
+  ];
 
-{"intent":"chat"}
+  if (databasePatterns.some((p) => p.test(q))) return "database";
 
-or
+  const followUp = /^(it|that|this|those|these|them|do it|do that|yes|yeah|okay|ok|calculate it|show it|list them|what about that)\b/.test(q);
+  if (followUp) {
+    const previous = history.filter((r) => r.role === "user").slice(-3).map((r) => r.content.toLowerCase());
+    if (previous.some((text) => databasePatterns.some((p) => p.test(text)))) return "database";
+  }
 
-{"intent":"database"}
-
-Use "database" ONLY when answering requires actual records,
-numbers, totals, counts, statuses, customers, leads, invoices,
-payments, products, sales, expenses, or other business data
-stored in the user's database.
-
-Use "chat" for:
-- greetings
-- normal conversation
-- business advice
-- business strategy
-- ideas
-- explanations
-- planning
-- recommendations
-- improving the business
-- discussing problems
-- general questions
-
-Examples:
-
-"hello" -> chat
-"hi Sami" -> chat
-"how are you" -> chat
-"how can I increase sales?" -> chat
-"give me ideas to improve my business" -> chat
-"what should I do to get more customers?" -> chat
-
-"how many leads do I have?" -> database
-"what is my total pipeline value?" -> database
-"which customer owes me money?" -> database
-"how many invoices are overdue?" -> database
-"show me my leads" -> database
-
-Do not use database merely because the topic is business.
-Use database only when actual stored business data is needed.
-`,
-      },
-      {
-        role: "user",
-        content: question,
-      },
-    ],
-  });
-
-  const content =
-    result.choices[0]?.message?.content || "";
-
+  // Normal conversation should not touch the database.
+  // Only ambiguous messages reach the classifier.
   try {
-    const parsed = parseJSON(content);
+    const recent = history.slice(-6).map((r) => `${r.role}: ${r.content}`).join("\n");
+    const result = await groq.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 40,
+      messages: [
+        {
+          role: "system",
+          content: `Return JSON only: {"intent":"chat"} or {"intent":"database"}.
+Use database only when actual stored tenant records/numbers are required. Greetings, advice, strategy, brainstorming and general business discussion are chat. Short follow-ups inherit the previous request's intent.`,
+        },
+        { role: "user", content: `Recent:
+${recent}
 
-    return parsed.intent === "database"
-      ? "database"
-      : "chat";
-  } catch {
+Current:
+${question}` },
+      ],
+    });
+    const parsed = parseJSON(result.choices[0]?.message?.content || "");
+    return parsed.intent === "database" ? "database" : "chat";
+  } catch (error) {
+    console.error("Intent detection failed:", error);
     return "chat";
   }
 }
@@ -131,10 +104,54 @@ Use database only when actual stored business data is needed.
 /**
  * Generate a read-only SQL query using the ACTUAL tenant schema.
  */
+function deterministicDatabaseQuery(question: string): QueryPlan | null {
+  const q = question.toLowerCase().trim();
+
+  // In this tenant schema, lead pipeline is based on leads.estimated_value.
+  // Won and Lost leads are closed outcomes, so active pipeline excludes them.
+  if (/\b(total|sum|calculate|how much)\b/.test(q) && /\bpipeline\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT COALESCE(SUM(estimated_value), 0) AS total_pipeline_value FROM leads WHERE LOWER(COALESCE(stage, '')) NOT IN ('won', 'lost')",
+      explanation: "Active lead pipeline is the sum of estimated_value for leads not in Won or Lost stages.",
+    };
+  }
+
+  if (/\bhow many\b/.test(q) && /\bleads?\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT COUNT(*)::integer AS lead_count FROM leads",
+      explanation: "Counted all records in the leads table.",
+    };
+  }
+
+  if (/\b(highest|max|maximum)\b/.test(q) && /\blead\b/.test(q) && /\b(value|estimated)\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT id, name, company_name, source, stage, estimated_value, notes FROM leads ORDER BY estimated_value DESC NULLS LAST LIMIT 1",
+      explanation: "Selected the lead with the highest estimated_value.",
+    };
+  }
+
+  if (/\b(show|list|display|give me|get)\b/.test(q) && /\bleads?\b/.test(q)) {
+    return {
+      intent: "database",
+      sql: "SELECT id, name, company_name, email, phone, source, stage, estimated_value, notes, created_at FROM leads ORDER BY created_at ASC",
+      explanation: "Returned lead records from the leads table.",
+    };
+  }
+
+  return null;
+}
+
 async function makeDatabaseQuery(
   schema: string,
   question: string
 ): Promise<QueryPlan> {
+  const deterministic = deterministicDatabaseQuery(question);
+
+  if (deterministic) return deterministic;
+
   const prompt = `
 You are SaMi Assist's business database reasoning engine.
 
@@ -341,7 +358,7 @@ export async function POST(req: Request) {
      * First determine whether the message actually requires
      * database information.
      */
-    const intent = await detectIntent(message);
+    const intent = await detectIntent(message, history.rows);
 
     let evidence = "";
 
@@ -495,7 +512,7 @@ ${evidence}
         content: systemPrompt,
       },
 
-      ...history.rows.map(
+      ...history.rows.slice(-30).map(
         (row: any): ChatCompletionMessageParam => ({
           role:
             row.role === "user"
