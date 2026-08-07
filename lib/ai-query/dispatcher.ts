@@ -22,7 +22,7 @@ function parseJson(text: string): any {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const match = cleaned.match(/\{[\s\S]*\}/);
+    const match = cleaned.match(/{[\s\S]*}/);
     if (!match) throw new Error("AI returned invalid JSON.");
     return JSON.parse(match[0]);
   }
