@@ -10,7 +10,6 @@ import {
   Check,
   ThumbsUp,
   ThumbsDown,
-  Sparkles,
   RefreshCw,
   MoreVertical,
   FileText,
@@ -37,10 +36,6 @@ type Props = {
   onConversationCreated: (id: string) => void;
   onConversationUpdate?: (id: string, title: string) => void;
 };
-
-// ==========================================
-// SPEECH RECOGNITION TYPES
-// ==========================================
 
 interface SpeechRecognitionEvent extends Event {
   results: SpeechRecognitionResultList;
@@ -72,13 +67,13 @@ interface SpeechRecognition extends EventTarget {
   start(): void;
   stop(): void;
   abort(): void;
-  onresult: (event: SpeechRecognitionEvent) => void;
-  onerror: (event: Event) => void;
-  onend: () => void;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: Event) => void) | null;
+  onend: (() => void) | null;
 }
 
 interface SpeechRecognitionConstructor {
-  new(): SpeechRecognition;
+  new (): SpeechRecognition;
 }
 
 declare global {
@@ -101,17 +96,14 @@ export default function ChatWindow({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
-  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(null);
-  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(
+    null,
+  );
 
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  // ==========================================
-  // SCROLL TO BOTTOM
-  // ==========================================
 
   const scrollToBottom = useCallback((smooth = true) => {
     bottomRef.current?.scrollIntoView({
@@ -123,20 +115,16 @@ export default function ChatWindow({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // ==========================================
-  // SHOW SCROLL BUTTON
-  // ==========================================
-
   const handleScroll = () => {
     if (!messagesContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+
+    const { scrollTop, scrollHeight, clientHeight } =
+      messagesContainerRef.current;
+
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
     setShowScrollButton(!isNearBottom);
   };
-
-  // ==========================================
-  // LOAD MESSAGES
-  // ==========================================
 
   useEffect(() => {
     if (!conversationId) {
@@ -163,59 +151,68 @@ export default function ChatWindow({
         throw new Error(data.error || "Failed to load conversation.");
       }
 
-      setMessages(data.length > 0 ? data : [
-        {
-          role: "ai",
-          content: "💬 Welcome back! How can I help you today?",
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      setMessages(
+        data.length > 0
+          ? data
+          : [
+              {
+                role: "ai",
+                content: "💬 Welcome back! How can I help you today?",
+                timestamp: new Date().toISOString(),
+              },
+            ],
+      );
     } catch (error) {
       console.error("Load messages error:", error);
+
       setMessages([
         {
           role: "ai",
-          content: "❌ I couldn't load this conversation. Please try refreshing.",
+          content:
+            "❌ I couldn't load this conversation. Please try refreshing.",
           timestamp: new Date().toISOString(),
         },
       ]);
     }
   }
 
-  // ==========================================
-  // VOICE RECOGNITION
-  // ==========================================
-
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      
-      if (SpeechRecognition) {
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = false;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = "en-US";
+    if (typeof window === "undefined") return;
 
-        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
-          const transcript = Array.from(event.results)
-            .map(result => result[0].transcript)
-            .join("");
-          
-          if (event.results[0].isFinal) {
-            setInput(transcript);
-            setIsRecording(false);
-          }
-        };
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
 
-        recognitionRef.current.onerror = () => {
-          setIsRecording(false);
-        };
+    if (!SpeechRecognition) return;
 
-        recognitionRef.current.onend = () => {
-          setIsRecording(false);
-        };
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = false;
+    recognitionRef.current.interimResults = true;
+    recognitionRef.current.lang = "en-US";
+
+    recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0].transcript)
+        .join("");
+
+      setInput(transcript);
+
+      if (event.results[0]?.isFinal) {
+        setIsRecording(false);
       }
-    }
+    };
+
+    recognitionRef.current.onerror = () => {
+      setIsRecording(false);
+    };
+
+    recognitionRef.current.onend = () => {
+      setIsRecording(false);
+    };
+
+    return () => {
+      recognitionRef.current?.abort();
+      recognitionRef.current = null;
+    };
   }, []);
 
   const toggleVoiceRecognition = () => {
@@ -227,86 +224,24 @@ export default function ChatWindow({
     if (isRecording) {
       recognitionRef.current.stop();
       setIsRecording(false);
-    } else {
-      try {
-        recognitionRef.current.start();
-        setIsRecording(true);
-        inputRef.current?.focus();
-      } catch (error) {
-        console.error("Voice recognition error:", error);
-        setIsRecording(false);
-      }
+      return;
+    }
+
+    try {
+      recognitionRef.current.start();
+      setIsRecording(true);
+      inputRef.current?.focus();
+    } catch (error) {
+      console.error("Voice recognition error:", error);
+      setIsRecording(false);
     }
   };
-async function confirmPendingAction() {
-  if (!pendingActionId || loading) return;
-
-  setLoading(true);
-  setIsTyping(true);
-
-  try {
-    const res = await fetch("/api/chat/confirm", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        actionId: pendingActionId,
-      }),
-    });
-
-    const data = await res.json();
-
-    console.log("Confirmation response:", data);
-
-    if (!res.ok) {
-      throw new Error(
-        data.error || "Failed to confirm the change."
-      );
-    }
-
-    setPendingActionId(null);
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: "Confirm",
-        timestamp: new Date().toISOString(),
-      },
-      {
-        role: "ai",
-        content: data.reply,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  } catch (error) {
-    console.error("Confirmation error:", error);
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "ai",
-        content:
-          error instanceof Error
-            ? error.message
-            : "Failed to save the change.",
-        timestamp: new Date().toISOString(),
-      },
-    ]);
-  } finally {
-    setLoading(false);
-    setIsTyping(false);
-  }
-}
-  // ==========================================
-  // SEND MESSAGE
-  // ==========================================
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
 
     const prompt = input.trim();
+
     const userMessage: Message = {
       role: "user",
       content: prompt,
@@ -321,7 +256,9 @@ async function confirmPendingAction() {
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           message: prompt,
           conversationId,
@@ -329,13 +266,13 @@ async function confirmPendingAction() {
       });
 
       const data = await res.json();
+
       console.log("Chat API response:", data);
-      if (data.confirmationRequired && data.actionId) {
-  setPendingActionId(data.actionId);
-}
 
       if (!res.ok) {
-        throw new Error(data.error || data.details || "The AI request failed.");
+        throw new Error(
+          data.error || data.details || "The AI request failed.",
+        );
       }
 
       if (!data.reply) {
@@ -344,17 +281,21 @@ async function confirmPendingAction() {
 
       if (!conversationId && data.conversationId) {
         onConversationCreated(data.conversationId);
-      }
 
-      if (!conversationId && data.conversationId && onConversationUpdate) {
-        const title = prompt.length > 30 ? prompt.substring(0, 30) + "..." : prompt;
-        onConversationUpdate(data.conversationId, title);
+        if (onConversationUpdate) {
+          const title =
+            prompt.length > 30
+              ? `${prompt.substring(0, 30)}...`
+              : prompt;
+
+          onConversationUpdate(data.conversationId, title);
+        }
       }
 
       const requiresConfirmation =
         data.confirmationRequired === true &&
         typeof data.actionId === "string" &&
-        data.actionId.length > 0;
+        data.actionId.trim().length > 0;
 
       setMessages((prev) => [
         ...prev,
@@ -369,7 +310,11 @@ async function confirmPendingAction() {
       ]);
     } catch (error) {
       console.error("Send message error:", error);
-      const errorMessage = error instanceof Error ? error.message : "Something went wrong.";
+
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong.";
 
       setMessages((prev) => [
         ...prev,
@@ -385,19 +330,18 @@ async function confirmPendingAction() {
     }
   }
 
-  // ==========================================
-  // CONFIRM BUSINESS WRITE
-  // ==========================================
-
   async function confirmAction(actionId: string, messageIndex: number) {
-    if (!actionId || confirmingActionId) return;
+    if (!actionId || confirmingActionId || loading) return;
 
     setConfirmingActionId(actionId);
 
     setMessages((prev) =>
       prev.map((message, index) =>
         index === messageIndex
-          ? { ...message, confirmationStatus: "confirming" }
+          ? {
+              ...message,
+              confirmationStatus: "confirming",
+            }
           : message,
       ),
     );
@@ -405,24 +349,41 @@ async function confirmPendingAction() {
     try {
       const res = await fetch("/api/chat/confirm", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionId }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          actionId,
+        }),
       });
 
       const data = await res.json();
+
       console.log("Confirm API response:", data);
 
       if (!res.ok) {
-        throw new Error(data.error || data.details || "The business change could not be saved.");
+        throw new Error(
+          data.error ||
+            data.details ||
+            "The business change could not be saved.",
+        );
       }
 
       if (!data.success) {
-        throw new Error(data.error || "The business change was not confirmed.");
+        throw new Error(
+          data.error || "The business change was not confirmed.",
+        );
       }
 
-      const rowCount = typeof data.result?.rowCount === "number" ? data.result.rowCount : null;
+      const rowCount =
+        typeof data.result?.rowCount === "number"
+          ? data.result.rowCount
+          : null;
+
       if (rowCount !== null && rowCount < 1) {
-        throw new Error("Confirmation completed, but PostgreSQL reports that no record was saved.");
+        throw new Error(
+          "Confirmation completed, but PostgreSQL reports that no record was saved.",
+        );
       }
 
       const successReply =
@@ -444,8 +405,11 @@ async function confirmPendingAction() {
       );
     } catch (error) {
       console.error("Confirm action error:", error);
+
       const errorMessage =
-        error instanceof Error ? error.message : "The business change could not be saved.";
+        error instanceof Error
+          ? error.message
+          : "The business change could not be saved.";
 
       setMessages((prev) =>
         prev.map((message, index) =>
@@ -463,41 +427,43 @@ async function confirmPendingAction() {
     }
   }
 
-  // ==========================================
-  // COPY MESSAGE
-  // ==========================================
-
   const copyMessage = (content: string, id: string) => {
     navigator.clipboard.writeText(content);
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+
+    setTimeout(() => {
+      setCopiedId(null);
+    }, 2000);
   };
 
-  // ==========================================
-  // FEEDBACK
-  // ==========================================
-
-  const giveFeedback = (messageIndex: number, feedback: "like" | "dislike") => {
+  const giveFeedback = (
+    messageIndex: number,
+    feedback: "like" | "dislike",
+  ) => {
     setMessages((prev) =>
-      prev.map((msg, idx) =>
-        idx === messageIndex ? { ...msg, feedback } : msg
-      )
+      prev.map((msg, index) =>
+        index === messageIndex
+          ? {
+              ...msg,
+              feedback,
+            }
+          : msg,
+      ),
     );
   };
-
-  // ==========================================
-  // RENDER MESSAGE
-  // ==========================================
 
   const renderMessage = (message: Message, index: number) => {
     const isUser = message.role === "user";
     const isAI = message.role === "ai";
+
     const messageId = message.id || `${message.role}-${index}`;
+
     const showConfirmButton =
       isAI &&
       message.confirmationRequired === true &&
       typeof message.actionId === "string" &&
       message.confirmationStatus === "pending";
+
     const isConfirming =
       message.confirmationStatus === "confirming" &&
       message.actionId === confirmingActionId;
@@ -505,17 +471,21 @@ async function confirmPendingAction() {
     return (
       <div
         key={messageId}
-        className={`group flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
+        className={`group flex gap-3 ${
+          isUser ? "justify-end" : "justify-start"
+        } animate-in slide-in-from-bottom-2 duration-300`}
       >
-        {/* Avatar - AI */}
         {isAI && (
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
             <Bot size={16} className="text-white" />
           </div>
         )}
 
-        {/* Message bubble */}
-        <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"} sm:max-w-[75%]`}>
+        <div
+          className={`flex max-w-[85%] flex-col ${
+            isUser ? "items-end" : "items-start"
+          } sm:max-w-[75%]`}
+        >
           <div
             className={`relative rounded-2xl px-4 py-3 shadow-sm ${
               isUser
@@ -526,13 +496,15 @@ async function confirmPendingAction() {
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
               {message.content}
             </p>
-              
+
             {showConfirmButton && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
                 <button
                   type="button"
                   disabled={Boolean(confirmingActionId)}
-                  onClick={() => confirmAction(message.actionId!, index)}
+                  onClick={() =>
+                    confirmAction(message.actionId!, index)
+                  }
                   className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isConfirming ? (
@@ -547,6 +519,7 @@ async function confirmPendingAction() {
                     </>
                   )}
                 </button>
+
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   This will save the change to your business database.
                 </span>
@@ -561,37 +534,50 @@ async function confirmPendingAction() {
 
             {message.confirmationStatus === "failed" && (
               <div className="mt-3 text-xs font-medium text-red-600 dark:text-red-400">
-                Save failed. Review the error above and try the request again.
+                Save failed. Review the error above and try again.
               </div>
             )}
 
-            {/* Message actions - AI only */}
             {isAI && (
               <div className="absolute -bottom-2 -right-2 flex gap-1 rounded-lg bg-white/90 p-1 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700/90">
                 <button
-                  onClick={() => copyMessage(message.content, messageId)}
+                  type="button"
+                  onClick={() =>
+                    copyMessage(message.content, messageId)
+                  }
                   className="rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600"
                   aria-label="Copy message"
                 >
                   {copiedId === messageId ? (
                     <Check size={14} className="text-green-500" />
                   ) : (
-                    <Copy size={14} className="text-gray-500 dark:text-gray-400" />
+                    <Copy
+                      size={14}
+                      className="text-gray-500 dark:text-gray-400"
+                    />
                   )}
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => giveFeedback(index, "like")}
                   className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                    message.feedback === "like" ? "text-blue-500" : "text-gray-500 dark:text-gray-400"
+                    message.feedback === "like"
+                      ? "text-blue-500"
+                      : "text-gray-500 dark:text-gray-400"
                   }`}
                   aria-label="Like"
                 >
                   <ThumbsUp size={14} />
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => giveFeedback(index, "dislike")}
                   className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                    message.feedback === "dislike" ? "text-red-500" : "text-gray-500 dark:text-gray-400"
+                    message.feedback === "dislike"
+                      ? "text-red-500"
+                      : "text-gray-500 dark:text-gray-400"
                   }`}
                   aria-label="Dislike"
                 >
@@ -601,15 +587,20 @@ async function confirmPendingAction() {
             )}
           </div>
 
-          {/* Timestamp */}
           {message.timestamp && (
-            <span className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${isUser ? "pr-1" : "pl-1"}`}>
-              {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            <span
+              className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${
+                isUser ? "pr-1" : "pl-1"
+              }`}
+            >
+              {new Date(message.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
             </span>
           )}
         </div>
 
-        {/* Avatar - User */}
         {isUser && (
           <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-700 shadow-lg">
             <User size={16} className="text-white" />
@@ -619,41 +610,27 @@ async function confirmPendingAction() {
     );
   };
 
-  // ==========================================
-  // RENDER
-  // ==========================================
-
-return (
-  <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950">
-      
-      {/* ====================================
-          HEADER
-      ==================================== */}
-
-<div className="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-950 sm:px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
-            <Sparkles size={20} className="text-white" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-gray-900 dark:text-white sm:text-xl">
-              SaMi AI Assistant
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              {loading ? "Thinking..." : isTyping ? "Typing..." : "Online"}
-            </p>
-          </div>
-        </div>
-
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-gray-50 dark:bg-gray-950">
+      {/* HEADER */}
+      <div className="flex flex-shrink-0 items-center justify-end border-b border-gray-200 bg-white px-3 py-2 dark:border-gray-800 dark:bg-gray-950">
         <div className="flex items-center gap-1 sm:gap-2">
           <button
-            onClick={() => conversationId && loadMessages(conversationId)}
+            type="button"
+            onClick={() =>
+              conversationId && loadMessages(conversationId)
+            }
             className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
             aria-label="Refresh"
           >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+            <RefreshCw
+              size={18}
+              className={loading ? "animate-spin" : ""}
+            />
           </button>
+
           <button
+            type="button"
             className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
             aria-label="More options"
           >
@@ -662,29 +639,32 @@ return (
         </div>
       </div>
 
-      {/* ====================================
-          MESSAGES
-      ==================================== */}
+      {/* MESSAGES */}
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+      >
+        <div className="mx-auto flex max-w-4xl flex-col gap-5">
+          {messages.map(renderMessage)}
 
-   <div
-  ref={messagesContainerRef}
-  onScroll={handleScroll}
-  className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6"
->
-        <div className="mx-auto max-w-4xl space-y-4">
-          {messages.map((message, index) => renderMessage(message, index))}
-
-          {/* Typing indicator */}
-          {isTyping && !loading && (
+          {isTyping && (
             <div className="flex items-center gap-3 animate-in slide-in-from-bottom-2">
               <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
                 <Bot size={16} className="text-white" />
               </div>
+
               <div className="rounded-2xl bg-white px-4 py-3 shadow-md dark:bg-gray-800">
                 <div className="flex gap-1">
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 dark:bg-gray-500" style={{ animationDelay: "0ms" }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 dark:bg-gray-500" style={{ animationDelay: "150ms" }} />
-                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400 dark:bg-gray-500" style={{ animationDelay: "300ms" }} />
+                  <span className="h-2 w-2 animate-bounce rounded-full bg-gray-400" />
+                  <span
+                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                    style={{ animationDelay: "150ms" }}
+                  />
+                  <span
+                    className="h-2 w-2 animate-bounce rounded-full bg-gray-400"
+                    style={{ animationDelay: "300ms" }}
+                  />
                 </div>
               </div>
             </div>
@@ -693,34 +673,43 @@ return (
           <div ref={bottomRef} />
         </div>
 
-        {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
+            type="button"
             onClick={() => scrollToBottom(true)}
-           className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
+            className="absolute bottom-6 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
             aria-label="Scroll to bottom"
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 14l-7 7m0 0l-7-7m7 7V3"
+              />
             </svg>
           </button>
         )}
       </div>
 
-      {/* ====================================
-          INPUT
-      ==================================== */}
-
-    <div className="flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4">
+      {/* INPUT */}
+      <div className="flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4">
         <div className="mx-auto max-w-4xl">
-          {/* Attachment preview */}
           {attachment && (
             <div className="mb-2 flex items-center gap-2 rounded-lg bg-gray-100 p-2 dark:bg-gray-800">
               <FileText size={16} className="text-blue-500" />
+
               <span className="flex-1 truncate text-sm text-gray-700 dark:text-gray-300">
                 {attachment.name}
               </span>
+
               <button
+                type="button"
                 onClick={() => setAttachment(null)}
                 className="rounded p-1 text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-700"
               >
@@ -730,14 +719,17 @@ return (
           )}
 
           <div className="flex items-end gap-2">
-            {/* Attachment button */}
             <button
-              onClick={() => document.getElementById("file-upload")?.click()}
+              type="button"
+              onClick={() =>
+                document.getElementById("file-upload")?.click()
+              }
               className="rounded-xl p-3 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
               aria-label="Attach file"
             >
               <Paperclip size={20} />
             </button>
+
             <input
               id="file-upload"
               type="file"
@@ -749,7 +741,6 @@ return (
               }}
             />
 
-            {/* Input */}
             <div className="flex-1">
               <input
                 ref={inputRef}
@@ -759,7 +750,11 @@ return (
                 placeholder="Ask SaMi Assist anything..."
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey && !loading) {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !loading
+                  ) {
                     e.preventDefault();
                     sendMessage();
                   }
@@ -769,8 +764,8 @@ return (
               />
             </div>
 
-            {/* Voice input */}
             <button
+              type="button"
               onClick={toggleVoiceRecognition}
               className={`rounded-xl p-3 transition ${
                 isRecording
@@ -782,12 +777,11 @@ return (
               <Mic size={20} />
             </button>
 
-            {/* Send button */}
             <button
               type="button"
               disabled={loading || !input.trim()}
               onClick={sendMessage}
-              className="relative rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 p-3 text-white transition hover:shadow-lg hover:shadow-blue-500/25 hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:p-4"
+              className="relative rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 p-3 text-white transition hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100 sm:p-4"
               aria-label="Send message"
             >
               {loading ? (
@@ -798,7 +792,6 @@ return (
             </button>
           </div>
 
-          {/* Character count */}
           {input.length > 0 && (
             <div className="mt-1 text-right text-[10px] text-gray-400 dark:text-gray-500">
               {input.length} characters
