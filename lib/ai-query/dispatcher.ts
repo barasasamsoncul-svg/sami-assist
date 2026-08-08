@@ -550,18 +550,21 @@ ${schemaToPrompt(schema)}
     );
   }
 
-  validateWritePlan(
-    plan,
-    schema,
-  );
+ // Resolve values that require real database
+// records or server-generated values BEFORE
+// final validation.
+await resolveInvoiceWrite(
+  pool,
+  plan,
+  question,
+);
 
-  // Resolve values that require real database
-  // records or server-generated values.
-  await resolveInvoiceWrite(
-    pool,
-    plan,
-    question,
-  );
+// Validate only after all server-side values
+// have been resolved.
+validateWritePlan(
+  plan,
+  schema,
+);
 
   // Validate AGAIN after server-side resolution.
   validateWritePlan(
