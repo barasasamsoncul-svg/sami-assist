@@ -9,26 +9,32 @@ import {
 import { executeRead } from "./executor";
 import type { QueryPlan } from "./types";
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY! });
-const MODEL = process.env.SAMI_AI_MODEL || "llama-3.3-70b-versatile";
+const groq = new Groq({
+  apiKey: process.env.GROQ_AI_API_KEY || process.env.GROQ_API_KEY!,
+});
+
+const MODEL =
+  process.env.SAMI_AI_MODEL || "llama-3.3-70b-versatile";
 
 function parseJson(text: string): any {
   const cleaned = text
     .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(/^`(?:json)?\s*/i, "")
+    .replace(/\s*`$/i, "")
     .trim();
 
   try {
     return JSON.parse(cleaned);
   } catch {
-    const match = cleaned.match(/{[\s\S]*}/);
-    if (!match) throw new Error("AI returned invalid JSON.");
+    const match = cleaned.match(/\{[\s\S]*\}/);
+    if (!match) {
+      throw new Error("AI returned invalid JSON.");
+    }
     return JSON.parse(match[0]);
   }
 }
 
-function quoteIdentifier(value: string) {
+function quoteIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
@@ -36,21 +42,28 @@ function safeValue(value: unknown): unknown {
   if (typeof value === "string" && value.length > 5000) {
     return value.slice(0, 5000);
   }
+
   return value;
 }
 
 function validateWritePlan(
   plan: QueryPlan,
   schema: Awaited<ReturnType<typeof discoverSchema>>,
-) {
-  if (!plan.write) throw new Error("Write plan is missing.");
+): void {
+  if (!plan.write) {
+    throw new Error("Write plan is missing.");
+  }
 
   if (!["create", "update"].includes(plan.write.operation)) {
-    throw new Error("Only create and update operations are supported.");
+    throw new Error(
+      "Only create and update operations are supported.",
+    );
   }
 
   if (!hasTable(schema, plan.write.table)) {
-    throw new Error(`Table "${plan.write.table}" does not exist.`);
+    throw new Error(
+      `Table "${plan.write.table}" does not exist.`,
+    );
   }
 
   const columns = getTableColumns(schema, plan.write.table);
@@ -62,7 +75,9 @@ function validateWritePlan(
 
   for (const key of Object.keys(values)) {
     if (!columns.has(key)) {
-      throw new Error(`Column "${key}" does not exist on "${plan.write.table}".`);
+      throw new Error(
+        `Column "${key}" does not exist on "${plan.write.table}".`,
+      );
     }
   }
 
@@ -70,24 +85,35 @@ function validateWritePlan(
     const where = plan.write.where ?? {};
 
     if (!Object.keys(where).length) {
-      throw new Error("Updates require a specific record filter.");
+      throw new Error(
+        "Updates require a specific record filter.",
+      );
     }
 
     for (const key of Object.keys(where)) {
       if (!columns.has(key)) {
-        throw new Error(`Filter column "${key}" does not exist on "${plan.write.table}".`);
+        throw new Error(
+          `Filter column "${key}" does not exist on "${plan.write.table}".`,
+        );
       }
     }
   }
 }
 
-function buildWriteSql(plan: QueryPlan) {
+function buildWriteSql(plan: QueryPlan): {
+  sql: string;
+  params: unknown[];
+} {
   const write = plan.write!;
+
   const values = Object.entries(write.values ?? {});
   const params: unknown[] = [];
 
   if (write.operation === "create") {
-    const columns = values.map(([key]) => quoteIdentifier(key)).join(", ");
+    const columns = values
+      .map(([key]) => quoteIdentifier(key))
+      .join(", ");
+
     const placeholders = values
       .map(([, value], index) => {
         params.push(safeValue(value));
@@ -96,7 +122,9 @@ function buildWriteSql(plan: QueryPlan) {
       .join(", ");
 
     return {
-      sql: `INSERT INTO ${quoteIdentifier(write.table)} (${columns}) VALUES (${placeholders}) RETURNING *`,
+      sql: `INSERT INTO ${quoteIdentifier(
+        write.table,
+      )} (${columns}) VALUES (${placeholders}) RETURNING *`,
       params,
     };
   }
@@ -108,18 +136,34 @@ function buildWriteSql(plan: QueryPlan) {
     })
     .join(", ");
 
-  const filters = Object.entries(write.where ?? {}).map(([key, value]) => {
-    params.push(safeValue(value));
-    return `${quoteIdentifier(key)} = $${params.length}`;
-  });
+  const filters = Object.entries(write.where ?? {}).map(
+    ([key, value]) => {
+      params.push(safeValue(value));
+      return `${quoteIdentifier(key)} = $${params.length}`;
+    },
+  );
 
   return {
-    sql: `UPDATE ${quoteIdentifier(write.table)} SET ${assignments} WHERE ${filters.join(" AND ")} RETURNING *`,
+    sql: `UPDATE ${quoteIdentifier(
+      write.table,
+    )} SET ${assignments} WHERE ${filters.join(
+      " AND ",
+    )} RETURNING *`,
     params,
   };
 }
 
-export async function dispatchRead(pool: Pool, question: string) {
+export async function dispatchRead(
+  pool: Pool,
+  question: string,
+): Promise<{
+  plan: QueryPlan;
+  result: {
+    rows: Record<string, unknown>[];
+    rowCount: number;
+  };
+  schema: Awaited<ReturnType<typeof discoverSchema>>;
+}> {
   const schema = await discoverSchema(pool);
 
   const result = await groq.chat.completions.create({
@@ -145,11 +189,16 @@ Return JSON only:
 ${schemaToPrompt(schema)}
         `.trim(),
       },
-      { role: "user", content: question },
+      {
+        role: "user",
+        content: question,
+      },
     ],
   });
 
-  const parsed = parseJson(result.choices[0]?.message?.content || "");
+  const parsed = parseJson(
+    result.choices[0]?.message?.content || "",
+  );
 
   if (typeof parsed.sql !== "string") {
     throw new Error("AI did not return a valid read query.");
@@ -171,7 +220,15 @@ ${schemaToPrompt(schema)}
   };
 }
 
-export async function planWrite(pool: Pool, question: string) {
+export async function planWrite(
+  pool: Pool,
+  question: string,
+): Promise<{
+  plan: QueryPlan;
+  sql: string;
+  params: unknown[];
+  preview: string;
+}> {
   const schema = await discoverSchema(pool);
 
   const result = await groq.chat.completions.create({
@@ -201,6 +258,7 @@ Return JSON only:
 }
 
 Rules:
+
 - Never delete records.
 - Only create or update.
 - Never invent tables or columns.
@@ -213,11 +271,17 @@ Rules:
 ${schemaToPrompt(schema)}
         `.trim(),
       },
-      { role: "user", content: question },
+      {
+        role: "user",
+        content: question,
+      },
     ],
   });
 
-  const parsed = parseJson(result.choices[0]?.message?.content || "");
+  const parsed = parseJson(
+    result.choices[0]?.message?.content || "",
+  );
+
   const plan = parsed as QueryPlan;
 
   if (plan.intent !== "write" || !plan.write) {
@@ -240,6 +304,8 @@ ${schemaToPrompt(schema)}
         ? `Record filter: ${JSON.stringify(plan.write.where)}`
         : "",
       `Reason: ${plan.explanation}`,
-    ].filter(Boolean).join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   };
 }

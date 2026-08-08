@@ -19,12 +19,17 @@ import {
   X,
 } from "lucide-react";
 
+type ConfirmationStatus = "pending" | "confirming" | "completed" | "failed";
+
 type Message = {
   id?: string;
   role: "user" | "ai";
   content: string;
   timestamp?: string;
   feedback?: "like" | "dislike";
+  actionId?: string;
+  confirmationRequired?: boolean;
+  confirmationStatus?: ConfirmationStatus;
 };
 
 type Props = {
@@ -96,36 +101,13 @@ export default function ChatWindow({
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
-  const [hasStarted, setHasStarted] = useState(false);
+  const [confirmingActionId, setConfirmingActionId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-// Helper to generate conversation title from first message
-function generateConversationTitle(message: string): string {
-  const clean = message.trim();
-  
-  // If short, use as is
-  if (clean.length <= 40) return clean;
-  
-  // Try to extract key phrase - first 5-6 words
-  const words = clean.split(' ');
-  
-  // Take first 6 words or less
-  const titleWords = words.slice(0, Math.min(6, words.length));
-  let title = titleWords.join(' ');
-  
-  // If still too long, truncate
-  if (title.length > 50) {
-    title = title.substring(0, 47) + '...';
-  } else if (words.length > 6) {
-    title = title + '...';
-  }
-  
-  // Capitalize first letter
-  return title.charAt(0).toUpperCase() + title.slice(1);
-}
+
   // ==========================================
   // SCROLL TO BOTTOM
   // ==========================================
@@ -145,11 +127,11 @@ function generateConversationTitle(message: string): string {
   // ==========================================
 
   const handleScroll = () => {
-  if (!messagesContainerRef.current) return;
-  const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-  const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
-  setShowScrollButton(!isNearBottom);
-};
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isNearBottom);
+  };
 
   // ==========================================
   // LOAD MESSAGES
@@ -171,47 +153,33 @@ function generateConversationTitle(message: string): string {
     loadMessages(conversationId);
   }, [conversationId]);
 
-async function loadMessages(id: string) {
-  try {
-    const res = await fetch(`/api/messages/${id}`);
-    const data = await res.json();
+  async function loadMessages(id: string) {
+    try {
+      const res = await fetch(`/api/messages/${id}`);
+      const data = await res.json();
 
-    if (!res.ok) {
-      throw new Error(data.error || "Failed to load conversation.");
-    }
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load conversation.");
+      }
 
-    // If no messages, show welcome
-    if (!data || data.length === 0) {
-      setMessages([
+      setMessages(data.length > 0 ? data : [
         {
           role: "ai",
           content: "💬 Welcome back! How can I help you today?",
           timestamp: new Date().toISOString(),
         },
       ]);
-      return;
+    } catch (error) {
+      console.error("Load messages error:", error);
+      setMessages([
+        {
+          role: "ai",
+          content: "❌ I couldn't load this conversation. Please try refreshing.",
+          timestamp: new Date().toISOString(),
+        },
+      ]);
     }
-
-    // Sort messages by timestamp if available
-    const sortedMessages = data.sort((a: Message, b: Message) => {
-      if (a.timestamp && b.timestamp) {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
-      }
-      return 0;
-    });
-
-    setMessages(sortedMessages);
-  } catch (error) {
-    console.error("Load messages error:", error);
-    setMessages([
-      {
-        role: "ai",
-        content: "❌ I couldn't load this conversation. Please try refreshing.",
-        timestamp: new Date().toISOString(),
-      },
-    ]);
   }
-}
 
   // ==========================================
   // VOICE RECOGNITION
@@ -276,7 +244,7 @@ async function loadMessages(id: string) {
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
-    setHasStarted(true);
+
     const prompt = input.trim();
     const userMessage: Message = {
       role: "user",
@@ -310,15 +278,19 @@ async function loadMessages(id: string) {
         throw new Error("The AI returned an empty response.");
       }
 
-     if (!conversationId && data.conversationId) {
-  onConversationCreated(data.conversationId);
-}
+      if (!conversationId && data.conversationId) {
+        onConversationCreated(data.conversationId);
+      }
 
-if (!conversationId && data.conversationId && onConversationUpdate) {
-  // Generate a proper summary title
-  const title = generateConversationTitle(prompt);
-  onConversationUpdate(data.conversationId, title);
-}
+      if (!conversationId && data.conversationId && onConversationUpdate) {
+        const title = prompt.length > 30 ? prompt.substring(0, 30) + "..." : prompt;
+        onConversationUpdate(data.conversationId, title);
+      }
+
+      const requiresConfirmation =
+        data.confirmationRequired === true &&
+        typeof data.actionId === "string" &&
+        data.actionId.length > 0;
 
       setMessages((prev) => [
         ...prev,
@@ -326,6 +298,9 @@ if (!conversationId && data.conversationId && onConversationUpdate) {
           role: "ai",
           content: data.reply,
           timestamp: new Date().toISOString(),
+          actionId: requiresConfirmation ? data.actionId : undefined,
+          confirmationRequired: requiresConfirmation,
+          confirmationStatus: requiresConfirmation ? "pending" : undefined,
         },
       ]);
     } catch (error) {
@@ -343,6 +318,84 @@ if (!conversationId && data.conversationId && onConversationUpdate) {
     } finally {
       setLoading(false);
       setIsTyping(false);
+    }
+  }
+
+  // ==========================================
+  // CONFIRM BUSINESS WRITE
+  // ==========================================
+
+  async function confirmAction(actionId: string, messageIndex: number) {
+    if (!actionId || confirmingActionId) return;
+
+    setConfirmingActionId(actionId);
+
+    setMessages((prev) =>
+      prev.map((message, index) =>
+        index === messageIndex
+          ? { ...message, confirmationStatus: "confirming" }
+          : message,
+      ),
+    );
+
+    try {
+      const res = await fetch("/api/chat/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId }),
+      });
+
+      const data = await res.json();
+      console.log("Confirm API response:", data);
+
+      if (!res.ok) {
+        throw new Error(data.error || data.details || "The business change could not be saved.");
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || "The business change was not confirmed.");
+      }
+
+      const rowCount = typeof data.result?.rowCount === "number" ? data.result.rowCount : null;
+      if (rowCount !== null && rowCount < 1) {
+        throw new Error("Confirmation completed, but PostgreSQL reports that no record was saved.");
+      }
+
+      const successReply =
+        typeof data.reply === "string" && data.reply.trim()
+          ? data.reply
+          : "Done. The business change was saved successfully.";
+
+      setMessages((prev) =>
+        prev.map((message, index) =>
+          index === messageIndex
+            ? {
+                ...message,
+                content: `✅ ${successReply}`,
+                confirmationRequired: false,
+                confirmationStatus: "completed",
+              }
+            : message,
+        ),
+      );
+    } catch (error) {
+      console.error("Confirm action error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "The business change could not be saved.";
+
+      setMessages((prev) =>
+        prev.map((message, index) =>
+          index === messageIndex
+            ? {
+                ...message,
+                content: `${message.content}\n\n❌ ${errorMessage}`,
+                confirmationStatus: "failed",
+              }
+            : message,
+        ),
+      );
+    } finally {
+      setConfirmingActionId(null);
     }
   }
 
@@ -373,136 +426,183 @@ if (!conversationId && data.conversationId && onConversationUpdate) {
   // ==========================================
 
   const renderMessage = (message: Message, index: number) => {
-  const isUser = message.role === "user";
-  const isAI = message.role === "ai";
-  const messageId = message.id || `${message.role}-${index}`;
+    const isUser = message.role === "user";
+    const isAI = message.role === "ai";
+    const messageId = message.id || `${message.role}-${index}`;
+    const showConfirmButton =
+      isAI &&
+      message.confirmationRequired === true &&
+      typeof message.actionId === "string" &&
+      message.confirmationStatus === "pending";
+    const isConfirming =
+      message.confirmationStatus === "confirming" &&
+      message.actionId === confirmingActionId;
 
-  // Format AI response with markdown-like styling
-  const formatContent = (content: string) => {
-    if (isUser) return content;
-    
-    // Split by numbered lists, bullet points, and paragraphs
-    const lines = content.split('\n');
-    return lines.map((line, i) => {
-      // Check for numbered lists (1., 2., etc.)
-      if (/^\d+\./.test(line.trim())) {
-        return <div key={i} className="flex gap-2 mt-1">
-          <span className="text-blue-500 font-semibold">{line.match(/^\d+/)?.[0]}.</span>
-          <span>{line.replace(/^\d+\.\s*/, '')}</span>
-        </div>;
-      }
-      // Check for bullet points (- or •)
-      if (/^[\-•]\s/.test(line.trim())) {
-        return <div key={i} className="flex gap-2 mt-1 ml-2">
-          <span className="text-blue-400">•</span>
-          <span>{line.replace(/^[\-•]\s*/, '')}</span>
-        </div>;
-      }
-      // Check for headings (bold text)
-      if (line.trim() && /[A-Z]/.test(line.trim()[0]) && line.length < 60 && !line.endsWith('.')) {
-        return <div key={i} className="font-semibold text-gray-800 dark:text-gray-200 mt-3">{line}</div>;
-      }
-      // Empty line
-      if (!line.trim()) {
-        return <div key={i} className="h-2" />;
-      }
-      // Regular paragraph
-      return <p key={i} className="leading-relaxed">{line}</p>;
-    });
-  };
+    return (
+      <div
+        key={messageId}
+        className={`group flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
+      >
+        {/* Avatar - AI */}
+        {isAI && (
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
+            <Bot size={16} className="text-white" />
+          </div>
+        )}
 
-  return (
-    <div
-      key={messageId}
-      className={`group flex gap-3 ${isUser ? "justify-end" : "justify-start"} animate-in slide-in-from-bottom-2 duration-300`}
-    >
-      {/* Avatar - AI */}
-      {isAI && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
-          <Bot size={16} className="text-white" />
-        </div>
-      )}
+        {/* Message bubble */}
+        <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"} sm:max-w-[75%]`}>
+          <div
+            className={`relative rounded-2xl px-4 py-3 shadow-sm ${
+              isUser
+                ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white"
+                : "bg-white text-gray-900 shadow-md dark:bg-gray-800 dark:text-gray-100"
+            }`}
+          >
+            <p className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
+              {message.content}
+            </p>
 
-      {/* Message bubble */}
-      <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"} sm:max-w-[75%]`}>
-        <div
-          className={`relative rounded-2xl px-4 py-3 shadow-sm ${
-            isUser
-              ? "bg-gradient-to-br from-blue-600 to-blue-700 text-white"
-              : "bg-white text-gray-900 shadow-md dark:bg-gray-800 dark:text-gray-100"
-          }`}
-        >
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
-            {isAI ? formatContent(message.content) : message.content}
+            {showConfirmButton && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
+                <button
+                  type="button"
+                  disabled={Boolean(confirmingActionId)}
+                  onClick={() => confirmAction(message.actionId!, index)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isConfirming ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={16} />
+                      Confirm & Save
+                    </>
+                  )}
+                </button>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  This will save the change to your business database.
+                </span>
+              </div>
+            )}
+
+            {message.confirmationStatus === "completed" && (
+              <div className="mt-3 text-xs font-medium text-green-600 dark:text-green-400">
+                Saved to the business database.
+              </div>
+            )}
+
+            {message.confirmationStatus === "failed" && (
+              <div className="mt-3 text-xs font-medium text-red-600 dark:text-red-400">
+                Save failed. Review the error above and try the request again.
+              </div>
+            )}
+
+            {/* Message actions - AI only */}
+            {isAI && (
+              <div className="absolute -bottom-2 -right-2 flex gap-1 rounded-lg bg-white/90 p-1 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700/90">
+                <button
+                  onClick={() => copyMessage(message.content, messageId)}
+                  className="rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600"
+                  aria-label="Copy message"
+                >
+                  {copiedId === messageId ? (
+                    <Check size={14} className="text-green-500" />
+                  ) : (
+                    <Copy size={14} className="text-gray-500 dark:text-gray-400" />
+                  )}
+                </button>
+                <button
+                  onClick={() => giveFeedback(index, "like")}
+                  className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                    message.feedback === "like" ? "text-blue-500" : "text-gray-500 dark:text-gray-400"
+                  }`}
+                  aria-label="Like"
+                >
+                  <ThumbsUp size={14} />
+                </button>
+                <button
+                  onClick={() => giveFeedback(index, "dislike")}
+                  className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
+                    message.feedback === "dislike" ? "text-red-500" : "text-gray-500 dark:text-gray-400"
+                  }`}
+                  aria-label="Dislike"
+                >
+                  <ThumbsDown size={14} />
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Message actions - AI only */}
-          {isAI && (
-            <div className="absolute -bottom-2 -right-2 flex gap-1 rounded-lg bg-white/90 p-1 shadow-lg opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700/90">
-              <button
-                onClick={() => copyMessage(message.content, messageId)}
-                className="rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600"
-                aria-label="Copy message"
-              >
-                {copiedId === messageId ? (
-                  <Check size={14} className="text-green-500" />
-                ) : (
-                  <Copy size={14} className="text-gray-500 dark:text-gray-400" />
-                )}
-              </button>
-              <button
-                onClick={() => giveFeedback(index, "like")}
-                className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                  message.feedback === "like" ? "text-blue-500" : "text-gray-500 dark:text-gray-400"
-                }`}
-                aria-label="Like"
-              >
-                <ThumbsUp size={14} />
-              </button>
-              <button
-                onClick={() => giveFeedback(index, "dislike")}
-                className={`rounded p-1 transition hover:bg-gray-100 dark:hover:bg-gray-600 ${
-                  message.feedback === "dislike" ? "text-red-500" : "text-gray-500 dark:text-gray-400"
-                }`}
-                aria-label="Dislike"
-              >
-                <ThumbsDown size={14} />
-              </button>
-            </div>
+          {/* Timestamp */}
+          {message.timestamp && (
+            <span className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${isUser ? "pr-1" : "pl-1"}`}>
+              {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
           )}
         </div>
 
-        {/* Timestamp */}
-        {message.timestamp && (
-          <span className={`mt-1 text-[10px] text-gray-400 dark:text-gray-500 ${isUser ? "pr-1" : "pl-1"}`}>
-            {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </span>
+        {/* Avatar - User */}
+        {isUser && (
+          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-700 shadow-lg">
+            <User size={16} className="text-white" />
+          </div>
         )}
       </div>
-
-      {/* Avatar - User */}
-      {isUser && (
-        <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-gray-600 to-gray-700 shadow-lg">
-          <User size={16} className="text-white" />
-        </div>
-      )}
-    </div>
-  );
-};
+    );
+  };
 
   // ==========================================
   // RENDER
   // ==========================================
 
 return (
-  <div className={`flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950 ${!conversationId ? 'max-w-3xl mx-auto' : ''}`}>
+  <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-gray-950">
       
+      {/* ====================================
+          HEADER
+      ==================================== */}
+
+<div className="flex h-[64px] flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 dark:border-gray-800 dark:bg-gray-950 sm:px-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-500 shadow-lg">
+            <Sparkles size={20} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white sm:text-xl">
+              SaMi AI Assistant
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {loading ? "Thinking..." : isTyping ? "Typing..." : "Online"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1 sm:gap-2">
+          <button
+            onClick={() => conversationId && loadMessages(conversationId)}
+            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+            aria-label="Refresh"
+          >
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+          </button>
+          <button
+            className="rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+            aria-label="More options"
+          >
+            <MoreVertical size={18} />
+          </button>
+        </div>
+      </div>
 
       {/* ====================================
           MESSAGES
       ==================================== */}
 
- <div
+   <div
   ref={messagesContainerRef}
   onScroll={handleScroll}
   className="relative min-h-0 flex-1 overflow-y-auto bg-gray-50 px-4 py-6 dark:bg-gray-900 sm:px-6"
@@ -532,14 +632,14 @@ return (
         {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
-  onClick={() => scrollToBottom(true)}
-  className="absolute bottom-28 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2.5 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
-  aria-label="Scroll to bottom"
->
-  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-  </svg>
-</button>
+            onClick={() => scrollToBottom(true)}
+           className="absolute bottom-24 left-1/2 z-10 -translate-x-1/2 rounded-full bg-blue-600 p-2 text-white shadow-lg transition hover:scale-110 hover:bg-blue-700 active:scale-95"
+            aria-label="Scroll to bottom"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
         )}
       </div>
 
@@ -547,7 +647,7 @@ return (
           INPUT
       ==================================== */}
 
-   <div className={`flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4 ${!conversationId ? 'px-2' : ''}`}>
+    <div className="flex-shrink-0 border-t border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-gray-950 sm:p-4">
         <div className="mx-auto max-w-4xl">
           {/* Attachment preview */}
           {attachment && (
@@ -586,34 +686,24 @@ return (
             />
 
             {/* Input */}
-<div className="flex-1">
-  <textarea
-    ref={inputRef as any}
-    value={input}
-    disabled={loading}
-    placeholder="Ask SaMi Assist anything..."
-    onChange={(e) => setInput(e.target.value)}
-    onKeyDown={(e) => {
-      if (e.key === "Enter" && !e.shiftKey && !loading) {
-        e.preventDefault();
-        sendMessage();
-      }
-    }}
-    rows={1}
-    className="w-full resize-none rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 sm:text-base"
-    style={{
-      minHeight: "52px",
-      maxHeight: "200px",
-      overflowY: "auto",
-    }}
-    onInput={(e) => {
-      const target = e.target as HTMLTextAreaElement;
-      target.style.height = "auto";
-      target.style.height = Math.min(target.scrollHeight, 200) + "px";
-    }}
-    aria-label="Type your message"
-  />
-</div>
+            <div className="flex-1">
+              <input
+                ref={inputRef}
+                type="text"
+                value={input}
+                disabled={loading}
+                placeholder="Ask SaMi Assist anything..."
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !loading) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                className="w-full rounded-xl border border-gray-300 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-blue-400 sm:text-base"
+                aria-label="Type your message"
+              />
+            </div>
 
             {/* Voice input */}
             <button
