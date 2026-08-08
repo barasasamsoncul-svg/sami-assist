@@ -28,7 +28,7 @@ function parseJson(text: string): any {
   try {
     return JSON.parse(cleaned);
   } catch {
-    const match = cleaned.match(/{[\s\S]*}/);
+    const match = cleaned.match(/\{[\s\S]*\}/);
 
     if (!match) {
       throw new Error("AI returned invalid JSON.");
@@ -48,6 +48,14 @@ function safeValue(value: unknown): unknown {
   }
 
   return value;
+}
+
+function isPlaceholder(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+
+  return /customer_id_of_|unique_invoice_number|current_date|current_date\s*\+\s*\d+\s*days?|today|tomorrow|unknown|not available/i.test(
+    value.trim(),
+  );
 }
 
 function validateWritePlan(
@@ -86,12 +94,7 @@ function validateWritePlan(
 
     const value = values[key];
 
-    if (
-      typeof value === "string" &&
-      /^(customer_id_of_|unique_|current_|today|tomorrow|unknown|not available)/i.test(
-        value.trim(),
-      )
-    ) {
+    if (isPlaceholder(value)) {
       throw new Error(
         `AI returned an unresolved placeholder for "${key}".`,
       );
@@ -111,6 +114,12 @@ function validateWritePlan(
       if (!columns.has(key)) {
         throw new Error(
           `Filter column "${key}" does not exist on "${plan.write.table}".`,
+        );
+      }
+
+      if (isPlaceholder(where[key])) {
+        throw new Error(
+          `AI returned an unresolved placeholder for filter "${key}".`,
         );
       }
     }
@@ -170,24 +179,28 @@ function buildWriteSql(plan: QueryPlan): {
   };
 }
 
-/**
- * Resolves natural-language invoice information into
- * actual database values before confirmation.
- */
+// ------------------------------------------------------------
+// INVOICE RESOLUTION
+// ------------------------------------------------------------
+
 async function resolveInvoiceWrite(
   pool: Pool,
   plan: QueryPlan,
   question: string,
 ): Promise<void> {
   if (!plan.write) return;
+
   if (plan.write.table !== "invoices") return;
+
   if (plan.write.operation !== "create") return;
 
   const values = plan.write.values ?? {};
 
-  // --------------------------------------------------
-  // 1. Resolve customer name -> actual customer UUID
-  // --------------------------------------------------
+  // ----------------------------------------------------------
+  // Resolve customer name -> actual customer UUID
+  // ----------------------------------------------------------
+
+  const customerName = extractCustomerName(question);
 
   const customerResult = await pool.query(
     `
@@ -196,12 +209,12 @@ async function resolveInvoiceWrite(
       WHERE LOWER(company_name) = LOWER($1)
       LIMIT 1
     `,
-    [extractCustomerName(question)],
+    [customerName],
   );
 
   if (customerResult.rowCount === 0) {
     throw new Error(
-      "I could not find the customer named in the invoice request.",
+      `I could not find the customer named "${customerName}".`,
     );
   }
 
@@ -209,9 +222,9 @@ async function resolveInvoiceWrite(
 
   values.customer_id = customer.id;
 
-  // --------------------------------------------------
-  // 2. Generate a real invoice number
-  // --------------------------------------------------
+  // ----------------------------------------------------------
+  // Generate real invoice number
+  // ----------------------------------------------------------
 
   if (
     !values.invoice_number ||
@@ -221,9 +234,9 @@ async function resolveInvoiceWrite(
       await generateInvoiceNumber(pool);
   }
 
-  // --------------------------------------------------
-  // 3. Resolve issue date
-  // --------------------------------------------------
+  // ----------------------------------------------------------
+  // Resolve issue date
+  // ----------------------------------------------------------
 
   const today = new Date();
 
@@ -234,9 +247,9 @@ async function resolveInvoiceWrite(
     values.issue_date = formatDate(today);
   }
 
-  // --------------------------------------------------
-  // 4. Resolve due date
-  // --------------------------------------------------
+  // ----------------------------------------------------------
+  // Resolve due date
+  // ----------------------------------------------------------
 
   const days = extractDueDays(question);
 
@@ -253,9 +266,9 @@ async function resolveInvoiceWrite(
     values.due_date = formatDate(dueDate);
   }
 
-  // --------------------------------------------------
-  // 5. Normalize monetary fields
-  // --------------------------------------------------
+  // ----------------------------------------------------------
+  // Normalize monetary fields
+  // ----------------------------------------------------------
 
   for (const key of [
     "subtotal",
@@ -272,18 +285,10 @@ async function resolveInvoiceWrite(
   plan.write.values = values;
 }
 
-function isPlaceholder(value: unknown): boolean {
-  if (typeof value !== "string") return false;
-
-  return /customer_id_of_|unique_invoice_number|current_date|current_date\s*\+|today|tomorrow|unknown|not available/i.test(
-    value,
-  );
-}
-
 function extractCustomerName(question: string): string {
   const patterns = [
-    /invoice\s+for\s+(.+?)(?:\s+for\s+ksh|\s+for\s+KES|\s+of\s+KSh|\s+amount|\s+due|\s*$)/i,
-    /for\s+customer\s+(.+?)(?:\s+for\s+ksh|\s+for\s+KES|\s+amount|\s+due|\s*$)/i,
+    /invoice\s+for\s+(.+?)(?:\s+for\s+ksh|\s+for\s+kes|\s+of\s+ksh|\s+amount|\s+due|$)/i,
+    /for\s+customer\s+(.+?)(?:\s+for\s+ksh|\s+for\s+kes|\s+amount|\s+due|$)/i,
   ];
 
   for (const pattern of patterns) {
@@ -319,12 +324,19 @@ function formatDate(date: Date): string {
 
 function normalizeMoney(value: unknown): number {
   if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new Error(
+        `Invalid monetary value: ${String(value)}`,
+      );
+    }
+
     return value;
   }
 
   if (typeof value === "string") {
     const cleaned = value
-      .replace(/ksh|kes|,/gi, "")
+      .replace(/ksh|kes/gi, "")
+      .replace(/,/g, "")
       .trim();
 
     const number = Number(cleaned);
@@ -342,8 +354,10 @@ function normalizeMoney(value: unknown): number {
 async function generateInvoiceNumber(
   pool: Pool,
 ): Promise<string> {
-  const date = formatDate(new Date())
-    .replace(/-/g, "");
+  const date = formatDate(new Date()).replace(
+    /-/g,
+    "",
+  );
 
   for (let attempt = 0; attempt < 10; attempt++) {
     const random = Math.floor(
@@ -373,6 +387,10 @@ async function generateInvoiceNumber(
   );
 }
 
+// ------------------------------------------------------------
+// READ DISPATCHER
+// ------------------------------------------------------------
+
 export async function dispatchRead(
   pool: Pool,
   question: string,
@@ -398,9 +416,13 @@ export async function dispatchRead(
 You generate ONE read-only PostgreSQL SELECT query for SaMi Assist.
 
 Use only the exact tables and columns in the supplied schema.
+
 Never invent schema.
+
 Never modify data.
+
 No semicolons.
+
 No system catalogs.
 
 If the question cannot be answered from the schema,
@@ -416,7 +438,7 @@ Return JSON only:
 }
 
 ${schemaToPrompt(schema)}
-`.trim(),
+          `.trim(),
         },
         {
           role: "user",
@@ -453,6 +475,10 @@ ${schemaToPrompt(schema)}
     schema,
   };
 }
+
+// ------------------------------------------------------------
+// WRITE PLANNER
+// ------------------------------------------------------------
 
 export async function planWrite(
   pool: Pool,
@@ -500,33 +526,38 @@ Return JSON only:
 Rules:
 
 - Never delete records.
-- Only create or update.
+- Only create and update.
 - Never invent tables or columns.
 - UPDATE requires a specific record filter.
 - Never change IDs unless explicitly requested.
 - Never change created_at unless explicitly requested.
 - Never guess important missing information.
 - NEVER return placeholder strings.
-- NEVER return values such as:
-  "customer_id_of_X"
-  "unique_invoice_number"
-  "current_date"
-  "current_date + 30 days"
-  "today"
-  "unknown"
-  "not available"
-- If a value must be resolved from an existing database record,
-  leave it for the server-side resolver rather than inventing it.
-- The plan is NOT executed until the user confirms it.
+
+NEVER return values such as:
+
+"customer_id_of_X"
+"unique_invoice_number"
+"current_date"
+"current_date + 30 days"
+"today"
+"unknown"
+"not available"
+
+If a value must be resolved from an existing database record,
+leave it for the server-side resolver.
+
+The plan is NOT executed until the user confirms it.
 
 For invoices:
+
 - customer_id must ultimately be a real UUID.
 - invoice_number must ultimately be a real unique invoice number.
 - issue_date must be an actual YYYY-MM-DD date.
 - due_date must be an actual YYYY-MM-DD date.
 
 ${schemaToPrompt(schema)}
-`.trim(),
+          `.trim(),
         },
         {
           role: "user",
@@ -550,49 +581,56 @@ ${schemaToPrompt(schema)}
     );
   }
 
- // Resolve values that require real database
-// records or server-generated values BEFORE
-// final validation.
-await resolveInvoiceWrite(
-  pool,
-  plan,
-  question,
-);
+  // ----------------------------------------------------------
+  // Resolve server-side values BEFORE validation
+  // ----------------------------------------------------------
 
-// Validate only after all server-side values
-// have been resolved.
-validateWritePlan(
-  plan,
-  schema,
-);
+  await resolveInvoiceWrite(
+    pool,
+    plan,
+    question,
+  );
 
-  // Validate AGAIN after server-side resolution.
+  // ----------------------------------------------------------
+  // Validate resolved plan
+  // ----------------------------------------------------------
+
   validateWritePlan(
     plan,
     schema,
   );
 
+  // ----------------------------------------------------------
+  // Build parameterized SQL
+  // ----------------------------------------------------------
+
   const built = buildWriteSql(plan);
+
+  // ----------------------------------------------------------
+  // Build confirmation preview
+  // ----------------------------------------------------------
+
+  const preview = [
+    `Action: ${plan.write.operation.toUpperCase()}`,
+    `Table: ${plan.write.table}`,
+    `Fields: ${JSON.stringify(
+      plan.write.values ?? {},
+    )}`,
+    plan.write.where &&
+    Object.keys(plan.write.where).length
+      ? `Record filter: ${JSON.stringify(
+          plan.write.where,
+        )}`
+      : "",
+    `Reason: ${plan.explanation}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   return {
     plan,
     sql: built.sql,
     params: built.params,
-    preview: [
-      `Action: ${plan.write.operation.toUpperCase()}`,
-      `Table: ${plan.write.table}`,
-      `Fields: ${JSON.stringify(
-        plan.write.values ?? {},
-      )}`,
-      plan.write.where &&
-      Object.keys(plan.write.where).length
-        ? `Record filter: ${JSON.stringify(
-            plan.write.where,
-          )}`
-        : "",
-      `Reason: ${plan.explanation}`,
-    ]
-      .filter(Boolean)
-      .join("\n"),
+    preview,
   };
 }
