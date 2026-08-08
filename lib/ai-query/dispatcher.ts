@@ -10,7 +10,9 @@ import { executeRead } from "./executor";
 import type { QueryPlan } from "./types";
 
 const groq = new Groq({
-  apiKey: process.env.GROQ_AI_API_KEY || process.env.GROQ_API_KEY!,
+  apiKey:
+    process.env.GROQ_AI_API_KEY ||
+    process.env.GROQ_API_KEY!,
 });
 
 const MODEL =
@@ -19,17 +21,19 @@ const MODEL =
 function parseJson(text: string): any {
   const cleaned = text
     .trim()
-    .replace(/^`(?:json)?\s*/i, "")
-    .replace(/\s*`$/i, "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
     .trim();
 
   try {
     return JSON.parse(cleaned);
   } catch {
     const match = cleaned.match(/{[\s\S]*}/);
+
     if (!match) {
       throw new Error("AI returned invalid JSON.");
     }
+
     return JSON.parse(match[0]);
   }
 }
@@ -79,6 +83,19 @@ function validateWritePlan(
         `Column "${key}" does not exist on "${plan.write.table}".`,
       );
     }
+
+    const value = values[key];
+
+    if (
+      typeof value === "string" &&
+      /^(customer_id_of_|unique_|current_|today|tomorrow|unknown|not available)/i.test(
+        value.trim(),
+      )
+    ) {
+      throw new Error(
+        `AI returned an unresolved placeholder for "${key}".`,
+      );
+    }
   }
 
   if (plan.write.operation === "update") {
@@ -105,7 +122,6 @@ function buildWriteSql(plan: QueryPlan): {
   params: unknown[];
 } {
   const write = plan.write!;
-
   const values = Object.entries(write.values ?? {});
   const params: unknown[] = [];
 
@@ -139,6 +155,7 @@ function buildWriteSql(plan: QueryPlan): {
   const filters = Object.entries(write.where ?? {}).map(
     ([key, value]) => {
       params.push(safeValue(value));
+
       return `${quoteIdentifier(key)} = $${params.length}`;
     },
   );
@@ -151,6 +168,209 @@ function buildWriteSql(plan: QueryPlan): {
     )} RETURNING *`,
     params,
   };
+}
+
+/**
+ * Resolves natural-language invoice information into
+ * actual database values before confirmation.
+ */
+async function resolveInvoiceWrite(
+  pool: Pool,
+  plan: QueryPlan,
+  question: string,
+): Promise<void> {
+  if (!plan.write) return;
+  if (plan.write.table !== "invoices") return;
+  if (plan.write.operation !== "create") return;
+
+  const values = plan.write.values ?? {};
+
+  // --------------------------------------------------
+  // 1. Resolve customer name -> actual customer UUID
+  // --------------------------------------------------
+
+  const customerResult = await pool.query(
+    `
+      SELECT id, company_name
+      FROM public.customers
+      WHERE LOWER(company_name) = LOWER($1)
+      LIMIT 1
+    `,
+    [extractCustomerName(question)],
+  );
+
+  if (customerResult.rowCount === 0) {
+    throw new Error(
+      "I could not find the customer named in the invoice request.",
+    );
+  }
+
+  const customer = customerResult.rows[0];
+
+  values.customer_id = customer.id;
+
+  // --------------------------------------------------
+  // 2. Generate a real invoice number
+  // --------------------------------------------------
+
+  if (
+    !values.invoice_number ||
+    isPlaceholder(values.invoice_number)
+  ) {
+    values.invoice_number =
+      await generateInvoiceNumber(pool);
+  }
+
+  // --------------------------------------------------
+  // 3. Resolve issue date
+  // --------------------------------------------------
+
+  const today = new Date();
+
+  if (
+    !values.issue_date ||
+    isPlaceholder(values.issue_date)
+  ) {
+    values.issue_date = formatDate(today);
+  }
+
+  // --------------------------------------------------
+  // 4. Resolve due date
+  // --------------------------------------------------
+
+  const days = extractDueDays(question);
+
+  if (
+    !values.due_date ||
+    isPlaceholder(values.due_date)
+  ) {
+    const dueDate = new Date(today);
+
+    dueDate.setDate(
+      dueDate.getDate() + days,
+    );
+
+    values.due_date = formatDate(dueDate);
+  }
+
+  // --------------------------------------------------
+  // 5. Normalize monetary fields
+  // --------------------------------------------------
+
+  for (const key of [
+    "subtotal",
+    "tax_amount",
+    "total_amount",
+    "amount_paid",
+    "amount_due",
+  ]) {
+    if (values[key] !== undefined) {
+      values[key] = normalizeMoney(values[key]);
+    }
+  }
+
+  plan.write.values = values;
+}
+
+function isPlaceholder(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+
+  return /customer_id_of_|unique_invoice_number|current_date|current_date\s*\+|today|tomorrow|unknown|not available/i.test(
+    value,
+  );
+}
+
+function extractCustomerName(question: string): string {
+  const patterns = [
+    /invoice\s+for\s+(.+?)(?:\s+for\s+ksh|\s+for\s+KES|\s+of\s+KSh|\s+amount|\s+due|\s*$)/i,
+    /for\s+customer\s+(.+?)(?:\s+for\s+ksh|\s+for\s+KES|\s+amount|\s+due|\s*$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = question.match(pattern);
+
+    if (match?.[1]) {
+      return match[1]
+        .trim()
+        .replace(/[.,]+$/, "");
+    }
+  }
+
+  throw new Error(
+    "Please specify the customer name for the invoice.",
+  );
+}
+
+function extractDueDays(question: string): number {
+  const match = question.match(
+    /due\s+(?:in\s+)?(\d+)\s+days?/i,
+  );
+
+  if (match) {
+    return Number(match[1]);
+  }
+
+  return 30;
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeMoney(value: unknown): number {
+  if (typeof value === "number") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const cleaned = value
+      .replace(/ksh|kes|,/gi, "")
+      .trim();
+
+    const number = Number(cleaned);
+
+    if (Number.isFinite(number)) {
+      return number;
+    }
+  }
+
+  throw new Error(
+    `Invalid monetary value: ${String(value)}`,
+  );
+}
+
+async function generateInvoiceNumber(
+  pool: Pool,
+): Promise<string> {
+  const date = formatDate(new Date())
+    .replace(/-/g, "");
+
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const random = Math.floor(
+      100000 + Math.random() * 900000,
+    );
+
+    const invoiceNumber =
+      `INV-${date}-${random}`;
+
+    const existing = await pool.query(
+      `
+        SELECT 1
+        FROM public.invoices
+        WHERE invoice_number = $1
+        LIMIT 1
+      `,
+      [invoiceNumber],
+    );
+
+    if (existing.rowCount === 0) {
+      return invoiceNumber;
+    }
+  }
+
+  throw new Error(
+    "Could not generate a unique invoice number.",
+  );
 }
 
 export async function dispatchRead(
@@ -166,14 +386,15 @@ export async function dispatchRead(
 }> {
   const schema = await discoverSchema(pool);
 
-  const result = await groq.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: 1200,
-    messages: [
-      {
-        role: "system",
-        content: `
+  const result =
+    await groq.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 1200,
+      messages: [
+        {
+          role: "system",
+          content: `
 You generate ONE read-only PostgreSQL SELECT query for SaMi Assist.
 
 Use only the exact tables and columns in the supplied schema.
@@ -181,27 +402,37 @@ Never invent schema.
 Never modify data.
 No semicolons.
 No system catalogs.
-If the question cannot be answered from the schema, return SELECT 1 AS insufficient_data.
+
+If the question cannot be answered from the schema,
+return:
+
+SELECT 1 AS insufficient_data
 
 Return JSON only:
-{"sql":"SELECT ...","explanation":"short explanation"}
+
+{
+  "sql": "SELECT ...",
+  "explanation": "short explanation"
+}
 
 ${schemaToPrompt(schema)}
-        `.trim(),
-      },
-      {
-        role: "user",
-        content: question,
-      },
-    ],
-  });
+`.trim(),
+        },
+        {
+          role: "user",
+          content: question,
+        },
+      ],
+    });
 
   const parsed = parseJson(
     result.choices[0]?.message?.content || "",
   );
 
   if (typeof parsed.sql !== "string") {
-    throw new Error("AI did not return a valid read query.");
+    throw new Error(
+      "AI did not return a valid read query.",
+    );
   }
 
   const plan: QueryPlan = {
@@ -215,7 +446,10 @@ ${schemaToPrompt(schema)}
 
   return {
     plan,
-    result: await executeRead(pool, plan.sql!),
+    result: await executeRead(
+      pool,
+      plan.sql!,
+    ),
     schema,
   };
 }
@@ -231,14 +465,15 @@ export async function planWrite(
 }> {
   const schema = await discoverSchema(pool);
 
-  const result = await groq.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    max_tokens: 1600,
-    messages: [
-      {
-        role: "system",
-        content: `
+  const result =
+    await groq.chat.completions.create({
+      model: MODEL,
+      temperature: 0,
+      max_tokens: 1600,
+      messages: [
+        {
+          role: "system",
+          content: `
 You are SaMi Assist's business record change planner.
 
 The user wants to CREATE or UPDATE a business record.
@@ -246,14 +481,19 @@ The user wants to CREATE or UPDATE a business record.
 Use only the actual schema below.
 
 Return JSON only:
+
 {
-  "intent":"write",
-  "explanation":"short explanation",
-  "write":{
-    "operation":"create" | "update",
-    "table":"exact_table_name",
-    "values":{"exact_column":"value"},
-    "where":{"exact_column":"exact_record_identifier"}
+  "intent": "write",
+  "explanation": "short explanation",
+  "write": {
+    "operation": "create" | "update",
+    "table": "exact_table_name",
+    "values": {
+      "exact_column": "value"
+    },
+    "where": {
+      "exact_column": "exact_record_identifier"
+    }
   }
 }
 
@@ -265,18 +505,35 @@ Rules:
 - UPDATE requires a specific record filter.
 - Never change IDs unless explicitly requested.
 - Never change created_at unless explicitly requested.
-- Never guess an important missing value.
-- The plan is NOT executed until the user confirms.
+- Never guess important missing information.
+- NEVER return placeholder strings.
+- NEVER return values such as:
+  "customer_id_of_X"
+  "unique_invoice_number"
+  "current_date"
+  "current_date + 30 days"
+  "today"
+  "unknown"
+  "not available"
+- If a value must be resolved from an existing database record,
+  leave it for the server-side resolver rather than inventing it.
+- The plan is NOT executed until the user confirms it.
+
+For invoices:
+- customer_id must ultimately be a real UUID.
+- invoice_number must ultimately be a real unique invoice number.
+- issue_date must be an actual YYYY-MM-DD date.
+- due_date must be an actual YYYY-MM-DD date.
 
 ${schemaToPrompt(schema)}
-        `.trim(),
-      },
-      {
-        role: "user",
-        content: question,
-      },
-    ],
-  });
+`.trim(),
+        },
+        {
+          role: "user",
+          content: question,
+        },
+      ],
+    });
 
   const parsed = parseJson(
     result.choices[0]?.message?.content || "",
@@ -284,11 +541,33 @@ ${schemaToPrompt(schema)}
 
   const plan = parsed as QueryPlan;
 
-  if (plan.intent !== "write" || !plan.write) {
-    throw new Error("AI did not return a valid write plan.");
+  if (
+    plan.intent !== "write" ||
+    !plan.write
+  ) {
+    throw new Error(
+      "AI did not return a valid write plan.",
+    );
   }
 
-  validateWritePlan(plan, schema);
+  validateWritePlan(
+    plan,
+    schema,
+  );
+
+  // Resolve values that require real database
+  // records or server-generated values.
+  await resolveInvoiceWrite(
+    pool,
+    plan,
+    question,
+  );
+
+  // Validate AGAIN after server-side resolution.
+  validateWritePlan(
+    plan,
+    schema,
+  );
 
   const built = buildWriteSql(plan);
 
@@ -299,9 +578,14 @@ ${schemaToPrompt(schema)}
     preview: [
       `Action: ${plan.write.operation.toUpperCase()}`,
       `Table: ${plan.write.table}`,
-      `Fields: ${JSON.stringify(plan.write.values ?? {})}`,
-      plan.write.where
-        ? `Record filter: ${JSON.stringify(plan.write.where)}`
+      `Fields: ${JSON.stringify(
+        plan.write.values ?? {},
+      )}`,
+      plan.write.where &&
+      Object.keys(plan.write.where).length
+        ? `Record filter: ${JSON.stringify(
+            plan.write.where,
+          )}`
         : "",
       `Reason: ${plan.explanation}`,
     ]
