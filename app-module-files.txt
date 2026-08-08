@@ -1,0 +1,17 @@
+C:\dev\sami-assist-web\app\api\customers\[id]\route.ts
+C:\dev\sami-assist-web\app\api\customers\route.ts
+C:\dev\sami-assist-web\app\api\invoices\overdue\route.ts
+C:\dev\sami-assist-web\app\api\invoices\stats\route.ts
+C:\dev\sami-assist-web\app\api\invoices\[id]\payments\route.ts
+C:\dev\sami-assist-web\app\api\invoices\[id]\route.ts
+C:\dev\sami-assist-web\app\api\invoices\route.ts
+C:\dev\sami-assist-web\app\api\products\route.ts
+C:\dev\sami-assist-web\app\components\dashboard\customers.tsx
+C:\dev\sami-assist-web\app\dashboard\invoices.tsx
+C:\dev\sami-assist-web\lib\ai-query\apps\crm.ts
+C:\dev\sami-assist-web\lib\ai-query\apps\customers.ts
+C:\dev\sami-assist-web\lib\ai-query\apps\inventory.ts
+C:\dev\sami-assist-web\lib\ai-query\apps\invoices.ts
+C:\dev\sami-assist-web\lib\ai-query\apps\products.ts
+C:\dev\sami-assist-web\lib\ai-query\apps\sales.ts
+C:\dev\sami-assist-web\lib\postgres-admin.ts

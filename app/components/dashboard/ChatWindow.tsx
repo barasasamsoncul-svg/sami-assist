@@ -102,6 +102,7 @@ export default function ChatWindow({
   const [isRecording, setIsRecording] = useState(false);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [confirmingActionId, setConfirmingActionId] = useState<string | null>(null);
+  const [pendingActionId, setPendingActionId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -237,7 +238,67 @@ export default function ChatWindow({
       }
     }
   };
+async function confirmPendingAction() {
+  if (!pendingActionId || loading) return;
 
+  setLoading(true);
+  setIsTyping(true);
+
+  try {
+    const res = await fetch("/api/chat/confirm", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        actionId: pendingActionId,
+      }),
+    });
+
+    const data = await res.json();
+
+    console.log("Confirmation response:", data);
+
+    if (!res.ok) {
+      throw new Error(
+        data.error || "Failed to confirm the change."
+      );
+    }
+
+    setPendingActionId(null);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: "Confirm",
+        timestamp: new Date().toISOString(),
+      },
+      {
+        role: "ai",
+        content: data.reply,
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+  } catch (error) {
+    console.error("Confirmation error:", error);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "ai",
+        content:
+          error instanceof Error
+            ? error.message
+            : "Failed to save the change.",
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+  } finally {
+    setLoading(false);
+    setIsTyping(false);
+  }
+}
   // ==========================================
   // SEND MESSAGE
   // ==========================================
@@ -269,6 +330,9 @@ export default function ChatWindow({
 
       const data = await res.json();
       console.log("Chat API response:", data);
+      if (data.confirmationRequired && data.actionId) {
+  setPendingActionId(data.actionId);
+}
 
       if (!res.ok) {
         throw new Error(data.error || data.details || "The AI request failed.");
@@ -462,7 +526,7 @@ export default function ChatWindow({
             <p className="whitespace-pre-wrap break-words text-sm leading-relaxed sm:text-base">
               {message.content}
             </p>
-
+              
             {showConfirmButton && (
               <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-gray-700">
                 <button

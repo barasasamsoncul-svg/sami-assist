@@ -20,7 +20,7 @@ function cleanValue(value: unknown): unknown {
 }
 
 export function validateReadSql(sql: string): string {
-  const cleaned = sql.trim().replace(/;+\s*$/, "");
+ const cleaned = sql.trim().replace(/;+\s*$/, "");
 
   if (!cleaned) throw new Error("SQL query is empty.");
   if (cleaned.includes(";")) {
