@@ -798,13 +798,9 @@ function InvoiceDetailsView({
             {money(item.tax_amount)} ({item.tax_rate}%)
           </td>
 
-          <td
-            className="px-5 py-4 text-right text-sm font-semibold"
-            style={{ color: "#111827" }}
-          >
-            {money(item.line_total)}
-          </td>
-        </tr>
+          <td className="px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
+  {money(item.line_total)}
+</td>
       ))}
     </tbody>
   </table>
@@ -814,12 +810,12 @@ function InvoiceDetailsView({
             <SummaryRow label="Subtotal" value={money(invoice.subtotal)} />
             <SummaryRow label="Tax" value={money(invoice.tax_amount)} />
 
-               <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold">
-  <span style={{ color: "#111827" }}>Total</span>
-  <span style={{ color: "#111827" }}>
-    {money(invoice.total_amount)}
-  </span>
-</div>
+             <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold text-gray-900 dark:border-gray-800 dark:text-white">
+               <span>Total</span>
+                <span className="text-gray-900 dark:text-white">
+             {money(invoice.total_amount)}
+               </span>
+          </div>
           </div>
         </div>
       </section>
