@@ -813,9 +813,11 @@ function InvoiceDetailsView({
             <SummaryRow label="Tax" value={money(invoice.tax_amount)} />
 
             <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold dark:border-gray-800">
-              <span>Total</span>
-              <span>{money(invoice.total_amount)}</span>
-            </div>
+  <span className="text-gray-900">Total</span>
+  <span className="text-gray-900" style={{ color: "#111827" }}>
+    {money(invoice.total_amount)}
+  </span>
+</div>
           </div>
         </div>
       </section>
