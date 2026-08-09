@@ -26,6 +26,9 @@ export async function getAuthenticatedUser() {
       users.full_name,
       users.status,
       users.created_at,
+      users.last_login_at,
+      users.two_factor_enabled,
+      users.email_verified,
       sessions.id AS session_id,
       sessions.expires_at
     FROM sessions
@@ -57,7 +60,11 @@ export async function getAuthenticatedUser() {
     id: user.id,
     email: user.email,
     fullName: user.full_name,
+    status: user.status,
     createdAt: user.created_at,
+    lastLoginAt: user.last_login_at,
+    twoFactorEnabled: user.two_factor_enabled,
+    emailVerified: user.email_verified,
     sessionId: user.session_id,
     expiresAt: user.expires_at,
   };
