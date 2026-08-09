@@ -767,7 +767,7 @@ function InvoiceDetailsView({
             Products and services included in this invoice.
           </p>
         </div>
-<div className="overflow-x-auto">
+        <div className="overflow-x-auto">
   <table className="w-full min-w-[760px]">
     <thead className="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800/50 dark:text-gray-200">
       <tr>
@@ -779,49 +779,36 @@ function InvoiceDetailsView({
       </tr>
     </thead>
 
-   <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-  {(invoice.invoice_items || []).map((item) => (
-    <tr key={item.id}>
-      <td
-        className="px-5 py-4 text-sm"
-        style={{ color: "#111827" }}
-      >
-        {item.description}
-      </td>
+    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+      {(invoice.invoice_items || []).map((item) => (
+        <tr key={item.id}>
+          <td className="px-5 py-4 text-left text-sm text-gray-900 dark:text-white">
+            {item.description}
+          </td>
 
-      <td
-        className="px-5 py-4 text-right text-sm"
-        style={{ color: "#111827" }}
-      >
-        {item.quantity}
-      </td>
+          <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+            {item.quantity}
+          </td>
 
-      <td
-        className="px-5 py-4 text-right text-sm"
-        style={{ color: "#111827" }}
-      >
-        {money(item.unit_price)}
-      </td>
+          <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+            {money(item.unit_price)}
+          </td>
 
-      <td
-        className="px-5 py-4 text-right text-sm"
-        style={{ color: "#111827" }}
-      >
-        {money(item.tax_amount)} ({item.tax_rate}%)
-      </td>
+          <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+            {money(item.tax_amount)} ({item.tax_rate}%)
+          </td>
 
-      <td
-        className="px-5 py-4 text-right text-sm font-semibold"
-        style={{ color: "#111827" }}
-      >
-        {money(item.line_total)}
-      </td>
-    </tr>
-  ))}
-</tbody>
+          <td
+            className="px-5 py-4 text-right text-sm font-semibold"
+            style={{ color: "#111827" }}
+          >
+            {money(item.line_total)}
+          </td>
+        </tr>
+      ))}
+    </tbody>
   </table>
 </div>
-
         <div className="border-t border-gray-200 p-5 dark:border-gray-800">
           <div className="ml-auto max-w-xs space-y-2 text-sm">
             <SummaryRow label="Subtotal" value={money(invoice.subtotal)} />
