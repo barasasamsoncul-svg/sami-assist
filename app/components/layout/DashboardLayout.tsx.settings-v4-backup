@@ -45,7 +45,7 @@ Receipt,
 Repeat,
 Search,
 Settings,
-Settings2,
+  Settings2,
   BellRing,
   Palette,
   Shield,
@@ -116,11 +116,18 @@ icon: MessageSquare,
 ];
 
 const FIXED_NAV = [
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-  },
+{
+id: "settings",
+label: "Settings",
+icon: Settings,
+  Settings2,
+  BellRing,
+  Palette,
+  Shield,
+  Database,
+  AppWindow,
+  UserCog,
+},
 ];
 
 const ICONS: Record<string, React.ElementType> = {
@@ -514,9 +521,7 @@ return grouped;
 }, [enabledApps]);
 
 function handleNavigation(page: ActivePage) {
-setActivePage(page);
-if (page !== "settings") { setIsSettingsMenuOpen(false); }
-if (page !== "chat") {
+setActivePage(page);`r`n`r`nif (page !== "settings") { setIsSettingsMenuOpen(false); }`r`n`r`nif (page !== "chat") {
   setSelectedId(null);
 }
 
@@ -526,16 +531,9 @@ if (isMobile) {
 
 }
 
-function openSettings(section: string) {
-  setSettingsSection(section);
-  setActivePage("settings");
-  setIsSettingsMenuOpen(false);
-  if (isMobile) setSidebarOpen(false);
-}
-
-function goBackToDashboard() {
-  setActivePage("dashboard");
-  setSelectedId(null);
+function openSettings(section: string) {`r`n  setSettingsSection(section);`r`n  setActivePage("settings");`r`n  setIsSettingsMenuOpen(false);`r`n  if (isMobile) setSidebarOpen(false);`r`n}`r`n`r`nfunction goBackToDashboard() {
+setActivePage("dashboard");
+setSelectedId(null);
 
 if (isMobile) {
   setSidebarOpen(false);
@@ -1840,13 +1838,7 @@ switch (activePage) {
         />
       );
     case "settings":
-      return (
-        <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
-          <div className="mx-auto max-w-5xl">
-            <SettingsPanel />
-          </div>
-        </div>
-      );
+      return <SettingsPanel initialSection={settingsSection} />;
 
 
     default: {
@@ -1902,13 +1894,4 @@ return ( <div className="fixed inset-0 flex overflow-hidden bg-gray-50 dark:bg-g
 }
 
 
-
-
-function setIsSettingsMenuOpen(arg0: boolean) {
-  throw new Error("Function not implemented.");
-}
-
-function setSettingsSection(section: string) {
-  throw new Error("Function not implemented.");
-}
 
