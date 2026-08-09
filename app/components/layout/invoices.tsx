@@ -967,17 +967,17 @@ function RecordPaymentModal({
   const field = "w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white";
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100">
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-3 sm:p-5">
+      <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100 sm:max-h-[calc(100vh-2.5rem)]">
         <div className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-gray-800">
           <div><h2 className="font-bold text-gray-900 dark:text-white">Record payment</h2><p className="text-xs text-gray-500 dark:text-gray-400">{invoice.invoice_number} · Balance {money(invoice.amount_due)}</p></div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close"><X size={19}/></button>
         </div>
-        <div className="space-y-4 p-5">
+        <div className="min-h-0 space-y-4 overflow-y-auto p-5">
           {error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
           <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Amount</span><input type="number" min="0.01" max={Number(invoice.amount_due)} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className={field} /></label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Payment method</span><select value={method} onChange={(e) => setMethod(e.target.value)} className={field}><option value="other">Other</option><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="mobile_money">Mobile money</option><option value="card">Card</option><option value="cheque">Cheque</option></select></label>
+            <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Payment method</span><select value={method} onChange={(e) => setMethod(e.target.value)} className={field}><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="other">Other</option><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="cash">Cash</option><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="bank_transfer">Bank transfer</option><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="mobile_money">Mobile money</option><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="card">Card</option><option className="bg-white text-gray-900 dark:bg-gray-900 dark:text-white" value="cheque">Cheque</option></select></label>
             <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Payment date</span><input type="datetime-local" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className={field} /></label>
           </div>
           <label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Transaction reference</span><input value={reference} onChange={(e) => setReference(e.target.value)} className={field} /></label>
@@ -1036,21 +1036,91 @@ function ShareInvoiceModal({ invoice, onClose }: { invoice: InvoiceDetails; onCl
   const [recipient, setRecipient] = useState(invoice.customer?.phone || invoice.customer?.email || "");
   const [extra, setExtra] = useState("");
   const [copied, setCopied] = useState(false);
+
   const defaultMessage = `Hello ${invoice.customer?.contact_name || invoice.customer?.company_name || "there"},\n\nPlease find invoice ${invoice.invoice_number} for ${money(invoice.total_amount)}.\nAmount paid: ${money(invoice.amount_paid)}\nBalance due: ${money(invoice.amount_due)}\nDue date: ${dateText(invoice.due_date)}${extra ? `\n\n${extra}` : ""}\n\nThank you.`;
   const message = defaultMessage;
+
   const share = () => {
     if (!recipient.trim()) return;
     if (channel === "whatsapp") {
       let phone = recipient.replace(/[^0-9+]/g, "");
       if (phone.startsWith("0")) phone = `254${phone.slice(1)}`;
       else if (phone.startsWith("+")) phone = phone.slice(1);
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank");
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
     } else {
       window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(`Invoice ${invoice.invoice_number}`)}&body=${encodeURIComponent(message)}`;
     }
   };
-  const copy = async () => { await navigator.clipboard.writeText(message); setCopied(true); setTimeout(() => setCopied(false), 1600); };
-  return <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-2xl rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100"><div className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-gray-800"><div><h2 className="text-lg font-bold text-gray-900 dark:text-white">Share invoice</h2><p className="text-xs text-gray-500 dark:text-gray-400">Customer details are pulled from the database and can be changed before sharing.</p></div><button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={19}/></button></div><div className="space-y-5 p-5"><div className="grid grid-cols-2 gap-2"><button type="button" onClick={() => {setChannel("whatsapp");setRecipient(invoice.customer?.phone || "");}} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "whatsapp" ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-gray-200 dark:border-gray-700"}`}><MessageCircle className="mr-2 inline" size={17}/>WhatsApp</button><button type="button" onClick={() => {setChannel("email");setRecipient(invoice.customer?.email || "");}} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "email" ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400" : "border-gray-200 dark:border-gray-700"}`}><Mail className="mr-2 inline" size={17}/>Email</button></div><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">{channel === "whatsapp" ? "WhatsApp number" : "Email address"}</span><input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={channel === "whatsapp" ? "e.g. +254712345678" : "customer@example.com"} className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"/></label><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Additional details/message (optional)</span><textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={3} placeholder="Add delivery instructions, payment details, a personal note, etc." className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white"/></label><div><div className="mb-2 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Message preview</p><button type="button" onClick={copy} className="inline-flex items-center gap-1 text-xs font-semibold text-gray-600 dark:text-gray-300">{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? "Copied" : "Copy"}</button></div><pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{message}</pre></div></div><div className="flex justify-end gap-2 border-t border-gray-200 p-4 dark:border-gray-800"><button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium dark:border-gray-700">Cancel</button><button type="button" disabled={!recipient.trim()} onClick={share} className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900">{channel === "whatsapp" ? <MessageCircle size={16}/> : <Mail size={16}/>} {channel === "whatsapp" ? "Open WhatsApp" : "Open Email"}</button></div></div></div>;
+
+  const copy = async () => {
+    await navigator.clipboard.writeText(message);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  const switchChannel = (next: "whatsapp" | "email") => {
+    setChannel(next);
+    setRecipient(next === "whatsapp" ? invoice.customer?.phone || "" : invoice.customer?.email || "");
+  };
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-3 sm:p-5">
+      <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100 sm:max-h-[calc(100vh-2.5rem)]">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-800 sm:p-5">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Share invoice</h2>
+            <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              Customer details are pulled from the database. You can change the recipient before sharing.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close">
+            <X size={19} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <div className="space-y-5">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => switchChannel("whatsapp")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "whatsapp" ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"}`}>
+                <MessageCircle className="mr-2 inline" size={17} />WhatsApp
+              </button>
+              <button type="button" onClick={() => switchChannel("email")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "email" ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400" : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"}`}>
+                <Mail className="mr-2 inline" size={17} />Email
+              </button>
+            </div>
+
+            <label className="block text-sm text-gray-900 dark:text-gray-100">
+              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">{channel === "whatsapp" ? "WhatsApp number" : "Email address"}</span>
+              <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={channel === "whatsapp" ? "e.g. +254712345678" : "customer@example.com"} className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+            </label>
+
+            <label className="block text-sm text-gray-900 dark:text-gray-100">
+              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Additional details/message (optional)</span>
+              <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={4} placeholder="Add delivery instructions, payment details, a personal note, etc." className="w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+            </label>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Message preview</p>
+                <button type="button" onClick={copy} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
+                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
+                </button>
+              </div>
+              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{message}</pre>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
+          <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-800 dark:border-gray-700 dark:text-gray-100">Cancel</button>
+          <button type="button" disabled={!recipient.trim()} onClick={share} className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900">
+            {channel === "whatsapp" ? <MessageCircle size={16} /> : <Mail size={16} />}
+            {channel === "whatsapp" ? "Open WhatsApp" : "Open Email"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function InvoicingNav({
@@ -1097,7 +1167,7 @@ function InvoicingSectionShell({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-gray-900 dark:text-gray-100">
       <InvoicingNav section={section} setSection={setSection} />
       {children}
     </div>
@@ -1210,10 +1280,10 @@ function CustomerManager() {
       <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         <div className="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
           <div><h2 className="font-semibold">Customer register</h2><p className="text-xs text-gray-500">{filtered.length} customer{filtered.length === 1 ? "" : "s"}</p></div>
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers" className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-gray-400 sm:w-72 dark:border-gray-700 dark:bg-gray-800" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers" className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400 sm:w-72 dark:border-gray-700 dark:bg-gray-800 dark:text-white placeholder:text-gray-400" />
         </div>
         {loading ? <div className="p-10 text-center text-sm text-gray-500">Loading customers…</div> : filtered.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No customers found.</div> : (
-          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Company</th><th className="px-5 py-3">Contact</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Address</th><th className="px-5 py-3">Actions</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{filtered.map((customer) => <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4 font-semibold">{customer.company_name}</td><td className="px-5 py-4">{customer.contact_name || "—"}</td><td className="px-5 py-4">{customer.email || "—"}</td><td className="px-5 py-4">{customer.phone || "—"}</td><td className="max-w-xs truncate px-5 py-4">{customer.address || "—"}</td><td className="px-5 py-4"><button onClick={() => openEdit(customer)} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold dark:border-gray-700"><Pencil size={13}/> Edit</button></td></tr>)}</tbody></table></div>
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm text-gray-900 dark:text-gray-100"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Company</th><th className="px-5 py-3">Contact</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Address</th><th className="px-5 py-3">Actions</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{filtered.map((customer) => <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4 font-semibold">{customer.company_name}</td><td className="px-5 py-4">{customer.contact_name || "—"}</td><td className="px-5 py-4">{customer.email || "—"}</td><td className="px-5 py-4">{customer.phone || "—"}</td><td className="max-w-xs truncate px-5 py-4">{customer.address || "—"}</td><td className="px-5 py-4"><button onClick={() => openEdit(customer)} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold dark:border-gray-700"><Pencil size={13}/> Edit</button></td></tr>)}</tbody></table></div>
         )}
       </section>
 
@@ -1233,9 +1303,9 @@ function CustomerFormModal({
   onSave: () => void;
 }) {
   const field = (key: keyof typeof form, labelText: string, type = "text") => (
-    <label className="text-sm"><span className="mb-1.5 block text-xs font-medium">{labelText}</span><input type={type} value={form[key]} onChange={(e) => setForm((v) => ({ ...v, [key]: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900" /></label>
+    <label className="text-sm text-gray-900 dark:text-gray-100"><span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">{labelText}</span><input type={type} value={form[key]} onChange={(e) => setForm((v) => ({ ...v, [key]: e.target.value }))} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" /></label>
   );
-  return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:bg-gray-950"><div className="flex items-center justify-between border-b p-5 dark:border-gray-800"><div><h2 className="font-bold">{editing ? "Edit customer" : "Add customer"}</h2><p className="text-xs text-gray-500">Fields match the invoicing customers schema.</p></div><button onClick={onClose}><X size={19}/></button></div><div className="grid gap-4 p-5 sm:grid-cols-2">{field("company_name", "Company name")}{field("contact_name", "Contact name")}{field("email", "Email", "email")}{field("phone", "Phone")}{field("address", "Address")}{field("status", "Status")}</div><div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button><button disabled={saving} onClick={onSave} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">{saving ? "Saving…" : editing ? "Save changes" : "Add customer"}</button></div></div></div>;
+  return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"><div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100"><div className="flex items-center justify-between border-b p-5 dark:border-gray-800"><div><h2 className="font-bold">{editing ? "Edit customer" : "Add customer"}</h2><p className="text-xs text-gray-500">Fields match the invoicing customers schema.</p></div><button onClick={onClose}><X size={19}/></button></div><div className="grid min-h-0 gap-4 overflow-y-auto p-5 sm:grid-cols-2">{field("company_name", "Company name")}{field("contact_name", "Contact name")}{field("email", "Email", "email")}{field("phone", "Phone")}{field("address", "Address")}{field("status", "Status")}</div><div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button><button disabled={saving} onClick={onSave} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">{saving ? "Saving…" : editing ? "Save changes" : "Add customer"}</button></div></div></div>;
 }
 
 function PaymentsManager({ onOpenInvoice }: { onOpenInvoice: (id: string) => Promise<void> }) {
@@ -1254,7 +1324,7 @@ function PaymentsManager({ onOpenInvoice }: { onOpenInvoice: (id: string) => Pro
   }, []);
   useEffect(() => { load(); }, [load]);
   const total = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  return <div className="space-y-6"><header><p className="text-sm text-gray-500">Invoicing · Payments</p><h1 className="mt-1 text-2xl font-bold">Payments</h1><p className="mt-1 text-sm text-gray-500">Track money received against invoices.</p></header>{error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}<section className="grid gap-4 sm:grid-cols-2"><StatCard label="Payments recorded" value={String(payments.length)} icon={CreditCard}/><StatCard label="Total received" value={money(total)} icon={Wallet}/></section><section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"><div className="border-b p-4 dark:border-gray-800"><h2 className="font-semibold">Payment register</h2></div>{loading ? <div className="p-10 text-center text-sm text-gray-500">Loading payments…</div> : payments.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No payments recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Method</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{payments.map((p) => <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4"><button onClick={() => onOpenInvoice(p.invoice_id)} className="font-semibold text-blue-600 hover:underline">{p.invoice_number}</button></td><td className="px-5 py-4">{p.company_name || "—"}</td><td className="px-5 py-4 font-semibold">{money(p.amount)}</td><td className="px-5 py-4 capitalize">{p.payment_method}</td><td className="px-5 py-4">{p.transaction_reference || "—"}</td><td className="px-5 py-4">{dateText(p.payment_date)}</td><td className="px-5 py-4 capitalize">{p.status}</td></tr>)}</tbody></table></div>}</section></div>;
+  return <div className="space-y-6 text-gray-900 dark:text-gray-100"><header><p className="text-sm text-gray-500 dark:text-gray-400">Invoicing · Payments</p><h1 className="mt-1 text-2xl font-bold">Payments</h1><p className="mt-1 text-sm text-gray-500">Track money received against invoices.</p></header>{error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}<section className="grid gap-4 sm:grid-cols-2"><StatCard label="Payments recorded" value={String(payments.length)} icon={CreditCard}/><StatCard label="Total received" value={money(total)} icon={Wallet}/></section><section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"><div className="border-b p-4 dark:border-gray-800"><h2 className="font-semibold">Payment register</h2></div>{loading ? <div className="p-10 text-center text-sm text-gray-500">Loading payments…</div> : payments.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No payments recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm text-gray-900 dark:text-gray-100"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Method</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{payments.map((p) => <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4"><button onClick={() => onOpenInvoice(p.invoice_id)} className="font-semibold text-blue-600 hover:underline">{p.invoice_number}</button></td><td className="px-5 py-4">{p.company_name || "—"}</td><td className="px-5 py-4 font-semibold">{money(p.amount)}</td><td className="px-5 py-4 capitalize">{p.payment_method}</td><td className="px-5 py-4">{p.transaction_reference || "—"}</td><td className="px-5 py-4">{dateText(p.payment_date)}</td><td className="px-5 py-4 capitalize">{p.status}</td></tr>)}</tbody></table></div>}</section></div>;
 }
 
 function CreateInvoiceModal({
