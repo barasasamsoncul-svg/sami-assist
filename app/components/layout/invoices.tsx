@@ -781,29 +781,33 @@ function InvoiceDetailsView({
             </thead>
 
            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-              {(invoice.invoice_items || []).map((item) => (
-                <tr key={item.id}>
-                 <td className="px-5 py-4 text-sm text-gray-900 dark:text-white">
-                     {item.description}
-                      </td> 
-                  <td className="px-5 py-4 text-right text-sm">
-                    {item.quantity}
-                  </td>
-                  <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
-                    {money(item.unit_price)}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-gray-900 dark:text-gray-100">
-                    {money(item.tax_amount)} ({item.tax_rate}%)
-                  </td>
-                 <td
-  className="px-5 py-4 text-right text-sm font-semibold"
-  style={{ color: "#111827" }}
->
-  {money(item.line_total)}
-</td>
-                </tr>
-              ))}
-            </tbody>
+  {(invoice.invoice_items || []).map((item) => (
+    <tr key={item.id}>
+      <td className="px-5 py-4 text-sm text-gray-900 dark:text-white">
+        {item.description}
+      </td>
+
+      <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+        {item.quantity}
+      </td>
+
+      <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+        {money(item.unit_price)}
+      </td>
+
+      <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-white">
+        {money(item.tax_amount)} ({item.tax_rate}%)
+      </td>
+
+      <td
+        className="px-5 py-4 text-right text-sm font-semibold"
+        style={{ color: "#111827" }}
+      >
+        {money(item.line_total)}
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
 
@@ -812,7 +816,7 @@ function InvoiceDetailsView({
             <SummaryRow label="Subtotal" value={money(invoice.subtotal)} />
             <SummaryRow label="Tax" value={money(invoice.tax_amount)} />
 
-            <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold dark:border-gray-800">
+               <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold dark:border-gray-800">
   <span className="text-gray-900">Total</span>
   <span className="text-gray-900" style={{ color: "#111827" }}>
     {money(invoice.total_amount)}
