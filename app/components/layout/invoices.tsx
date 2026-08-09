@@ -783,9 +783,9 @@ function InvoiceDetailsView({
            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
               {(invoice.invoice_items || []).map((item) => (
                 <tr key={item.id}>
-                  <td className="px-5 py-4 text-sm">
-                    {item.description}
-                  </td>
+                 <td className="px-5 py-4 text-sm text-gray-900 dark:text-white">
+                     {item.description}
+                      </td> 
                   <td className="px-5 py-4 text-right text-sm">
                     {item.quantity}
                   </td>
@@ -796,7 +796,7 @@ function InvoiceDetailsView({
                     {money(item.tax_amount)} ({item.tax_rate}%)
                   </td>
                   <td className="px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
-                    {money(item.line_total)}
+                     {money(item.line_total)}
                   </td>
                 </tr>
               ))}
