@@ -796,8 +796,8 @@ function InvoiceDetailsView({
                     {money(item.tax_amount)} ({item.tax_rate}%)
                   </td>
                   <td className="px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
-                     {money(item.line_total)}
-                  </td>
+  {money(item.line_total)}
+</td>
                 </tr>
               ))}
             </tbody>
