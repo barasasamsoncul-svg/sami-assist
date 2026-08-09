@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
 import Invoices from "@/app/dashboard/invoices";
-import SettingsPanel from "../settings/SettingsPanel";
+import SettingsPanel from "@/app/components/settings/SettingsPanel";
 
 import {
 Activity,
@@ -1826,9 +1826,7 @@ switch (activePage) {
 case "settings":
   return (
     <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
-      <div className="mx-auto max-w-5xl">
-        <SettingsPanel />
-      </div>
+      <SettingsPanel />
     </div>
   );
 
@@ -1883,3 +1881,4 @@ return ( <div className="fixed inset-0 flex overflow-hidden bg-gray-50 dark:bg-g
 
 );
 }
+
