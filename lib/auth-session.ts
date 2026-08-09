@@ -34,7 +34,7 @@ export async function getAuthenticatedUser() {
     FROM sessions
     INNER JOIN users
       ON users.id = sessions.user_id
-    WHERE sessions.session_token_hash = $1
+    WHERE sessions.token = $1
       AND sessions.expires_at > NOW()
       AND users.status = 'active'
     `,
