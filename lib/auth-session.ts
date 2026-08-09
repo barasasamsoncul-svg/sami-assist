@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { cookies } from "next/headers";
 import { postgresAdmin } from "./postgres-admin";
 
@@ -9,6 +10,12 @@ export async function getAuthenticatedUser() {
   if (!sessionToken) {
     return null;
   }
+
+  // Hash the token from the cookie to match what's in the database
+  const sessionTokenHash = crypto
+    .createHash("sha256")
+    .update(sessionToken)
+    .digest("hex");
 
   const result = await postgresAdmin.query(
     `
@@ -29,7 +36,7 @@ export async function getAuthenticatedUser() {
       AND sessions.expires_at > NOW()
       AND users.status = 'active'
     `,
-    [sessionToken]
+    [sessionTokenHash]
   );
 
   if (result.rowCount === 0) {
@@ -38,7 +45,6 @@ export async function getAuthenticatedUser() {
 
   const user = result.rows[0];
 
-  // Update last active time
   await postgresAdmin.query(
     `
     UPDATE sessions

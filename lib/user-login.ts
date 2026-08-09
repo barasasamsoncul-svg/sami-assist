@@ -84,21 +84,24 @@ export async function loginUser({
   );
 
   // Save session
-  await postgresAdmin.query(
-    `
-    INSERT INTO sessions (
-      user_id,
-      session_token_hash,
-      expires_at
-    )
-    VALUES ($1, $2, $3)
-    `,
-    [
-      user.id,
-      sessionTokenHash,
-      expiresAt,
-    ]
-  );
+ // Save session
+await postgresAdmin.query(
+  `
+  INSERT INTO sessions (
+    user_id,
+    token,
+    expires_at,
+    is_current,
+    created_at
+  )
+  VALUES ($1, $2, $3, TRUE, NOW())
+  `,
+  [
+    user.id,
+    sessionTokenHash,
+    expiresAt,
+  ]
+);
 
   return {
     success: true,
