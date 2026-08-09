@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
 import Invoices from "@/app/dashboard/invoices";
+import SettingsPanel from "../settings/SettingsPanel";
 
 import {
 Activity,
@@ -1822,82 +1823,14 @@ switch (activePage) {
           }
         />
       );
-
-    case "settings":
-      return (
-        <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
-          <div className="mx-auto max-w-5xl">
-
-            <div className="mb-8">
-              <p className="text-xs font-semibold uppercase tracking-[0.15em] text-blue-600 dark:text-blue-400">
-                SaMi
-              </p>
-
-              <h1 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
-                Settings
-              </h1>
-
-              <p className="mt-2 max-w-xl text-sm text-gray-500 dark:text-gray-400">
-                Manage your workspace
-                and account.
-              </p>
-            </div>
-
-            <div className="rounded-3xl border border-gray-200/70 bg-white p-8 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-
-              <div className="flex items-center gap-4">
-
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-600 text-lg font-semibold text-white">
-                  {profile?.full_name?.[0]?.toUpperCase() ||
-                    "S"}
-                </div>
-
-                <div>
-                  <p className="font-semibold text-gray-900 dark:text-white">
-                    {profile?.full_name ||
-                      "SaMi User"}
-                  </p>
-
-                  <p className="text-sm text-gray-500">
-                    {profile?.email ||
-                      "Account"}
-                  </p>
-                </div>
-
-              </div>
-
-              <div className="mt-8 border-t border-gray-100 pt-6 dark:border-gray-800">
-
-                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-400">
-                  Workspace
-                </p>
-
-                <div className="mt-4 flex items-center justify-between rounded-2xl bg-gray-50 p-4 dark:bg-gray-800/50">
-
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Enabled applications
-                    </p>
-
-                    <p className="mt-1 text-xs text-gray-500">
-                      {enabledApps.length}{" "}
-                      business apps are
-                      active.
-                    </p>
-                  </div>
-
-                  <Package
-                    size={20}
-                    className="text-blue-600"
-                  />
-
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      );
+case "settings":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-5xl">
+        <SettingsPanel />
+      </div>
+    </div>
+  );
 
     default: {
       const app =
