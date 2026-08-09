@@ -345,7 +345,7 @@ export default function Invoices() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-gray-900 dark:text-gray-100">
       <InvoicingNav section={section} setSection={setSection} />
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
@@ -976,7 +976,7 @@ function InvoicingSectionShell({
   children: ReactNode;
 }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-gray-900 dark:text-gray-100">
       <InvoicingNav section={section} setSection={setSection} />
       {children}
     </div>
