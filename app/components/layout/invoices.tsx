@@ -779,46 +779,46 @@ function InvoiceDetailsView({
       </tr>
     </thead>
 
-    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-      {(invoice.invoice_items || []).map((item) => (
-        <tr key={item.id}>
-          <td
-            className="px-5 py-4 text-sm"
-            style={{ color: "#111827" }}
-          >
-            {item.description}
-          </td>
+   <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+  {(invoice.invoice_items || []).map((item) => (
+    <tr key={item.id}>
+      <td
+        className="px-5 py-4 text-sm"
+        style={{ color: "#111827" }}
+      >
+        {item.description}
+      </td>
 
-          <td
-            className="px-5 py-4 text-right text-sm"
-            style={{ color: "#111827" }}
-          >
-            {item.quantity}
-          </td>
+      <td
+        className="px-5 py-4 text-right text-sm"
+        style={{ color: "#111827" }}
+      >
+        {item.quantity}
+      </td>
 
-          <td
-            className="px-5 py-4 text-right text-sm"
-            style={{ color: "#111827" }}
-          >
-            {money(item.unit_price)}
-          </td>
+      <td
+        className="px-5 py-4 text-right text-sm"
+        style={{ color: "#111827" }}
+      >
+        {money(item.unit_price)}
+      </td>
 
-          <td
-            className="px-5 py-4 text-right text-sm"
-            style={{ color: "#111827" }}
-          >
-            {money(item.tax_amount)} ({item.tax_rate}%)
-          </td>
+      <td
+        className="px-5 py-4 text-right text-sm"
+        style={{ color: "#111827" }}
+      >
+        {money(item.tax_amount)} ({item.tax_rate}%)
+      </td>
 
-          <td
-            className="px-5 py-4 text-right text-sm font-semibold"
-            style={{ color: "#111827" }}
-          >
-            {money(item.line_total)}
-          </td>
-        </tr>
-      ))}
-    </tbody>
+      <td
+        className="px-5 py-4 text-right text-sm font-semibold"
+        style={{ color: "#111827" }}
+      >
+        {money(item.line_total)}
+      </td>
+    </tr>
+  ))}
+</tbody>
   </table>
 </div>
 
