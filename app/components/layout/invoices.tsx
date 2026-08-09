@@ -12,16 +12,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
   ArrowDownToLine,
   ArrowLeft,
   ChevronRight,
   CircleDollarSign,
+  CreditCard,
   FileText,
   Loader2,
   Plus,
   Receipt,
+  UserPlus,
+  Users,
+  Pencil,
   Search,
   Wallet,
   X,
@@ -42,6 +48,7 @@ type Customer = {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  status?: string | null;
 };
 
 type Invoice = {
@@ -168,7 +175,7 @@ function StatCard({
 }: {
   label: string;
   value: string;
-  icon: typeof FileText;
+  icon: LucideIcon;
 }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
@@ -197,6 +204,7 @@ export default function Invoices() {
   const [selected, setSelected] = useState<InvoiceDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [section, setSection] = useState<"overview" | "customers" | "payments">("overview");
 
   const loadInvoices = useCallback(async () => {
     try {
@@ -284,6 +292,22 @@ export default function Invoices() {
     });
   }, [invoices, search, filter]);
 
+  if (section === "customers") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <CustomerManager />
+      </InvoicingSectionShell>
+    );
+  }
+
+  if (section === "payments") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <PaymentsManager onOpenInvoice={openInvoice} />
+      </InvoicingSectionShell>
+    );
+  }
+
   if (selected || detailLoading) {
     return (
       <InvoiceDetailsView
@@ -322,6 +346,7 @@ export default function Invoices() {
 
   return (
     <div className="space-y-6">
+      <InvoicingNav section={section} setSection={setSection} />
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -598,6 +623,8 @@ function InvoiceDetailsView({
   onBack: () => void;
   onRefresh: () => void;
 }) {
+  const [showPayment, setShowPayment] = useState(false);
+
   if (loading || !invoice) {
     return (
       <div className="flex min-h-[500px] items-center justify-center">
@@ -647,6 +674,15 @@ function InvoiceDetailsView({
               className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold dark:border-gray-700"
             >
               Refresh
+            </button>
+
+            <button
+              onClick={() => setShowPayment(true)}
+              disabled={Number(invoice.amount_due || 0) <= 0 || status === "cancelled"}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CreditCard size={16} />
+              Record payment
             </button>
 
             <button className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900">
@@ -802,6 +838,17 @@ function InvoiceDetailsView({
         )}
       </section>
 
+      {showPayment && (
+        <RecordPaymentModal
+          invoice={invoice}
+          onClose={() => setShowPayment(false)}
+          onSaved={async () => {
+            setShowPayment(false);
+            await onRefresh();
+          }}
+        />
+      )}
+
       {invoice.notes && (
         <section className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800">
           <h2 className="text-sm font-semibold">Notes</h2>
@@ -844,6 +891,249 @@ function SummaryRow({
       <span>{value}</span>
     </div>
   );
+}
+
+
+
+function RecordPaymentModal({
+  invoice,
+  onClose,
+  onSaved,
+}: {
+  invoice: InvoiceDetails;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [amount, setAmount] = useState(String(Number(invoice.amount_due || 0).toFixed(2)));
+  const [method, setMethod] = useState("other");
+  const [reference, setReference] = useState("");
+  const [paymentDate, setPaymentDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    try {
+      setSaving(true); setError("");
+      const numericAmount = Number(amount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error("Payment amount must be greater than zero.");
+      if (numericAmount > Number(invoice.amount_due) + 0.005) throw new Error("Payment cannot exceed the outstanding balance.");
+      const res = await fetch(`/api/invoices/${invoice.id}/payments`, {
+        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: numericAmount, payment_method: method, transaction_reference: reference, payment_date: paymentDate || null, notes }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to record payment.");
+      await onSaved();
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to record payment."); }
+    finally { setSaving(false); }
+  };
+
+  return <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl dark:bg-gray-950"><div className="flex items-center justify-between border-b p-5 dark:border-gray-800"><div><h2 className="font-bold">Record payment</h2><p className="text-xs text-gray-500">{invoice.invoice_number} · Balance {money(invoice.amount_due)}</p></div><button onClick={onClose}><X size={19}/></button></div><div className="space-y-4 p-5">{error && <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}<label className="block text-sm"><span className="mb-1.5 block text-xs font-medium">Amount</span><input type="number" min="0.01" max={Number(invoice.amount_due)} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-xl border px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900" /></label><div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium">Payment method</span><select value={method} onChange={(e) => setMethod(e.target.value)} className="w-full rounded-xl border px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900"><option value="other">Other</option><option value="cash">Cash</option><option value="bank_transfer">Bank transfer</option><option value="mobile_money">Mobile money</option><option value="card">Card</option><option value="cheque">Cheque</option></select></label><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium">Payment date</span><input type="datetime-local" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="w-full rounded-xl border px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900" /></label></div><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium">Transaction reference</span><input value={reference} onChange={(e) => setReference(e.target.value)} className="w-full rounded-xl border px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900" /></label><label className="block text-sm"><span className="mb-1.5 block text-xs font-medium">Notes</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full rounded-xl border px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900" /></label></div><div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button><button disabled={saving} onClick={submit} className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving…" : "Record payment"}</button></div></div></div>;
+}
+
+function InvoicingNav({
+  section,
+  setSection,
+}: {
+  section: "overview" | "customers" | "payments";
+  setSection: (section: "overview" | "customers" | "payments") => void;
+}) {
+  const items = [
+    ["overview", "Invoices", Receipt],
+    ["customers", "Customers", Users],
+    ["payments", "Payments", CreditCard],
+  ] as const;
+
+  return (
+    <nav className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+      {items.map(([key, label, Icon]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setSection(key)}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            section === key
+              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+        >
+          <Icon size={16} />
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+function InvoicingSectionShell({
+  section,
+  setSection,
+  children,
+}: {
+  section: "overview" | "customers" | "payments";
+  setSection: (section: "overview" | "customers" | "payments") => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-6">
+      <InvoicingNav section={section} setSection={setSection} />
+      {children}
+    </div>
+  );
+}
+
+function CustomerManager() {
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<Customer | null>(null);
+  const [form, setForm] = useState({
+    company_name: "",
+    contact_name: "",
+    email: "",
+    phone: "",
+    address: "",
+    status: "active",
+  });
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await fetch("/api/customers", { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load customers.");
+      setCustomers(Array.isArray(data) ? data : data.customers || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load customers.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = customers.filter((customer) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [customer.company_name, customer.contact_name, customer.email, customer.phone]
+      .some((value) => String(value || "").toLowerCase().includes(q));
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ company_name: "", contact_name: "", email: "", phone: "", address: "", status: "active" });
+    setShowForm(true);
+  };
+
+  const openEdit = (customer: Customer) => {
+    setEditing(customer);
+    setForm({
+      company_name: customer.company_name || "",
+      contact_name: customer.contact_name || "",
+      email: customer.email || "",
+      phone: customer.phone || "",
+      address: customer.address || "",
+      status: "active",
+    });
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    try {
+      if (!form.company_name.trim()) throw new Error("Company name is required.");
+      setSaving(true);
+      setError("");
+      const res = await fetch(editing ? `/api/customers/${editing.id}` : "/api/customers", {
+        method: editing ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save customer.");
+      setShowForm(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save customer.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm text-gray-500">Invoicing · Customers</p>
+          <h1 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">Customers</h1>
+          <p className="mt-1 text-sm text-gray-500">Manage the customers connected to your invoices.</p>
+        </div>
+        <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900">
+          <UserPlus size={17} /> Add customer
+        </button>
+      </header>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+
+      <section className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Customers" value={String(customers.length)} icon={Users} />
+        <StatCard label="Active" value={String(customers.filter((c) => (c as Customer & { status?: string }).status !== "inactive").length)} icon={Users} />
+        <StatCard label="With email" value={String(customers.filter((c) => c.email).length)} icon={FileText} />
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
+          <div><h2 className="font-semibold">Customer register</h2><p className="text-xs text-gray-500">{filtered.length} customer{filtered.length === 1 ? "" : "s"}</p></div>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search customers" className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-gray-400 sm:w-72 dark:border-gray-700 dark:bg-gray-800" />
+        </div>
+        {loading ? <div className="p-10 text-center text-sm text-gray-500">Loading customers…</div> : filtered.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No customers found.</div> : (
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Company</th><th className="px-5 py-3">Contact</th><th className="px-5 py-3">Email</th><th className="px-5 py-3">Phone</th><th className="px-5 py-3">Address</th><th className="px-5 py-3">Actions</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{filtered.map((customer) => <tr key={customer.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4 font-semibold">{customer.company_name}</td><td className="px-5 py-4">{customer.contact_name || "—"}</td><td className="px-5 py-4">{customer.email || "—"}</td><td className="px-5 py-4">{customer.phone || "—"}</td><td className="max-w-xs truncate px-5 py-4">{customer.address || "—"}</td><td className="px-5 py-4"><button onClick={() => openEdit(customer)} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold dark:border-gray-700"><Pencil size={13}/> Edit</button></td></tr>)}</tbody></table></div>
+        )}
+      </section>
+
+      {showForm && <CustomerFormModal form={form} setForm={setForm} editing={editing} saving={saving} onClose={() => setShowForm(false)} onSave={save} />}
+    </div>
+  );
+}
+
+function CustomerFormModal({
+  form, setForm, editing, saving, onClose, onSave,
+}: {
+  form: { company_name: string; contact_name: string; email: string; phone: string; address: string; status: string };
+  setForm: Dispatch<SetStateAction<{ company_name: string; contact_name: string; email: string; phone: string; address: string; status: string }>>;
+  editing: Customer | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const field = (key: keyof typeof form, labelText: string, type = "text") => (
+    <label className="text-sm"><span className="mb-1.5 block text-xs font-medium">{labelText}</span><input type={type} value={form[key]} onChange={(e) => setForm((v) => ({ ...v, [key]: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900" /></label>
+  );
+  return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"><div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl dark:bg-gray-950"><div className="flex items-center justify-between border-b p-5 dark:border-gray-800"><div><h2 className="font-bold">{editing ? "Edit customer" : "Add customer"}</h2><p className="text-xs text-gray-500">Fields match the invoicing customers schema.</p></div><button onClick={onClose}><X size={19}/></button></div><div className="grid gap-4 p-5 sm:grid-cols-2">{field("company_name", "Company name")}{field("contact_name", "Contact name")}{field("email", "Email", "email")}{field("phone", "Phone")}{field("address", "Address")}{field("status", "Status")}</div><div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button><button disabled={saving} onClick={onSave} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">{saving ? "Saving…" : editing ? "Save changes" : "Add customer"}</button></div></div></div>;
+}
+
+function PaymentsManager({ onOpenInvoice }: { onOpenInvoice: (id: string) => Promise<void> }) {
+  const [payments, setPayments] = useState<Array<Record<string, any>>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    try {
+      setLoading(true); setError("");
+      const res = await fetch("/api/invoices/payments", { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load payments.");
+      setPayments(data.payments || []);
+    } catch (e) { setError(e instanceof Error ? e.message : "Failed to load payments."); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  const total = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  return <div className="space-y-6"><header><p className="text-sm text-gray-500">Invoicing · Payments</p><h1 className="mt-1 text-2xl font-bold">Payments</h1><p className="mt-1 text-sm text-gray-500">Track money received against invoices.</p></header>{error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}<section className="grid gap-4 sm:grid-cols-2"><StatCard label="Payments recorded" value={String(payments.length)} icon={CreditCard}/><StatCard label="Total received" value={money(total)} icon={Wallet}/></section><section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"><div className="border-b p-4 dark:border-gray-800"><h2 className="font-semibold">Payment register</h2></div>{loading ? <div className="p-10 text-center text-sm text-gray-500">Loading payments…</div> : payments.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No payments recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Method</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{payments.map((p) => <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4"><button onClick={() => onOpenInvoice(p.invoice_id)} className="font-semibold text-blue-600 hover:underline">{p.invoice_number}</button></td><td className="px-5 py-4">{p.company_name || "—"}</td><td className="px-5 py-4 font-semibold">{money(p.amount)}</td><td className="px-5 py-4 capitalize">{p.payment_method}</td><td className="px-5 py-4">{p.transaction_reference || "—"}</td><td className="px-5 py-4">{dateText(p.payment_date)}</td><td className="px-5 py-4 capitalize">{p.status}</td></tr>)}</tbody></table></div>}</section></div>;
 }
 
 function CreateInvoiceModal({

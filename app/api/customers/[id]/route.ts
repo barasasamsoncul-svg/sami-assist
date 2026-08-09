@@ -107,6 +107,56 @@ export async function GET(
 }
 
 // ==========================================
+// UPDATE CUSTOMER
+// ==========================================
+
+export async function PATCH(
+  req: Request,
+  context: RouteContext
+) {
+  try {
+    const { id } = await context.params;
+    if (!id) return NextResponse.json({ error: "Customer ID is required" }, { status: 400 });
+
+    const user = await getAuthenticatedUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { pool } = await getTenantDatabaseForUser(user.id);
+    const body = await req.json();
+    const companyName = String(body.company_name ?? "").trim();
+    if (!companyName) return NextResponse.json({ error: "Company name is required" }, { status: 400 });
+
+    const result = await pool.query(
+      `UPDATE customers
+       SET company_name = $2,
+           contact_name = $3,
+           email = $4,
+           phone = $5,
+           address = $6,
+           status = COALESCE(NULLIF($7, ''), status),
+           updated_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [
+        id,
+        companyName,
+        String(body.contact_name ?? "").trim() || null,
+        String(body.email ?? "").trim() || null,
+        String(body.phone ?? "").trim() || null,
+        String(body.address ?? "").trim() || null,
+        String(body.status ?? "").trim(),
+      ],
+    );
+
+    if (result.rowCount !== 1) return NextResponse.json({ error: "Customer not found" }, { status: 404 });
+    return NextResponse.json(result.rows[0]);
+  } catch (error) {
+    console.error("Customer update API error:", error);
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to update customer" }, { status: 500 });
+  }
+}
+
+// ==========================================
 // DELETE CUSTOMER
 // ==========================================
 

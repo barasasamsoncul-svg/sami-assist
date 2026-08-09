@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
 import Invoices from "@/app/dashboard/invoices";
-import AppWorkspace from "../apps/AppWorkspace";
 
 import {
 Activity,
@@ -1802,18 +1801,27 @@ switch (activePage) {
         </div>
       );
 
-    case "inventory": {
-      const app = enabledApps.find((item) => item.key === "inventory") || {
-        key: "inventory",
-        name: "Inventory",
-        category: "supply_chain",
-        description: "Manage products, stock, warehouses and movements.",
-        icon: "package",
-        route: "inventory",
-      };
-
-      return <AppWorkspace app={app} />;
-    }
+    case "inventory":
+      return (
+        <AppPlaceholder
+          app={
+            enabledApps.find(
+              (item) =>
+                item.key ===
+                "inventory"
+            ) || {
+              key: "inventory",
+              name: "Inventory",
+              category:
+                "supply_chain",
+              description:
+                "Manage products, stock, warehouses and movements.",
+              icon: "package",
+              route: "inventory",
+            }
+          }
+        />
+      );
 
     case "settings":
       return (
@@ -1900,7 +1908,11 @@ switch (activePage) {
         );
 
       if (app) {
-        return <AppWorkspace app={app} />;
+        return (
+          <AppPlaceholder
+            app={app}
+          />
+        );
       }
 
       return (
