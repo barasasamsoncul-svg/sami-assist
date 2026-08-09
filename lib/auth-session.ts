@@ -1,22 +1,14 @@
-import crypto from "crypto";
 import { cookies } from "next/headers";
 import { postgresAdmin } from "./postgres-admin";
 
 export async function getAuthenticatedUser() {
   const cookieStore = await cookies();
 
-  const sessionToken =
-    cookieStore.get("sami_session")?.value;
+  const sessionToken = cookieStore.get("sami_session")?.value;
 
   if (!sessionToken) {
     return null;
   }
-
-  const sessionTokenHash =
-    crypto
-      .createHash("sha256")
-      .update(sessionToken)
-      .digest("hex");
 
   const result = await postgresAdmin.query(
     `
@@ -32,13 +24,12 @@ export async function getAuthenticatedUser() {
       sessions.id AS session_id,
       sessions.expires_at
     FROM sessions
-    INNER JOIN users
-      ON users.id = sessions.user_id
+    INNER JOIN users ON users.id = sessions.user_id
     WHERE sessions.token = $1
       AND sessions.expires_at > NOW()
       AND users.status = 'active'
     `,
-    [sessionTokenHash]
+    [sessionToken]
   );
 
   if (result.rowCount === 0) {
@@ -47,10 +38,11 @@ export async function getAuthenticatedUser() {
 
   const user = result.rows[0];
 
+  // Update last active time
   await postgresAdmin.query(
     `
     UPDATE sessions
-    SET last_used_at = NOW()
+    SET last_active = NOW()
     WHERE id = $1
     `,
     [user.session_id]
