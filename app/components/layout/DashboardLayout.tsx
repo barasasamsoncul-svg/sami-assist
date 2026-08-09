@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
 import Invoices from "@/app/dashboard/invoices";
-import SettingsPanel from "@/app/components/settings/SettingsPanel";
+import SettingsPanel from "@/app/settings/page";
 
 import {
 Activity,
@@ -221,7 +221,8 @@ useState(false);
 
 const [expandedCategories, setExpandedCategories] =
 useState<Record<string, boolean>>({});
-
+const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+const [settingsSection, setSettingsSection] = useState("general");
 /*
 
 * =====================================================
@@ -1899,16 +1900,5 @@ return ( <div className="fixed inset-0 flex overflow-hidden bg-gray-50 dark:bg-g
 </div>
 
 );
-}
-
-
-
-
-function setIsSettingsMenuOpen(arg0: boolean) {
-  throw new Error("Function not implemented.");
-}
-
-function setSettingsSection(section: string) {
-  throw new Error("Function not implemented.");
 }
 
