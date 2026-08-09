@@ -1,16 +1,5 @@
-/* Complete invoice workspace UI.
-   Place this file at:
-   app/components/layout/invoices.tsx
-
-   It expects the existing tenant-aware invoice APIs:
-   GET/POST /api/invoices
-   GET /api/invoices/[id]
-   GET /api/invoices/stats
-   GET /api/customers
-*/
 
 "use client";
-
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { LucideIcon } from "lucide-react";
@@ -670,16 +659,16 @@ function InvoiceDetailsView({
               </span>
             </div>
 
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
               Issued {dateText(invoice.issue_date)}
               {invoice.due_date && ` · Due ${dateText(invoice.due_date)}`}
             </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={onRefresh}
-              className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold dark:border-gray-700"
+             className="rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-white dark:hover:bg-gray-800"
             >
               Refresh
             </button>
@@ -749,7 +738,7 @@ function InvoiceDetailsView({
             ["Phone", invoice.customer?.phone],
           ].map(([label, value]) => (
             <div key={label}>
-              <p className="text-xs uppercase tracking-wide text-gray-500">
+              <p className="text-xs uppercase tracking-wide text-gray-600 dark:text-gray-400">
                 {label}
               </p>
               <p className="mt-1 text-sm text-gray-900 dark:text-white">
@@ -764,7 +753,9 @@ function InvoiceDetailsView({
             <p className="text-xs uppercase tracking-wide text-gray-500">
               Address
             </p>
-            <p className="mt-1 text-sm">{invoice.customer.address}</p>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">
+  {invoice.customer.address}
+</p>
           </div>
         )}
       </section>
@@ -779,7 +770,7 @@ function InvoiceDetailsView({
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px]">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50">
+            <thead className="bg-gray-50 text-xs uppercase text-gray-700 dark:bg-gray-800/50 dark:text-gray-200">
               <tr>
                 <th className="px-5 py-3 text-left">Description</th>
                 <th className="px-5 py-3 text-right">Qty</th>
@@ -789,7 +780,7 @@ function InvoiceDetailsView({
               </tr>
             </thead>
 
-            <tbody className="divide-y dark:divide-gray-800">
+           <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
               {(invoice.invoice_items || []).map((item) => (
                 <tr key={item.id}>
                   <td className="px-5 py-4 text-sm">
@@ -798,13 +789,13 @@ function InvoiceDetailsView({
                   <td className="px-5 py-4 text-right text-sm">
                     {item.quantity}
                   </td>
-                  <td className="px-5 py-4 text-right text-sm">
+                  <td className="px-5 py-4 text-right text-sm text-gray-900 dark:text-gray-100">
                     {money(item.unit_price)}
                   </td>
-                  <td className="px-5 py-4 text-right text-sm">
+                  <td className="px-5 py-4 text-sm text-gray-900 dark:text-gray-100">
                     {money(item.tax_amount)} ({item.tax_rate}%)
                   </td>
-                  <td className="px-5 py-4 text-right text-sm font-semibold">
+                  <td className="px-5 py-4 text-right text-sm font-semibold text-gray-900 dark:text-white">
                     {money(item.line_total)}
                   </td>
                 </tr>
@@ -832,7 +823,7 @@ function InvoiceDetailsView({
         </div>
 
         {!invoice.payments?.length ? (
-          <p className="p-5 text-sm text-gray-500">
+          <p className="p-5 text-sm text-gray-600 dark:text-gray-400">
             No payments have been recorded for this invoice.
           </p>
         ) : (
@@ -843,7 +834,7 @@ function InvoiceDetailsView({
                 className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
-                  <p className="font-semibold">
+                  <p className="font-semibold text-gray-900 dark:text-white">
                     {money(payment.amount)}
                   </p>
                   <p className="text-xs capitalize text-gray-500">
