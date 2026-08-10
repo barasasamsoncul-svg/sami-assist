@@ -1052,19 +1052,18 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
       </div>
     </div>
   </div>
+    </div>
 </aside>
 
 );
-
 /*
-
-* =====================================================
-* HISTORY SIDEBAR
-* =====================================================
-  */
+=====================================================
+HISTORY SIDEBAR
+=====================================================
+*/
 
 const HistorySidebar = () => (
-<>
+  <>
 <div
 className={`           fixed inset-0 z-40 bg-black/60 backdrop-blur-sm
           transition-opacity duration-300
