@@ -33,7 +33,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { ChangeEvent, type ReactNode, useEffect, useMemo, useState } from "react";
-import { APP_CATEGORIES, SAMI_APPS, type SamiApp } from "@/lib/sami-apps";
+import { APP_CATEGORIES, SAMI_APPS, type SamiApp } from "../../lib/sami-apps";
 
 // ============================================================================
 // TYPES
