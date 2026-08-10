@@ -67,6 +67,8 @@ Utensils,
 Workflow,
 Wrench,
 X,
+Building2,
+  CreditCard,
 } from "lucide-react";
 
 import {
@@ -115,12 +117,16 @@ icon: MessageSquare,
 },
 ];
 
-const FIXED_NAV = [
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-  },
+const SETTINGS_MENU = [
+  { id: "general", label: "General", icon: Building2 },
+  { id: "account", label: "Account", icon: UserRound },
+  { id: "team", label: "Team", icon: Users },
+  { id: "billing", label: "Billing", icon: CreditCard },
+  { id: "appearance", label: "Appearance", icon: Palette },
+  { id: "notifications", label: "Notifications", icon: BellRing },
+  { id: "security", label: "Security", icon: Shield },
+  { id: "data", label: "Data & AI", icon: Database },
+  { id: "apps", label: "Apps", icon: AppWindow },
 ];
 
 const ICONS: Record<string, React.ElementType> = {
@@ -978,52 +984,49 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
       )}
     </div>
 
-    {/* SETTINGS */}
+ {/* SETTINGS DROPDOWN */}
+<div className="mt-7 border-t border-white/[0.06] pt-4">
+  <button
+    onClick={() => setIsSettingsMenuOpen(!isSettingsMenuOpen)}
+    className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+      isSettingsMenuOpen || activePage === "settings" 
+        ? "bg-blue-600 text-white" 
+        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+    }`}
+  >
+    <Settings size={19} className={isSettingsMenuOpen || activePage === "settings" ? "text-white" : "text-slate-500"} />
+    <span className="flex-1">Settings</span>
+    <ChevronDown size={16} className={`transition-transform ${isSettingsMenuOpen ? "rotate-180" : ""}`} />
+  </button>
 
-    <div className="mt-7 border-t border-white/[0.06] pt-4">
-      {FIXED_NAV.map(
-        (item) => {
-          const Icon = item.icon;
-
-          const isActive =
-            activePage === item.id;
-
-          return (
-            <button
-              key={item.id}
-              onClick={() =>
-                handleNavigation(
-                  item.id
-                )
-              }
-              className={`
-                group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all
-                ${
-                  isActive
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                }
-              `}
-            >
-              <Icon
-                size={19}
-                className={
-                  isActive
-                    ? "text-white"
-                    : "text-slate-500"
-                }
-              />
-
-              <span className="flex-1">
-                {item.label}
-              </span>
-            </button>
-          );
-        }
-      )}
+  {isSettingsMenuOpen && (
+    <div className="mt-2 space-y-1 pl-4">
+      {SETTINGS_MENU.map((item) => {
+        const Icon = item.icon;
+        const isActive = activePage === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => {
+              setSettingsSection(item.id);
+              setActivePage(item.id);
+              setIsSettingsMenuOpen(false);
+              if (isMobile) setSidebarOpen(false);
+            }}
+            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-medium transition-all ${
+              isActive
+                ? "bg-blue-600/20 text-blue-400"
+                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+            }`}
+          >
+            <Icon size={16} />
+            <span>{item.label}</span>
+          </button>
+        );
+      })}
     </div>
-  </div>
-
+  )}
+</div>
   {/* PROFILE */}
 
   <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
@@ -1840,15 +1843,22 @@ switch (activePage) {
           }
         />
       );
-    case "settings":
-      return (
-        <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
-          <div className="mx-auto max-w-5xl">
-            <SettingsPanel />
-          </div>
-        </div>
-      );
-
+    case "general":
+case "account":
+case "team":
+case "billing":
+case "appearance":
+case "notifications":
+case "security":
+case "data":
+case "apps":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-5xl">
+        <SettingsPanel initialSection={activePage} />
+      </div>
+    </div>
+  );
 
     default: {
       const app =
