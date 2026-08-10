@@ -206,7 +206,30 @@ const [appsError, setAppsError] =
 useState("");
 
 const [activePage, setActivePage] =
-useState<ActivePage>("dashboard");
+  useState<ActivePage>("dashboard");
+
+const [activePageLoaded, setActivePageLoaded] =
+  useState(false);
+
+useEffect(() => {
+  const savedPage =
+    localStorage.getItem("sami-active-page");
+
+  if (savedPage) {
+    setActivePage(savedPage);
+  }
+
+  setActivePageLoaded(true);
+}, []);
+
+useEffect(() => {
+  if (!activePageLoaded) return;
+
+  localStorage.setItem(
+    "sami-active-page",
+    activePage
+  );
+}, [activePage, activePageLoaded]);
 
 const [sidebarOpen, setSidebarOpen] =
 useState(false);
