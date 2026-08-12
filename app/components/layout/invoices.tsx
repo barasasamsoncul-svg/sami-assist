@@ -1,6 +1,13 @@
 
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { toPng } from "html-to-image";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -27,6 +34,7 @@ import {
   Search,
   Wallet,
   X,
+  ImageIcon,
 } from "lucide-react";
 
 type InvoiceStatus =
@@ -1025,92 +1033,697 @@ function printInvoice(invoice: InvoiceDetails) {
 function escapeHtml(value: string) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] || char));
 }
-
-function ShareInvoiceModal({ invoice, onClose }: { invoice: InvoiceDetails; onClose: () => void }) {
-  const [channel, setChannel] = useState<"whatsapp" | "email">("whatsapp");
-  const [recipient, setRecipient] = useState(invoice.customer?.phone || invoice.customer?.email || "");
+function ShareInvoiceModal({
+  invoice,
+  onClose,
+}: {
+  invoice: InvoiceDetails;
+  onClose: () => void;
+}) {
+  const [channel, setChannel] = useState<"whatsapp" | "email" | "photo">(
+    "whatsapp"
+  );
+  const [recipient, setRecipient] = useState(
+    invoice.customer?.phone || invoice.customer?.email || ""
+  );
   const [extra, setExtra] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const defaultMessage = `Hello ${invoice.customer?.contact_name || invoice.customer?.company_name || "there"},\n\nPlease find invoice ${invoice.invoice_number} for ${money(invoice.total_amount)}.\nAmount paid: ${money(invoice.amount_paid)}\nBalance due: ${money(invoice.amount_due)}\nDue date: ${dateText(invoice.due_date)}${extra ? `\n\n${extra}` : ""}\n\nThank you.`;
+  const [business, setBusiness] = useState<{
+    name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    logo_url?: string | null;
+    address?: string | null;
+    website?: string | null;
+    tax_id?: string | null;
+    registration_number?: string | null;
+  } | null>(null);
+
+  const [loadingBusiness, setLoadingBusiness] = useState(true);
+  const [generatingPhoto, setGeneratingPhoto] = useState(false);
+
+  const invoiceImageRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadBusiness = async () => {
+      try {
+        setLoadingBusiness(true);
+
+        const response = await fetch("/api/business/settings", {
+          credentials: "include",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to load business settings.");
+        }
+
+        const data = await response.json();
+
+        if (!cancelled) {
+          setBusiness(data.business || data);
+        }
+      } catch (error) {
+        console.error("Failed to load business settings:", error);
+
+        if (!cancelled) {
+          setBusiness(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingBusiness(false);
+        }
+      }
+    };
+
+    loadBusiness();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const defaultMessage = `Hello ${
+    invoice.customer?.contact_name ||
+    invoice.customer?.company_name ||
+    "there"
+  },
+
+Please find invoice ${invoice.invoice_number} for ${money(
+    invoice.total_amount
+  )}.
+Amount paid: ${money(invoice.amount_paid)}
+Balance due: ${money(invoice.amount_due)}
+Due date: ${dateText(invoice.due_date)}${
+    extra ? `\n\n${extra}` : ""
+  }
+
+Thank you.`;
+
   const message = defaultMessage;
 
   const share = () => {
     if (!recipient.trim()) return;
+
     if (channel === "whatsapp") {
       let phone = recipient.replace(/[^0-9+]/g, "");
-      if (phone.startsWith("0")) phone = `254${phone.slice(1)}`;
-      else if (phone.startsWith("+")) phone = phone.slice(1);
-      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+
+      if (phone.startsWith("0")) {
+        phone = `254${phone.slice(1)}`;
+      } else if (phone.startsWith("+")) {
+        phone = phone.slice(1);
+      }
+
+      window.open(
+        `https://wa.me/${phone}?text=${encodeURIComponent(message)}`,
+        "_blank",
+        "noopener,noreferrer"
+      );
     } else {
-      window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(`Invoice ${invoice.invoice_number}`)}&body=${encodeURIComponent(message)}`;
+      window.location.href = `mailto:${encodeURIComponent(
+        recipient.trim()
+      )}?subject=${encodeURIComponent(
+        `Invoice ${invoice.invoice_number}`
+      )}&body=${encodeURIComponent(message)}`;
     }
   };
 
   const copy = async () => {
     await navigator.clipboard.writeText(message);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+
+    setTimeout(() => {
+      setCopied(false);
+    }, 1600);
   };
 
-  const switchChannel = (next: "whatsapp" | "email") => {
+  const switchChannel = (
+    next: "whatsapp" | "email" | "photo"
+  ) => {
     setChannel(next);
-    setRecipient(next === "whatsapp" ? invoice.customer?.phone || "" : invoice.customer?.email || "");
+
+    if (next === "whatsapp") {
+      setRecipient(invoice.customer?.phone || "");
+    } else if (next === "email") {
+      setRecipient(invoice.customer?.email || "");
+    } else {
+      setRecipient("");
+    }
+  };
+
+  const generateInvoicePhoto = async () => {
+    if (!invoiceImageRef.current || generatingPhoto) return;
+
+    try {
+      setGeneratingPhoto(true);
+
+      const dataUrl = await toPng(invoiceImageRef.current, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: "#ffffff",
+      });
+
+      const fileName = `Invoice-${invoice.invoice_number}.png`;
+
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+
+      const file = new File([blob], fileName, {
+        type: "image/png",
+      });
+
+      if (
+        typeof navigator.share === "function" &&
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({
+          title: `Invoice ${invoice.invoice_number}`,
+          text: message,
+          files: [file],
+        });
+
+        return;
+      }
+
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Failed to generate invoice photo:", error);
+      alert("Unable to generate the invoice photo. Please try again.");
+    } finally {
+      setGeneratingPhoto(false);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/60 p-3 sm:p-5">
-      <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100 sm:max-h-[calc(100vh-2.5rem)]">
+      <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100 sm:max-h-[calc(100vh-2.5rem)]">
+
+        {/* HEADER */}
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-gray-200 p-4 dark:border-gray-800 sm:p-5">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Share invoice</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+              Share invoice
+            </h2>
+
             <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              Customer details are pulled from the database. You can change the recipient before sharing.
+              Share the invoice by WhatsApp, email, or as a professional
+              invoice image.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" aria-label="Close">
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+            aria-label="Close"
+          >
             <X size={19} />
           </button>
         </div>
 
+        {/* BODY */}
         <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
           <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => switchChannel("whatsapp")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "whatsapp" ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"}`}>
-                <MessageCircle className="mr-2 inline" size={17} />WhatsApp
+
+            {/* CHANNELS */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => switchChannel("whatsapp")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                  channel === "whatsapp"
+                    ? "border-emerald-500 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                }`}
+              >
+                <MessageCircle
+                  className="mr-2 inline"
+                  size={17}
+                />
+                WhatsApp
               </button>
-              <button type="button" onClick={() => switchChannel("email")} className={`rounded-xl border px-4 py-3 text-sm font-semibold ${channel === "email" ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400" : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"}`}>
-                <Mail className="mr-2 inline" size={17} />Email
+
+              <button
+                type="button"
+                onClick={() => switchChannel("email")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                  channel === "email"
+                    ? "border-blue-500 bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                    : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                }`}
+              >
+                <Mail
+                  className="mr-2 inline"
+                  size={17}
+                />
+                Email
+              </button>
+
+              <button
+                type="button"
+                onClick={() => switchChannel("photo")}
+                className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+                  channel === "photo"
+                    ? "border-purple-500 bg-purple-500/10 text-purple-700 dark:text-purple-400"
+                    : "border-gray-200 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+                }`}
+              >
+                <ImageIcon
+                  className="mr-2 inline"
+                  size={17}
+                />
+                Photo
               </button>
             </div>
 
+            {/* RECIPIENT */}
+            {channel !== "photo" && (
+              <label className="block text-sm text-gray-900 dark:text-gray-100">
+                <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {channel === "whatsapp"
+                    ? "WhatsApp number"
+                    : "Email address"}
+                </span>
+
+                <input
+                  value={recipient}
+                  onChange={(e) =>
+                    setRecipient(e.target.value)
+                  }
+                  placeholder={
+                    channel === "whatsapp"
+                      ? "e.g. +254712345678"
+                      : "customer@example.com"
+                  }
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400"
+                />
+              </label>
+            )}
+
+            {/* EXTRA MESSAGE */}
             <label className="block text-sm text-gray-900 dark:text-gray-100">
-              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">{channel === "whatsapp" ? "WhatsApp number" : "Email address"}</span>
-              <input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder={channel === "whatsapp" ? "e.g. +254712345678" : "customer@example.com"} className="w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                Additional details/message (optional)
+              </span>
+
+              <textarea
+                value={extra}
+                onChange={(e) =>
+                  setExtra(e.target.value)
+                }
+                rows={4}
+                placeholder="Add delivery instructions, payment details, a personal note, etc."
+                className="w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400"
+              />
             </label>
 
-            <label className="block text-sm text-gray-900 dark:text-gray-100">
-              <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">Additional details/message (optional)</span>
-              <textarea value={extra} onChange={(e) => setExtra(e.target.value)} rows={4} placeholder="Add delivery instructions, payment details, a personal note, etc." className="w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
-            </label>
+            {/* PHOTO PREVIEW */}
+            {channel === "photo" && (
+              <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-3 dark:border-purple-900/50 dark:bg-purple-950/20">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                      Invoice image preview
+                    </p>
 
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Message preview</p>
-                <button type="button" onClick={copy} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white">
-                  {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}
-                </button>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Your business logo is pulled from Business Settings.
+                    </p>
+                  </div>
+
+                  {loadingBusiness && (
+                    <Loader2
+                      size={17}
+                      className="animate-spin text-gray-500"
+                    />
+                  )}
+                </div>
+
+                <div className="overflow-x-auto rounded-xl bg-gray-200 p-3 dark:bg-gray-900">
+                  <div
+                    ref={invoiceImageRef}
+                    className="mx-auto w-[760px] bg-white p-10 text-gray-900"
+                  >
+                    {/* BRAND HEADER */}
+                    <div className="flex items-start justify-between border-b-2 border-gray-900 pb-7">
+                      <div className="flex items-center gap-4">
+                        {business?.logo_url ? (
+                          <img
+                            src={business.logo_url}
+                            alt={business.name || "Company logo"}
+                            crossOrigin="anonymous"
+                            className="h-20 w-20 rounded-xl object-contain"
+                          />
+                        ) : (
+                          <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-gray-900 text-xl font-black text-white">
+                            SaMi
+                          </div>
+                        )}
+
+                        <div>
+                          <h1 className="text-2xl font-black">
+                            {business?.name ||
+                              "Your Business"}
+                          </h1>
+
+                          <div className="mt-2 space-y-0.5 text-xs text-gray-500">
+                            {business?.email && (
+                              <p>{business.email}</p>
+                            )}
+
+                            {business?.phone && (
+                              <p>{business.phone}</p>
+                            )}
+
+                            {business?.address && (
+                              <p>{business.address}</p>
+                            )}
+
+                            {business?.website && (
+                              <p>{business.website}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">
+                          Invoice
+                        </p>
+
+                        <p className="mt-1 text-2xl font-black">
+                          {invoice.invoice_number}
+                        </p>
+
+                        <p className="mt-2 text-xs text-gray-500">
+                          Issued:{" "}
+                          {dateText(invoice.issue_date)}
+                        </p>
+
+                        {invoice.due_date && (
+                          <p className="text-xs text-gray-500">
+                            Due:{" "}
+                            {dateText(invoice.due_date)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* CUSTOMER */}
+                    <div className="grid grid-cols-2 gap-8 py-7">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Bill To
+                        </p>
+
+                        <p className="mt-2 text-base font-bold">
+                          {invoice.customer?.company_name ||
+                            "Unknown customer"}
+                        </p>
+
+                        {invoice.customer?.contact_name && (
+                          <p className="text-sm text-gray-600">
+                            {invoice.customer.contact_name}
+                          </p>
+                        )}
+
+                        {invoice.customer?.email && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            {invoice.customer.email}
+                          </p>
+                        )}
+
+                        {invoice.customer?.phone && (
+                          <p className="text-xs text-gray-500">
+                            {invoice.customer.phone}
+                          </p>
+                        )}
+
+                        {invoice.customer?.address && (
+                          <p className="mt-1 whitespace-pre-line text-xs text-gray-500">
+                            {invoice.customer.address}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Status
+                        </p>
+
+                        <p className="mt-2 text-sm font-bold">
+                          {LABELS[
+                            getDisplayStatus(invoice)
+                          ]}
+                        </p>
+
+                        <p className="mt-3 text-xs text-gray-500">
+                          Amount paid:{" "}
+                          {money(invoice.amount_paid)}
+                        </p>
+
+                        <p className="text-xs font-semibold text-gray-900">
+                          Balance due:{" "}
+                          {money(invoice.amount_due)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* ITEMS */}
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="border-y border-gray-200 bg-gray-50">
+                          <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wide">
+                            Description
+                          </th>
+
+                          <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-wide">
+                            Qty
+                          </th>
+
+                          <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-wide">
+                            Unit
+                          </th>
+
+                          <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-wide">
+                            Tax
+                          </th>
+
+                          <th className="px-3 py-3 text-right text-[10px] font-bold uppercase tracking-wide">
+                            Total
+                          </th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {(invoice.invoice_items || []).map(
+                          (item) => (
+                            <tr
+                              key={item.id}
+                              className="border-b border-gray-100"
+                            >
+                              <td className="px-3 py-4 text-sm font-medium">
+                                {item.description}
+                              </td>
+
+                              <td className="px-3 py-4 text-right text-sm">
+                                {item.quantity}
+                              </td>
+
+                              <td className="px-3 py-4 text-right text-sm">
+                                {money(item.unit_price)}
+                              </td>
+
+                              <td className="px-3 py-4 text-right text-sm">
+                                {money(item.tax_amount)}
+                              </td>
+
+                              <td className="px-3 py-4 text-right text-sm font-bold">
+                                {money(item.line_total)}
+                              </td>
+                            </tr>
+                          )
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* TOTALS */}
+                    <div className="mt-8 flex justify-end">
+                      <div className="w-72 space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">
+                            Subtotal
+                          </span>
+
+                          <span className="font-medium">
+                            {money(invoice.subtotal)}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">
+                            Tax
+                          </span>
+
+                          <span className="font-medium">
+                            {money(invoice.tax_amount)}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between border-t-2 border-gray-900 pt-3 text-lg font-black">
+                          <span>Total</span>
+                          <span>
+                            {money(invoice.total_amount)}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">
+                            Paid
+                          </span>
+
+                          <span>
+                            {money(invoice.amount_paid)}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between font-bold">
+                          <span>Balance due</span>
+
+                          <span>
+                            {money(invoice.amount_due)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* EXTRA MESSAGE */}
+                    {extra.trim() && (
+                      <div className="mt-8 rounded-xl bg-gray-50 p-4">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                          Additional information
+                        </p>
+
+                        <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-gray-600">
+                          {extra}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* FOOTER / WATERMARK */}
+                    <div className="mt-10 flex items-end justify-between border-t border-gray-200 pt-5">
+                      <div>
+                        {business?.tax_id && (
+                          <p className="text-[10px] text-gray-400">
+                            Tax ID: {business.tax_id}
+                          </p>
+                        )}
+
+                        {business?.registration_number && (
+                          <p className="text-[10px] text-gray-400">
+                            Registration:{" "}
+                            {business.registration_number}
+                          </p>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] font-semibold tracking-wide text-gray-300">
+                        Powered by SaMi
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">{message}</pre>
-            </div>
+            )}
+
+            {/* TEXT MESSAGE PREVIEW */}
+            {channel !== "photo" && (
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Message preview
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={copy}
+                    className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                  >
+                    {copied ? (
+                      <Check size={14} />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+
+                <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm leading-6 text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                  {message}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
 
+        {/* FOOTER */}
         <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-950">
-          <button type="button" onClick={onClose} className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-800 dark:border-gray-700 dark:text-gray-100">Cancel</button>
-          <button type="button" disabled={!recipient.trim()} onClick={share} className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900">
-            {channel === "whatsapp" ? <MessageCircle size={16} /> : <Mail size={16} />}
-            {channel === "whatsapp" ? "Open WhatsApp" : "Open Email"}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-800 dark:border-gray-700 dark:text-gray-100"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            disabled={
+              channel === "photo"
+                ? generatingPhoto
+                : !recipient.trim()
+            }
+            onClick={() => {
+              if (channel === "photo") {
+                generateInvoicePhoto();
+                return;
+              }
+
+              share();
+            }}
+            className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-gray-900"
+          >
+            {channel === "photo" ? (
+              generatingPhoto ? (
+                <Loader2
+                  size={16}
+                  className="animate-spin"
+                />
+              ) : (
+                <ImageIcon size={16} />
+              )
+            ) : channel === "whatsapp" ? (
+              <MessageCircle size={16} />
+            ) : (
+              <Mail size={16} />
+            )}
+
+            {channel === "photo"
+              ? generatingPhoto
+                ? "Preparing..."
+                : "Share Invoice Photo"
+              : channel === "whatsapp"
+              ? "Open WhatsApp"
+              : "Open Email"}
           </button>
         </div>
       </div>
