@@ -124,7 +124,7 @@ export async function PATCH(req: Request) {
         slug: typeof body.slug === "string" ? body.slug.trim() : business.slug,
         email: typeof body.email === "string" ? body.email.trim() : business.email,
         phone: typeof body.phone === "string" ? body.phone.trim() : business.phone,
-        logo: typeof body.logo === "string" ? body.logo : body.logo === null ? null : business.logo,
+        logo_url: typeof body.logo_url === "string" ? body.logo_url : body.logo_url === null ? null : business.logo_url,
         type: typeof body.type === "string" ? body.type.trim() : business.type,
         country: typeof body.country === "string" ? body.country.trim() : business.country,
         currency: typeof body.currency === "string" ? body.currency.trim() : business.currency,
@@ -143,7 +143,7 @@ export async function PATCH(req: Request) {
       if (!updates.slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(updates.slug)) {
         return NextResponse.json({ success: false, error: "Business slug may contain lowercase letters, numbers and hyphens only." }, { status: 400 });
       }
-      if (updates.logo && updates.logo.length > 1_500_000) {
+      if (updates.logo_url && updates.logo_url.length > 1_500_000) {
         return NextResponse.json({ success: false, error: "Logo is too large." }, { status: 400 });
       }
 
@@ -158,7 +158,7 @@ export async function PATCH(req: Request) {
       const result = await postgresAdmin.query(
         `UPDATE businesses
          SET 
-           name = $1, slug = $2, email = $3, phone = $4, logo = $5,
+           name = $1, slug = $2, email = $3, phone = $4, logo_url = $5,
            type = $6, country = $7, currency = $8, timezone = $9,
            tax_id = $10, registration_number = $11, website = $12,
            address = $13, industry = $14, founded_year = $15,
@@ -166,7 +166,7 @@ export async function PATCH(req: Request) {
          WHERE id = $17
          RETURNING *`,
         [
-          updates.name, updates.slug, updates.email || null, updates.phone || null, updates.logo,
+          updates.name, updates.slug, updates.email || null, updates.phone || null, updates.logo_url,
           updates.type, updates.country, updates.currency, updates.timezone,
           updates.tax_id, updates.registration_number, updates.website,
           updates.address, updates.industry, updates.founded_year,
