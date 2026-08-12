@@ -31,21 +31,6 @@ import {
   Eye,
   EyeOff,
   AlertCircle,
-  Globe,
-  Clock,
-  MapPin,
-  Mail,
-  Phone,
-  Link,
-  FileText,
-  Briefcase,
-  Factory,
-  DollarSign,
-  Calendar,
-  Users as UsersIcon,
-  Building,
-  Map,
-  CreditCard as CreditCardIcon,
 } from "lucide-react";
 import { ChangeEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { APP_CATEGORIES, SAMI_APPS, type SamiApp } from "@/lib/sami-apps";
@@ -180,39 +165,18 @@ const TIMEZONES = [
 ];
 
 const BUSINESS_TYPES = [
-  "Sole Proprietorship",
-  "Partnership",
-  "Limited Liability Company (LLC)",
-  "Corporation (C-Corp)",
-  "Corporation (S-Corp)",
-  "Non-Profit",
-  "Cooperative",
-  "Public Limited Company (PLC)",
-  "Private Limited Company (Ltd)",
-  "Joint Venture",
-  "Trust",
-  "Other",
+  "Sole Proprietorship", "Partnership", "Limited Liability Company (LLC)",
+  "Corporation (C-Corp)", "Corporation (S-Corp)", "Non-Profit",
+  "Cooperative", "Public Limited Company (PLC)", "Private Limited Company (Ltd)",
+  "Joint Venture", "Trust", "Other",
 ];
 
 const INDUSTRIES = [
-  "Technology & Software",
-  "Financial Services",
-  "Healthcare",
-  "Retail",
-  "Manufacturing",
-  "Education",
-  "Construction",
-  "Real Estate",
-  "Agriculture",
-  "Transportation & Logistics",
-  "Hospitality & Tourism",
-  "Media & Entertainment",
-  "Professional Services",
-  "Non-Profit",
-  "Government",
-  "Energy & Utilities",
-  "Telecommunications",
-  "Other",
+  "Technology & Software", "Financial Services", "Healthcare", "Retail",
+  "Manufacturing", "Education", "Construction", "Real Estate",
+  "Agriculture", "Transportation & Logistics", "Hospitality & Tourism",
+  "Media & Entertainment", "Professional Services", "Non-Profit",
+  "Government", "Energy & Utilities", "Telecommunications", "Other",
 ];
 
 // ============================================================================
@@ -302,7 +266,7 @@ const APP_SETTING_DEFINITIONS: Record<
 // ============================================================================
 
 function inputClass() {
-  return "w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 disabled:opacity-50 disabled:cursor-not-allowed";
+  return "w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 outline-none transition placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500";
 }
 
 function normalizeSlug(value: string) {
@@ -373,24 +337,14 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   const [apiKeyPermissions, setApiKeyPermissions] = useState<string[]>([]);
   const [newApiKey, setNewApiKey] = useState<string | null>(null);
 
-  // ========================================================================
-  // DATA LOADING
-  // ========================================================================
-
+  // Data Loading
   async function load() {
     try {
       setLoading(true);
       setError("");
-      const response = await fetch("/api/business/settings", {
-        cache: "no-store",
-        credentials: "include",
-      });
+      const response = await fetch("/api/business/settings", { cache: "no-store", credentials: "include" });
       const data = (await response.json()) as SettingsResponse;
-
-      if (!response.ok || !data.success || !data.business) {
-        throw new Error(data.error || "Could not load settings.");
-      }
-
+      if (!response.ok || !data.success || !data.business) throw new Error(data.error || "Could not load settings.");
       setUser(data.user ?? null);
       setBusiness(data.business);
       setStored(data.settings ?? {});
@@ -400,7 +354,6 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       setBilling(data.billing ?? null);
       setSessions(data.sessions ?? []);
       setApiKeys(data.apiKeys ?? []);
-
       setName(data.business.name || "");
       setSlug(data.business.slug || "");
       setEmail(data.business.email || "");
@@ -417,7 +370,6 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       setIndustry(data.business.industry || "");
       setFoundedYear(data.business.founded_year || null);
       setEmployeeCount(data.business.employee_count || null);
-
       if (data.user) {
         setFullName(data.user.fullName || "");
         setAccountEmail(data.user.email || "");
@@ -433,35 +385,23 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   useEffect(() => { load(); }, []);
   useEffect(() => setSection(initialSection as SectionKey), [initialSection]);
 
-  // ========================================================================
-  // BUSINESS PROFILE OPERATIONS
-  // ========================================================================
-
+  // Business Profile
   async function saveGeneral() {
     try {
       setGeneralSaving(true);
       setError("");
       setNotice("");
-
       const response = await fetch("/api/business/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({
-          name, slug, email, phone, logo,
-          type: businessType, country, currency, timezone,
-          taxId, registrationNumber, website, address,
-          industry, foundedYear, employeeCount,
-        }),
+        body: JSON.stringify({ name, slug, email, phone, logo, type: businessType, country, currency, timezone, taxId, registrationNumber, website, address, industry, foundedYear, employeeCount }),
       });
-
       const data = await response.json();
-      if (!response.ok || !data.success || !data.business) {
-        throw new Error(data.error || "Could not save business profile.");
-      }
-
+      if (!response.ok || !data.success || !data.business) throw new Error(data.error || "Could not save business profile.");
       setBusiness(data.business);
-      setNotice("Business profile updated successfully.");
+      setNotice("Business profile updated.");
+      setTimeout(() => setNotice(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save business profile.");
     } finally {
@@ -472,35 +412,20 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   function handleLogoChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    setError("");
-    setNotice("");
-
-    if (!file.type.startsWith("image/")) {
-      return setError("Please select an image file.");
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      return setError("Logo must be smaller than 900 KB.");
-    }
-
+    if (!file.type.startsWith("image/")) return setError("Please select an image file.");
+    if (file.size > MAX_LOGO_BYTES) return setError("Logo must be smaller than 900 KB.");
     const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setLogo(reader.result);
-    };
-    reader.onerror = () => setError("Could not read the selected logo.");
+    reader.onload = () => { if (typeof reader.result === "string") setLogo(reader.result); };
     reader.readAsDataURL(file);
     event.target.value = "";
   }
 
-  // ========================================================================
-  // ACCOUNT OPERATIONS
-  // ========================================================================
-
+  // Account
   async function saveAccount() {
     try {
       setAccountSaving(true);
       setError("");
       setNotice("");
-
       const payload: any = { fullName, email: accountEmail, twoFactorEnabled };
       if (newPassword) {
         if (newPassword !== confirmPassword) throw new Error("Passwords do not match.");
@@ -509,21 +434,17 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
         payload.newPassword = newPassword;
         payload.confirmPassword = confirmPassword;
       }
-
       const response = await fetch("/api/user/account", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify(payload),
       });
-
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Could not save account settings.");
-      }
-
+      if (!response.ok || !data.success) throw new Error(data.error || "Could not save account settings.");
       setUser(data.user);
-      setNotice("Account settings updated successfully.");
+      setNotice("Account updated.");
+      setTimeout(() => setNotice(""), 3000);
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -535,10 +456,7 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
     }
   }
 
-  // ========================================================================
-  // TEAM OPERATIONS
-  // ========================================================================
-
+  // Team
   async function inviteTeamMember() {
     try {
       const response = await fetch("/api/team", {
@@ -547,27 +465,21 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
         credentials: "include",
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
       });
-
       const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || "Could not send invitation.");
-      }
-
+      if (!response.ok || !data.success) throw new Error(data.error || "Could not send invitation.");
       await load();
       setShowInviteModal(false);
       setInviteEmail("");
-      setNotice("Team member added successfully.");
+      setNotice("Team member added.");
+      setTimeout(() => setNotice(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not send invitation.");
     }
   }
 
-  // ========================================================================
-  // SESSION OPERATIONS
-  // ========================================================================
-
+  // Sessions
   async function revokeSession(sessionId: string) {
-    if (!confirm("Are you sure you want to revoke this session?")) return;
+    if (!confirm("Revoke this session?")) return;
     try {
       const response = await fetch("/api/sessions", {
         method: "DELETE",
@@ -578,14 +490,15 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Could not revoke session.");
       await load();
-      setNotice("Session revoked successfully.");
+      setNotice("Session revoked.");
+      setTimeout(() => setNotice(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not revoke session.");
     }
   }
 
   async function revokeAllSessions() {
-    if (!confirm("This will log out all other devices. Continue?")) return;
+    if (!confirm("Revoke all other sessions?")) return;
     try {
       const response = await fetch("/api/sessions", {
         method: "DELETE",
@@ -596,16 +509,14 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Could not revoke sessions.");
       await load();
-      setNotice("All other sessions revoked successfully.");
+      setNotice("All other sessions revoked.");
+      setTimeout(() => setNotice(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not revoke sessions.");
     }
   }
 
-  // ========================================================================
-  // API KEY OPERATIONS
-  // ========================================================================
-
+  // API Keys
   async function createApiKey() {
     try {
       const response = await fetch("/api/api-keys", {
@@ -628,7 +539,7 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   }
 
   async function deleteApiKey(keyId: string) {
-    if (!confirm("Are you sure you want to delete this API key?")) return;
+    if (!confirm("Delete this API key?")) return;
     try {
       const response = await fetch("/api/api-keys", {
         method: "DELETE",
@@ -639,21 +550,18 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Could not delete API key.");
       await load();
-      setNotice("API key deleted successfully.");
+      setNotice("API key deleted.");
+      setTimeout(() => setNotice(""), 3000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete API key.");
     }
   }
 
-  // ========================================================================
-  // APP OPERATIONS
-  // ========================================================================
-
+  // Apps
   async function updateApps(nextKeys: string[]) {
     try {
       setAppsSaving(true);
       setError("");
-      setNotice("");
       const response = await fetch("/api/apps/selection", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -663,7 +571,8 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Could not update apps.");
       setEnabledKeys(data.appKeys ?? nextKeys);
-      setNotice("Apps updated successfully.");
+      setNotice("Apps updated.");
+      setTimeout(() => setNotice(""), 3000);
       window.dispatchEvent(new CustomEvent("sami:apps-updated"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update apps.");
@@ -672,22 +581,22 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
     }
   }
 
-  // ========================================================================
-  // SETTINGS OPERATIONS
-  // ========================================================================
-
+  // Settings
   function updateStored(sectionKey: string, key: string, value: unknown) {
     setStored((current) => ({
       ...current,
       [sectionKey]: { ...(current[sectionKey] ?? {}), [key]: value },
     }));
+    // Auto-save after 500ms debounce
+    clearTimeout((window as any)._settingsTimeout);
+    (window as any)._settingsTimeout = setTimeout(() => {
+      saveSection(sectionKey);
+    }, 500);
   }
 
   async function saveSection(sectionKey: string) {
     try {
       setSavingSection(sectionKey);
-      setError("");
-      setNotice("");
       const response = await fetch("/api/business/settings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -697,7 +606,6 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       const data = await response.json();
       if (!response.ok || !data.success) throw new Error(data.error || "Could not save settings.");
       setStored(data.settings ?? stored);
-      setNotice(`${sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1)} settings updated.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save settings.");
     } finally {
@@ -705,634 +613,748 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
     }
   }
 
-  // ========================================================================
-  // DERIVED STATE
-  // ========================================================================
-
+  // Derived State
   const enabledApps = useMemo(() => catalog.filter((app) => enabledKeys.includes(app.key)), [catalog, enabledKeys]);
   const filteredCatalog = useMemo(() => {
     const q = appSearch.trim().toLowerCase();
     return catalog.filter((app) => !q || `${app.name} ${app.description}`.toLowerCase().includes(q));
   }, [catalog, appSearch]);
-
   const appSpecificSections = enabledApps.filter((app) => APP_SETTING_DEFINITIONS[app.key]);
 
   const roleLabels = { owner: "Owner", admin: "Admin", manager: "Manager", member: "Member" };
   const roleColors = {
-    owner: "text-amber-600 bg-amber-100 dark:bg-amber-950",
-    admin: "text-red-600 bg-red-100 dark:bg-red-950",
-    manager: "text-blue-600 bg-blue-100 dark:bg-blue-950",
-    member: "text-gray-600 bg-gray-100 dark:bg-gray-800",
+    owner: "text-amber-600 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400",
+    admin: "text-red-600 bg-red-50 dark:bg-red-950/30 dark:text-red-400",
+    manager: "text-blue-600 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-400",
+    member: "text-gray-600 bg-gray-100 dark:bg-gray-800 dark:text-gray-400",
   };
-
-  // ========================================================================
-  // LOADING STATE
-  // ========================================================================
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400">
-        <Loader2 size={24} className="mr-3 animate-spin" />
-        Loading settings...
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-blue-600" />
+        <span className="ml-3 text-sm text-gray-500">Loading settings...</span>
       </div>
     );
   }
 
-  // ========================================================================
-  // RENDER
-  // ========================================================================
-
   return (
-    <div className="max-w-7xl mx-auto py-6">
+    <div className="max-w-6xl mx-auto py-6 px-4">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage your workspace and account preferences.</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <p className="mt-1 text-sm text-gray-500">Manage your workspace and account preferences.</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-400">
+          <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+          {business?.name || "Workspace"}
+        </div>
       </div>
 
-      {/* Error / Notice */}
-      {(error || notice) && (
-        <div className={`mb-6 flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${
-          error
-            ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
-            : "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
-        }`}>
-          <span>{error || notice}</span>
-          <button onClick={() => { setError(""); setNotice(""); }} className="rounded-lg p-1 hover:bg-black/5 dark:hover:bg-white/10">
-            <X size={16} />
-          </button>
+      {/* Notice */}
+      {notice && (
+        <div className="mb-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+          <Check size={16} />
+          {notice}
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+          <AlertCircle size={16} />
+          {error}
         </div>
       )}
 
       {/* Content */}
-      <div>
-        {section === "general" && (
-          <Section title="Business Profile" description="Core identity details used across SaMi.">
-            {/* Logo */}
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900">
-                {logo ? <img src={logo} alt="Business logo" className="h-full w-full object-contain" /> : <Building2 size={30} className="text-gray-400" />}
+      {section === "general" && (
+        <div className="space-y-6">
+          {/* Logo */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex items-start gap-6">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800">
+                {logo ? <img src={logo} alt="Logo" className="h-full w-full object-contain" /> : <Building2 size={28} className="text-gray-400" />}
               </div>
-              <div>
-                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                  <ImagePlus size={16} /> {logo ? "Change logo" : "Add logo"}
+              <div className="flex-1">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  <ImagePlus size={16} /> {logo ? "Change Logo" : "Upload Logo"}
                   <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleLogoChange} className="hidden" />
                 </label>
                 {logo && (
-                  <button type="button" onClick={() => setLogo(null)} className="ml-2 inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800">
-                    <Trash2 size={16} /> Remove
+                  <button onClick={() => setLogo(null)} className="ml-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300">
+                    <Trash2 size={16} className="inline mr-1" /> Remove
                   </button>
                 )}
-                <p className="mt-2 text-xs text-gray-400">PNG, JPG, WEBP or SVG. Maximum 900 KB.</p>
+                <p className="mt-2 text-xs text-gray-400">PNG, JPG, WEBP or SVG. Max 900 KB.</p>
               </div>
             </div>
+          </div>
 
-            {/* Form */}
+          {/* Form */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
             <div className="grid gap-5 md:grid-cols-2">
-              <Field label="Business name" value={name} onChange={setName} placeholder="Acme Corp" />
-              <Field label="Business slug" value={slug} onChange={(v) => setSlug(normalizeSlug(v))} placeholder="acme-corp" />
-              <Field label="Business email" type="email" value={email} onChange={setEmail} placeholder="info@acme.com" />
-              <Field label="Phone" value={phone} onChange={setPhone} placeholder="+254 700 000 000" />
-              <SelectField label="Business type" value={businessType} options={BUSINESS_TYPES} onChange={setBusinessType} placeholder="Select type" />
-              <SelectField label="Industry" value={industry} options={INDUSTRIES} onChange={setIndustry} placeholder="Select industry" />
-              <SelectField label="Country" value={country} options={COUNTRIES} onChange={setCountry} placeholder="Select country" />
-              <SelectField label="Currency" value={currency} options={CURRENCIES} onChange={setCurrency} />
-              <SelectField label="Timezone" value={timezone} options={TIMEZONES} onChange={setTimezone} />
-              <Field label="Tax ID / VAT" value={taxId} onChange={setTaxId} placeholder="TAX-123456" />
-              <Field label="Registration Number" value={registrationNumber} onChange={setRegistrationNumber} placeholder="REG-123456" />
-              <Field label="Website" value={website} onChange={setWebsite} placeholder="https://acme.com" />
-              <Field label="Founded Year" type="number" value={foundedYear?.toString() || ""} onChange={(v) => setFoundedYear(v ? parseInt(v) : null)} placeholder="2020" />
-              <Field label="Employee Count" type="number" value={employeeCount?.toString() || ""} onChange={(v) => setEmployeeCount(v ? parseInt(v) : null)} placeholder="50" />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Name</label>
+                <input value={name} onChange={(e) => setName(e.target.value)} className={inputClass()} placeholder="Acme Corp" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Slug</label>
+                <input value={slug} onChange={(e) => setSlug(normalizeSlug(e.target.value))} className={inputClass()} placeholder="acme-corp" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={inputClass()} placeholder="info@acme.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone</label>
+                <input value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass()} placeholder="+254 700 000 000" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Business Type</label>
+                <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className={inputClass()}>
+                  <option value="">Select type</option>
+                  {BUSINESS_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Industry</label>
+                <select value={industry} onChange={(e) => setIndustry(e.target.value)} className={inputClass()}>
+                  <option value="">Select industry</option>
+                  {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Country</label>
+                <select value={country} onChange={(e) => setCountry(e.target.value)} className={inputClass()}>
+                  <option value="">Select country</option>
+                  {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Currency</label>
+                <select value={currency} onChange={(e) => setCurrency(e.target.value)} className={inputClass()}>
+                  {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Timezone</label>
+                <select value={timezone} onChange={(e) => setTimezone(e.target.value)} className={inputClass()}>
+                  {TIMEZONES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Tax ID / VAT</label>
+                <input value={taxId} onChange={(e) => setTaxId(e.target.value)} className={inputClass()} placeholder="TAX-123456" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Registration Number</label>
+                <input value={registrationNumber} onChange={(e) => setRegistrationNumber(e.target.value)} className={inputClass()} placeholder="REG-123456" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Website</label>
+                <input value={website} onChange={(e) => setWebsite(e.target.value)} className={inputClass()} placeholder="https://acme.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Founded Year</label>
+                <input type="number" value={foundedYear?.toString() || ""} onChange={(e) => setFoundedYear(e.target.value ? parseInt(e.target.value) : null)} className={inputClass()} placeholder="2020" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Employee Count</label>
+                <input type="number" value={employeeCount?.toString() || ""} onChange={(e) => setEmployeeCount(e.target.value ? parseInt(e.target.value) : null)} className={inputClass()} placeholder="50" />
+              </div>
               <div className="md:col-span-2">
-                <label className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-200">Address</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Address</label>
                 <textarea value={address} onChange={(e) => setAddress(e.target.value)} className={inputClass()} rows={3} placeholder="123 Business Street, City, Country" />
               </div>
             </div>
-
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={saveGeneral} disabled={generalSaving} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+            <div className="mt-6 flex justify-end border-t border-gray-100 pt-6 dark:border-gray-800">
+              <button onClick={saveGeneral} disabled={generalSaving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
                 {generalSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {generalSaving ? "Saving..." : "Save Business Profile"}
+                {generalSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
-          </Section>
-        )}
+          </div>
+        </div>
+      )}
 
-        {section === "account" && (
-          <Section title="Account Settings" description="Manage your personal account details and security.">
-            <div className="grid gap-5 md:grid-cols-2">
-              <Field label="Full Name" value={fullName} onChange={setFullName} placeholder="John Doe" />
-              <Field label="Email Address" type="email" value={accountEmail} onChange={setAccountEmail} placeholder="john@acme.com" />
-              <div className="md:col-span-2">
-                <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/50">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Password</p>
-                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">••••••••</p>
-                  </div>
-                  <button type="button" onClick={() => setShowPasswordModal(true)} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                    Change Password
+      {section === "account" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="grid gap-5 md:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
+              <input value={fullName} onChange={(e) => setFullName(e.target.value)} className={inputClass()} placeholder="John Doe" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+              <input type="email" value={accountEmail} onChange={(e) => setAccountEmail(e.target.value)} className={inputClass()} placeholder="john@acme.com" />
+            </div>
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Password</p>
+                  <p className="mt-1 text-xs text-gray-500">••••••••</p>
+                </div>
+                <button onClick={() => setShowPasswordModal(true)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  Change Password
+                </button>
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Two-Factor Authentication</p>
+                  <p className="mt-1 text-xs text-gray-500">Add an extra layer of security</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600">{twoFactorEnabled ? "Enabled" : "Disabled"}</span>
+                  <button
+                    onClick={() => { setTwoFactorEnabled(!twoFactorEnabled); saveAccount(); }}
+                    className={`relative h-6 w-11 rounded-full transition ${twoFactorEnabled ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+                  >
+                    <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${twoFactorEnabled ? "right-1" : "left-1"}`} />
                   </button>
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <SettingRow title="Two-Factor Authentication" description="Add an extra layer of security to your account.">
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 dark:text-gray-300">{twoFactorEnabled ? "Enabled" : "Disabled"}</span>
-                    <Toggle checked={twoFactorEnabled} onChange={() => { setTwoFactorEnabled(!twoFactorEnabled); saveAccount(); }} />
-                  </div>
-                </SettingRow>
+            </div>
+            <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Account Created</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Unknown"}</p>
               </div>
-              <div className="md:col-span-2 grid gap-4 md:grid-cols-3">
-                <Info label="Account Created" value={user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : "Unknown"} />
-                <Info label="Last Login" value={user?.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : "Never"} />
-                <Info label="Email Verified" value={user?.emailVerified ? "Yes ✅" : "No ❌"} />
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Last Login</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{user?.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : "Never"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Email Verified</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{user?.emailVerified ? "✅ Yes" : "❌ No"}</p>
               </div>
             </div>
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={saveAccount} disabled={accountSaving} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {accountSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {accountSaving ? "Saving..." : "Save Account"}
-              </button>
-            </div>
-          </Section>
-        )}
+          </div>
+          <div className="mt-6 flex justify-end border-t border-gray-100 pt-6 dark:border-gray-800">
+            <button onClick={saveAccount} disabled={accountSaving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+              {accountSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {accountSaving ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      )}
 
-        {section === "team" && (
-          <Section title="Team Members" description={`Manage who has access to your workspace. ${team.length} member${team.length === 1 ? "" : "s"}.`}>
+      {section === "team" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="font-medium text-gray-900 dark:text-white">Team Members</h3>
+              <p className="text-sm text-gray-500">{team.filter(m => m.status === "active").length} active members</p>
+            </div>
+            <button onClick={() => setShowInviteModal(true)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <UserPlus size={16} /> Add Member
+            </button>
+          </div>
+          <div className="space-y-3">
+            {team.map((member) => (
+              <div key={member.user_id} className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  <UserRound size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 dark:text-white">{member.full_name}</p>
+                  <p className="text-sm text-gray-500">{member.email}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${roleColors[member.role as keyof typeof roleColors]}`}>
+                  {roleLabels[member.role as keyof typeof roleLabels]}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {section === "billing" && billing && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Crown size={20} className="text-amber-500" />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  {billing.plan === "free" ? "Free" : billing.plan === "pro" ? "Pro" : billing.plan === "business" ? "Business" : "Enterprise"}
+                </h3>
+                <span className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  billing.status === "active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" :
+                  "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                }`}>
+                  {billing.status === "active" ? "Active" : billing.status === "past_due" ? "Past Due" : "Canceled"}
+                </span>
+              </div>
+              {billing.current_period_end && (
+                <p className="mt-2 text-sm text-gray-600">Period ends: {new Date(billing.current_period_end).toLocaleDateString()}</p>
+              )}
+            </div>
+            {billing.plan !== "enterprise" && (
+              <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                {billing.plan === "free" ? "Upgrade Plan" : "Manage Plan"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {section === "appearance" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-500 dark:text-gray-400">{team.filter(m => m.status === "active").length} active members</div>
-              <button type="button" onClick={() => setShowInviteModal(true)} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                <UserPlus size={16} /> Add Member
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Theme</p>
+                <p className="text-sm text-gray-500">System, Light, or Dark mode</p>
+              </div>
+              <select value={String(stored.appearance?.theme ?? "system")} onChange={(e) => updateStored("appearance", "theme", e.target.value)} className={inputClass() + " w-40"}>
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Compact Navigation</p>
+                <p className="text-sm text-gray-500">Tighter sidebar layout</p>
+              </div>
+              <button
+                onClick={() => updateStored("appearance", "compactNav", !Boolean(stored.appearance?.compactNav ?? false))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.appearance?.compactNav ?? false) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.appearance?.compactNav ?? false) ? "right-1" : "left-1"}`} />
               </button>
             </div>
-            <div className="space-y-3">
-              {team.map((member) => (
-                <div key={member.user_id} className="flex items-center gap-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/50">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                    <UserRound size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">{member.full_name}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{member.email}</p>
-                  </div>
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${roleColors[member.role as keyof typeof roleColors]}`}>
-                    {roleLabels[member.role as keyof typeof roleLabels]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
+          </div>
+        </div>
+      )}
 
-        {section === "billing" && billing && (
-          <Section title="Billing & Subscription" description="Manage your plan and subscription.">
-            <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6 dark:border-gray-700 dark:from-blue-950/20 dark:to-indigo-950/20">
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <Crown size={20} className="text-amber-500" />
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                      {billing.plan === "free" ? "Free" : billing.plan === "pro" ? "Pro" : billing.plan === "business" ? "Business" : "Enterprise"}
-                    </h3>
-                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      billing.status === "active" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" :
-                      "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                    }`}>
-                      {billing.status === "active" ? "Active" : billing.status === "past_due" ? "Past Due" : billing.status === "trialing" ? "Trialing" : "Canceled"}
-                    </span>
-                  </div>
-                  {billing.current_period_end && (
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                      Current period ends: {new Date(billing.current_period_end).toLocaleDateString()}
-                    </p>
-                  )}
+      {section === "notifications" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Business Activity</p>
+                <p className="text-sm text-gray-500">Important business notifications</p>
+              </div>
+              <button
+                onClick={() => updateStored("notifications", "businessActivity", !Boolean(stored.notifications?.businessActivity ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.notifications?.businessActivity ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.notifications?.businessActivity ?? true) ? "right-1" : "left-1"}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Invoice Reminders</p>
+                <p className="text-sm text-gray-500">Overdue and upcoming invoice reminders</p>
+              </div>
+              <button
+                onClick={() => updateStored("notifications", "invoiceReminders", !Boolean(stored.notifications?.invoiceReminders ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.notifications?.invoiceReminders ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.notifications?.invoiceReminders ?? true) ? "right-1" : "left-1"}`} />
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">AI Task Completion</p>
+                <p className="text-sm text-gray-500">When SaMi finishes a background task</p>
+              </div>
+              <button
+                onClick={() => updateStored("notifications", "aiTasks", !Boolean(stored.notifications?.aiTasks ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.notifications?.aiTasks ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.notifications?.aiTasks ?? true) ? "right-1" : "left-1"}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {section === "security" && (
+        <div className="space-y-6">
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Account Name</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{user?.fullName || "Not set"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Account Email</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{user?.email || "Not set"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+                <p className="text-xs text-gray-500">Two-Factor Auth</p>
+                <p className="mt-1 font-medium text-gray-900 dark:text-white">{twoFactorEnabled ? "✅ Enabled" : "❌ Disabled"}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Confirm Destructive AI Actions</p>
+                <p className="text-sm text-gray-500">Ask before deleting or overwriting data</p>
+              </div>
+              <button
+                onClick={() => updateStored("security", "confirmDestructiveAi", !Boolean(stored.security?.confirmDestructiveAi ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.security?.confirmDestructiveAi ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.security?.confirmDestructiveAi ?? true) ? "right-1" : "left-1"}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={() => setSection("sessions")} className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              <Monitor size={16} /> Manage Sessions
+            </button>
+            <button onClick={() => setSection("api-keys")} className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              <Key size={16} /> API Keys
+            </button>
+          </div>
+        </div>
+      )}
+
+      {section === "sessions" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="font-medium text-gray-900 dark:text-white">Active Sessions</h3>
+              <p className="text-sm text-gray-500">{sessions.length} active session{sessions.length === 1 ? "" : "s"}</p>
+            </div>
+            {sessions.filter(s => !s.is_current).length > 0 && (
+              <button onClick={revokeAllSessions} className="text-sm text-red-600 hover:text-red-700 dark:text-red-400">Revoke All Other Sessions</button>
+            )}
+          </div>
+          <div className="space-y-3">
+            {sessions.map((session) => (
+              <div key={session.id} className={`flex items-center gap-4 rounded-lg border p-4 ${session.is_current ? "border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20" : "border-gray-200 dark:border-gray-700"}`}>
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-700">
+                  {session.device?.includes("Mobile") ? <Smartphone size={16} /> : session.device?.includes("Tablet") ? <Tablet size={16} /> : <Monitor size={16} />}
                 </div>
-                {billing.plan !== "enterprise" && (
-                  <button className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                    {billing.plan === "free" ? "Upgrade Plan" : "Manage Plan"}
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 dark:text-white">
+                    {session.device || "Unknown Device"}
+                    {session.is_current && <span className="ml-2 text-xs text-blue-600">(Current)</span>}
+                  </p>
+                  <p className="text-sm text-gray-500">{session.browser || "Unknown"} • {session.os || "Unknown"} • {session.location || "Unknown"}</p>
+                  <p className="text-xs text-gray-400">Last active: {new Date(session.last_active).toLocaleString()}</p>
+                </div>
+                {!session.is_current && (
+                  <button onClick={() => revokeSession(session.id)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                    <LogOut size={16} />
                   </button>
                 )}
               </div>
-            </div>
-          </Section>
-        )}
+            ))}
+          </div>
+          <div className="mt-6">
+            <button onClick={() => setSection("security")} className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              <Shield size={16} /> Back to Security
+            </button>
+          </div>
+        </div>
+      )}
 
-        {section === "appearance" && (
-          <Section title="Appearance" description="Interface preferences.">
-            <SettingRow title="Theme" description="Choose the theme used by the workspace.">
-              <Select value={String(stored.appearance?.theme ?? "system")} options={["system", "light", "dark"]} onChange={(v) => updateStored("appearance", "theme", v)} />
-            </SettingRow>
-            <SettingRow title="Compact Navigation" description="Use a tighter sidebar layout.">
-              <Toggle checked={Boolean(stored.appearance?.compactNav ?? false)} onChange={(v) => updateStored("appearance", "compactNav", v)} />
-            </SettingRow>
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={() => saveSection("appearance")} disabled={savingSection === "appearance"} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {savingSection === "appearance" ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {savingSection === "appearance" ? "Saving..." : "Save Appearance"}
-              </button>
+      {section === "api-keys" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h3 className="font-medium text-gray-900 dark:text-white">API Keys</h3>
+              <p className="text-sm text-gray-500">{apiKeys.length} key{apiKeys.length === 1 ? "" : "s"}</p>
             </div>
-          </Section>
-        )}
-
-        {section === "notifications" && (
-          <Section title="Notifications" description="Control what you get notified about.">
-            <SettingRow title="Business Activity" description="Important business activity notifications.">
-              <Toggle checked={Boolean(stored.notifications?.businessActivity ?? true)} onChange={(v) => updateStored("notifications", "businessActivity", v)} />
-            </SettingRow>
-            <SettingRow title="Invoice Reminders" description="Overdue and upcoming invoice reminders.">
-              <Toggle checked={Boolean(stored.notifications?.invoiceReminders ?? true)} onChange={(v) => updateStored("notifications", "invoiceReminders", v)} />
-            </SettingRow>
-            <SettingRow title="AI Task Completion" description="When SaMi finishes a background task.">
-              <Toggle checked={Boolean(stored.notifications?.aiTasks ?? true)} onChange={(v) => updateStored("notifications", "aiTasks", v)} />
-            </SettingRow>
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={() => saveSection("notifications")} disabled={savingSection === "notifications"} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {savingSection === "notifications" ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {savingSection === "notifications" ? "Saving..." : "Save Notifications"}
-              </button>
-            </div>
-          </Section>
-        )}
-
-        {section === "security" && (
-          <Section title="Security" description="Advanced security settings and access controls.">
-            <div className="grid gap-4 md:grid-cols-3">
-              <Info label="Account Name" value={user?.fullName || "Not set"} />
-              <Info label="Account Email" value={user?.email || "Not set"} />
-              <Info label="Two-Factor Auth" value={twoFactorEnabled ? "Enabled ✅" : "Disabled ❌"} />
-            </div>
-            <SettingRow title="Confirm Destructive AI Actions" description="Ask before performing actions that can delete or overwrite data.">
-              <Toggle checked={Boolean(stored.security?.confirmDestructiveAi ?? true)} onChange={(v) => updateStored("security", "confirmDestructiveAi", v)} />
-            </SettingRow>
-            <div className="flex gap-3">
-              <button type="button" onClick={() => setSection("sessions")} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-                <Monitor size={16} /> Manage Sessions
-              </button>
-              <button type="button" onClick={() => setSection("api-keys")} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-                <Key size={16} /> API Keys
-              </button>
-            </div>
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={() => saveSection("security")} disabled={savingSection === "security"} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {savingSection === "security" ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {savingSection === "security" ? "Saving..." : "Save Security"}
-              </button>
-            </div>
-          </Section>
-        )}
-
-        {section === "sessions" && (
-          <Section title="Login Sessions" description="View and manage your active sessions.">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{sessions.length} active session{sessions.length === 1 ? "" : "s"}</p>
-              {sessions.filter(s => !s.is_current).length > 0 && (
-                <button type="button" onClick={revokeAllSessions} className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300">
-                  Revoke All Other Sessions
-                </button>
-              )}
-            </div>
-            <div className="space-y-3">
-              {sessions.map((session) => (
-                <div key={session.id} className={`flex items-center gap-4 rounded-xl border p-4 ${
-                  session.is_current ? "border-blue-200 bg-blue-50 dark:border-blue-900/60 dark:bg-blue-950/20" : "border-gray-200 bg-gray-50/70 dark:border-gray-700 dark:bg-gray-900/50"
-                }`}>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-200 dark:bg-gray-700">
-                    {session.device?.includes("Mobile") ? <Smartphone size={18} /> : session.device?.includes("Tablet") ? <Tablet size={18} /> : <Monitor size={18} />}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">
-                      {session.device || "Unknown Device"}
-                      {session.is_current && <span className="ml-2 text-xs font-medium text-blue-600 dark:text-blue-400">(Current)</span>}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{session.browser || "Unknown"} • {session.os || "Unknown"} • {session.location || "Unknown"}</p>
-                    <p className="text-xs text-gray-400">Last active: {new Date(session.last_active).toLocaleString()}</p>
-                  </div>
-                  {!session.is_current && (
-                    <button type="button" onClick={() => revokeSession(session.id)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20">
-                      <LogOut size={16} />
+            <button onClick={() => setShowApiKeyModal(true)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+              <Plus size={16} /> Create Key
+            </button>
+          </div>
+          {newApiKey && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={18} className="mt-0.5 text-amber-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-amber-800 dark:text-amber-200">Your new API key</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-300">Copy this key now. It won't be shown again.</p>
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-white p-3 dark:bg-gray-950">
+                    <code className="flex-1 text-sm font-mono text-gray-900 break-all">{newApiKey}</code>
+                    <button onClick={() => { navigator.clipboard.writeText(newApiKey); setNotice("Copied!"); }} className="rounded p-2 text-gray-400 hover:text-gray-600">
+                      <Copy size={16} />
                     </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            <div className="flex justify-start pt-4">
-              <button type="button" onClick={() => setSection("security")} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-                <Shield size={16} /> Back to Security
-              </button>
-            </div>
-          </Section>
-        )}
-
-        {section === "api-keys" && (
-          <Section title="API Keys" description="Manage API access tokens.">
-            <div className="flex justify-between items-center">
-              <p className="text-sm text-gray-500 dark:text-gray-400">{apiKeys.length} API key{apiKeys.length === 1 ? "" : "s"}</p>
-              <button type="button" onClick={() => setShowApiKeyModal(true)} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
-                <Plus size={16} /> Create API Key
-              </button>
-            </div>
-            {newApiKey && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-                <div className="flex items-start gap-3">
-                  <AlertCircle size={18} className="mt-0.5 text-amber-600 dark:text-amber-400" />
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-amber-800 dark:text-amber-200">Your new API key</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300">Copy this key now. It won't be shown again.</p>
-                    <div className="mt-2 flex items-center gap-2 rounded-xl bg-white p-3 dark:bg-gray-950">
-                      <code className="flex-1 text-sm font-mono text-gray-900 dark:text-white break-all">{newApiKey}</code>
-                      <button type="button" onClick={() => { navigator.clipboard.writeText(newApiKey); setNotice("API key copied."); }} className="rounded-lg p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                        <Copy size={16} />
-                      </button>
-                    </div>
                   </div>
-                  <button type="button" onClick={() => setNewApiKey(null)} className="rounded-lg p-1 text-amber-600 hover:bg-amber-200/50 dark:text-amber-400">
-                    <X size={16} />
-                  </button>
                 </div>
+                <button onClick={() => setNewApiKey(null)} className="rounded p-1 text-amber-600 hover:bg-amber-200/50">
+                  <X size={16} />
+                </button>
               </div>
-            )}
-            <div className="space-y-3">
-              {apiKeys.map((key) => (
-                <div key={key.id} className="flex items-center gap-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-900/50">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gray-200 dark:bg-gray-700">
-                    <Key size={18} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">{key.name}</p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">{key.key_preview}</p>
-                    <p className="text-xs text-gray-400">Created {new Date(key.created_at).toLocaleDateString()}{key.last_used && ` • Last used ${new Date(key.last_used).toLocaleDateString()}`}</p>
-                  </div>
-                  <button type="button" onClick={() => deleteApiKey(key.id)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20">
-                    <Trash2 size={16} />
-                  </button>
+            </div>
+          )}
+          <div className="space-y-3">
+            {apiKeys.map((key) => (
+              <div key={key.id} className="flex items-center gap-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-700">
+                  <Key size={16} />
                 </div>
-              ))}
-            </div>
-            <div className="flex justify-start pt-4">
-              <button type="button" onClick={() => setSection("security")} className="flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
-                <Shield size={16} /> Back to Security
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-gray-900 dark:text-white">{key.name}</p>
+                  <p className="text-sm text-gray-500">{key.key_preview}</p>
+                  <p className="text-xs text-gray-400">Created {new Date(key.created_at).toLocaleDateString()}{key.last_used && ` • Last used ${new Date(key.last_used).toLocaleDateString()}`}</p>
+                </div>
+                <button onClick={() => deleteApiKey(key.id)} className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="mt-6">
+            <button onClick={() => setSection("security")} className="flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+              <Shield size={16} /> Back to Security
+            </button>
+          </div>
+        </div>
+      )}
+
+      {section === "data" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">AI Memory</p>
+                <p className="text-sm text-gray-500">Remember business context between conversations</p>
+              </div>
+              <button
+                onClick={() => updateStored("data", "aiMemory", !Boolean(stored.data?.aiMemory ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.data?.aiMemory ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.data?.aiMemory ?? true) ? "right-1" : "left-1"}`} />
               </button>
             </div>
-          </Section>
-        )}
-
-        {section === "data" && (
-          <Section title="Data & AI" description="Control how SaMi uses your data and AI.">
-            <SettingRow title="AI Memory" description="Allow SaMi to remember business context between conversations.">
-              <Toggle checked={Boolean(stored.data?.aiMemory ?? true)} onChange={(v) => updateStored("data", "aiMemory", v)} />
-            </SettingRow>
-            <SettingRow title="AI App Context" description="Let SaMi use data from your enabled apps when answering questions.">
-              <Toggle checked={Boolean(stored.data?.appContext ?? true)} onChange={(v) => updateStored("data", "appContext", v)} />
-            </SettingRow>
-            <SettingRow title="Activity History" description="Keep workspace activity history available for review.">
-              <Toggle checked={Boolean(stored.data?.activityHistory ?? true)} onChange={(v) => updateStored("data", "activityHistory", v)} />
-            </SettingRow>
-            <div className="flex justify-end pt-4">
-              <button type="button" onClick={() => saveSection("data")} disabled={savingSection === "data"} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {savingSection === "data" ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                {savingSection === "data" ? "Saving..." : "Save Data & AI"}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">AI App Context</p>
+                <p className="text-sm text-gray-500">Use data from enabled apps when answering</p>
+              </div>
+              <button
+                onClick={() => updateStored("data", "appContext", !Boolean(stored.data?.appContext ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.data?.appContext ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.data?.appContext ?? true) ? "right-1" : "left-1"}`} />
               </button>
             </div>
-          </Section>
-        )}
-
-        {section === "apps" && (
-          <Section title="Apps & Modules" description={`${enabledApps.length} app${enabledApps.length === 1 ? "" : "s"} currently enabled.`}>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <input value={appSearch} onChange={(e) => setAppSearch(e.target.value)} placeholder="Search apps..." className={inputClass()} />
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-medium text-gray-900 dark:text-white">Activity History</p>
+                <p className="text-sm text-gray-500">Keep workspace activity history</p>
+              </div>
+              <button
+                onClick={() => updateStored("data", "activityHistory", !Boolean(stored.data?.activityHistory ?? true))}
+                className={`relative h-6 w-11 rounded-full transition ${Boolean(stored.data?.activityHistory ?? true) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+              >
+                <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(stored.data?.activityHistory ?? true) ? "right-1" : "left-1"}`} />
+              </button>
             </div>
-            <div className="space-y-6">
-              {APP_CATEGORIES.map((category) => {
-                const apps = filteredCatalog.filter((app) => app.category === category.key);
-                if (!apps.length) return null;
-                return (
-                  <div key={category.key}>
-                    <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.14em] text-gray-400">{category.name}</h3>
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {apps.map((app) => {
-                        const enabled = enabledKeys.includes(app.key);
-                        return (
-                          <button key={app.key} type="button" disabled={appsSaving} onClick={() => updateApps(enabled ? enabledKeys.filter((key) => key !== app.key) : [...enabledKeys, app.key])} className={`flex items-center gap-3 rounded-xl border p-4 text-left transition ${
-                            enabled ? "border-blue-500/50 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-950/20" : "border-gray-200 bg-white hover:border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:hover:border-gray-600"
-                          }`}>
-                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${enabled ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                              <AppWindow size={18} />
-                            </div>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-sm font-semibold text-gray-900 dark:text-white">{app.name}</span>
-                              <span className="mt-1 block text-xs leading-5 text-gray-500 dark:text-gray-400">{app.description}</span>
-                            </span>
-                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${enabled ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                              {enabled ? "Enabled" : "Add"}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
+          </div>
+        </div>
+      )}
+
+      {section === "apps" && (
+        <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+          <div className="mb-6">
+            <h3 className="font-medium text-gray-900 dark:text-white">Apps & Modules</h3>
+            <p className="text-sm text-gray-500">{enabledApps.length} app{enabledApps.length === 1 ? "" : "s"} enabled</p>
+          </div>
+          <div className="mb-4">
+            <input value={appSearch} onChange={(e) => setAppSearch(e.target.value)} placeholder="Search apps..." className={inputClass() + " max-w-sm"} />
+          </div>
+          <div className="space-y-6">
+            {APP_CATEGORIES.map((category) => {
+              const apps = filteredCatalog.filter((app) => app.category === category.key);
+              if (!apps.length) return null;
+              return (
+                <div key={category.key}>
+                  <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400">{category.name}</h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {apps.map((app) => {
+                      const enabled = enabledKeys.includes(app.key);
+                      return (
+                        <button
+                          key={app.key}
+                          onClick={() => updateApps(enabled ? enabledKeys.filter((k) => k !== app.key) : [...enabledKeys, app.key])}
+                          disabled={appsSaving}
+                          className={`flex items-center gap-3 rounded-lg border p-4 text-left transition ${enabled ? "border-blue-500 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-950/20" : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"}`}
+                        >
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${enabled ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                            <AppWindow size={16} />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</p>
+                            <p className="text-xs text-gray-500">{app.description}</p>
+                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${enabled ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                            {enabled ? "Enabled" : "Add"}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-            <p className="text-xs text-gray-400">App changes are saved immediately.</p>
-          </Section>
-        )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-xs text-gray-400">App changes are saved immediately.</p>
+        </div>
+      )}
 
-        {section.startsWith("app:") && (() => {
-          const appKey = section.slice(4);
-          const app = enabledApps.find((item) => item.key === appKey);
-          const definition = APP_SETTING_DEFINITIONS[appKey];
-          if (!app) return <Section title="App Unavailable" description="This app is not enabled."><button onClick={() => setSection("apps")} className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white">Manage Apps</button></Section>;
-          if (!definition) return <Section title={`${app.name} Settings`} description="No settings registered yet."><div className="rounded-xl bg-gray-50 p-5 text-sm text-gray-600 dark:bg-gray-900 dark:text-gray-300">App-specific controls will appear here.</div></Section>;
-          return (
-            <Section title={`${definition.label} Settings`} description={definition.description}>
+      {section.startsWith("app:") && (() => {
+        const appKey = section.slice(4);
+        const app = enabledApps.find((item) => item.key === appKey);
+        const definition = APP_SETTING_DEFINITIONS[appKey];
+        if (!app) return <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900"><p className="text-gray-500">App not enabled.</p></div>;
+        if (!definition) return <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900"><p className="text-gray-500">No settings available for this app.</p></div>;
+        return (
+          <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-900">
+            <h3 className="font-medium text-gray-900 dark:text-white">{definition.label} Settings</h3>
+            <p className="mb-6 text-sm text-gray-500">{definition.description}</p>
+            <div className="space-y-4">
               {definition.fields.map((field) => {
                 const current = stored[appKey]?.[field.key] ?? field.defaultValue;
                 return (
-                  <SettingRow key={field.key} title={field.label} description={`Default for ${definition.label}.`}>
+                  <div key={field.key} className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-white">{field.label}</p>
+                      <p className="text-sm text-gray-500">Default for {definition.label}</p>
+                    </div>
                     {field.type === "boolean" ? (
-                      <Toggle checked={Boolean(current)} onChange={(v) => updateStored(appKey, field.key, v)} />
+                      <button
+                        onClick={() => updateStored(appKey, field.key, !Boolean(current))}
+                        className={`relative h-6 w-11 rounded-full transition ${Boolean(current) ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-600"}`}
+                      >
+                        <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${Boolean(current) ? "right-1" : "left-1"}`} />
+                      </button>
                     ) : field.type === "select" ? (
-                      <Select value={String(current)} options={field.options ?? []} onChange={(v) => updateStored(appKey, field.key, v)} />
-                    ) : field.type === "textarea" ? (
-                      <textarea value={String(current)} onChange={(e) => updateStored(appKey, field.key, e.target.value)} className={`${inputClass()} max-w-xs`} rows={3} />
+                      <select value={String(current)} onChange={(e) => updateStored(appKey, field.key, e.target.value)} className={inputClass() + " w-48"}>
+                        {field.options?.map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
                     ) : (
-                      <input type={field.type} value={String(current)} onChange={(e) => updateStored(appKey, field.key, field.type === "number" ? Number(e.target.value) : e.target.value)} className={`${inputClass()} max-w-xs`} />
+                      <input
+                        type={field.type}
+                        value={String(current)}
+                        onChange={(e) => updateStored(appKey, field.key, field.type === "number" ? Number(e.target.value) : e.target.value)}
+                        className={inputClass() + " w-48"}
+                      />
                     )}
-                  </SettingRow>
+                  </div>
                 );
               })}
-              <div className="flex justify-end pt-4">
-                <button type="button" onClick={() => saveSection(appKey)} disabled={savingSection === appKey} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                  {savingSection === appKey ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                  {savingSection === appKey ? "Saving..." : `Save ${definition.label}`}
-                </button>
-              </div>
-            </Section>
-          );
-        })()}
-      </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modals */}
       {showInviteModal && (
-        <Modal title="Add Team Member" onClose={() => setShowInviteModal(false)}>
-          <div className="space-y-4">
-            <Field label="Email Address" type="email" value={inviteEmail} onChange={setInviteEmail} placeholder="colleague@company.com" />
-            <SelectField label="Role" value={inviteRole} options={["admin", "manager", "member"]} onChange={(v) => setInviteRole(v as "admin" | "manager" | "member")} />
-            <div className="flex justify-end gap-3 pt-4">
-              <button type="button" onClick={() => setShowInviteModal(false)} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
-              <button type="button" onClick={inviteTeamMember} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                <Send size={16} /> Add Member
-              </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 dark:bg-gray-900">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Add Team Member</h3>
+              <button onClick={() => setShowInviteModal(false)} className="rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className={inputClass()} placeholder="colleague@company.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
+                <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as "admin" | "manager" | "member")} className={inputClass()}>
+                  <option value="admin">Admin</option>
+                  <option value="manager">Manager</option>
+                  <option value="member">Member</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button onClick={() => setShowInviteModal(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700">Cancel</button>
+                <button onClick={inviteTeamMember} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  <Send size={16} /> Add Member
+                </button>
+              </div>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
 
       {showApiKeyModal && (
-        <Modal title="Create API Key" onClose={() => setShowApiKeyModal(false)}>
-          <div className="space-y-4">
-            <Field label="Key Name" value={apiKeyName} onChange={setApiKeyName} placeholder="Production API Key" />
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-200">Permissions</label>
-              <div className="space-y-2">
-                {["read", "write", "admin"].map((perm) => (
-                  <label key={perm} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={apiKeyPermissions.includes(perm)} onChange={(e) => {
-                      if (e.target.checked) setApiKeyPermissions([...apiKeyPermissions, perm]);
-                      else setApiKeyPermissions(apiKeyPermissions.filter(p => p !== perm));
-                    }} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="capitalize">{perm}</span>
-                  </label>
-                ))}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 dark:bg-gray-900">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Create API Key</h3>
+              <button onClick={() => setShowApiKeyModal(false)} className="rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Key Name</label>
+                <input value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} className={inputClass()} placeholder="Production Key" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Permissions</label>
+                <div className="space-y-2 mt-2">
+                  {["read", "write", "admin"].map((perm) => (
+                    <label key={perm} className="flex items-center gap-2 text-sm">
+                      <input type="checkbox" checked={apiKeyPermissions.includes(perm)} onChange={(e) => {
+                        if (e.target.checked) setApiKeyPermissions([...apiKeyPermissions, perm]);
+                        else setApiKeyPermissions(apiKeyPermissions.filter(p => p !== perm));
+                      }} className="rounded border-gray-300 text-blue-600" />
+                      <span className="capitalize">{perm}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <button onClick={() => setShowApiKeyModal(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50">Cancel</button>
+                <button onClick={createApiKey} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
+                  <Key size={16} /> Create Key
+                </button>
               </div>
             </div>
-            <div className="flex justify-end gap-3 pt-4">
-              <button type="button" onClick={() => setShowApiKeyModal(false)} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
-              <button type="button" onClick={createApiKey} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                <Key size={16} /> Create Key
-              </button>
-            </div>
           </div>
-        </Modal>
+        </div>
       )}
 
       {showPasswordModal && (
-        <Modal title="Change Password" onClose={() => setShowPasswordModal(false)}>
-          <div className="space-y-4">
-            <Field label="Current Password" type={showPassword ? "text" : "password"} value={currentPassword} onChange={setCurrentPassword} placeholder="Enter current password" />
-            <Field label="New Password" type={showPassword ? "text" : "password"} value={newPassword} onChange={setNewPassword} placeholder="Enter new password (min 8 characters)" />
-            <Field label="Confirm New Password" type={showPassword ? "text" : "password"} value={confirmPassword} onChange={setConfirmPassword} placeholder="Confirm new password" />
-            <button type="button" onClick={() => setShowPassword(!showPassword)} className="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              {showPassword ? "Hide" : "Show"} passwords
-            </button>
-            <div className="flex justify-end gap-3 pt-4">
-              <button type="button" onClick={() => setShowPasswordModal(false)} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">Cancel</button>
-              <button type="button" onClick={saveAccount} disabled={accountSaving} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
-                {accountSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                Update Password
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 dark:bg-gray-900">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Change Password</h3>
+              <button onClick={() => setShowPasswordModal(false)} className="rounded p-1 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={20} /></button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Current Password</label>
+                <input type={showPassword ? "text" : "password"} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className={inputClass()} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">New Password</label>
+                <input type={showPassword ? "text" : "password"} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className={inputClass()} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Confirm Password</label>
+                <input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={inputClass()} />
+              </div>
+              <button onClick={() => setShowPassword(!showPassword)} className="text-sm text-gray-500 hover:text-gray-700">
+                {showPassword ? "Hide" : "Show"} passwords
               </button>
+              <div className="flex justify-end gap-3 pt-4">
+                <button onClick={() => setShowPasswordModal(false)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50">Cancel</button>
+                <button onClick={saveAccount} disabled={accountSaving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
+                  {accountSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  Update Password
+                </button>
+              </div>
             </div>
           </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// ============================================================================
-// SUB-COMPONENTS
-// ============================================================================
-
-function Section({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-900">
-      <div className="border-b border-gray-200 px-6 py-5 dark:border-gray-700">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white">{title}</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>
-      </div>
-      <div className="space-y-5 p-6">{children}</div>
-    </div>
-  );
-}
-
-function SettingRow({ title, description, children }: { title: string; description: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-4 rounded-xl border border-gray-200 bg-gray-50/70 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-900/50">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-900 dark:text-white">{title}</p>
-        <p className="mt-1 max-w-2xl text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</p>
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
-}
-
-function Field({ label, value, onChange, type = "text", placeholder = "" }: {
-  label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-200">{label}</span>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className={inputClass()} />
-    </label>
-  );
-}
-
-function SelectField({ label, value, options, onChange, placeholder = "" }: {
-  label: string; value: string; options: string[]; onChange: (value: string) => void; placeholder?: string;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-2 block text-sm font-medium text-gray-800 dark:text-gray-200">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass()}>
-        {placeholder && <option value="">{placeholder}</option>}
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function Select({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
-  return (
-    <div className="relative">
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={`${inputClass()} appearance-none pr-10 min-w-[120px]`}>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
-    </div>
-  );
-}
-
-function Toggle({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) {
-  return (
-    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`relative h-7 w-12 rounded-full transition ${checked ? "bg-blue-600" : "bg-gray-300 dark:bg-gray-700"}`}>
-      <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${checked ? "left-6" : "left-1"}`} />
-    </button>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">{value}</p>
-    </div>
-  );
-}
-
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl dark:bg-gray-900">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-gray-950 dark:text-white">{title}</h3>
-          <button type="button" onClick={onClose} className="rounded-lg p-1 hover:bg-gray-100 dark:hover:bg-gray-800">
-            <X size={20} />
-          </button>
         </div>
-        {children}
-      </div>
+      )}
     </div>
   );
 }
