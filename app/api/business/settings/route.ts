@@ -18,7 +18,7 @@ async function ensureSettingsTable() {
 async function getBusinessForUser(userId: string) {
   const result = await postgresAdmin.query(
     `SELECT 
-       b.id, b.name, b.slug, b.email, b.phone, b.logo, b.status,
+       b.id, b.name, b.slug, b.email, b.phone, b.logo_url, b.status,
        b.type, b.country, b.currency, b.timezone,
        b.tax_id, b.registration_number, b.website, b.address,
        b.industry, b.founded_year, b.employee_count, b.updated_at
