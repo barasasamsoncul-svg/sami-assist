@@ -38,6 +38,8 @@ import {
   Utensils,
   Wrench,
   X,
+  Plus,
+  CreditCard,
   LayoutDashboard,
 MessageSquare,
 Workflow,
@@ -78,6 +80,44 @@ const SETTINGS_MENU = [
   { id: "security", label: "Security", icon: ShieldCheck },
   { id: "data", label: "Data & Privacy", icon: Folder },
   { id: "apps", label: "Apps", icon: Package },
+];
+
+const INVOICING_MENU = [
+  {
+    id: "invoice-overview",
+    label: "Overview",
+    icon: LayoutDashboard,
+  },
+  {
+    id: "invoices",
+    label: "All Invoices",
+    icon: Receipt,
+  },
+  {
+    id: "create-invoice",
+    label: "Create Invoice",
+    icon: Plus,
+  },
+  {
+    id: "invoice-customers",
+    label: "Customers",
+    icon: Users,
+  },
+  {
+    id: "invoice-payments",
+    label: "Payments",
+    icon: CreditCard,
+  },
+  {
+    id: "invoice-products",
+    label: "Products & Services",
+    icon: Package,
+  },
+  {
+    id: "invoice-settings",
+    label: "Invoice Settings",
+    icon: Settings,
+  },
 ];
 
 const ICONS: Record<string, React.ElementType> = {
@@ -133,6 +173,7 @@ type MainSidebarProps = {
   isMobile: boolean;
   expandedCategories: Record<string, boolean>;
   isSettingsMenuOpen: boolean;
+  isInvoicingMenuOpen: boolean;
   appsByCategory: Map<SamiAppCategory, SamiApp[]>;
   sidebarOpen: boolean;
 
@@ -141,6 +182,7 @@ type MainSidebarProps = {
   onSettingsMenuChange: (open: boolean) => void;
   onSidebarChange: (open: boolean) => void;
   onCategoryToggle: (category: SamiAppCategory) => void;
+  onInvoicingMenuChange: (open: boolean) => void;
 };
 export const MainSidebar = ({
   activePage,
@@ -152,10 +194,12 @@ export const MainSidebar = ({
   isMobile,
   expandedCategories,
   isSettingsMenuOpen,
+  isInvoicingMenuOpen,
   appsByCategory,
   onNavigation,
   onSettingsSectionChange,
   onSettingsMenuChange,
+  onInvoicingMenuChange,
   onSidebarChange,
   onCategoryToggle,
   sidebarOpen,
@@ -456,6 +500,101 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
         </div>
       )}
     </div>
+
+{/* INVOICING */}
+<div className="mt-7 border-t border-white/[0.06] pt-4">
+  <button
+    type="button"
+    onClick={() =>
+      onInvoicingMenuChange(!isInvoicingMenuOpen)
+    }
+    className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+      isInvoicingMenuOpen ||
+      activePage === "invoicing" ||
+      activePage.startsWith("invoice-") ||
+      activePage === "invoices" ||
+      activePage === "create-invoice"
+        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
+        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+    }`}
+  >
+    <Receipt
+      size={19}
+      className={
+        isInvoicingMenuOpen ||
+        activePage === "invoicing" ||
+        activePage.startsWith("invoice-") ||
+        activePage === "invoices" ||
+        activePage === "create-invoice"
+          ? "text-white"
+          : "text-slate-500 group-hover:text-slate-300"
+      }
+    />
+
+    <span className="flex-1">
+      Invoicing
+    </span>
+
+    <ChevronDown
+      size={16}
+      className={`transition-transform ${
+        isInvoicingMenuOpen
+          ? "rotate-180"
+          : ""
+      }`}
+    />
+  </button>
+
+  {isInvoicingMenuOpen && (
+    <div className="mt-2 space-y-1 pl-4">
+      {INVOICING_MENU.map((item) => {
+        const Icon = item.icon;
+
+        const isActive =
+          activePage === item.id;
+
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => {
+              onNavigation(item.id);
+
+              if (isMobile) {
+                onSidebarChange(false);
+              }
+            }}
+            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
+              isActive
+                ? "bg-blue-600/20 text-blue-400"
+                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+            }`}
+          >
+            <Icon
+              size={16}
+              className={
+                isActive
+                  ? "text-blue-400"
+                  : "text-slate-500 group-hover:text-slate-300"
+              }
+            />
+
+            <span className="flex-1">
+              {item.label}
+            </span>
+
+            {isActive && (
+              <ChevronRight
+                size={14}
+                className="text-blue-400/70"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  )}
+</div>
 
  {/* SETTINGS DROPDOWN */}
 <div className="mt-7 border-t border-white/[0.06] pt-4">

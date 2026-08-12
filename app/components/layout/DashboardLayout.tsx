@@ -253,6 +253,8 @@ useState(false);
 const [expandedCategories, setExpandedCategories] =
 useState<Record<string, boolean>>({});
 const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+const [isInvoicingMenuOpen, setIsInvoicingMenuOpen] =
+  useState(false);
 const [settingsSection, setSettingsSection] = useState("general");
 /*
 
@@ -1498,7 +1500,7 @@ switch (activePage) {
           }
         />
       );
-      
+
     case "settings":
   return (
     <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
@@ -1569,11 +1571,13 @@ return ( <div className="fixed inset-0 flex overflow-hidden bg-gray-50 dark:bg-g
   isMobile={isMobile}
   expandedCategories={expandedCategories}
   isSettingsMenuOpen={isSettingsMenuOpen}
+  isInvoicingMenuOpen={isInvoicingMenuOpen}
   appsByCategory={appsByCategory}
   sidebarOpen={sidebarOpen}
   onNavigation={handleNavigation}
  onSettingsSectionChange={setSettingsSection}
   onSettingsMenuChange={setIsSettingsMenuOpen}
+  onInvoicingMenuChange={setIsInvoicingMenuOpen}
   onSidebarChange={setSidebarOpen}
   onCategoryToggle={toggleCategory}
 />
