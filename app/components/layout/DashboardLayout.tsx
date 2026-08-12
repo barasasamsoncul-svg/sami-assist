@@ -1498,7 +1498,17 @@ switch (activePage) {
           }
         />
       );
-    case "general":
+      
+    case "settings":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-5xl">
+        <SettingsPanel initialSection={settingsSection} />
+      </div>
+    </div>
+  );
+
+case "general":
 case "account":
 case "team":
 case "billing":
