@@ -55,7 +55,7 @@ type BusinessSettings = {
   slug: string;
   email: string | null;
   phone: string | null;
-  logo: string | null;
+  logo_url: string | null;
   status: string;
   type: string | null;
   country: string | null;
@@ -296,6 +296,8 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [logo, setLogo] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+const [uploadingLogo, setUploadingLogo] = useState(false);
   const [businessType, setBusinessType] = useState("");
   const [country, setCountry] = useState("");
   const [currency, setCurrency] = useState("");
@@ -307,6 +309,7 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   const [industry, setIndustry] = useState("");
   const [foundedYear, setFoundedYear] = useState<number | null>(null);
   const [employeeCount, setEmployeeCount] = useState<number | null>(null);
+
 
   // Account form
   const [fullName, setFullName] = useState("");
@@ -358,7 +361,7 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
       setSlug(data.business.slug || "");
       setEmail(data.business.email || "");
       setPhone(data.business.phone || "");
-      setLogo(data.business.logo || null);
+      setLogo(data.business.logo_url || null);
       setBusinessType(data.business.type || "");
       setCountry(data.business.country || "");
       setCurrency(data.business.currency || "KES");
@@ -385,40 +388,124 @@ export default function SettingsPanel({ initialSection = "general" }: { initialS
   useEffect(() => { load(); }, []);
   useEffect(() => setSection(initialSection as SectionKey), [initialSection]);
 
-  // Business Profile
-  async function saveGeneral() {
-    try {
-      setGeneralSaving(true);
-      setError("");
-      setNotice("");
-      const response = await fetch("/api/business/settings", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name, slug, email, phone, logo, type: businessType, country, currency, timezone, taxId, registrationNumber, website, address, industry, foundedYear, employeeCount }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success || !data.business) throw new Error(data.error || "Could not save business profile.");
-      setBusiness(data.business);
-      setNotice("Business profile updated.");
-      setTimeout(() => setNotice(""), 3000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save business profile.");
-    } finally {
-      setGeneralSaving(false);
+ /// Business Profile
+async function saveGeneral() {
+  try {
+    setGeneralSaving(true);
+    setError("");
+    setNotice("");
+
+    let logoUrl = logo;
+
+    // Upload the newly selected logo first
+    if (logoFile) {
+  setUploadingLogo(true);
+
+  logoUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+      } else {
+        reject(new Error("Could not read the logo file."));
+      }
+    };
+
+    reader.onerror = () => {
+      reject(new Error("Could not read the logo file."));
+    };
+
+    reader.readAsDataURL(logoFile);
+  });
+}
+
+    // Save the business profile and logo URL
+    const response = await fetch("/api/business/settings", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+      body: JSON.stringify({
+        name,
+        slug,
+        email,
+        phone,
+        logo_url: logoUrl,
+        type: businessType,
+        country,
+        currency,
+        timezone,
+        taxId,
+        registrationNumber,
+        website,
+        address,
+        industry,
+        foundedYear,
+        employeeCount,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success || !data.business) {
+      throw new Error(
+        data.error || "Could not save business profile."
+      );
     }
+
+    setBusiness(data.business);
+
+    // Use the permanent database URL after saving
+    setLogo(data.business.logo_url ?? null);
+    setLogoFile(null);
+
+    setNotice("Business profile updated.");
+    setTimeout(() => setNotice(""), 3000);
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Could not save business profile."
+    );
+  } finally {
+    setUploadingLogo(false);
+    setGeneralSaving(false);
+  }
+}
+
+const handleLogoChange = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0];
+
+  if (!file) return;
+
+  const allowedTypes = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/svg+xml",
+  ];
+
+  if (!allowedTypes.includes(file.type)) {
+    alert("Please select a PNG, JPG, WEBP or SVG image.");
+    event.target.value = "";
+    return;
   }
 
-  function handleLogoChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) return setError("Please select an image file.");
-    if (file.size > MAX_LOGO_BYTES) return setError("Logo must be smaller than 900 KB.");
-    const reader = new FileReader();
-    reader.onload = () => { if (typeof reader.result === "string") setLogo(reader.result); };
-    reader.readAsDataURL(file);
+  if (file.size > 900 * 1024) {
+    alert("Logo must be smaller than 900 KB.");
     event.target.value = "";
+    return;
   }
+
+  setLogoFile(file);
+
+  const previewUrl = URL.createObjectURL(file);
+  setLogo(previewUrl);
+};
 
   // Account
   async function saveAccount() {
