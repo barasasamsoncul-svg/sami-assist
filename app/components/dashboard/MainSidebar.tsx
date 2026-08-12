@@ -483,7 +483,7 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
             onClick={() => {
               onSettingsSectionChange(item.id);
               onNavigation(item.id);
-              onSettingsMenuChange(false);
+              onSettingsMenuChange(true);
               if (isMobile) onSidebarChange(false);
             }}
             className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-medium transition-all ${
