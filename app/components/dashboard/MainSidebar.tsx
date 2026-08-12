@@ -69,11 +69,15 @@ const CORE_NAV = [
 ];
 
 const SETTINGS_MENU = [
-  {
-    id: "settings",
-    label: "Settings",
-    icon: Settings,
-  },
+  { id: "general", label: "General", icon: Settings },
+  { id: "account", label: "Account", icon: UserRound },
+  { id: "team", label: "Team", icon: Users },
+  { id: "billing", label: "Billing", icon: Receipt },
+  { id: "appearance", label: "Appearance", icon: Sparkles },
+  { id: "notifications", label: "Notifications", icon: Mail },
+  { id: "security", label: "Security", icon: ShieldCheck },
+  { id: "data", label: "Data & Privacy", icon: Folder },
+  { id: "apps", label: "Apps", icon: Package },
 ];
 
 const ICONS: Record<string, React.ElementType> = {
