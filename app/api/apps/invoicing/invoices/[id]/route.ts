@@ -5,10 +5,11 @@ import { getUserIdFromRequest } from "@/lib/auth-helpers";
 // GET: Get single invoice by ID with items
 export async function GET(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = await getUserIdFromRequest(req);
+
         if (!userId) {
             return NextResponse.json(
                 { error: "Unauthorized" },
@@ -17,20 +18,22 @@ export async function GET(
         }
 
         const { pool } = await getTenantDatabaseForUser(userId);
-        const invoiceId = params.id;
 
-        // Get invoice with customer info
+        const { id: invoiceId } = await params;
+
+        // Get invoice with customer information
         const invoiceResult = await pool.query(
             `SELECT 
                 i.*,
-                c.company_name as customer_name,
-                c.email as customer_email,
-                c.phone as customer_phone,
+                c.company_name AS customer_name,
+                c.email AS customer_email,
+                c.phone AS customer_phone,
                 c.billing_address,
                 c.shipping_address,
-                c.tax_id as customer_tax_id
+                c.tax_id AS customer_tax_id
             FROM public.invoices i
-            LEFT JOIN public.customers c ON i.customer_id = c.id
+            LEFT JOIN public.customers c 
+                ON i.customer_id = c.id
             WHERE i.id = $1`,
             [invoiceId]
         );
@@ -46,10 +49,11 @@ export async function GET(
         const itemsResult = await pool.query(
             `SELECT 
                 ii.*,
-                p.name as product_name,
-                p.sku as product_sku
+                p.name AS product_name,
+                p.sku AS product_sku
             FROM public.invoice_items ii
-            LEFT JOIN public.products p ON ii.product_id = p.id
+            LEFT JOIN public.products p 
+                ON ii.product_id = p.id
             WHERE ii.invoice_id = $1
             ORDER BY ii.sort_order`,
             [invoiceId]
@@ -61,6 +65,7 @@ export async function GET(
         });
     } catch (error) {
         console.error("Error fetching invoice:", error);
+
         return NextResponse.json(
             { error: "Failed to fetch invoice" },
             { status: 500 }
@@ -71,10 +76,11 @@ export async function GET(
 // PUT: Update invoice (draft only)
 export async function PUT(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = await getUserIdFromRequest(req);
+
         if (!userId) {
             return NextResponse.json(
                 { error: "Unauthorized" },
@@ -83,12 +89,16 @@ export async function PUT(
         }
 
         const { pool } = await getTenantDatabaseForUser(userId);
-        const invoiceId = params.id;
+
+        const { id: invoiceId } = await params;
+
         const body = await req.json();
 
         // Check if invoice exists and is in draft status
         const checkResult = await pool.query(
-            `SELECT status FROM public.invoices WHERE id = $1`,
+            `SELECT status 
+             FROM public.invoices 
+             WHERE id = $1`,
             [invoiceId]
         );
 
@@ -120,16 +130,13 @@ export async function PUT(
             taxCalculationMethod,
         } = body;
 
-        // Start transaction
         const client = await pool.connect();
 
         try {
             await client.query("BEGIN");
 
-            // Recalculate totals if items are provided
             let subtotal = 0;
             let totalTax = 0;
-            let totalDiscount = 0;
             let processedItems: any[] = [];
 
             if (items && Array.isArray(items) && items.length > 0) {
@@ -137,23 +144,36 @@ export async function PUT(
                     const quantity = parseFloat(item.quantity) || 1;
                     const unitPrice = parseFloat(item.unitPrice) || 0;
                     const taxRate = parseFloat(item.taxRate) || 0;
-                    const itemDiscountType = item.discountType || null;
-                    const itemDiscountValue = parseFloat(item.discountValue) || 0;
+
+                    const itemDiscountType =
+                        item.discountType || null;
+
+                    const itemDiscountValue =
+                        parseFloat(item.discountValue) || 0;
 
                     let itemDiscount = 0;
+
                     if (itemDiscountType === "percentage") {
-                        itemDiscount = (unitPrice * quantity * itemDiscountValue) / 100;
+                        itemDiscount =
+                            (unitPrice *
+                                quantity *
+                                itemDiscountValue) /
+                            100;
                     } else if (itemDiscountType === "fixed") {
                         itemDiscount = itemDiscountValue;
                     }
 
-                    const lineTotalBeforeTax = (unitPrice * quantity) - itemDiscount;
-                    const taxAmount = (lineTotalBeforeTax * taxRate) / 100;
-                    const lineTotal = lineTotalBeforeTax + taxAmount;
+                    const lineTotalBeforeTax =
+                        unitPrice * quantity - itemDiscount;
+
+                    const taxAmount =
+                        (lineTotalBeforeTax * taxRate) / 100;
+
+                    const lineTotal =
+                        lineTotalBeforeTax + taxAmount;
 
                     subtotal += unitPrice * quantity;
                     totalTax += taxAmount;
-                    totalDiscount += itemDiscount;
 
                     return {
                         ...item,
@@ -168,16 +188,24 @@ export async function PUT(
                     };
                 });
 
-                // Apply invoice-level discount
+                // Calculate invoice-level discount
                 let invoiceDiscountAmount = 0;
+
                 if (discountType === "percentage") {
-                    invoiceDiscountAmount = (subtotal * parseFloat(discountValue || 0)) / 100;
+                    invoiceDiscountAmount =
+                        (subtotal *
+                            parseFloat(discountValue || 0)) /
+                        100;
                 } else if (discountType === "fixed") {
-                    invoiceDiscountAmount = parseFloat(discountValue || 0);
+                    invoiceDiscountAmount =
+                        parseFloat(discountValue || 0);
                 }
 
-                const totalAfterDiscount = subtotal - invoiceDiscountAmount;
-                const totalAmount = totalAfterDiscount + totalTax;
+                const subtotalAfterDiscount =
+                    subtotal - invoiceDiscountAmount;
+
+                const totalAmount =
+                    subtotalAfterDiscount + totalTax;
 
                 // Update invoice
                 await client.query(
@@ -211,22 +239,24 @@ export async function PUT(
                         invoiceDiscountAmount,
                         taxCalculationMethod || null,
                         totalTax,
-                        subtotal - invoiceDiscountAmount,
+                        subtotalAfterDiscount,
                         totalAmount,
                         notes || null,
                         invoiceId,
                     ]
                 );
 
-                // Delete existing items
+                // Remove existing invoice items
                 await client.query(
-                    `DELETE FROM public.invoice_items WHERE invoice_id = $1`,
+                    `DELETE FROM public.invoice_items 
+                     WHERE invoice_id = $1`,
                     [invoiceId]
                 );
 
-                // Insert updated items
+                // Insert updated invoice items
                 for (let i = 0; i < processedItems.length; i++) {
                     const item = processedItems[i];
+
                     await client.query(
                         `INSERT INTO public.invoice_items (
                             invoice_id,
@@ -240,7 +270,20 @@ export async function PUT(
                             tax_amount,
                             line_total,
                             sort_order
-                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                        )
+                        VALUES (
+                            $1,
+                            $2,
+                            $3,
+                            $4,
+                            $5,
+                            $6,
+                            $7,
+                            $8,
+                            $9,
+                            $10,
+                            $11
+                        )`,
                         [
                             invoiceId,
                             item.description,
@@ -257,7 +300,7 @@ export async function PUT(
                     );
                 }
             } else {
-                // Update only invoice header without items
+                // Update invoice header only
                 await client.query(
                     `UPDATE public.invoices SET
                         customer_id = COALESCE($1, customer_id),
@@ -284,18 +327,22 @@ export async function PUT(
 
             await client.query("COMMIT");
 
-            // Fetch updated invoice with items
+            // Fetch updated invoice
             const invoiceResult = await client.query(
-                `SELECT i.*, c.company_name as customer_name
+                `SELECT 
+                    i.*,
+                    c.company_name AS customer_name
                  FROM public.invoices i
-                 LEFT JOIN public.customers c ON i.customer_id = c.id
+                 LEFT JOIN public.customers c 
+                    ON i.customer_id = c.id
                  WHERE i.id = $1`,
                 [invoiceId]
             );
 
             const itemsResult = await client.query(
-                `SELECT * FROM public.invoice_items 
-                 WHERE invoice_id = $1 
+                `SELECT *
+                 FROM public.invoice_items
+                 WHERE invoice_id = $1
                  ORDER BY sort_order`,
                 [invoiceId]
             );
@@ -304,7 +351,6 @@ export async function PUT(
                 ...invoiceResult.rows[0],
                 items: itemsResult.rows,
             });
-
         } catch (error) {
             await client.query("ROLLBACK");
             throw error;
@@ -313,6 +359,7 @@ export async function PUT(
         }
     } catch (error) {
         console.error("Error updating invoice:", error);
+
         return NextResponse.json(
             { error: "Failed to update invoice" },
             { status: 500 }
@@ -323,10 +370,11 @@ export async function PUT(
 // DELETE: Delete invoice (draft only)
 export async function DELETE(
     req: NextRequest,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const userId = await getUserIdFromRequest(req);
+
         if (!userId) {
             return NextResponse.json(
                 { error: "Unauthorized" },
@@ -335,11 +383,14 @@ export async function DELETE(
         }
 
         const { pool } = await getTenantDatabaseForUser(userId);
-        const invoiceId = params.id;
+
+        const { id: invoiceId } = await params;
 
         // Check if invoice exists and is in draft status
         const checkResult = await pool.query(
-            `SELECT status FROM public.invoices WHERE id = $1`,
+            `SELECT status
+             FROM public.invoices
+             WHERE id = $1`,
             [invoiceId]
         );
 
@@ -357,9 +408,11 @@ export async function DELETE(
             );
         }
 
-        // Delete invoice (items will be deleted via CASCADE)
+        // Delete invoice.
+        // Invoice items are expected to be removed through CASCADE.
         await pool.query(
-            `DELETE FROM public.invoices WHERE id = $1`,
+            `DELETE FROM public.invoices
+             WHERE id = $1`,
             [invoiceId]
         );
 
@@ -369,6 +422,7 @@ export async function DELETE(
         );
     } catch (error) {
         console.error("Error deleting invoice:", error);
+
         return NextResponse.json(
             { error: "Failed to delete invoice" },
             { status: 500 }
