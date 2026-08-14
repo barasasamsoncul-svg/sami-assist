@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import ChatWindow from "../dashboard/ChatWindow";
 import Customers from "../dashboard/customers";
-import Invoices from "@/app/dashboard/invoices";
+import Invoices from "@/app/components/layout/invoices";
 import SettingsPanel from "@/app/settings/page";
 import { MainSidebar } from "../dashboard/MainSidebar";
 
@@ -1470,14 +1470,21 @@ switch (activePage) {
         </div>
       );
 
-    case "invoicing":
-      return (
-        <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
-          <div className="mx-auto max-w-7xl">
-            <Invoices />
-          </div>
-        </div>
-      );
+      case "invoice-overview":
+case "invoicing":
+case "invoices":
+case "create-invoice":
+case "invoice-customers":
+case "invoice-payments":
+case "invoice-products":
+case "invoice-settings":
+  return (
+    <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
+      <div className="mx-auto max-w-7xl">
+        <Invoices activePage={activePage} />
+      </div>
+    </div>
+  );
 
     case "inventory":
       return (

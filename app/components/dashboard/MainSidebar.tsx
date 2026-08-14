@@ -196,16 +196,27 @@ export const MainSidebar = ({
   isSettingsMenuOpen,
   isInvoicingMenuOpen,
   appsByCategory,
+  sidebarOpen,
   onNavigation,
   onSettingsSectionChange,
   onSettingsMenuChange,
   onInvoicingMenuChange,
   onSidebarChange,
   onCategoryToggle,
-  sidebarOpen,
-}: MainSidebarProps) => (
-<aside
-className={`         fixed inset-y-0 left-0 z-50
+}: MainSidebarProps) => {
+  const isInvoiceSection =
+    activePage === "invoicing" ||
+    activePage === "invoice-overview" ||
+    activePage === "invoices" ||
+    activePage === "create-invoice" ||
+    activePage === "invoice-customers" ||
+    activePage === "invoice-payments" ||
+    activePage === "invoice-products" ||
+    activePage === "invoice-settings";
+
+  return (
+    <aside
+      className={`fixed inset-y-0 left-0 z-50
         flex w-[285px] flex-col
         border-r border-white/10
         bg-[#07111f]
@@ -499,7 +510,7 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
           )}
         </div>
       )}
-    </div>
+    </div> 
 
 {/* INVOICING */}
 <div className="mt-7 border-t border-white/[0.06] pt-4">
@@ -509,11 +520,7 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
       onInvoicingMenuChange(!isInvoicingMenuOpen)
     }
     className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
-      isInvoicingMenuOpen ||
-      activePage === "invoicing" ||
-      activePage.startsWith("invoice-") ||
-      activePage === "invoices" ||
-      activePage === "create-invoice"
+      isInvoiceSection
         ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
         : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
     }`}
@@ -521,11 +528,7 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
     <Receipt
       size={19}
       className={
-        isInvoicingMenuOpen ||
-        activePage === "invoicing" ||
-        activePage.startsWith("invoice-") ||
-        activePage === "invoices" ||
-        activePage === "create-invoice"
+        isInvoiceSection
           ? "text-white"
           : "text-slate-500 group-hover:text-slate-300"
       }
@@ -663,7 +666,7 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
       </div>
     </div>
   </div>
-    </div>
-</aside>
-
-);
+       </div>
+    </aside>
+  );
+};

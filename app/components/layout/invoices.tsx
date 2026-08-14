@@ -1,4 +1,3 @@
-
 "use client";
 import { toPng } from "html-to-image";
 import {
@@ -35,6 +34,13 @@ import {
   Wallet,
   X,
   ImageIcon,
+  Package,
+  Settings,
+  Building2,
+  Bell,
+  Save,
+  Trash2,
+  LayoutDashboard,
 } from "lucide-react";
 
 type InvoiceStatus =
@@ -198,7 +204,21 @@ function StatCard({
   );
 }
 
-export default function Invoices() {
+type InvoicePage =
+  | "invoice-overview"
+  | "invoicing"
+  | "invoices"
+  | "create-invoice"
+  | "invoice-customers"
+  | "invoice-payments"
+  | "invoice-products"
+  | "invoice-settings";
+
+interface InvoicesProps {
+  activePage: InvoicePage;
+}
+
+export default function Invoices({ activePage }: InvoicesProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -208,7 +228,15 @@ export default function Invoices() {
   const [selected, setSelected] = useState<InvoiceDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [section, setSection] = useState<"overview" | "customers" | "payments">("overview");
+  const [section, setSection] = useState<"overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice">(
+  activePage === "invoice-customers" ? "customers" :
+  activePage === "invoice-payments" ? "payments" :
+  activePage === "invoice-products" ? "products" :
+  activePage === "invoice-settings" ? "settings" :
+  activePage === "invoices" ? "all-invoices" :
+  activePage === "create-invoice" ? "create-invoice" :
+  "overview"
+);
 
   const loadInvoices = useCallback(async () => {
     try {
@@ -296,6 +324,7 @@ export default function Invoices() {
     });
   }, [invoices, search, filter]);
 
+  // Section: Customers
   if (section === "customers") {
     return (
       <InvoicingSectionShell section={section} setSection={setSection}>
@@ -304,6 +333,7 @@ export default function Invoices() {
     );
   }
 
+  // Section: Payments
   if (section === "payments") {
     return (
       <InvoicingSectionShell section={section} setSection={setSection}>
@@ -312,6 +342,46 @@ export default function Invoices() {
     );
   }
 
+  // Section: Products
+  if (section === "products") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <ProductsManager />
+      </InvoicingSectionShell>
+    );
+  }
+
+  // Section: Settings
+  if (section === "settings") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <SettingsManager />
+      </InvoicingSectionShell>
+    );
+  }
+
+  // Section: All Invoices
+  if (section === "all-invoices") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <AllInvoicesView onOpenInvoice={openInvoice} />
+      </InvoicingSectionShell>
+    );
+  }
+
+  // Section: Create Invoice
+  if (section === "create-invoice") {
+    return (
+      <InvoicingSectionShell section={section} setSection={setSection}>
+        <CreateInvoicePage onCreated={async () => {
+          await loadInvoices();
+          setSection("all-invoices");
+        }} />
+      </InvoicingSectionShell>
+    );
+  }
+
+  // Section: Overview (default)
   if (selected || detailLoading) {
     return (
       <InvoiceDetailsView
@@ -369,7 +439,7 @@ export default function Invoices() {
         </div>
 
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={() => setSection("create-invoice")}
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900"
         >
           <Plus size={17} />
@@ -442,7 +512,7 @@ export default function Invoices() {
         <div className="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
           <div>
             <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
-              Invoice register
+              Recent invoices
             </h2>
             <p className="mt-1 text-xs text-gray-500">
               {filteredInvoices.length} invoice
@@ -478,6 +548,13 @@ export default function Invoices() {
                 </option>
               ))}
             </select>
+
+            <button
+              onClick={() => setSection("all-invoices")}
+              className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            >
+              View All
+            </button>
           </div>
         </div>
 
@@ -503,7 +580,7 @@ export default function Invoices() {
 
             {!search && filter === "all" && (
               <button
-                onClick={() => setShowCreate(true)}
+                onClick={() => setSection("create-invoice")}
                 className="mt-4 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900"
               >
                 <Plus size={15} className="mr-1 inline" />
@@ -602,19 +679,76 @@ export default function Invoices() {
           </div>
         )}
       </section>
-
-      {showCreate && (
-        <CreateInvoiceModal
-          onClose={() => setShowCreate(false)}
-          onCreated={async () => {
-            setShowCreate(false);
-            await loadInvoices();
-          }}
-        />
-      )}
     </div>
   );
 }
+
+// ==========================================
+// INVOICING NAV
+// ==========================================
+
+function InvoicingNav({
+  section,
+  setSection,
+}: {
+  section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice";
+  setSection: (section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice") => void;
+}) {
+  const items = [
+    ["overview", "Overview", LayoutDashboard],
+    ["all-invoices", "All Invoices", Receipt],
+    ["create-invoice", "Create Invoice", Plus],
+    ["customers", "Customers", Users],
+    ["payments", "Payments", CreditCard],
+    ["products", "Products", Package],
+    ["settings", "Settings", Settings],
+  ] as const;
+
+  return (
+    <nav className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
+      {items.map(([key, label, Icon]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => setSection(key)}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            section === key
+              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+          }`}
+        >
+          <Icon size={16} />
+          {label}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
+// ==========================================
+// INVOICING SECTION SHELL
+// ==========================================
+
+function InvoicingSectionShell({
+  section,
+  setSection,
+  children,
+}: {
+  section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice";
+  setSection: (section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice") => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="space-y-6 text-gray-900 dark:text-gray-100">
+      <InvoicingNav section={section} setSection={setSection} />
+      {children}
+    </div>
+  );
+}
+
+// ==========================================
+// INVOICE DETAILS VIEW
+// ==========================================
 
 function InvoiceDetailsView({
   invoice,
@@ -899,6 +1033,10 @@ function InvoiceDetailsView({
   );
 }
 
+// ==========================================
+// SUMMARY CARD
+// ==========================================
+
 function SummaryCard({
   label,
   value,
@@ -916,6 +1054,10 @@ function SummaryCard({
   );
 }
 
+// ==========================================
+// SUMMARY ROW
+// ==========================================
+
 function SummaryRow({
   label,
   value,
@@ -931,7 +1073,9 @@ function SummaryRow({
   );
 }
 
-
+// ==========================================
+// RECORD PAYMENT MODAL
+// ==========================================
 
 function RecordPaymentModal({
   invoice,
@@ -992,6 +1136,10 @@ function RecordPaymentModal({
   );
 }
 
+// ==========================================
+// EXPORT INVOICE CSV
+// ==========================================
+
 function exportInvoiceCsv(invoice: InvoiceDetails) {
   const rows = [
     ["Invoice", invoice.invoice_number],
@@ -1022,6 +1170,10 @@ function exportInvoiceCsv(invoice: InvoiceDetails) {
   URL.revokeObjectURL(url);
 }
 
+// ==========================================
+// PRINT INVOICE
+// ==========================================
+
 function printInvoice(invoice: InvoiceDetails) {
   const items = (invoice.invoice_items || []).map((item) => `<tr><td>${escapeHtml(item.description)}</td><td>${item.quantity}</td><td>${money(item.unit_price)}</td><td>${item.tax_rate}%</td><td>${money(item.line_total)}</td></tr>`).join("");
   const html = `<!doctype html><html><head><title>${escapeHtml(invoice.invoice_number)}</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}h1{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:24px}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}th:nth-child(n+2),td:nth-child(n+2){text-align:right}.totals{margin:24px 0 0 auto;max-width:320px}.row{display:flex;justify-content:space-between;padding:5px}.grand{font-weight:700;border-top:2px solid #111;padding-top:10px}</style></head><body><h1>${escapeHtml(invoice.invoice_number)}</h1><p>${escapeHtml(invoice.customer?.company_name || "")} · ${escapeHtml(invoice.customer?.email || "")} · ${escapeHtml(invoice.customer?.phone || "")}</p><p>Issued: ${escapeHtml(dateText(invoice.issue_date))} · Due: ${escapeHtml(dateText(invoice.due_date))}</p><table><thead><tr><th>Description</th><th>Qty</th><th>Unit price</th><th>Tax</th><th>Total</th></tr></thead><tbody>${items}</tbody></table><div class="totals"><div class="row"><span>Subtotal</span><span>${money(invoice.subtotal)}</span></div><div class="row"><span>Tax</span><span>${money(invoice.tax_amount)}</span></div><div class="row grand"><span>Total</span><span>${money(invoice.total_amount)}</span></div><div class="row"><span>Paid</span><span>${money(invoice.amount_paid)}</span></div><div class="row"><span>Balance due</span><span>${money(invoice.amount_due)}</span></div></div>${invoice.notes ? `<p><strong>Notes:</strong><br>${escapeHtml(invoice.notes).replace(/\n/g,"<br>")}</p>` : ""}</body></html>`;
@@ -1030,9 +1182,18 @@ function printInvoice(invoice: InvoiceDetails) {
   win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 250);
 }
 
+// ==========================================
+// ESCAPE HTML
+// ==========================================
+
 function escapeHtml(value: string) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] || char));
 }
+
+// ==========================================
+// SHARE INVOICE MODAL
+// ==========================================
+
 function ShareInvoiceModal({
   invoice,
   onClose,
@@ -1116,9 +1277,7 @@ Please find invoice ${invoice.invoice_number} for ${money(
   )}.
 Amount paid: ${money(invoice.amount_paid)}
 Balance due: ${money(invoice.amount_due)}
-Due date: ${dateText(invoice.due_date)}${
-    extra ? `\n\n${extra}` : ""
-  }
+Due date: ${dateText(invoice.due_date)}${extra ? `\n\n${extra}` : ""}
 
 Thank you.`;
 
@@ -1731,56 +1890,9 @@ Thank you.`;
   );
 }
 
-function InvoicingNav({
-  section,
-  setSection,
-}: {
-  section: "overview" | "customers" | "payments";
-  setSection: (section: "overview" | "customers" | "payments") => void;
-}) {
-  const items = [
-    ["overview", "Invoices", Receipt],
-    ["customers", "Customers", Users],
-    ["payments", "Payments", CreditCard],
-  ] as const;
-
-  return (
-    <nav className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
-      {items.map(([key, label, Icon]) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => setSection(key)}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-            section === key
-              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-          }`}
-        >
-          <Icon size={16} />
-          {label}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-function InvoicingSectionShell({
-  section,
-  setSection,
-  children,
-}: {
-  section: "overview" | "customers" | "payments";
-  setSection: (section: "overview" | "customers" | "payments") => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-6 text-gray-900 dark:text-gray-100">
-      <InvoicingNav section={section} setSection={setSection} />
-      {children}
-    </div>
-  );
-}
+// ==========================================
+// CUSTOMER MANAGER
+// ==========================================
 
 function CustomerManager() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -1900,6 +2012,10 @@ function CustomerManager() {
   );
 }
 
+// ==========================================
+// CUSTOMER FORM MODAL
+// ==========================================
+
 function CustomerFormModal({
   form, setForm, editing, saving, onClose, onSave,
 }: {
@@ -1915,6 +2031,10 @@ function CustomerFormModal({
   );
   return <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4"><div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100"><div className="flex items-center justify-between border-b p-5 dark:border-gray-800"><div><h2 className="font-bold">{editing ? "Edit customer" : "Add customer"}</h2><p className="text-xs text-gray-500">Fields match the invoicing customers schema.</p></div><button onClick={onClose}><X size={19}/></button></div><div className="grid min-h-0 gap-4 overflow-y-auto p-5 sm:grid-cols-2">{field("company_name", "Company name")}{field("contact_name", "Contact name")}{field("email", "Email", "email")}{field("phone", "Phone")}{field("address", "Address")}{field("status", "Status")}</div><div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800"><button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button><button disabled={saving} onClick={onSave} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">{saving ? "Saving…" : editing ? "Save changes" : "Add customer"}</button></div></div></div>;
 }
+
+// ==========================================
+// PAYMENTS MANAGER
+// ==========================================
 
 function PaymentsManager({ onOpenInvoice }: { onOpenInvoice: (id: string) => Promise<void> }) {
   const [payments, setPayments] = useState<Array<Record<string, any>>>([]);
@@ -1935,139 +2055,236 @@ function PaymentsManager({ onOpenInvoice }: { onOpenInvoice: (id: string) => Pro
   return <div className="space-y-6 text-gray-900 dark:text-gray-100"><header><p className="text-sm text-gray-500 dark:text-gray-400">Invoicing · Payments</p><h1 className="mt-1 text-2xl font-bold">Payments</h1><p className="mt-1 text-sm text-gray-500">Track money received against invoices.</p></header>{error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}<section className="grid gap-4 sm:grid-cols-2"><StatCard label="Payments recorded" value={String(payments.length)} icon={CreditCard}/><StatCard label="Total received" value={money(total)} icon={Wallet}/></section><section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"><div className="border-b p-4 dark:border-gray-800"><h2 className="font-semibold">Payment register</h2></div>{loading ? <div className="p-10 text-center text-sm text-gray-500">Loading payments…</div> : payments.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No payments recorded yet.</div> : <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm text-gray-900 dark:text-gray-100"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Invoice</th><th className="px-5 py-3">Customer</th><th className="px-5 py-3">Amount</th><th className="px-5 py-3">Method</th><th className="px-5 py-3">Reference</th><th className="px-5 py-3">Date</th><th className="px-5 py-3">Status</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{payments.map((p) => <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40"><td className="px-5 py-4"><button onClick={() => onOpenInvoice(p.invoice_id)} className="font-semibold text-blue-600 hover:underline">{p.invoice_number}</button></td><td className="px-5 py-4">{p.company_name || "—"}</td><td className="px-5 py-4 font-semibold">{money(p.amount)}</td><td className="px-5 py-4 capitalize">{p.payment_method}</td><td className="px-5 py-4">{p.transaction_reference || "—"}</td><td className="px-5 py-4">{dateText(p.payment_date)}</td><td className="px-5 py-4 capitalize">{p.status}</td></tr>)}</tbody></table></div>}</section></div>;
 }
 
-function CreateInvoiceModal({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: () => Promise<void>;
-}) {
+// ==========================================
+// ALL INVOICES VIEW
+// ==========================================
+
+function AllInvoicesView({ onOpenInvoice }: { onOpenInvoice: (id: string) => Promise<void> }) {
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<string>("all");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const limit = 20;
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const params = new URLSearchParams();
+      if (search) params.append("search", search);
+      if (filter !== "all") params.append("status", filter);
+      params.append("page", String(page));
+      params.append("limit", String(limit));
+
+      const res = await fetch(`/api/invoices?${params.toString()}`, { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load invoices.");
+      setInvoices(data.invoices || []);
+      setTotal(data.pagination?.total || data.invoices?.length || 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load invoices.");
+    } finally {
+      setLoading(false);
+    }
+  }, [search, filter, page]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <p className="text-sm text-gray-500">Invoicing · All Invoices</p>
+        <h1 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">All Invoices</h1>
+        <p className="mt-1 text-sm text-gray-500">View and manage all your invoices in one place.</p>
+      </header>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search invoices..."
+            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          />
+        </div>
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+        >
+          <option value="all">All Statuses</option>
+          <option value="draft">Draft</option>
+          <option value="sent">Sent</option>
+          <option value="viewed">Viewed</option>
+          <option value="partially_paid">Partially Paid</option>
+          <option value="paid">Paid</option>
+          <option value="overdue">Overdue</option>
+          <option value="cancelled">Cancelled</option>
+          <option value="void">Void</option>
+        </select>
+      </div>
+
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        {loading ? (
+          <div className="flex min-h-[300px] items-center justify-center">
+            <Loader2 size={28} className="animate-spin text-gray-400" />
+          </div>
+        ) : invoices.length === 0 ? (
+          <div className="flex min-h-[300px] flex-col items-center justify-center text-center p-6">
+            <FileText size={32} className="text-gray-400" />
+            <h3 className="mt-4 font-semibold text-gray-900 dark:text-white">No invoices found</h3>
+            <p className="mt-1 text-sm text-gray-500">Try changing your search or filter.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1000px] text-left">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50">
+                <tr>
+                  <th className="px-5 py-3.5">Invoice</th>
+                  <th className="px-5 py-3.5">Customer</th>
+                  <th className="px-5 py-3.5">Date</th>
+                  <th className="px-5 py-3.5">Due</th>
+                  <th className="px-5 py-3.5 text-right">Total</th>
+                  <th className="px-5 py-3.5 text-right">Balance</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y dark:divide-gray-800">
+                {invoices.map((invoice) => (
+                  <tr key={invoice.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" onClick={() => onOpenInvoice(invoice.id)}>
+                    <td className="px-5 py-4 text-sm font-semibold">{invoice.invoice_number}</td>
+                    <td className="px-5 py-4 text-sm">{invoice.customer?.company_name || "—"}</td>
+                    <td className="px-5 py-4 text-sm text-gray-500">{dateText(invoice.issue_date)}</td>
+                    <td className="px-5 py-4 text-sm text-gray-500">{dateText(invoice.due_date)}</td>
+                    <td className="px-5 py-4 text-sm font-semibold text-right">{money(invoice.total_amount)}</td>
+                    <td className="px-5 py-4 text-sm font-semibold text-right">{money(invoice.amount_due)}</td>
+                    <td className="px-5 py-4">
+                      <span className={`px-2.5 py-1 text-xs rounded-full ${statusClass(getDisplayStatus(invoice))}`}>
+                        {LABELS[getDisplayStatus(invoice)]}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4"><ChevronRight size={17} className="text-gray-400" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">Showing {((page - 1) * limit) + 1} to {Math.min(page * limit, total)} of {total}</p>
+          <div className="flex gap-2">
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-3 py-1 border rounded-lg disabled:opacity-50">Previous</button>
+            <span className="px-3 py-1 text-sm">Page {page} of {totalPages}</span>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-3 py-1 border rounded-lg disabled:opacity-50">Next</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==========================================
+// CREATE INVOICE PAGE
+// ==========================================
+
+function CreateInvoicePage({ onCreated }: { onCreated: () => Promise<void> }) {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customerId, setCustomerId] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<DraftItem[]>([
-    {
-      description: "",
-      quantity: "1",
-      unit_price: "0",
-      tax_rate: "0",
-    },
-  ]);
-  const [loadingCustomers, setLoadingCustomers] = useState(true);
+  const [products, setProducts] = useState<any[]>([]);
+  const [paymentTerms, setPaymentTerms] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [poNumber, setPoNumber] = useState("");
+  const [notes, setNotes] = useState("");
+  const [items, setItems] = useState<DraftItem[]>([
+    { description: "", quantity: "1", unit_price: "0", tax_rate: "0" },
+  ]);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   useEffect(() => {
-    const loadCustomers = async () => {
+    const loadData = async () => {
       try {
-        const response = await fetch("/api/customers", {
-          credentials: "include",
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.error || "Failed to load customers."
-          );
-        }
-
-        setCustomers(
-          Array.isArray(data) ? data : data.customers || []
-        );
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to load customers."
-        );
+        setLoading(true);
+        const [customersRes, productsRes, termsRes] = await Promise.all([
+          fetch("/api/customers", { credentials: "include" }),
+          fetch("/api/products", { credentials: "include" }),
+          fetch("/api/payment-terms", { credentials: "include" }),
+        ]);
+        const customersData = await customersRes.json();
+        const productsData = await productsRes.json();
+        const termsData = await termsRes.json();
+        setCustomers(customersData.customers || []);
+        setProducts(productsData.products || []);
+        setPaymentTerms(termsData.paymentTerms || []);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load data.");
       } finally {
-        setLoadingCustomers(false);
+        setLoading(false);
       }
     };
-
-    loadCustomers();
+    loadData();
   }, []);
 
-  const updateItem = (
-    index: number,
-    field: keyof DraftItem,
-    value: string
-  ) => {
-    setItems((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index
-          ? { ...item, [field]: value }
-          : item
-      )
-    );
+  const updateItem = (index: number, field: keyof DraftItem, value: string) => {
+    setItems((current) => current.map((item, i) => i === index ? { ...item, [field]: value } : item));
   };
 
-  const subtotal = items.reduce(
-    (sum, item) =>
-      sum +
-      Number(item.quantity || 0) *
-        Number(item.unit_price || 0),
-    0
-  );
+  const addItem = () => {
+    setItems([...items, { description: "", quantity: "1", unit_price: "0", tax_rate: "0" }]);
+  };
 
+  const removeItem = (index: number) => {
+    if (items.length <= 1) return;
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const subtotal = items.reduce((sum, item) => sum + Number(item.quantity || 0) * Number(item.unit_price || 0), 0);
   const tax = items.reduce((sum, item) => {
-    const line =
-      Number(item.quantity || 0) *
-      Number(item.unit_price || 0);
-
-    return (
-      sum +
-      (line * Number(item.tax_rate || 0)) / 100
-    );
+    const line = Number(item.quantity || 0) * Number(item.unit_price || 0);
+    return sum + (line * Number(item.tax_rate || 0)) / 100;
   }, 0);
-
   const total = subtotal + tax;
 
-  const selectedCustomer = customers.find(
-    (customer) => customer.id === customerId
-  );
+  const handleCustomerChange = (id: string) => {
+    setCustomerId(id);
+    const customer = customers.find(c => c.id === id);
+    setSelectedCustomer(customer || null);
+  };
 
   const submit = async () => {
     try {
       setSaving(true);
       setError("");
-
-      if (!customerId) {
-        throw new Error("Select a customer.");
+      if (!customerId) throw new Error("Select a customer.");
+      if (items.some(item => !item.description.trim())) throw new Error("Every invoice item needs a description.");
+      if (items.some(item => Number(item.quantity) <= 0 || Number(item.unit_price) < 0 || Number(item.tax_rate) < 0)) {
+        throw new Error("Check quantity, price and tax values.");
       }
 
-      if (items.some((item) => !item.description.trim())) {
-        throw new Error(
-          "Every invoice item needs a description."
-        );
-      }
-
-      if (
-        items.some(
-          (item) =>
-            Number(item.quantity) <= 0 ||
-            Number(item.unit_price) < 0 ||
-            Number(item.tax_rate) < 0
-        )
-      ) {
-        throw new Error(
-          "Check quantity, price and tax values."
-        );
-      }
-
-      const response = await fetch("/api/invoices", {
+      const res = await fetch("/api/invoices", {
         method: "POST",
         credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_id: customerId,
           due_date: dueDate || null,
+          po_number: poNumber || null,
           notes: notes.trim() || null,
-          items: items.map((item) => ({
+          items: items.map(item => ({
             description: item.description.trim(),
             quantity: Number(item.quantity),
             unit_price: Number(item.unit_price),
@@ -2075,381 +2292,527 @@ function CreateInvoiceModal({
           })),
         }),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || "Failed to create invoice."
-        );
-      }
-
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create invoice.");
       await onCreated();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create invoice."
-      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create invoice.");
     } finally {
       setSaving(false);
     }
   };
 
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-[400px]"><Loader2 size={28} className="animate-spin text-gray-400" /></div>;
+  }
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-3 sm:p-6">
-      <div className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-gray-950">
-        <header className="flex items-center justify-between border-b border-gray-200 p-5 dark:border-gray-800">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-              Create invoice
-            </h2>
-            <p className="mt-1 text-xs text-gray-500">
-              Customer, line items, tax, payment terms and notes.
-            </p>
+    <div className="space-y-6">
+      <header>
+        <p className="text-sm text-gray-500">Invoicing · Create Invoice</p>
+        <h1 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">Create Invoice</h1>
+        <p className="mt-1 text-sm text-gray-500">Create a new invoice for your customer.</p>
+      </header>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          {/* Customer & Details */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Invoice Details</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Customer *</label>
+                <select value={customerId} onChange={(e) => handleCustomerChange(e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                  <option value="">Select customer...</option>
+                  {customers.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">PO Number</label>
+                <input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="PO-12345" className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Issue Date</label>
+                <input type="date" value={new Date().toISOString().split('T')[0]} disabled className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white opacity-70" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Due Date</label>
+                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+              </div>
+            </div>
           </div>
 
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
-          >
-            <X size={19} />
-          </button>
-        </header>
-
-        <div className="overflow-y-auto p-5 sm:p-6">
-          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
-            <div className="space-y-6">
-              {error && (
-                <div className="flex gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-                  <AlertCircle size={18} className="shrink-0" />
-                  {error}
-                </div>
-              )}
-
-              <section>
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                  Customer & payment terms
-                </h3>
-
-                <p className="mt-1 text-xs text-gray-500">
-                  Choose the customer who will receive this invoice.
-                </p>
-
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <label className="sm:col-span-2">
-                    <span className="mb-1.5 block text-xs font-medium">
-                      Customer
-                    </span>
-
-                    <select
-                      value={customerId}
-                      disabled={loadingCustomers}
-                      onChange={(event) =>
-                        setCustomerId(event.target.value)
-                      }
-                      className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    >
-                      <option value="">
-                        {loadingCustomers
-                          ? "Loading customers..."
-                          : customers.length === 0
-                            ? "No customers available"
-                            : "Select a customer"}
-                      </option>
-
-                      {customers.map((customer) => (
-                        <option
-                          key={customer.id}
-                          value={customer.id}
-                        >
-                          {customer.company_name}
-                          {customer.contact_name
-                            ? ` — ${customer.contact_name}`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label>
-                    <span className="mb-1.5 block text-xs font-medium">
-                      Due date
-                    </span>
-
-                    <input
-                      type="date"
-                      value={dueDate}
-                      onChange={(event) =>
-                        setDueDate(event.target.value)
-                      }
-                      className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                    />
-                  </label>
-
-                  <div className="rounded-xl border border-dashed border-gray-300 p-3 dark:border-gray-700">
-                    <p className="text-xs text-gray-500">
-                      Selected customer
-                    </p>
-                    <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">
-                      {selectedCustomer?.company_name || "None"}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-end justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-                      Line items
-                    </h3>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Add the products or services being billed.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setItems((current) => [
-                        ...current,
-                        {
-                          description: "",
-                          quantity: "1",
-                          unit_price: "0",
-                          tax_rate: "0",
-                        },
-                      ])
-                    }
-                    className="shrink-0 rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold dark:border-gray-700"
-                  >
-                    <Plus size={14} className="mr-1 inline" />
-                    Add item
-                  </button>
-                </div>
-
-                <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-                  <table className="w-full min-w-[800px]">
-                    <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-800/50">
-                      <tr>
-                        <th className="p-3 text-left">
-                          Description
-                        </th>
-                        <th className="p-3">Qty</th>
-                        <th className="p-3">Unit price</th>
-                        <th className="p-3">Tax %</th>
-                        <th className="p-3 text-right">
-                          Total
-                        </th>
-                        <th />
-                      </tr>
-                    </thead>
-
-                    <tbody className="divide-y dark:divide-gray-800">
-                      {items.map((item, index) => {
-                        const line =
-                          Number(item.quantity || 0) *
-                          Number(item.unit_price || 0);
-
-                        const lineTax =
-                          (line *
-                            Number(item.tax_rate || 0)) /
-                          100;
-
-                        return (
-                          <tr key={index}>
-                            <td className="p-2">
-                              <input
-                                value={item.description}
-                                onChange={(event) =>
-                                  updateItem(
-                                    index,
-                                    "description",
-                                    event.target.value
-                                  )
-                                }
-                                placeholder="e.g. Website development"
-                                className="w-full rounded-lg border border-gray-200 px-2.5 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              />
-                            </td>
-
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                min="0.01"
-                                step="0.01"
-                                value={item.quantity}
-                                onChange={(event) =>
-                                  updateItem(
-                                    index,
-                                    "quantity",
-                                    event.target.value
-                                  )
-                                }
-                                className="w-24 rounded-lg border border-gray-200 px-2.5 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              />
-                            </td>
-
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.unit_price}
-                                onChange={(event) =>
-                                  updateItem(
-                                    index,
-                                    "unit_price",
-                                    event.target.value
-                                  )
-                                }
-                                className="w-32 rounded-lg border border-gray-200 px-2.5 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              />
-                            </td>
-
-                            <td className="p-2">
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.tax_rate}
-                                onChange={(event) =>
-                                  updateItem(
-                                    index,
-                                    "tax_rate",
-                                    event.target.value
-                                  )
-                                }
-                                className="w-24 rounded-lg border border-gray-200 px-2.5 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                              />
-                            </td>
-
-                            <td className="p-3 text-right text-sm font-semibold">
-                              {money(line + lineTax)}
-                            </td>
-
-                            <td className="p-2">
-                              <button
-                                type="button"
-                                disabled={items.length === 1}
-                                onClick={() =>
-                                  setItems((current) =>
-                                    current.filter(
-                                      (_, itemIndex) =>
-                                        itemIndex !== index
-                                    )
-                                  )
-                                }
-                                className="rounded-lg p-2 text-gray-400 disabled:opacity-30"
-                              >
-                                <X size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-
-              <label>
-                <span className="mb-1.5 block text-xs font-medium">
-                  Notes
-                </span>
-
-                <textarea
-                  value={notes}
-                  onChange={(event) =>
-                    setNotes(event.target.value)
-                  }
-                  rows={4}
-                  placeholder="Optional notes or payment instructions..."
-                  className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                />
-              </label>
+          {/* Line Items */}
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Line Items</h3>
+              <button onClick={addItem} className="inline-flex items-center gap-1 text-sm text-blue-600"><Plus size={16} /> Add item</button>
             </div>
-
-            <aside className="h-fit rounded-2xl border border-gray-200 bg-gray-50 p-5 dark:border-gray-800 dark:bg-gray-900">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Invoice preview
-              </p>
-
-              <div className="mt-5 space-y-4">
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Customer
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {selectedCustomer?.company_name ||
-                      "Not selected"}
-                  </p>
+            <div className="space-y-3">
+              {items.map((item, index) => (
+                <div key={index} className="grid grid-cols-12 gap-2 items-start">
+                  <div className="col-span-5">
+                    <input type="text" value={item.description} onChange={(e) => updateItem(index, "description", e.target.value)} placeholder="Description" className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                  </div>
+                  <div className="col-span-2">
+                    <input type="number" value={item.quantity} onChange={(e) => updateItem(index, "quantity", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center dark:border-gray-700 dark:bg-gray-800 dark:text-white" min="0.01" step="0.01" />
+                  </div>
+                  <div className="col-span-2">
+                    <input type="number" value={item.unit_price} onChange={(e) => updateItem(index, "unit_price", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-right dark:border-gray-700 dark:bg-gray-800 dark:text-white" min="0" step="0.01" />
+                  </div>
+                  <div className="col-span-2">
+                    <input type="number" value={item.tax_rate} onChange={(e) => updateItem(index, "tax_rate", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-center dark:border-gray-700 dark:bg-gray-800 dark:text-white" min="0" max="100" step="0.01" />
+                  </div>
+                  <div className="col-span-1 text-right">
+                    <button onClick={() => removeItem(index)} disabled={items.length <= 1} className="text-red-500 disabled:opacity-30"><X size={18} /></button>
+                  </div>
                 </div>
+              ))}
+            </div>
+          </div>
 
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Items
-                  </p>
-                  <p className="mt-1 text-sm font-semibold">
-                    {items.length}
-                  </p>
-                </div>
-
-                <div>
-                  <p className="text-xs text-gray-500">
-                    Due date
-                  </p>
-                  <p className="mt-1 text-sm font-semibold">
-                    {dueDate ? dateText(dueDate) : "Not set"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="my-5 border-t border-gray-200 dark:border-gray-800" />
-
-              <div className="space-y-2.5 text-sm">
-                <SummaryRow
-                  label="Subtotal"
-                  value={money(subtotal)}
-                />
-                <SummaryRow
-                  label="Tax"
-                  value={money(tax)}
-                />
-
-                <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold dark:border-gray-800">
-                  <span>Total</span>
-                  <span>{money(total)}</span>
-                </div>
-              </div>
-
-              <button
-                disabled={saving || loadingCustomers}
-                onClick={submit}
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900"
-              >
-                {saving && (
-                  <Loader2
-                    size={17}
-                    className="animate-spin"
-                  />
-                )}
-                {saving
-                  ? "Creating invoice..."
-                  : "Create invoice"}
-              </button>
-
-              <button
-                disabled={saving}
-                onClick={onClose}
-                className="mt-2 w-full rounded-xl px-4 py-2.5 text-sm text-gray-500"
-              >
-                Cancel
-              </button>
-            </aside>
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} placeholder="Optional notes..." className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
           </div>
         </div>
+
+        {/* Summary */}
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900 sticky top-6">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4">Summary</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{money(subtotal)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{money(tax)}</span></div>
+              <div className="flex justify-between border-t border-gray-200 pt-2 font-bold text-lg"><span>Total</span><span>{money(total)}</span></div>
+              <div className="flex justify-between text-xs text-gray-500"><span>Items</span><span>{items.length}</span></div>
+              <div className="flex justify-between text-xs text-gray-500"><span>Customer</span><span>{selectedCustomer?.company_name || "None"}</span></div>
+            </div>
+            <button onClick={submit} disabled={saving} className="w-full mt-4 rounded-xl bg-gray-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">
+              {saving ? <Loader2 size={17} className="animate-spin inline mr-2" /> : null}
+              {saving ? "Creating..." : "Create Invoice"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// PRODUCTS MANAGER
+// ==========================================
+
+function ProductsManager() {
+  const [products, setProducts] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<any | null>(null);
+  const [form, setForm] = useState({
+    name: "",
+    description: "",
+    sku: "",
+    unit_price: "",
+    tax_rate_id: "",
+    category: "",
+    notes: "",
+  });
+  const [taxRates, setTaxRates] = useState<any[]>([]);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const [productsRes, taxRes] = await Promise.all([
+        fetch("/api/products", { credentials: "include" }),
+        fetch("/api/tax-rates", { credentials: "include" }),
+      ]);
+
+      const productsData = await productsRes.json();
+      const taxData = await taxRes.json();
+
+      if (!productsRes.ok) throw new Error(productsData.error || "Failed to load products.");
+      if (!taxRes.ok) throw new Error(taxData.error || "Failed to load tax rates.");
+
+      setProducts(Array.isArray(productsData) ? productsData : productsData.products || []);
+      setTaxRates(Array.isArray(taxData) ? taxData : taxData.taxRates || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load products.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = products.filter((product) => {
+    const q = search.trim().toLowerCase();
+    if (!q) return true;
+    return [product.name, product.sku, product.category, product.description]
+      .some((value) => String(value || "").toLowerCase().includes(q));
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: "", description: "", sku: "", unit_price: "", tax_rate_id: "", category: "", notes: "" });
+    setShowForm(true);
+  };
+
+  const openEdit = (product: any) => {
+    setEditing(product);
+    setForm({
+      name: product.name || "",
+      description: product.description || "",
+      sku: product.sku || "",
+      unit_price: product.unit_price || "",
+      tax_rate_id: product.tax_rate_id || "",
+      category: product.category || "",
+      notes: product.notes || "",
+    });
+    setShowForm(true);
+  };
+
+  const save = async () => {
+    try {
+      if (!form.name.trim()) throw new Error("Product name is required.");
+      if (!form.unit_price || parseFloat(form.unit_price) < 0) throw new Error("Valid unit price is required.");
+
+      setSaving(true);
+      setError("");
+
+      const payload = {
+        name: form.name.trim(),
+        description: form.description?.trim() || null,
+        sku: form.sku?.trim() || null,
+        unit_price: parseFloat(form.unit_price),
+        tax_rate_id: form.tax_rate_id || null,
+        category: form.category?.trim() || null,
+        notes: form.notes?.trim() || null,
+      };
+
+      const res = await fetch(editing ? `/api/products/${editing.id}` : "/api/products", {
+        method: editing ? "PATCH" : "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save product.");
+
+      setShowForm(false);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save product.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleActive = async (product: any) => {
+    try {
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_active: !product.is_active }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update product.");
+      }
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update product.");
+    }
+  };
+
+  const deleteProduct = async (product: any) => {
+    if (!confirm(`Delete "${product.name}"? This action cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete product.");
+      await load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to delete product.");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm text-gray-500">Invoicing · Products</p>
+          <h1 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">Products & Services</h1>
+          <p className="mt-1 text-sm text-gray-500">Manage your product and service catalog for invoicing.</p>
+        </div>
+        <button onClick={openCreate} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-gray-900">
+          <Plus size={17} /> Add product
+        </button>
+      </header>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+
+      <section className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Total products" value={String(products.length)} icon={Package} />
+        <StatCard label="Active" value={String(products.filter(p => p.is_active).length)} icon={Package} />
+        <StatCard label="Categories" value={String([...new Set(products.map(p => p.category).filter(Boolean))].length)} icon={Package} />
+      </section>
+
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex flex-col gap-3 border-b border-gray-200 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
+          <div><h2 className="font-semibold">Product catalog</h2><p className="text-xs text-gray-500">{filtered.length} product{filtered.length === 1 ? "" : "s"}</p></div>
+          <div className="flex gap-2">
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-gray-400 sm:w-72 dark:border-gray-700 dark:bg-gray-800 dark:text-white placeholder:text-gray-400" />
+          </div>
+        </div>
+        {loading ? <div className="p-10 text-center text-sm text-gray-500">Loading products…</div> : filtered.length === 0 ? <div className="p-10 text-center text-sm text-gray-500">No products found.</div> : (
+          <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm text-gray-900 dark:text-gray-100"><thead className="bg-gray-50 text-xs uppercase text-gray-500 dark:bg-gray-800/50"><tr><th className="px-5 py-3">Name</th><th className="px-5 py-3">SKU</th><th className="px-5 py-3">Price</th><th className="px-5 py-3">Tax</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Actions</th></tr></thead><tbody className="divide-y dark:divide-gray-800">{filtered.map((product) => {
+            const taxRate = taxRates.find(t => t.id === product.tax_rate_id);
+            return <tr key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <td className="px-5 py-4 font-semibold">{product.name}</td>
+              <td className="px-5 py-4">{product.sku || "—"}</td>
+              <td className="px-5 py-4">${Number(product.unit_price).toFixed(2)}</td>
+              <td className="px-5 py-4">{taxRate ? `${taxRate.rate}%` : "—"}</td>
+              <td className="px-5 py-4">{product.category || "—"}</td>
+              <td className="px-5 py-4">
+                <button onClick={() => toggleActive(product)} className={`px-2 py-1 text-xs rounded-full ${product.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                  {product.is_active ? "Active" : "Inactive"}
+                </button>
+              </td>
+              <td className="px-5 py-4">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openEdit(product)} className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold dark:border-gray-700"><Pencil size={13}/> Edit</button>
+                  <button onClick={() => deleteProduct(product)} className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/30 dark:text-red-400"><Trash2 size={13}/></button>
+                </div>
+              </td>
+            </tr>;
+          })}</tbody></table></div>
+        )}
+      </section>
+
+      {showForm && <ProductFormModal form={form} setForm={setForm} editing={editing} saving={saving} taxRates={taxRates} onClose={() => setShowForm(false)} onSave={save} />}
+    </div>
+  );
+}
+
+// ==========================================
+// PRODUCT FORM MODAL
+// ==========================================
+
+function ProductFormModal({
+  form, setForm, editing, saving, taxRates, onClose, onSave,
+}: {
+  form: any;
+  setForm: (form: any) => void;
+  editing: any | null;
+  saving: boolean;
+  taxRates: any[];
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const field = (key: string, label: string, type = "text") => (
+    <label className="text-sm text-gray-900 dark:text-gray-100">
+      <span className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-300">{label}</span>
+      {type === "textarea" ? (
+        <textarea value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} rows={3} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+      ) : type === "select" ? (
+        <select value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          <option value="">None</option>
+          {taxRates.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.rate}%)</option>)}
+        </select>
+      ) : type === "number" ? (
+        <input type="number" step="0.01" min="0" value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+      ) : (
+        <input type={type} value={form[key]} onChange={(e) => setForm({ ...form, [key]: e.target.value })} className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-gray-900 outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-white placeholder:text-gray-400" />
+      )}
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white text-gray-900 shadow-2xl dark:bg-gray-950 dark:text-gray-100">
+        <div className="flex items-center justify-between border-b p-5 dark:border-gray-800">
+          <div><h2 className="font-bold">{editing ? "Edit product" : "Add product"}</h2><p className="text-xs text-gray-500">Add products and services for your invoices.</p></div>
+          <button onClick={onClose}><X size={19}/></button>
+        </div>
+        <div className="grid min-h-0 gap-4 overflow-y-auto p-5 sm:grid-cols-2">
+          {field("name", "Product name *")}
+          {field("sku", "SKU")}
+          {field("unit_price", "Unit price *", "number")}
+          {field("tax_rate_id", "Tax rate", "select")}
+          {field("category", "Category")}
+          {field("description", "Description", "textarea")}
+          {field("notes", "Notes", "textarea")}
+        </div>
+        <div className="flex justify-end gap-2 border-t p-4 dark:border-gray-800">
+          <button onClick={onClose} className="rounded-xl border px-4 py-2.5 text-sm dark:border-gray-700">Cancel</button>
+          <button disabled={saving} onClick={onSave} className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">
+            {saving ? "Saving…" : editing ? "Save changes" : "Add product"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// SETTINGS MANAGER
+// ==========================================
+
+function SettingsManager() {
+  const [settings, setSettings] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await fetch("/api/invoice-settings", { credentials: "include" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load settings.");
+      setSettings(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load settings.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+      const res = await fetch("/api/invoice-settings", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save settings.");
+      setSettings(data);
+      setSuccess("Settings saved successfully!");
+      setTimeout(() => setSuccess(""), 3000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save settings.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-[200px]"><Loader2 size={28} className="animate-spin text-gray-400" /></div>;
+  }
+
+  if (!settings) {
+    return <div className="text-center py-8 text-gray-500">No settings found.</div>;
+  }
+
+  const update = (key: string, value: any) => {
+    setSettings({ ...settings, [key]: value });
+  };
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <p className="text-sm text-gray-500">Invoicing · Settings</p>
+        <h1 className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">Invoice Settings</h1>
+        <p className="mt-1 text-sm text-gray-500">Customize your invoice preferences and company details.</p>
+      </header>
+
+      {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+      {success && <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-700 dark:border-green-900/50 dark:bg-green-950/30 dark:text-green-300">{success}</div>}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Company Details */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Building2 size={18} /> Company Details
+          </h3>
+          <div className="space-y-3">
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Company Name</label>
+              <input value={settings.company_name || ""} onChange={(e) => update("company_name", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Email</label>
+              <input type="email" value={settings.company_email || ""} onChange={(e) => update("company_email", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Phone</label>
+              <input value={settings.company_phone || ""} onChange={(e) => update("company_phone", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Tax ID / VAT</label>
+              <input value={settings.company_tax_id || ""} onChange={(e) => update("company_tax_id", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Address</label>
+              <textarea value={settings.company_address || ""} onChange={(e) => update("company_address", e.target.value)} rows={3} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Website</label>
+              <input value={settings.company_website || ""} onChange={(e) => update("company_website", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+          </div>
+        </div>
+
+        {/* Invoice Defaults */}
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <FileText size={18} /> Invoice Defaults
+            </h3>
+            <div className="space-y-3">
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Prefix</label>
+                <input value={settings.invoice_prefix || "INV-"} onChange={(e) => update("invoice_prefix", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Next Number</label>
+                <input type="number" value={settings.invoice_next_number || 1} onChange={(e) => update("invoice_next_number", parseInt(e.target.value) || 1)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Number Padding</label>
+                <input type="number" value={settings.invoice_number_padding || 6} onChange={(e) => update("invoice_number_padding", parseInt(e.target.value) || 6)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Default Currency</label>
+                <select value={settings.default_currency || "USD"} onChange={(e) => update("default_currency", e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                  <option value="USD">USD ($)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="CAD">CAD (C$)</option>
+                  <option value="AUD">AUD (A$)</option>
+                  <option value="KES">KES (KSh)</option>
+                </select></div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Default Due Days</label>
+                <input type="number" value={settings.default_due_days || 30} onChange={(e) => update("default_due_days", parseInt(e.target.value) || 30)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Bell size={18} /> Reminders
+            </h3>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-700 dark:text-gray-300">Enable reminders</label>
+                <select value={settings.reminder_enabled ? "true" : "false"} onChange={(e) => update("reminder_enabled", e.target.value === "true")} className="rounded-xl border border-gray-200 px-3 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white">
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Days before due</label>
+                <input type="number" value={settings.reminder_days_before || 3} onChange={(e) => update("reminder_days_before", parseInt(e.target.value) || 3)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+              <div><label className="block text-xs font-medium text-gray-700 dark:text-gray-300">Days after due</label>
+                <input type="number" value={settings.reminder_days_after || 1} onChange={(e) => update("reminder_days_after", parseInt(e.target.value) || 1)} className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3">
+        <button onClick={save} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-gray-900">
+          <Save size={16} /> {saving ? "Saving..." : "Save Settings"}
+        </button>
       </div>
     </div>
   );
