@@ -466,10 +466,13 @@ export default function Invoices({
   const [detailLoading, setDetailLoading] =
     useState(false);
 
-  const [showCreate, setShowCreate] =
-    useState(
-      activePage === "create-invoice"
-    );
+  const [showCreate, setShowCreate] = useState(
+  activePage === "create-invoice"
+);
+
+useEffect(() => {
+  setShowCreate(activePage === "create-invoice");
+}, [activePage]);
 
   const loadInvoices = useCallback(
     async () => {
@@ -761,6 +764,229 @@ export default function Invoices({
     ).length;
   };
 
+  const isInvoiceOverview =
+  activePage === "invoice-overview" ||
+  activePage === "invoicing";
+
+const isInvoicesPage =
+  activePage === "invoices";
+
+const isCreateInvoicePage =
+  activePage === "create-invoice";
+
+const isCustomersPage =
+  activePage === "invoice-customers";
+
+const isPaymentsPage =
+  activePage === "invoice-payments";
+
+const isProductsPage =
+  activePage === "invoice-products";
+
+const isInvoiceSettingsPage =
+  activePage === "invoice-settings";
+
+  // =========================================================
+  // INVOICE SUB-PAGE ROUTING
+  // =========================================================
+
+  if (isCreateInvoicePage) {
+    return (
+      <CreateInvoiceModal
+        customers={customers}
+        products={products}
+        paymentTerms={paymentTerms}
+        onClose={() => {
+          // Return to the invoice overview without
+          // changing the sidebar's active page.
+          window.history.back();
+        }}
+        onCreated={async () => {
+          await loadInvoices();
+          window.history.back();
+        }}
+      />
+    );
+  }
+
+  if (
+    isInvoicesPage ||
+    isCustomersPage ||
+    isPaymentsPage ||
+    isProductsPage ||
+    isInvoiceSettingsPage
+  ) {
+    // These pages are currently represented by the
+    // invoice workspace. Keep the existing UI connected
+    // until their dedicated managers are added.
+    return (
+      <div className="space-y-6 text-gray-900 dark:text-gray-100">
+        <header>
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Receipt size={16} />
+            Sales & billing
+          </div>
+
+          <h1 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">
+            {isInvoicesPage
+              ? "All Invoices"
+              : isCustomersPage
+                ? "Customers"
+                : isPaymentsPage
+                  ? "Payments"
+                  : isProductsPage
+                    ? "Products & Services"
+                    : "Invoice Settings"}
+          </h1>
+
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            {isInvoicesPage
+              ? "View and manage all invoices."
+              : isCustomersPage
+                ? "Manage customers used for invoicing."
+                : isPaymentsPage
+                  ? "Track invoice payments and outstanding balances."
+                  : isProductsPage
+                    ? "Manage products and services used on invoices."
+                    : "Configure your invoice preferences."}
+          </p>
+        </header>
+
+        {isInvoicesPage && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-gray-900">
+            <p className="text-sm text-gray-500">
+              Your invoice register is available below.
+            </p>
+
+            <div className="mt-4">
+              {/* Reuse the existing invoice table */}
+              <div className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] text-left">
+                    <thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500 dark:bg-gray-800/50">
+                      <tr>
+                        <th className="px-5 py-3">Invoice</th>
+                        <th className="px-5 py-3">Customer</th>
+                        <th className="px-5 py-3">Issued</th>
+                        <th className="px-5 py-3">Due</th>
+                        <th className="px-5 py-3">Total</th>
+                        <th className="px-5 py-3">Status</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {loading ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-5 py-12 text-center"
+                          >
+                            <Loader2
+                              size={24}
+                              className="mx-auto animate-spin text-blue-500"
+                            />
+                          </td>
+                        </tr>
+                      ) : filteredInvoices.length === 0 ? (
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="px-5 py-12 text-center text-sm text-gray-500"
+                          >
+                            No invoices found.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredInvoices.map((invoice) => {
+                          const status =
+                            displayStatus(invoice);
+
+                          return (
+                            <tr
+                              key={invoice.id}
+                              onClick={() =>
+                                openInvoice(invoice.id)
+                              }
+                              className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                            >
+                              <td className="px-5 py-4 text-sm font-semibold">
+                                {invoice.invoice_number}
+                              </td>
+
+                              <td className="px-5 py-4 text-sm">
+                                {invoice.customer?.company_name ||
+                                  "Unknown customer"}
+                              </td>
+
+                              <td className="px-5 py-4 text-sm text-gray-500">
+                                {dateText(invoice.issue_date)}
+                              </td>
+
+                              <td className="px-5 py-4 text-sm text-gray-500">
+                                {dateText(invoice.due_date)}
+                              </td>
+
+                              <td className="px-5 py-4 text-sm font-semibold">
+                                {money(
+                                  invoice.total_amount,
+                                  invoice.currency || "KES"
+                                )}
+                              </td>
+
+                              <td className="px-5 py-4">
+                                <span
+                                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass(
+                                    status
+                                  )}`}
+                                >
+                                  {STATUS_LABELS[status]}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {!isInvoicesPage && (
+          <section className="rounded-2xl border border-gray-200 bg-white p-8 dark:border-gray-800 dark:bg-gray-900">
+            <div className="flex flex-col items-center justify-center text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/30">
+                <Receipt
+                  size={26}
+                  className="text-blue-600"
+                />
+              </div>
+
+              <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">
+                {isCustomersPage
+                  ? "Customer management"
+                  : isPaymentsPage
+                    ? "Payment management"
+                    : isProductsPage
+                      ? "Products & services"
+                      : "Invoice settings"}
+              </h2>
+
+              <p className="mt-2 max-w-md text-sm text-gray-500">
+                This section is connected to the invoicing
+                workspace. Its dedicated management interface
+                can be added here without changing the main
+                sidebar navigation.
+              </p>
+            </div>
+          </section>
+        )}
+      </div>
+    );
+  }
+  
   return (
     <div className="space-y-6 text-gray-900 dark:text-gray-100">
       {/* HEADER */}
