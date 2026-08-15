@@ -1470,7 +1470,7 @@ switch (activePage) {
         </div>
       );
 
-      case "invoice-overview":
+  case "invoice-overview":
 case "invoicing":
 case "invoices":
 case "create-invoice":
@@ -1478,6 +1478,21 @@ case "invoice-customers":
 case "invoice-payments":
 case "invoice-products":
 case "invoice-settings":
+  if (!enabledApps.some((item) => item.key === "invoicing")) {
+    return (
+      <AppPlaceholder
+        app={{
+          key: "invoicing",
+          name: "Invoicing",
+          category: "finance",
+          description: "Create invoices, manage customers, payments and products.",
+          icon: "file-text",
+          route: "invoicing",
+        }}
+      />
+    );
+  }
+
   return (
     <div className="h-full overflow-y-auto p-5 sm:p-7 lg:p-9">
       <div className="mx-auto max-w-7xl">
