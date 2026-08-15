@@ -512,92 +512,98 @@ className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-whi
       )}
     </div> 
 
-{/* INVOICING */}
-<div className="mt-7 border-t border-white/[0.06] pt-4">
-  <button
-    type="button"
-    onClick={() =>
-      onInvoicingMenuChange(!isInvoicingMenuOpen)
-    }
-    className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
-      isInvoiceSection
-        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
-        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-    }`}
-  >
-    <Receipt
-      size={19}
-      className={
-        isInvoiceSection
-          ? "text-white"
-          : "text-slate-500 group-hover:text-slate-300"
+{/* INVOICING — ONLY SHOW IF ENABLED */}
+{enabledApps.some(
+  (app) => app.key === "invoicing"
+) && (
+  <div className="mt-7 border-t border-white/[0.06] pt-4">
+    <button
+      type="button"
+      onClick={() =>
+        onInvoicingMenuChange(
+          !isInvoicingMenuOpen
+        )
       }
-    />
-
-    <span className="flex-1">
-      Invoicing
-    </span>
-
-    <ChevronDown
-      size={16}
-      className={`transition-transform ${
-        isInvoicingMenuOpen
-          ? "rotate-180"
-          : ""
+      className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+        isInvoiceSection
+          ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
+          : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
       }`}
-    />
-  </button>
+    >
+      <Receipt
+        size={19}
+        className={
+          isInvoiceSection
+            ? "text-white"
+            : "text-slate-500 group-hover:text-slate-300"
+        }
+      />
 
-  {isInvoicingMenuOpen && (
-    <div className="mt-2 space-y-1 pl-4">
-      {INVOICING_MENU.map((item) => {
-        const Icon = item.icon;
+      <span className="flex-1">
+        Invoicing
+      </span>
 
-        const isActive =
-          activePage === item.id;
+      <ChevronDown
+        size={16}
+        className={`transition-transform ${
+          isInvoicingMenuOpen
+            ? "rotate-180"
+            : ""
+        }`}
+      />
+    </button>
 
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => {
-              onNavigation(item.id);
+    {isInvoicingMenuOpen && (
+      <div className="mt-2 space-y-1 pl-4">
+        {INVOICING_MENU.map((item) => {
+          const Icon = item.icon;
 
-              if (isMobile) {
-                onSidebarChange(false);
-              }
-            }}
-            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
-              isActive
-                ? "bg-blue-600/20 text-blue-400"
-                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-            }`}
-          >
-            <Icon
-              size={16}
-              className={
+          const isActive =
+            activePage === item.id;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                onNavigation(item.id);
+
+                if (isMobile) {
+                  onSidebarChange(false);
+                }
+              }}
+              className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
                 isActive
-                  ? "text-blue-400"
-                  : "text-slate-500 group-hover:text-slate-300"
-              }
-            />
-
-            <span className="flex-1">
-              {item.label}
-            </span>
-
-            {isActive && (
-              <ChevronRight
-                size={14}
-                className="text-blue-400/70"
+                  ? "bg-blue-600/20 text-blue-400"
+                  : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+              }`}
+            >
+              <Icon
+                size={16}
+                className={
+                  isActive
+                    ? "text-blue-400"
+                    : "text-slate-500 group-hover:text-slate-300"
+                }
               />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  )}
-</div>
+
+              <span className="flex-1">
+                {item.label}
+              </span>
+
+              {isActive && (
+                <ChevronRight
+                  size={14}
+                  className="text-blue-400/70"
+                />
+              )}
+            </button>
+          );
+        })}
+      </div>
+    )}
+  </div>
+)}
 
  {/* SETTINGS DROPDOWN */}
 <div className="mt-7 border-t border-white/[0.06] pt-4">
