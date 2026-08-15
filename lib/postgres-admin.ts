@@ -1,3 +1,7 @@
+import dotenv from "dotenv";
+
+dotenv.config({ path: ".env.local" });
+
 import { Pool } from "pg";
 
 const globalForPostgres =
@@ -7,21 +11,26 @@ const globalForPostgres =
       | undefined;
   };
 
+const password = process.env.POSTGRES_ADMIN_PASSWORD;
+
+if (!password) {
+  throw new Error(
+    "POSTGRES_ADMIN_PASSWORD is not configured. Check .env.local."
+  );
+}
+
 export const postgresAdmin =
   globalForPostgres.postgresAdminPool ??
   new Pool({
-    host:
-      process.env.POSTGRES_HOST,
+    host: process.env.POSTGRES_HOST,
 
     port: Number(
       process.env.POSTGRES_PORT || 5432
     ),
 
-    user:
-      process.env.POSTGRES_ADMIN_USER,
+    user: process.env.POSTGRES_ADMIN_USER,
 
-    password:
-      process.env.POSTGRES_ADMIN_PASSWORD,
+    password,
 
     database: "sami_control",
 

@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+
+type Context = {
+  params: Promise<{ id: string }>;
+};
 
 async function completeInvoice(client: any, id: string) {
   const result = await client.query(
@@ -67,18 +71,19 @@ async function completeInvoice(client: any, id: string) {
 }
 
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: Context
 ) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { pool } = await getTenantDatabaseForUser(user.id);
-    const client = await pool.connect();
+    const { id } = await context.params;
 
+    const client = await pool.connect();
     try {
-      const invoice = await completeInvoice(client, params.id);
+      const invoice = await completeInvoice(client, id);
       if (!invoice) {
         return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
       }

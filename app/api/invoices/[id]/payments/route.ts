@@ -1,8 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-type Context = { params: Promise<{ id: string }> };
+type Context = {
+  params: Promise<{ id: string }>;
+};
 
 async function refreshInvoice(client: any, invoiceId: string) {
   const invoiceResult = await client.query(
@@ -50,8 +52,10 @@ async function refreshInvoice(client: any, invoiceId: string) {
   return { paid, due, status };
 }
 
-// GET: Get all payments for an invoice
-export async function GET(req: Request, context: Context) {
+export async function GET(
+  req: NextRequest,
+  context: Context
+) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -91,8 +95,10 @@ export async function GET(req: Request, context: Context) {
   }
 }
 
-// POST: Record payment for an invoice
-export async function POST(req: Request, context: Context) {
+export async function POST(
+  req: NextRequest,
+  context: Context
+) {
   const user = await getAuthenticatedUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -141,7 +147,6 @@ export async function POST(req: Request, context: Context) {
       );
     }
 
-    // Insert payment with B2B fields
     await client.query(
       `
       INSERT INTO payments (

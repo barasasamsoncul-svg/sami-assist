@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-// GET: Get invoice settings
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -12,7 +11,6 @@ export async function GET() {
 
     let result = await pool.query(`SELECT * FROM invoice_settings LIMIT 1`);
 
-    // If no settings exist, create defaults
     if (result.rows.length === 0) {
       const defaultResult = await pool.query(
         `
@@ -43,8 +41,7 @@ export async function GET() {
   }
 }
 
-// PUT: Update invoice settings
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

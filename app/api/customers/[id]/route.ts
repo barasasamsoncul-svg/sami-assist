@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-type Context = { params: Promise<{ id: string }> };
+type Context = {
+  params: Promise<{ id: string }>;
+};
 
-// GET: Get single customer
-export async function GET(req: Request, context: Context) {
+export async function GET(
+  req: NextRequest,
+  context: Context
+) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,8 +60,10 @@ export async function GET(req: Request, context: Context) {
   }
 }
 
-// PATCH: Update customer
-export async function PATCH(req: Request, context: Context) {
+export async function PATCH(
+  req: NextRequest,
+  context: Context
+) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -66,7 +72,6 @@ export async function PATCH(req: Request, context: Context) {
     const { id } = await context.params;
     const body = await req.json();
 
-    // Check if customer exists
     const check = await pool.query(`SELECT id FROM customers WHERE id = $1`, [id]);
     if (check.rows.length === 0) {
       return NextResponse.json({ error: "Customer not found" }, { status: 404 });

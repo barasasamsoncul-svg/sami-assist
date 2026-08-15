@@ -1,11 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-type Context = { params: Promise<{ id: string }> };
+type Context = {
+  params: Promise<{ id: string }>;
+};
 
-// PUT: Update payment term
-export async function PUT(req: Request, context: Context) {
+export async function PUT(
+  req: NextRequest,
+  context: Context
+) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -69,8 +73,10 @@ export async function PUT(req: Request, context: Context) {
   }
 }
 
-// DELETE: Delete payment term
-export async function DELETE(req: Request, context: Context) {
+export async function DELETE(
+  req: NextRequest,
+  context: Context
+) {
   try {
     const user = await getAuthenticatedUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

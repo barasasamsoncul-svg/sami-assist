@@ -45,7 +45,10 @@ export async function initializeTenantDatabase(
 
   const pool = new Pool({
     host, port, user, password, database: databaseName,
-    ssl: { rejectUnauthorized: false },
+    ssl:
+  process.env.POSTGRES_SSL === "true"
+    ? { rejectUnauthorized: false }
+    : false,
     max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000,
   });
 
