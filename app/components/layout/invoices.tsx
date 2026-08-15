@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
@@ -228,15 +228,55 @@ export default function Invoices({ activePage }: InvoicesProps) {
   const [selected, setSelected] = useState<InvoiceDetails | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [section, setSection] = useState<"overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice">(
-  activePage === "invoice-customers" ? "customers" :
-  activePage === "invoice-payments" ? "payments" :
-  activePage === "invoice-products" ? "products" :
-  activePage === "invoice-settings" ? "settings" :
-  activePage === "invoices" ? "all-invoices" :
-  activePage === "create-invoice" ? "create-invoice" :
-  "overview"
-);
+const getSectionFromPage = (
+  page: InvoicePage
+):
+  | "overview"
+  | "customers"
+  | "payments"
+  | "products"
+  | "settings"
+  | "all-invoices"
+  | "create-invoice" => {
+  switch (page) {
+    case "invoice-customers":
+      return "customers";
+
+    case "invoice-payments":
+      return "payments";
+
+    case "invoice-products":
+      return "products";
+
+    case "invoice-settings":
+      return "settings";
+
+    case "invoices":
+      return "all-invoices";
+
+    case "create-invoice":
+      return "create-invoice";
+
+    case "invoice-overview":
+    case "invoicing":
+    default:
+      return "overview";
+  }
+};
+
+const [section, setSection] = useState<
+  | "overview"
+  | "customers"
+  | "payments"
+  | "products"
+  | "settings"
+  | "all-invoices"
+  | "create-invoice"
+>(() => getSectionFromPage(activePage));
+
+useEffect(() => {
+  setSection(getSectionFromPage(activePage));
+}, [activePage]);
 
   const loadInvoices = useCallback(async () => {
     try {
@@ -325,76 +365,78 @@ export default function Invoices({ activePage }: InvoicesProps) {
   }, [invoices, search, filter]);
 
   // Section: Customers
-  if (section === "customers") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <CustomerManager />
-      </InvoicingSectionShell>
-    );
-  }
+if (section === "customers") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <CustomerManager />
+    </div>
+  );
+}
 
-  // Section: Payments
-  if (section === "payments") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <PaymentsManager onOpenInvoice={openInvoice} />
-      </InvoicingSectionShell>
-    );
-  }
+// Section: Payments
+if (section === "payments") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <PaymentsManager onOpenInvoice={openInvoice} />
+    </div>
+  );
+}
 
-  // Section: Products
-  if (section === "products") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <ProductsManager />
-      </InvoicingSectionShell>
-    );
-  }
+// Section: Products
+if (section === "products") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <ProductsManager />
+    </div>
+  );
+}
 
-  // Section: Settings
-  if (section === "settings") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <SettingsManager />
-      </InvoicingSectionShell>
-    );
-  }
+// Section: Settings
+if (section === "settings") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <SettingsManager />
+    </div>
+  );
+}
 
-  // Section: All Invoices
-  if (section === "all-invoices") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <AllInvoicesView onOpenInvoice={openInvoice} />
-      </InvoicingSectionShell>
-    );
-  }
+// Section: All Invoices
+if (section === "all-invoices") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <AllInvoicesView onOpenInvoice={openInvoice} />
+    </div>
+  );
+}
 
-  // Section: Create Invoice
-  if (section === "create-invoice") {
-    return (
-      <InvoicingSectionShell section={section} setSection={setSection}>
-        <CreateInvoicePage onCreated={async () => {
+// Section: Create Invoice
+if (section === "create-invoice") {
+  return (
+    <div className="text-gray-900 dark:text-gray-100">
+      <CreateInvoicePage
+        onCreated={async () => {
           await loadInvoices();
           setSection("all-invoices");
-        }} />
-      </InvoicingSectionShell>
-    );
-  }
-
-  // Section: Overview (default)
-  if (selected || detailLoading) {
-    return (
-      <InvoiceDetailsView
-        invoice={selected}
-        loading={detailLoading}
-        onBack={() => setSelected(null)}
-        onRefresh={async () => {
-          if (selected) await openInvoice(selected.id);
-          await loadInvoices();
         }}
       />
-    );
-  }
+    </div>
+  );
+}
+
+// Section: Overview (default)
+if (selected || detailLoading) {
+  return (
+    <InvoiceDetailsView
+      invoice={selected}
+      loading={detailLoading}
+      onBack={() => setSelected(null)}
+      onRefresh={async () => {
+        if (selected) await openInvoice(selected.id);
+        await loadInvoices();
+      }}
+    />
+  );
+}
 
   const totalInvoiced =
     stats?.total_invoiced ??
@@ -419,9 +461,8 @@ export default function Invoices({ activePage }: InvoicesProps) {
   };
 
   return (
-    <div className="space-y-6 text-gray-900 dark:text-gray-100">
-      <InvoicingNav section={section} setSection={setSection} />
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <div className="space-y-6 text-gray-900 dark:text-gray-100">
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <Receipt size={16} />
@@ -682,73 +723,6 @@ export default function Invoices({ activePage }: InvoicesProps) {
     </div>
   );
 }
-
-// ==========================================
-// INVOICING NAV
-// ==========================================
-
-function InvoicingNav({
-  section,
-  setSection,
-}: {
-  section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice";
-  setSection: (section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice") => void;
-}) {
-  const items = [
-    ["overview", "Overview", LayoutDashboard],
-    ["all-invoices", "All Invoices", Receipt],
-    ["create-invoice", "Create Invoice", Plus],
-    ["customers", "Customers", Users],
-    ["payments", "Payments", CreditCard],
-    ["products", "Products", Package],
-    ["settings", "Settings", Settings],
-  ] as const;
-
-  return (
-    <nav className="flex flex-wrap gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-gray-800 dark:bg-gray-900">
-      {items.map(([key, label, Icon]) => (
-        <button
-          key={key}
-          type="button"
-          onClick={() => setSection(key)}
-          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-            section === key
-              ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
-              : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-          }`}
-        >
-          <Icon size={16} />
-          {label}
-        </button>
-      ))}
-    </nav>
-  );
-}
-
-// ==========================================
-// INVOICING SECTION SHELL
-// ==========================================
-
-function InvoicingSectionShell({
-  section,
-  setSection,
-  children,
-}: {
-  section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice";
-  setSection: (section: "overview" | "customers" | "payments" | "products" | "settings" | "all-invoices" | "create-invoice") => void;
-  children: ReactNode;
-}) {
-  return (
-    <div className="space-y-6 text-gray-900 dark:text-gray-100">
-      <InvoicingNav section={section} setSection={setSection} />
-      {children}
-    </div>
-  );
-}
-
-// ==========================================
-// INVOICE DETAILS VIEW
-// ==========================================
 
 function InvoiceDetailsView({
   invoice,
@@ -2109,15 +2083,21 @@ function AllInvoicesView({ onOpenInvoice }: { onOpenInvoice: (id: string) => Pro
         <div className="relative flex-1 max-w-md">
           <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search invoices..."
-            className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
-          />
+  value={search}
+  onChange={(e) => {
+    setSearch(e.target.value);
+    setPage(1);
+  }}
+  placeholder="Search invoices..."
+  className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+/>
         </div>
         <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+  value={filter}
+  onChange={(e) => {
+    setFilter(e.target.value);
+    setPage(1);
+  }}
           className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white"
         >
           <option value="all">All Statuses</option>
@@ -2339,7 +2319,11 @@ function CreateInvoicePage({ onCreated }: { onCreated: () => Promise<void> }) {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Due Date</label>
-                <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                <input type="date" value={(() => {
+  const today = new Date();
+  const offset = today.getTimezoneOffset();
+  return new Date(today.getTime() - offset * 60 * 1000).toISOString().split("T")[0];
+})()} disabled className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
               </div>
             </div>
           </div>
