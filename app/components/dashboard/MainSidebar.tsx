@@ -18,10 +18,13 @@ import {
   Folder,
   FolderOpen,
   Headphones,
+  LayoutDashboard,
   Mail,
   MapPin,
+  MessageSquare,
   Package,
   PenTool,
+  Plus,
   Receipt,
   Repeat,
   Search,
@@ -36,13 +39,10 @@ import {
   UserSearch,
   Users,
   Utensils,
+  Workflow,
   Wrench,
   X,
-  Plus,
   CreditCard,
-  LayoutDashboard,
-MessageSquare,
-Workflow,
 } from "lucide-react";
 
 import {
@@ -57,6 +57,7 @@ type Profile = {
   email: string | null;
   created_at: string;
 };
+
 const CORE_NAV = [
   {
     id: "dashboard",
@@ -118,6 +119,16 @@ const INVOICING_MENU = [
     label: "Invoice Settings",
     icon: Settings,
   },
+];
+
+const INVOICE_PAGE_IDS = [
+  "invoice-overview",
+  "invoices",
+  "create-invoice",
+  "invoice-customers",
+  "invoice-payments",
+  "invoice-products",
+  "invoice-settings",
 ];
 
 const ICONS: Record<string, React.ElementType> = {
@@ -184,6 +195,7 @@ type MainSidebarProps = {
   onCategoryToggle: (category: SamiAppCategory) => void;
   onInvoicingMenuChange: (open: boolean) => void;
 };
+
 export const MainSidebar = ({
   activePage,
   enabledApps,
@@ -200,479 +212,504 @@ export const MainSidebar = ({
   onNavigation,
   onSettingsSectionChange,
   onSettingsMenuChange,
-  onInvoicingMenuChange,
   onSidebarChange,
   onCategoryToggle,
+  onInvoicingMenuChange,
 }: MainSidebarProps) => {
   const isInvoiceSection =
     activePage === "invoicing" ||
-    activePage === "invoice-overview" ||
-    activePage === "invoices" ||
-    activePage === "create-invoice" ||
-    activePage === "invoice-customers" ||
-    activePage === "invoice-payments" ||
-    activePage === "invoice-products" ||
-    activePage === "invoice-settings";
+    INVOICE_PAGE_IDS.includes(activePage);
 
   return (
     <aside
-      className={`fixed inset-y-0 left-0 z-50
-        flex w-[285px] flex-col
-        border-r border-white/10
-        bg-[#07111f]
-        text-white
-        shadow-2xl
-        transition-transform duration-300
-        lg:relative lg:translate-x-0
-        ${
-          sidebarOpen
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }
-      `}
->
-{isMobile && (
-<button
-onClick={() =>
-onSidebarChange(true)
-}
-className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-white/10 hover:text-white"
-> <X size={20} /> </button>
-)}
+      className={`fixed inset-y-0 left-0 z-50 flex w-[285px] flex-col border-r border-white/10 bg-[#07111f] text-white shadow-2xl transition-transform duration-300 lg:relative lg:translate-x-0 ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full"
+      }`}
+    >
+      {/* MOBILE CLOSE BUTTON */}
 
-  {/* HEADER */}
+      {isMobile && (
+        <button
+          type="button"
+          onClick={() => onSidebarChange(false)}
+          className="absolute right-4 top-4 z-10 rounded-xl p-2 text-gray-400 hover:bg-white/10 hover:text-white"
+          aria-label="Close sidebar"
+        >
+          <X size={20} />
+        </button>
+      )}
 
-  <div className="flex-shrink-0 px-6 pb-4 pt-7">
-    <div className="flex items-center gap-3">
-      <div className="relative">
-        <Image
-          src="/logo2.png"
-          alt="SaMi"
-          width={44}
-          height={44}
-          className="rounded-xl"
-        />
+      {/* HEADER */}
 
-        <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
-          <Sparkles
-            size={9}
-            className="text-white"
+      <div className="flex-shrink-0 px-6 pb-4 pt-7">
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <Image
+              src="/logo2.png"
+              alt="SaMi"
+              width={44}
+              height={44}
+              className="rounded-xl"
+            />
+
+            <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
+              <Sparkles
+                size={9}
+                className="text-white"
+              />
+            </div>
+          </div>
+
+          <div>
+            <h1 className="text-lg font-bold tracking-tight">
+              SaMi
+            </h1>
+
+            <p className="text-xs text-slate-500">
+              AI Business Workspace
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* SEARCH */}
+
+      <div className="flex-shrink-0 px-4 pb-4">
+        <div className="relative">
+          <Search
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+          />
+
+          <input
+            type="text"
+            placeholder="Search workspace..."
+            className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500 focus:bg-white/10"
           />
         </div>
       </div>
 
-      <div>
-        <h1 className="text-lg font-bold tracking-tight">
-          SaMi
-        </h1>
+      {/* NAVIGATION */}
 
-        <p className="text-xs text-slate-500">
-          AI Business Workspace
+      <div className="flex-1 overflow-y-auto px-4 pb-4">
+
+        {/* CORE */}
+
+        <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+          SaMi Core
         </p>
-      </div>
-    </div>
-  </div>
 
-  {/* SEARCH */}
+        <nav className="space-y-1">
+          {CORE_NAV.map((item) => {
+            const Icon = item.icon;
+            const isActive = activePage === item.id;
 
-  <div className="flex-shrink-0 px-4 pb-4">
-    <div className="relative">
-      <Search
-        size={16}
-        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-      />
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  onNavigation(item.id);
 
-      <input
-        type="text"
-        placeholder="Search workspace..."
-        className="w-full rounded-xl border border-white/10 bg-white/5 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-blue-500 focus:bg-white/10"
-      />
-    </div>
-  </div>
+                  if (isMobile) {
+                    onSidebarChange(false);
+                  }
+                }}
+                className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+                  isActive
+                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
+                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                }`}
+              >
+                <Icon
+                  size={19}
+                  className={
+                    isActive
+                      ? "text-white"
+                      : "text-slate-500 group-hover:text-slate-300"
+                  }
+                />
 
-  {/* NAVIGATION */}
+                <span className="flex-1">
+                  {item.label}
+                </span>
 
-  <div className="flex-1 overflow-y-auto px-4 pb-4">
+                {isActive && (
+                  <ChevronRight
+                    size={15}
+                    className="text-white/60"
+                  />
+                )}
+              </button>
+            );
+          })}
+        </nav>
 
-    {/* CORE */}
+        {/* MY APPS */}
 
-    <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-      SaMi Core
-    </p>
+        <div className="mt-7">
+          <div className="mb-3 flex items-center justify-between px-3">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
+              My Apps
+            </p>
 
-    <nav className="space-y-1">
-      {CORE_NAV.map((item) => {
-        const Icon = item.icon;
+            {!loadingApps && (
+              <span className="text-[10px] text-slate-600">
+                {enabledApps.length}
+              </span>
+            )}
+          </div>
 
-        const isActive =
-          activePage === item.id;
+          {loadingApps ? (
+            <div className="space-y-2 px-2">
+              {[1, 2, 3, 4].map((item) => (
+                <div
+                  key={item}
+                  className="h-10 animate-pulse rounded-xl bg-white/5"
+                />
+              ))}
+            </div>
+          ) : appsError ? (
+            <div className="mx-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300">
+              Unable to load your apps.
+            </div>
+          ) : enabledApps.length === 0 ? (
+            <div className="mx-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-5 text-slate-500">
+              No business apps have been enabled yet.
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {APP_CATEGORIES.map((category) => {
+                const apps =
+                  appsByCategory.get(category.key) || [];
 
-        return (
+                if (apps.length === 0) {
+                  return null;
+                }
+
+                const isExpanded =
+                  expandedCategories[category.key] !== false;
+
+                return (
+                  <div key={category.key}>
+                    {/* CATEGORY HEADER */}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onCategoryToggle(category.key)
+                      }
+                      className="mb-1 flex w-full items-center justify-between px-3 py-1 text-left"
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
+                        {category.name}
+                      </span>
+
+                      {isExpanded ? (
+                        <ChevronDown
+                          size={13}
+                          className="text-slate-600"
+                        />
+                      ) : (
+                        <ChevronRight
+                          size={13}
+                          className="text-slate-600"
+                        />
+                      )}
+                    </button>
+
+                    {/* APPS INSIDE CATEGORY */}
+
+                    {isExpanded && (
+                      <nav className="space-y-1">
+                        {apps.map((app) => {
+                          const Icon = getIcon(app.icon);
+
+                          const isInvoicing =
+                            app.key === "invoicing";
+
+                          const isActive =
+                            activePage === app.key ||
+                            (isInvoicing &&
+                              isInvoiceSection);
+
+                          return (
+                            <div key={app.key}>
+                              {/* APP BUTTON */}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (isInvoicing) {
+                                    const shouldOpen =
+                                      !isInvoicingMenuOpen;
+
+                                    onInvoicingMenuChange(
+                                      shouldOpen
+                                    );
+
+                                    /*
+                                     * When opening Invoicing for the
+                                     * first time, go to its Overview.
+                                     *
+                                     * If already inside an invoice
+                                     * page, just open/close the menu.
+                                     */
+
+                                    if (
+                                      shouldOpen &&
+                                      !isInvoiceSection
+                                    ) {
+                                      onNavigation(
+                                        "invoice-overview"
+                                      );
+                                    }
+
+                                    return;
+                                  }
+
+                                  onNavigation(app.key);
+
+                                  if (isMobile) {
+                                    onSidebarChange(false);
+                                  }
+                                }}
+                                title={app.description}
+                                className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
+                                  isActive
+                                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
+                                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                                }`}
+                              >
+                                <Icon
+                                  size={18}
+                                  className={
+                                    isActive
+                                      ? "text-white"
+                                      : "text-slate-500 group-hover:text-slate-300"
+                                  }
+                                />
+
+                                <span className="min-w-0 flex-1 truncate">
+                                  {app.name}
+                                </span>
+
+                                {isInvoicing ? (
+                                  <ChevronDown
+                                    size={15}
+                                    className={`transition-transform ${
+                                      isInvoicingMenuOpen
+                                        ? "rotate-180"
+                                        : ""
+                                    }`}
+                                  />
+                                ) : (
+                                  isActive && (
+                                    <ChevronRight
+                                      size={14}
+                                      className="text-white/60"
+                                    />
+                                  )
+                                )}
+                              </button>
+
+                              {/* INVOICING SUBMENU */}
+
+                              {isInvoicing &&
+                                isInvoicingMenuOpen && (
+                                  <div className="mt-1 space-y-1 pl-4">
+                                    {INVOICING_MENU.map(
+                                      (item) => {
+                                        const SubIcon =
+                                          item.icon;
+
+                                        const isSubActive =
+                                          activePage ===
+                                          item.id;
+
+                                        return (
+                                          <button
+                                            key={item.id}
+                                            type="button"
+                                            onClick={() => {
+                                              onNavigation(
+                                                item.id
+                                              );
+
+                                              if (isMobile) {
+                                                onSidebarChange(
+                                                  false
+                                                );
+                                              }
+                                            }}
+                                            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-xs font-medium transition-all ${
+                                              isSubActive
+                                                ? "bg-blue-600/20 text-blue-400"
+                                                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                                            }`}
+                                          >
+                                            <SubIcon
+                                              size={15}
+                                              className={
+                                                isSubActive
+                                                  ? "text-blue-400"
+                                                  : "text-slate-500 group-hover:text-slate-300"
+                                              }
+                                            />
+
+                                            <span className="flex-1 truncate">
+                                              {item.label}
+                                            </span>
+
+                                            {isSubActive && (
+                                              <ChevronRight
+                                                size={13}
+                                                className="text-blue-400/70"
+                                              />
+                                            )}
+                                          </button>
+                                        );
+                                      }
+                                    )}
+                                  </div>
+                                )}
+                            </div>
+                          );
+                        })}
+                      </nav>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* SETTINGS */}
+
+        <div className="mt-7 border-t border-white/[0.06] pt-4">
           <button
-            key={item.id}
+            type="button"
             onClick={() =>
-              onNavigation(
-           item.id
-             )
+              onSettingsMenuChange(
+                !isSettingsMenuOpen
+              )
             }
-            className={`
-              group flex w-full items-center
-              gap-3 rounded-xl px-4 py-3
-              text-left text-sm font-medium
-              transition-all
-              ${
-                isActive
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
-                  : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-              }
-            `}
+            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+              isSettingsMenuOpen ||
+              activePage === "settings" ||
+              SETTINGS_MENU.some(
+                (item) => item.id === activePage
+              )
+                ? "bg-blue-600 text-white"
+                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+            }`}
           >
-            <Icon
+            <Settings
               size={19}
               className={
-                isActive
+                isSettingsMenuOpen ||
+                activePage === "settings" ||
+                SETTINGS_MENU.some(
+                  (item) => item.id === activePage
+                )
                   ? "text-white"
-                  : "text-slate-500 group-hover:text-slate-300"
+                  : "text-slate-500"
               }
             />
 
             <span className="flex-1">
-              {item.label}
+              Settings
             </span>
 
-            {isActive && (
-              <ChevronRight
-                size={15}
-                className="text-white/60"
-              />
-            )}
-          </button>
-        );
-      })}
-    </nav>
-
-    {/* APP AREA */}
-
-    <div className="mt-7">
-      <div className="mb-3 flex items-center justify-between px-3">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-          My Apps
-        </p>
-
-        {!loadingApps && (
-          <span className="text-[10px] text-slate-600">
-            {enabledApps.length}
-          </span>
-        )}
-      </div>
-
-      {loadingApps ? (
-        <div className="space-y-2 px-2">
-          {[1, 2, 3, 4].map(
-            (item) => (
-              <div
-                key={item}
-                className="h-10 animate-pulse rounded-xl bg-white/5"
-              />
-            )
-          )}
-        </div>
-      ) : appsError ? (
-        <div className="mx-2 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300">
-          Unable to load your
-          apps.
-        </div>
-      ) : enabledApps.length ===
-        0 ? (
-        <div className="mx-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-5 text-slate-500">
-          No business apps have
-          been enabled yet.
-        </div>
-      ) : (
-        <div className="space-y-5">
-          {APP_CATEGORIES.map(
-            (category) => {
-              const apps =
-                appsByCategory.get(
-                  category.key
-                ) || [];
-
-              if (apps.length === 0) {
-                return null;
-              }
-
-              const isExpanded =
-                expandedCategories[
-                  category.key
-                ] !== false;
-
-              return (
-                <div
-                  key={
-                    category.key
-                  }
-                >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onCategoryToggle(
-                       category.key
-                     )
-                    }
-                    className="mb-1 flex w-full items-center justify-between px-3 py-1 text-left"
-                  >
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                      {category.name}
-                    </span>
-
-                    {isExpanded ? (
-                      <ChevronDown
-                        size={13}
-                        className="text-slate-600"
-                      />
-                    ) : (
-                      <ChevronRight
-                        size={13}
-                        className="text-slate-600"
-                      />
-                    )}
-                  </button>
-
-                  {isExpanded && (
-                    <nav className="space-y-1">
-                      {apps.map(
-                        (app) => {
-                          const Icon =
-                            getIcon(
-                              app.icon
-                            );
-
-                          const isActive =
-                            activePage ===
-                            app.key;
-
-                          return (
-                            <button
-                              key={
-                                app.key
-                              }
-                              onClick={() =>
-                                onNavigation(
-                                  app.key
-                                )
-                              }
-                              title={
-                                app.description
-                              }
-                              className={`
-                                group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all
-                                ${
-                                  isActive
-                                    ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
-                                    : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                                }
-                              `}
-                            >
-                              <Icon
-                                size={
-                                  18
-                                }
-                                className={
-                                  isActive
-                                    ? "text-white"
-                                    : "text-slate-500 group-hover:text-slate-300"
-                                }
-                              />
-
-                              <span className="min-w-0 flex-1 truncate">
-                                {
-                                  app.name
-                                }
-                              </span>
-
-                              {isActive && (
-                                <ChevronRight
-                                  size={
-                                    14
-                                  }
-                                  className="text-white/60"
-                                />
-                              )}
-                            </button>
-                          );
-                        }
-                      )}
-                    </nav>
-                  )}
-                </div>
-              );
-            }
-          )}
-        </div>
-      )}
-    </div> 
-
-{/* INVOICING — ONLY SHOW IF ENABLED */}
-{enabledApps.some(
-  (app) => app.key === "invoicing"
-) && (
-  <div className="mt-7 border-t border-white/[0.06] pt-4">
-    <button
-      type="button"
-      onClick={() =>
-        onInvoicingMenuChange(
-          !isInvoicingMenuOpen
-        )
-      }
-      className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
-        isInvoiceSection
-          ? "bg-blue-600 text-white shadow-lg shadow-blue-900/30"
-          : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-      }`}
-    >
-      <Receipt
-        size={19}
-        className={
-          isInvoiceSection
-            ? "text-white"
-            : "text-slate-500 group-hover:text-slate-300"
-        }
-      />
-
-      <span className="flex-1">
-        Invoicing
-      </span>
-
-      <ChevronDown
-        size={16}
-        className={`transition-transform ${
-          isInvoicingMenuOpen
-            ? "rotate-180"
-            : ""
-        }`}
-      />
-    </button>
-
-    {isInvoicingMenuOpen && (
-      <div className="mt-2 space-y-1 pl-4">
-        {INVOICING_MENU.map((item) => {
-          const Icon = item.icon;
-
-          const isActive =
-            activePage === item.id;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => {
-                onNavigation(item.id);
-
-                if (isMobile) {
-                  onSidebarChange(false);
-                }
-              }}
-              className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
-                isActive
-                  ? "bg-blue-600/20 text-blue-400"
-                  : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+            <ChevronDown
+              size={16}
+              className={`transition-transform ${
+                isSettingsMenuOpen
+                  ? "rotate-180"
+                  : ""
               }`}
-            >
-              <Icon
-                size={16}
-                className={
-                  isActive
-                    ? "text-blue-400"
-                    : "text-slate-500 group-hover:text-slate-300"
-                }
-              />
-
-              <span className="flex-1">
-                {item.label}
-              </span>
-
-              {isActive && (
-                <ChevronRight
-                  size={14}
-                  className="text-blue-400/70"
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-    )}
-  </div>
-)}
-
- {/* SETTINGS DROPDOWN */}
-<div className="mt-7 border-t border-white/[0.06] pt-4">
-  <button
-    onClick={() => onSettingsMenuChange(!isSettingsMenuOpen)}
-    className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
-      isSettingsMenuOpen || activePage === "settings" 
-        ? "bg-blue-600 text-white" 
-        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-    }`}
-  >
-    <Settings size={19} className={isSettingsMenuOpen || activePage === "settings" ? "text-white" : "text-slate-500"} />
-    <span className="flex-1">Settings</span>
-    <ChevronDown size={16} className={`transition-transform ${isSettingsMenuOpen ? "rotate-180" : ""}`} />
-  </button>
-
-  {isSettingsMenuOpen && (
-    <div className="mt-2 space-y-1 pl-4">
-      {SETTINGS_MENU.map((item) => {
-        const Icon = item.icon;
-        const isActive = activePage === item.id;
-        return (
-          <button
-            key={item.id}
-            onClick={() => {
-              onSettingsSectionChange(item.id);
-              onNavigation(item.id);
-              onSettingsMenuChange(true);
-              if (isMobile) onSidebarChange(false);
-            }}
-            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-medium transition-all ${
-              isActive
-                ? "bg-blue-600/20 text-blue-400"
-                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-            }`}
-          >
-            <Icon size={16} />
-            <span>{item.label}</span>
+            />
           </button>
-        );
-      })}
-    </div>
-  )}
-</div>
-  {/* PROFILE */}
 
-  <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
-    <div className="flex items-center gap-3 rounded-xl p-2">
-      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-        {profile?.full_name?.[0]?.toUpperCase() ||
-          "S"}
+          {isSettingsMenuOpen && (
+            <div className="mt-2 space-y-1 pl-4">
+              {SETTINGS_MENU.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  activePage === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      onSettingsSectionChange(
+                        item.id
+                      );
+
+                      onNavigation(item.id);
+
+                      /*
+                       * Keep Settings open while
+                       * navigating between sections.
+                       */
+
+                      onSettingsMenuChange(true);
+
+                      if (isMobile) {
+                        onSidebarChange(false);
+                      }
+                    }}
+                    className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-medium transition-all ${
+                      isActive
+                        ? "bg-blue-600/20 text-blue-400"
+                        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                    }`}
+                  >
+                    <Icon
+                      size={16}
+                      className={
+                        isActive
+                          ? "text-blue-400"
+                          : "text-slate-500 group-hover:text-slate-300"
+                      }
+                    />
+
+                    <span>
+                      {item.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-white">
-          {loadingProfile
-            ? "Loading..."
-            : profile?.full_name ||
-              "SaMi User"}
-        </p>
+      {/* PROFILE */}
 
-        <p className="truncate text-xs text-slate-500">
-          {profile?.email ||
-            "Account"}
-        </p>
+      <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
+        <div className="flex items-center gap-3 rounded-xl p-2">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
+            {profile?.full_name?.[0]?.toUpperCase() ||
+              "S"}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-white">
+              {loadingProfile
+                ? "Loading..."
+                : profile?.full_name ||
+                  "SaMi User"}
+            </p>
+
+            <p className="truncate text-xs text-slate-500">
+              {profile?.email || "Account"}
+            </p>
+          </div>
+        </div>
       </div>
-    </div>
-  </div>
-       </div>
     </aside>
   );
 };
