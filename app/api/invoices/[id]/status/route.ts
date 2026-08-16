@@ -4,7 +4,7 @@ import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }  // Changed to Promise
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -13,7 +13,7 @@ export async function PATCH(
     }
 
     const { status } = await req.json();
-    const { id } = params;
+    const { id } = await params;  // Await the params
 
     if (!id) {
       return NextResponse.json(
@@ -132,7 +132,7 @@ export async function PATCH(
       [
         id,
         user.id,
-       user.fullName || user.email,
+        user.fullName || user.email,
         `status_updated_to_${status}`,
         JSON.stringify({ 
           previous_status: currentStatus,

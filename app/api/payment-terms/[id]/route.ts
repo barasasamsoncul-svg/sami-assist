@@ -5,7 +5,7 @@ import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 // GET: Get single payment term
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }  // Changed to Promise
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -14,7 +14,7 @@ export async function GET(
     }
 
     const { pool } = await getTenantDatabaseForUser(user.id);
-    const { id } = params;
+    const { id } = await params;  // Await the params
 
     const result = await pool.query(
       `
@@ -43,7 +43,7 @@ export async function GET(
 // PUT: Update payment term
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }  // Changed to Promise
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -52,7 +52,7 @@ export async function PUT(
     }
 
     const body = await req.json();
-    const { id } = params;
+    const { id } = await params;  // Await the params
     const {
       name,
       description,
@@ -140,7 +140,7 @@ export async function PUT(
 // DELETE: Delete payment term
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }  // Changed to Promise
 ) {
   try {
     const user = await getAuthenticatedUser();
@@ -149,7 +149,7 @@ export async function DELETE(
     }
 
     const { pool } = await getTenantDatabaseForUser(user.id);
-    const { id } = params;
+    const { id } = await params;  // Await the params
 
     // Check if payment term exists
     const checkResult = await pool.query(
