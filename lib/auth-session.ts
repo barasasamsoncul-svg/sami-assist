@@ -57,7 +57,7 @@ export async function getAuthenticatedUser() {
   return {
     id: user.id,
     email: user.email,
-    fullName: user.full_name,
+    fullName: user.fullName || user.email,
     status: user.status,
     createdAt: user.created_at,
     lastLoginAt: user.last_login_at,

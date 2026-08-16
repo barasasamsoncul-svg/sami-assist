@@ -59,6 +59,8 @@ type InvoicePage =
   | "invoice-products"
   | "invoice-settings";
 
+type PaymentStatus = "pending" | "completed" | "failed" | "refunded" | "disputed";
+
 interface Customer {
   id: string;
   company_name: string;
@@ -154,7 +156,7 @@ interface Payment {
   payment_method_details?: any;
   transaction_reference?: string | null;
   payment_date: string;
-  status: string;
+  status: PaymentStatus;
   reconciled?: boolean;
   reconciled_at?: string | null;
   reconciled_by?: string | null;
@@ -308,12 +310,12 @@ const PAYMENT_METHODS = [
   "other",
 ];
 
-const TAX_RATES = [
-  { label: "No Tax", value: "0" },
-  { label: "VAT 20%", value: "20" },
-  { label: "VAT 10%", value: "10" },
-  { label: "GST 10%", value: "10" },
-  { label: "Sales Tax 8%", value: "8" },
+const PAYMENT_STATUSES: PaymentStatus[] = [
+  "pending",
+  "completed",
+  "failed",
+  "refunded",
+  "disputed",
 ];
 
 const EMPTY_ITEM: DraftItem = {
@@ -330,12 +332,12 @@ const EMPTY_ITEM: DraftItem = {
    HELPERS
 ========================================================= */
 
-function money(value: number | string | null | undefined, currency: string | null | undefined = "KES") {
-  const currencyCode = currency || "KES";
+function money(value: number | string | null | undefined, currency: string | null | undefined = "USD") {
+  const currencyCode = currency || "USD";
   const numValue = Number(value || 0);
   
   try {
-    return new Intl.NumberFormat("en-KE", {
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: currencyCode,
       maximumFractionDigits: 2,
@@ -349,7 +351,7 @@ function dateText(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en-KE", {
+  return new Intl.DateTimeFormat("en-US", {
     dateStyle: "medium",
   }).format(date);
 }
@@ -376,6 +378,23 @@ function statusClass(status: InvoiceStatus) {
       return "bg-gray-500/10 text-gray-600 dark:text-gray-400";
     default:
       return "bg-purple-500/10 text-purple-700 dark:text-purple-400";
+  }
+}
+
+function paymentStatusClass(status: PaymentStatus) {
+  switch (status) {
+    case "completed":
+      return "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400";
+    case "pending":
+      return "bg-amber-500/10 text-amber-700 dark:text-amber-400";
+    case "failed":
+      return "bg-red-500/10 text-red-700 dark:text-red-400";
+    case "refunded":
+      return "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+    case "disputed":
+      return "bg-orange-500/10 text-orange-700 dark:text-orange-400";
+    default:
+      return "bg-gray-500/10 text-gray-600 dark:text-gray-400";
   }
 }
 
@@ -413,10 +432,6 @@ function calculateItem(item: DraftItem) {
   const taxable = gross - discount;
   const tax = (taxable * Number(item.tax_rate || 0)) / 100;
   return { gross, discount, taxable, tax, total: taxable + tax };
-}
-
-function formatCurrency(currency: string | null | undefined) {
-  return currency || "USD";
 }
 
 /* =========================================================
@@ -506,10 +521,8 @@ function LoadingSpinner() {
 // 1. INVOICE OVERVIEW
 function InvoiceOverview({
   onNavigate,
-  onRefresh,
 }: {
   onNavigate: (page: InvoicePage) => void;
-  onRefresh: () => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -527,7 +540,7 @@ function InvoiceOverview({
         fetch("/api/invoices?limit=5&sort=-created_at", {
           credentials: "include",
         }),
-        fetch("/api/invoices?due_in_days=7&status!=paid&status!=cancelled&status!=void", {
+        fetch("/api/invoices/overdue?days=7", {
           credentials: "include",
         }),
       ]);
@@ -824,7 +837,6 @@ function InvoicesList({ onNavigate }: { onNavigate?: (page: InvoicePage) => void
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-lg font-bold">All Invoices</h2>
@@ -863,7 +875,6 @@ function InvoicesList({ onNavigate }: { onNavigate?: (page: InvoicePage) => void
         </div>
       </div>
 
-      {/* Table */}
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
         {filteredInvoices.length === 0 ? (
           <div className="flex min-h-[300px] flex-col items-center justify-center p-8 text-center">
@@ -951,7 +962,6 @@ function InvoicesList({ onNavigate }: { onNavigate?: (page: InvoicePage) => void
             </table>
           </div>
         )}
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-gray-200 px-5 py-4 dark:border-gray-800">
             <button
@@ -1152,7 +1162,6 @@ function CreateInvoice() {
       if (!response.ok) throw new Error(data.error || "Failed to create invoice.");
 
       alert("Invoice created successfully!");
-      // Reset form
       setItems([{ ...EMPTY_ITEM }]);
       setCustomerId("");
       setPoNumber("");
@@ -1195,7 +1204,6 @@ function CreateInvoice() {
       )}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        {/* Left Panel */}
         <div className="space-y-6">
           {/* Customer & Details */}
           <section className="rounded-2xl border border-gray-200 p-5 dark:border-gray-800">
@@ -1839,8 +1847,10 @@ function InvoiceDetail({
                 </div>
                 <div className="text-left sm:text-right">
                   <p className="text-xs text-gray-500">{payment.transaction_reference || "No reference"}</p>
-                  <p className="mt-1 text-xs capitalize text-gray-500">
-                    {payment.status}
+                  <p className="mt-1 text-xs">
+                    <span className={`rounded-full px-2.5 py-1 ${paymentStatusClass(payment.status)}`}>
+                      {payment.status}
+                    </span>
                     {payment.reconciled && " · Reconciled"}
                   </p>
                 </div>
@@ -2324,17 +2334,7 @@ function InvoicePayments() {
                     <td className="px-5 py-4 text-sm">{payment.transaction_reference || "—"}</td>
                     <td className="px-5 py-4 text-sm">{dateText(payment.payment_date)}</td>
                     <td className="px-5 py-4">
-                      <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          payment.status === "completed"
-                            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                            : payment.status === "pending"
-                            ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
-                            : payment.status === "failed"
-                            ? "bg-red-500/10 text-red-700 dark:text-red-400"
-                            : "bg-gray-500/10 text-gray-600 dark:text-gray-400"
-                        }`}
-                      >
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${paymentStatusClass(payment.status)}`}>
                         {payment.status}
                       </span>
                     </td>
@@ -2376,6 +2376,7 @@ function PaymentRecordModal({
     transaction_reference: "",
     payment_date: today(),
     notes: "",
+    status: "completed" as PaymentStatus,
   });
 
   const selectedInvoice = invoices.find((i) => i.id === form.invoice_id);
@@ -2397,7 +2398,7 @@ function PaymentRecordModal({
         transaction_reference: form.transaction_reference || null,
         payment_date: form.payment_date,
         notes: form.notes || null,
-        status: "completed",
+        status: form.status,
       };
 
       const response = await fetch("/api/payments", {
@@ -2512,6 +2513,23 @@ function PaymentRecordModal({
                 onChange={(e) => setForm({ ...form, payment_date: e.target.value })}
                 className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
               />
+            </label>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <FieldLabel>Status</FieldLabel>
+              <select
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as PaymentStatus })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              >
+                {PAYMENT_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {status.toUpperCase()}
+                  </option>
+                ))}
+              </select>
             </label>
           </div>
 
@@ -2778,6 +2796,17 @@ function ProductCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               />
             </label>
           </div>
+          <label>
+            <FieldLabel>Tax Rate</FieldLabel>
+            <select
+              value={form.tax_rate_id}
+              onChange={(e) => setForm({ ...form, tax_rate_id: e.target.value })}
+              className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+            >
+              <option value="">No tax</option>
+              {/* Tax rates will be populated from API */}
+            </select>
+          </label>
           <label>
             <FieldLabel>Notes</FieldLabel>
             <textarea
@@ -3275,7 +3304,7 @@ export default function Invoices({ activePage = "invoice-overview" }: { activePa
   const renderPage = () => {
     switch (activePage) {
       case "invoice-overview":
-        return <InvoiceOverview onNavigate={(page) => window.location.href = `/invoicing/${page}`} onRefresh={() => {}} />;
+        return <InvoiceOverview onNavigate={(page) => window.location.href = `/invoicing/${page}`} />;
       case "invoices":
         return <InvoicesList onNavigate={(page) => window.location.href = `/invoicing/${page}`} />;
       case "create-invoice":
@@ -3289,7 +3318,7 @@ export default function Invoices({ activePage = "invoice-overview" }: { activePa
       case "invoice-settings":
         return <InvoiceSettings />;
       default:
-        return <InvoiceOverview onNavigate={(page) => window.location.href = `/invoicing/${page}`} onRefresh={() => {}} />;
+        return <InvoiceOverview onNavigate={(page) => window.location.href = `/invoicing/${page}`} />;
     }
   };
 
