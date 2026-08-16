@@ -35,7 +35,7 @@ import {
 } from "lucide-react";
 
 /* =========================================================
-   TYPES (Matches Database Schema)
+   TYPES (Matches Database Schema Exactly)
 ========================================================= */
 
 type InvoiceStatus =
@@ -72,10 +72,14 @@ interface Customer {
   tax_id_type?: string | null;
   registration_number?: string | null;
   currency?: string | null;
+  payment_terms_id?: string | null;
+  credit_limit?: number | string | null;
   customer_type?: string | null;
   industry?: string | null;
   status?: string | null;
-  credit_limit?: string | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Product {
@@ -87,6 +91,9 @@ interface Product {
   tax_rate_id?: string | null;
   category?: string | null;
   is_active?: boolean;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface PaymentTerm {
@@ -98,6 +105,9 @@ interface PaymentTerm {
   discount_days?: number | null;
   is_default?: boolean;
   is_active?: boolean;
+  sort_order?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface TaxRate {
@@ -105,12 +115,18 @@ interface TaxRate {
   name: string;
   rate: number;
   tax_type: string;
+  country?: string | null;
+  region?: string | null;
   is_default?: boolean;
   is_active?: boolean;
+  sort_order?: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface InvoiceItem {
   id: string;
+  invoice_id: string;
   product_id?: string | null;
   description: string;
   quantity: number | string;
@@ -120,19 +136,32 @@ interface InvoiceItem {
   discount_amount?: number | string;
   tax_rate: number | string;
   tax_amount: number | string;
+  tax_rate_id?: string | null;
   line_total: number | string;
   sort_order?: number;
+  metadata?: any;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Payment {
   id: string;
+  invoice_id: string;
   amount: number | string;
   currency?: string | null;
+  exchange_rate?: number | string;
   payment_method: string;
+  payment_method_details?: any;
   transaction_reference?: string | null;
   payment_date: string;
   status: string;
+  reconciled?: boolean;
+  reconciled_at?: string | null;
+  reconciled_by?: string | null;
   notes?: string | null;
+  metadata?: any;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Invoice {
@@ -143,6 +172,9 @@ interface Invoice {
   issue_date: string;
   due_date?: string | null;
   payment_date?: string | null;
+  sent_at?: string | null;
+  viewed_at?: string | null;
+  approved_at?: string | null;
   status: InvoiceStatus;
   subtotal: number | string;
   discount_type?: string | null;
@@ -161,9 +193,18 @@ interface Invoice {
   payment_terms_id?: string | null;
   payment_terms_display?: string | null;
   template_id?: string | null;
+  created_by?: string | null;
+  approved_by?: string | null;
+  cancelled_by?: string | null;
+  cancelled_reason?: string | null;
+  reminder_count?: number;
+  last_reminder_sent_at?: string | null;
+  next_reminder_at?: string | null;
   notes?: string | null;
   internal_notes?: string | null;
-  created_by?: string | null;
+  footer_text?: string | null;
+  attachments?: any;
+  metadata?: any;
   invoice_items?: InvoiceItem[];
   payments?: Payment[];
   created_at: string;
@@ -180,6 +221,7 @@ interface Stats {
   paid_invoices?: number;
   overdue_invoices?: number;
   cancelled_invoices?: number;
+  void_invoices?: number;
   total_invoiced?: number;
   total_collected?: number;
   total_outstanding?: number;
@@ -224,6 +266,8 @@ interface InvoiceSettings {
   allow_partial_payments: boolean;
   allow_credit_notes: boolean;
   require_approval: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface DraftItem {
@@ -264,6 +308,14 @@ const PAYMENT_METHODS = [
   "other",
 ];
 
+const TAX_RATES = [
+  { label: "No Tax", value: "0" },
+  { label: "VAT 20%", value: "20" },
+  { label: "VAT 10%", value: "10" },
+  { label: "GST 10%", value: "10" },
+  { label: "Sales Tax 8%", value: "8" },
+];
+
 const EMPTY_ITEM: DraftItem = {
   product_id: "",
   description: "",
@@ -280,14 +332,16 @@ const EMPTY_ITEM: DraftItem = {
 
 function money(value: number | string | null | undefined, currency: string | null | undefined = "KES") {
   const currencyCode = currency || "KES";
+  const numValue = Number(value || 0);
+  
   try {
     return new Intl.NumberFormat("en-KE", {
       style: "currency",
       currency: currencyCode,
       maximumFractionDigits: 2,
-    }).format(Number(value || 0));
+    }).format(numValue);
   } catch {
-    return `${currencyCode} ${Number(value || 0).toFixed(2)}`;
+    return `${currencyCode} ${numValue.toFixed(2)}`;
   }
 }
 
@@ -362,7 +416,7 @@ function calculateItem(item: DraftItem) {
 }
 
 function formatCurrency(currency: string | null | undefined) {
-  return currency || "KES";
+  return currency || "USD";
 }
 
 /* =========================================================
@@ -531,13 +585,13 @@ function InvoiceOverview({
 
       {/* Quick Stats Breakdown */}
       <section className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
-        {(["draft", "sent", "partially_paid", "paid", "overdue", "cancelled"] as const).map(
+        {(["draft", "sent", "partially_paid", "paid", "overdue", "cancelled", "void"] as const).map(
           (status) => {
             const count = stats?.[`${status}_invoices` as keyof Stats] || 0;
             return (
               <button
                 key={status}
-                onClick={() => onNavigate(status === "draft" ? "invoices" : "invoices")}
+                onClick={() => onNavigate("invoices")}
                 className="rounded-xl border border-gray-200 p-3 text-left transition hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-800/50"
               >
                 <p className="text-xs text-gray-500">{STATUS_LABELS[status]}</p>
@@ -651,7 +705,7 @@ function InvoiceOverview({
 }
 
 // 2. ALL INVOICES
-function InvoicesList() {
+function InvoicesList({ onNavigate }: { onNavigate?: (page: InvoicePage) => void }) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -745,7 +799,8 @@ function InvoicesList() {
         (inv) =>
           inv.invoice_number.toLowerCase().includes(query) ||
           inv.customer?.company_name?.toLowerCase().includes(query) ||
-          inv.customer?.contact_name?.toLowerCase().includes(query)
+          inv.customer?.contact_name?.toLowerCase().includes(query) ||
+          inv.po_number?.toLowerCase().includes(query)
       );
     }
     return result;
@@ -876,11 +931,17 @@ function InvoicesList() {
                             <Send size={16} />
                           </button>
                           <button
-  onClick={() => window.location.href = "/invoicing/create-invoice"}
-  className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
->
-  <Edit size={16} />
-</button>
+                            onClick={() => {
+                              if (onNavigate) {
+                                onNavigate("create-invoice");
+                              } else {
+                                window.location.href = "/invoicing/create-invoice";
+                              }
+                            }}
+                            className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          >
+                            <Edit size={16} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -940,6 +1001,7 @@ function CreateInvoice() {
   const [shippingCost, setShippingCost] = useState("0");
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [footerText, setFooterText] = useState("");
   const [items, setItems] = useState<DraftItem[]>([{ ...EMPTY_ITEM }]);
 
   const loadCreateData = useCallback(async () => {
@@ -1067,6 +1129,7 @@ function CreateInvoice() {
         shipping_cost: shipping,
         notes: notes.trim() || null,
         internal_notes: internalNotes.trim() || null,
+        footer_text: footerText.trim() || null,
         items: items.map((item) => ({
           product_id: item.product_id || null,
           description: item.description.trim(),
@@ -1098,6 +1161,7 @@ function CreateInvoice() {
       setShippingCost("0");
       setNotes("");
       setInternalNotes("");
+      setFooterText("");
       window.location.href = "/invoicing/invoices";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create invoice.");
@@ -1138,7 +1202,7 @@ function CreateInvoice() {
             <h3 className="mb-4 text-sm font-bold">Customer & Invoice Details</h3>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="sm:col-span-2">
-                <FieldLabel>Customer</FieldLabel>
+                <FieldLabel>Customer *</FieldLabel>
                 <select
                   value={customerId}
                   onChange={(e) => setCustomerId(e.target.value)}
@@ -1155,7 +1219,7 @@ function CreateInvoice() {
               </label>
 
               <label>
-                <FieldLabel>Issue Date</FieldLabel>
+                <FieldLabel>Issue Date *</FieldLabel>
                 <input
                   type="date"
                   value={issueDate}
@@ -1273,9 +1337,9 @@ function CreateInvoice() {
                 <thead className="bg-gray-50 text-xs text-gray-500 dark:bg-gray-800/50">
                   <tr>
                     <th className="p-3 text-left">Product</th>
-                    <th className="p-3 text-left">Description</th>
-                    <th className="p-3">Qty</th>
-                    <th className="p-3">Unit Price</th>
+                    <th className="p-3 text-left">Description *</th>
+                    <th className="p-3">Qty *</th>
+                    <th className="p-3">Unit Price *</th>
                     <th className="p-3">Discount</th>
                     <th className="p-3">Tax</th>
                     <th className="p-3 text-right">Total</th>
@@ -1466,6 +1530,16 @@ function CreateInvoice() {
                 />
               </label>
             </div>
+            <label className="mt-4 block">
+              <FieldLabel>Footer Text (overrides template)</FieldLabel>
+              <textarea
+                value={footerText}
+                onChange={(e) => setFooterText(e.target.value)}
+                rows={3}
+                placeholder="Custom footer text for this invoice..."
+                className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
           </section>
         </div>
 
@@ -1615,6 +1689,15 @@ function InvoiceDetail({
               Issued {dateText(invoice.issue_date)}
               {invoice.due_date && ` · Due ${dateText(invoice.due_date)}`}
             </p>
+            {invoice.sent_at && (
+              <p className="text-sm text-gray-500">Sent {dateText(invoice.sent_at)}</p>
+            )}
+            {invoice.viewed_at && (
+              <p className="text-sm text-gray-500">Viewed {dateText(invoice.viewed_at)}</p>
+            )}
+            {invoice.approved_at && (
+              <p className="text-sm text-gray-500">Approved {dateText(invoice.approved_at)}</p>
+            )}
           </div>
           <button onClick={onRefresh} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold dark:border-gray-700">
             <RefreshCw size={16} /> Refresh
@@ -1648,6 +1731,12 @@ function InvoiceDetail({
             <p className="mt-1 whitespace-pre-line text-sm">{invoice.customer.billing_address}</p>
           </div>
         )}
+        {invoice.customer?.shipping_address && (
+          <div className="border-t border-gray-200 px-5 py-4 dark:border-gray-800">
+            <p className="text-xs uppercase tracking-wide text-gray-500">Shipping Address</p>
+            <p className="mt-1 whitespace-pre-line text-sm">{invoice.customer.shipping_address}</p>
+          </div>
+        )}
       </section>
 
       <section className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -1658,11 +1747,19 @@ function InvoiceDetail({
           <DetailField label="Invoice Number" value={invoice.invoice_number} />
           <DetailField label="Purchase Order" value={invoice.po_number} />
           <DetailField label="Currency" value={invoice.currency} />
+          <DetailField label="Exchange Rate" value={invoice.exchange_rate ? String(invoice.exchange_rate) : "1.0000"} />
           <DetailField label="Payment Terms" value={invoice.payment_terms_display} />
           <DetailField label="Tax Calculation" value={invoice.tax_calculation_method} />
           <DetailField label="Issue Date" value={dateText(invoice.issue_date)} />
           <DetailField label="Due Date" value={dateText(invoice.due_date)} />
           <DetailField label="Payment Date" value={dateText(invoice.payment_date)} />
+          <DetailField label="Reminder Count" value={invoice.reminder_count ? String(invoice.reminder_count) : "0"} />
+          {invoice.last_reminder_sent_at && (
+            <DetailField label="Last Reminder" value={dateText(invoice.last_reminder_sent_at)} />
+          )}
+          {invoice.next_reminder_at && (
+            <DetailField label="Next Reminder" value={dateText(invoice.next_reminder_at)} />
+          )}
         </div>
       </section>
 
@@ -1708,6 +1805,9 @@ function InvoiceDetail({
             {Number(invoice.shipping_cost || 0) > 0 && (
               <SummaryRow label="Shipping" value={money(invoice.shipping_cost, currency)} />
             )}
+            {Number(invoice.shipping_tax || 0) > 0 && (
+              <SummaryRow label="Shipping Tax" value={money(invoice.shipping_tax, currency)} />
+            )}
             <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
               <SummaryRow label="Total" value={money(invoice.total_amount, currency)} strong />
             </div>
@@ -1715,7 +1815,42 @@ function InvoiceDetail({
         </div>
       </section>
 
-      {(invoice.notes || invoice.internal_notes) && (
+      {/* Payments */}
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+        <div className="border-b border-gray-200 p-5 dark:border-gray-800">
+          <h2 className="text-sm font-bold">Payment History</h2>
+        </div>
+        {!invoice.payments?.length ? (
+          <div className="p-5 text-sm text-gray-500">No payments have been recorded for this invoice.</div>
+        ) : (
+          <div className="divide-y dark:divide-gray-800">
+            {invoice.payments.map((payment) => (
+              <div
+                key={payment.id}
+                className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-semibold">
+                    {money(payment.amount, payment.currency || currency)}
+                  </p>
+                  <p className="mt-1 text-xs capitalize text-gray-500">
+                    {payment.payment_method.replace("_", " ")} · {dateText(payment.payment_date)}
+                  </p>
+                </div>
+                <div className="text-left sm:text-right">
+                  <p className="text-xs text-gray-500">{payment.transaction_reference || "No reference"}</p>
+                  <p className="mt-1 text-xs capitalize text-gray-500">
+                    {payment.status}
+                    {payment.reconciled && " · Reconciled"}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {(invoice.notes || invoice.internal_notes || invoice.footer_text) && (
         <section className="grid gap-4 md:grid-cols-2">
           {invoice.notes && (
             <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
@@ -1728,6 +1863,14 @@ function InvoiceDetail({
               <h2 className="text-sm font-bold">Internal Notes</h2>
               <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
                 {invoice.internal_notes}
+              </p>
+            </div>
+          )}
+          {invoice.footer_text && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+              <h2 className="text-sm font-bold">Footer Text</h2>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                {invoice.footer_text}
               </p>
             </div>
           )}
@@ -1843,6 +1986,8 @@ function InvoiceCustomers() {
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
                           customer.status === "active"
                             ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            : customer.status === "blocked"
+                            ? "bg-red-500/10 text-red-700 dark:text-red-400"
                             : "bg-gray-500/10 text-gray-600 dark:text-gray-400"
                         }`}
                       >
@@ -1876,9 +2021,16 @@ function CustomerCreateModal({ onClose, onCreated }: { onClose: () => void; onCr
     contact_name: "",
     email: "",
     phone: "",
+    website: "",
     billing_address: "",
+    shipping_address: "",
     tax_id: "",
+    tax_id_type: "vat",
+    registration_number: "",
     currency: "USD",
+    customer_type: "company",
+    industry: "",
+    notes: "",
   });
 
   const submit = async () => {
@@ -1960,15 +2112,34 @@ function CustomerCreateModal({ onClose, onCreated }: { onClose: () => void; onCr
             </label>
           </div>
           <label>
-            <FieldLabel>Billing Address</FieldLabel>
-            <textarea
-              value={form.billing_address}
-              onChange={(e) => setForm({ ...form, billing_address: e.target.value })}
-              rows={3}
-              className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+            <FieldLabel>Website</FieldLabel>
+            <input
+              value={form.website}
+              onChange={(e) => setForm({ ...form, website: e.target.value })}
+              className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
             />
           </label>
           <div className="grid gap-4 sm:grid-cols-2">
+            <label>
+              <FieldLabel>Billing Address</FieldLabel>
+              <textarea
+                value={form.billing_address}
+                onChange={(e) => setForm({ ...form, billing_address: e.target.value })}
+                rows={3}
+                className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
+            <label>
+              <FieldLabel>Shipping Address</FieldLabel>
+              <textarea
+                value={form.shipping_address}
+                onChange={(e) => setForm({ ...form, shipping_address: e.target.value })}
+                rows={3}
+                className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
             <label>
               <FieldLabel>Tax ID</FieldLabel>
               <input
@@ -1977,6 +2148,29 @@ function CustomerCreateModal({ onClose, onCreated }: { onClose: () => void; onCr
                 className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
               />
             </label>
+            <label>
+              <FieldLabel>Tax ID Type</FieldLabel>
+              <select
+                value={form.tax_id_type}
+                onChange={(e) => setForm({ ...form, tax_id_type: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              >
+                <option value="vat">VAT</option>
+                <option value="ein">EIN</option>
+                <option value="gst">GST</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Registration Number</FieldLabel>
+              <input
+                value={form.registration_number}
+                onChange={(e) => setForm({ ...form, registration_number: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
             <label>
               <FieldLabel>Currency</FieldLabel>
               <select
@@ -1991,7 +2185,37 @@ function CustomerCreateModal({ onClose, onCreated }: { onClose: () => void; onCr
                 ))}
               </select>
             </label>
+            <label>
+              <FieldLabel>Customer Type</FieldLabel>
+              <select
+                value={form.customer_type}
+                onChange={(e) => setForm({ ...form, customer_type: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              >
+                <option value="individual">Individual</option>
+                <option value="company">Company</option>
+                <option value="government">Government</option>
+                <option value="non_profit">Non-Profit</option>
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Industry</FieldLabel>
+              <input
+                value={form.industry}
+                onChange={(e) => setForm({ ...form, industry: e.target.value })}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
           </div>
+          <label>
+            <FieldLabel>Notes</FieldLabel>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
         </div>
 
         <div className="mt-6 flex gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
@@ -2096,7 +2320,7 @@ function InvoicePayments() {
                 {payments.map((payment) => (
                   <tr key={payment.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
                     <td className="px-5 py-4 text-sm font-semibold">{money(payment.amount, payment.currency)}</td>
-                    <td className="px-5 py-4 text-sm capitalize">{payment.payment_method}</td>
+                    <td className="px-5 py-4 text-sm capitalize">{payment.payment_method.replace("_", " ")}</td>
                     <td className="px-5 py-4 text-sm">{payment.transaction_reference || "—"}</td>
                     <td className="px-5 py-4 text-sm">{dateText(payment.payment_date)}</td>
                     <td className="px-5 py-4">
@@ -2106,6 +2330,8 @@ function InvoicePayments() {
                             ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                             : payment.status === "pending"
                             ? "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                            : payment.status === "failed"
+                            ? "bg-red-500/10 text-red-700 dark:text-red-400"
                             : "bg-gray-500/10 text-gray-600 dark:text-gray-400"
                         }`}
                       >
@@ -2458,6 +2684,8 @@ function ProductCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
     sku: "",
     unit_price: "",
     category: "",
+    notes: "",
+    tax_rate_id: "",
   });
 
   const submit = async () => {
@@ -2550,6 +2778,15 @@ function ProductCreateModal({ onClose, onCreated }: { onClose: () => void; onCre
               />
             </label>
           </div>
+          <label>
+            <FieldLabel>Notes</FieldLabel>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
         </div>
 
         <div className="mt-6 flex gap-3 border-t border-gray-200 pt-4 dark:border-gray-800">
@@ -2679,6 +2916,14 @@ function InvoiceSettings() {
               />
             </label>
             <label>
+              <FieldLabel>Registration Number</FieldLabel>
+              <input
+                value={settings.company_registration_number || ""}
+                onChange={(e) => updateSetting("company_registration_number", e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
+            <label>
               <FieldLabel>Email</FieldLabel>
               <input
                 type="email"
@@ -2700,6 +2945,14 @@ function InvoiceSettings() {
               <input
                 value={settings.company_tax_id || ""}
                 onChange={(e) => updateSetting("company_tax_id", e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
+            <label>
+              <FieldLabel>Logo URL</FieldLabel>
+              <input
+                value={settings.company_logo_url || ""}
+                onChange={(e) => updateSetting("company_logo_url", e.target.value)}
                 className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
               />
             </label>
@@ -2727,7 +2980,7 @@ function InvoiceSettings() {
         <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
           <h3 className="text-sm font-bold">Invoice Numbering</h3>
           <p className="mt-1 text-xs text-gray-500">Configure how invoice numbers are generated.</p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className="mt-4 grid gap-4 sm:grid-cols-4">
             <label>
               <FieldLabel>Prefix</FieldLabel>
               <input
@@ -2757,12 +3010,27 @@ function InvoiceSettings() {
                 className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
               />
             </label>
+            <label>
+              <FieldLabel>Format</FieldLabel>
+              <input
+                value={settings.invoice_number_format}
+                onChange={(e) => updateSetting("invoice_number_format", e.target.value)}
+                className="w-full rounded-xl border border-gray-200 px-3 py-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+              />
+            </label>
           </div>
           <div className="mt-4 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-800/60">
             <p className="text-gray-500">Preview:</p>
             <p className="mt-1 font-mono font-bold">
               {settings.invoice_prefix}
               {String(settings.invoice_next_number).padStart(settings.invoice_number_padding, "0")}
+            </p>
+          </div>
+          <div className="mt-3 rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-800/60">
+            <p className="text-gray-500">Credit Note Preview:</p>
+            <p className="mt-1 font-mono font-bold">
+              {settings.credit_note_prefix}
+              {String(settings.credit_note_next_number).padStart(settings.invoice_number_padding, "0")}
             </p>
           </div>
         </section>
@@ -2810,6 +3078,37 @@ function InvoiceSettings() {
           </div>
         </section>
 
+        {/* Payment Instructions */}
+        <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
+          <h3 className="text-sm font-bold">Payment Instructions</h3>
+          <p className="mt-1 text-xs text-gray-500">Instructions shown on invoices.</p>
+          <label className="mt-4 block">
+            <FieldLabel>Payment Instructions</FieldLabel>
+            <textarea
+              value={settings.payment_instructions || ""}
+              onChange={(e) => updateSetting("payment_instructions", e.target.value)}
+              rows={4}
+              className="w-full rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700 dark:bg-gray-900"
+            />
+          </label>
+          <label className="mt-4 block">
+            <FieldLabel>Bank Details (JSON)</FieldLabel>
+            <textarea
+              value={settings.bank_details ? JSON.stringify(settings.bank_details, null, 2) : ""}
+              onChange={(e) => {
+                try {
+                  updateSetting("bank_details", JSON.parse(e.target.value));
+                } catch {
+                  // Keep as string if invalid JSON
+                }
+              }}
+              rows={4}
+              className="w-full rounded-xl border border-gray-200 p-3 text-sm font-mono dark:border-gray-700 dark:bg-gray-900"
+              placeholder='{"bank_name": "Bank Name", "account_name": "Account Name", "account_number": "123456", "routing_number": "987654"}'
+            />
+          </label>
+        </section>
+
         {/* Reminders */}
         <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-gray-900">
           <h3 className="text-sm font-bold">Payment Reminders</h3>
@@ -2824,7 +3123,7 @@ function InvoiceSettings() {
               />
               <span className="text-sm">Enable payment reminders</span>
             </label>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <label>
                 <FieldLabel>Days Before Due</FieldLabel>
                 <input
@@ -2928,6 +3227,15 @@ function InvoiceSettings() {
             <label className="flex items-center gap-3">
               <input
                 type="checkbox"
+                checked={settings.auto_pay_enabled}
+                onChange={(e) => updateSetting("auto_pay_enabled", e.target.checked)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-sm">Auto-pay enabled</span>
+            </label>
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
                 checked={settings.require_approval}
                 onChange={(e) => updateSetting("require_approval", e.target.checked)}
                 className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -2969,7 +3277,7 @@ export default function Invoices({ activePage = "invoice-overview" }: { activePa
       case "invoice-overview":
         return <InvoiceOverview onNavigate={(page) => window.location.href = `/invoicing/${page}`} onRefresh={() => {}} />;
       case "invoices":
-        return <InvoicesList />;
+        return <InvoicesList onNavigate={(page) => window.location.href = `/invoicing/${page}`} />;
       case "create-invoice":
         return <CreateInvoice />;
       case "invoice-customers":
