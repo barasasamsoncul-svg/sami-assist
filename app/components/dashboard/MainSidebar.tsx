@@ -43,6 +43,15 @@ import {
   Wrench,
   X,
   CreditCard,
+  Layers,
+  Archive,
+  Share2,
+  Webhook,
+  Database,
+  FileSpreadsheet,
+  Send,
+  BellRing,
+  CheckCircle,
 } from "lucide-react";
 
 import {
@@ -83,7 +92,14 @@ const SETTINGS_MENU = [
   { id: "apps", label: "Apps", icon: Package },
 ];
 
-const INVOICING_MENU = [
+// Simplified Invoice Navigation - Clean and organized
+const INVOICING_MENU: Array<{
+  id: string;
+  label: string;
+  icon: React.ElementType | null;
+  divider?: boolean;
+}> = [
+  // MAIN
   {
     id: "invoice-overview",
     label: "Overview",
@@ -91,7 +107,7 @@ const INVOICING_MENU = [
   },
   {
     id: "invoices",
-    label: "All Invoices",
+    label: "Invoices",
     icon: Receipt,
   },
   {
@@ -99,20 +115,30 @@ const INVOICING_MENU = [
     label: "Create Invoice",
     icon: Plus,
   },
+
+  // DIVIDER
+  { id: "divider-1", label: "", icon: null, divider: true },
+
+  // MANAGEMENT
   {
     id: "invoice-customers",
     label: "Customers",
     icon: Users,
   },
   {
+    id: "invoice-products",
+    label: "Products",
+    icon: Package,
+  },
+
+  // DIVIDER
+  { id: "divider-2", label: "", icon: null, divider: true },
+
+  // FINANCIAL
+  {
     id: "invoice-payments",
     label: "Payments",
     icon: CreditCard,
-  },
-  {
-    id: "invoice-products",
-    label: "Products & Services",
-    icon: Package,
   },
   {
     id: "invoice-credit-notes",
@@ -121,27 +147,40 @@ const INVOICING_MENU = [
   },
   {
     id: "invoice-recurring",
-    label: "Recurring Invoices",
+    label: "Recurring",
     icon: Repeat,
   },
+
+  // DIVIDER
+  { id: "divider-3", label: "", icon: null, divider: true },
+
+  // TOOLS
+  {
+    id: "invoice-reports",
+    label: "Reports & Export",
+    icon: BarChart3,
+  },
+  {
+    id: "invoice-archive",
+    label: "Archive",
+    icon: Archive,
+  },
+
+  // DIVIDER
+  { id: "divider-4", label: "", icon: null, divider: true },
+
+  // SETTINGS
   {
     id: "invoice-settings",
-    label: "Invoice Settings",
+    label: "Settings",
     icon: Settings,
   },
 ];
 
-const INVOICE_PAGE_IDS = [
-  "invoice-overview",
-  "invoices",
-  "create-invoice",
-  "invoice-customers",
-  "invoice-payments",
-  "invoice-products",
-  "invoice-credit-notes",
-  "invoice-recurring",
-  "invoice-settings",
-];
+// All invoice page IDs for highlighting
+const INVOICE_PAGE_IDS = INVOICING_MENU
+  .filter(item => !item.divider)
+  .map(item => item.id);
 
 const ICONS: Record<string, React.ElementType> = {
   calculator: BarChart3,
@@ -180,6 +219,14 @@ const ICONS: Record<string, React.ElementType> = {
   headphones: Headphones,
   "calendar-clock": CalendarClock,
   calendar: Calendar,
+  creditcard: CreditCard,
+  layers: Layers,
+  archive: Archive,
+  share2: Share2,
+  webhook: Webhook,
+  database: Database,
+  spreadsheet: FileSpreadsheet,
+  send: Send,
 };
 
 function getIcon(iconName: string) {
@@ -239,7 +286,6 @@ export const MainSidebar = ({
       }`}
     >
       {/* MOBILE CLOSE BUTTON */}
-
       {isMobile && (
         <button
           type="button"
@@ -252,7 +298,6 @@ export const MainSidebar = ({
       )}
 
       {/* HEADER */}
-
       <div className="flex-shrink-0 px-6 pb-4 pt-7">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -263,36 +308,21 @@ export const MainSidebar = ({
               height={44}
               className="rounded-xl"
             />
-
             <div className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500">
-              <Sparkles
-                size={9}
-                className="text-white"
-              />
+              <Sparkles size={9} className="text-white" />
             </div>
           </div>
-
           <div>
-            <h1 className="text-lg font-bold tracking-tight">
-              SaMi
-            </h1>
-
-            <p className="text-xs text-slate-500">
-              AI Business Workspace
-            </p>
+            <h1 className="text-lg font-bold tracking-tight">SaMi</h1>
+            <p className="text-xs text-slate-500">AI Business Workspace</p>
           </div>
         </div>
       </div>
 
       {/* SEARCH */}
-
       <div className="flex-shrink-0 px-4 pb-4">
         <div className="relative">
-          <Search
-            size={16}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
-          />
-
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             placeholder="Search workspace..."
@@ -302,30 +332,23 @@ export const MainSidebar = ({
       </div>
 
       {/* NAVIGATION */}
-
       <div className="flex-1 overflow-y-auto px-4 pb-4">
 
         {/* CORE */}
-
         <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
           SaMi Core
         </p>
-
         <nav className="space-y-1">
           {CORE_NAV.map((item) => {
             const Icon = item.icon;
             const isActive = activePage === item.id;
-
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
                   onNavigation(item.id);
-
-                  if (isMobile) {
-                    onSidebarChange(false);
-                  }
+                  if (isMobile) onSidebarChange(false);
                 }}
                 className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
                   isActive
@@ -333,52 +356,25 @@ export const MainSidebar = ({
                     : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
                 }`}
               >
-                <Icon
-                  size={19}
-                  className={
-                    isActive
-                      ? "text-white"
-                      : "text-slate-500 group-hover:text-slate-300"
-                  }
-                />
-
-                <span className="flex-1">
-                  {item.label}
-                </span>
-
-                {isActive && (
-                  <ChevronRight
-                    size={15}
-                    className="text-white/60"
-                  />
-                )}
+                <Icon size={19} className={isActive ? "text-white" : "text-slate-500 group-hover:text-slate-300"} />
+                <span className="flex-1">{item.label}</span>
+                {isActive && <ChevronRight size={15} className="text-white/60" />}
               </button>
             );
           })}
         </nav>
 
         {/* MY APPS */}
-
         <div className="mt-7">
           <div className="mb-3 flex items-center justify-between px-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">
-              My Apps
-            </p>
-
-            {!loadingApps && (
-              <span className="text-[10px] text-slate-600">
-                {enabledApps.length}
-              </span>
-            )}
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-600">My Apps</p>
+            {!loadingApps && <span className="text-[10px] text-slate-600">{enabledApps.length}</span>}
           </div>
 
           {loadingApps ? (
             <div className="space-y-2 px-2">
               {[1, 2, 3, 4].map((item) => (
-                <div
-                  key={item}
-                  className="h-10 animate-pulse rounded-xl bg-white/5"
-                />
+                <div key={item} className="h-10 animate-pulse rounded-xl bg-white/5" />
               ))}
             </div>
           ) : appsError ? (
@@ -392,99 +388,49 @@ export const MainSidebar = ({
           ) : (
             <div className="space-y-5">
               {APP_CATEGORIES.map((category) => {
-                const apps =
-                  appsByCategory.get(category.key) || [];
-
-                if (apps.length === 0) {
-                  return null;
-                }
-
-                const isExpanded =
-                  expandedCategories[category.key] !== false;
+                const apps = appsByCategory.get(category.key) || [];
+                if (apps.length === 0) return null;
+                const isExpanded = expandedCategories[category.key] !== false;
 
                 return (
                   <div key={category.key}>
-                    {/* CATEGORY HEADER */}
-
                     <button
                       type="button"
-                      onClick={() =>
-                        onCategoryToggle(category.key)
-                      }
+                      onClick={() => onCategoryToggle(category.key)}
                       className="mb-1 flex w-full items-center justify-between px-3 py-1 text-left"
                     >
                       <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
                         {category.name}
                       </span>
-
                       {isExpanded ? (
-                        <ChevronDown
-                          size={13}
-                          className="text-slate-600"
-                        />
+                        <ChevronDown size={13} className="text-slate-600" />
                       ) : (
-                        <ChevronRight
-                          size={13}
-                          className="text-slate-600"
-                        />
+                        <ChevronRight size={13} className="text-slate-600" />
                       )}
                     </button>
-
-                    {/* APPS INSIDE CATEGORY */}
 
                     {isExpanded && (
                       <nav className="space-y-1">
                         {apps.map((app) => {
                           const Icon = getIcon(app.icon);
-
-                          const isInvoicing =
-                            app.key === "invoicing";
-
-                          const isActive =
-                            activePage === app.key ||
-                            (isInvoicing &&
-                              isInvoiceSection);
+                          const isInvoicing = app.key === "invoicing";
+                          const isActive = activePage === app.key || (isInvoicing && isInvoiceSection);
 
                           return (
                             <div key={app.key}>
-                              {/* APP BUTTON */}
-
                               <button
                                 type="button"
                                 onClick={() => {
                                   if (isInvoicing) {
-                                    const shouldOpen =
-                                      !isInvoicingMenuOpen;
-
-                                    onInvoicingMenuChange(
-                                      shouldOpen
-                                    );
-
-                                    /*
-                                     * When opening Invoicing for the
-                                     * first time, go to its Overview.
-                                     *
-                                     * If already inside an invoice
-                                     * page, just open/close the menu.
-                                     */
-
-                                    if (
-                                      shouldOpen &&
-                                      !isInvoiceSection
-                                    ) {
-                                      onNavigation(
-                                        "invoice-overview"
-                                      );
+                                    const shouldOpen = !isInvoicingMenuOpen;
+                                    onInvoicingMenuChange(shouldOpen);
+                                    if (shouldOpen && !isInvoiceSection) {
+                                      onNavigation("invoice-overview");
                                     }
-
                                     return;
                                   }
-
                                   onNavigation(app.key);
-
-                                  if (isMobile) {
-                                    onSidebarChange(false);
-                                  }
+                                  if (isMobile) onSidebarChange(false);
                                 }}
                                 title={app.description}
                                 className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-all ${
@@ -493,98 +439,49 @@ export const MainSidebar = ({
                                     : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
                                 }`}
                               >
-                                <Icon
-                                  size={18}
-                                  className={
-                                    isActive
-                                      ? "text-white"
-                                      : "text-slate-500 group-hover:text-slate-300"
-                                  }
-                                />
-
-                                <span className="min-w-0 flex-1 truncate">
-                                  {app.name}
-                                </span>
-
+                                <Icon size={18} className={isActive ? "text-white" : "text-slate-500 group-hover:text-slate-300"} />
+                                <span className="min-w-0 flex-1 truncate">{app.name}</span>
                                 {isInvoicing ? (
-                                  <ChevronDown
-                                    size={15}
-                                    className={`transition-transform ${
-                                      isInvoicingMenuOpen
-                                        ? "rotate-180"
-                                        : ""
-                                    }`}
-                                  />
+                                  <ChevronDown size={15} className={`transition-transform ${isInvoicingMenuOpen ? "rotate-180" : ""}`} />
                                 ) : (
-                                  isActive && (
-                                    <ChevronRight
-                                      size={14}
-                                      className="text-white/60"
-                                    />
-                                  )
+                                  isActive && <ChevronRight size={14} className="text-white/60" />
                                 )}
                               </button>
 
-                              {/* INVOICING SUBMENU */}
+                              {/* INVOICING SUBMENU - SIMPLIFIED */}
+                              {isInvoicing && isInvoicingMenuOpen && (
+                                <div className="mt-1 space-y-0.5 pl-4">
+                                  {INVOICING_MENU.map((item) => {
+                                    if (item.divider) {
+                                      return <div key={item.id} className="my-1.5 border-t border-white/5" />;
+                                    }
+                                    if (!item.icon) return null;
 
-                              {isInvoicing &&
-                                isInvoicingMenuOpen && (
-                                  <div className="mt-1 space-y-1 pl-4">
-                                    {INVOICING_MENU.map(
-                                      (item) => {
-                                        const SubIcon =
-                                          item.icon;
+                                    const SubIcon = item.icon;
+                                    const isSubActive = activePage === item.id;
 
-                                        const isSubActive =
-                                          activePage ===
-                                          item.id;
-
-                                        return (
-                                          <button
-                                            key={item.id}
-                                            type="button"
-                                            onClick={() => {
-                                              onNavigation(
-                                                item.id
-                                              );
-
-                                              if (isMobile) {
-                                                onSidebarChange(
-                                                  false
-                                                );
-                                              }
-                                            }}
-                                            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-xs font-medium transition-all ${
-                                              isSubActive
-                                                ? "bg-blue-600/20 text-blue-400"
-                                                : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
-                                            }`}
-                                          >
-                                            <SubIcon
-                                              size={15}
-                                              className={
-                                                isSubActive
-                                                  ? "text-blue-400"
-                                                  : "text-slate-500 group-hover:text-slate-300"
-                                              }
-                                            />
-
-                                            <span className="flex-1 truncate">
-                                              {item.label}
-                                            </span>
-
-                                            {isSubActive && (
-                                              <ChevronRight
-                                                size={13}
-                                                className="text-blue-400/70"
-                                              />
-                                            )}
-                                          </button>
-                                        );
-                                      }
-                                    )}
-                                  </div>
-                                )}
+                                    return (
+                                      <button
+                                        key={item.id}
+                                        type="button"
+                                        onClick={() => {
+                                          onNavigation(item.id);
+                                          if (isMobile) onSidebarChange(false);
+                                        }}
+                                        className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-xs font-medium transition-all ${
+                                          isSubActive
+                                            ? "bg-blue-600/20 text-blue-400"
+                                            : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                                        }`}
+                                      >
+                                        <SubIcon size={15} className={isSubActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"} />
+                                        <span className="flex-1 truncate">{item.label}</span>
+                                        {isSubActive && <ChevronRight size={13} className="text-blue-400/70" />}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -598,99 +495,44 @@ export const MainSidebar = ({
         </div>
 
         {/* SETTINGS */}
-
         <div className="mt-7 border-t border-white/[0.06] pt-4">
           <button
             type="button"
-            onClick={() =>
-              onSettingsMenuChange(
-                !isSettingsMenuOpen
-              )
-            }
+            onClick={() => onSettingsMenuChange(!isSettingsMenuOpen)}
             className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
               isSettingsMenuOpen ||
               activePage === "settings" ||
-              SETTINGS_MENU.some(
-                (item) => item.id === activePage
-              )
+              SETTINGS_MENU.some((item) => item.id === activePage)
                 ? "bg-blue-600 text-white"
                 : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
             }`}
           >
-            <Settings
-              size={19}
-              className={
-                isSettingsMenuOpen ||
-                activePage === "settings" ||
-                SETTINGS_MENU.some(
-                  (item) => item.id === activePage
-                )
-                  ? "text-white"
-                  : "text-slate-500"
-              }
-            />
-
-            <span className="flex-1">
-              Settings
-            </span>
-
-            <ChevronDown
-              size={16}
-              className={`transition-transform ${
-                isSettingsMenuOpen
-                  ? "rotate-180"
-                  : ""
-              }`}
-            />
+            <Settings size={19} className={isSettingsMenuOpen || activePage === "settings" || SETTINGS_MENU.some((item) => item.id === activePage) ? "text-white" : "text-slate-500"} />
+            <span className="flex-1">Settings</span>
+            <ChevronDown size={16} className={`transition-transform ${isSettingsMenuOpen ? "rotate-180" : ""}`} />
           </button>
 
           {isSettingsMenuOpen && (
             <div className="mt-2 space-y-1 pl-4">
               {SETTINGS_MENU.map((item) => {
                 const Icon = item.icon;
-                const isActive =
-                  activePage === item.id;
-
+                const isActive = activePage === item.id;
                 return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => {
-                      onSettingsSectionChange(
-                        item.id
-                      );
-
+                      onSettingsSectionChange(item.id);
                       onNavigation(item.id);
-
-                      /*
-                       * Keep Settings open while
-                       * navigating between sections.
-                       */
-
                       onSettingsMenuChange(true);
-
-                      if (isMobile) {
-                        onSidebarChange(false);
-                      }
+                      if (isMobile) onSidebarChange(false);
                     }}
                     className={`group flex w-full items-center gap-3 rounded-xl px-4 py-2 text-left text-sm font-medium transition-all ${
-                      isActive
-                        ? "bg-blue-600/20 text-blue-400"
-                        : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
+                      isActive ? "bg-blue-600/20 text-blue-400" : "text-slate-400 hover:bg-white/[0.05] hover:text-white"
                     }`}
                   >
-                    <Icon
-                      size={16}
-                      className={
-                        isActive
-                          ? "text-blue-400"
-                          : "text-slate-500 group-hover:text-slate-300"
-                      }
-                    />
-
-                    <span>
-                      {item.label}
-                    </span>
+                    <Icon size={16} className={isActive ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"} />
+                    <span>{item.label}</span>
                   </button>
                 );
               })}
@@ -700,25 +542,16 @@ export const MainSidebar = ({
       </div>
 
       {/* PROFILE */}
-
       <div className="flex-shrink-0 border-t border-white/[0.06] p-4">
         <div className="flex items-center gap-3 rounded-xl p-2">
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-semibold text-white">
-            {profile?.full_name?.[0]?.toUpperCase() ||
-              "S"}
+            {profile?.full_name?.[0]?.toUpperCase() || "S"}
           </div>
-
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-white">
-              {loadingProfile
-                ? "Loading..."
-                : profile?.full_name ||
-                  "SaMi User"}
+              {loadingProfile ? "Loading..." : profile?.full_name || "SaMi User"}
             </p>
-
-            <p className="truncate text-xs text-slate-500">
-              {profile?.email || "Account"}
-            </p>
+            <p className="truncate text-xs text-slate-500">{profile?.email || "Account"}</p>
           </div>
         </div>
       </div>

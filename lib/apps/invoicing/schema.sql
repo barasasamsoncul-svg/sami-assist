@@ -1,13 +1,31 @@
 -- ============================================================
 -- SaMi Assist
--- INVOICE MODULE - COMPLETE REPLACEMENT SCHEMA
+-- INVOICE MODULE - COMPLETE REPLACEMENT SCHEMA v3.0
 -- ============================================================
 --
--- Version: 2.0
+-- Version: 3.0
 --
 -- Designed for:
 --   - PostgreSQL / Neon / Supabase
 --   - SaMi Assist tenant databases
+--
+-- CHANGES FROM v2.0:
+--   - Added audit trail (deleted_at, deleted_by)
+--   - Added status transition validation
+--   - Added customer credit limit enforcement
+--   - Added payment allocations to line items
+--   - Added fiscal year/sequence reset support
+--   - Added rounding adjustments
+--   - Added soft delete for customers
+--   - Added additional indexes for performance
+--   - Added archive table for invoices
+--   - Added webhook/event triggers
+--   - Added reporting views
+--   - Added table/column comments
+--   - Enhanced decimal precision to NUMERIC(19,4)
+--   - Added invoice status history tracking
+--   - Added bulk operations support
+--   - Added payment date accuracy fixes
 --
 -- IMPORTANT:
 --   This script replaces the invoice module.
@@ -22,25 +40,23 @@
 -- ============================================================
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gist;  -- For overlapping date ranges
 
 
 -- ============================================================
 -- 1. REMOVE EXISTING INVOICE MODULE
 -- ============================================================
---
--- Dependency order is handled explicitly.
---
--- If you are running this against a fresh tenant database,
--- these DROP statements simply do nothing.
---
--- ============================================================
 
+DROP TABLE IF EXISTS public.invoice_events CASCADE;
+DROP TABLE IF EXISTS public.payment_allocations CASCADE;
+DROP TABLE IF EXISTS public.invoice_status_history CASCADE;
 DROP TABLE IF EXISTS public.invoice_activity_log CASCADE;
 DROP TABLE IF EXISTS public.invoice_reminders CASCADE;
 DROP TABLE IF EXISTS public.recurring_invoices CASCADE;
 DROP TABLE IF EXISTS public.credit_notes CASCADE;
 DROP TABLE IF EXISTS public.payments CASCADE;
 DROP TABLE IF EXISTS public.invoice_items CASCADE;
+DROP TABLE IF EXISTS public.invoices_archive CASCADE;
 DROP TABLE IF EXISTS public.invoices CASCADE;
 DROP TABLE IF EXISTS public.invoice_settings CASCADE;
 DROP TABLE IF EXISTS public.invoice_templates CASCADE;
@@ -53,11 +69,6 @@ DROP TABLE IF EXISTS public.customers CASCADE;
 -- ============================================================
 -- 2. COMMON FUNCTIONS
 -- ============================================================
-
-
--- ------------------------------------------------------------
--- 2.1 Automatically update updated_at
--- ------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.update_updated_at_column()
 RETURNS TRIGGER
@@ -90,6 +101,8 @@ CREATE TABLE public.payment_terms (
 
     sort_order INTEGER NOT NULL DEFAULT 0,
 
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -109,9 +122,20 @@ CREATE TABLE public.payment_terms (
         )
 );
 
+COMMENT ON TABLE public.payment_terms IS 'Payment term configurations like Net 30, Due on Receipt';
+COMMENT ON COLUMN public.payment_terms.due_days IS 'Number of days until payment is due';
+COMMENT ON COLUMN public.payment_terms.discount_percentage IS 'Early payment discount percentage';
+COMMENT ON COLUMN public.payment_terms.discount_days IS 'Days within which discount applies';
+
 
 CREATE UNIQUE INDEX uq_payment_terms_name
 ON public.payment_terms (LOWER(name));
+
+CREATE INDEX idx_payment_terms_active
+ON public.payment_terms(is_active);
+
+CREATE INDEX idx_payment_terms_sort
+ON public.payment_terms(sort_order);
 
 
 -- ============================================================
@@ -126,7 +150,7 @@ CREATE TABLE public.tax_rates (
     rate NUMERIC(5,2) NOT NULL,
 
     tax_type VARCHAR(50) NOT NULL DEFAULT 'vat',
-    -- vat, gst, sales_tax, withholding, none
+    -- vat, gst, sales_tax, withholding, none, other
 
     country VARCHAR(100),
     region VARCHAR(100),
@@ -135,6 +159,8 @@ CREATE TABLE public.tax_rates (
     is_active BOOLEAN NOT NULL DEFAULT true,
 
     sort_order INTEGER NOT NULL DEFAULT 0,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -155,9 +181,18 @@ CREATE TABLE public.tax_rates (
         )
 );
 
+COMMENT ON TABLE public.tax_rates IS 'Tax rates applicable to invoices and items';
+COMMENT ON COLUMN public.tax_rates.tax_type IS 'Type of tax (vat, gst, sales_tax, withholding, none, other)';
+
 
 CREATE UNIQUE INDEX uq_tax_rates_name
 ON public.tax_rates (LOWER(name));
+
+CREATE INDEX idx_tax_rates_active
+ON public.tax_rates(is_active);
+
+CREATE INDEX idx_tax_rates_type
+ON public.tax_rates(tax_type);
 
 
 -- ============================================================
@@ -209,7 +244,7 @@ CREATE TABLE public.customers (
         REFERENCES public.payment_terms(id)
         ON DELETE SET NULL,
 
-    credit_limit NUMERIC(15,2),
+    credit_limit NUMERIC(19,4),
 
     -- --------------------------------------------------------
     -- Classification
@@ -224,6 +259,13 @@ CREATE TABLE public.customers (
     -- --------------------------------------------------------
 
     status VARCHAR(50) NOT NULL DEFAULT 'active',
+
+    -- --------------------------------------------------------
+    -- Soft Delete
+    -- --------------------------------------------------------
+
+    deleted_at TIMESTAMPTZ,
+    deleted_by UUID,
 
     -- --------------------------------------------------------
     -- Metadata
@@ -266,6 +308,33 @@ CREATE TABLE public.customers (
         )
 );
 
+COMMENT ON TABLE public.customers IS 'Customer/Client information';
+COMMENT ON COLUMN public.customers.deleted_at IS 'Soft delete timestamp';
+COMMENT ON COLUMN public.customers.deleted_by IS 'User who soft deleted this customer';
+
+
+CREATE INDEX idx_customers_company
+ON public.customers(company_name);
+
+CREATE INDEX idx_customers_email
+ON public.customers(email);
+
+CREATE INDEX idx_customers_phone
+ON public.customers(phone);
+
+CREATE INDEX idx_customers_status
+ON public.customers(status);
+
+CREATE INDEX idx_customers_tax_id
+ON public.customers(tax_id);
+
+CREATE INDEX idx_customers_payment_terms
+ON public.customers(payment_terms_id);
+
+CREATE INDEX idx_customers_deleted_at
+ON public.customers(deleted_at)
+WHERE deleted_at IS NOT NULL;
+
 
 -- ============================================================
 -- 6. PRODUCTS / SERVICES
@@ -280,7 +349,7 @@ CREATE TABLE public.products (
 
     sku VARCHAR(100),
 
-    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    unit_price NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     tax_rate_id UUID
         REFERENCES public.tax_rates(id)
@@ -302,10 +371,24 @@ CREATE TABLE public.products (
         CHECK (unit_price >= 0)
 );
 
+COMMENT ON TABLE public.products IS 'Products and services sold to customers';
+
 
 CREATE UNIQUE INDEX uq_products_sku
 ON public.products (LOWER(sku))
 WHERE sku IS NOT NULL;
+
+CREATE INDEX idx_products_name
+ON public.products(name);
+
+CREATE INDEX idx_products_category
+ON public.products(category);
+
+CREATE INDEX idx_products_active
+ON public.products(is_active);
+
+CREATE INDEX idx_products_tax_rate
+ON public.products(tax_rate_id);
 
 
 -- ============================================================
@@ -397,6 +480,12 @@ CREATE TABLE public.invoice_templates (
         )
 );
 
+COMMENT ON TABLE public.invoice_templates IS 'Invoice design templates';
+
+
+CREATE INDEX idx_invoice_templates_active
+ON public.invoice_templates(is_active);
+
 
 -- ============================================================
 -- 8. INVOICES
@@ -452,31 +541,35 @@ CREATE TABLE public.invoices (
     -- void
 
     -- --------------------------------------------------------
-    -- Financials
+    -- Financials (Enhanced Precision)
     -- --------------------------------------------------------
 
-    subtotal NUMERIC(15,2) NOT NULL DEFAULT 0,
+    subtotal NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     discount_type VARCHAR(20),
 
-    discount_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_value NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     tax_calculation_method VARCHAR(20)
         NOT NULL DEFAULT 'exclusive',
 
-    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    shipping_cost NUMERIC(15,2) NOT NULL DEFAULT 0,
+    shipping_cost NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    shipping_tax NUMERIC(15,2) NOT NULL DEFAULT 0,
+    shipping_tax NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    total_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    rounding_adjustment NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    amount_paid NUMERIC(15,2) NOT NULL DEFAULT 0,
+    rounded_total NUMERIC(19,4),
 
-    amount_due NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
+
+    amount_paid NUMERIC(19,4) NOT NULL DEFAULT 0,
+
+    amount_due NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     -- --------------------------------------------------------
     -- B2B
@@ -493,6 +586,14 @@ CREATE TABLE public.invoices (
         ON DELETE SET NULL,
 
     payment_terms_display VARCHAR(100),
+
+    -- --------------------------------------------------------
+    -- Fiscal Year
+    -- --------------------------------------------------------
+
+    fiscal_year INTEGER,
+
+    fiscal_period INTEGER,
 
     -- --------------------------------------------------------
     -- Template
@@ -539,6 +640,13 @@ CREATE TABLE public.invoices (
     -- --------------------------------------------------------
 
     attachments JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+    -- --------------------------------------------------------
+    -- Soft Delete
+    -- --------------------------------------------------------
+
+    deleted_at TIMESTAMPTZ,
+    deleted_by UUID,
 
     -- --------------------------------------------------------
     -- Metadata
@@ -604,6 +712,18 @@ CREATE TABLE public.invoices (
     CONSTRAINT invoices_shipping_tax_check
         CHECK (shipping_tax >= 0),
 
+    CONSTRAINT invoices_rounding_adjustment_check
+        CHECK (
+            rounding_adjustment >= -1
+            AND rounding_adjustment <= 1
+        ),
+
+    CONSTRAINT invoices_rounded_total_check
+        CHECK (
+            rounded_total IS NULL
+            OR rounded_total >= 0
+        ),
+
     CONSTRAINT invoices_total_amount_check
         CHECK (total_amount >= 0),
 
@@ -620,9 +740,107 @@ CREATE TABLE public.invoices (
         CHECK (reminder_count >= 0)
 );
 
+COMMENT ON TABLE public.invoices IS 'Main invoice records';
+COMMENT ON COLUMN public.invoices.fiscal_year IS 'Financial year of the invoice';
+COMMENT ON COLUMN public.invoices.fiscal_period IS 'Financial period/month of the invoice';
+COMMENT ON COLUMN public.invoices.rounding_adjustment IS 'Small adjustment to handle rounding differences';
+COMMENT ON COLUMN public.invoices.rounded_total IS 'Final rounded total after adjustment';
+COMMENT ON COLUMN public.invoices.deleted_at IS 'Soft delete timestamp';
+COMMENT ON COLUMN public.invoices.deleted_by IS 'User who soft deleted this invoice';
+
+
+CREATE INDEX idx_invoices_customer
+ON public.invoices(customer_id);
+
+CREATE INDEX idx_invoices_status
+ON public.invoices(status);
+
+CREATE INDEX idx_invoices_issue_date
+ON public.invoices(issue_date);
+
+CREATE INDEX idx_invoices_due_date
+ON public.invoices(due_date);
+
+CREATE INDEX idx_invoices_currency
+ON public.invoices(currency);
+
+CREATE INDEX idx_invoices_po_number
+ON public.invoices(po_number);
+
+CREATE INDEX idx_invoices_customer_status
+ON public.invoices(customer_id, status);
+
+CREATE INDEX idx_invoices_due_status
+ON public.invoices(due_date, status);
+
+CREATE INDEX idx_invoices_created_by
+ON public.invoices(created_by);
+
+CREATE INDEX idx_invoices_payment_terms
+ON public.invoices(payment_terms_id);
+
+CREATE INDEX idx_invoices_template
+ON public.invoices(template_id);
+
+CREATE INDEX idx_invoices_created_at
+ON public.invoices(created_at);
+
+CREATE INDEX idx_invoices_updated_at
+ON public.invoices(updated_at);
+
+CREATE INDEX idx_invoices_status_created
+ON public.invoices(status, created_at DESC);
+
+CREATE INDEX idx_invoices_customer_due
+ON public.invoices(customer_id, due_date)
+WHERE status NOT IN ('paid', 'cancelled', 'void');
+
+CREATE INDEX idx_invoices_fiscal_year
+ON public.invoices(fiscal_year, fiscal_period);
+
+CREATE INDEX idx_invoices_deleted_at
+ON public.invoices(deleted_at)
+WHERE deleted_at IS NOT NULL;
+
 
 -- ============================================================
--- 9. INVOICE ITEMS
+-- 9. INVOICE STATUS HISTORY
+-- ============================================================
+
+CREATE TABLE public.invoice_status_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    invoice_id UUID NOT NULL
+        REFERENCES public.invoices(id)
+        ON DELETE CASCADE,
+
+    from_status VARCHAR(50),
+    to_status VARCHAR(50) NOT NULL,
+
+    changed_by UUID,
+
+    changed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    reason TEXT,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+COMMENT ON TABLE public.invoice_status_history IS 'Audit trail of invoice status changes';
+
+
+CREATE INDEX idx_invoice_status_history_invoice
+ON public.invoice_status_history(invoice_id);
+
+CREATE INDEX idx_invoice_status_history_changed_at
+ON public.invoice_status_history(changed_at);
+
+CREATE INDEX idx_invoice_status_history_changed_by
+ON public.invoice_status_history(changed_by);
+
+
+-- ============================================================
+-- 10. INVOICE ITEMS
 -- ============================================================
 
 CREATE TABLE public.invoice_items (
@@ -638,25 +856,25 @@ CREATE TABLE public.invoice_items (
 
     description TEXT NOT NULL,
 
-    quantity NUMERIC(15,2) NOT NULL DEFAULT 1,
+    quantity NUMERIC(19,4) NOT NULL DEFAULT 1,
 
-    unit_price NUMERIC(15,2) NOT NULL DEFAULT 0,
+    unit_price NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     discount_type VARCHAR(20),
 
-    discount_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_value NUMERIC(19,4) NOT NULL DEFAULT 0,
 
-    discount_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     tax_rate NUMERIC(5,2) NOT NULL DEFAULT 0,
 
-    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     tax_rate_id UUID
         REFERENCES public.tax_rates(id)
         ON DELETE SET NULL,
 
-    line_total NUMERIC(15,2) NOT NULL DEFAULT 0,
+    line_total NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     sort_order INTEGER NOT NULL DEFAULT 0,
 
@@ -697,9 +915,21 @@ CREATE TABLE public.invoice_items (
         CHECK (line_total >= 0)
 );
 
+COMMENT ON TABLE public.invoice_items IS 'Line items on invoices';
+
+
+CREATE INDEX idx_invoice_items_invoice
+ON public.invoice_items(invoice_id);
+
+CREATE INDEX idx_invoice_items_product
+ON public.invoice_items(product_id);
+
+CREATE INDEX idx_invoice_items_tax_rate
+ON public.invoice_items(tax_rate_id);
+
 
 -- ============================================================
--- 10. PAYMENTS
+-- 11. PAYMENTS
 -- ============================================================
 
 CREATE TABLE public.payments (
@@ -709,7 +939,7 @@ CREATE TABLE public.payments (
         REFERENCES public.invoices(id)
         ON DELETE RESTRICT,
 
-    amount NUMERIC(15,2) NOT NULL,
+    amount NUMERIC(19,4) NOT NULL,
 
     currency VARCHAR(3) NOT NULL DEFAULT 'KES',
 
@@ -767,9 +997,65 @@ CREATE TABLE public.payments (
         CHECK (char_length(currency) = 3)
 );
 
+COMMENT ON TABLE public.payments IS 'Payment records against invoices';
+
+
+CREATE INDEX idx_payments_invoice
+ON public.payments(invoice_id);
+
+CREATE INDEX idx_payments_date
+ON public.payments(payment_date);
+
+CREATE INDEX idx_payments_status
+ON public.payments(status);
+
+CREATE INDEX idx_payments_reference
+ON public.payments(transaction_reference);
+
+CREATE INDEX idx_payments_method
+ON public.payments(payment_method);
+
+CREATE INDEX idx_payments_created_at
+ON public.payments(created_at);
+
 
 -- ============================================================
--- 11. CREDIT NOTES
+-- 12. PAYMENT ALLOCATIONS
+-- ============================================================
+
+CREATE TABLE public.payment_allocations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    payment_id UUID NOT NULL
+        REFERENCES public.payments(id)
+        ON DELETE CASCADE,
+
+    invoice_item_id UUID
+        REFERENCES public.invoice_items(id)
+        ON DELETE SET NULL,
+
+    amount NUMERIC(19,4) NOT NULL,
+
+    notes TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT payment_allocations_amount_check
+        CHECK (amount > 0)
+);
+
+COMMENT ON TABLE public.payment_allocations IS 'Allocation of payments to specific line items';
+
+
+CREATE INDEX idx_payment_allocations_payment
+ON public.payment_allocations(payment_id);
+
+CREATE INDEX idx_payment_allocations_item
+ON public.payment_allocations(invoice_item_id);
+
+
+-- ============================================================
+-- 13. CREDIT NOTES
 -- ============================================================
 
 CREATE TABLE public.credit_notes (
@@ -787,9 +1073,9 @@ CREATE TABLE public.credit_notes (
 
     issue_date DATE NOT NULL DEFAULT CURRENT_DATE,
 
-    amount NUMERIC(15,2) NOT NULL,
+    amount NUMERIC(19,4) NOT NULL,
 
-    tax_amount NUMERIC(15,2) NOT NULL DEFAULT 0,
+    tax_amount NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     currency VARCHAR(3) NOT NULL DEFAULT 'KES',
 
@@ -803,7 +1089,7 @@ CREATE TABLE public.credit_notes (
         REFERENCES public.invoices(id)
         ON DELETE SET NULL,
 
-    applied_amount NUMERIC(15,2),
+    applied_amount NUMERIC(19,4),
 
     applied_at TIMESTAMPTZ,
 
@@ -846,9 +1132,27 @@ CREATE TABLE public.credit_notes (
         CHECK (char_length(currency) = 3)
 );
 
+COMMENT ON TABLE public.credit_notes IS 'Credit notes issued to customers';
+
+
+CREATE INDEX idx_credit_notes_invoice
+ON public.credit_notes(invoice_id);
+
+CREATE INDEX idx_credit_notes_customer
+ON public.credit_notes(customer_id);
+
+CREATE INDEX idx_credit_notes_status
+ON public.credit_notes(status);
+
+CREATE INDEX idx_credit_notes_applied_invoice
+ON public.credit_notes(applied_to_invoice_id);
+
+CREATE INDEX idx_credit_notes_created_at
+ON public.credit_notes(created_at);
+
 
 -- ============================================================
--- 12. RECURRING INVOICES
+-- 14. RECURRING INVOICES
 -- ============================================================
 
 CREATE TABLE public.recurring_invoices (
@@ -882,7 +1186,7 @@ CREATE TABLE public.recurring_invoices (
 
     discount_type VARCHAR(20),
 
-    discount_value NUMERIC(15,2) NOT NULL DEFAULT 0,
+    discount_value NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     tax_calculation_method VARCHAR(20)
         NOT NULL DEFAULT 'exclusive',
@@ -893,7 +1197,7 @@ CREATE TABLE public.recurring_invoices (
 
     total_generated INTEGER NOT NULL DEFAULT 0,
 
-    total_amount_generated NUMERIC(15,2) NOT NULL DEFAULT 0,
+    total_amount_generated NUMERIC(19,4) NOT NULL DEFAULT 0,
 
     notes TEXT,
 
@@ -964,9 +1268,21 @@ CREATE TABLE public.recurring_invoices (
         CHECK (char_length(currency) = 3)
 );
 
+COMMENT ON TABLE public.recurring_invoices IS 'Recurring invoice schedules';
+
+
+CREATE INDEX idx_recurring_customer
+ON public.recurring_invoices(customer_id);
+
+CREATE INDEX idx_recurring_status
+ON public.recurring_invoices(status);
+
+CREATE INDEX idx_recurring_next_issue
+ON public.recurring_invoices(next_issue_date);
+
 
 -- ============================================================
--- 13. INVOICE REMINDERS
+-- 15. INVOICE REMINDERS
 -- ============================================================
 
 CREATE TABLE public.invoice_reminders (
@@ -1029,9 +1345,21 @@ CREATE TABLE public.invoice_reminders (
         )
 );
 
+COMMENT ON TABLE public.invoice_reminders IS 'Scheduled and sent reminders for invoices';
+
+
+CREATE INDEX idx_reminders_invoice
+ON public.invoice_reminders(invoice_id);
+
+CREATE INDEX idx_reminders_scheduled
+ON public.invoice_reminders(scheduled_at);
+
+CREATE INDEX idx_reminders_status
+ON public.invoice_reminders(status);
+
 
 -- ============================================================
--- 14. INVOICE ACTIVITY LOG
+-- 16. INVOICE ACTIVITY LOG
 -- ============================================================
 
 CREATE TABLE public.invoice_activity_log (
@@ -1057,13 +1385,107 @@ CREATE TABLE public.invoice_activity_log (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+COMMENT ON TABLE public.invoice_activity_log IS 'Audit log of all invoice actions';
+
+
+CREATE INDEX idx_activity_invoice
+ON public.invoice_activity_log(invoice_id);
+
+CREATE INDEX idx_activity_user
+ON public.invoice_activity_log(user_id);
+
+CREATE INDEX idx_activity_action
+ON public.invoice_activity_log(action);
+
+CREATE INDEX idx_activity_created
+ON public.invoice_activity_log(created_at);
+
 
 -- ============================================================
--- 15. INVOICE SETTINGS
+-- 17. INVOICE EVENTS (Webhooks)
 -- ============================================================
---
--- One row per tenant database.
---
+
+CREATE TABLE public.invoice_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    invoice_id UUID NOT NULL
+        REFERENCES public.invoices(id)
+        ON DELETE CASCADE,
+
+    event_type VARCHAR(50) NOT NULL,
+    -- created, updated, status_changed, paid, overdue, reminder_sent, etc.
+
+    payload JSONB NOT NULL,
+
+    processed BOOLEAN NOT NULL DEFAULT false,
+
+    processed_at TIMESTAMPTZ,
+
+    retry_count INTEGER NOT NULL DEFAULT 0,
+
+    max_retries INTEGER NOT NULL DEFAULT 3,
+
+    error_message TEXT,
+
+    webhook_url TEXT,
+
+    response_status INTEGER,
+
+    response_body TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT invoice_events_retry_check
+        CHECK (retry_count >= 0),
+
+    CONSTRAINT invoice_events_max_retries_check
+        CHECK (max_retries >= 0)
+);
+
+COMMENT ON TABLE public.invoice_events IS 'Event queue for webhooks and integrations';
+
+
+CREATE INDEX idx_invoice_events_invoice
+ON public.invoice_events(invoice_id);
+
+CREATE INDEX idx_invoice_events_processed
+ON public.invoice_events(processed, created_at)
+WHERE processed = false;
+
+CREATE INDEX idx_invoice_events_type
+ON public.invoice_events(event_type);
+
+CREATE INDEX idx_invoice_events_created_at
+ON public.invoice_events(created_at);
+
+
+-- ============================================================
+-- 18. INVOICES ARCHIVE
+-- ============================================================
+
+CREATE TABLE public.invoices_archive (
+    LIKE public.invoices INCLUDING ALL,
+
+    archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    archived_by UUID
+);
+
+COMMENT ON TABLE public.invoices_archive IS 'Archived invoices for historical retention';
+
+
+CREATE INDEX idx_invoices_archive_archived_at
+ON public.invoices_archive(archived_at);
+
+CREATE INDEX idx_invoices_archive_customer
+ON public.invoices_archive(customer_id);
+
+CREATE INDEX idx_invoices_archive_invoice_number
+ON public.invoices_archive(invoice_number);
+
+
+-- ============================================================
+-- 19. INVOICE SETTINGS
 -- ============================================================
 
 CREATE TABLE public.invoice_settings (
@@ -1125,6 +1547,16 @@ CREATE TABLE public.invoice_settings (
 
     invoice_number_format VARCHAR(100)
         NOT NULL DEFAULT '{prefix}{number}',
+
+    -- --------------------------------------------------------
+    -- INVOICE SEQUENCE RESET
+    -- --------------------------------------------------------
+
+    invoice_sequence_reset_frequency VARCHAR(20)
+        NOT NULL DEFAULT 'never',
+    -- never, yearly, quarterly, monthly
+
+    invoice_sequence_last_reset DATE,
 
     -- --------------------------------------------------------
     -- CREDIT NOTE NUMBERING
@@ -1456,228 +1888,171 @@ CREATE TABLE public.invoice_settings (
         CHECK (reminder_after_days_2 >= 0),
 
     CONSTRAINT invoice_settings_grace_check
-        CHECK (reminder_grace_period_days >= 0)
+        CHECK (reminder_grace_period_days >= 0),
+
+    CONSTRAINT invoice_settings_sequence_reset_check
+        CHECK (
+            invoice_sequence_reset_frequency IN (
+                'never',
+                'yearly',
+                'quarterly',
+                'monthly'
+            )
+        )
 );
 
+COMMENT ON TABLE public.invoice_settings IS 'System-wide invoice configuration (singleton)';
+COMMENT ON COLUMN public.invoice_settings.invoice_sequence_reset_frequency IS 'How often to reset invoice numbering sequence';
+COMMENT ON COLUMN public.invoice_settings.invoice_sequence_last_reset IS 'Date when sequence was last reset';
 
--- ============================================================
--- 16. SETTINGS SINGLETON
--- ============================================================
 
 CREATE UNIQUE INDEX uq_invoice_settings_singleton
 ON public.invoice_settings ((true));
 
 
 -- ============================================================
--- 17. INDEXES
+-- 20. STATUS TRANSITION VALIDATION
 -- ============================================================
 
--- ------------------------------------------------------------
--- Customers
--- ------------------------------------------------------------
-
-CREATE INDEX idx_customers_company
-ON public.customers(company_name);
-
-CREATE INDEX idx_customers_email
-ON public.customers(email);
-
-CREATE INDEX idx_customers_phone
-ON public.customers(phone);
-
-CREATE INDEX idx_customers_status
-ON public.customers(status);
-
-CREATE INDEX idx_customers_tax_id
-ON public.customers(tax_id);
-
-CREATE INDEX idx_customers_payment_terms
-ON public.customers(payment_terms_id);
-
-
--- ------------------------------------------------------------
--- Products
--- ------------------------------------------------------------
-
-CREATE INDEX idx_products_name
-ON public.products(name);
-
-CREATE INDEX idx_products_category
-ON public.products(category);
-
-CREATE INDEX idx_products_active
-ON public.products(is_active);
-
-CREATE INDEX idx_products_tax_rate
-ON public.products(tax_rate_id);
-
-
--- ------------------------------------------------------------
--- Tax rates
--- ------------------------------------------------------------
-
-CREATE INDEX idx_tax_rates_active
-ON public.tax_rates(is_active);
-
-CREATE INDEX idx_tax_rates_type
-ON public.tax_rates(tax_type);
-
-
--- ------------------------------------------------------------
--- Payment terms
--- ------------------------------------------------------------
-
-CREATE INDEX idx_payment_terms_active
-ON public.payment_terms(is_active);
-
-CREATE INDEX idx_payment_terms_sort
-ON public.payment_terms(sort_order);
-
-
--- ------------------------------------------------------------
--- Templates
--- ------------------------------------------------------------
-
-CREATE INDEX idx_invoice_templates_active
-ON public.invoice_templates(is_active);
-
-
--- ------------------------------------------------------------
--- Invoices
--- ------------------------------------------------------------
-
-CREATE INDEX idx_invoices_customer
-ON public.invoices(customer_id);
-
-CREATE INDEX idx_invoices_status
-ON public.invoices(status);
-
-CREATE INDEX idx_invoices_issue_date
-ON public.invoices(issue_date);
-
-CREATE INDEX idx_invoices_due_date
-ON public.invoices(due_date);
-
-CREATE INDEX idx_invoices_currency
-ON public.invoices(currency);
-
-CREATE INDEX idx_invoices_po_number
-ON public.invoices(po_number);
-
-CREATE INDEX idx_invoices_customer_status
-ON public.invoices(customer_id, status);
-
-CREATE INDEX idx_invoices_due_status
-ON public.invoices(due_date, status);
-
-CREATE INDEX idx_invoices_created_by
-ON public.invoices(created_by);
-
-CREATE INDEX idx_invoices_payment_terms
-ON public.invoices(payment_terms_id);
-
-CREATE INDEX idx_invoices_template
-ON public.invoices(template_id);
-
-
--- ------------------------------------------------------------
--- Invoice items
--- ------------------------------------------------------------
-
-CREATE INDEX idx_invoice_items_invoice
-ON public.invoice_items(invoice_id);
-
-CREATE INDEX idx_invoice_items_product
-ON public.invoice_items(product_id);
-
-CREATE INDEX idx_invoice_items_tax_rate
-ON public.invoice_items(tax_rate_id);
-
-
--- ------------------------------------------------------------
--- Payments
--- ------------------------------------------------------------
-
-CREATE INDEX idx_payments_invoice
-ON public.payments(invoice_id);
-
-CREATE INDEX idx_payments_date
-ON public.payments(payment_date);
-
-CREATE INDEX idx_payments_status
-ON public.payments(status);
-
-CREATE INDEX idx_payments_reference
-ON public.payments(transaction_reference);
-
-CREATE INDEX idx_payments_method
-ON public.payments(payment_method);
-
-
--- ------------------------------------------------------------
--- Credit notes
--- ------------------------------------------------------------
-
-CREATE INDEX idx_credit_notes_invoice
-ON public.credit_notes(invoice_id);
-
-CREATE INDEX idx_credit_notes_customer
-ON public.credit_notes(customer_id);
-
-CREATE INDEX idx_credit_notes_status
-ON public.credit_notes(status);
-
-CREATE INDEX idx_credit_notes_applied_invoice
-ON public.credit_notes(applied_to_invoice_id);
-
-
--- ------------------------------------------------------------
--- Recurring invoices
--- ------------------------------------------------------------
-
-CREATE INDEX idx_recurring_customer
-ON public.recurring_invoices(customer_id);
-
-CREATE INDEX idx_recurring_status
-ON public.recurring_invoices(status);
-
-CREATE INDEX idx_recurring_next_issue
-ON public.recurring_invoices(next_issue_date);
-
-
--- ------------------------------------------------------------
--- Reminders
--- ------------------------------------------------------------
-
-CREATE INDEX idx_reminders_invoice
-ON public.invoice_reminders(invoice_id);
-
-CREATE INDEX idx_reminders_scheduled
-ON public.invoice_reminders(scheduled_at);
-
-CREATE INDEX idx_reminders_status
-ON public.invoice_reminders(status);
-
-
--- ------------------------------------------------------------
--- Activity log
--- ------------------------------------------------------------
-
-CREATE INDEX idx_activity_invoice
-ON public.invoice_activity_log(invoice_id);
-
-CREATE INDEX idx_activity_user
-ON public.invoice_activity_log(user_id);
-
-CREATE INDEX idx_activity_action
-ON public.invoice_activity_log(action);
-
-CREATE INDEX idx_activity_created
-ON public.invoice_activity_log(created_at);
+CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Skip validation for new invoices or if status hasn't changed
+    IF TG_OP = 'INSERT' OR OLD.status = NEW.status THEN
+        RETURN NEW;
+    END IF;
+
+    -- Define allowed transitions
+    -- draft → pending_approval, sent, cancelled, void
+    -- pending_approval → sent, cancelled, void
+    -- sent → viewed, overdue, partially_paid, paid, cancelled, void
+    -- viewed → overdue, partially_paid, paid, cancelled, void
+    -- partially_paid → paid, overdue, cancelled, void
+    -- overdue → partially_paid, paid, cancelled, void
+    -- paid → cancelled (only with refund), void
+    -- cancelled → (no transitions)
+    -- void → (no transitions)
+
+    -- Paid invoice restrictions
+    IF OLD.status = 'paid' AND NEW.status IN ('cancelled', 'void') THEN
+        RAISE EXCEPTION 'Cannot cancel or void a paid invoice. Issue a credit note instead.';
+    END IF;
+
+    -- Cancelled/void invoices cannot be changed
+    IF OLD.status IN ('cancelled', 'void') THEN
+        RAISE EXCEPTION 'Cannot change status of a cancelled or void invoice.';
+    END IF;
+
+    -- Draft invoice cannot go to paid directly
+    IF OLD.status = 'draft' AND NEW.status = 'paid' THEN
+        RAISE EXCEPTION 'Cannot mark a draft invoice as paid. Send it first.';
+    END IF;
+
+    -- Draft invoice cannot go to overdue or viewed
+    IF OLD.status = 'draft' AND NEW.status IN ('overdue', 'viewed') THEN
+        RAISE EXCEPTION 'Invalid status transition from draft to %', NEW.status;
+    END IF;
+
+    -- Pending approval cannot go to viewed/overdue/paid directly
+    IF OLD.status = 'pending_approval' AND NEW.status IN ('viewed', 'overdue', 'paid', 'partially_paid') THEN
+        RAISE EXCEPTION 'Cannot transition from pending_approval to %. Must be sent first.', NEW.status;
+    END IF;
+
+    -- Sent invoice cannot go directly to partially_paid without being viewed
+    -- (allow this though, as some systems automatically send and receive payments)
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.validate_invoice_status_transition()
+IS 'Validates invoice status transitions to prevent invalid state changes';
+
+
+CREATE TRIGGER validate_invoice_status_transition_trigger
+BEFORE INSERT OR UPDATE OF status
+ON public.invoices
+FOR EACH ROW
+WHEN (TG_OP = 'UPDATE' OR (TG_OP = 'INSERT' AND NEW.status IS NOT NULL))
+EXECUTE FUNCTION public.validate_invoice_status_transition();
 
 
 -- ============================================================
--- 18. UPDATED_AT TRIGGERS
+-- 21. CUSTOMER CREDIT LIMIT ENFORCEMENT
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.check_customer_credit_limit()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_credit_limit NUMERIC(19,4);
+    v_total_outstanding NUMERIC(19,4);
+    v_existing_total NUMERIC(19,4);
+    v_delta NUMERIC(19,4);
+BEGIN
+    -- Only enforce for non-draft, non-cancelled, non-void invoices
+    IF NEW.status IN ('draft', 'cancelled', 'void') THEN
+        RETURN NEW;
+    END IF;
+
+    -- Get customer credit limit
+    SELECT credit_limit INTO v_credit_limit
+    FROM public.customers
+    WHERE id = NEW.customer_id;
+
+    -- No limit set, skip enforcement
+    IF v_credit_limit IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    -- Get total outstanding for this customer (excluding current invoice)
+    SELECT COALESCE(SUM(amount_due), 0) INTO v_total_outstanding
+    FROM public.invoices
+    WHERE customer_id = NEW.customer_id
+      AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::UUID)
+      AND status NOT IN ('paid', 'cancelled', 'void', 'draft');
+
+    -- Calculate the change in outstanding amount
+    IF TG_OP = 'INSERT' THEN
+        v_delta = NEW.total_amount;
+    ELSIF TG_OP = 'UPDATE' THEN
+        -- If status changed from draft to something else, add the full amount
+        IF OLD.status = 'draft' AND NEW.status NOT IN ('draft', 'cancelled', 'void') THEN
+            v_delta = NEW.total_amount;
+        ELSE
+            -- Otherwise, adjust by the difference
+            v_delta = NEW.total_amount - OLD.total_amount;
+        END IF;
+    ELSE
+        RETURN NEW;
+    END IF;
+
+    -- Check if new total would exceed credit limit
+    IF (v_total_outstanding + v_delta) > v_credit_limit THEN
+        RAISE EXCEPTION 'Customer credit limit of % would be exceeded. Current outstanding: %, New invoice: %, Total would be: %, Limit: %',
+            v_credit_limit, v_total_outstanding, v_delta, (v_total_outstanding + v_delta), v_credit_limit;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.check_customer_credit_limit()
+IS 'Enforces customer credit limits when creating or updating invoices';
+
+
+CREATE TRIGGER enforce_customer_credit_limit
+BEFORE INSERT OR UPDATE OF status, total_amount
+ON public.invoices
+FOR EACH ROW
+EXECUTE FUNCTION public.check_customer_credit_limit();
+
+
+-- ============================================================
+-- 22. UPDATED_AT TRIGGERS
 -- ============================================================
 
 CREATE TRIGGER update_customers_updated_at
@@ -1685,66 +2060,55 @@ BEFORE UPDATE ON public.customers
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_payment_terms_updated_at
 BEFORE UPDATE ON public.payment_terms
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
-
 
 CREATE TRIGGER update_tax_rates_updated_at
 BEFORE UPDATE ON public.tax_rates
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_products_updated_at
 BEFORE UPDATE ON public.products
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
-
 
 CREATE TRIGGER update_invoice_templates_updated_at
 BEFORE UPDATE ON public.invoice_templates
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_invoices_updated_at
 BEFORE UPDATE ON public.invoices
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
-
 
 CREATE TRIGGER update_invoice_items_updated_at
 BEFORE UPDATE ON public.invoice_items
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_payments_updated_at
 BEFORE UPDATE ON public.payments
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
-
 
 CREATE TRIGGER update_credit_notes_updated_at
 BEFORE UPDATE ON public.credit_notes
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_recurring_invoices_updated_at
 BEFORE UPDATE ON public.recurring_invoices
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
 
-
 CREATE TRIGGER update_invoice_reminders_updated_at
 BEFORE UPDATE ON public.invoice_reminders
 FOR EACH ROW
 EXECUTE FUNCTION public.update_updated_at_column();
-
 
 CREATE TRIGGER update_invoice_settings_updated_at
 BEFORE UPDATE ON public.invoice_settings
@@ -1753,17 +2117,7 @@ EXECUTE FUNCTION public.update_updated_at_column();
 
 
 -- ============================================================
--- 19. PAYMENT → INVOICE CALCULATION
--- ============================================================
---
--- This is deliberately written to work for:
---
--- INSERT
--- UPDATE
--- DELETE
---
--- It uses OLD.invoice_id when a payment is deleted.
---
+-- 23. PAYMENT → INVOICE CALCULATION (Enhanced)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.recalculate_invoice_payment_state(
@@ -1773,12 +2127,13 @@ RETURNS VOID
 LANGUAGE plpgsql
 AS $$
 DECLARE
-    v_total NUMERIC(15,2);
-    v_paid NUMERIC(15,2);
-    v_due NUMERIC(15,2);
+    v_total NUMERIC(19,4);
+    v_paid NUMERIC(19,4);
+    v_due NUMERIC(19,4);
     v_status VARCHAR(50);
     v_current_status VARCHAR(50);
     v_due_date DATE;
+    v_latest_payment_date TIMESTAMPTZ;
 BEGIN
 
     SELECT
@@ -1805,14 +2160,17 @@ BEGIN
     WHERE invoice_id = p_invoice_id
       AND status = 'completed';
 
+    -- Get the latest payment date for paid invoices
+    SELECT MAX(payment_date) INTO v_latest_payment_date
+    FROM public.payments
+    WHERE invoice_id = p_invoice_id
+      AND status = 'completed';
+
     v_paid := LEAST(v_paid, v_total);
 
     v_due := GREATEST(v_total - v_paid, 0);
 
-    -- --------------------------------------------------------
     -- Determine status
-    -- --------------------------------------------------------
-
     IF v_current_status IN (
         'draft',
         'pending_approval',
@@ -1853,6 +2211,8 @@ BEGIN
         amount_due = v_due,
         status = v_status,
         payment_date = CASE
+            WHEN v_status = 'paid' AND v_latest_payment_date IS NOT NULL
+                THEN v_latest_payment_date::DATE
             WHEN v_status = 'paid'
                 THEN CURRENT_DATE
             ELSE payment_date
@@ -1862,9 +2222,12 @@ BEGIN
 END;
 $$;
 
+COMMENT ON FUNCTION public.recalculate_invoice_payment_state(UUID)
+IS 'Recalculates invoice payment status and amounts based on completed payments';
+
 
 -- ============================================================
--- 20. PAYMENT CHANGE TRIGGER
+-- 24. PAYMENT CHANGE TRIGGER
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.handle_payment_change()
@@ -1911,6 +2274,9 @@ BEGIN
 END;
 $$;
 
+COMMENT ON FUNCTION public.handle_payment_change()
+IS 'Triggers invoice payment state recalculation on payment changes';
+
 
 CREATE TRIGGER update_invoice_payment_state
 AFTER INSERT OR UPDATE OR DELETE
@@ -1920,20 +2286,7 @@ EXECUTE FUNCTION public.handle_payment_change();
 
 
 -- ============================================================
--- 21. INVOICE NUMBER GENERATION
--- ============================================================
---
--- Generates invoice numbers atomically.
---
--- Example:
---
--- INV-000001
--- INV-000002
--- INV-000003
---
--- This prevents two simultaneous users from receiving
--- the same invoice number.
---
+-- 25. INVOICE NUMBER GENERATION (Enhanced)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.generate_invoice_number()
@@ -1946,18 +2299,26 @@ DECLARE
     v_padding INTEGER;
     v_format VARCHAR(100);
     v_result VARCHAR(100);
+    v_reset_freq VARCHAR(20);
+    v_last_reset DATE;
+    v_current_date DATE := CURRENT_DATE;
+    v_should_reset BOOLEAN := false;
 BEGIN
 
     SELECT
         invoice_next_number,
         invoice_prefix,
         invoice_number_padding,
-        invoice_number_format
+        invoice_number_format,
+        invoice_sequence_reset_frequency,
+        invoice_sequence_last_reset
     INTO
         v_number,
         v_prefix,
         v_padding,
-        v_format
+        v_format,
+        v_reset_freq,
+        v_last_reset
     FROM public.invoice_settings
     LIMIT 1
     FOR UPDATE;
@@ -1967,10 +2328,68 @@ BEGIN
             'Invoice settings have not been initialized';
     END IF;
 
+    -- Check if sequence should be reset
+    IF v_reset_freq != 'never' THEN
+        v_should_reset := CASE
+            WHEN v_reset_freq = 'yearly' AND (
+                v_last_reset IS NULL
+                OR EXTRACT(YEAR FROM v_last_reset) != EXTRACT(YEAR FROM v_current_date)
+            ) THEN true
+            WHEN v_reset_freq = 'quarterly' AND (
+                v_last_reset IS NULL
+                OR EXTRACT(QUARTER FROM v_last_reset) != EXTRACT(QUARTER FROM v_current_date)
+                OR EXTRACT(YEAR FROM v_last_reset) != EXTRACT(YEAR FROM v_current_date)
+            ) THEN true
+            WHEN v_reset_freq = 'monthly' AND (
+                v_last_reset IS NULL
+                OR EXTRACT(MONTH FROM v_last_reset) != EXTRACT(MONTH FROM v_current_date)
+                OR EXTRACT(YEAR FROM v_last_reset) != EXTRACT(YEAR FROM v_current_date)
+            ) THEN true
+            ELSE false
+        END;
+
+        IF v_should_reset THEN
+            v_number := 1;
+            UPDATE public.invoice_settings
+            SET
+                invoice_next_number = 2,
+                invoice_sequence_last_reset = v_current_date;
+        END IF;
+    END IF;
+
     v_result := REPLACE(
         v_format,
         '{prefix}',
         v_prefix
+    );
+
+    -- Add support for year and month in format
+    v_result := REPLACE(
+        v_result,
+        '{year}',
+        TO_CHAR(v_current_date, 'YYYY')
+    );
+
+    v_result := REPLACE(
+        v_result,
+        '{month}',
+        TO_CHAR(v_current_date, 'MM')
+    );
+
+    v_result := REPLACE(
+        v_result,
+        '{day}',
+        TO_CHAR(v_current_date, 'DD')
+    );
+
+    v_result := REPLACE(
+        v_result,
+        '{fiscal_year}',
+        CASE
+            WHEN EXTRACT(MONTH FROM v_current_date) >= 7
+                THEN EXTRACT(YEAR FROM v_current_date) + 1
+            ELSE EXTRACT(YEAR FROM v_current_date)
+        END::TEXT
     );
 
     v_result := REPLACE(
@@ -1983,17 +2402,22 @@ BEGIN
         )
     );
 
-    UPDATE public.invoice_settings
-    SET invoice_next_number = v_number + 1;
+    IF NOT v_should_reset THEN
+        UPDATE public.invoice_settings
+        SET invoice_next_number = v_number + 1;
+    END IF;
 
     RETURN v_result;
 
 END;
 $$;
 
+COMMENT ON FUNCTION public.generate_invoice_number()
+IS 'Generates next invoice number with sequence reset support';
+
 
 -- ============================================================
--- 22. CREDIT NOTE NUMBER GENERATION
+-- 26. CREDIT NOTE NUMBER GENERATION (Enhanced)
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.generate_credit_note_number()
@@ -2006,6 +2430,7 @@ DECLARE
     v_padding INTEGER;
     v_format VARCHAR(100);
     v_result VARCHAR(100);
+    v_current_date DATE := CURRENT_DATE;
 BEGIN
 
     SELECT
@@ -2035,6 +2460,18 @@ BEGIN
 
     v_result := REPLACE(
         v_result,
+        '{year}',
+        TO_CHAR(v_current_date, 'YYYY')
+    );
+
+    v_result := REPLACE(
+        v_result,
+        '{month}',
+        TO_CHAR(v_current_date, 'MM')
+    );
+
+    v_result := REPLACE(
+        v_result,
         '{number}',
         LPAD(
             v_number::TEXT,
@@ -2051,15 +2488,12 @@ BEGIN
 END;
 $$;
 
+COMMENT ON FUNCTION public.generate_credit_note_number()
+IS 'Generates next credit note number';
+
 
 -- ============================================================
--- 23. AUTOMATIC OVERDUE FUNCTION
--- ============================================================
---
--- Can be called by a scheduled job/cron.
---
--- It does NOT mark drafts/cancelled/void invoices overdue.
---
+-- 27. AUTOMATIC OVERDUE FUNCTION
 -- ============================================================
 
 CREATE OR REPLACE FUNCTION public.mark_overdue_invoices()
@@ -2081,20 +2515,224 @@ BEGIN
 
     GET DIAGNOSTICS v_count = ROW_COUNT;
 
+    -- Create events for overdue invoices
+    INSERT INTO public.invoice_events (
+        invoice_id,
+        event_type,
+        payload
+    )
+    SELECT
+        id,
+        'overdue',
+        jsonb_build_object(
+            'invoice_number', invoice_number,
+            'customer_id', customer_id,
+            'amount_due', amount_due,
+            'due_date', due_date
+        )
+    FROM public.invoices
+    WHERE status = 'overdue'
+      AND amount_due > 0
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.invoice_events
+          WHERE invoice_id = invoices.id
+            AND event_type = 'overdue'
+            AND processed = false
+      );
+
     RETURN v_count;
 
 END;
 $$;
 
+COMMENT ON FUNCTION public.mark_overdue_invoices()
+IS 'Marks overdue invoices and creates events for them';
+
 
 -- ============================================================
--- 24. DEFAULT SEED DATA
+-- 28. INVOICE ARCHIVE FUNCTION
 -- ============================================================
 
--- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.archive_invoices(
+    p_before_date DATE,
+    p_statuses VARCHAR[] DEFAULT ARRAY['paid', 'cancelled', 'void']
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_count INTEGER;
+BEGIN
+
+    -- Move invoices to archive
+    INSERT INTO public.invoices_archive (
+        id, customer_id, invoice_number, issue_date, due_date,
+        payment_date, sent_at, viewed_at, approved_at, status,
+        subtotal, discount_type, discount_value, discount_amount,
+        tax_calculation_method, tax_amount, shipping_cost, shipping_tax,
+        rounding_adjustment, rounded_total, total_amount, amount_paid,
+        amount_due, po_number, currency, exchange_rate, payment_terms_id,
+        payment_terms_display, fiscal_year, fiscal_period, template_id,
+        created_by, approved_by, cancelled_by, cancelled_reason,
+        reminder_count, last_reminder_sent_at, next_reminder_at,
+        notes, internal_notes, footer_text, attachments,
+        deleted_at, deleted_by, metadata, created_at, updated_at,
+        archived_at, archived_by
+    )
+    SELECT
+        id, customer_id, invoice_number, issue_date, due_date,
+        payment_date, sent_at, viewed_at, approved_at, status,
+        subtotal, discount_type, discount_value, discount_amount,
+        tax_calculation_method, tax_amount, shipping_cost, shipping_tax,
+        rounding_adjustment, rounded_total, total_amount, amount_paid,
+        amount_due, po_number, currency, exchange_rate, payment_terms_id,
+        payment_terms_display, fiscal_year, fiscal_period, template_id,
+        created_by, approved_by, cancelled_by, cancelled_reason,
+        reminder_count, last_reminder_sent_at, next_reminder_at,
+        notes, internal_notes, footer_text, attachments,
+        deleted_at, deleted_by, metadata, created_at, updated_at,
+        NOW(), NULL
+    FROM public.invoices
+    WHERE due_date < p_before_date
+      AND status = ANY(p_statuses)
+      AND deleted_at IS NULL;
+
+    GET DIAGNOSTICS v_count = ROW_COUNT;
+
+    -- Delete archived invoices from main table
+    DELETE FROM public.invoices
+    WHERE due_date < p_before_date
+      AND status = ANY(p_statuses)
+      AND deleted_at IS NULL;
+
+    RETURN v_count;
+
+END;
+$$;
+
+COMMENT ON FUNCTION public.archive_invoices(DATE, VARCHAR[])
+IS 'Archives old invoices based on date and status';
+
+
+-- ============================================================
+-- 29. REPORTING VIEWS
+-- ============================================================
+
+-- Monthly invoice summary view
+CREATE OR REPLACE VIEW public.invoice_monthly_summary AS
+SELECT
+    DATE_TRUNC('month', issue_date) AS month,
+    status,
+    COUNT(*) AS invoice_count,
+    SUM(total_amount) AS total_amount,
+    SUM(amount_paid) AS total_paid,
+    SUM(amount_due) AS total_outstanding,
+    AVG(total_amount) AS average_invoice_amount,
+    MIN(issue_date) AS first_invoice_date,
+    MAX(issue_date) AS last_invoice_date
+FROM public.invoices
+WHERE deleted_at IS NULL
+GROUP BY 1, 2
+ORDER BY 1 DESC, 2;
+
+COMMENT ON VIEW public.invoice_monthly_summary IS 'Monthly summary of invoices by status';
+
+
+-- Customer aging report view
+CREATE OR REPLACE VIEW public.customer_aging_report AS
+WITH aging AS (
+    SELECT
+        customer_id,
+        SUM(CASE
+            WHEN due_date >= CURRENT_DATE THEN 0
+            WHEN due_date >= CURRENT_DATE - INTERVAL '30 days' THEN amount_due
+            ELSE 0
+        END) AS current_30,
+        SUM(CASE
+            WHEN due_date < CURRENT_DATE - INTERVAL '30 days'
+                AND due_date >= CURRENT_DATE - INTERVAL '60 days' THEN amount_due
+            ELSE 0
+        END) AS days_31_60,
+        SUM(CASE
+            WHEN due_date < CURRENT_DATE - INTERVAL '60 days'
+                AND due_date >= CURRENT_DATE - INTERVAL '90 days' THEN amount_due
+            ELSE 0
+        END) AS days_61_90,
+        SUM(CASE
+            WHEN due_date < CURRENT_DATE - INTERVAL '90 days' THEN amount_due
+            ELSE 0
+        END) AS days_91_plus,
+        SUM(amount_due) AS total_outstanding
+    FROM public.invoices
+    WHERE status NOT IN ('paid', 'cancelled', 'void')
+      AND deleted_at IS NULL
+    GROUP BY customer_id
+)
+SELECT
+    c.id,
+    c.company_name,
+    c.email,
+    c.phone,
+    a.current_30,
+    a.days_31_60,
+    a.days_61_90,
+    a.days_91_plus,
+    a.total_outstanding,
+    c.credit_limit,
+    CASE
+        WHEN c.credit_limit IS NOT NULL
+            AND a.total_outstanding > c.credit_limit
+            THEN true
+        ELSE false
+    END AS credit_limit_exceeded
+FROM public.customers c
+JOIN aging a ON c.id = a.customer_id
+WHERE c.deleted_at IS NULL
+ORDER BY a.total_outstanding DESC;
+
+COMMENT ON VIEW public.customer_aging_report IS 'Customer accounts receivable aging report';
+
+
+-- Payment reconciliation view
+CREATE OR REPLACE VIEW public.payment_reconciliation AS
+SELECT
+    p.id AS payment_id,
+    p.invoice_id,
+    i.invoice_number,
+    p.amount,
+    p.currency,
+    p.payment_method,
+    p.payment_date,
+    p.status,
+    p.reconciled,
+    p.reconciled_at,
+    p.transaction_reference,
+    i.customer_id,
+    c.company_name,
+    COALESCE(pa.allocated_amount, 0) AS allocated_amount,
+    p.amount - COALESCE(pa.allocated_amount, 0) AS unallocated_amount
+FROM public.payments p
+JOIN public.invoices i ON p.invoice_id = i.id
+JOIN public.customers c ON i.customer_id = c.id
+LEFT JOIN (
+    SELECT
+        payment_id,
+        SUM(amount) AS allocated_amount
+    FROM public.payment_allocations
+    GROUP BY payment_id
+) pa ON p.id = pa.payment_id
+WHERE i.deleted_at IS NULL
+ORDER BY p.payment_date DESC;
+
+COMMENT ON VIEW public.payment_reconciliation IS 'Payment reconciliation with allocation details';
+
+
+-- ============================================================
+-- 30. DEFAULT SEED DATA
+-- ============================================================
+
 -- Payment Terms
--- ------------------------------------------------------------
-
 INSERT INTO public.payment_terms (
     name,
     description,
@@ -2141,13 +2779,10 @@ VALUES
     false,
     4
 )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
--- ------------------------------------------------------------
 -- Tax Rates
--- ------------------------------------------------------------
-
 INSERT INTO public.tax_rates (
     name,
     rate,
@@ -2205,13 +2840,10 @@ VALUES
     false,
     6
 )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
--- ------------------------------------------------------------
 -- Default Invoice Template
--- ------------------------------------------------------------
-
 INSERT INTO public.invoice_templates (
     name,
     is_default,
@@ -2250,11 +2882,11 @@ VALUES (
     true,
     true
 )
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO NOTHING;
 
 
 -- ============================================================
--- 25. INITIAL INVOICE SETTINGS
+-- 31. INITIAL INVOICE SETTINGS
 -- ============================================================
 
 INSERT INTO public.invoice_settings (
@@ -2264,6 +2896,7 @@ INSERT INTO public.invoice_settings (
     invoice_next_number,
     invoice_number_padding,
     invoice_number_format,
+    invoice_sequence_reset_frequency,
 
     credit_note_prefix,
     credit_note_next_number,
@@ -2308,6 +2941,7 @@ SELECT
     1,
     6,
     '{prefix}{number}',
+    'never',
 
     'CN-',
     1,
@@ -2351,7 +2985,7 @@ WHERE NOT EXISTS (
 
 
 -- ============================================================
--- 26. LINK DEFAULT SETTINGS TO DEFAULT DATA
+-- 32. LINK DEFAULT SETTINGS TO DEFAULT DATA
 -- ============================================================
 
 UPDATE public.invoice_settings
@@ -2382,7 +3016,7 @@ WHERE default_payment_terms_id IS NULL
 
 
 -- ============================================================
--- 27. ENSURE ONLY ONE DEFAULT PAYMENT TERM
+-- 33. ENSURE ONLY ONE DEFAULT PAYMENT TERM
 -- ============================================================
 
 WITH ranked AS (
@@ -2401,7 +3035,7 @@ WHERE pt.id = ranked.id;
 
 
 -- ============================================================
--- 28. ENSURE ONLY ONE DEFAULT TAX RATE
+-- 34. ENSURE ONLY ONE DEFAULT TAX RATE
 -- ============================================================
 
 WITH ranked AS (
@@ -2420,7 +3054,7 @@ WHERE tr.id = ranked.id;
 
 
 -- ============================================================
--- 29. ENSURE ONLY ONE DEFAULT TEMPLATE
+-- 35. ENSURE ONLY ONE DEFAULT TEMPLATE
 -- ============================================================
 
 WITH ranked AS (
@@ -2439,11 +3073,7 @@ WHERE it.id = ranked.id;
 
 
 -- ============================================================
--- 30. FINAL VERIFICATION QUERIES
--- ============================================================
---
--- Run these after the schema has completed.
---
+-- 36. FINAL VERIFICATION QUERIES
 -- ============================================================
 
 SELECT
@@ -2457,37 +3087,49 @@ WHERE table_schema = 'public'
       'products',
       'invoice_templates',
       'invoices',
+      'invoice_status_history',
       'invoice_items',
       'payments',
+      'payment_allocations',
       'credit_notes',
       'recurring_invoices',
       'invoice_reminders',
       'invoice_activity_log',
+      'invoice_events',
+      'invoices_archive',
       'invoice_settings'
   )
 ORDER BY table_name;
 
+-- Check views
+SELECT
+    view_name
+FROM information_schema.views
+WHERE table_schema = 'public'
+  AND view_name IN (
+      'invoice_monthly_summary',
+      'customer_aging_report',
+      'payment_reconciliation'
+  )
+ORDER BY view_name;
 
+-- Count rows
 SELECT
     COUNT(*) AS invoice_settings_rows
 FROM public.invoice_settings;
-
 
 SELECT
     COUNT(*) AS payment_terms
 FROM public.payment_terms;
 
-
 SELECT
     COUNT(*) AS tax_rates
 FROM public.tax_rates;
-
 
 SELECT
     COUNT(*) AS invoice_templates
 FROM public.invoice_templates;
 
-
 -- ============================================================
--- END OF SaMi ASSIST INVOICE MODULE SCHEMA
+-- END OF SaMi ASSIST INVOICE MODULE SCHEMA v3.0
 -- ============================================================
