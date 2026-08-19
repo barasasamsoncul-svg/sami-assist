@@ -2,10 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-// =========================================================
-// GET: List payments
-// Includes related invoice and customer information.
-// =========================================================
+function toNumber(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function getInvoiceStatus(
+  totalAmount: number,
+  amountPaid: number,
+  currentStatus: string
+): string {
+  if (
+    ["cancelled", "void"].includes(currentStatus)
+  ) {
+    return currentStatus;
+  }
+
+  if (amountPaid >= totalAmount) {
+    return "paid";
+  }
+
+  if (amountPaid > 0) {
+    return "partially_paid";
+  }
+
+  return currentStatus;
+}
+
+/*
+|--------------------------------------------------------------------------
+| GET /api/payments
+|--------------------------------------------------------------------------
+|
+| Query parameters:
+|
+| ?invoice_id=...
+| ?status=completed
+| ?payment_method=bank_transfer
+| ?search=...
+| ?page=1
+| ?limit=20
+|--------------------------------------------------------------------------
+*/
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getAuthenticatedUser();
@@ -17,377 +56,776 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const { pool } = await getTenantDatabaseForUser(user.id);
+    const { pool } =
+      await getTenantDatabaseForUser(user.id);
 
-    const searchParams = req.nextUrl.searchParams;
+    const { searchParams } =
+      new URL(req.url);
 
-    const rawLimit = parseInt(searchParams.get("limit") || "50", 10);
-    const limit = Math.min(Math.max(rawLimit || 50, 1), 100);
+    const invoiceId =
+      searchParams.get("invoice_id");
 
-    const invoiceId = searchParams.get("invoice_id");
+    const status =
+      searchParams.get("status");
 
-    let query = `
-      SELECT
-        p.*,
+    const paymentMethod =
+      searchParams.get("payment_method");
 
-        -- Related invoice
-        i.invoice_number,
+    const search =
+      searchParams.get("search");
 
-        -- Related customer
-        c.id AS customer_id,
-        c.company_name AS customer_name,
-        c.contact_name AS customer_contact_name,
-        c.email AS customer_email,
-        c.phone AS customer_phone
+    const page = Math.max(
+      1,
+      toNumber(
+        searchParams.get("page"),
+        1
+      )
+    );
 
-      FROM payments p
+    const limit = Math.min(
+      100,
+      Math.max(
+        1,
+        toNumber(
+          searchParams.get("limit"),
+          20
+        )
+      )
+    );
 
-      LEFT JOIN invoices i
-        ON p.invoice_id = i.id
+    const offset =
+      (page - 1) * limit;
 
-      LEFT JOIN customers c
-        ON i.customer_id = c.id
+    const conditions: string[] = [];
+    const values: unknown[] = [];
 
-      WHERE 1 = 1
-    `;
-
-    const params: unknown[] = [];
-    let paramCount = 1;
+    let parameter = 1;
 
     if (invoiceId) {
-      query += ` AND p.invoice_id = $${paramCount}`;
-      params.push(invoiceId);
-      paramCount++;
+      conditions.push(
+        `p.invoice_id = $${parameter++}`
+      );
+
+      values.push(invoiceId);
     }
 
-    query += `
-      ORDER BY p.payment_date DESC, p.created_at DESC
-      LIMIT $${paramCount}
-    `;
+    if (status) {
+      conditions.push(
+        `p.status = $${parameter++}`
+      );
 
-    params.push(limit);
+      values.push(status);
+    }
 
-    const result = await pool.query(query, params);
+    if (paymentMethod) {
+      conditions.push(
+        `p.payment_method = $${parameter++}`
+      );
 
-    const payments = result.rows.map((row) => ({
-      ...row,
+      values.push(paymentMethod);
+    }
 
-      invoice_number: row.invoice_number || null,
+    if (search) {
+      conditions.push(`
+        (
+          p.transaction_reference ILIKE $${parameter}
+          OR i.invoice_number ILIKE $${parameter}
+          OR c.company_name ILIKE $${parameter}
+        )
+      `);
 
-      customer: row.customer_id
-        ? {
-            id: row.customer_id,
-            company_name: row.customer_name || null,
-            contact_name: row.customer_contact_name || null,
-            email: row.customer_email || null,
-            phone: row.customer_phone || null,
-          }
-        : null,
-    }));
+      values.push(`%${search}%`);
+      parameter++;
+    }
 
-    return NextResponse.json(payments);
+    const where =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(" AND ")}`
+        : "";
+
+    const countResult =
+      await pool.query(
+        `
+          SELECT COUNT(*)::int AS count
+
+          FROM public.payments p
+
+          INNER JOIN public.invoices i
+            ON i.id = p.invoice_id
+
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+
+          ${where}
+        `,
+        values
+      );
+
+    const total =
+      countResult.rows[0]?.count ?? 0;
+
+    const result =
+      await pool.query(
+        `
+          SELECT
+            p.*,
+
+            json_build_object(
+              'id', i.id,
+              'invoice_number',
+                i.invoice_number,
+              'total_amount',
+                i.total_amount,
+              'amount_paid',
+                i.amount_paid,
+              'amount_due',
+                i.amount_due,
+              'status',
+                i.status,
+              'currency',
+                i.currency
+            ) AS invoice,
+
+            json_build_object(
+              'id', c.id,
+              'company_name',
+                c.company_name,
+              'contact_name',
+                c.contact_name,
+              'email',
+                c.email,
+              'phone',
+                c.phone
+            ) AS customer
+
+          FROM public.payments p
+
+          INNER JOIN public.invoices i
+            ON i.id = p.invoice_id
+
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+
+          ${where}
+
+          ORDER BY
+            p.payment_date DESC,
+            p.created_at DESC
+
+          LIMIT $${parameter}
+          OFFSET $${parameter + 1}
+        `,
+        [
+          ...values,
+          limit,
+          offset,
+        ]
+      );
+
+    return NextResponse.json({
+      success: true,
+
+      payments:
+        result.rows,
+
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages:
+          Math.ceil(
+            total / limit
+          ),
+      },
+    });
   } catch (error) {
-    console.error("Payments fetch error:", error);
+    console.error(
+      "GET /api/payments:",
+      error
+    );
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load payments",
+          "Failed to fetch payments",
       },
       { status: 500 }
     );
   }
 }
 
-// =========================================================
-// POST: Record a new payment
-// =========================================================
-export async function POST(req: Request) {
+/*
+|--------------------------------------------------------------------------
+| POST /api/payments
+|--------------------------------------------------------------------------
+|
+| Creates a payment.
+|
+| The invoice balance is recalculated from ALL completed
+| payments rather than trusting the client.
+|--------------------------------------------------------------------------
+*/
+
+export async function POST(req: NextRequest) {
+  const user = await getAuthenticatedUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const { pool } =
+    await getTenantDatabaseForUser(user.id);
+
+  const client = await pool.connect();
+
   try {
-    const user = await getAuthenticatedUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
-
     const body = await req.json();
 
-    const {
-      invoice_id,
-      amount,
-      payment_method,
-      transaction_reference,
-      payment_date,
-      notes,
-      status = "completed",
-      payment_method_details = {},
-    } = body;
-
-    // -----------------------------------------------------
-    // Validate required fields
-    // -----------------------------------------------------
-
-    if (!invoice_id) {
-      return NextResponse.json(
-        { error: "Invoice ID is required" },
-        { status: 400 }
-      );
-    }
-
-    const numericAmount = Number(amount);
-
-    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
-      return NextResponse.json(
-        { error: "Valid amount is required" },
-        { status: 400 }
-      );
-    }
-
-    if (!payment_method) {
-      return NextResponse.json(
-        { error: "Payment method is required" },
-        { status: 400 }
-      );
-    }
-
-    const validStatuses = [
-      "pending",
-      "completed",
-      "failed",
-      "refunded",
-      "disputed",
-    ];
-
-    if (!validStatuses.includes(status)) {
+    if (!body.invoice_id) {
       return NextResponse.json(
         {
-          error: `Invalid status. Must be one of: ${validStatuses.join(", ")}`,
+          error:
+            "invoice_id is required",
         },
         { status: 400 }
       );
     }
 
-    const { pool } = await getTenantDatabaseForUser(user.id);
+    const amount =
+      toNumber(body.amount);
 
-    // -----------------------------------------------------
-    // Get invoice + customer details
-    // -----------------------------------------------------
-
-    const invoiceResult = await pool.query(
-      `
-      SELECT
-        i.id,
-        i.invoice_number,
-        i.currency,
-        i.total_amount,
-        i.amount_paid,
-        i.amount_due,
-        i.customer_id,
-
-        c.company_name,
-        c.contact_name,
-        c.email,
-        c.phone
-
-      FROM invoices i
-
-      LEFT JOIN customers c
-        ON i.customer_id = c.id
-
-      WHERE i.id = $1
-      `,
-      [invoice_id]
-    );
-
-    if (invoiceResult.rows.length === 0) {
+    if (amount <= 0) {
       return NextResponse.json(
-        { error: "Invoice not found" },
+        {
+          error:
+            "Payment amount must be greater than zero",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!body.payment_method) {
+      return NextResponse.json(
+        {
+          error:
+            "payment_method is required",
+        },
+        { status: 400 }
+      );
+    }
+
+    await client.query("BEGIN");
+
+    /*
+    |--------------------------------------------------------------------------
+    | Lock invoice
+    |--------------------------------------------------------------------------
+    */
+
+    const invoiceResult =
+      await client.query(
+        `
+          SELECT
+            id,
+            invoice_number,
+            total_amount,
+            amount_paid,
+            amount_due,
+            currency,
+            status
+          FROM public.invoices
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [body.invoice_id]
+      );
+
+    if (
+      (invoiceResult.rowCount ?? 0) === 0
+    ) {
+      await client.query("ROLLBACK");
+
+      return NextResponse.json(
+        {
+          error:
+            "Invoice not found",
+        },
         { status: 404 }
       );
     }
 
-    const invoice = invoiceResult.rows[0];
+    const invoice =
+      invoiceResult.rows[0];
 
-    const currency = invoice.currency || "USD";
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice validation
+    |--------------------------------------------------------------------------
+    */
 
-    // -----------------------------------------------------
-    // Prevent payment exceeding balance
-    // -----------------------------------------------------
+    if (
+      invoice.status === "cancelled" ||
+      invoice.status === "void"
+    ) {
+      await client.query("ROLLBACK");
 
-    if (status === "completed") {
-      const currentAmountDue = Number(invoice.amount_due || 0);
-
-      if (numericAmount > currentAmountDue) {
-        return NextResponse.json(
-          {
-            error: `Payment amount cannot exceed the invoice balance due (${currentAmountDue.toFixed(
-              2
-            )} ${currency}).`,
-          },
-          { status: 400 }
-        );
-      }
+      return NextResponse.json(
+        {
+          error:
+            "Payments cannot be added to a cancelled or void invoice",
+        },
+        { status: 409 }
+      );
     }
 
-    // -----------------------------------------------------
-    // Insert payment
-    // -----------------------------------------------------
+    if (
+      invoice.status === "paid"
+    ) {
+      await client.query("ROLLBACK");
 
-    const paymentResult = await pool.query(
-      `
-      INSERT INTO payments (
-        invoice_id,
-        amount,
-        currency,
-        payment_method,
-        payment_method_details,
-        transaction_reference,
-        payment_date,
-        notes,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      RETURNING *
-      `,
-      [
-        invoice_id,
-        numericAmount,
-        currency,
-        payment_method,
-        payment_method_details || {},
-        transaction_reference || null,
-        payment_date || new Date().toISOString(),
-        notes || null,
-        status,
-      ]
-    );
+      return NextResponse.json(
+        {
+          error:
+            "Invoice is already fully paid",
+        },
+        { status: 409 }
+      );
+    }
 
-    const payment = paymentResult.rows[0];
+    /*
+    |--------------------------------------------------------------------------
+    | Check partial-payment setting
+    |--------------------------------------------------------------------------
+    */
 
-    // -----------------------------------------------------
-    // Update invoice totals
-    // Only completed payments affect the invoice balance.
-    // -----------------------------------------------------
-
-    if (status === "completed") {
-      const paymentsResult = await pool.query(
+    const settingsResult =
+      await client.query(
         `
-        SELECT COALESCE(SUM(amount), 0) AS total_paid
-        FROM payments
-        WHERE invoice_id = $1
+          SELECT
+            allow_partial_payments
+          FROM public.invoice_settings
+          ORDER BY created_at ASC
+          LIMIT 1
+        `
+      );
+
+    const settings =
+      settingsResult.rows[0];
+
+    const allowPartialPayments =
+      settings?.allow_partial_payments ??
+      true;
+
+    const requestedStatus =
+      body.status || "completed";
+
+    /*
+    |--------------------------------------------------------------------------
+    | Calculate existing completed payments
+    |--------------------------------------------------------------------------
+    */
+
+    const completedResult =
+      await client.query(
+        `
+          SELECT
+            COALESCE(
+              SUM(amount),
+              0
+            ) AS amount_paid
+          FROM public.payments
+          WHERE invoice_id = $1
           AND status = 'completed'
         `,
-        [invoice_id]
+        [body.invoice_id]
       );
 
-      const totalPaid = Number(
-        paymentsResult.rows[0]?.total_paid || 0
+    const existingPaid =
+      toNumber(
+        completedResult.rows[0]
+          ?.amount_paid
       );
 
-      const totalAmount = Number(
-        invoice.total_amount || 0
-      );
-
-      const amountDue = Math.max(
+    const remaining =
+      Math.max(
         0,
-        totalAmount - totalPaid
+        toNumber(
+          invoice.total_amount
+        ) - existingPaid
       );
 
-      let statusUpdate = "sent";
+    /*
+    |--------------------------------------------------------------------------
+    | Don't allow overpayment
+    |--------------------------------------------------------------------------
+    */
 
-      if (amountDue <= 0) {
-        statusUpdate = "paid";
-      } else if (totalPaid > 0) {
-        statusUpdate = "partially_paid";
-      }
+    if (
+      requestedStatus === "completed" &&
+      amount > remaining
+    ) {
+      await client.query("ROLLBACK");
 
-      await pool.query(
+      return NextResponse.json(
+        {
+          error:
+            "Payment exceeds the remaining invoice balance",
+
+          invoice_total:
+            invoice.total_amount,
+
+          already_paid:
+            existingPaid,
+
+          remaining_balance:
+            remaining,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !allowPartialPayments &&
+      amount < remaining &&
+      requestedStatus === "completed"
+    ) {
+      await client.query("ROLLBACK");
+
+      return NextResponse.json(
+        {
+          error:
+            "Partial payments are disabled for this business",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Payment date
+    |--------------------------------------------------------------------------
+    */
+
+    const paymentDate =
+      body.payment_date
+        ? new Date(
+            body.payment_date
+          )
+        : new Date();
+
+    if (
+      Number.isNaN(
+        paymentDate.getTime()
+      )
+    ) {
+      await client.query("ROLLBACK");
+
+      return NextResponse.json(
+        {
+          error:
+            "Invalid payment_date",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Create payment
+    |--------------------------------------------------------------------------
+    */
+
+    const paymentResult =
+      await client.query(
         `
-        UPDATE invoices
+          INSERT INTO public.payments (
+            invoice_id,
+
+            amount,
+            currency,
+            exchange_rate,
+
+            payment_method,
+            payment_method_details,
+
+            transaction_reference,
+            payment_date,
+
+            status,
+
+            reconciled,
+            reconciled_at,
+            reconciled_by,
+
+            notes,
+            metadata
+          )
+          VALUES (
+            $1,
+
+            $2,
+            $3,
+            $4,
+
+            $5,
+            $6,
+
+            $7,
+            $8,
+
+            $9,
+
+            $10,
+            $11,
+            $12,
+
+            $13,
+            $14
+          )
+
+          RETURNING *
+        `,
+        [
+          body.invoice_id,
+
+          amount,
+
+          body.currency ||
+            invoice.currency ||
+            "USD",
+
+          toNumber(
+            body.exchange_rate,
+            1
+          ),
+
+          body.payment_method,
+
+          body.payment_method_details ??
+            {},
+
+          body.transaction_reference ||
+            null,
+
+          paymentDate,
+
+          requestedStatus,
+
+          body.reconciled === true,
+
+          body.reconciled === true
+            ? new Date()
+            : null,
+
+          body.reconciled === true
+            ? user.id
+            : null,
+
+          body.notes ||
+            null,
+
+          body.metadata ??
+            {},
+        ]
+      );
+
+    const payment =
+      paymentResult.rows[0];
+
+    /*
+    |--------------------------------------------------------------------------
+    | Recalculate invoice balance
+    |--------------------------------------------------------------------------
+    */
+
+    const balanceResult =
+      await client.query(
+        `
+          SELECT
+            COALESCE(
+              SUM(amount),
+              0
+            ) AS amount_paid
+
+          FROM public.payments
+
+          WHERE invoice_id = $1
+          AND status = 'completed'
+        `,
+        [body.invoice_id]
+      );
+
+    const amountPaid =
+      toNumber(
+        balanceResult.rows[0]
+          ?.amount_paid
+      );
+
+    const totalAmount =
+      toNumber(
+        invoice.total_amount
+      );
+
+    const amountDue =
+      Math.max(
+        0,
+        totalAmount -
+          amountPaid
+      );
+
+    const newStatus =
+      getInvoiceStatus(
+        totalAmount,
+        amountPaid,
+        invoice.status
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Update invoice
+    |--------------------------------------------------------------------------
+    */
+
+    await client.query(
+      `
+        UPDATE public.invoices
+
         SET
           amount_paid = $1,
           amount_due = $2,
+
           status = $3,
+
           payment_date =
             CASE
-              WHEN $3 = 'paid'
-              THEN NOW()
-              ELSE payment_date
+              WHEN $1 >= $4
+              THEN CURRENT_DATE
+              ELSE NULL
             END,
+
           updated_at = NOW()
-        WHERE id = $4
-        `,
-        [
-          totalPaid,
-          amountDue,
-          statusUpdate,
-          invoice_id,
-        ]
-      );
-    }
 
-    // -----------------------------------------------------
-    // Log activity
-    // -----------------------------------------------------
-
-    await pool.query(
-      `
-      INSERT INTO invoice_activity_log (
-        invoice_id,
-        user_id,
-        user_name,
-        action,
-        details
-      )
-      VALUES ($1, $2, $3, $4, $5)
+        WHERE id = $5
       `,
       [
-        invoice_id,
-        user.id,
-        user.fullName || user.email,
-        "payment_recorded",
-        JSON.stringify({
-          amount: numericAmount,
-          payment_method,
-          status,
-          transaction_reference,
-        }),
+        amountPaid,
+        amountDue,
+        newStatus,
+        totalAmount,
+        body.invoice_id,
       ]
     );
 
-    // -----------------------------------------------------
-    // Return enriched payment
-    // -----------------------------------------------------
+    /*
+    |--------------------------------------------------------------------------
+    | Activity log
+    |--------------------------------------------------------------------------
+    */
 
-    const enrichedPayment = {
-      ...payment,
+    await client.query(
+      `
+        INSERT INTO public.invoice_activity_log (
+          invoice_id,
+          user_id,
+          user_name,
+          action,
+          details
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'paid',
+          $4
+        )
+      `,
+      [
+        body.invoice_id,
 
-      invoice_number: invoice.invoice_number || null,
+        user.id,
 
-      customer: invoice.customer_id
-        ? {
-            id: invoice.customer_id,
-            company_name: invoice.company_name || null,
-            contact_name: invoice.contact_name || null,
-            email: invoice.email || null,
-            phone: invoice.phone || null,
-          }
-        : null,
-    };
+        user.fullName ||
+          user.email,
+
+        {
+          payment_id:
+            payment.id,
+
+          amount,
+
+          payment_method:
+            body.payment_method,
+
+          amount_paid:
+            amountPaid,
+
+          amount_due:
+            amountDue,
+
+          invoice_status:
+            newStatus,
+        },
+      ]
+    );
+
+    await client.query("COMMIT");
+
+    /*
+    |--------------------------------------------------------------------------
+    | Return updated invoice
+    |--------------------------------------------------------------------------
+    */
+
+    const invoiceUpdatedResult =
+      await pool.query(
+        `
+          SELECT
+            i.*,
+
+            json_build_object(
+              'id', c.id,
+              'company_name',
+                c.company_name,
+              'contact_name',
+                c.contact_name,
+              'email',
+                c.email,
+              'phone',
+                c.phone
+            ) AS customer
+
+          FROM public.invoices i
+
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+
+          WHERE i.id = $1
+        `,
+        [body.invoice_id]
+      );
 
     return NextResponse.json(
       {
-        payment: enrichedPayment,
+        success: true,
+
+        payment,
+
+        invoice:
+          invoiceUpdatedResult
+            .rows[0],
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error("Payment creation error:", error);
+    await client.query("ROLLBACK");
+
+    console.error(
+      "POST /api/payments:",
+      error
+    );
 
     return NextResponse.json(
       {
@@ -398,5 +836,7 @@ export async function POST(req: Request) {
       },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }

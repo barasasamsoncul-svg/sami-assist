@@ -115,6 +115,16 @@ const INVOICING_MENU = [
     icon: Package,
   },
   {
+    id: "invoice-credit-notes",
+    label: "Credit Notes",
+    icon: FileText,
+  },
+  {
+    id: "invoice-recurring",
+    label: "Recurring Invoices",
+    icon: Repeat,
+  },
+  {
     id: "invoice-settings",
     label: "Invoice Settings",
     icon: Settings,
@@ -128,6 +138,8 @@ const INVOICE_PAGE_IDS = [
   "invoice-customers",
   "invoice-payments",
   "invoice-products",
+  "invoice-credit-notes",
+  "invoice-recurring",
   "invoice-settings",
 ];
 

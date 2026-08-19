@@ -1,946 +1,1480 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
 import { getTenantDatabaseForUser } from "@/lib/tenant-db";
 
-type RawItem = {
-  description?: unknown;
-  quantity?: unknown;
-  unit_price?: unknown;
-  tax_rate?: unknown;
-  discount_type?: "percentage" | "fixed" | null;
-  discount_value?: unknown;
-  product_id?: string | null;
-};
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
-}
+/*
+|--------------------------------------------------------------------------
+| Helpers
+|--------------------------------------------------------------------------
+*/
 
 function toNumber(value: unknown, fallback = 0): number {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
 }
 
-function normalizeItems(items: RawItem[]) {
-  return items.map((item) => {
-    const description = String(item.description ?? "").trim();
-    const quantity = toNumber(item.quantity);
-    const unitPrice = toNumber(item.unit_price);
-    const taxRate = toNumber(item.tax_rate);
-    const discountType = item.discount_type || null;
-    const discountValue = toNumber(item.discount_value);
-    const productId = item.product_id || null;
+function nullableString(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
 
-    if (!description) {
-      throw new Error("Every invoice item needs a description.");
-    }
-
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      throw new Error("Quantity must be greater than zero.");
-    }
-
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      throw new Error("Unit price cannot be negative.");
-    }
-
-    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
-      throw new Error("Tax rate must be between 0 and 100.");
-    }
-
-    if (discountValue < 0) {
-      throw new Error("Discount cannot be negative.");
-    }
-
-    const grossAmount = quantity * unitPrice;
-
-    let discountAmount = 0;
-
-    if (discountType === "percentage") {
-      if (discountValue > 100) {
-        throw new Error("Percentage discount cannot exceed 100%.");
-      }
-
-      discountAmount = (grossAmount * discountValue) / 100;
-    } else if (discountType === "fixed") {
-      discountAmount = discountValue;
-
-      if (discountAmount > grossAmount) {
-        discountAmount = grossAmount;
-      }
-    }
-
-    const taxableAmount = Math.max(0, grossAmount - discountAmount);
-    const taxAmount = taxableAmount * (taxRate / 100);
-    const lineTotal = taxableAmount + taxAmount;
-
-    return {
-      description,
-      quantity,
-      unitPrice,
-      taxRate,
-      discountType,
-      discountValue,
-      discountAmount,
-      taxAmount,
-      lineTotal,
-      productId,
-    };
-  });
+  return String(value);
 }
 
-async function completeInvoice(client: any, id: string) {
-  const result = await client.query(
-    `
-    SELECT
-      i.*,
+function jsonValue(
+  value: unknown,
+  fallback: Record<string, unknown> | unknown[] = {}
+) {
+  if (value === undefined || value === null) {
+    return fallback;
+  }
 
-      json_build_object(
-        'id', c.id,
-        'company_name', c.company_name,
-        'contact_name', c.contact_name,
-        'email', c.email,
-        'phone', c.phone,
-        'website', c.website,
-        'billing_address', c.billing_address,
-        'shipping_address', c.shipping_address,
-        'tax_id', c.tax_id,
-        'tax_id_type', c.tax_id_type,
-        'registration_number', c.registration_number,
-        'currency', c.currency,
-        'customer_type', c.customer_type,
-        'industry', c.industry
-      ) AS customer,
-
-      COALESCE(
-        (
-          SELECT json_agg(
-            json_build_object(
-              'id', ii.id,
-              'description', ii.description,
-              'quantity', ii.quantity,
-              'unit_price', ii.unit_price,
-              'tax_rate', ii.tax_rate,
-              'discount_type', ii.discount_type,
-              'discount_value', ii.discount_value,
-              'discount_amount', ii.discount_amount,
-              'tax_amount', ii.tax_amount,
-              'line_total', ii.line_total,
-              'product_id', ii.product_id,
-              'sort_order', ii.sort_order
-            )
-            ORDER BY ii.sort_order ASC, ii.created_at ASC
-          )
-          FROM invoice_items ii
-          WHERE ii.invoice_id = i.id
-        ),
-        '[]'::json
-      ) AS invoice_items,
-
-      COALESCE(
-        (
-          SELECT json_agg(
-            json_build_object(
-              'id', p.id,
-              'amount', p.amount,
-              'currency', p.currency,
-              'exchange_rate', p.exchange_rate,
-              'payment_method', p.payment_method,
-              'payment_method_details', p.payment_method_details,
-              'transaction_reference', p.transaction_reference,
-              'payment_date', p.payment_date,
-              'status', p.status,
-              'reconciled', p.reconciled,
-              'reconciled_at', p.reconciled_at,
-              'notes', p.notes
-            )
-            ORDER BY p.payment_date DESC
-          )
-          FROM payments p
-          WHERE p.invoice_id = i.id
-        ),
-        '[]'::json
-      ) AS payments
-
-    FROM invoices i
-    INNER JOIN customers c ON c.id = i.customer_id
-    WHERE i.id = $1
-    LIMIT 1
-    `,
-    [id],
-  );
-
-  return result.rows[0] ?? null;
+  return value;
 }
 
-// GET /api/invoices
-export async function GET() {
+function calculateDiscount(
+  subtotal: number,
+  type: string | null | undefined,
+  value: number
+): number {
+  if (!type || value <= 0) {
+    return 0;
+  }
+
+  if (type === "percentage") {
+    return subtotal * (value / 100);
+  }
+
+  if (type === "fixed") {
+    return Math.min(value, subtotal);
+  }
+
+  return 0;
+}
+
+function calculateLineDiscount(
+  quantity: number,
+  unitPrice: number,
+  type: string | null | undefined,
+  value: number
+): number {
+  const gross = quantity * unitPrice;
+
+  if (!type || value <= 0) {
+    return 0;
+  }
+
+  if (type === "percentage") {
+    return gross * (value / 100);
+  }
+
+  if (type === "fixed") {
+    return Math.min(value, gross);
+  }
+
+  return 0;
+}
+
+function calculateLine(
+  item: {
+    quantity: number;
+    unitPrice: number;
+    discountType?: string | null;
+    discountValue?: number;
+    taxRate?: number;
+  },
+  taxMethod: string
+) {
+  const gross =
+    item.quantity * item.unitPrice;
+
+  const discountAmount =
+    calculateLineDiscount(
+      item.quantity,
+      item.unitPrice,
+      item.discountType,
+      item.discountValue ?? 0
+    );
+
+  const net =
+    Math.max(0, gross - discountAmount);
+
+  const taxRate =
+    item.taxRate ?? 0;
+
+  let taxAmount = 0;
+  let lineTotal = net;
+
+  if (taxMethod === "inclusive") {
+    taxAmount =
+      net -
+      net / (1 + taxRate / 100);
+
+    lineTotal = net;
+  } else {
+    taxAmount =
+      net * (taxRate / 100);
+
+    lineTotal =
+      net + taxAmount;
+  }
+
+  return {
+    gross,
+    discountAmount,
+    net,
+    taxAmount,
+    lineTotal,
+  };
+}
+
+function buildInvoiceNumber(
+  prefix: string,
+  number: number,
+  padding: number,
+  format: string
+) {
+  const padded =
+    String(number).padStart(
+      padding,
+      "0"
+    );
+
+  return format
+    .replaceAll("{prefix}", prefix)
+    .replaceAll("{number}", padded);
+}
+
+/*
+|--------------------------------------------------------------------------
+| GET /api/invoices
+|--------------------------------------------------------------------------
+|
+| Supports:
+|
+| ?page=1
+| ?limit=20
+| ?status=paid
+| ?customer_id=...
+| ?search=...
+| ?from_date=...
+| ?to_date=...
+| ?sort=created_at
+| ?order=desc
+|
+|--------------------------------------------------------------------------
+*/
+
+export async function GET(
+  req: NextRequest
+) {
   try {
-    const user = await getAuthenticatedUser();
+    const user =
+      await getAuthenticatedUser();
 
     if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
-        { status: 401 },
+        { status: 401 }
       );
     }
 
-    const { pool } = await getTenantDatabaseForUser(user.id);
+    const { pool } =
+      await getTenantDatabaseForUser(
+        user.id
+      );
 
-    const result = await pool.query(`
-      SELECT
-        i.*,
+    const { searchParams } =
+      new URL(req.url);
 
-        json_build_object(
-          'id', c.id,
-          'company_name', c.company_name,
-          'contact_name', c.contact_name,
-          'email', c.email,
-          'phone', c.phone,
-          'website', c.website,
-          'billing_address', c.billing_address,
-          'shipping_address', c.shipping_address,
-          'tax_id', c.tax_id,
-          'tax_id_type', c.tax_id_type,
-          'registration_number', c.registration_number,
-          'currency', c.currency,
-          'customer_type', c.customer_type,
-          'industry', c.industry
-        ) AS customer
+    const page = Math.max(
+      1,
+      toNumber(
+        searchParams.get("page"),
+        1
+      )
+    );
 
-      FROM invoices i
-      INNER JOIN customers c
-        ON c.id = i.customer_id
+    const limit = Math.min(
+      100,
+      Math.max(
+        1,
+        toNumber(
+          searchParams.get("limit"),
+          20
+        )
+      )
+    );
 
-      ORDER BY i.created_at DESC
-    `);
+    const offset =
+      (page - 1) * limit;
+
+    const status =
+      searchParams.get("status");
+
+    const customerId =
+      searchParams.get(
+        "customer_id"
+      );
+
+    const search =
+      searchParams.get("search");
+
+    const fromDate =
+      searchParams.get("from_date");
+
+    const toDate =
+      searchParams.get("to_date");
+
+    const sortParam =
+      searchParams.get("sort") ||
+      "created_at";
+
+    const orderParam =
+      searchParams.get("order") ||
+      "desc";
+
+    const allowedSorts = new Set([
+      "created_at",
+      "updated_at",
+      "issue_date",
+      "due_date",
+      "invoice_number",
+      "total_amount",
+      "amount_due",
+      "status",
+    ]);
+
+    const sort = allowedSorts.has(
+      sortParam
+    )
+      ? sortParam
+      : "created_at";
+
+    const order =
+      orderParam.toLowerCase() ===
+      "asc"
+        ? "ASC"
+        : "DESC";
+
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+
+    let parameter = 1;
+
+    if (status) {
+      conditions.push(
+        `i.status = $${parameter++}`
+      );
+      values.push(status);
+    }
+
+    if (customerId) {
+      conditions.push(
+        `i.customer_id = $${parameter++}`
+      );
+      values.push(customerId);
+    }
+
+    if (search) {
+      conditions.push(`
+        (
+          i.invoice_number ILIKE $${parameter}
+          OR c.company_name ILIKE $${parameter}
+          OR c.contact_name ILIKE $${parameter}
+          OR c.email ILIKE $${parameter}
+        )
+      `);
+
+      values.push(`%${search}%`);
+      parameter++;
+    }
+
+    if (fromDate) {
+      conditions.push(
+        `i.issue_date >= $${parameter++}`
+      );
+      values.push(fromDate);
+    }
+
+    if (toDate) {
+      conditions.push(
+        `i.issue_date <= $${parameter++}`
+      );
+      values.push(toDate);
+    }
+
+    const where =
+      conditions.length > 0
+        ? `WHERE ${conditions.join(
+            " AND "
+          )}`
+        : "";
+
+    const countResult =
+      await pool.query(
+        `
+          SELECT COUNT(*)::int AS count
+          FROM public.invoices i
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+          ${where}
+        `,
+        values
+      );
+
+    const total =
+      countResult.rows[0]?.count ?? 0;
+
+    const dataValues = [
+      ...values,
+      limit,
+      offset,
+    ];
+
+    const invoicesResult =
+      await pool.query(
+        `
+          SELECT
+            i.*,
+
+            json_build_object(
+              'id', c.id,
+              'company_name', c.company_name,
+              'contact_name', c.contact_name,
+              'email', c.email,
+              'phone', c.phone
+            ) AS customer,
+
+            (
+              SELECT COUNT(*)
+              FROM public.invoice_items ii
+              WHERE ii.invoice_id = i.id
+            )::int AS item_count,
+
+            (
+              SELECT COUNT(*)
+              FROM public.payments p
+              WHERE p.invoice_id = i.id
+              AND p.status = 'completed'
+            )::int AS payment_count
+
+          FROM public.invoices i
+
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+
+          ${where}
+
+          ORDER BY i.${sort} ${order}
+
+          LIMIT $${parameter}
+          OFFSET $${parameter + 1}
+        `,
+        dataValues
+      );
 
     return NextResponse.json({
-      invoices: result.rows,
+      success: true,
+
+      invoices:
+        invoicesResult.rows,
+
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages:
+          Math.ceil(
+            total / limit
+          ),
+      },
     });
   } catch (error) {
-    console.error("Invoices GET error:", error);
+    console.error(
+      "GET /api/invoices:",
+      error
+    );
 
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load invoices",
+          "Failed to fetch invoices",
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
 
-// POST /api/invoices
-export async function POST(req: Request) {
-  let client: any = null;
+/*
+|--------------------------------------------------------------------------
+| POST /api/invoices
+|--------------------------------------------------------------------------
+|
+| Creates:
+|
+| 1. Invoice
+| 2. Invoice line items
+| 3. Activity log
+|
+| Everything happens inside ONE transaction.
+|--------------------------------------------------------------------------
+*/
+
+export async function POST(
+  req: NextRequest
+) {
+  const user =
+    await getAuthenticatedUser();
+
+  if (!user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const { pool } =
+    await getTenantDatabaseForUser(
+      user.id
+    );
+
+  const client =
+    await pool.connect();
 
   try {
-    const user = await getAuthenticatedUser();
+    const body =
+      await req.json();
 
-    if (!user) {
+    /*
+    |--------------------------------------------------------------------------
+    | Required fields
+    |--------------------------------------------------------------------------
+    */
+
+    if (!body.customer_id) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 },
+        {
+          error:
+            "customer_id is required",
+        },
+        { status: 400 }
       );
     }
 
-    const body = await req.json();
-
-    const customerId = String(
-      body.customer_id ?? "",
-    ).trim();
-
-    const items = Array.isArray(body.items)
-      ? (body.items as RawItem[])
-      : [];
-
-    const {
-      due_date,
-      issue_date,
-      notes,
-      internal_notes,
-      po_number,
-      currency = "USD",
-      payment_terms_id,
-      discount_type,
-      discount_value,
-      tax_calculation_method = "exclusive",
-      shipping_cost = 0,
-      shipping_tax = 0,
-    } = body;
-
-    if (!customerId) {
-      return NextResponse.json(
-        { error: "Customer is required" },
-        { status: 400 },
-      );
-    }
-
-    if (!items.length) {
+    if (
+      !Array.isArray(body.items) ||
+      body.items.length === 0
+    ) {
       return NextResponse.json(
         {
           error:
             "At least one invoice item is required",
         },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
-    if (
-      discount_type &&
-      discount_type !== "percentage" &&
-      discount_type !== "fixed"
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Invoice discount type must be percentage or fixed.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const invoiceDiscountValue = toNumber(
-      discount_value,
+    await client.query(
+      "BEGIN"
     );
 
-    if (invoiceDiscountValue < 0) {
-      return NextResponse.json(
-        {
-          error: "Invoice discount cannot be negative.",
-        },
-        { status: 400 },
+    /*
+    |--------------------------------------------------------------------------
+    | Customer
+    |--------------------------------------------------------------------------
+    */
+
+    const customerResult =
+      await client.query(
+        `
+          SELECT
+            id,
+            currency,
+            payment_terms_id
+          FROM public.customers
+          WHERE id = $1
+          AND status != 'blocked'
+        `,
+        [body.customer_id]
       );
-    }
 
     if (
-      discount_type === "percentage" &&
-      invoiceDiscountValue > 100
+      (customerResult.rowCount ?? 0) === 0
     ) {
+      await client.query(
+        "ROLLBACK"
+      );
+
       return NextResponse.json(
         {
           error:
-            "Invoice percentage discount cannot exceed 100%.",
+            "Customer not found or blocked",
         },
-        { status: 400 },
+        { status: 404 }
       );
     }
 
-    const shippingCost = toNumber(shipping_cost);
-    const shippingTax = toNumber(shipping_tax);
-
-    if (shippingCost < 0 || shippingTax < 0) {
-      return NextResponse.json(
-        {
-          error:
-            "Shipping cost and shipping tax cannot be negative.",
-        },
-        { status: 400 },
-      );
-    }
-
-    const { pool, business } =
-      await getTenantDatabaseForUser(user.id);
-
-    client = await pool.connect();
-
-    const normalized = normalizeItems(items);
+    const customer =
+      customerResult.rows[0];
 
     /*
-     * ---------------------------------------------------------
-     * CALCULATE ITEM TOTALS
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Settings
+    |--------------------------------------------------------------------------
+    */
+
+    const settingsResult =
+      await client.query(
+        `
+          SELECT *
+          FROM public.invoice_settings
+          ORDER BY created_at ASC
+          LIMIT 1
+        `
+      );
+
+    const settings =
+      settingsResult.rows[0] || {};
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice values
+    |--------------------------------------------------------------------------
+    */
+
+    const currency =
+      body.currency ||
+      customer.currency ||
+      settings.default_currency ||
+      "USD";
+
+    const taxMethod =
+      body.tax_calculation_method ||
+      settings.default_tax_calculation ||
+      "exclusive";
+
+    const discountType =
+      nullableString(
+        body.discount_type
+      );
+
+    const discountValue =
+      toNumber(
+        body.discount_value
+      );
+
+    const shippingCost =
+      toNumber(
+        body.shipping_cost
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Process line items
+    |--------------------------------------------------------------------------
+    */
+
+    const processedItems: Array<{
+      productId: string | null;
+      description: string;
+      quantity: number;
+      unitPrice: number;
+      discountType: string | null;
+      discountValue: number;
+      discountAmount: number;
+      taxRate: number;
+      taxRateId: string | null;
+      taxAmount: number;
+      lineTotal: number;
+      sortOrder: number;
+      metadata: unknown;
+    }> = [];
 
     let subtotal = 0;
     let lineDiscountTotal = 0;
     let lineTaxTotal = 0;
 
-    for (const item of normalized) {
-      subtotal += item.quantity * item.unitPrice;
-      lineDiscountTotal += item.discountAmount;
-      lineTaxTotal += item.taxAmount;
+    for (
+      let index = 0;
+      index < body.items.length;
+      index++
+    ) {
+      const item =
+        body.items[index];
+
+      let product = null;
+
+      if (item.product_id) {
+        const productResult =
+          await client.query(
+            `
+              SELECT
+                id,
+                name,
+                description,
+                unit_price,
+                tax_rate_id
+              FROM public.products
+              WHERE id = $1
+              AND is_active = true
+            `,
+            [item.product_id]
+          );
+
+        if (
+          (productResult.rowCount ?? 0) === 0
+        ) {
+          throw new Error(
+            `Product ${item.product_id} not found or inactive`
+          );
+        }
+
+        product =
+          productResult.rows[0];
+      }
+
+      const description =
+        item.description ||
+        product?.name ||
+        "Item";
+
+      const quantity =
+        toNumber(
+          item.quantity,
+          1
+        );
+
+      if (quantity <= 0) {
+        throw new Error(
+          `Invalid quantity for item ${index + 1}`
+        );
+      }
+
+      const unitPrice =
+        toNumber(
+          item.unit_price ??
+            product?.unit_price,
+          0
+        );
+
+      const itemDiscountType =
+        nullableString(
+          item.discount_type
+        );
+
+      const itemDiscountValue =
+        toNumber(
+          item.discount_value
+        );
+
+      let taxRateId =
+        item.tax_rate_id ??
+        product?.tax_rate_id ??
+        null;
+
+      let taxRate =
+        toNumber(
+          item.tax_rate
+        );
+
+      /*
+      |--------------------------------------------------------------------------
+      | If a tax_rate_id was supplied, use the actual
+      | tax rate from the database.
+      |--------------------------------------------------------------------------
+      */
+
+      if (taxRateId) {
+        const taxResult =
+          await client.query(
+            `
+              SELECT
+                id,
+                rate
+              FROM public.tax_rates
+              WHERE id = $1
+              AND is_active = true
+            `,
+            [taxRateId]
+          );
+
+        if (
+          (taxResult.rowCount ?? 0) === 0
+        ) {
+          throw new Error(
+            `Tax rate ${taxRateId} not found or inactive`
+          );
+        }
+
+        taxRate =
+          toNumber(
+            taxResult.rows[0].rate
+          );
+      }
+
+      const calculated =
+        calculateLine(
+          {
+            quantity,
+            unitPrice,
+            discountType:
+              itemDiscountType,
+            discountValue:
+              itemDiscountValue,
+            taxRate,
+          },
+          taxMethod
+        );
+
+      subtotal +=
+        calculated.gross;
+
+      lineDiscountTotal +=
+        calculated.discountAmount;
+
+      lineTaxTotal +=
+        calculated.taxAmount;
+
+      processedItems.push({
+        productId:
+          item.product_id ??
+          product?.id ??
+          null,
+
+        description,
+
+        quantity,
+
+        unitPrice,
+
+        discountType:
+          itemDiscountType,
+
+        discountValue:
+          itemDiscountValue,
+
+        discountAmount:
+          calculated.discountAmount,
+
+        taxRate,
+
+        taxRateId,
+
+        taxAmount:
+          calculated.taxAmount,
+
+        lineTotal:
+          calculated.lineTotal,
+
+        sortOrder:
+          Number.isFinite(
+            Number(item.sort_order)
+          )
+            ? Number(item.sort_order)
+            : index,
+
+        metadata:
+          jsonValue(
+            item.metadata,
+            {}
+          ),
+      });
     }
 
     /*
-     * ---------------------------------------------------------
-     * INVOICE-LEVEL DISCOUNT
-     * ---------------------------------------------------------
-     *
-     * Important:
-     * The invoice discount is calculated AFTER line discounts.
-     * This prevents the discount from being applied twice.
-     */
+    |--------------------------------------------------------------------------
+    | Invoice-level discount
+    |--------------------------------------------------------------------------
+    */
 
     const subtotalAfterLineDiscount =
       Math.max(
         0,
-        subtotal - lineDiscountTotal,
+        subtotal -
+          lineDiscountTotal
       );
 
-    let invoiceDiscountAmount = 0;
-
-    if (discount_type === "percentage") {
-      invoiceDiscountAmount =
-        (subtotalAfterLineDiscount *
-          invoiceDiscountValue) /
-        100;
-    } else if (discount_type === "fixed") {
-      invoiceDiscountAmount = Math.min(
-        invoiceDiscountValue,
+    const invoiceDiscount =
+      calculateDiscount(
         subtotalAfterLineDiscount,
-      );
-    }
-
-    const taxableSubtotal =
-      Math.max(
-        0,
-        subtotalAfterLineDiscount -
-          invoiceDiscountAmount,
+        discountType,
+        discountValue
       );
 
     /*
-     * ---------------------------------------------------------
-     * TAX CALCULATION
-     * ---------------------------------------------------------
-     *
-     * Line tax is calculated from each item's own tax rate.
-     *
-     * The invoice-level discount reduces the taxable subtotal.
-     * We allocate the invoice discount proportionally across
-     * taxable lines when calculating the final tax.
-     */
+    |--------------------------------------------------------------------------
+    | Tax
+    |--------------------------------------------------------------------------
+    */
 
-    let finalTaxAmount = lineTaxTotal;
+    let taxAmount =
+      lineTaxTotal;
+
+    /*
+    |--------------------------------------------------------------------------
+    | For invoice-level discount, recalculate
+    | tax proportionally.
+    |--------------------------------------------------------------------------
+    */
 
     if (
-      subtotalAfterLineDiscount > 0 &&
-      invoiceDiscountAmount > 0
+      invoiceDiscount > 0 &&
+      subtotalAfterLineDiscount > 0
     ) {
-      const discountRatio =
-        invoiceDiscountAmount /
-        subtotalAfterLineDiscount;
-
       const taxReduction =
-        lineTaxTotal * discountRatio;
+        lineTaxTotal *
+        (invoiceDiscount /
+          subtotalAfterLineDiscount);
 
-      finalTaxAmount = Math.max(
-        0,
-        lineTaxTotal - taxReduction,
-      );
+      taxAmount =
+        Math.max(
+          0,
+          lineTaxTotal -
+            taxReduction
+        );
     }
 
     /*
-     * Inclusive tax:
-     *
-     * The API currently stores tax_amount separately and
-     * expects total_amount to include it. For exclusive tax,
-     * tax is added to the taxable subtotal.
-     *
-     * For inclusive tax, the supplied line calculations already
-     * contain tax in line_total, so avoid adding it twice.
-     */
+    |--------------------------------------------------------------------------
+    | Shipping tax
+    |--------------------------------------------------------------------------
+    */
 
-    let totalBeforeShipping: number;
+    const shippingTaxRate =
+      toNumber(
+        body.shipping_tax_rate
+      );
+
+    const shippingTax =
+      shippingCost *
+      (shippingTaxRate / 100);
+
+    /*
+    |--------------------------------------------------------------------------
+    | Totals
+    |--------------------------------------------------------------------------
+    */
+
+    let totalAmount = 0;
 
     if (
-      tax_calculation_method === "inclusive"
+      taxMethod ===
+      "inclusive"
     ) {
-      totalBeforeShipping =
-        taxableSubtotal;
+      totalAmount =
+        Math.max(
+          0,
+          subtotalAfterLineDiscount -
+            invoiceDiscount
+        ) +
+        shippingCost;
     } else {
-      totalBeforeShipping =
-        taxableSubtotal +
-        finalTaxAmount;
+      totalAmount =
+        Math.max(
+          0,
+          subtotalAfterLineDiscount -
+            invoiceDiscount
+        ) +
+        taxAmount +
+        shippingCost +
+        shippingTax;
     }
 
-    const grandTotal =
-      Math.max(
-        0,
-        totalBeforeShipping +
-          shippingCost +
-          shippingTax,
+    totalAmount =
+      Number(
+        totalAmount.toFixed(2)
       );
 
     /*
-     * ---------------------------------------------------------
-     * TRANSACTION
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Dates
+    |--------------------------------------------------------------------------
+    */
 
-    await client.query("BEGIN");
+    const issueDate =
+      body.issue_date ||
+      new Date()
+        .toISOString()
+        .slice(0, 10);
 
-    /*
-     * Verify customer.
-     */
-
-    const customerResult =
-      await client.query(
-        `
-        SELECT id
-        FROM customers
-        WHERE id = $1
-        LIMIT 1
-        `,
-        [customerId],
-      );
-
-    if (customerResult.rowCount !== 1) {
-      await client.query("ROLLBACK");
-
-      return NextResponse.json(
-        { error: "Customer not found" },
-        { status: 404 },
-      );
-    }
+    let dueDate =
+      body.due_date ||
+      null;
 
     /*
-     * ---------------------------------------------------------
-     * GENERATE INVOICE NUMBER
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Payment terms
+    |--------------------------------------------------------------------------
+    */
 
-    await client.query(
-      `
-      SELECT pg_advisory_xact_lock(
-        hashtext($1)
-      )
-      `,
-      [`invoice-number:${business.id}`],
-    );
+    const paymentTermsId =
+      body.payment_terms_id ||
+      customer.payment_terms_id ||
+      settings.default_payment_terms_id ||
+      null;
 
-    /*
-     * Prefer invoice_settings when available.
-     */
+    let paymentTermsDisplay =
+      body.payment_terms_display ||
+      null;
 
-    const settingsResult =
-      await client.query(`
-        SELECT
-          invoice_prefix,
-          invoice_next_number,
-          invoice_number_padding,
-          invoice_number_format
-        FROM invoice_settings
-        ORDER BY created_at ASC
-        LIMIT 1
-      `);
-
-    let invoiceNumber: string;
-
-    if (settingsResult.rows.length > 0) {
-      const settings =
-        settingsResult.rows[0];
-
-      const prefix =
-        settings.invoice_prefix || "INV-";
-
-      let nextNumber =
-        Number(
-          settings.invoice_next_number || 1,
+    if (
+      paymentTermsId
+    ) {
+      const paymentTermsResult =
+        await client.query(
+          `
+            SELECT
+              id,
+              name,
+              due_days
+            FROM public.payment_terms
+            WHERE id = $1
+            AND is_active = true
+          `,
+          [paymentTermsId]
         );
 
-      const padding =
-        Number(
-          settings.invoice_number_padding || 6,
-        );
+      if (
+        (paymentTermsResult.rowCount ?? 0) >
+        0
+      ) {
+        const terms =
+          paymentTermsResult.rows[0];
 
-      const format =
-        settings.invoice_number_format ||
-        "{prefix}{number}";
+        paymentTermsDisplay =
+          terms.name;
 
-      invoiceNumber =
-        format
-          .replace(
-            "{prefix}",
-            prefix,
-          )
-          .replace(
-            "{number}",
-            String(nextNumber).padStart(
-              padding,
-              "0",
-            ),
-          );
-
-      /*
-       * Make absolutely sure the generated number
-       * is unique.
-       */
-
-      let exists = await client.query(
-        `
-        SELECT 1
-        FROM invoices
-        WHERE invoice_number = $1
-        LIMIT 1
-        `,
-        [invoiceNumber],
-      );
-
-      while (exists.rowCount) {
-        nextNumber++;
-
-        invoiceNumber =
-          format
-            .replace(
-              "{prefix}",
-              prefix,
-            )
-            .replace(
-              "{number}",
-              String(nextNumber).padStart(
-                padding,
-                "0",
-              ),
+        if (!body.due_date) {
+          const date =
+            new Date(
+              `${issueDate}T00:00:00Z`
             );
 
-        exists = await client.query(
+          date.setUTCDate(
+            date.getUTCDate() +
+              Number(
+                terms.due_days || 0
+              )
+          );
+
+          dueDate =
+            date
+              .toISOString()
+              .slice(0, 10);
+        }
+      }
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | If still no due date, use default_due_days.
+    |--------------------------------------------------------------------------
+    */
+
+    if (!dueDate) {
+      const defaultDueDays =
+        toNumber(
+          settings.default_due_days,
+          30
+        );
+
+      const date =
+        new Date(
+          `${issueDate}T00:00:00Z`
+        );
+
+      date.setUTCDate(
+        date.getUTCDate() +
+          defaultDueDays
+      );
+
+      dueDate =
+        date
+          .toISOString()
+          .slice(0, 10);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Invoice status
+    |--------------------------------------------------------------------------
+    */
+
+    const status =
+      body.status ||
+      (
+        settings.require_approval
+          ? "pending_approval"
+          : "draft"
+      );
+
+    /*
+    |--------------------------------------------------------------------------
+    | Generate invoice number
+    |--------------------------------------------------------------------------
+    */
+
+    let invoiceNumber =
+      body.invoice_number ||
+      null;
+
+    if (!invoiceNumber) {
+      const settingsLock =
+        await client.query(
           `
-          SELECT 1
-          FROM invoices
-          WHERE invoice_number = $1
-          LIMIT 1
-          `,
-          [invoiceNumber],
+            SELECT
+              id,
+              invoice_prefix,
+              invoice_next_number,
+              invoice_number_padding,
+              invoice_number_format
+            FROM public.invoice_settings
+            ORDER BY created_at ASC
+            LIMIT 1
+            FOR UPDATE
+          `
+        );
+
+      const lockedSettings =
+        settingsLock.rows[0];
+
+      if (!lockedSettings) {
+        throw new Error(
+          "Invoice settings not found"
         );
       }
-
-      await client.query(
-        `
-        UPDATE invoice_settings
-        SET invoice_next_number = $1
-        WHERE id = $2
-        `,
-        [
-          nextNumber + 1,
-          settingsResult.rows[0].id,
-        ],
-      );
-    } else {
-      /*
-       * Fallback for tenants without settings.
-       */
-
-      const maxResult =
-        await client.query(`
-          SELECT COALESCE(
-            MAX(
-              CASE
-                WHEN invoice_number ~ '^INV-[0-9]+$'
-                THEN substring(
-                  invoice_number
-                  FROM 5
-                )::int
-                ELSE 0
-              END
-            ),
-            0
-          ) AS max_number
-          FROM invoices
-        `);
 
       const nextNumber =
         Number(
-          maxResult.rows[0]?.max_number ?? 0,
-        ) + 1;
-
-      invoiceNumber =
-        `INV-${String(nextNumber).padStart(
-          6,
-          "0",
-        )}`;
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * PAYMENT TERMS
-     * ---------------------------------------------------------
-     */
-
-    let paymentTermsDisplay:
-      | string
-      | null = null;
-
-    if (payment_terms_id) {
-      const termsResult =
-        await client.query(
-          `
-          SELECT name
-          FROM payment_terms
-          WHERE id = $1
-          LIMIT 1
-          `,
-          [payment_terms_id],
+          lockedSettings.invoice_next_number ||
+            1
         );
 
-      if (termsResult.rows.length > 0) {
-        paymentTermsDisplay =
-          termsResult.rows[0].name;
-      }
+      invoiceNumber =
+        buildInvoiceNumber(
+          lockedSettings.invoice_prefix ||
+            "INV-",
+          nextNumber,
+          Number(
+            lockedSettings.invoice_number_padding ||
+              6
+          ),
+          lockedSettings.invoice_number_format ||
+            "{prefix}{number}"
+        );
+
+      await client.query(
+        `
+          UPDATE public.invoice_settings
+          SET
+            invoice_next_number =
+              $1,
+            updated_at = NOW()
+          WHERE id = $2
+        `,
+        [
+          nextNumber + 1,
+          lockedSettings.id,
+        ]
+      );
     }
 
     /*
-     * ---------------------------------------------------------
-     * INSERT INVOICE
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Make sure invoice number is unique.
+    |--------------------------------------------------------------------------
+    */
+
+    const existingNumber =
+      await client.query(
+        `
+          SELECT id
+          FROM public.invoices
+          WHERE invoice_number = $1
+        `,
+        [invoiceNumber]
+      );
+
+    if (
+      (existingNumber.rowCount ?? 0) >
+      0
+    ) {
+      throw new Error(
+        `Invoice number ${invoiceNumber} already exists`
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Create invoice
+    |--------------------------------------------------------------------------
+    */
 
     const invoiceResult =
       await client.query(
         `
-        INSERT INTO invoices (
-          customer_id,
-          invoice_number,
-          issue_date,
-          due_date,
-          po_number,
-          currency,
-          payment_terms_id,
-          payment_terms_display,
-          discount_type,
-          discount_value,
-          discount_amount,
-          tax_calculation_method,
-          tax_amount,
-          subtotal,
-          shipping_cost,
-          shipping_tax,
-          total_amount,
-          amount_paid,
-          amount_due,
-          notes,
-          internal_notes,
-          status,
-          created_by
-        )
+          INSERT INTO public.invoices (
+            customer_id,
 
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13,
-          $14,
-          $15,
-          $16,
-          $17,
-          0,
-          $18,
-          $19,
-          $20,
-          'draft',
-          $21
-        )
+            invoice_number,
 
-        RETURNING *
+            issue_date,
+            due_date,
+
+            status,
+
+            subtotal,
+
+            discount_type,
+            discount_value,
+            discount_amount,
+
+            tax_calculation_method,
+            tax_amount,
+
+            shipping_cost,
+            shipping_tax,
+
+            total_amount,
+            amount_paid,
+            amount_due,
+
+            po_number,
+            currency,
+            exchange_rate,
+
+            payment_terms_id,
+            payment_terms_display,
+
+            template_id,
+
+            created_by,
+
+            notes,
+            internal_notes,
+            footer_text,
+
+            attachments,
+            metadata
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+
+            $6,
+
+            $7,
+            $8,
+            $9,
+
+            $10,
+            $11,
+
+            $12,
+            $13,
+
+            $14,
+            0,
+            $14,
+
+            $15,
+            $16,
+            $17,
+
+            $18,
+            $19,
+
+            $20,
+
+            $21,
+
+            $22,
+            $23,
+            $24,
+
+            $25,
+            $26
+          )
+          RETURNING *
         `,
         [
-          customerId,
+          body.customer_id,
           invoiceNumber,
-          issue_date || today(),
-          due_date || null,
-          po_number || null,
-          currency,
-          payment_terms_id || null,
-          paymentTermsDisplay,
 
-          discount_type || null,
-          invoiceDiscountValue,
-          invoiceDiscountAmount,
+          issueDate,
+          dueDate,
 
-          tax_calculation_method ||
-            "exclusive",
+          status,
 
-          finalTaxAmount,
+          subtotalAfterLineDiscount,
 
-          /*
-           * subtotal is the original subtotal
-           * before invoice-level discount.
-           */
-          subtotal,
+          discountType,
+          discountValue,
+          invoiceDiscount,
+
+          taxMethod,
+          taxAmount,
 
           shippingCost,
           shippingTax,
 
-          grandTotal,
+          totalAmount,
 
-          /*
-           * amount_due initially equals total.
-           */
-          grandTotal,
+          nullableString(
+            body.po_number
+          ),
 
-          notes || null,
-          internal_notes || null,
+          currency,
+
+          toNumber(
+            body.exchange_rate,
+            1
+          ),
+
+          paymentTermsId,
+          paymentTermsDisplay,
+
+          body.template_id ||
+            settings.default_template_id ||
+            null,
 
           user.id,
-        ],
+
+          nullableString(
+            body.notes
+          ),
+
+          nullableString(
+            body.internal_notes
+          ),
+
+          nullableString(
+            body.footer_text
+          ),
+
+          jsonValue(
+            body.attachments,
+            []
+          ),
+
+          jsonValue(
+            body.metadata,
+            {}
+          ),
+        ]
       );
 
-    const invoiceId =
-      invoiceResult.rows[0].id;
+    const invoice =
+      invoiceResult.rows[0];
 
     /*
-     * ---------------------------------------------------------
-     * INSERT INVOICE ITEMS
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Create invoice items
+    |--------------------------------------------------------------------------
+    */
 
     for (
-      let i = 0;
-      i < normalized.length;
-      i++
+      const item of processedItems
     ) {
-      const item =
-        normalized[i];
-
       await client.query(
         `
-        INSERT INTO invoice_items (
-          invoice_id,
-          description,
-          quantity,
-          unit_price,
-          tax_rate,
-          discount_type,
-          discount_value,
-          discount_amount,
-          tax_amount,
-          line_total,
-          sort_order,
-          product_id
-        )
+          INSERT INTO public.invoice_items (
+            invoice_id,
+            product_id,
 
+            description,
+            quantity,
+            unit_price,
+
+            discount_type,
+            discount_value,
+            discount_amount,
+
+            tax_rate,
+            tax_amount,
+            tax_rate_id,
+
+            line_total,
+
+            sort_order,
+
+            metadata
+          )
+          VALUES (
+            $1,
+            $2,
+
+            $3,
+            $4,
+            $5,
+
+            $6,
+            $7,
+            $8,
+
+            $9,
+            $10,
+            $11,
+
+            $12,
+
+            $13,
+
+            $14
+          )
+        `,
+        [
+          invoice.id,
+          item.productId,
+
+          item.description,
+          item.quantity,
+          item.unitPrice,
+
+          item.discountType,
+          item.discountValue,
+          item.discountAmount,
+
+          item.taxRate,
+          item.taxAmount,
+          item.taxRateId,
+
+          item.lineTotal,
+
+          item.sortOrder,
+
+          item.metadata,
+        ]
+      );
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Activity log
+    |--------------------------------------------------------------------------
+    */
+
+    await client.query(
+      `
+        INSERT INTO public.invoice_activity_log (
+          invoice_id,
+          user_id,
+          user_name,
+          action,
+          details
+        )
         VALUES (
           $1,
           $2,
           $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12
+          'created',
+          $4
         )
-        `,
-        [
-          invoiceId,
-          item.description,
-          item.quantity,
-          item.unitPrice,
-          item.taxRate,
-
-          item.discountType,
-
-          /*
-           * Store the original discount value here.
-           *
-           * Example:
-           * 10% discount → discount_value = 10
-           * KSh 500 fixed → discount_value = 500
-           */
-          item.discountValue,
-
-          /*
-           * Store the actual monetary discount here.
-           */
-          item.discountAmount,
-
-          item.taxAmount,
-          item.lineTotal,
-          i,
-          item.productId,
-        ],
-      );
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * ACTIVITY LOG
-     * ---------------------------------------------------------
-     */
-
-    await client.query(
-      `
-      INSERT INTO invoice_activity_log (
-        invoice_id,
-        user_id,
-        action,
-        details
-      )
-      VALUES (
-        $1,
-        $2,
-        'created',
-        $3::jsonb
-      )
       `,
       [
-        invoiceId,
+        invoice.id,
         user.id,
-        JSON.stringify({
+        user.fullName ||
+          user.email,
+        {
           invoice_number:
-            invoiceNumber,
-          customer_id:
-            customerId,
+            invoice.invoice_number,
+
+          status:
+            invoice.status,
+
           total_amount:
-            grandTotal,
-        }),
-      ],
+            invoice.total_amount,
+
+          item_count:
+            processedItems.length,
+        },
+      ]
+    );
+
+    await client.query(
+      "COMMIT"
     );
 
     /*
-     * ---------------------------------------------------------
-     * RETURN COMPLETE INVOICE
-     * ---------------------------------------------------------
-     */
+    |--------------------------------------------------------------------------
+    | Return complete invoice with items
+    |--------------------------------------------------------------------------
+    */
 
-    const invoice =
-      await completeInvoice(
-        client,
-        invoiceId,
+    const completeResult =
+      await pool.query(
+        `
+          SELECT
+            i.*,
+
+            json_build_object(
+              'id', c.id,
+              'company_name', c.company_name,
+              'contact_name', c.contact_name,
+              'email', c.email,
+              'phone', c.phone,
+              'billing_address', c.billing_address,
+              'shipping_address', c.shipping_address,
+              'tax_id', c.tax_id
+            ) AS customer,
+
+            COALESCE(
+              (
+                SELECT json_agg(
+                  ii
+                  ORDER BY ii.sort_order ASC
+                )
+                FROM public.invoice_items ii
+                WHERE ii.invoice_id = i.id
+              ),
+              '[]'::json
+            ) AS items
+
+          FROM public.invoices i
+
+          INNER JOIN public.customers c
+            ON c.id = i.customer_id
+
+          WHERE i.id = $1
+        `,
+        [invoice.id]
       );
-
-    await client.query("COMMIT");
-
-    return NextResponse.json(
-      { invoice },
-      { status: 201 },
-    );
-  } catch (error) {
-    if (client) {
-      try {
-        await client.query("ROLLBACK");
-      } catch {}
-    }
-
-    console.error(
-      "Invoice POST error:",
-      error,
-    );
 
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to create invoice",
+        success: true,
+        invoice:
+          completeResult.rows[0],
       },
-      { status: 500 },
+      { status: 201 }
+    );
+  } catch (error) {
+    await client.query(
+      "ROLLBACK"
+    );
+
+    console.error(
+      "POST /api/invoices:",
+      error
+    );
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to create invoice";
+
+    return NextResponse.json(
+      {
+        error: message,
+      },
+      { status: 500 }
     );
   } finally {
-    client?.release();
+    client.release();
   }
 }
