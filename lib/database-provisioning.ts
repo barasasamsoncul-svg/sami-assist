@@ -184,3 +184,10 @@ export async function provisionTenantDatabase(
     databasePassword,
   };
 }
+/**
+ * Backwards-compatible alias.
+ *
+ * Older test/API routes may call createTenantDatabase().
+ * The actual implementation is provisionTenantDatabase().
+ */
+export const createTenantDatabase = provisionTenantDatabase;
