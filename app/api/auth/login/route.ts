@@ -1,44 +1,91 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { loginUser } from "@/lib/user-login";
+import { createAuthSession } from "@/lib/auth-session";
 
-export async function POST(request: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
-    const { email, password } = body;
+    const body = await req.json();
 
-    console.log("Login attempt for:", email);
+    const email =
+      typeof body.email === "string"
+        ? body.email.trim().toLowerCase()
+        : "";
 
-    const result = await loginUser({ email, password });
+    const password =
+      typeof body.password === "string"
+        ? body.password
+        : "";
 
-    const response = NextResponse.json(
+    if (!email) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Email is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!password) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Password is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const result = await loginUser({
+      email,
+      password,
+    });
+
+    /*
+     * The auth session belongs to the authenticated user.
+     * createAuthSession expects the user ID directly.
+     */
+    await createAuthSession(result.userId);
+
+    return NextResponse.json(
       {
         success: true,
-        user: result.user,
-        expiresAt: result.expiresAt,
+
+        user: {
+          id: result.userId,
+          email: result.email,
+          fullName: result.fullName,
+        },
+
+        business: {
+          id: result.businessId,
+          name: result.businessName,
+          slug: result.businessSlug,
+        },
+
+        appKeys: result.appKeys,
       },
       { status: 200 }
     );
-
-    const isProduction = process.env.NODE_ENV === 'production';
-
-    response.cookies.set("sami_session", result.sessionToken, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: "lax",
-      path: "/",
-      expires: result.expiresAt,
-    });
-
-    return response;
   } catch (error) {
     console.error("Login error:", error);
-    // Return the actual error message
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Login failed.";
+
+    const status =
+      message === "Invalid email or password."
+        ? 401
+        : 400;
+
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Login failed.",
+        error: message,
       },
-      { status: 401 }
+      { status }
     );
   }
 }

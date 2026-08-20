@@ -1,102 +1,59 @@
-export async function signUp(
-  name: string,
-  email: string,
+import {
+  randomBytes,
+  scrypt as nodeScrypt,
+  timingSafeEqual,
+} from "crypto";
+import { promisify } from "util";
+
+const scrypt = promisify(nodeScrypt);
+
+const KEY_LENGTH = 64;
+
+export async function hashPassword(
   password: string
-) {
-  const response = await fetch("/api/auth/register", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      fullName: name,
-      email,
-      password,
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    return {
-      data: null,
-      error: {
-        message: data.error || "Registration failed.",
-      },
-    };
+): Promise<string> {
+  if (!password) {
+    throw new Error("Password is required.");
   }
 
-  return {
-    data,
-    error: null,
-  };
+  const salt = randomBytes(16).toString("hex");
+
+  const derivedKey = (await scrypt(
+    password,
+    salt,
+    KEY_LENGTH
+  )) as Buffer;
+
+  return `scrypt:${salt}:${derivedKey.toString("hex")}`;
 }
 
-export async function signIn(
-  email: string,
-  password: string
-) {
-  const response = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      email,
-      password,
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    return {
-      data: null,
-      error: {
-        message: data.error || "Login failed.",
-      },
-    };
+export async function verifyPassword(
+  password: string,
+  storedHash: string
+): Promise<boolean> {
+  if (!password || !storedHash) {
+    return false;
   }
 
-  return {
-    data,
-    error: null,
-  };
-}
+  const parts = storedHash.split(":");
 
-export async function signOut() {
-  const response = await fetch("/api/auth/logout", {
-    method: "POST",
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    return {
-      data: null,
-      error: {
-        message: data.error || "Logout failed.",
-      },
-    };
+  if (parts.length !== 3 || parts[0] !== "scrypt") {
+    return false;
   }
 
-  return {
-    data,
-    error: null,
-  };
-}
+  const [, salt, storedKey] = parts;
 
-export async function getCurrentUser() {
-  const response = await fetch("/api/auth/me", {
-    method: "GET",
-    cache: "no-store",
-  });
+  const derivedKey = (await scrypt(
+    password,
+    salt,
+    KEY_LENGTH
+  )) as Buffer;
 
-  if (!response.ok) {
-    return null;
+  const expectedKey = Buffer.from(storedKey, "hex");
+
+  if (derivedKey.length !== expectedKey.length) {
+    return false;
   }
 
-  const data = await response.json();
-
-  return data.user || null;
+  return timingSafeEqual(derivedKey, expectedKey);
 }

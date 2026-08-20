@@ -1,53 +1,60 @@
-import dotenv from "dotenv";
+import { Pool, QueryResult, QueryResultRow } from "pg";
 
-dotenv.config({ path: ".env.local" });
-
-import { Pool } from "pg";
-
-const globalForPostgres =
-  globalThis as unknown as {
-    postgresAdminPool:
-      | Pool
-      | undefined;
-  };
-
-const password = process.env.POSTGRES_ADMIN_PASSWORD;
-
-if (!password) {
-  throw new Error(
-    "POSTGRES_ADMIN_PASSWORD is not configured. Check .env.local."
-  );
+declare global {
+  // eslint-disable-next-line no-var
+  var __samiAdminPool: Pool | undefined;
 }
 
-export const postgresAdmin =
-  globalForPostgres.postgresAdminPool ??
-  new Pool({
-    host: process.env.POSTGRES_HOST,
+function getAdminDatabaseUrl(): string {
+  const url =
+    process.env.ADMIN_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL;
 
-    port: Number(
-      process.env.POSTGRES_PORT || 5432
-    ),
+  if (!url) {
+    throw new Error(
+      "Missing ADMIN_DATABASE_URL, DATABASE_URL, or POSTGRES_URL."
+    );
+  }
 
-    user: process.env.POSTGRES_ADMIN_USER,
+  return url;
+}
 
-    password,
+function createAdminPool(): Pool {
+  return new Pool({
+    connectionString: getAdminDatabaseUrl(),
 
-    database: "sami_control",
+    ssl:
+      process.env.NODE_ENV === "development"
+        ? { rejectUnauthorized: false }
+        : { rejectUnauthorized: false },
 
-    ssl: {
-      rejectUnauthorized: false,
-    },
-
-    max: 10,
+    max: Number(process.env.ADMIN_DB_POOL_MAX || 10),
 
     idleTimeoutMillis: 30_000,
 
     connectionTimeoutMillis: 10_000,
   });
+}
 
-if (
-  process.env.NODE_ENV !== "production"
-) {
-  globalForPostgres.postgresAdminPool =
-    postgresAdmin;
+export const postgresAdmin =
+  globalThis.__samiAdminPool ?? createAdminPool();
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.__samiAdminPool = postgresAdmin;
+}
+
+export async function query<T extends QueryResultRow = QueryResultRow>(
+  text: string,
+  values?: unknown[]
+): Promise<QueryResult<T>> {
+  return postgresAdmin.query<T>(text, values);
+}
+
+export async function testAdminDatabaseConnection(): Promise<void> {
+  await postgresAdmin.query("SELECT 1");
+}
+
+export async function closeAdminDatabase(): Promise<void> {
+  await postgresAdmin.end();
 }

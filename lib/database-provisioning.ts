@@ -1,93 +1,186 @@
-import fs from "fs/promises";
-import path from "path";
-import { Pool } from "pg";
+import { randomBytes } from "crypto";
+import { Client } from "pg";
 import { postgresAdmin } from "./postgres-admin";
-import { getAppSchemaPath } from "./app-registry";
 
-export async function createTenantDatabase(databaseName: string) {
-  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
-    throw new Error("Invalid database name.");
+export type TenantDatabaseProvisionResult = {
+  databaseId: string;
+  databaseName: string;
+  databaseHost: string;
+  databasePort: number;
+  databaseUser: string;
+  databasePassword: string;
+};
+
+function getProvisioningUrl(): string {
+  const url =
+    process.env.TENANT_PROVISIONING_DATABASE_URL ||
+    process.env.ADMIN_DATABASE_URL ||
+    process.env.DATABASE_URL;
+
+  if (!url) {
+    throw new Error(
+      "No tenant database provisioning connection string is configured."
+    );
   }
 
-  const existingDatabase = await postgresAdmin.query(
-    `SELECT 1 FROM pg_database WHERE datname = $1`,
-    [databaseName]
-  );
-
-  if (existingDatabase.rowCount && existingDatabase.rowCount > 0) {
-    throw new Error(`Database "${databaseName}" already exists.`);
-  }
-
-  await postgresAdmin.query(`CREATE DATABASE "${databaseName}"`);
-
-  return { success: true, databaseName };
+  return url;
 }
 
-export async function initializeTenantDatabase(
-  databaseName: string,
-  appKeys: string[] = []
-) {
-  if (!/^[a-zA-Z0-9_]+$/.test(databaseName)) {
-    throw new Error("Invalid database name.");
-  }
+function generateDatabaseName(
+  businessSlug: string
+): string {
+  const cleanSlug = businessSlug
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 45);
 
-  const host = process.env.POSTGRES_HOST || "localhost";
-  const port = Number(process.env.POSTGRES_PORT || 5432);
-  const user = process.env.POSTGRES_ADMIN_USER || "postgres";
-  const password = process.env.POSTGRES_ADMIN_PASSWORD;
+  const suffix = randomBytes(4).toString("hex");
 
-  if (!password) {
-    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
-  }
+  return `sami_${cleanSlug}_${suffix}`;
+}
 
-  const corePath = path.join(process.cwd(), "lib", "sami_tenant_core.sql");
-  const coreSql = await fs.readFile(corePath, "utf8");
+export async function ensureDatabaseRegistryTable(): Promise<void> {
+  await postgresAdmin.query(`
+    CREATE TABLE IF NOT EXISTS database_registry (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      business_id UUID NOT NULL
+        REFERENCES businesses(id)
+        ON DELETE CASCADE,
+      database_name VARCHAR(255) NOT NULL UNIQUE,
+      database_host VARCHAR(255) NOT NULL,
+      database_port INTEGER NOT NULL DEFAULT 5432,
+      database_user VARCHAR(255) NOT NULL,
+      database_password_encrypted TEXT NOT NULL,
+      status VARCHAR(50) NOT NULL DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (business_id)
+    )
+  `);
+}
 
-  const pool = new Pool({
-    host, port, user, password, database: databaseName,
-    ssl:
-  process.env.POSTGRES_SSL === "true"
-    ? { rejectUnauthorized: false }
-    : false,
-    max: 2, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000,
-  });
+export async function provisionTenantDatabase(
+  businessId: string,
+  businessSlug: string
+): Promise<TenantDatabaseProvisionResult> {
+  await ensureDatabaseRegistryTable();
 
-  const uniqueAppKeys = [...new Set(
-    appKeys.filter((key) => typeof key === "string")
-      .map((key) => key.trim()).filter(Boolean)
-  )];
+  const existing = await postgresAdmin.query(
+    `
+      SELECT
+        id,
+        database_name,
+        database_host,
+        database_port,
+        database_user,
+        database_password_encrypted
+      FROM database_registry
+      WHERE business_id = $1
+        AND status = 'active'
+      LIMIT 1
+    `,
+    [businessId]
+  );
 
-  const installedApps: string[] = [];
-  const pendingApps: string[] = [];
-
-  try {
-    // Core is always installed.
-    await pool.query(coreSql);
-
-    // Each selected app installs only its own schema.
-    for (const appKey of uniqueAppKeys) {
-      const schemaPath = getAppSchemaPath(appKey);
-
-      if (!schemaPath) {
-        pendingApps.push(appKey);
-        console.log(`Schema not implemented yet: ${appKey}`);
-        continue;
-      }
-
-      const schemaSql = await fs.readFile(schemaPath, "utf8");
-      await pool.query(schemaSql);
-      installedApps.push(appKey);
-      console.log(`Initialized app schema: ${appKey}`);
-    }
+  if ((existing.rowCount ?? 0) > 0) {
+    const row = existing.rows[0];
 
     return {
-      success: true,
-      databaseName,
-      appKeys: uniqueAppKeys,
-      installedApps,
-      pendingApps,
+      databaseId: row.id as string,
+      databaseName: row.database_name as string,
+      databaseHost: row.database_host as string,
+      databasePort: Number(row.database_port),
+      databaseUser: row.database_user as string,
+      databasePassword:
+        row.database_password_encrypted as string,
     };
-  } finally {
-    await pool.end();
   }
+
+  const databaseName =
+    generateDatabaseName(businessSlug);
+
+  const databaseUser =
+    process.env.TENANT_DATABASE_USER ||
+    "postgres";
+
+  const databasePassword =
+    process.env.TENANT_DATABASE_PASSWORD;
+
+  if (!databasePassword) {
+    throw new Error(
+      "TENANT_DATABASE_PASSWORD is not configured."
+    );
+  }
+
+  const databaseHost =
+    process.env.TENANT_DATABASE_HOST ||
+    "localhost";
+
+  const databasePort = Number(
+    process.env.TENANT_DATABASE_PORT || 5432
+  );
+
+  const adminClient = new Client({
+    connectionString: getProvisioningUrl(),
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  });
+
+  await adminClient.connect();
+
+  try {
+    await adminClient.query(
+      `CREATE DATABASE "${databaseName}"`
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
+    if (
+      !message.toLowerCase().includes(
+        "already exists"
+      )
+    ) {
+      throw error;
+    }
+  } finally {
+    await adminClient.end();
+  }
+
+  const registry = await postgresAdmin.query(
+    `
+      INSERT INTO database_registry (
+        business_id,
+        database_name,
+        database_host,
+        database_port,
+        database_user,
+        database_password_encrypted,
+        status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      RETURNING id
+    `,
+    [
+      businessId,
+      databaseName,
+      databaseHost,
+      databasePort,
+      databaseUser,
+      databasePassword,
+    ]
+  );
+
+  return {
+    databaseId: registry.rows[0].id as string,
+    databaseName,
+    databaseHost,
+    databasePort,
+    databaseUser,
+    databasePassword,
+  };
 }

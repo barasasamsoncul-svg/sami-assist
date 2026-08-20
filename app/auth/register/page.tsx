@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -26,6 +27,9 @@ export default function RegisterPage() {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
 
+  /*
+   * Recommended apps are selected by default.
+   */
   const [selectedApps, setSelectedApps] = useState<string[]>(
     getRecommendedAppKeys()
   );
@@ -37,63 +41,88 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const selectedCount = selectedApps.length;
-
   const selectedSet = useMemo(
     () => new Set(selectedApps),
     [selectedApps]
   );
 
+  const selectedCount = selectedApps.length;
+
   function toggleApp(appKey: string) {
-    setSelectedApps((current) =>
-      current.includes(appKey)
-        ? current.filter((key) => key !== appKey)
-        : [...current, appKey]
-    );
+    setSelectedApps((current) => {
+      if (current.includes(appKey)) {
+        return current.filter((key) => key !== appKey);
+      }
+
+      return [...current, appKey];
+    });
   }
 
   function toggleCategory(categoryKey: string) {
-    setOpenCategories((current) =>
-      current.includes(categoryKey)
-        ? current.filter((key) => key !== categoryKey)
-        : [...current, categoryKey]
-    );
+    setOpenCategories((current) => {
+      if (current.includes(categoryKey)) {
+        return current.filter((key) => key !== categoryKey);
+      }
+
+      return [...current, categoryKey];
+    });
   }
 
   function selectAll() {
-    setSelectedApps(SAMI_APPS.map((app) => app.key));
+    setSelectedApps(
+      SAMI_APPS.map((app) => app.key)
+    );
   }
 
   function clearAll() {
     setSelectedApps([]);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(
+    event: FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
+
+    if (loading) {
+      return;
+    }
+
     setError("");
 
     if (selectedApps.length === 0) {
-      setError("Please select at least one SaMi app.");
+      setError(
+        "Please select at least one business app."
+      );
+      return;
+    }
+
+    if (password.length < 8) {
+      setError(
+        "Password must be at least 8 characters."
+      );
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fullName,
-          email,
-          password,
-          businessName,
-          phone,
-          appKeys: selectedApps,
-        }),
-      });
+      const response = await fetch(
+        "/api/auth/register",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            fullName,
+            email,
+            password,
+            businessName,
+            phone,
+            appKeys: selectedApps,
+          }),
+        }
+      );
 
       const data = await response.json();
 
@@ -103,11 +132,24 @@ export default function RegisterPage() {
         );
       }
 
-      router.push("/auth/login?registered=true");
-    } catch (err) {
+      /*
+       * Registration has completed successfully.
+       *
+       * The backend has already:
+       * - created the user
+       * - created the business
+       * - assigned the user
+       * - provisioned the tenant
+       * - installed schemas
+       * - saved enabled apps
+       */
+      router.push(
+        "/auth/login?registered=true"
+      );
+    } catch (error) {
       setError(
-        err instanceof Error
-          ? err.message
+        error instanceof Error
+          ? error.message
           : "Registration failed."
       );
     } finally {
@@ -117,20 +159,21 @@ export default function RegisterPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-900">
-      <div className="mx-auto w-full max-w-6xl">
-        <div className="mb-8 text-center">
+      <div className="mx-auto w-full max-w-7xl">
+        {/* Header */}
+        <div className="mb-10 text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
             <Sparkles className="h-4 w-4" />
             SaMi AI Business Workspace
           </div>
 
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-5xl">
             Create your SaMi workspace
           </h1>
 
-          <p className="mx-auto mt-3 max-w-2xl text-slate-500">
-            Create your account and choose the business apps you need.
-            Your dashboard will only show the apps you select.
+          <p className="mx-auto mt-4 max-w-2xl text-base leading-7 text-slate-500 sm:text-lg">
+            Create your account, tell SaMi about your business,
+            and choose the apps your team needs.
           </p>
         </div>
 
@@ -138,121 +181,164 @@ export default function RegisterPage() {
           onSubmit={handleSubmit}
           className="grid gap-6 lg:grid-cols-[380px_1fr]"
         >
-          <section className="h-fit rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-6">
-            <h2 className="text-lg font-bold">
-              Account & business
-            </h2>
+          {/* Account */}
+          <section className="h-fit rounded-3xl border border-slate-200 bg-white p-6 shadow-sm lg:sticky lg:top-6">
+            <div>
+              <h2 className="text-xl font-bold">
+                Account & business
+              </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
-              Set up your account before choosing your workspace apps.
-            </p>
+              <p className="mt-1 text-sm leading-6 text-slate-500">
+                Your account will become the owner of this
+                business workspace.
+              </p>
+            </div>
 
-            <div className="mt-6 space-y-4">
+            <div className="mt-7 space-y-5">
               <div>
-                <label className="mb-2 block text-sm font-medium">
+                <label
+                  htmlFor="fullName"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Full Name
                 </label>
 
                 <input
+                  id="fullName"
                   type="text"
                   required
+                  autoComplete="name"
                   value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  onChange={(event) =>
+                    setFullName(event.target.value)
+                  }
                   placeholder="Samson Barasa"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">
+                <label
+                  htmlFor="email"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Email
                 </label>
 
                 <input
+                  id="email"
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) =>
+                    setEmail(event.target.value)
+                  }
                   placeholder="you@example.com"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">
+                <label
+                  htmlFor="password"
+                  className="mb-2 block text-sm font-semibold"
+                >
                   Password
                 </label>
 
                 <input
+                  id="password"
                   type="password"
                   required
                   minLength={8}
+                  autoComplete="new-password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(event) =>
+                    setPassword(event.target.value)
+                  }
                   placeholder="At least 8 characters"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                 />
+
+                <p className="mt-2 text-xs text-slate-400">
+                  Minimum 8 characters.
+                </p>
               </div>
 
-              <div className="border-t border-slate-100 pt-4">
-                <h3 className="font-semibold">
-                  Business
+              <div className="border-t border-slate-100 pt-5">
+                <h3 className="font-bold">
+                  Your business
                 </h3>
 
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 space-y-5">
                   <div>
-                    <label className="mb-2 block text-sm font-medium">
+                    <label
+                      htmlFor="businessName"
+                      className="mb-2 block text-sm font-semibold"
+                    >
                       Business Name
                     </label>
 
                     <input
+                      id="businessName"
                       type="text"
                       required
                       value={businessName}
-                      onChange={(e) =>
-                        setBusinessName(e.target.value)
+                      onChange={(event) =>
+                        setBusinessName(event.target.value)
                       }
                       placeholder="My Business"
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                     />
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-medium">
+                    <label
+                      htmlFor="phone"
+                      className="mb-2 block text-sm font-semibold"
+                    >
                       Phone
                       <span className="ml-1 font-normal text-slate-400">
-                        (optional)
+                        optional
                       </span>
                     </label>
 
                     <input
+                      id="phone"
                       type="tel"
+                      autoComplete="tel"
                       value={phone}
-                      onChange={(e) =>
-                        setPhone(e.target.value)
+                      onChange={(event) =>
+                        setPhone(event.target.value)
                       }
                       placeholder="+254..."
-                      className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
                     />
                   </div>
                 </div>
               </div>
             </div>
 
+            {/* Error */}
             {error && (
-              <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
+              >
                 {error}
               </div>
             )}
 
+            {/* Submit */}
             <button
               type="submit"
               disabled={loading || selectedCount === 0}
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3.5 font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                   Creating workspace...
                 </>
               ) : (
@@ -260,65 +346,70 @@ export default function RegisterPage() {
               )}
             </button>
 
-            <p className="mt-4 text-center text-sm text-slate-500">
+            <p className="mt-5 text-center text-sm text-slate-500">
               Already have an account?{" "}
-              <a
+              <Link
                 href="/auth/login"
                 className="font-semibold text-blue-600 hover:underline"
               >
-                Login
-              </a>
+                Sign in
+              </Link>
             </p>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
-            <div className="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center">
+          {/* Apps */}
+          <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            <div className="flex flex-col gap-4 border-b border-slate-100 pb-6 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-bold">
-                  Choose your apps
+                <h2 className="text-2xl font-bold">
+                  Choose your business apps
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Select only what your business needs.
+                <p className="mt-1 text-sm leading-6 text-slate-500">
+                  Select the applications this business should
+                  have access to.
                 </p>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold text-blue-700">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700">
                   {selectedCount} selected
                 </span>
 
                 <button
                   type="button"
                   onClick={selectAll}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50"
+                  className="rounded-lg px-3 py-2 text-sm font-semibold text-blue-600 transition hover:bg-blue-50"
                 >
-                  All
+                  Select all
                 </button>
 
                 <button
                   type="button"
                   onClick={clearAll}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100"
+                  className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-slate-100"
                 >
                   Clear
                 </button>
               </div>
             </div>
 
-            <div className="mt-5 space-y-4">
+            <div className="mt-6 space-y-4">
               {APP_CATEGORIES.map((category) => {
                 const apps = SAMI_APPS.filter(
-                  (app) => app.category === category.key
+                  (app) =>
+                    app.category === category.key
                 );
 
-                const isOpen = openCategories.includes(
-                  category.key
-                );
+                const isOpen =
+                  openCategories.includes(
+                    category.key
+                  );
 
-                const categorySelected = apps.filter((app) =>
-                  selectedSet.has(app.key)
-                ).length;
+                const categorySelected =
+                  apps.filter((app) =>
+                    selectedSet.has(app.key)
+                  ).length;
 
                 return (
                   <div
@@ -328,17 +419,20 @@ export default function RegisterPage() {
                     <button
                       type="button"
                       onClick={() =>
-                        toggleCategory(category.key)
+                        toggleCategory(
+                          category.key
+                        )
                       }
-                      className="flex w-full items-center justify-between bg-slate-50 px-4 py-4 text-left hover:bg-slate-100"
+                      className="flex w-full items-center justify-between bg-slate-50 px-5 py-4 text-left transition hover:bg-slate-100"
                     >
                       <div>
-                        <div className="font-semibold">
+                        <div className="font-bold">
                           {category.name}
                         </div>
 
-                        <div className="mt-0.5 text-xs text-slate-500">
-                          {categorySelected} of {apps.length} selected
+                        <div className="mt-1 text-xs text-slate-500">
+                          {categorySelected} of{" "}
+                          {apps.length} selected
                         </div>
                       </div>
 
@@ -352,18 +446,22 @@ export default function RegisterPage() {
                     {isOpen && (
                       <div className="grid gap-3 p-4 sm:grid-cols-2">
                         {apps.map((app) => {
-                          const selected = selectedSet.has(
-                            app.key
-                          );
+                          const selected =
+                            selectedSet.has(
+                              app.key
+                            );
 
                           return (
                             <button
-                              type="button"
                               key={app.key}
+                              type="button"
+                              aria-pressed={selected}
                               onClick={() =>
-                                toggleApp(app.key)
+                                toggleApp(
+                                  app.key
+                                )
                               }
-                              className={`relative rounded-xl border p-4 text-left transition ${
+                              className={`relative rounded-2xl border p-4 text-left transition ${
                                 selected
                                   ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
                                   : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
@@ -371,7 +469,7 @@ export default function RegisterPage() {
                             >
                               <div className="flex items-start gap-3">
                                 <div
-                                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                                     selected
                                       ? "bg-blue-600 text-white"
                                       : "bg-slate-100 text-slate-500"
@@ -381,7 +479,9 @@ export default function RegisterPage() {
                                     <Check className="h-5 w-5" />
                                   ) : (
                                     <span className="text-sm font-bold">
-                                      {app.name.charAt(0)}
+                                      {app.name.charAt(
+                                        0
+                                      )}
                                     </span>
                                   )}
                                 </div>
@@ -414,12 +514,13 @@ export default function RegisterPage() {
               })}
             </div>
 
-            <div className="mt-6 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
-              <strong className="text-slate-900">
+            <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
+              <strong>
                 SaMi AI is always available.
               </strong>{" "}
-              Your selected business apps determine what appears in
-              your workspace. You can add or remove apps later.
+              The apps you select determine which business
+              applications are enabled for this workspace.
+              You can add or remove apps later.
             </div>
           </section>
         </form>
