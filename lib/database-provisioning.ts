@@ -12,19 +12,51 @@ export type TenantDatabaseProvisionResult = {
 };
 
 function getProvisioningUrl(): string {
-  const url =
+  const existingUrl =
     process.env.TENANT_PROVISIONING_DATABASE_URL ||
     process.env.ADMIN_DATABASE_URL ||
     process.env.DATABASE_URL ||
     process.env.POSTGRES_DATABASE_URL;
 
-  if (!url) {
+  if (existingUrl) {
+    return existingUrl;
+  }
+
+  const host = process.env.POSTGRES_HOST;
+  const port = process.env.POSTGRES_PORT || "5432";
+  const user = process.env.POSTGRES_ADMIN_USER;
+  const password = process.env.POSTGRES_ADMIN_PASSWORD;
+
+  if (!host) {
     throw new Error(
-      "No tenant database provisioning connection string is configured."
+      "POSTGRES_HOST is not configured."
     );
   }
 
-  return url;
+  if (!user) {
+    throw new Error(
+      "POSTGRES_ADMIN_USER is not configured."
+    );
+  }
+
+  if (!password) {
+    throw new Error(
+      "POSTGRES_ADMIN_PASSWORD is not configured."
+    );
+  }
+
+  /*
+   * PostgreSQL CREATE DATABASE must connect to an
+   * existing database on the server.
+   *
+   * sami_control is our control database.
+   */
+  return (
+    `postgresql://${encodeURIComponent(user)}` +
+    `:${encodeURIComponent(password)}` +
+    `@${host}:${port}/sami_control` +
+    `?sslmode=require`
+  );
 }
 
 function generateDatabaseName(
