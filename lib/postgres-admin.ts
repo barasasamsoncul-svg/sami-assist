@@ -1,9 +1,6 @@
-import { Pool, QueryResult, QueryResultRow } from "pg";
+import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from "pg";
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __samiAdminPool: Pool | undefined;
-}
+let adminPool: Pool | null = null;
 
 function getAdminDatabaseUrl(): string {
   const url =
@@ -20,41 +17,56 @@ function getAdminDatabaseUrl(): string {
   return url;
 }
 
-function createAdminPool(): Pool {
-  return new Pool({
+function getAdminPool(): Pool {
+  if (adminPool) {
+    return adminPool;
+  }
+
+  adminPool = new Pool({
     connectionString: getAdminDatabaseUrl(),
 
     ssl:
-      process.env.NODE_ENV === "development"
+      process.env.NODE_ENV === "production"
         ? { rejectUnauthorized: false }
-        : { rejectUnauthorized: false },
+        : undefined,
 
-    max: Number(process.env.ADMIN_DB_POOL_MAX || 10),
-
+    max: 10,
     idleTimeoutMillis: 30_000,
-
     connectionTimeoutMillis: 10_000,
   });
+
+  return adminPool;
 }
 
-export const postgresAdmin =
-  globalThis.__samiAdminPool ?? createAdminPool();
-
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__samiAdminPool = postgresAdmin;
-}
-
-export async function query<T extends QueryResultRow = QueryResultRow>(
+export async function postgresAdminQuery<
+  T extends QueryResultRow = QueryResultRow,
+>(
   text: string,
   values?: unknown[]
 ): Promise<QueryResult<T>> {
-  return postgresAdmin.query<T>(text, values);
+  return getAdminPool().query<T>(text, values);
 }
 
-export async function testAdminDatabaseConnection(): Promise<void> {
-  await postgresAdmin.query("SELECT 1");
-}
+export const postgresAdmin = {
+  query<T extends QueryResultRow = QueryResultRow>(
+    text: string,
+    values?: unknown[]
+  ): Promise<QueryResult<T>> {
+    return postgresAdminQuery<T>(text, values);
+  },
 
-export async function closeAdminDatabase(): Promise<void> {
-  await postgresAdmin.end();
-}
+  async connect(): Promise<PoolClient> {
+    return getAdminPool().connect();
+  },
+
+  async end(): Promise<void> {
+    if (!adminPool) {
+      return;
+    }
+
+    const pool = adminPool;
+    adminPool = null;
+
+    await pool.end();
+  },
+};
