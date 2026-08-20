@@ -1,6 +1,9 @@
 ﻿import { postgresAdmin } from "./postgres-admin";
 import { saveEnabledApps } from "./enabled-apps";
-import { provisionTenantDatabase } from "./database-provisioning";
+import {
+  provisionTenantDatabase,
+  deleteTenantDatabaseForBusiness,
+} from "./database-provisioning";
 import { normalizeAppKeys } from "./sami-apps";
 
 export type ProvisionBusinessInput = {
@@ -249,20 +252,43 @@ export async function provisionBusiness(
       appKeys:
         savedAppKeys,
     };
-  } catch (error) {
+    } catch (error) {
     /*
-     * If provisioning fails after the business was created,
-     * remove the business. Because the related records use
-     * foreign keys with cascading deletes, its business-user
-     * and enabled-app records are cleaned up as well.
+     * Tenant provisioning may have already created a physical
+     * PostgreSQL database. Clean that up first.
      */
-    await postgresAdmin.query(
-      `
-        DELETE FROM businesses
-        WHERE id = $1
-      `,
-      [businessId]
-    );
+    try {
+      await deleteTenantDatabaseForBusiness(
+        businessId
+      );
+    } catch (cleanupError) {
+      console.error(
+        "Tenant cleanup failed during business rollback:",
+        cleanupError
+      );
+    }
+
+    /*
+     * Remove the business.
+     *
+     * Related business_users and enabled-app records are
+     * expected to be removed through their foreign-key
+     * cascade rules.
+     */
+    try {
+      await postgresAdmin.query(
+        `
+          DELETE FROM businesses
+          WHERE id = $1
+        `,
+        [businessId]
+      );
+    } catch (businessCleanupError) {
+      console.error(
+        "Business cleanup failed during rollback:",
+        businessCleanupError
+      );
+    }
 
     throw error;
   }
