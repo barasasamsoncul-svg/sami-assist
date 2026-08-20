@@ -18,13 +18,12 @@ export const postgresAdmin = new Pool({
   database,
   user,
   password,
-  ssl:
-    process.env.POSTGRES_SSL === "true"
-      ? {
-          rejectUnauthorized: false,
-        }
-      : undefined,
-  max: 10,
-  idleTimeoutMillis: 30_000,
+
+  ssl: {
+    rejectUnauthorized: false,
+  },
+
   connectionTimeoutMillis: 10_000,
+  idleTimeoutMillis: 30_000,
+  max: 10,
 });
