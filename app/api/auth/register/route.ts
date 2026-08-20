@@ -4,19 +4,9 @@ import { provisionBusiness } from "@/lib/provision-business";
 import { normalizeAppKeys } from "@/lib/sami-apps";
 import { postgresAdmin } from "@/lib/postgres-admin";
 
-async function deleteRegisteredUser(
-  userId: string
-): Promise<void> {
-  await postgresAdmin.query(
-    `
-      DELETE FROM users
-      WHERE id = $1
-    `,
-    [userId]
-  );
-}
-
 export async function POST(req: Request) {
+  let createdUserId: string | null = null;
+
   try {
     const body = await req.json();
 
@@ -33,7 +23,7 @@ export async function POST(req: Request) {
 
     /*
      * ---------------------------------------------------------
-     * VALIDATION
+     * Validate user information
      * ---------------------------------------------------------
      */
 
@@ -70,12 +60,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            "Password must be at least 8 characters.",
+          error: "Password must be at least 8 characters.",
         },
         { status: 400 }
       );
     }
+
+    /*
+     * ---------------------------------------------------------
+     * Validate business information
+     * ---------------------------------------------------------
+     */
 
     if (
       typeof businessName !== "string" ||
@@ -92,7 +87,7 @@ export async function POST(req: Request) {
 
     /*
      * ---------------------------------------------------------
-     * APPLICATION SELECTION
+     * Validate selected apps
      * ---------------------------------------------------------
      */
 
@@ -112,7 +107,7 @@ export async function POST(req: Request) {
 
     /*
      * ---------------------------------------------------------
-     * BUSINESS SLUG
+     * Generate business slug
      * ---------------------------------------------------------
      */
 
@@ -127,23 +122,10 @@ export async function POST(req: Request) {
             .replace(/^-+|-+$/g, "")
             .slice(0, 80);
 
-    if (!generatedSlug) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Unable to generate a business identifier.",
-        },
-        { status: 400 }
-      );
-    }
-
     /*
      * ---------------------------------------------------------
      * CREATE USER
      * ---------------------------------------------------------
-     *
-     * At this point the input has passed validation.
      */
 
     const user = await registerUser({
@@ -152,28 +134,22 @@ export async function POST(req: Request) {
       fullName: fullName.trim(),
     });
 
+    createdUserId = user.userId;
+
     /*
      * ---------------------------------------------------------
-     * PROVISION BUSINESS
+     * CREATE BUSINESS + TENANT DATABASE
      * ---------------------------------------------------------
      *
-     * If anything fails here, the user must also be removed.
+     * If anything fails inside provisionBusiness(),
+     * it removes the business.
      *
-     * provisionBusiness() is responsible for cleaning up:
-     *   - business
-     *   - business_users
-     *   - enabled apps
-     *   - tenant database
-     *   - database registry
-     *
-     * This route is responsible for cleaning up:
-     *   - user
+     * If it fails here, the catch block below also
+     * removes the newly-created user.
      */
 
-    let business;
-
-    try {
-      business = await provisionBusiness({
+    const business =
+      await provisionBusiness({
         businessName: businessName.trim(),
         businessSlug: generatedSlug,
         ownerUserId: user.userId,
@@ -189,33 +165,14 @@ export async function POST(req: Request) {
             : undefined,
         appKeys: selectedApps,
       });
-    } catch (error) {
-      /*
-       * Business provisioning failed.
-       *
-       * Remove the user so failed registration does not
-       * leave an orphan account in sami_control.users.
-       */
-
-      try {
-        await deleteRegisteredUser(
-          user.userId
-        );
-      } catch (cleanupError) {
-        console.error(
-          "Failed to clean up registered user:",
-          cleanupError
-        );
-      }
-
-      throw error;
-    }
 
     /*
      * ---------------------------------------------------------
-     * SUCCESS
+     * EVERYTHING SUCCEEDED
      * ---------------------------------------------------------
      */
+
+    createdUserId = null;
 
     return NextResponse.json(
       {
@@ -231,12 +188,7 @@ export async function POST(req: Request) {
           id: business.businessId,
           name: business.businessName,
           slug: business.businessSlug,
-          type: business.businessType,
-          databaseId: business.databaseId,
           databaseName: business.databaseName,
-          databaseHost: business.databaseHost,
-          databasePort: business.databasePort,
-          databaseUser: business.databaseUser,
         },
 
         appKeys: selectedApps,
@@ -248,6 +200,39 @@ export async function POST(req: Request) {
       "Registration error:",
       error
     );
+
+    /*
+     * ---------------------------------------------------------
+     * ROLLBACK USER
+     * ---------------------------------------------------------
+     *
+     * If the user was created but business/tenant
+     * provisioning failed, remove the user.
+     *
+     * This prevents half-created accounts.
+     */
+
+    if (createdUserId) {
+      try {
+        await postgresAdmin.query(
+          `
+            DELETE FROM users
+            WHERE id = $1
+          `,
+          [createdUserId]
+        );
+
+        console.log(
+          "Rolled back user:",
+          createdUserId
+        );
+      } catch (rollbackError) {
+        console.error(
+          "Failed to rollback user:",
+          rollbackError
+        );
+      }
+    }
 
     return NextResponse.json(
       {

@@ -103,25 +103,35 @@ export async function provisionTenantDatabase(
     generateDatabaseName(businessSlug);
 
   const databaseUser =
-    process.env.TENANT_DATABASE_USER ||
-    "postgres";
+  process.env.TENANT_DATABASE_USER ||
+  process.env.POSTGRES_ADMIN_USER ||
+  "postgres";
 
-  const databasePassword =
-    process.env.TENANT_DATABASE_PASSWORD;
+const databasePassword =
+  process.env.TENANT_DATABASE_PASSWORD ||
+  process.env.POSTGRES_ADMIN_PASSWORD;
 
-  if (!databasePassword) {
-    throw new Error(
-      "TENANT_DATABASE_PASSWORD is not configured."
-    );
-  }
-
-  const databaseHost =
-    process.env.TENANT_DATABASE_HOST ||
-    "localhost";
-
-  const databasePort = Number(
-    process.env.TENANT_DATABASE_PORT || 5432
+if (!databasePassword) {
+  throw new Error(
+    "No tenant database password is configured."
   );
+}
+
+const databaseHost =
+  process.env.TENANT_DATABASE_HOST ||
+  process.env.POSTGRES_HOST;
+
+if (!databaseHost) {
+  throw new Error(
+    "No tenant database host is configured."
+  );
+}
+
+const databasePort = Number(
+  process.env.TENANT_DATABASE_PORT ||
+  process.env.POSTGRES_PORT ||
+  5432
+);
 
   const adminClient = new Client({
     connectionString: getProvisioningUrl(),
