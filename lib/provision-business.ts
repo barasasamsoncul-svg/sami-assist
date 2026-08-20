@@ -1,23 +1,14 @@
 ﻿import { postgresAdmin } from "./postgres-admin";
-import {
-  createBusinessSlug,
-  normalizeName,
-} from "./auth-helpers";
-import {
-  normalizeAppKeys,
-} from "./sami-apps";
-import {
-  saveEnabledApps,
-} from "./enabled-apps";
-import {
-  provisionTenantDatabase,
-} from "./database-provisioning";
+import { saveEnabledApps } from "./enabled-apps";
+import { provisionTenantDatabase } from "./database-provisioning";
+import { normalizeAppKeys } from "./sami-apps";
 
 export type ProvisionBusinessInput = {
   businessName: string;
   businessSlug?: string;
+  businessType?: string;
   ownerUserId: string;
-  email: string;
+  email?: string;
   phone?: string;
   appKeys: unknown;
 };
@@ -26,109 +17,54 @@ export type ProvisionBusinessResult = {
   businessId: string;
   businessName: string;
   businessSlug: string;
+  businessType: string | null;
   databaseId: string;
   databaseName: string;
+  databaseHost: string;
+  databasePort: number;
+  databaseUser: string;
   appKeys: string[];
 };
 
-async function ensureBusinessTables(): Promise<void> {
-  await postgresAdmin.query(`
-    CREATE TABLE IF NOT EXISTS businesses (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      name VARCHAR(255) NOT NULL,
-      slug VARCHAR(255) NOT NULL UNIQUE,
-      email VARCHAR(320),
-      phone VARCHAR(100),
-      status VARCHAR(50) NOT NULL DEFAULT 'active',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await postgresAdmin.query(`
-    CREATE TABLE IF NOT EXISTS business_users (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      business_id UUID NOT NULL
-        REFERENCES businesses(id)
-        ON DELETE CASCADE,
-      user_id UUID NOT NULL
-        REFERENCES users(id)
-        ON DELETE CASCADE,
-      role VARCHAR(50) NOT NULL DEFAULT 'owner',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (business_id, user_id)
-    )
-  `);
-
-  await postgresAdmin.query(`
-    CREATE INDEX IF NOT EXISTS
-    idx_business_users_user_id
-    ON business_users(user_id)
-  `);
-
-  await postgresAdmin.query(`
-    CREATE INDEX IF NOT EXISTS
-    idx_business_users_business_id
-    ON business_users(business_id)
-  `);
+function normalizeBusinessName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
 }
 
-async function createUniqueSlug(
-  requestedSlug: string
-): Promise<string> {
-  const base = createBusinessSlug(
-    requestedSlug
-  );
-
-  let slug = base;
-
-  for (let attempt = 0; attempt < 100; attempt++) {
-    const existing =
-      await postgresAdmin.query(
-        `
-          SELECT id
-          FROM businesses
-          WHERE slug = $1
-          LIMIT 1
-        `,
-        [slug]
-      );
-
-    if (existing.rowCount === 0) {
-      return slug;
-    }
-
-    slug = `${base}-${attempt + 2}`;
-  }
-
-  throw new Error(
-    "Unable to create a unique business slug."
-  );
+function createBusinessSlug(
+  businessName: string
+): string {
+  return businessName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 }
 
 export async function provisionBusiness(
   input: ProvisionBusinessInput
 ): Promise<ProvisionBusinessResult> {
-  await ensureBusinessTables();
-
   const businessName =
-    normalizeName(input.businessName);
+    normalizeBusinessName(input.businessName);
 
   if (!businessName) {
-    throw new Error(
-      "Business name is required."
-    );
+    throw new Error("Business name is required.");
   }
 
   if (!input.ownerUserId) {
-    throw new Error(
-      "Business owner is required."
-    );
+    throw new Error("Owner user ID is required.");
   }
 
-  const selectedApps = normalizeAppKeys(
-    input.appKeys
-  );
+  const businessSlug =
+    input.businessSlug?.trim() ||
+    createBusinessSlug(businessName);
+
+  if (!businessSlug) {
+    throw new Error("Unable to generate business slug.");
+  }
+
+  const selectedApps =
+    normalizeAppKeys(input.appKeys);
 
   if (selectedApps.length === 0) {
     throw new Error(
@@ -136,59 +72,107 @@ export async function provisionBusiness(
     );
   }
 
-  const requestedSlug =
-    input.businessSlug?.trim() ||
-    businessName;
+  const businessType =
+    typeof input.businessType === "string" &&
+    input.businessType.trim()
+      ? input.businessType.trim()
+      : null;
 
-  const businessSlug =
-    await createUniqueSlug(
-      requestedSlug
+  /*
+   * Make sure the business slug is not already being used.
+   */
+  const existingBusiness =
+    await postgresAdmin.query(
+      `
+        SELECT id
+        FROM businesses
+        WHERE slug = $1
+        LIMIT 1
+      `,
+      [businessSlug]
     );
 
-  const client =
-    await postgresAdmin.connect();
+  if ((existingBusiness.rowCount ?? 0) > 0) {
+    throw new Error(
+      "A business with this slug already exists."
+    );
+  }
+
+  /*
+   * Create the business.
+   *
+   * business_type is included because the registration flow
+   * now supports identifying the type of business.
+   */
+  const businessResult =
+    await postgresAdmin.query(
+      `
+        INSERT INTO businesses (
+          name,
+          slug,
+          business_type,
+          status,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'active',
+          NOW(),
+          NOW()
+        )
+        RETURNING
+          id,
+          name,
+          slug,
+          business_type
+      `,
+      [
+        businessName,
+        businessSlug,
+        businessType,
+      ]
+    );
+
+  if ((businessResult.rowCount ?? 0) === 0) {
+    throw new Error(
+      "Business could not be created."
+    );
+  }
+
+  const business =
+    businessResult.rows[0];
+
+  const businessId =
+    business.id as string;
 
   try {
-    await client.query("BEGIN");
-
-    const businessResult =
-      await client.query(
-        `
-          INSERT INTO businesses (
-            name,
-            slug,
-            email,
-            phone,
-            status
-          )
-          VALUES ($1, $2, $3, $4, 'active')
-          RETURNING id, name, slug
-        `,
-        [
-          businessName,
-          businessSlug,
-          input.email?.trim().toLowerCase() ||
-            null,
-          input.phone?.trim() || null,
-        ]
-      );
-
-    const business =
-      businessResult.rows[0];
-
-    const businessId =
-      business.id as string;
-
-    await client.query(
+    /*
+     * The registering user becomes the owner
+     * of the newly-created business.
+     */
+    await postgresAdmin.query(
       `
         INSERT INTO business_users (
           business_id,
           user_id,
-          role
+          role,
+          created_at
         )
-        VALUES ($1, $2, 'owner')
-        ON CONFLICT (business_id, user_id)
-        DO UPDATE SET role = 'owner'
+        VALUES (
+          $1,
+          $2,
+          'owner',
+          NOW()
+        )
+        ON CONFLICT (
+          business_id,
+          user_id
+        )
+        DO UPDATE SET
+          role = 'owner'
       `,
       [
         businessId,
@@ -196,19 +180,52 @@ export async function provisionBusiness(
       ]
     );
 
-    await client.query("COMMIT");
+    /*
+     * Store the applications selected during registration.
+     */
+    const savedAppKeys =
+      await saveEnabledApps(
+        businessId,
+        selectedApps
+      );
 
-    const database =
+    /*
+     * Create/register the isolated tenant
+     * database for this business.
+     */
+    const tenant =
       await provisionTenantDatabase(
         businessId,
         businessSlug
       );
 
-    const savedApps =
-      await saveEnabledApps(
-        businessId,
-        selectedApps
+    /*
+     * Save contact information when supplied.
+     *
+     * These fields are updated separately so that
+     * registration can work whether email/phone are
+     * optional or omitted.
+     */
+    if (
+      input.email?.trim() ||
+      input.phone?.trim()
+    ) {
+      await postgresAdmin.query(
+        `
+          UPDATE businesses
+          SET
+            email = COALESCE($2, email),
+            phone = COALESCE($3, phone),
+            updated_at = NOW()
+          WHERE id = $1
+        `,
+        [
+          businessId,
+          input.email?.trim() || null,
+          input.phone?.trim() || null,
+        ]
       );
+    }
 
     return {
       businessId,
@@ -216,21 +233,37 @@ export async function provisionBusiness(
         business.name as string,
       businessSlug:
         business.slug as string,
+      businessType:
+        (business.business_type as string | null) ??
+        businessType,
       databaseId:
-        database.databaseId,
+        tenant.databaseId,
       databaseName:
-        database.databaseName,
-      appKeys: savedApps,
+        tenant.databaseName,
+      databaseHost:
+        tenant.databaseHost,
+      databasePort:
+        tenant.databasePort,
+      databaseUser:
+        tenant.databaseUser,
+      appKeys:
+        savedAppKeys,
     };
   } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      // Ignore rollback failure.
-    }
+    /*
+     * If provisioning fails after the business was created,
+     * remove the business. Because the related records use
+     * foreign keys with cascading deletes, its business-user
+     * and enabled-app records are cleaned up as well.
+     */
+    await postgresAdmin.query(
+      `
+        DELETE FROM businesses
+        WHERE id = $1
+      `,
+      [businessId]
+    );
 
     throw error;
-  } finally {
-    client.release();
   }
 }
