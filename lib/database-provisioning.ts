@@ -9,14 +9,14 @@ export type TenantDatabaseProvisionResult = {
   databasePort: number;
   databaseUser: string;
   databasePassword: string;
-  created: boolean;
 };
 
 function getProvisioningUrl(): string {
   const url =
     process.env.TENANT_PROVISIONING_DATABASE_URL ||
     process.env.ADMIN_DATABASE_URL ||
-    process.env.DATABASE_URL;
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_DATABASE_URL;
 
   if (!url) {
     throw new Error(
@@ -41,23 +41,98 @@ function generateDatabaseName(
   return `sami_${cleanSlug}_${suffix}`;
 }
 
+function getTenantCredentials() {
+  /*
+   * Tenant-specific credentials are optional.
+   *
+   * If they are not configured, SaMi uses the existing
+   * PostgreSQL admin credentials.
+   */
+  const databaseUser =
+    process.env.TENANT_DATABASE_USER ||
+    process.env.POSTGRES_ADMIN_USER;
+
+  const databasePassword =
+    process.env.TENANT_DATABASE_PASSWORD ||
+    process.env.POSTGRES_ADMIN_PASSWORD;
+
+  const databaseHost =
+    process.env.TENANT_DATABASE_HOST ||
+    process.env.POSTGRES_HOST;
+
+  const databasePort = Number(
+    process.env.TENANT_DATABASE_PORT ||
+      process.env.POSTGRES_PORT ||
+      5432
+  );
+
+  if (!databaseUser) {
+    throw new Error(
+      "POSTGRES_ADMIN_USER is not configured."
+    );
+  }
+
+  if (!databasePassword) {
+    throw new Error(
+      "POSTGRES_ADMIN_PASSWORD is not configured."
+    );
+  }
+
+  if (!databaseHost) {
+    throw new Error(
+      "POSTGRES_HOST is not configured."
+    );
+  }
+
+  if (!Number.isFinite(databasePort)) {
+    throw new Error(
+      "POSTGRES_PORT is invalid."
+    );
+  }
+
+  return {
+    databaseUser,
+    databasePassword,
+    databaseHost,
+    databasePort,
+  };
+}
+
 export async function ensureDatabaseRegistryTable(): Promise<void> {
   await postgresAdmin.query(`
     CREATE TABLE IF NOT EXISTS database_registry (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
       business_id UUID NOT NULL
         REFERENCES businesses(id)
         ON DELETE CASCADE,
+
       database_name VARCHAR(255) NOT NULL UNIQUE,
       database_host VARCHAR(255) NOT NULL,
       database_port INTEGER NOT NULL DEFAULT 5432,
       database_user VARCHAR(255) NOT NULL,
+
       database_password_encrypted TEXT NOT NULL,
+
       status VARCHAR(50) NOT NULL DEFAULT 'active',
+
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
       UNIQUE (business_id)
     )
+  `);
+
+  await postgresAdmin.query(`
+    CREATE INDEX IF NOT EXISTS
+    idx_database_registry_business_id
+    ON database_registry(business_id)
+  `);
+
+  await postgresAdmin.query(`
+    CREATE INDEX IF NOT EXISTS
+    idx_database_registry_status
+    ON database_registry(status)
   `);
 }
 
@@ -67,6 +142,10 @@ export async function provisionTenantDatabase(
 ): Promise<TenantDatabaseProvisionResult> {
   await ensureDatabaseRegistryTable();
 
+  /*
+   * Check whether this business already has an active
+   * tenant database.
+   */
   const existing = await postgresAdmin.query(
     `
       SELECT
@@ -95,44 +174,23 @@ export async function provisionTenantDatabase(
       databaseUser: row.database_user as string,
       databasePassword:
         row.database_password_encrypted as string,
-      created: false,
     };
   }
+
+  const {
+    databaseUser,
+    databasePassword,
+    databaseHost,
+    databasePort,
+  } = getTenantCredentials();
 
   const databaseName =
     generateDatabaseName(businessSlug);
 
-  const databaseUser =
-  process.env.TENANT_DATABASE_USER ||
-  process.env.POSTGRES_ADMIN_USER ||
-  "postgres";
-
-const databasePassword =
-  process.env.TENANT_DATABASE_PASSWORD ||
-  process.env.POSTGRES_ADMIN_PASSWORD;
-
-if (!databasePassword) {
-  throw new Error(
-    "No tenant database password is configured."
-  );
-}
-
-const databaseHost =
-  process.env.TENANT_DATABASE_HOST ||
-  process.env.POSTGRES_HOST;
-
-if (!databaseHost) {
-  throw new Error(
-    "No tenant database host is configured."
-  );
-}
-
-const databasePort = Number(
-  process.env.TENANT_DATABASE_PORT ||
-  process.env.POSTGRES_PORT ||
-  5432
-);
-
+  /*
+   * Connect to the PostgreSQL server using the existing
+   * admin/provisioning connection.
+   */
   const adminClient = new Client({
     connectionString: getProvisioningUrl(),
     ssl: {
@@ -156,6 +214,9 @@ const databasePort = Number(
         ? error.message
         : String(error);
 
+    /*
+     * If the database already exists, continue.
+     */
     if (
       !message
         .toLowerCase()
@@ -168,29 +229,42 @@ const databasePort = Number(
   }
 
   try {
-    const registry = await postgresAdmin.query(
-      `
-        INSERT INTO database_registry (
-          business_id,
-          database_name,
-          database_host,
-          database_port,
-          database_user,
-          database_password_encrypted,
-          status
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, 'active')
-        RETURNING id
-      `,
-      [
-        businessId,
-        databaseName,
-        databaseHost,
-        databasePort,
-        databaseUser,
-        databasePassword,
-      ]
-    );
+    /*
+     * Register the newly-created tenant inside
+     * sami_control.
+     */
+    const registry =
+      await postgresAdmin.query(
+        `
+          INSERT INTO database_registry (
+            business_id,
+            database_name,
+            database_host,
+            database_port,
+            database_user,
+            database_password_encrypted,
+            status
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            'active'
+          )
+          RETURNING id
+        `,
+        [
+          businessId,
+          databaseName,
+          databaseHost,
+          databasePort,
+          databaseUser,
+          databasePassword,
+        ]
+      );
 
     if ((registry.rowCount ?? 0) === 0) {
       throw new Error(
@@ -199,23 +273,46 @@ const databasePort = Number(
     }
 
     return {
-      databaseId: registry.rows[0].id as string,
+      databaseId:
+        registry.rows[0].id as string,
       databaseName,
       databaseHost,
       databasePort,
       databaseUser,
       databasePassword,
-      created: databaseCreated,
     };
   } catch (error) {
     /*
-     * The database was created but its registry entry failed.
-     * Remove the physical database so we don't leave an
-     * orphaned tenant database behind.
+     * The physical database was created but the registry
+     * failed. Remove the orphaned database.
      */
     if (databaseCreated) {
       try {
-        await deleteTenantDatabase(databaseName);
+        const cleanupClient = new Client({
+          connectionString:
+            getProvisioningUrl(),
+          ssl: {
+            rejectUnauthorized: false,
+          },
+        });
+
+        await cleanupClient.connect();
+
+        await cleanupClient.query(
+          `
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = $1
+              AND pid <> pg_backend_pid()
+          `,
+          [databaseName]
+        );
+
+        await cleanupClient.query(
+          `DROP DATABASE IF EXISTS "${databaseName}"`
+        );
+
+        await cleanupClient.end();
       } catch (cleanupError) {
         console.error(
           "Failed to clean up orphaned tenant database:",
@@ -228,22 +325,37 @@ const databasePort = Number(
   }
 }
 
-export async function deleteTenantDatabase(
-  databaseName: string
+/**
+ * Deletes the tenant database belonging to a business.
+ *
+ * Used when registration/provisioning fails after the
+ * tenant database has already been created.
+ */
+export async function deleteTenantDatabaseForBusiness(
+  businessId: string
 ): Promise<void> {
-  if (!databaseName) {
+  await ensureDatabaseRegistryTable();
+
+  const result = await postgresAdmin.query(
+    `
+      SELECT
+        database_name
+      FROM database_registry
+      WHERE business_id = $1
+      LIMIT 1
+    `,
+    [businessId]
+  );
+
+  /*
+   * There is no tenant database to remove.
+   */
+  if ((result.rowCount ?? 0) === 0) {
     return;
   }
 
-  /*
-   * Only allow database names generated by SaMi.
-   * This prevents accidental arbitrary database deletion.
-   */
-  if (!/^sami_[a-z0-9_]+$/.test(databaseName)) {
-    throw new Error(
-      "Invalid SaMi tenant database name."
-    );
-  }
+  const databaseName =
+    result.rows[0].database_name as string;
 
   const adminClient = new Client({
     connectionString: getProvisioningUrl(),
@@ -252,12 +364,12 @@ export async function deleteTenantDatabase(
     },
   });
 
-  await adminClient.connect();
-
   try {
+    await adminClient.connect();
+
     /*
-     * Terminate connections first so PostgreSQL can
-     * drop the database.
+     * PostgreSQL will not drop a database while another
+     * connection is using it.
      */
     await adminClient.query(
       `
@@ -275,32 +387,9 @@ export async function deleteTenantDatabase(
   } finally {
     await adminClient.end();
   }
-}
-
-export async function deleteTenantDatabaseForBusiness(
-  businessId: string
-): Promise<void> {
-  await ensureDatabaseRegistryTable();
-
-  const result = await postgresAdmin.query(
-    `
-      SELECT database_name
-      FROM database_registry
-      WHERE business_id = $1
-      LIMIT 1
-    `,
-    [businessId]
-  );
-
-  if ((result.rowCount ?? 0) === 0) {
-    return;
-  }
-
-  const databaseName =
-    result.rows[0].database_name as string;
 
   /*
-   * Remove registry first.
+   * Remove the tenant registry entry from sami_control.
    */
   await postgresAdmin.query(
     `
@@ -309,19 +398,12 @@ export async function deleteTenantDatabaseForBusiness(
     `,
     [businessId]
   );
-
-  try {
-    await deleteTenantDatabase(databaseName);
-  } catch (error) {
-    console.error(
-      `Failed to delete tenant database ${databaseName}:`,
-      error
-    );
-  }
 }
 
 /**
  * Backwards-compatible alias.
+ *
+ * Older code may call createTenantDatabase().
  */
 export const createTenantDatabase =
   provisionTenantDatabase;

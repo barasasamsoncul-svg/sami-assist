@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { registerUser } from "@/lib/user-registration";
 import { provisionBusiness } from "@/lib/provision-business";
 import { normalizeAppKeys } from "@/lib/sami-apps";
@@ -22,9 +23,9 @@ export async function POST(req: Request) {
     } = body;
 
     /*
-     * ---------------------------------------------------------
-     * Validate user information
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
+     * USER VALIDATION
+     * -------------------------------------------------------
      */
 
     if (
@@ -60,16 +61,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Password must be at least 8 characters.",
+          error:
+            "Password must be at least 8 characters.",
         },
         { status: 400 }
       );
     }
 
     /*
-     * ---------------------------------------------------------
-     * Validate business information
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
+     * BUSINESS VALIDATION
+     * -------------------------------------------------------
      */
 
     if (
@@ -86,9 +88,9 @@ export async function POST(req: Request) {
     }
 
     /*
-     * ---------------------------------------------------------
-     * Validate selected apps
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
+     * APP VALIDATION
+     * -------------------------------------------------------
      */
 
     const selectedApps =
@@ -106,9 +108,9 @@ export async function POST(req: Request) {
     }
 
     /*
-     * ---------------------------------------------------------
-     * Generate business slug
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
+     * BUSINESS SLUG
+     * -------------------------------------------------------
      */
 
     const generatedSlug =
@@ -123,9 +125,9 @@ export async function POST(req: Request) {
             .slice(0, 80);
 
     /*
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
      * CREATE USER
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
      */
 
     const user = await registerUser({
@@ -134,18 +136,16 @@ export async function POST(req: Request) {
       fullName: fullName.trim(),
     });
 
+    /*
+     * Keep track of the user so that we can delete it
+     * if anything later in registration fails.
+     */
     createdUserId = user.userId;
 
     /*
-     * ---------------------------------------------------------
-     * CREATE BUSINESS + TENANT DATABASE
-     * ---------------------------------------------------------
-     *
-     * If anything fails inside provisionBusiness(),
-     * it removes the business.
-     *
-     * If it fails here, the catch block below also
-     * removes the newly-created user.
+     * -------------------------------------------------------
+     * CREATE BUSINESS + TENANT
+     * -------------------------------------------------------
      */
 
     const business =
@@ -154,22 +154,30 @@ export async function POST(req: Request) {
         businessSlug: generatedSlug,
         ownerUserId: user.userId,
         email: email.trim().toLowerCase(),
+
         phone:
           typeof phone === "string"
             ? phone.trim()
             : undefined,
+
         businessType:
           typeof businessType === "string" &&
           businessType.trim()
             ? businessType.trim()
             : undefined,
+
         appKeys: selectedApps,
       });
 
     /*
-     * ---------------------------------------------------------
-     * EVERYTHING SUCCEEDED
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
+     * SUCCESS
+     * -------------------------------------------------------
+     *
+     * Once we reach here, EVERYTHING succeeded.
+     *
+     * Setting this to null tells the catch block that
+     * it must NOT delete the user.
      */
 
     createdUserId = null;
@@ -202,14 +210,12 @@ export async function POST(req: Request) {
     );
 
     /*
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
      * ROLLBACK USER
-     * ---------------------------------------------------------
+     * -------------------------------------------------------
      *
-     * If the user was created but business/tenant
-     * provisioning failed, remove the user.
-     *
-     * This prevents half-created accounts.
+     * If registerUser() succeeded but anything afterward
+     * failed, remove the user.
      */
 
     if (createdUserId) {
@@ -223,12 +229,12 @@ export async function POST(req: Request) {
         );
 
         console.log(
-          "Rolled back user:",
+          "Registration rollback: removed user",
           createdUserId
         );
       } catch (rollbackError) {
         console.error(
-          "Failed to rollback user:",
+          "Registration rollback failed:",
           rollbackError
         );
       }
