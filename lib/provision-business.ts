@@ -63,7 +63,9 @@ export async function provisionBusiness(
     createBusinessSlug(businessName);
 
   if (!businessSlug) {
-    throw new Error("Unable to generate business slug.");
+    throw new Error(
+      "Unable to generate business slug."
+    );
   }
 
   const selectedApps =
@@ -82,7 +84,7 @@ export async function provisionBusiness(
       : null;
 
   /*
-   * Make sure the business slug is not already being used.
+   * Check whether the business slug already exists.
    */
   const existingBusiness =
     await postgresAdmin.query(
@@ -102,10 +104,12 @@ export async function provisionBusiness(
   }
 
   /*
-   * Create the business.
+   * Create the control-plane business record.
    *
-   * business_type is included because the registration flow
-   * now supports identifying the type of business.
+   * IMPORTANT:
+   * The user has already been created by registerUser().
+   * If anything below fails, the registration route must
+   * also remove that user.
    */
   const businessResult =
     await postgresAdmin.query(
@@ -151,10 +155,11 @@ export async function provisionBusiness(
   const businessId =
     business.id as string;
 
+  let tenantCreated = false;
+
   try {
     /*
-     * The registering user becomes the owner
-     * of the newly-created business.
+     * Attach the registering user as the owner.
      */
     await postgresAdmin.query(
       `
@@ -184,7 +189,10 @@ export async function provisionBusiness(
     );
 
     /*
-     * Store the applications selected during registration.
+     * Save the applications selected during registration.
+     *
+     * Example:
+     * ["accounting", "invoices", "crm"]
      */
     const savedAppKeys =
       await saveEnabledApps(
@@ -193,21 +201,24 @@ export async function provisionBusiness(
       );
 
     /*
-     * Create/register the isolated tenant
-     * database for this business.
+     * Create the isolated PostgreSQL database
+     * belonging to this business.
+     *
+     * The database-provisioning module is responsible
+     * for creating the physical tenant database and
+     * registering it in sami_control.
      */
     const tenant =
-      await provisionTenantDatabase(
-        businessId,
-        businessSlug
-      );
+  await provisionTenantDatabase(
+    businessId,
+    businessSlug,
+    selectedApps
+  );
+
+    tenantCreated = true;
 
     /*
-     * Save contact information when supplied.
-     *
-     * These fields are updated separately so that
-     * registration can work whether email/phone are
-     * optional or omitted.
+     * Save business contact information.
      */
     if (
       input.email?.trim() ||
@@ -230,6 +241,10 @@ export async function provisionBusiness(
       );
     }
 
+    /*
+     * Everything required by provisionBusiness()
+     * has completed successfully.
+     */
     return {
       businessId,
       businessName:
@@ -252,28 +267,49 @@ export async function provisionBusiness(
       appKeys:
         savedAppKeys,
     };
-    } catch (error) {
+  } catch (error) {
+    console.error(
+      "Business provisioning failed:",
+      error
+    );
+
     /*
-     * Tenant provisioning may have already created a physical
-     * PostgreSQL database. Clean that up first.
+     * ---------------------------------------------------
+     * ROLLBACK
+     * ---------------------------------------------------
+     *
+     * If the tenant database was created, remove it.
+     *
+     * This prevents:
+     *
+     * sami_control
+     *   business -> exists
+     *
+     * while the registration itself has failed.
      */
-    try {
-      await deleteTenantDatabaseForBusiness(
-        businessId
-      );
-    } catch (cleanupError) {
-      console.error(
-        "Tenant cleanup failed during business rollback:",
-        cleanupError
-      );
+    if (tenantCreated) {
+      try {
+        await deleteTenantDatabaseForBusiness(
+          businessId
+        );
+      } catch (tenantCleanupError) {
+        /*
+         * Do not hide the original provisioning error.
+         */
+        console.error(
+          "Failed to delete tenant database during rollback:",
+          tenantCleanupError
+        );
+      }
     }
 
     /*
-     * Remove the business.
+     * Delete the business.
      *
-     * Related business_users and enabled-app records are
-     * expected to be removed through their foreign-key
-     * cascade rules.
+     * Your database_registry, business_users and
+     * enabled-app records should use foreign keys with
+     * ON DELETE CASCADE, so deleting the business
+     * removes those related control-plane records.
      */
     try {
       await postgresAdmin.query(
@@ -285,11 +321,15 @@ export async function provisionBusiness(
       );
     } catch (businessCleanupError) {
       console.error(
-        "Business cleanup failed during rollback:",
+        "Failed to delete business during rollback:",
         businessCleanupError
       );
     }
 
+    /*
+     * Re-throw the original error so the register route
+     * returns the real reason registration failed.
+     */
     throw error;
   }
 }

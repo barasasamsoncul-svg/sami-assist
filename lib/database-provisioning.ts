@@ -1,6 +1,10 @@
 import { randomBytes } from "crypto";
 import { Client } from "pg";
+import fs from "fs/promises";
+import path from "path";
+
 import { postgresAdmin } from "./postgres-admin";
+import { normalizeAppKeys } from "./sami-apps";
 
 export type TenantDatabaseProvisionResult = {
   databaseId: string;
@@ -28,29 +32,17 @@ function getProvisioningUrl(): string {
   const password = process.env.POSTGRES_ADMIN_PASSWORD;
 
   if (!host) {
-    throw new Error(
-      "POSTGRES_HOST is not configured."
-    );
+    throw new Error("POSTGRES_HOST is not configured.");
   }
 
   if (!user) {
-    throw new Error(
-      "POSTGRES_ADMIN_USER is not configured."
-    );
+    throw new Error("POSTGRES_ADMIN_USER is not configured.");
   }
 
   if (!password) {
-    throw new Error(
-      "POSTGRES_ADMIN_PASSWORD is not configured."
-    );
+    throw new Error("POSTGRES_ADMIN_PASSWORD is not configured.");
   }
 
-  /*
-   * PostgreSQL CREATE DATABASE must connect to an
-   * existing database on the server.
-   *
-   * sami_control is our control database.
-   */
   return (
     `postgresql://${encodeURIComponent(user)}` +
     `:${encodeURIComponent(password)}` +
@@ -75,10 +67,11 @@ function generateDatabaseName(
 
 function getTenantCredentials() {
   /*
-   * Tenant-specific credentials are optional.
+   * We intentionally use the existing PostgreSQL credentials
+   * when dedicated tenant credentials are not configured.
    *
-   * If they are not configured, SaMi uses the existing
-   * PostgreSQL admin credentials.
+   * This is appropriate for the current SaMi deployment model,
+   * where Vercel is being used for deployment/testing.
    */
   const databaseUser =
     process.env.TENANT_DATABASE_USER ||
@@ -168,42 +161,310 @@ export async function ensureDatabaseRegistryTable(): Promise<void> {
   `);
 }
 
+/**
+ * Read the SaMi tenant CORE schema.
+ *
+ * This schema MUST be installed in every tenant database.
+ */
+async function readTenantCoreSchema(): Promise<string> {
+  const schemaPath = path.join(
+    process.cwd(),
+    "lib",
+    "sami_tenant_core.sql"
+  );
+
+  try {
+    return await fs.readFile(
+      schemaPath,
+      "utf8"
+    );
+  } catch (error) {
+    throw new Error(
+      `Unable to read SaMi tenant core schema at ${schemaPath}: ${
+        error instanceof Error
+          ? error.message
+          : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Read an application's tenant schema.
+ *
+ * Expected structure:
+ *
+ * lib/
+ *   apps/
+ *     accounting/
+ *       schema.sql
+ *     invoicing/
+ *       schema.sql
+ *     expenses/
+ *       schema.sql
+ */
+async function readAppSchema(
+  appKey: string
+): Promise<string> {
+  const safeAppKey = appKey
+    .trim()
+    .toLowerCase();
+
+  if (
+    !/^[a-z0-9_-]+$/.test(
+      safeAppKey
+    )
+  ) {
+    throw new Error(
+      `Invalid app key "${appKey}".`
+    );
+  }
+
+  const schemaPath = path.join(
+    process.cwd(),
+    "lib",
+    "apps",
+    safeAppKey,
+    "schema.sql"
+  );
+
+  try {
+    return await fs.readFile(
+      schemaPath,
+      "utf8"
+    );
+  } catch (error) {
+    throw new Error(
+      `Unable to read schema for app "${safeAppKey}" at ${schemaPath}: ${
+        error instanceof Error
+          ? error.message
+          : String(error)
+      }`
+    );
+  }
+}
+
+/**
+ * Connect directly to a newly-created tenant database.
+ */
+function createTenantClient(
+  databaseName: string,
+  databaseHost: string,
+  databasePort: number,
+  databaseUser: string,
+  databasePassword: string
+): Client {
+  return new Client({
+    host: databaseHost,
+    port: databasePort,
+    database: databaseName,
+    user: databaseUser,
+    password: databasePassword,
+    ssl: {
+      rejectUnauthorized: false,
+    },
+  });
+}
+
+/**
+ * Install the CORE schema and all selected app schemas
+ * into the newly-created tenant database.
+ */
+async function initializeTenantDatabase(
+  databaseName: string,
+  databaseHost: string,
+  databasePort: number,
+  databaseUser: string,
+  databasePassword: string,
+  appKeys: unknown
+): Promise<void> {
+  const selectedApps =
+    normalizeAppKeys(appKeys);
+
+  const tenantClient =
+    createTenantClient(
+      databaseName,
+      databaseHost,
+      databasePort,
+      databaseUser,
+      databasePassword
+    );
+
+  await tenantClient.connect();
+
+  try {
+    /*
+     * ---------------------------------------------------------
+     * 1. INSTALL CORE
+     * ---------------------------------------------------------
+     *
+     * CORE is mandatory for every SaMi tenant.
+     */
+    const coreSchema =
+      await readTenantCoreSchema();
+
+    if (!coreSchema.trim()) {
+      throw new Error(
+        "SaMi tenant core schema is empty."
+      );
+    }
+
+    console.log(
+      `[Tenant Provisioning] Installing CORE schema into ${databaseName}...`
+    );
+
+    await tenantClient.query(
+      coreSchema
+    );
+
+    console.log(
+      `[Tenant Provisioning] CORE schema installed successfully.`
+    );
+
+    /*
+     * ---------------------------------------------------------
+     * 2. INSTALL SELECTED APP SCHEMAS
+     * ---------------------------------------------------------
+     *
+     * Each selected app gets its own schema.sql.
+     *
+     * Example:
+     *
+     * accounting → lib/apps/accounting/schema.sql
+     * invoicing  → lib/apps/invoicing/schema.sql
+     * expenses   → lib/apps/expenses/schema.sql
+     */
+    for (const appKey of selectedApps) {
+      const normalizedAppKey =
+        appKey.trim().toLowerCase();
+
+      console.log(
+        `[Tenant Provisioning] Installing ${normalizedAppKey} schema...`
+      );
+
+      const appSchema =
+        await readAppSchema(
+          normalizedAppKey
+        );
+
+      if (!appSchema.trim()) {
+        throw new Error(
+          `Schema for app "${normalizedAppKey}" is empty.`
+        );
+      }
+
+      await tenantClient.query(
+        appSchema
+      );
+
+      console.log(
+        `[Tenant Provisioning] ${normalizedAppKey} schema installed successfully.`
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * 3. VERIFY CORE
+     * ---------------------------------------------------------
+     *
+     * We don't just assume the SQL worked.
+     * Verify that the tenant has tables.
+     */
+    const tableCheck =
+      await tenantClient.query(`
+        SELECT COUNT(*)::INTEGER AS table_count
+        FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_type = 'BASE TABLE'
+      `);
+
+    const tableCount =
+      Number(
+        tableCheck.rows[0]?.table_count ?? 0
+      );
+
+    if (tableCount === 0) {
+      throw new Error(
+        `Tenant database "${databaseName}" was created but no tables were installed.`
+      );
+    }
+
+    console.log(
+      `[Tenant Provisioning] ${databaseName} now contains ${tableCount} public tables.`
+    );
+  } finally {
+    await tenantClient.end();
+  }
+}
+
+/**
+ * Create and initialize an isolated tenant database.
+ *
+ * Every tenant receives:
+ *
+ * 1. SaMi CORE schema
+ * 2. Schema for every selected app
+ *
+ * The tenant database is only registered in sami_control
+ * after successful schema installation.
+ */
 export async function provisionTenantDatabase(
   businessId: string,
-  businessSlug: string
+  businessSlug: string,
+  appKeys: unknown
 ): Promise<TenantDatabaseProvisionResult> {
   await ensureDatabaseRegistryTable();
+
+  /*
+   * Normalize and validate selected applications
+   * before creating the physical database.
+   */
+  const selectedApps =
+    normalizeAppKeys(appKeys);
+
+  if (selectedApps.length === 0) {
+    throw new Error(
+      "At least one business app must be selected."
+    );
+  }
 
   /*
    * Check whether this business already has an active
    * tenant database.
    */
-  const existing = await postgresAdmin.query(
-    `
-      SELECT
-        id,
-        database_name,
-        database_host,
-        database_port,
-        database_user,
-        database_password_encrypted
-      FROM database_registry
-      WHERE business_id = $1
-        AND status = 'active'
-      LIMIT 1
-    `,
-    [businessId]
-  );
+  const existing =
+    await postgresAdmin.query(
+      `
+        SELECT
+          id,
+          database_name,
+          database_host,
+          database_port,
+          database_user,
+          database_password_encrypted
+        FROM database_registry
+        WHERE business_id = $1
+          AND status = 'active'
+        LIMIT 1
+      `,
+      [businessId]
+    );
 
   if ((existing.rowCount ?? 0) > 0) {
-    const row = existing.rows[0];
+    const row =
+      existing.rows[0];
 
     return {
-      databaseId: row.id as string,
-      databaseName: row.database_name as string,
-      databaseHost: row.database_host as string,
-      databasePort: Number(row.database_port),
-      databaseUser: row.database_user as string,
+      databaseId:
+        row.id as string,
+      databaseName:
+        row.database_name as string,
+      databaseHost:
+        row.database_host as string,
+      databasePort:
+        Number(row.database_port),
+      databaseUser:
+        row.database_user as string,
       databasePassword:
         row.database_password_encrypted as string,
     };
@@ -214,23 +475,30 @@ export async function provisionTenantDatabase(
     databasePassword,
     databaseHost,
     databasePort,
-  } = getTenantCredentials();
+  } =
+    getTenantCredentials();
 
   const databaseName =
-    generateDatabaseName(businessSlug);
+    generateDatabaseName(
+      businessSlug
+    );
 
   /*
-   * Connect to the PostgreSQL server using the existing
-   * admin/provisioning connection.
+   * ---------------------------------------------------------
+   * CREATE PHYSICAL DATABASE
+   * ---------------------------------------------------------
    */
-  const adminClient = new Client({
-    connectionString: getProvisioningUrl(),
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  });
+  const adminClient =
+    new Client({
+      connectionString:
+        getProvisioningUrl(),
+      ssl: {
+        rejectUnauthorized: false,
+      },
+    });
 
-  let databaseCreated = false;
+  let databaseCreated =
+    false;
 
   await adminClient.connect();
 
@@ -240,6 +508,10 @@ export async function provisionTenantDatabase(
     );
 
     databaseCreated = true;
+
+    console.log(
+      `[Tenant Provisioning] Created database ${databaseName}.`
+    );
   } catch (error) {
     const message =
       error instanceof Error
@@ -247,7 +519,8 @@ export async function provisionTenantDatabase(
         : String(error);
 
     /*
-     * If the database already exists, continue.
+     * Normally this should not happen because the generated
+     * database name contains a random suffix.
      */
     if (
       !message
@@ -256,14 +529,43 @@ export async function provisionTenantDatabase(
     ) {
       throw error;
     }
+
+    /*
+     * If it already exists, we still continue and initialize it.
+     */
+    console.log(
+      `[Tenant Provisioning] Database ${databaseName} already exists.`
+    );
   } finally {
     await adminClient.end();
   }
 
+  /*
+   * ---------------------------------------------------------
+   * INITIALIZE TENANT DATABASE
+   * ---------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * This happens BEFORE database_registry is written.
+   *
+   * Therefore a database cannot be considered a valid
+   * tenant until CORE + selected app schemas exist.
+   */
   try {
+    await initializeTenantDatabase(
+      databaseName,
+      databaseHost,
+      databasePort,
+      databaseUser,
+      databasePassword,
+      selectedApps
+    );
+
     /*
-     * Register the newly-created tenant inside
-     * sami_control.
+     * -------------------------------------------------------
+     * REGISTER TENANT DATABASE IN sami_control
+     * -------------------------------------------------------
      */
     const registry =
       await postgresAdmin.query(
@@ -298,11 +600,17 @@ export async function provisionTenantDatabase(
         ]
       );
 
-    if ((registry.rowCount ?? 0) === 0) {
+    if (
+      (registry.rowCount ?? 0) === 0
+    ) {
       throw new Error(
         "Tenant database registry entry could not be created."
       );
     }
+
+    console.log(
+      `[Tenant Provisioning] Tenant ${databaseName} registered successfully.`
+    );
 
     return {
       databaseId:
@@ -315,18 +623,30 @@ export async function provisionTenantDatabase(
     };
   } catch (error) {
     /*
-     * The physical database was created but the registry
-     * failed. Remove the orphaned database.
+     * -------------------------------------------------------
+     * CLEANUP
+     * -------------------------------------------------------
+     *
+     * If anything fails after CREATE DATABASE:
+     *
+     * - schema installation
+     * - connection
+     * - schema SQL
+     * - verification
+     * - registry insertion
+     *
+     * remove the physical tenant database.
      */
     if (databaseCreated) {
       try {
-        const cleanupClient = new Client({
-          connectionString:
-            getProvisioningUrl(),
-          ssl: {
-            rejectUnauthorized: false,
-          },
-        });
+        const cleanupClient =
+          new Client({
+            connectionString:
+              getProvisioningUrl(),
+            ssl: {
+              rejectUnauthorized: false,
+            },
+          });
 
         await cleanupClient.connect();
 
@@ -345,9 +665,13 @@ export async function provisionTenantDatabase(
         );
 
         await cleanupClient.end();
+
+        console.log(
+          `[Tenant Provisioning] Removed failed tenant database ${databaseName}.`
+        );
       } catch (cleanupError) {
         console.error(
-          "Failed to clean up orphaned tenant database:",
+          "[Tenant Provisioning] Failed to clean up tenant database:",
           cleanupError
         );
       }
@@ -361,48 +685,47 @@ export async function provisionTenantDatabase(
  * Deletes the tenant database belonging to a business.
  *
  * Used when registration/provisioning fails after the
- * tenant database has already been created.
+ * tenant database has already been created and registered.
  */
 export async function deleteTenantDatabaseForBusiness(
   businessId: string
 ): Promise<void> {
   await ensureDatabaseRegistryTable();
 
-  const result = await postgresAdmin.query(
-    `
-      SELECT
-        database_name
-      FROM database_registry
-      WHERE business_id = $1
-      LIMIT 1
-    `,
-    [businessId]
-  );
+  const result =
+    await postgresAdmin.query(
+      `
+        SELECT
+          database_name
+        FROM database_registry
+        WHERE business_id = $1
+        LIMIT 1
+      `,
+      [businessId]
+    );
 
-  /*
-   * There is no tenant database to remove.
-   */
-  if ((result.rowCount ?? 0) === 0) {
+  if (
+    (result.rowCount ?? 0) === 0
+  ) {
     return;
   }
 
   const databaseName =
-    result.rows[0].database_name as string;
+    result.rows[0]
+      .database_name as string;
 
-  const adminClient = new Client({
-    connectionString: getProvisioningUrl(),
-    ssl: {
-      rejectUnauthorized: false,
-    },
-  });
+  const adminClient =
+    new Client({
+      connectionString:
+        getProvisioningUrl(),
+      ssl: {
+        rejectUnauthorized: false,
+      },
+    });
 
   try {
     await adminClient.connect();
 
-    /*
-     * PostgreSQL will not drop a database while another
-     * connection is using it.
-     */
     await adminClient.query(
       `
         SELECT pg_terminate_backend(pid)
@@ -420,9 +743,6 @@ export async function deleteTenantDatabaseForBusiness(
     await adminClient.end();
   }
 
-  /*
-   * Remove the tenant registry entry from sami_control.
-   */
   await postgresAdmin.query(
     `
       DELETE FROM database_registry
