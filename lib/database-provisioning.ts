@@ -6,6 +6,31 @@ import path from "path";
 import { postgresAdmin } from "./postgres-admin";
 import { normalizeAppKeys } from "./sami-apps";
 
+// ✅ ADD THIS FUNCTION HERE (line 10-25)
+/**
+ * Run multiple SQL statements one by one
+ */
+async function runMultipleStatements(
+  client: Client, 
+  sql: string
+): Promise<void> {
+  // Split by semicolon (;) and clean up
+  const statements = sql
+    .split(';')                    // Split into parts
+    .map(s => s.trim())            // Remove extra spaces
+    .filter(s => s.length > 0);    // Remove empty parts
+
+  // Run each statement individually
+  for (const statement of statements) {
+    // Skip comments
+    if (statement.startsWith('--') || statement.startsWith('/*')) {
+      continue;
+    }
+    
+    await client.query(statement);
+  }
+}
+
 export type TenantDatabaseProvisionResult = {
   databaseId: string;
   databaseName: string;
@@ -313,9 +338,7 @@ async function initializeTenantDatabase(
       `[Tenant Provisioning] Installing CORE schema into ${databaseName}...`
     );
 
-    await tenantClient.query(
-      coreSchema
-    );
+    await runMultipleStatements(tenantClient, coreSchema);
 
     console.log(
       `[Tenant Provisioning] CORE schema installed successfully.`
@@ -353,9 +376,7 @@ async function initializeTenantDatabase(
         );
       }
 
-      await tenantClient.query(
-        appSchema
-      );
+      await runMultipleStatements(tenantClient, appSchema);
 
       console.log(
         `[Tenant Provisioning] ${normalizedAppKey} schema installed successfully.`
