@@ -11,7 +11,9 @@ import {
   Trash2,
   X,
   Check,
-  Loader2
+  Loader2,
+  Copy,
+  Link as LinkIcon
 } from 'lucide-react';
 import { SAMI_APPS } from '@/lib/sami-apps';
 
@@ -31,8 +33,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
+  const [invitedEmail, setInvitedEmail] = useState('');
+  const [copied, setCopied] = useState(false);
 
-  // Business form state
   const [businessForm, setBusinessForm] = useState({
     name: '',
     email: '',
@@ -45,19 +49,11 @@ export default function SettingsPage() {
     industry: '',
   });
 
-  // Settings form state
   const [settingsForm, setSettingsForm] = useState({
-    defaultLanguage: 'en',
     dateFormat: 'DD/MM/YYYY',
     timeFormat: '24h',
-    weekStartsOn: 'monday',
-    fiscalYearStart: 'january',
-    emailNotifications: true,
-    pushNotifications: false,
-    twoFactorRequired: false,
   });
 
-  // Invite form state
   const [inviteForm, setInviteForm] = useState({
     email: '',
     role: 'member',
@@ -137,6 +133,7 @@ export default function SettingsPage() {
     setSaving(true);
     setMessage('');
     setError('');
+    setInviteLink('');
     try {
       const response = await fetch('/api/settings/invite', {
         method: 'POST',
@@ -146,12 +143,24 @@ export default function SettingsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to invite');
       setMessage(data.message || 'Invite sent');
+      setInviteLink(data.inviteLink || '');
+      setInvitedEmail(inviteForm.email);
       setInviteForm({ email: '', role: 'member', permissions: [] });
       fetchSettings();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to invite');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Copy failed:', err);
     }
   };
 
@@ -163,7 +172,7 @@ export default function SettingsPage() {
         body: JSON.stringify({ section: 'app_toggle', data: { appKey, enabled } }),
       });
       if (!response.ok) throw new Error('Failed to update app');
-      fetchSettings();
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update app');
     }
@@ -190,7 +199,6 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      {/* Messages */}
       {message && (
         <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-700 dark:text-green-400 text-sm flex items-center gap-2">
           <Check size={16} />
@@ -346,7 +354,6 @@ export default function SettingsPage() {
             </button>
           </div>
 
-          {/* Preferences */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Preferences</h3>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -389,7 +396,6 @@ export default function SettingsPage() {
       {/* Team Tab */}
       {activeTab === 'team' && (
         <div className="space-y-6">
-          {/* Invite Form */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Invite Team Member</h3>
             <div className="grid gap-4 sm:grid-cols-3">
@@ -424,9 +430,31 @@ export default function SettingsPage() {
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
               Send Invite
             </button>
+
+            {inviteLink && (
+              <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Share this link with {invitedEmail}:
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={inviteLink}
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white"
+                  />
+                  <button
+                    onClick={handleCopyLink}
+                    className="flex items-center gap-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+                  >
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Team List */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
             <div className="p-6 border-b border-gray-200 dark:border-gray-800">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Team Members</h3>
@@ -460,7 +488,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Pending Invites */}
           {data.invites.length > 0 && (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
               <div className="p-6 border-b border-gray-200 dark:border-gray-800">

@@ -19,18 +19,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No business found' }, { status: 403 });
     }
 
-    // Generate invite token
+    // Check if user already exists
+    const existingUser = await queryControl(
+      `SELECT id FROM users WHERE email = $1`,
+      [email.toLowerCase()]
+    );
+
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
 
-    await queryControl(
+    const inviteResult = await queryControl(
       `INSERT INTO invites (business_id, email, role, permissions, token, invited_by, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, token`,
       [activeBusinessId, email.toLowerCase(), role, permissions || [], token, session.user.id, expiresAt]
     );
 
-    return NextResponse.json({ success: true, message: `Invite sent to ${email}` });
+    const invite = inviteResult.rows[0];
+    const inviteLink = `${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/auth/register?invite=${invite.token}`;
+
+    return NextResponse.json({ 
+      success: true, 
+      message: `Invite created for ${email}`,
+      inviteLink,
+      userExists: existingUser.rows.length > 0,
+    });
 
   } catch (error) {
     console.error('Invite error:', error);
