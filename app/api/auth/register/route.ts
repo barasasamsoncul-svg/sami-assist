@@ -168,7 +168,40 @@ export async function POST(req: Request) {
 
         appKeys: selectedApps,
       });
+    
+// ✅ ADD THIS DEBUG CODE AFTER THE BUSINESS IS CREATED
+console.log("📊 REGISTRATION DEBUG:");
+console.log("Business ID:", business.businessId);
+console.log("Database Name:", business.databaseName);
+console.log("Selected Apps:", business.appKeys);
 
+// Try to verify the database immediately
+try {
+  const { Client } = require("pg");
+  const debugClient = new Client({
+    host: process.env.POSTGRES_HOST,
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: business.databaseName,
+    user: process.env.POSTGRES_ADMIN_USER,
+    password: process.env.POSTGRES_ADMIN_PASSWORD,
+    ssl: { rejectUnauthorized: false }
+  });
+  
+  await debugClient.connect();
+  
+  const tables = await debugClient.query(`
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public'
+  `);
+  
+  const tableNames = (tables.rows || []).map((r: any) => r.table_name);
+  console.log(`✅ Tenant has ${tables.rowCount || 0} tables:`, tableNames);
+  
+  await debugClient.end();
+} catch (debugError) {
+  console.error("❌ Debug check failed:", debugError);
+}
     /*
      * -------------------------------------------------------
      * SUCCESS
