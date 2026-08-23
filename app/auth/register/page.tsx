@@ -60,6 +60,7 @@ export default function RegisterPage() {
   // Debug state
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
   const [showDebugModal, setShowDebugModal] = useState(false);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
 
   const selectedSet = useMemo(
     () => new Set(selectedApps),
@@ -102,6 +103,7 @@ export default function RegisterPage() {
     setError("");
     setDebugInfo(null);
     setShowDebugModal(false);
+    setRegistrationComplete(false);
 
     if (selectedApps.length === 0) {
       setError("Please select at least one business app.");
@@ -133,26 +135,40 @@ export default function RegisterPage() {
 
       const data = await response.json();
 
+      console.log("📦 Full response:", data);
+
       // ✅ ALWAYS set debug info if it exists
       if (data.debug) {
         setDebugInfo(data.debug);
-        setShowDebugModal(true); // ✅ Show debug modal
+        setShowDebugModal(true);
+        setRegistrationComplete(true);
         console.log("🔍 Debug info received:", JSON.stringify(data.debug, null, 2));
+      } else {
+        // If no debug, still show something
+        setDebugInfo({
+          steps: [{ step: "No debug info returned", timestamp: new Date().toISOString() }],
+          errors: [],
+          tableCheck: null,
+          summary: {
+            tablesInstalled: 0,
+            success: false,
+            hasCoreTables: false,
+            hasBusinessTables: false,
+          }
+        });
+        setShowDebugModal(true);
       }
 
       if (!response.ok || !data.success) {
-        // Show error but keep debug visible
         setError(data.error || "Registration failed.");
         setLoading(false);
         return;
       }
 
-      // ✅ Success - keep debug visible, don't redirect yet
       setLoading(false);
-      
-      // ✅ Do NOT redirect automatically - let user click "Continue" after seeing debug
 
     } catch (error) {
+      console.error("❌ Registration error:", error);
       setError(error instanceof Error ? error.message : "Registration failed.");
       setLoading(false);
     }
@@ -641,6 +657,19 @@ export default function RegisterPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ✅ If registration complete but no debug modal (fallback) */}
+        {registrationComplete && !showDebugModal && (
+          <div className="fixed bottom-4 right-4 bg-green-100 border border-green-300 rounded-xl p-4 shadow-lg">
+            <p className="text-green-800">✅ Registration complete!</p>
+            <button
+              onClick={handleContinueToLogin}
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Go to Login
+            </button>
           </div>
         )}
       </div>
