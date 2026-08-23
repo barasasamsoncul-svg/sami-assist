@@ -95,16 +95,15 @@ export async function POST(request: NextRequest) {
         [user.id]
       );
 
-      // Create new session
+       // Create new session
       await client.query(
-        `INSERT INTO sessions (user_id, token, expires_at, is_current, ip, user_agent)
-         VALUES ($1, $2, $3, true, $4, $5)`,
+        `INSERT INTO sessions (user_id, token, expires_at, is_current, ip)
+         VALUES ($1, $2, $3, true, $4)`,
         [
           user.id,
           sessionToken,
           sessionExpiry,
           request.headers.get('x-forwarded-for') || 'unknown',
-          request.headers.get('user-agent') || 'unknown',
         ]
       );
 
