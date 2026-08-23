@@ -118,6 +118,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      // ✅ Use fetch with redirect: 'manual' to prevent automatic redirects
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
@@ -131,11 +132,41 @@ export default function RegisterPage() {
           phone,
           appKeys: selectedApps,
         }),
+        redirect: "manual", // ✅ This prevents automatic redirects!
       });
 
-      const data = await response.json();
+      console.log("📦 Response status:", response.status);
+      console.log("📦 Response type:", response.type);
+      console.log("📦 Response redirected:", response.redirected);
 
-      console.log("📦 Full response:", data);
+      // ✅ Check if it's a redirect (308, 301, 302, etc.)
+      if (response.status === 308 || response.status === 301 || response.status === 302 || response.status === 303) {
+        console.log("⚠️ Redirect detected! Status:", response.status);
+        // Get redirect location
+        const location = response.headers.get("location");
+        console.log("📍 Redirect location:", location);
+        
+        // Don't follow redirect - show error
+        setError(`Redirect detected! The API is redirecting to: ${location || 'unknown'}. This should not happen.`);
+        setLoading(false);
+        return;
+      }
+
+      // ✅ Try to parse response as JSON
+      let data;
+      const text = await response.text();
+      console.log("📝 Raw response text:", text);
+      
+      try {
+        data = JSON.parse(text);
+      } catch (parseError) {
+        console.error("❌ Failed to parse JSON:", parseError);
+        setError("Invalid response from server. Check Vercel logs.");
+        setLoading(false);
+        return;
+      }
+
+      console.log("📦 Parsed data:", data);
 
       // ✅ ALWAYS set debug info if it exists
       if (data.debug) {
@@ -144,9 +175,13 @@ export default function RegisterPage() {
         setRegistrationComplete(true);
         console.log("🔍 Debug info received:", JSON.stringify(data.debug, null, 2));
       } else {
-        // If no debug, still show something
+        // If no debug, show the raw data
         setDebugInfo({
-          steps: [{ step: "No debug info returned", timestamp: new Date().toISOString() }],
+          steps: [
+            { step: "No debug info returned", timestamp: new Date().toISOString() },
+            { step: `Response status: ${response.status}`, timestamp: new Date().toISOString() },
+            { step: `Response data: ${JSON.stringify(data)}`, timestamp: new Date().toISOString() },
+          ],
           errors: [],
           tableCheck: null,
           summary: {
@@ -346,7 +381,7 @@ export default function RegisterPage() {
             {error && (
               <div
                 role="alert"
-                className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700"
+                className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-700 whitespace-pre-wrap"
               >
                 {error}
               </div>
