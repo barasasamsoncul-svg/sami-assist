@@ -77,16 +77,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session token (simple version - use crypto)
+    // Create session token
     const crypto = require('crypto');
     const sessionToken = crypto.randomBytes(48).toString('hex');
     const sessionExpiry = new Date();
-    sessionExpiry.setDate(sessionExpiry.getDate() + 30); // 30 days
+    sessionExpiry.setDate(sessionExpiry.getDate() + 30);
 
     // Store session in database
     const client = await getControlPool().connect();
 
     try {
+      await client.query('BEGIN');
+
       // Invalidate previous current sessions
       await client.query(
         `UPDATE sessions SET is_current = false WHERE user_id = $1`,
@@ -112,6 +114,8 @@ export async function POST(request: NextRequest) {
         [user.id]
       );
 
+      await client.query('COMMIT');
+
       // Set cookie with session token
       const response = NextResponse.json({
         success: true,
@@ -128,16 +132,18 @@ export async function POST(request: NextRequest) {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: 30 * 24 * 60 * 60, // 30 days
+        maxAge: 30 * 24 * 60 * 60,
         path: '/',
       });
 
       return response;
 
     } catch (error) {
+      await client.query('ROLLBACK');
       console.error('Session creation error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       return NextResponse.json(
-        { error: 'Login failed. Please try again.' },
+        { error: `Session creation failed: ${errorMessage}` },
         { status: 500 }
       );
     } finally {
@@ -146,8 +152,9 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Login error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Login failed. Please try again.' },
+      { error: `Login failed: ${errorMessage}` },
       { status: 500 }
     );
   }
