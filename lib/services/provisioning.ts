@@ -1,4 +1,4 @@
-﻿import { Pool } from 'pg';
+import { Pool } from 'pg';
 import { queryControl } from '../db/control';
 import fs from 'fs';
 import path from 'path';
@@ -21,7 +21,7 @@ export async function createTenantDatabase(businessId: string, businessName: str
   try {
     // Create the database
     await adminPool.query(`CREATE DATABASE ${databaseName}`);
-    console.log(`✅ Database ${databaseName} created`);
+    console.log(`? Database ${databaseName} created`);
     
     return databaseName;
   } finally {
@@ -44,7 +44,7 @@ export async function installCoreSchema(databaseName: string) {
 
   try {
     await tenantPool.query(coreSchema);
-    console.log(`✅ Core schema installed in ${databaseName}`);
+    console.log(`? Core schema installed in ${databaseName}`);
   } finally {
     await tenantPool.end();
   }
@@ -52,11 +52,11 @@ export async function installCoreSchema(databaseName: string) {
 
 // Install app schema into tenant database
 export async function installAppSchema(databaseName: string, appKey: string) {
-  const appSchemaPath = path.join(process.cwd(), `app/lib/apps/${appKey}/schema.sql`);
+  const appSchemaPath = path.join(process.cwd(), `lib/apps/${appKey}/schema.sql`);
   
   // Check if schema file exists
   if (!fs.existsSync(appSchemaPath)) {
-    console.warn(`⚠️ Schema not found for app: ${appKey}`);
+    console.warn(`?? Schema not found for app: ${appKey}`);
     return;
   }
   
@@ -72,7 +72,7 @@ export async function installAppSchema(databaseName: string, appKey: string) {
 
   try {
     await tenantPool.query(appSchema);
-    console.log(`✅ App schema installed for ${appKey} in ${databaseName}`);
+    console.log(`? App schema installed for ${appKey} in ${databaseName}`);
   } finally {
     await tenantPool.end();
   }
@@ -95,7 +95,7 @@ export async function registerTenantDatabase(
       process.env.POSTGRES_ADMIN_PASSWORD, // In production, encrypt this
     ]
   );
-  console.log(`✅ Database registered for business ${businessId}`);
+  console.log(`? Database registered for business ${businessId}`);
 }
 
 // Full provisioning flow
@@ -124,7 +124,7 @@ export async function provisionBusinessDatabase(
       databaseName,
     };
   } catch (error) {
-    console.error('❌ Provisioning failed:', error);
+    console.error('? Provisioning failed:', error);
     return {
   success: false,
   error: error instanceof Error ? error.message : 'Unknown error',

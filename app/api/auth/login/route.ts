@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const userResult = await queryControl(
       `SELECT id, email, password_hash, full_name, status 
        FROM users 
-       WHERE email = $1 AND deleted_at IS NULL`,
+       WHERE email = $1`,
       [email.toLowerCase()]
     );
 
