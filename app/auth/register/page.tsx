@@ -17,6 +17,24 @@ import {
   getRecommendedAppKeys,
 } from "@/lib/sami-apps";
 
+// ✅ Add type for debug info
+interface DebugInfo {
+  steps: Array<{ step: string; timestamp: string; details?: any }>;
+  errors: Array<{ step: string; error: string; stack?: string; timestamp: string }>;
+  tableCheck: {
+    totalTables: number;
+    tables: string[];
+    hasUsers: boolean;
+    hasBusinesses: boolean;
+  } | null;
+  summary: {
+    tablesInstalled: number;
+    success: boolean;
+    hasCoreTables: boolean;
+    hasBusinessTables: boolean;
+  };
+}
+
 export default function RegisterPage() {
   const router = useRouter();
 
@@ -27,9 +45,6 @@ export default function RegisterPage() {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
 
-  /*
-   * Recommended apps are selected by default.
-   */
   const [selectedApps, setSelectedApps] = useState<string[]>(
     getRecommendedAppKeys()
   );
@@ -40,6 +55,10 @@ export default function RegisterPage() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  
+  // ✅ Add debug state
+  const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
 
   const selectedSet = useMemo(
     () => new Set(selectedApps),
@@ -53,7 +72,6 @@ export default function RegisterPage() {
       if (current.includes(appKey)) {
         return current.filter((key) => key !== appKey);
       }
-
       return [...current, appKey];
     });
   }
@@ -63,95 +81,76 @@ export default function RegisterPage() {
       if (current.includes(categoryKey)) {
         return current.filter((key) => key !== categoryKey);
       }
-
       return [...current, categoryKey];
     });
   }
 
   function selectAll() {
-    setSelectedApps(
-      SAMI_APPS.map((app) => app.key)
-    );
+    setSelectedApps(SAMI_APPS.map((app) => app.key));
   }
 
   function clearAll() {
     setSelectedApps([]);
   }
 
-  async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
-  ) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (loading) {
-      return;
-    }
+    if (loading) return;
 
     setError("");
+    setDebugInfo(null);
+    setRegistrationSuccess(false);
 
     if (selectedApps.length === 0) {
-      setError(
-        "Please select at least one business app."
-      );
+      setError("Please select at least one business app.");
       return;
     }
 
     if (password.length < 8) {
-      setError(
-        "Password must be at least 8 characters."
-      );
+      setError("Password must be at least 8 characters.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch(
-        "/api/auth/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            fullName,
-            email,
-            password,
-            businessName,
-            phone,
-            appKeys: selectedApps,
-          }),
-        }
-      );
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullName,
+          email,
+          password,
+          businessName,
+          phone,
+          appKeys: selectedApps,
+        }),
+      });
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.error || "Registration failed."
-        );
+      // ✅ Set debug info from response
+      if (data.debug) {
+        setDebugInfo(data.debug);
+        console.log("🔍 Debug info:", JSON.stringify(data.debug, null, 2));
       }
 
-      /*
-       * Registration has completed successfully.
-       *
-       * The backend has already:
-       * - created the user
-       * - created the business
-       * - assigned the user
-       * - provisioned the tenant
-       * - installed schemas
-       * - saved enabled apps
-       */
-      router.push(
-        "/auth/login?registered=true"
-      );
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Registration failed.");
+      }
+
+      setRegistrationSuccess(true);
+
+      // Redirect after a moment so user can see the debug info
+      setTimeout(() => {
+        router.push("/auth/login?registered=true");
+      }, 3000);
+
     } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Registration failed."
-      );
+      setError(error instanceof Error ? error.message : "Registration failed.");
     } finally {
       setLoading(false);
     }
@@ -330,6 +329,16 @@ export default function RegisterPage() {
               </div>
             )}
 
+            {/* ✅ Success Message */}
+            {registrationSuccess && (
+              <div
+                role="alert"
+                className="mt-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-700"
+              >
+                ✅ Registration successful! Redirecting to login...
+              </div>
+            )}
+
             {/* Submit */}
             <button
               type="submit"
@@ -397,19 +406,14 @@ export default function RegisterPage() {
             <div className="mt-6 space-y-4">
               {APP_CATEGORIES.map((category) => {
                 const apps = SAMI_APPS.filter(
-                  (app) =>
-                    app.category === category.key
+                  (app) => app.category === category.key
                 );
 
-                const isOpen =
-                  openCategories.includes(
-                    category.key
-                  );
+                const isOpen = openCategories.includes(category.key);
 
-                const categorySelected =
-                  apps.filter((app) =>
-                    selectedSet.has(app.key)
-                  ).length;
+                const categorySelected = apps.filter((app) =>
+                  selectedSet.has(app.key)
+                ).length;
 
                 return (
                   <div
@@ -418,11 +422,7 @@ export default function RegisterPage() {
                   >
                     <button
                       type="button"
-                      onClick={() =>
-                        toggleCategory(
-                          category.key
-                        )
-                      }
+                      onClick={() => toggleCategory(category.key)}
                       className="flex w-full items-center justify-between bg-slate-50 px-5 py-4 text-left transition hover:bg-slate-100"
                     >
                       <div>
@@ -431,8 +431,7 @@ export default function RegisterPage() {
                         </div>
 
                         <div className="mt-1 text-xs text-slate-500">
-                          {categorySelected} of{" "}
-                          {apps.length} selected
+                          {categorySelected} of {apps.length} selected
                         </div>
                       </div>
 
@@ -446,21 +445,14 @@ export default function RegisterPage() {
                     {isOpen && (
                       <div className="grid gap-3 p-4 sm:grid-cols-2">
                         {apps.map((app) => {
-                          const selected =
-                            selectedSet.has(
-                              app.key
-                            );
+                          const selected = selectedSet.has(app.key);
 
                           return (
                             <button
                               key={app.key}
                               type="button"
                               aria-pressed={selected}
-                              onClick={() =>
-                                toggleApp(
-                                  app.key
-                                )
-                              }
+                              onClick={() => toggleApp(app.key)}
                               className={`relative rounded-2xl border p-4 text-left transition ${
                                 selected
                                   ? "border-blue-500 bg-blue-50 ring-1 ring-blue-500"
@@ -479,9 +471,7 @@ export default function RegisterPage() {
                                     <Check className="h-5 w-5" />
                                   ) : (
                                     <span className="text-sm font-bold">
-                                      {app.name.charAt(
-                                        0
-                                      )}
+                                      {app.name.charAt(0)}
                                     </span>
                                   )}
                                 </div>
@@ -515,13 +505,115 @@ export default function RegisterPage() {
             </div>
 
             <div className="mt-6 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-sm leading-6 text-blue-900">
-              <strong>
-                SaMi AI is always available.
-              </strong>{" "}
+              <strong>SaMi AI is always available.</strong>{" "}
               The apps you select determine which business
               applications are enabled for this workspace.
               You can add or remove apps later.
             </div>
+
+            {/* ✅ DEBUG INFO DISPLAY - Shows on screen after registration */}
+            {debugInfo && (
+              <div className="mt-6 rounded-2xl border-2 border-slate-300 bg-slate-50 p-5">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <span>🔍 Registration Debug Info</span>
+                  {debugInfo.summary.success ? (
+                    <span className="text-green-600 text-sm font-normal">✅ SUCCESS</span>
+                  ) : (
+                    <span className="text-red-600 text-sm font-normal">❌ FAILED</span>
+                  )}
+                </h3>
+
+                {/* Summary Box */}
+                <div
+                  className={`mt-3 rounded-xl p-4 text-sm ${
+                    debugInfo.summary.success
+                      ? "bg-green-50 border border-green-200 text-green-800"
+                      : "bg-red-50 border border-red-200 text-red-800"
+                  }`}
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <strong>Tables Installed:</strong> {debugInfo.summary.tablesInstalled}
+                    </div>
+                    <div>
+                      <strong>Core Tables (users):</strong> {debugInfo.summary.hasCoreTables ? "✅" : "❌"}
+                    </div>
+                    <div>
+                      <strong>Business Tables:</strong> {debugInfo.summary.hasBusinessTables ? "✅" : "❌"}
+                    </div>
+                    <div>
+                      <strong>Status:</strong> {debugInfo.summary.success ? "✅ Success" : "❌ Failed"}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Steps */}
+                <div className="mt-3">
+                  <strong className="text-sm">Steps:</strong>
+                  <ul className="mt-1 text-xs text-slate-600 space-y-1 max-h-40 overflow-auto">
+                    {debugInfo.steps.map((step, index) => (
+                      <li key={index} className="border-b border-slate-100 pb-1">
+                        {step.step}
+                        {step.details && (
+                          <span className="block text-slate-400 text-[10px] ml-2">
+                            {typeof step.details === 'object' ? JSON.stringify(step.details) : step.details}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Errors */}
+                {debugInfo.errors && debugInfo.errors.length > 0 && (
+                  <div className="mt-3 rounded-xl bg-red-50 border border-red-200 p-3">
+                    <strong className="text-sm text-red-800">❌ Errors:</strong>
+                    <ul className="mt-1 text-xs text-red-700 space-y-1">
+                      {debugInfo.errors.map((err, index) => (
+                        <li key={index}>
+                          <strong>{err.step}:</strong> {err.error}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Tables Found */}
+                {debugInfo.tableCheck && (
+                  <div className="mt-3">
+                    <strong className="text-sm">
+                      Tables Found ({debugInfo.tableCheck.totalTables}):
+                    </strong>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {debugInfo.tableCheck.tables.length > 0 ? (
+                        debugInfo.tableCheck.tables.map((table) => (
+                          <span
+                            key={table}
+                            className="bg-white rounded px-2 py-0.5 text-xs border border-slate-200"
+                          >
+                            {table}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-red-600 text-sm font-semibold">
+                          ⚠️ No tables found! Database is empty.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Raw Debug (expandable) */}
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
+                    Show Raw Debug Data
+                  </summary>
+                  <pre className="mt-2 p-3 bg-white rounded-xl border border-slate-200 overflow-auto text-xs max-h-60">
+                    {JSON.stringify(debugInfo, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            )}
           </section>
         </form>
       </div>
