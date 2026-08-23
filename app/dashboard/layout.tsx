@@ -161,14 +161,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setLoading(false);
     }
   };
-
-  const handleLogout = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/auth/login');
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
+  const handleLogout = () => {
+    router.push('/auth/logout');
   };
 
   const switchBusiness = async (businessId: string) => {
