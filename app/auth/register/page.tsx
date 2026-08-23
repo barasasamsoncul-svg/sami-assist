@@ -9,6 +9,7 @@ import {
   ChevronUp,
   Loader2,
   Sparkles,
+  X,
 } from "lucide-react";
 
 import {
@@ -17,7 +18,7 @@ import {
   getRecommendedAppKeys,
 } from "@/lib/sami-apps";
 
-// ✅ Add type for debug info
+// Debug info type
 interface DebugInfo {
   steps: Array<{ step: string; timestamp: string; details?: any }>;
   errors: Array<{ step: string; error: string; stack?: string; timestamp: string }>;
@@ -56,9 +57,9 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   
-  // ✅ Add debug state
+  // Debug state
   const [debugInfo, setDebugInfo] = useState<DebugInfo | null>(null);
-  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [showDebugModal, setShowDebugModal] = useState(false);
 
   const selectedSet = useMemo(
     () => new Set(selectedApps),
@@ -100,7 +101,7 @@ export default function RegisterPage() {
 
     setError("");
     setDebugInfo(null);
-    setRegistrationSuccess(false);
+    setShowDebugModal(false);
 
     if (selectedApps.length === 0) {
       setError("Please select at least one business app.");
@@ -132,28 +133,34 @@ export default function RegisterPage() {
 
       const data = await response.json();
 
-      // ✅ Set debug info from response
+      // ✅ ALWAYS set debug info if it exists
       if (data.debug) {
         setDebugInfo(data.debug);
-        console.log("🔍 Debug info:", JSON.stringify(data.debug, null, 2));
+        setShowDebugModal(true); // ✅ Show debug modal
+        console.log("🔍 Debug info received:", JSON.stringify(data.debug, null, 2));
       }
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Registration failed.");
+        // Show error but keep debug visible
+        setError(data.error || "Registration failed.");
+        setLoading(false);
+        return;
       }
 
-      setRegistrationSuccess(true);
-
-      // Redirect after a moment so user can see the debug info
-      setTimeout(() => {
-        router.push("/auth/login?registered=true");
-      }, 3000);
+      // ✅ Success - keep debug visible, don't redirect yet
+      setLoading(false);
+      
+      // ✅ Do NOT redirect automatically - let user click "Continue" after seeing debug
 
     } catch (error) {
       setError(error instanceof Error ? error.message : "Registration failed.");
-    } finally {
       setLoading(false);
     }
+  }
+
+  // ✅ Function to continue to login after viewing debug
+  function handleContinueToLogin() {
+    router.push("/auth/login?registered=true");
   }
 
   return (
@@ -329,16 +336,6 @@ export default function RegisterPage() {
               </div>
             )}
 
-            {/* ✅ Success Message */}
-            {registrationSuccess && (
-              <div
-                role="alert"
-                className="mt-6 rounded-xl border border-green-200 bg-green-50 p-4 text-sm leading-6 text-green-700"
-              >
-                ✅ Registration successful! Redirecting to login...
-              </div>
-            )}
-
             {/* Submit */}
             <button
               type="submit"
@@ -510,112 +507,142 @@ export default function RegisterPage() {
               applications are enabled for this workspace.
               You can add or remove apps later.
             </div>
+          </section>
+        </form>
 
-            {/* ✅ DEBUG INFO DISPLAY - Shows on screen after registration */}
-            {debugInfo && (
-              <div className="mt-6 rounded-2xl border-2 border-slate-300 bg-slate-50 p-5">
-                <h3 className="text-lg font-bold flex items-center gap-2">
-                  <span>🔍 Registration Debug Info</span>
+        {/* ✅ DEBUG MODAL - Shows on screen after registration */}
+        {showDebugModal && debugInfo && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <span>🔍 Registration Debug</span>
                   {debugInfo.summary.success ? (
-                    <span className="text-green-600 text-sm font-normal">✅ SUCCESS</span>
+                    <span className="text-green-600 text-sm font-normal bg-green-100 px-3 py-1 rounded-full">
+                      ✅ SUCCESS
+                    </span>
                   ) : (
-                    <span className="text-red-600 text-sm font-normal">❌ FAILED</span>
+                    <span className="text-red-600 text-sm font-normal bg-red-100 px-3 py-1 rounded-full">
+                      ❌ FAILED
+                    </span>
                   )}
-                </h3>
-
-                {/* Summary Box */}
-                <div
-                  className={`mt-3 rounded-xl p-4 text-sm ${
-                    debugInfo.summary.success
-                      ? "bg-green-50 border border-green-200 text-green-800"
-                      : "bg-red-50 border border-red-200 text-red-800"
-                  }`}
+                </h2>
+                <button
+                  onClick={() => setShowDebugModal(false)}
+                  className="p-2 hover:bg-slate-100 rounded-full transition"
                 >
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <strong>Tables Installed:</strong> {debugInfo.summary.tablesInstalled}
-                    </div>
-                    <div>
-                      <strong>Core Tables (users):</strong> {debugInfo.summary.hasCoreTables ? "✅" : "❌"}
-                    </div>
-                    <div>
-                      <strong>Business Tables:</strong> {debugInfo.summary.hasBusinessTables ? "✅" : "❌"}
-                    </div>
-                    <div>
-                      <strong>Status:</strong> {debugInfo.summary.success ? "✅ Success" : "❌ Failed"}
-                    </div>
+                  <X className="h-6 w-6 text-slate-500" />
+                </button>
+              </div>
+
+              {/* Summary Box */}
+              <div
+                className={`rounded-xl p-4 text-sm mb-4 ${
+                  debugInfo.summary.success
+                    ? "bg-green-50 border border-green-200 text-green-800"
+                    : "bg-red-50 border border-red-200 text-red-800"
+                }`}
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <strong>Tables Installed:</strong> {debugInfo.summary.tablesInstalled}
+                  </div>
+                  <div>
+                    <strong>Core Tables (users):</strong> {debugInfo.summary.hasCoreTables ? "✅ Yes" : "❌ No"}
+                  </div>
+                  <div>
+                    <strong>Business Tables:</strong> {debugInfo.summary.hasBusinessTables ? "✅ Yes" : "❌ No"}
+                  </div>
+                  <div>
+                    <strong>Status:</strong> {debugInfo.summary.success ? "✅ Success" : "❌ Failed"}
                   </div>
                 </div>
+              </div>
 
-                {/* Steps */}
-                <div className="mt-3">
-                  <strong className="text-sm">Steps:</strong>
-                  <ul className="mt-1 text-xs text-slate-600 space-y-1 max-h-40 overflow-auto">
-                    {debugInfo.steps.map((step, index) => (
-                      <li key={index} className="border-b border-slate-100 pb-1">
-                        {step.step}
-                        {step.details && (
-                          <span className="block text-slate-400 text-[10px] ml-2">
-                            {typeof step.details === 'object' ? JSON.stringify(step.details) : step.details}
-                          </span>
-                        )}
+              {/* Steps */}
+              <div className="mb-4">
+                <strong className="text-sm">📋 Steps:</strong>
+                <div className="mt-1 text-xs text-slate-600 space-y-1 max-h-40 overflow-auto bg-slate-50 rounded-lg p-3">
+                  {debugInfo.steps.map((step, index) => (
+                    <div key={index} className="border-b border-slate-100 pb-1 last:border-0">
+                      {step.step}
+                      {step.details && (
+                        <span className="block text-slate-400 text-[10px] ml-2">
+                          {typeof step.details === 'object' ? JSON.stringify(step.details) : step.details}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Errors */}
+              {debugInfo.errors && debugInfo.errors.length > 0 && (
+                <div className="mb-4 rounded-xl bg-red-50 border border-red-200 p-3">
+                  <strong className="text-sm text-red-800">❌ Errors:</strong>
+                  <ul className="mt-1 text-xs text-red-700 space-y-1">
+                    {debugInfo.errors.map((err, index) => (
+                      <li key={index}>
+                        <strong>{err.step}:</strong> {err.error}
                       </li>
                     ))}
                   </ul>
                 </div>
+              )}
 
-                {/* Errors */}
-                {debugInfo.errors && debugInfo.errors.length > 0 && (
-                  <div className="mt-3 rounded-xl bg-red-50 border border-red-200 p-3">
-                    <strong className="text-sm text-red-800">❌ Errors:</strong>
-                    <ul className="mt-1 text-xs text-red-700 space-y-1">
-                      {debugInfo.errors.map((err, index) => (
-                        <li key={index}>
-                          <strong>{err.step}:</strong> {err.error}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {/* Tables Found */}
-                {debugInfo.tableCheck && (
-                  <div className="mt-3">
-                    <strong className="text-sm">
-                      Tables Found ({debugInfo.tableCheck.totalTables}):
-                    </strong>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {debugInfo.tableCheck.tables.length > 0 ? (
-                        debugInfo.tableCheck.tables.map((table) => (
-                          <span
-                            key={table}
-                            className="bg-white rounded px-2 py-0.5 text-xs border border-slate-200"
-                          >
-                            {table}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-red-600 text-sm font-semibold">
-                          ⚠️ No tables found! Database is empty.
+              {/* Tables Found */}
+              {debugInfo.tableCheck && (
+                <div className="mb-4">
+                  <strong className="text-sm">
+                    📊 Tables Found ({debugInfo.tableCheck.totalTables}):
+                  </strong>
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {debugInfo.tableCheck.tables.length > 0 ? (
+                      debugInfo.tableCheck.tables.map((table) => (
+                        <span
+                          key={table}
+                          className="bg-slate-100 rounded px-2 py-0.5 text-xs border border-slate-200"
+                        >
+                          {table}
                         </span>
-                      )}
-                    </div>
+                      ))
+                    ) : (
+                      <span className="text-red-600 text-sm font-semibold">
+                        ⚠️ No tables found! Database is empty.
+                      </span>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Raw Debug (expandable) */}
-                <details className="mt-3">
-                  <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
-                    Show Raw Debug Data
-                  </summary>
-                  <pre className="mt-2 p-3 bg-white rounded-xl border border-slate-200 overflow-auto text-xs max-h-60">
-                    {JSON.stringify(debugInfo, null, 2)}
-                  </pre>
-                </details>
+              {/* Raw Debug */}
+              <details className="mb-4">
+                <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800">
+                  Show Raw Debug Data
+                </summary>
+                <pre className="mt-2 p-3 bg-slate-50 rounded-xl border border-slate-200 overflow-auto text-xs max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </details>
+
+              {/* Actions */}
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => setShowDebugModal(false)}
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-xl hover:bg-slate-50 transition"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={handleContinueToLogin}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
+                >
+                  Continue to Login →
+                </button>
               </div>
-            )}
-          </section>
-        </form>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
