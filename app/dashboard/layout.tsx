@@ -47,13 +47,12 @@ import {
   Headphones,
   CalendarClock,
   Calendar,
-  ChevronRight,
+  Sun,
+  Moon,
   Bell,
-  Search,
-  HelpCircle
+  Search
 } from 'lucide-react';
 
-// Map app keys to icons
 const APP_ICONS: Record<string, any> = {
   accounting: Calculator,
   invoicing: Receipt,
@@ -94,33 +93,13 @@ const APP_ICONS: Record<string, any> = {
 };
 
 interface DashboardData {
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-  };
-  businesses: Array<{
-    id: string;
-    name: string;
-    slug: string;
-    role: string;
-  }>;
-  activeBusiness: {
-    id: string;
-    name: string;
-    slug: string;
-    role: string;
-  };
-  installedApps: Array<{
-    key: string;
-    name: string;
-    route: string;
-    description: string;
-  }>;
+  user: { id: string; email: string; fullName: string; };
+  businesses: Array<{ id: string; name: string; slug: string; role: string; }>;
+  activeBusiness: { id: string; name: string; slug: string; role: string; };
+  installedApps: Array<{ key: string; name: string; route: string; description: string; }>;
   databaseReady: boolean;
 }
 
-// SaMi Logo Component
 function SaMiLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const sizes = {
     sm: 'text-xl',
@@ -129,24 +108,14 @@ function SaMiLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   };
 
   return (
-    <div className="flex items-center select-none">
-      <span className={`${sizes[size]} font-extrabold italic tracking-tight`}>
-        <span className="bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 bg-clip-text text-transparent">
-          Sa
-        </span>
-        <span className="bg-gradient-to-r from-purple-600 to-pink-500 bg-clip-text text-transparent">
-          Mi
-        </span>
-      </span>
-    </div>
+    <span className={`${sizes[size]} font-black italic tracking-tighter`}>
+      <span className="text-blue-800 dark:text-blue-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.2)]">Sa</span>
+      <span className="text-gray-900 dark:text-gray-100 drop-shadow-[2px_2px_0_rgba(0,0,0,0.2)]">Mi</span>
+    </span>
   );
 }
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -154,21 +123,34 @@ export default function DashboardLayout({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
 
   useEffect(() => {
+    // Load theme
+    const savedTheme = localStorage.getItem('sami_theme');
+    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      setDarkMode(true);
+      document.documentElement.classList.add('dark');
+    }
     fetchDashboardData();
   }, []);
+
+  const toggleTheme = () => {
+    setDarkMode(!darkMode);
+    if (!darkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('sami_theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('sami_theme', 'light');
+    }
+  };
 
   const fetchDashboardData = async () => {
     try {
       const response = await fetch('/api/dashboard');
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to load dashboard');
-      }
-
+      if (!response.ok) throw new Error(data.error || 'Failed to load dashboard');
       setData(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
@@ -204,11 +186,10 @@ export default function DashboardLayout({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
           <SaMiLogo size="lg" />
           <div className="mt-6 animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-medium">Loading workspace...</p>
         </div>
       </div>
     );
@@ -216,14 +197,10 @@ export default function DashboardLayout({
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="text-center">
-          <SaMiLogo size="lg" />
-          <p className="text-red-600 mb-4 mt-6">{error || 'Failed to load'}</p>
-          <button
-            onClick={() => router.push('/auth/login')}
-            className="text-blue-600 hover:underline font-medium"
-          >
+          <p className="text-red-600 mb-4">{error || 'Failed to load'}</p>
+          <button onClick={() => router.push('/auth/login')} className="text-blue-600 hover:underline">
             Go to login
           </button>
         </div>
@@ -244,83 +221,54 @@ export default function DashboardLayout({
   }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Mobile Overlay */}
       {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden transition-opacity"
-          onClick={() => setSidebarOpen(false)}
-        />
+        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-72 bg-gradient-to-b from-gray-950 via-gray-900 to-gray-950 text-white transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
+      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex flex-col h-full">
-          {/* Sidebar Header */}
-          <div className="p-5 border-b border-white/10">
-            <div className="flex items-center justify-between">
-              <Link href="/dashboard" className="flex items-center gap-2 group">
-                <SaMiLogo />
-              </Link>
-              <button
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden text-gray-400 hover:text-white transition p-1 rounded-lg hover:bg-white/10"
-              >
-                <X size={20} />
-              </button>
-            </div>
+          {/* Logo */}
+          <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+            <Link href="/dashboard">
+              <SaMiLogo />
+            </Link>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X size={18} className="text-gray-500 dark:text-gray-400" />
+            </button>
           </div>
 
           {/* Business Selector */}
-          <div className="p-4 border-b border-white/10 relative">
+          <div className="p-3 border-b border-gray-200 dark:border-gray-800 relative">
             <button
               onClick={() => setBusinessMenuOpen(!businessMenuOpen)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition group"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
-              <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
+              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0">
                 {data.activeBusiness.name.charAt(0)}
               </div>
               <div className="flex-1 text-left">
-                <p className="text-sm font-semibold truncate">
-                  {data.activeBusiness.name}
-                </p>
-                <p className="text-xs text-gray-400 capitalize">
-                  {data.activeBusiness.role}
-                </p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{data.activeBusiness.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{data.activeBusiness.role}</p>
               </div>
-              <ChevronDown 
-                size={16} 
-                className={`text-gray-400 transition-transform ${businessMenuOpen ? 'rotate-180' : ''}`}
-              />
+              <ChevronDown size={14} className={`text-gray-400 transition-transform ${businessMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* Business Dropdown */}
             {businessMenuOpen && (
-              <div className="absolute left-4 right-4 top-full mt-2 bg-gray-900 rounded-xl shadow-2xl border border-white/10 z-50 overflow-hidden">
-                <div className="p-2">
-                  <p className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Switch Business
-                  </p>
+              <div className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50">
+                <div className="p-1">
                   {data.businesses.map((business) => (
                     <button
                       key={business.id}
-                      onClick={() => {
-                        switchBusiness(business.id);
-                        setBusinessMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition ${
+                      onClick={() => { switchBusiness(business.id); setBusinessMenuOpen(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition ${
                         business.id === data.activeBusiness.id
-                          ? 'bg-blue-600/20 text-blue-400'
-                          : 'text-gray-300 hover:bg-white/10'
+                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
                     >
-                      <div className="h-7 w-7 rounded-lg bg-white/10 flex items-center justify-center text-xs font-bold">
-                        {business.name.charAt(0)}
-                      </div>
                       <span className="flex-1 text-left truncate">{business.name}</span>
                       <span className="text-xs capitalize text-gray-500">{business.role}</span>
                     </button>
@@ -331,8 +279,7 @@ export default function DashboardLayout({
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-            {/* Core Items */}
+          <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
             {coreNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.route;
@@ -340,29 +287,24 @@ export default function DashboardLayout({
                 <Link
                   key={item.key}
                   href={item.route}
-                  className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     isActive
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
-                      : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <Icon size={18} className={isActive ? '' : 'group-hover:scale-110 transition-transform'} />
-                  <span className="flex-1">{item.name}</span>
-                  {isActive && <ChevronRight size={14} className="opacity-70" />}
+                  <Icon size={18} />
+                  {item.name}
                 </Link>
               );
             })}
 
-            {/* Separator */}
             {appNavItems.length > 0 && (
-              <div className="pt-5 pb-2">
-                <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Your Apps
-                </p>
+              <div className="pt-4 pb-2">
+                <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Your Apps</p>
               </div>
             )}
 
-            {/* App Items */}
             {appNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.route);
@@ -370,52 +312,26 @@ export default function DashboardLayout({
                 <Link
                   key={item.key}
                   href={item.route}
-                  className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
                     isActive
-                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/20'
-                      : 'text-gray-400 hover:bg-white/10 hover:text-white'
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                   }`}
                 >
-                  <Icon size={18} className={isActive ? '' : 'group-hover:scale-110 transition-transform'} />
-                  <span className="flex-1">{item.name}</span>
+                  <Icon size={18} />
+                  {item.name}
                 </Link>
               );
             })}
-
-            {/* Database Status */}
-            <div className="pt-5">
-              <div className="px-3 py-3 rounded-xl bg-white/5">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-400">Database</p>
-                  <span className={`h-2 w-2 rounded-full ${data.databaseReady ? 'bg-green-400 animate-pulse' : 'bg-yellow-400 animate-pulse'}`} />
-                </div>
-                <p className={`text-xs font-semibold mt-1.5 ${data.databaseReady ? 'text-green-400' : 'text-yellow-400'}`}>
-                  {data.databaseReady ? 'Connected' : 'Provisioning'}
-                </p>
-              </div>
-            </div>
           </nav>
 
-          {/* Sidebar Footer */}
-          <div className="p-4 border-t border-white/10 space-y-1">
-            <Link
-              href="/dashboard/settings"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:bg-white/10 hover:text-white transition"
-            >
+          {/* Footer */}
+          <div className="p-3 border-t border-gray-200 dark:border-gray-800 space-y-0.5">
+            <Link href="/dashboard/settings" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
               <Settings size={18} />
               Settings
             </Link>
-            <Link
-              href="/dashboard/help"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:bg-white/10 hover:text-white transition"
-            >
-              <HelpCircle size={18} />
-              Help & Support
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-400 hover:bg-red-600/20 hover:text-red-400 transition"
-            >
+            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
               <LogOut size={18} />
               Sign Out
             </button>
@@ -423,102 +339,52 @@ export default function DashboardLayout({
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="lg:pl-72">
-        {/* Top Header */}
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-gray-200">
-          {/* Mobile Header */}
-          <div className="lg:hidden px-4 py-3 flex items-center justify-between">
+      {/* Main */}
+      <div className="lg:pl-64">
+        {/* Header */}
+        <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
+          <div className="flex items-center justify-between px-4 lg:px-6 py-3">
             <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="p-2 rounded-lg hover:bg-gray-100 transition"
-              >
-                <Menu size={20} />
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                <Menu size={20} className="text-gray-600 dark:text-gray-400" />
               </button>
-              <SaMiLogo size="sm" />
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition">
-                <Bell size={18} className="text-gray-600" />
-              </button>
-              <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-                {data.user.fullName.charAt(0)}
-              </div>
-            </div>
-          </div>
-
-          {/* Desktop Header */}
-          <div className="hidden lg:flex items-center justify-between px-8 py-3">
-            <div className="flex items-center gap-4">
-              {/* Search Bar */}
-              <div className="relative">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800">
+                <Search size={14} className="text-gray-400" />
                 <input
                   type="text"
                   placeholder="Search..."
-                  className="w-64 pl-10 pr-4 py-2 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                  className="bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none w-48"
                 />
               </div>
             </div>
 
-            <div className="flex items-center gap-4">
-              <button className="p-2 rounded-lg hover:bg-gray-100 transition relative">
-                <Bell size={18} className="text-gray-600" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-red-500 rounded-full" />
+            <div className="flex items-center gap-2">
+              {/* Theme Toggle */}
+              <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+                {darkMode ? <Sun size={18} className="text-gray-600 dark:text-gray-400" /> : <Moon size={18} className="text-gray-600" />}
               </button>
-              
-              {/* User Menu */}
-              <div className="relative">
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-gray-100 transition"
-                >
-                  <div className="h-9 w-9 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-semibold shadow-lg shadow-blue-600/20">
-                    {data.user.fullName.charAt(0)}
-                  </div>
-                  <div className="text-left">
-                    <p className="text-sm font-semibold text-gray-900">
-                      {data.user.fullName}
-                    </p>
-                    <p className="text-xs text-gray-500 capitalize">
-                      {data.activeBusiness.role}
-                    </p>
-                  </div>
-                  <ChevronDown size={14} className="text-gray-400" />
-                </button>
 
-                {userMenuOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
-                    <div className="p-4 border-b border-gray-100">
-                      <p className="text-sm font-semibold text-gray-900">{data.user.fullName}</p>
-                      <p className="text-xs text-gray-500">{data.user.email}</p>
-                    </div>
-                    <div className="p-2">
-                      <Link
-                        href="/dashboard/settings"
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-100 transition"
-                      >
-                        <Settings size={16} />
-                        Settings
-                      </Link>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-600 hover:bg-red-50 transition"
-                      >
-                        <LogOut size={16} />
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                )}
+              <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition relative">
+                <Bell size={18} className="text-gray-600 dark:text-gray-400" />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-blue-600 rounded-full" />
+              </button>
+
+              {/* User */}
+              <div className="flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-gray-700">
+                <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm font-semibold">
+                  {data.user.fullName.charAt(0)}
+                </div>
+                <div className="hidden sm:block">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{data.user.fullName}</p>
+                  <p className="text-xs text-gray-500 capitalize">{data.activeBusiness.role}</p>
+                </div>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="p-4 lg:p-8">
+        {/* Content */}
+        <main className="p-4 lg:p-6">
           {children}
         </main>
       </div>
