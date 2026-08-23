@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import { getTenantDatabaseForUser } from "@/lib/db/tenant";
 import { getUserIdFromRequest } from "@/lib/auth-helpers";
 
 // GET: List all invoices

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
-import { provisionBusiness } from "@/lib/provision-business";
+import { provisionBusiness } from "@/lib/services/provisioning";
 import { normalizeAppKeys } from "@/lib/sami-apps";
 
 export async function POST(request: NextRequest) {

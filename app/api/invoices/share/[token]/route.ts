@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
-import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import { getTenantDatabaseForUser } from "@/lib/db/tenant";
 
 type Context = {
   params: Promise<{ token: string }>;

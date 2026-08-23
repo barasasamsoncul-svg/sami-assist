@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-session";
-import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import { getTenantDatabaseForUser } from "@/lib/db/tenant";
 
 export async function GET() {
   try {

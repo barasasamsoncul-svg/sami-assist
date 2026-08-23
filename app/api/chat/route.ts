@@ -3,7 +3,7 @@ import Groq from "groq-sdk";
 import type { ChatCompletionMessageParam } from "groq-sdk/resources/chat/completions";
 
 import { getAuthenticatedUser } from "@/lib/auth-session";
-import { getTenantDatabaseForUser } from "@/lib/tenant-db";
+import { getTenantDatabaseForUser } from "@/lib/db/tenant";
 import {
   dispatchRead,
   planWrite,

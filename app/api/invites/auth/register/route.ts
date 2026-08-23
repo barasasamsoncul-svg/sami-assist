@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 
 import { registerUser } from "@/lib/user-registration";
-import { provisionBusiness } from "@/lib/provision-business";
+import { provisionBusiness } from "@/lib/services/provisioning";
 import { normalizeAppKeys } from "@/lib/sami-apps";
 
 function generateBusinessSlug(name: string): string {
