@@ -2,10 +2,41 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, getUserBusinesses } from '@/lib/auth/session';
 import { queryControl } from '@/lib/db/control';
 
+// SaMi Pricing - Odoo style with AI limits
 const PRICING = {
-  free: { plan: 'free', name: 'Free', basePrice: 0, includedApps: 1, includedUsers: 1, pricePerApp: 0, pricePerUser: 0 },
-  business: { plan: 'business', name: 'Business', basePrice: 29, includedApps: 3, includedUsers: 5, pricePerApp: 5, pricePerUser: 3 },
-  enterprise: { plan: 'enterprise', name: 'Enterprise', basePrice: 99, includedApps: 10, includedUsers: 20, pricePerApp: 8, pricePerUser: 5 },
+  free: {
+    plan: 'free',
+    name: 'One App Free',
+    includedApps: 1,
+    includedUsers: -1, // unlimited
+    pricePerUser: 0,
+    aiQueriesIncluded: 100,
+    aiQueryLimit: 100,
+    monthlyPricePerUser: 0,
+    annualPricePerUser: 0,
+  },
+  standard: {
+    plan: 'standard',
+    name: 'Standard',
+    includedApps: -1, // all apps
+    includedUsers: 0, // all users billed
+    pricePerUser: 14.90,
+    aiQueriesIncluded: 1000,
+    aiQueryLimit: 1000,
+    monthlyPricePerUser: 14.90,
+    annualPricePerUser: 11.90, // 20% discount for annual
+  },
+  custom: {
+    plan: 'custom',
+    name: 'Custom',
+    includedApps: -1, // all apps
+    includedUsers: 0, // all users billed
+    pricePerUser: 24.90,
+    aiQueriesIncluded: -1, // unlimited
+    aiQueryLimit: -1,
+    monthlyPricePerUser: 24.90,
+    annualPricePerUser: 19.90,
+  },
 };
 
 export async function GET(request: NextRequest) {
@@ -18,45 +49,61 @@ export async function GET(request: NextRequest) {
 
     if (!activeBusinessId) return NextResponse.json({ error: 'No business found' }, { status: 403 });
 
+    // Get subscription
     const subResult = await queryControl(
       `SELECT * FROM subscriptions WHERE business_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
       [activeBusinessId]
     );
-    const subscription = subResult.rows[0] || null;
+    const subscription = subResult.rows[0] || { plan: 'free', billing_cycle: 'monthly' };
 
+    // Count enabled apps
     const appsCount = await queryControl(
       `SELECT COUNT(*) as count FROM business_apps WHERE business_id = $1 AND enabled = true`,
       [activeBusinessId]
     );
     const enabledApps = parseInt(appsCount.rows[0].count);
 
+    // Count active team members (excluding owner for free plan billing)
     const teamCount = await queryControl(
       `SELECT COUNT(*) as count FROM business_users WHERE business_id = $1 AND status = 'active'`,
       [activeBusinessId]
     );
     const activeUsers = parseInt(teamCount.rows[0].count);
 
-    const planKey = subscription?.plan || 'free';
+    const planKey = subscription.plan || 'free';
     const plan = PRICING[planKey as keyof typeof PRICING] || PRICING.free;
 
-    const extraApps = Math.max(0, enabledApps - plan.includedApps);
-    const extraUsers = Math.max(0, activeUsers - plan.includedUsers);
+    // Calculate billing
+    let billableUsers = 0;
+    let userCost = 0;
+    let totalMonthly = 0;
+
+    if (planKey === 'free') {
+      // Free: 1 app, unlimited users, no charge
+      billableUsers = 0;
+      userCost = 0;
+      totalMonthly = 0;
+    } else {
+      // Paid plans: charge per active user
+      billableUsers = activeUsers;
+      userCost = billableUsers * plan.pricePerUser;
+      totalMonthly = userCost;
+    }
 
     const billing = {
       plan: plan.name,
       planKey,
-      basePrice: plan.basePrice,
-      includedApps: plan.includedApps,
-      includedUsers: plan.includedUsers,
-      pricePerApp: plan.pricePerApp,
-      pricePerUser: plan.pricePerUser,
+      billingCycle: subscription.billing_cycle || 'monthly',
+      includedApps: plan.includedApps === -1 ? 'All Apps' : plan.includedApps,
+      includedUsers: plan.includedUsers === -1 ? 'Unlimited' : 'All users billed',
+      pricePerUserMonthly: plan.monthlyPricePerUser,
+      pricePerUserAnnual: plan.annualPricePerUser,
       enabledApps,
       activeUsers,
-      extraApps,
-      extraUsers,
-      appsCost: extraApps * plan.pricePerApp,
-      usersCost: extraUsers * plan.pricePerUser,
-      totalMonthly: plan.basePrice + (extraApps * plan.pricePerApp) + (extraUsers * plan.pricePerUser),
+      billableUsers,
+      userCost,
+      totalMonthly,
+      aiQueriesIncluded: plan.aiQueriesIncluded === -1 ? 'Unlimited' : `${plan.aiQueriesIncluded}/month`,
       currency: 'USD',
     };
 
@@ -73,9 +120,9 @@ export async function POST(request: NextRequest) {
     const session = await getSession();
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-    const { plan } = await request.json();
+    const { plan, billingCycle } = await request.json();
 
-    if (!['free', 'business', 'enterprise'].includes(plan)) {
+    if (!['free', 'standard', 'custom'].includes(plan)) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
@@ -84,12 +131,28 @@ export async function POST(request: NextRequest) {
 
     if (!activeBusinessId) return NextResponse.json({ error: 'No business found' }, { status: 403 });
 
+    // Update subscription with billing cycle
     await queryControl(
-      `UPDATE subscriptions SET plan = $1, updated_at = NOW() WHERE business_id = $2 AND status = 'active'`,
-      [plan, activeBusinessId]
+      `UPDATE subscriptions 
+       SET plan = $1, 
+           updated_at = NOW(),
+           current_period_end = CASE 
+             WHEN $2 = 'monthly' THEN NOW() + INTERVAL '1 month'
+             WHEN $2 = 'annual' THEN NOW() + INTERVAL '1 year'
+             ELSE current_period_end
+           END
+       WHERE business_id = $3 AND status = 'active'`,
+      [plan, billingCycle || 'monthly', activeBusinessId]
     );
 
-    return NextResponse.json({ success: true, message: `Plan updated to ${plan}` });
+    // Log to audit
+    await queryControl(
+      `INSERT INTO audit_logs (user_id, business_id, action, resource_type, details)
+       VALUES ($1, $2, 'subscription_update', 'subscription', $3)`,
+      [session.user.id, activeBusinessId, JSON.stringify({ plan, billingCycle })]
+    );
+
+    return NextResponse.json({ success: true, message: `Plan updated to ${plan} (${billingCycle || 'monthly'})` });
 
   } catch (error) {
     console.error('Update subscription error:', error);
