@@ -1,44 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { queryControl } from '@/lib/db/control';
+import { queryControl, getControlPool } from '@/lib/db/control';
 import { provisionBusinessDatabase } from '@/lib/services/provisioning';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { fullName, email, password, businessName, selectedApps } = body;
+    const { fullName, email, password, businessName } = body;
 
-    // Validate input
+    // Validate
     if (!fullName || !email || !password || !businessName) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-
     if (password.length < 8) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
-    // Check if user already exists
+    // Check existing user
     const existingUser = await queryControl(
       'SELECT id FROM users WHERE email = $1',
       [email.toLowerCase()]
     );
-
     if (existingUser.rows.length > 0) {
-      return NextResponse.json(
-        { error: 'Email already registered' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
     }
 
-    // Start transaction for user + business creation
-    const client = await (await import('@/lib/db/control')).getControlPool().connect();
-    
+    const client = await getControlPool().connect();
+
     try {
       await client.query('BEGIN');
 
@@ -62,59 +50,54 @@ export async function POST(request: NextRequest) {
       );
       const businessId = businessResult.rows[0].id;
 
-      // 3. Create business_user relationship (owner role)
+      // 3. Create business_user (owner)
       await client.query(
         `INSERT INTO business_users (business_id, user_id, role, status)
          VALUES ($1, $2, 'owner', 'active')`,
         [businessId, userId]
       );
 
-      // 4. Record selected apps in business_apps
-      if (selectedApps && selectedApps.length > 0) {
-        for (const appKey of selectedApps) {
-          await client.query(
-            `INSERT INTO business_apps (business_id, app_key, enabled)
-             VALUES ($1, $2, true)`,
-            [businessId, appKey]
-          );
-        }
-      }
-
-      // 5. Create subscription (free plan)
+      // 4. Create subscription (free by default)
       await client.query(
-        `INSERT INTO subscriptions (business_id, plan, status)
-         VALUES ($1, 'free', 'active')`,
+        `INSERT INTO subscriptions (business_id, plan, status, billing_cycle, ai_queries_limit)
+         VALUES ($1, 'free', 'active', 'monthly', 100)`,
         [businessId]
+      );
+
+      // 5. Initialize AI usage for this month
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      await client.query(
+        `INSERT INTO ai_usage (business_id, user_id, query_count, tokens_used, month)
+         VALUES ($1, $2, 0, 0, $3)`,
+        [businessId, userId, currentMonth]
       );
 
       await client.query('COMMIT');
 
-      // 6. Provision tenant database (async - outside transaction)
-      const provisioning = await provisionBusinessDatabase(
-        businessId,
-        businessName,
-        selectedApps || []
-      );
+      // 6. Provision tenant database (outside transaction)
+      const provisioning = await provisionBusinessDatabase(businessId, businessName, []);
 
       if (!provisioning.success) {
-        // Log but don't fail registration - can retry later
         console.error('Database provisioning failed:', provisioning.error);
+        // Log to audit
+        await queryControl(
+          `INSERT INTO audit_logs (business_id, action, resource_type, details)
+           VALUES ($1, 'provisioning_failed', 'database', $2)`,
+          [businessId, JSON.stringify({ error: provisioning.error })]
+        );
       }
 
-      // Return success
+      // Log registration
+      await queryControl(
+        `INSERT INTO audit_logs (user_id, business_id, action, resource_type, resource_id, details)
+         VALUES ($1, $2, 'business_created', 'business', $2, $3)`,
+        [userId, businessId, JSON.stringify({ name: businessName })]
+      );
+
       return NextResponse.json({
         success: true,
-        message: 'Registration successful',
-        user: {
-          id: userId,
-          email: userResult.rows[0].email,
-          fullName: userResult.rows[0].full_name,
-        },
-        business: {
-          id: businessId,
-          name: businessResult.rows[0].name,
-          slug: businessResult.rows[0].slug,
-        },
+        user: { id: userId, email: userResult.rows[0].email, fullName: userResult.rows[0].full_name },
+        business: { id: businessId, name: businessResult.rows[0].name, slug: businessResult.rows[0].slug },
       });
 
     } catch (error) {
@@ -126,9 +109,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json(
-      { error: 'Registration failed. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Registration failed. Please try again.' }, { status: 500 });
   }
 }
