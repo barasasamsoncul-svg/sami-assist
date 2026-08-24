@@ -51,7 +51,12 @@ import {
   Moon,
   Bell,
   Search,
-  ChevronRight
+  ChevronRight,
+  Building2,
+  CreditCard,
+  Key,
+  History,
+  AppWindow
 } from 'lucide-react';
 
 const APP_ICONS: Record<string, any> = {
@@ -93,6 +98,15 @@ const APP_ICONS: Record<string, any> = {
   appointments: Calendar,
 };
 
+const SETTINGS_ITEMS = [
+  { key: 'general', name: 'Business Profile', route: '/dashboard/settings?tab=general', icon: Building2 },
+  { key: 'team', name: 'Team', route: '/dashboard/settings?tab=team', icon: Users },
+  { key: 'apps', name: 'Apps', route: '/dashboard/settings?tab=apps', icon: AppWindow },
+  { key: 'subscription', name: 'Subscription', route: '/dashboard/settings/subscription', icon: CreditCard },
+  { key: 'api-keys', name: 'API Keys', route: '/dashboard/settings?tab=api-keys', icon: Key },
+  { key: 'audit-logs', name: 'Audit Logs', route: '/dashboard/settings?tab=audit-logs', icon: History },
+];
+
 interface DashboardData {
   user: { id: string; email: string; fullName: string; };
   businesses: Array<{ id: string; name: string; slug: string; role: string; }>;
@@ -124,6 +138,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -135,6 +150,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     fetchDashboardData();
   }, []);
+
+  useEffect(() => {
+    // Auto-expand settings if on settings page
+    if (pathname.startsWith('/dashboard/settings')) {
+      setSettingsOpen(true);
+    }
+  }, [pathname]);
 
   const toggleTheme = () => {
     setDarkMode(!darkMode);
@@ -183,7 +205,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const getCurrentTitle = () => {
     if (pathname === '/dashboard') return data?.activeBusiness.name || 'Dashboard';
     if (pathname === '/dashboard/ai') return 'SaMi AI';
-    if (pathname === '/dashboard/settings') return 'Settings';
+    if (pathname.startsWith('/dashboard/settings')) return 'Settings';
     const match = appNavItems.find(item => pathname.startsWith(item.route));
     return match ? match.name : data?.activeBusiness.name || 'Dashboard';
   };
@@ -191,8 +213,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const getCurrentLocation = () => {
     if (pathname === '/dashboard') return 'Overview';
     if (pathname === '/dashboard/ai') return 'Chat';
-    if (pathname === '/dashboard/settings') return 'Settings';
-    
+    if (pathname === '/dashboard/settings/subscription') return 'Subscription';
+    if (pathname.startsWith('/dashboard/settings')) {
+      const tab = pathname.split('tab=')[1];
+      return tab ? tab.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Settings';
+    }
     const parts = pathname.split('/').filter(Boolean);
     if (parts.length > 2) {
       const subPath = parts.slice(2).join(' / ');
@@ -320,6 +345,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
+            {/* Core Items */}
             {filteredNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.route || (item.route !== '/dashboard' && pathname.startsWith(item.route));
@@ -343,6 +369,50 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {searchQuery && filteredNavItems.length === 0 && (
               <p className="text-center text-sm text-gray-400 py-4">No apps found</p>
             )}
+
+            {/* Separator */}
+            <div className="pt-4 pb-2">
+              <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">System</p>
+            </div>
+
+            {/* Settings Dropdown */}
+            <div>
+              <button
+                onClick={() => setSettingsOpen(!settingsOpen)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
+                  pathname.startsWith('/dashboard/settings')
+                    ? 'bg-blue-600 text-white'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <Settings size={18} />
+                <span className="flex-1">Settings</span>
+                <ChevronDown size={14} className={`transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {settingsOpen && (
+                <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-200 dark:border-gray-700 pl-2">
+                  {SETTINGS_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.route || pathname.includes(`tab=${item.key}`);
+                    return (
+                      <Link
+                        key={item.key}
+                        href={item.route}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition ${
+                          isActive
+                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <Icon size={14} />
+                        {item.name}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Database Status */}
             <div className="pt-4">
@@ -369,16 +439,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{data.user.email}</p>
               </div>
             </div>
-            <div className="mt-2 space-y-0.5">
-              <Link href="/dashboard/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-                <Settings size={16} />
-                Settings
-              </Link>
-              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-                <LogOut size={16} />
-                Sign Out
-              </button>
-            </div>
+            <button onClick={handleLogout} className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+              <LogOut size={16} />
+              Sign Out
+            </button>
           </div>
         </div>
       </aside>
@@ -398,7 +462,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </h1>
             </div>
 
-            {/* Middle: Breadcrumb / Current Location */}
+            {/* Middle: Breadcrumb */}
             <div className="flex-1 flex justify-center px-4">
               <nav className="flex items-center gap-2 text-sm">
                 <span className="text-gray-400 dark:text-gray-500">/</span>
