@@ -50,7 +50,8 @@ import {
   Sun,
   Moon,
   Bell,
-  Search
+  Search,
+  ChevronRight
 } from 'lucide-react';
 
 const APP_ICONS: Record<string, any> = {
@@ -124,9 +125,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [error, setError] = useState('');
   const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
-    // Load theme
     const savedTheme = localStorage.getItem('sami_theme');
     if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
       setDarkMode(true);
@@ -161,6 +162,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setLoading(false);
     }
   };
+
   const handleLogout = () => {
     router.push('/auth/logout');
   };
@@ -214,6 +216,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     icon: APP_ICONS[app.key] || Boxes,
   }));
 
+  const allNavItems = [...coreNavItems, ...appNavItems];
+
+  // Filter nav items by search
+  const filteredNavItems = searchQuery
+    ? allNavItems.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    : allNavItems;
+
+  // Determine current page title
+  const getCurrentTitle = () => {
+    if (pathname === '/dashboard') {
+      return data.activeBusiness.name;
+    }
+    if (pathname === '/dashboard/ai') {
+      return 'SaMi AI';
+    }
+    if (pathname === '/dashboard/settings') {
+      return 'Settings';
+    }
+    const match = appNavItems.find(item => pathname.startsWith(item.route));
+    return match ? match.name : data.activeBusiness.name;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Mobile Overlay */}
@@ -232,6 +256,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
               <X size={18} className="text-gray-500 dark:text-gray-400" />
             </button>
+          </div>
+
+          {/* Search */}
+          <div className="p-3 border-b border-gray-200 dark:border-gray-800">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search apps..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              />
+            </div>
           </div>
 
           {/* Business Selector */}
@@ -274,9 +312,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-            {coreNavItems.map((item) => {
+            {filteredNavItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.route;
+              const isActive = pathname === item.route || (item.route !== '/dashboard' && pathname.startsWith(item.route));
               return (
                 <Link
                   key={item.key}
@@ -288,35 +326,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   }`}
                 >
                   <Icon size={18} />
-                  {item.name}
+                  <span className="flex-1">{item.name}</span>
+                  {isActive && <ChevronRight size={14} className="opacity-70" />}
                 </Link>
               );
             })}
 
-            {appNavItems.length > 0 && (
-              <div className="pt-4 pb-2">
-                <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Your Apps</p>
-              </div>
+            {searchQuery && filteredNavItems.length === 0 && (
+              <p className="text-center text-sm text-gray-400 py-4">No apps found</p>
             )}
 
-            {appNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname.startsWith(item.route);
-              return (
-                <Link
-                  key={item.key}
-                  href={item.route}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <Icon size={18} />
-                  {item.name}
-                </Link>
-              );
-            })}
+            {/* Database Status */}
+            <div className="pt-4">
+              <div className="px-3 py-3 rounded-lg bg-gray-100 dark:bg-gray-800">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Database</p>
+                  <span className={`h-2 w-2 rounded-full ${data.databaseReady ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`} />
+                </div>
+                <p className={`text-xs font-semibold mt-1 ${data.databaseReady ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
+                  {data.databaseReady ? 'Connected' : 'Provisioning'}
+                </p>
+              </div>
+            </div>
           </nav>
 
           {/* Footer */}
@@ -338,41 +369,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between px-4 lg:px-6 py-3">
+            {/* Mobile: Menu + Title */}
             <div className="flex items-center gap-3">
               <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
                 <Menu size={20} className="text-gray-600 dark:text-gray-400" />
               </button>
-              <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800">
-                <Search size={14} className="text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  className="bg-transparent text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none w-48"
-                />
-              </div>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+                {getCurrentTitle()}
+              </h1>
             </div>
 
+            {/* Right: Theme + Notifications */}
             <div className="flex items-center gap-2">
-              {/* Theme Toggle */}
               <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
                 {darkMode ? <Sun size={18} className="text-gray-600 dark:text-gray-400" /> : <Moon size={18} className="text-gray-600" />}
               </button>
-
               <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition relative">
                 <Bell size={18} className="text-gray-600 dark:text-gray-400" />
                 <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-blue-600 rounded-full" />
               </button>
-
-              {/* User */}
-              <div className="flex items-center gap-2 pl-2 border-l border-gray-200 dark:border-gray-700">
-                <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm font-semibold">
-                  {data.user.fullName.charAt(0)}
-                </div>
-                <div className="hidden sm:block">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight">{data.user.fullName}</p>
-                  <p className="text-xs text-gray-500 capitalize">{data.activeBusiness.role}</p>
-                </div>
-              </div>
             </div>
           </div>
         </header>
