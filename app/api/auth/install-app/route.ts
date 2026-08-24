@@ -13,24 +13,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
     }
 
-    // Check if schema exists
     const schemaPath = path.join(process.cwd(), `lib/apps/${appKey}/schema.sql`);
     if (!fs.existsSync(schemaPath)) {
       return NextResponse.json({ error: `Schema not found for ${appKey}` }, { status: 404 });
     }
 
-    // Get tenant database
     const databaseName = await getTenantDatabaseName(businessId);
     if (!databaseName) {
       return NextResponse.json({ error: 'Database not ready' }, { status: 503 });
     }
 
-    // Install schema
     const schema = fs.readFileSync(schemaPath, 'utf-8');
     const tenantPool = getTenantPool(databaseName);
     await tenantPool.query(schema);
 
-    // Record in business_apps
     await queryControl(
       `INSERT INTO business_apps (business_id, app_key, enabled)
        VALUES ($1, $2, true)
