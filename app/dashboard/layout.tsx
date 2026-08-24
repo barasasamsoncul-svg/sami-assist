@@ -180,6 +180,30 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
+  const getCurrentTitle = () => {
+    if (pathname === '/dashboard') return data?.activeBusiness.name || 'Dashboard';
+    if (pathname === '/dashboard/ai') return 'SaMi AI';
+    if (pathname === '/dashboard/settings') return 'Settings';
+    const match = appNavItems.find(item => pathname.startsWith(item.route));
+    return match ? match.name : data?.activeBusiness.name || 'Dashboard';
+  };
+
+  const getCurrentLocation = () => {
+    if (pathname === '/dashboard') return 'Overview';
+    if (pathname === '/dashboard/ai') return 'Chat';
+    if (pathname === '/dashboard/settings') return 'Settings';
+    
+    const parts = pathname.split('/').filter(Boolean);
+    if (parts.length > 2) {
+      const subPath = parts.slice(2).join(' / ');
+      return subPath.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+    }
+    if (parts.length === 2 && parts[1] !== 'dashboard') {
+      return 'Overview';
+    }
+    return '';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -218,25 +242,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const allNavItems = [...coreNavItems, ...appNavItems];
 
-  // Filter nav items by search
   const filteredNavItems = searchQuery
     ? allNavItems.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
     : allNavItems;
-
-  // Determine current page title
-  const getCurrentTitle = () => {
-    if (pathname === '/dashboard') {
-      return data.activeBusiness.name;
-    }
-    if (pathname === '/dashboard/ai') {
-      return 'SaMi AI';
-    }
-    if (pathname === '/dashboard/settings') {
-      return 'Settings';
-    }
-    const match = appNavItems.find(item => pathname.startsWith(item.route));
-    return match ? match.name : data.activeBusiness.name;
-  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -350,16 +358,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </nav>
 
-          {/* Footer */}
-          <div className="p-3 border-t border-gray-200 dark:border-gray-800 space-y-0.5">
-            <Link href="/dashboard/settings" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-              <Settings size={18} />
-              Settings
-            </Link>
-            <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-              <LogOut size={18} />
-              Sign Out
-            </button>
+          {/* Footer - User Info */}
+          <div className="p-3 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-3 px-3 py-2.5">
+              <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-semibold shrink-0">
+                {data.user.fullName.charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{data.user.fullName}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{data.user.email}</p>
+              </div>
+            </div>
+            <div className="mt-2 space-y-0.5">
+              <Link href="/dashboard/settings" className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+                <Settings size={16} />
+                Settings
+              </Link>
+              <button onClick={handleLogout} className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
+                <LogOut size={16} />
+                Sign Out
+              </button>
+            </div>
           </div>
         </div>
       </aside>
@@ -369,18 +388,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Header */}
         <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-center justify-between px-4 lg:px-6 py-3">
-            {/* Mobile: Menu + Title */}
-            <div className="flex items-center gap-3">
-              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            {/* Left: Module/Business Name */}
+            <div className="flex items-center gap-3 min-w-0">
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
                 <Menu size={20} className="text-gray-600 dark:text-gray-400" />
               </button>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">
                 {getCurrentTitle()}
               </h1>
             </div>
 
+            {/* Middle: Breadcrumb / Current Location */}
+            <div className="flex-1 flex justify-center px-4">
+              <nav className="flex items-center gap-2 text-sm">
+                <span className="text-gray-400 dark:text-gray-500">/</span>
+                <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {getCurrentLocation()}
+                </span>
+              </nav>
+            </div>
+
             {/* Right: Theme + Notifications */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
                 {darkMode ? <Sun size={18} className="text-gray-600 dark:text-gray-400" /> : <Moon size={18} className="text-gray-600" />}
               </button>
