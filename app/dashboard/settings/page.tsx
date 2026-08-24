@@ -61,26 +61,43 @@ function SettingsContent() {
     fetchAllSettings();
   }, [activeTab]);
 
-  const fetchAllSettings = async () => {
+ const fetchAllSettings = async () => {
     setLoading(true);
+    setError('');
     try {
-      const [settingsRes, subRes, keysRes, logsRes] = await Promise.all([
-        fetch('/api/settings'),
-        fetch('/api/settings/subscription'),
-        fetch('/api/settings/api-keys'),
-        fetch('/api/settings/audit-logs'),
-      ]);
-
+      // Fetch main settings first
+      const settingsRes = await fetch('/api/settings');
       const settingsData = await settingsRes.json();
-      const subData = await subRes.json();
-      const keysData = await keysRes.json();
-      const logsData = await logsRes.json();
+      
+      if (!settingsRes.ok || !settingsData.success) {
+        throw new Error(settingsData.error || 'Failed to load settings');
+      }
+
+      // Fetch optional data separately
+      let subData = { subscription: null, billing: null, enabledApps: 0 };
+      let keysData = { keys: [] };
+      let logsData = { logs: [] };
+
+      try {
+        const subRes = await fetch('/api/settings/subscription');
+        if (subRes.ok) subData = await subRes.json();
+      } catch (e) { console.log('Subscription API not ready'); }
+
+      try {
+        const keysRes = await fetch('/api/settings/api-keys');
+        if (keysRes.ok) keysData = await keysRes.json();
+      } catch (e) { console.log('API keys API not ready'); }
+
+      try {
+        const logsRes = await fetch('/api/settings/audit-logs');
+        if (logsRes.ok) logsData = await logsRes.json();
+      } catch (e) { console.log('Audit logs API not ready'); }
 
       setData({
         business: settingsData.business,
-        apps: settingsData.apps,
-        team: settingsData.team,
-        invites: settingsData.invites,
+        apps: settingsData.apps || [],
+        team: settingsData.team || [],
+        invites: settingsData.invites || [],
         subscription: subData.subscription,
         billing: subData.billing,
         enabledApps: subData.enabledApps,
@@ -89,24 +106,25 @@ function SettingsContent() {
       });
 
       setBusinessForm({
-        name: settingsData.business.name || '',
-        email: settingsData.business.email || '',
-        phone: settingsData.business.phone || '',
-        website: settingsData.business.website || '',
-        address: settingsData.business.address || '',
-        country: settingsData.business.country || '',
-        currency: settingsData.business.currency || 'KES',
-        timezone: settingsData.business.timezone || 'Africa/Nairobi',
-        industry: settingsData.business.industry || '',
-        tax_id: settingsData.business.tax_id || '',
-        registration_number: settingsData.business.registration_number || '',
-        business_type: settingsData.business.business_type || '',
-        employee_count: settingsData.business.employee_count || '',
-        founded_year: settingsData.business.founded_year || '',
+        name: settingsData.business?.name || '',
+        email: settingsData.business?.email || '',
+        phone: settingsData.business?.phone || '',
+        website: settingsData.business?.website || '',
+        address: settingsData.business?.address || '',
+        country: settingsData.business?.country || '',
+        currency: settingsData.business?.currency || 'KES',
+        timezone: settingsData.business?.timezone || 'Africa/Nairobi',
+        industry: settingsData.business?.industry || '',
+        tax_id: settingsData.business?.tax_id || '',
+        registration_number: settingsData.business?.registration_number || '',
+        business_type: settingsData.business?.business_type || '',
+        employee_count: settingsData.business?.employee_count || '',
+        founded_year: settingsData.business?.founded_year || '',
       });
 
     } catch (err) {
-      setError('Failed to load settings');
+      setError(err instanceof Error ? err.message : 'Failed to load settings');
+      console.error('Settings load error:', err);
     } finally {
       setLoading(false);
     }
