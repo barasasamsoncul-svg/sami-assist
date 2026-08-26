@@ -453,7 +453,6 @@ function SettingsGroup({
     </div>
   );
 }
-const [settingsOpen, setSettingsOpen] = useState(false);
 /* =========================================================
    MAIN LAYOUT
 ========================================================= */
@@ -481,6 +480,8 @@ function DashboardLayoutContent({
   const [darkMode, setDarkMode] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
+
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   /* =======================================================
      THEME
@@ -513,13 +514,6 @@ function DashboardLayoutContent({
   /* =======================================================
      CLOSE MENUS WHEN ROUTE CHANGES
   ======================================================= */
-
-  useEffect(() => {
-    setSidebarOpen(false);
-    setBusinessMenuOpen(false);
-    setAccountMenuOpen(false);
-  }, [pathname, searchParams]);
-
   /* =======================================================
      KEYBOARD SEARCH
   ======================================================= */
