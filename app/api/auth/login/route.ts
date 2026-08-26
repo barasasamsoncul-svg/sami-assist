@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { queryControl, getControlPool } from '@/lib/db/control';
-import { sendTwoFactorCode } from '@/lib/services/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +15,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user (include email_verified and two_factor_enabled)
+    // Find user
     const userResult = await queryControl(
       `SELECT id, email, password_hash, full_name, status, email_verified, two_factor_enabled 
        FROM users 
@@ -59,29 +58,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if 2FA is enabled
+    // Check if 2FA is enabled - return requires2FA without creating session
     if (user.two_factor_enabled) {
-      const twoFactorCode = Math.floor(100000 + Math.random() * 900000).toString();
-      const codeExpires = new Date();
-      codeExpires.setMinutes(codeExpires.getMinutes() + 10);
-
-      await queryControl(
-        `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
-         VALUES ($1, $2, $3)`,
-        [user.id, `2fa_${twoFactorCode}`, codeExpires]
-      );
-
-      await sendTwoFactorCode(user.email, twoFactorCode);
-
       return NextResponse.json({
         success: true,
         requires2FA: true,
         userId: user.id,
-        message: 'Verification code sent to your email',
+        message: 'Two-factor authentication required',
       });
     }
 
-    // No 2FA - proceed with session creation
+    // No 2FA - create session directly
     const businessesResult = await queryControl(
       `SELECT 
         b.id,
@@ -148,6 +135,13 @@ export async function POST(request: NextRequest) {
       );
 
       await client.query('COMMIT');
+
+      // Log
+      await queryControl(
+        `INSERT INTO audit_logs (user_id, action, resource_type, details)
+         VALUES ($1, 'login', 'session', $2)`,
+        [user.id, JSON.stringify({ device, browser, os })]
+      );
 
       const response = NextResponse.json({
         success: true,

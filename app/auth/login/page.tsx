@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, Loader2, Shield, Mail, Lock, ArrowRight } from 'lucide-react';
+import { Sun, Moon, Loader2, Shield, Mail, Lock, ArrowRight, ArrowLeft, Smartphone } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 function LoginForm() {
@@ -15,31 +15,41 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [darkMode, setDarkMode] = useState(false);
-  
+
   // 2FA state
   const [show2FA, setShow2FA] = useState(false);
   const [userId, setUserId] = useState('');
+  const [twoFactorMethod, setTwoFactorMethod] = useState<'email' | 'authenticator' | null>(null);
   const [twoFactorCode, setTwoFactorCode] = useState('');
+  const [sendingCode, setSendingCode] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
+    } else {
+      setDarkMode(false);
+      document.documentElement.classList.remove('dark');
     }
-    
+
     if (searchParams.get('registered') === 'true') {
       setSuccess('Registration successful! Please check your email to verify your account, then sign in.');
     }
-    
     if (searchParams.get('verified') === 'true') {
       setSuccess('Email verified! You can now sign in.');
+    }
+    if (searchParams.get('invited') === 'true') {
+      setSuccess('Invite accepted! Please sign in to access the workspace.');
     }
   }, [searchParams]);
 
   const toggleTheme = () => {
-    setDarkMode(!darkMode);
-    if (!darkMode) {
+    const next = !darkMode;
+    setDarkMode(next);
+    if (next) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('sami_theme', 'dark');
     } else {
@@ -66,11 +76,9 @@ function LoginForm() {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Check if 2FA is required
       if (data.requires2FA) {
         setShow2FA(true);
         setUserId(data.userId);
-        setSuccess('Verification code sent to your email');
         setLoading(false);
         return;
       }
@@ -82,13 +90,37 @@ function LoginForm() {
     }
   };
 
+  const handleSendEmailCode = async () => {
+    setSendingCode(true);
+    setError('');
+    try {
+      const response = await fetch('/api/auth/2fa/send-email-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to send code');
+      setTwoFactorMethod('email');
+      setSuccess('Code sent to your email');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to send code');
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
   const handle2FAVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    const endpoint = twoFactorMethod === 'email' 
+      ? '/api/auth/2fa/login-verify' 
+      : '/api/auth/2fa/verify-authenticator';
+
     try {
-      const response = await fetch('/api/auth/2fa/login-verify', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, code: twoFactorCode }),
@@ -109,6 +141,7 @@ function LoginForm() {
 
   const handleBackToLogin = () => {
     setShow2FA(false);
+    setTwoFactorMethod(null);
     setTwoFactorCode('');
     setError('');
     setSuccess('');
@@ -121,7 +154,7 @@ function LoginForm() {
         onClick={toggleTheme}
         className="absolute top-4 right-4 p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition"
       >
-        {darkMode ? <Sun size={20} className="text-gray-600 dark:text-gray-400" /> : <Moon size={20} className="text-gray-600" />}
+        {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
       </button>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -136,7 +169,7 @@ function LoginForm() {
             {show2FA ? 'Two-Factor Authentication' : 'Welcome back'}
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {show2FA ? 'Enter the code sent to your email' : 'Sign in to your workspace'}
+            {show2FA ? 'Verify your identity to continue' : 'Sign in to your workspace'}
           </p>
         </div>
       </div>
@@ -155,22 +188,64 @@ function LoginForm() {
         )}
 
         <div className="bg-white dark:bg-gray-900 py-8 px-6 shadow-xl shadow-gray-200/50 dark:shadow-black/20 rounded-2xl border border-gray-200 dark:border-gray-800 sm:px-10">
-          {show2FA ? (
-            /* 2FA Form */
+          {show2FA && !twoFactorMethod ? (
+            /* CHOOSE 2FA METHOD */
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+                Choose how you want to verify:
+              </p>
+
+              <button
+                onClick={handleSendEmailCode}
+                disabled={sendingCode}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 transition disabled:opacity-50"
+              >
+                <Mail size={22} className="text-blue-600 shrink-0" />
+                <div className="text-left">
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">
+                    {sendingCode ? 'Sending code...' : 'Email me a code'}
+                  </p>
+                  <p className="text-xs text-gray-500">Send 6-digit code to your email</p>
+                </div>
+              </button>
+
+              <button
+                onClick={() => setTwoFactorMethod('authenticator')}
+                className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 transition"
+              >
+                <Smartphone size={22} className="text-green-600 shrink-0" />
+                <div className="text-left">
+                  <p className="font-medium text-gray-900 dark:text-white text-sm">Use authenticator app</p>
+                  <p className="text-xs text-gray-500">Enter code from Google Authenticator</p>
+                </div>
+              </button>
+
+              <button
+                onClick={handleBackToLogin}
+                className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition mt-2"
+              >
+                Back to login
+              </button>
+            </div>
+          ) : show2FA && twoFactorMethod ? (
+            /* ENTER 2FA CODE */
             <form onSubmit={handle2FAVerify} className="space-y-5">
               <div className="flex justify-center">
                 <div className="h-14 w-14 bg-blue-100 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center">
-                  <Shield size={28} className="text-blue-600 dark:text-blue-400" />
+                  {twoFactorMethod === 'email' ? (
+                    <Mail size={28} className="text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <Shield size={28} className="text-green-600 dark:text-green-400" />
+                  )}
                 </div>
               </div>
-              
+
               <div>
-                <label htmlFor="twoFactorCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 text-center">
-                  Verification Code
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 text-center">
+                  {twoFactorMethod === 'email' ? 'Enter code from email' : 'Enter code from authenticator'}
                 </label>
                 <input
                   type="text"
-                  id="twoFactorCode"
                   required
                   maxLength={6}
                   value={twoFactorCode}
@@ -179,9 +254,6 @@ function LoginForm() {
                   placeholder="000000"
                   autoFocus
                 />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-                  Enter the 6-digit code sent to your email
-                </p>
               </div>
 
               <button
@@ -204,14 +276,17 @@ function LoginForm() {
 
               <button
                 type="button"
-                onClick={handleBackToLogin}
+                onClick={() => {
+                  setTwoFactorMethod(null);
+                  setTwoFactorCode('');
+                }}
                 className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
               >
-                Back to login
+                Choose different method
               </button>
             </form>
           ) : (
-            /* Regular Login Form */
+            /* REGULAR LOGIN */
             <form onSubmit={handleSubmit} className="space-y-5">
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
