@@ -16,38 +16,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No business found' }, { status: 403 });
     }
 
-    // Get business details
+    // 1. User profile
+    const userResult = await queryControl(
+      `SELECT id, email, full_name, status, email_verified, two_factor_enabled, last_login_at, created_at
+       FROM users WHERE id = $1`,
+      [session.user.id]
+    );
+    const profile = userResult.rows[0];
+
+    // 2. Business info
     const businessResult = await queryControl(
       `SELECT * FROM businesses WHERE id = $1`,
       [activeBusinessId]
     );
     const business = businessResult.rows[0];
 
-    // Get business settings
-    const settingsResult = await queryControl(
-      `SELECT settings FROM business_settings WHERE business_id = $1`,
-      [activeBusinessId]
-    );
-    const settings = settingsResult.rows[0]?.settings || {};
-
-    // Get installed apps
-    const appsResult = await queryControl(
-      `SELECT app_key, enabled FROM business_apps WHERE business_id = $1 ORDER BY created_at ASC`,
-      [activeBusinessId]
-    );
-
-    // Get team members
+    // 3. Team members
     const teamResult = await queryControl(
-      `SELECT 
-        bu.id,
-        bu.user_id,
-        bu.role,
-        bu.status,
-        bu.permissions,
-        bu.invited_at,
-        bu.last_active_at,
-        u.email,
-        u.full_name
+      `SELECT bu.*, u.email, u.full_name, u.last_login_at
        FROM business_users bu
        INNER JOIN users u ON u.id = bu.user_id
        WHERE bu.business_id = $1
@@ -55,23 +41,80 @@ export async function GET(request: NextRequest) {
       [activeBusinessId]
     );
 
-    // Get pending invites
+    // 4. Pending invites
     const invitesResult = await queryControl(
-      `SELECT * FROM invites WHERE business_id = $1 AND status = 'pending' ORDER BY created_at DESC`,
+      `SELECT * FROM invites WHERE business_id = $1 AND status = 'pending'
+       ORDER BY created_at DESC`,
+      [activeBusinessId]
+    );
+
+    // 5. Installed apps
+    const appsResult = await queryControl(
+      `SELECT * FROM business_apps WHERE business_id = $1
+       ORDER BY created_at ASC`,
+      [activeBusinessId]
+    );
+
+    // 6. Subscription
+    const subResult = await queryControl(
+      `SELECT * FROM subscriptions WHERE business_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [activeBusinessId]
+    );
+    const subscription = subResult.rows[0];
+
+    // 7. AI usage
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const aiUsageResult = await queryControl(
+      `SELECT * FROM ai_usage WHERE business_id = $1 AND month = $2`,
+      [activeBusinessId, currentMonth]
+    );
+    const aiUsage = aiUsageResult.rows[0];
+
+    // 8. API keys
+    const apiKeysResult = await queryControl(
+      `SELECT id, name, key_preview, permissions, last_used, expires_at, created_at
+       FROM api_keys WHERE user_id = $1 AND deleted_at IS NULL
+       ORDER BY created_at DESC`,
+      [session.user.id]
+    );
+
+    // 9. Active sessions
+    const sessionsResult = await queryControl(
+      `SELECT id, device, browser, os, ip, location, last_active, is_current, created_at
+       FROM sessions WHERE user_id = $1 AND is_current = true
+       ORDER BY last_active DESC`,
+      [session.user.id]
+    );
+
+    // 10. Audit logs
+    const auditLogsResult = await queryControl(
+      `SELECT al.*, u.full_name, u.email
+       FROM audit_logs al
+       LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.business_id = $1
+       ORDER BY al.created_at DESC
+       LIMIT 50`,
       [activeBusinessId]
     );
 
     return NextResponse.json({
       success: true,
+      profile,
       business,
-      settings,
-      apps: appsResult.rows,
       team: teamResult.rows,
       invites: invitesResult.rows,
+      apps: appsResult.rows,
+      subscription,
+      aiUsage,
+      apiKeys: apiKeysResult.rows,
+      sessions: sessionsResult.rows,
+      auditLogs: auditLogsResult.rows,
     });
 
   } catch (error) {
     console.error('Settings API error:', error);
-    return NextResponse.json({ error: 'Failed to load settings' }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ error: `Failed to load settings: ${errorMessage}` }, { status: 500 });
   }
 }

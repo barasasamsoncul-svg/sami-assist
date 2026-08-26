@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, getUserBusinesses } from '@/lib/auth/session';
 import { queryControl } from '@/lib/db/control';
+import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,7 +11,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { section, data } = await request.json();
-
     const businesses = await getUserBusinesses(session.user.id);
     const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
 
@@ -19,52 +19,55 @@ export async function POST(request: NextRequest) {
     }
 
     switch (section) {
-      case 'business': {
-        const { name, email, phone, website, address, country, currency, timezone, industry } = data;
+      case 'profile': {
+        const { fullName, email } = data;
         await queryControl(
-          `UPDATE businesses 
-           SET name = $1, email = $2, phone = $3, website = $4, address = $5, 
-               country = $6, currency = $7, timezone = $8, industry = $9,
-               updated_at = NOW()
-           WHERE id = $10`,
-          [name, email, phone, website, address, country, currency, timezone, industry, activeBusinessId]
+          `UPDATE users SET full_name = $1, email = $2, updated_at = NOW() WHERE id = $3`,
+          [fullName, email.toLowerCase(), session.user.id]
         );
         break;
       }
 
-      case 'settings': {
-        // Upsert business settings
+      case 'password': {
+        const { currentPassword, newPassword } = data;
+        const userResult = await queryControl(
+          `SELECT password_hash FROM users WHERE id = $1`,
+          [session.user.id]
+        );
+        const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password_hash);
+        if (!valid) {
+          return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 });
+        }
+        const newHash = await bcrypt.hash(newPassword, 12);
+        await queryControl(
+          `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+          [newHash, session.user.id]
+        );
+        break;
+      }
+
+      case 'business': {
+        const { name, email, phone, website, address, country, currency, timezone, industry, tax_id, registration_number, business_type } = data;
+        await queryControl(
+          `UPDATE businesses 
+           SET name = $1, email = $2, phone = $3, website = $4, address = $5,
+               country = $6, currency = $7, timezone = $8, industry = $9,
+               tax_id = $10, registration_number = $11, business_type = $12,
+               updated_at = NOW()
+           WHERE id = $13`,
+          [name, email, phone, website, address, country, currency, timezone, industry, tax_id, registration_number, business_type, activeBusinessId]
+        );
+        break;
+      }
+
+      case 'preferences': {
+        const { theme, dateFormat, timeFormat } = data;
         await queryControl(
           `INSERT INTO business_settings (business_id, settings, updated_at)
            VALUES ($1, $2, NOW())
-           ON CONFLICT (business_id) 
-           DO UPDATE SET settings = $2, updated_at = NOW()`,
-          [activeBusinessId, JSON.stringify(data)]
+           ON CONFLICT (business_id) DO UPDATE SET settings = $2, updated_at = NOW()`,
+          [activeBusinessId, JSON.stringify({ theme, dateFormat, timeFormat })]
         );
-        break;
-      }
-
-      case 'app_toggle': {
-        const { appKey, enabled } = data;
-        await queryControl(
-          `UPDATE business_apps SET enabled = $1, updated_at = NOW()
-           WHERE business_id = $2 AND app_key = $3`,
-          [enabled, activeBusinessId, appKey]
-        );
-        break;
-      }
-
-      case 'app_add': {
-        const { appKeys } = data;
-        for (const appKey of appKeys) {
-          await queryControl(
-            `INSERT INTO business_apps (business_id, app_key, enabled)
-             VALUES ($1, $2, true)
-             ON CONFLICT (business_id, app_key) 
-             DO UPDATE SET enabled = true`,
-            [activeBusinessId, appKey]
-          );
-        }
         break;
       }
 
@@ -72,10 +75,17 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Invalid section' }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
+    // Log
+    await queryControl(
+      `INSERT INTO audit_logs (user_id, business_id, action, resource_type, details)
+       VALUES ($1, $2, 'settings_updated', $3, $4)`,
+      [session.user.id, activeBusinessId, section, JSON.stringify(data)]
+    );
+
+    return NextResponse.json({ success: true, message: 'Settings saved' });
 
   } catch (error) {
-    console.error('Settings update error:', error);
+    console.error('Update settings error:', error);
     return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
   }
 }

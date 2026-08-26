@@ -56,7 +56,12 @@ import {
   CreditCard,
   Key,
   History,
-  AppWindow
+  AppWindow,
+  User,
+  Shield,
+  Monitor,
+  Globe,
+  AlertTriangle
 } from 'lucide-react';
 
 const APP_ICONS: Record<string, any> = {
@@ -98,13 +103,20 @@ const APP_ICONS: Record<string, any> = {
   appointments: Calendar,
 };
 
+// Update SETTINGS_ITEMS in layout
 const SETTINGS_ITEMS = [
-  { key: 'general', name: 'Business Profile', route: '/dashboard/settings?tab=general', icon: Building2 },
-  { key: 'team', name: 'Team', route: '/dashboard/settings?tab=team', icon: Users },
+  { key: 'profile', name: 'Profile', route: '/dashboard/settings?tab=profile', icon: User },
+  { key: 'security', name: 'Password & Security', route: '/dashboard/settings?tab=security', icon: Shield },
+  { key: 'sessions', name: 'Devices & Sessions', route: '/dashboard/settings?tab=sessions', icon: Monitor },
+  { key: 'preferences', name: 'Preferences', route: '/dashboard/settings?tab=preferences', icon: Globe },
+  { key: 'business', name: 'Business', route: '/dashboard/settings?tab=business', icon: Building2 },
+  { key: 'team', name: 'Team & Permissions', route: '/dashboard/settings?tab=team', icon: Users },
   { key: 'apps', name: 'Apps', route: '/dashboard/settings?tab=apps', icon: AppWindow },
-  { key: 'subscription', name: 'Subscription', route: '/dashboard/settings/subscription', icon: CreditCard },
+  { key: 'ai', name: 'AI Usage', route: '/dashboard/settings?tab=ai', icon: Sparkles },
   { key: 'api-keys', name: 'API Keys', route: '/dashboard/settings?tab=api-keys', icon: Key },
-  { key: 'audit-logs', name: 'Audit Logs', route: '/dashboard/settings?tab=audit-logs', icon: History },
+  { key: 'subscription', name: 'Billing & Subscription', route: '/dashboard/settings/subscription', icon: CreditCard },
+  { key: 'audit-logs', name: 'Activity Log', route: '/dashboard/settings?tab=audit-logs', icon: History },
+  { key: 'danger', name: 'Danger Zone', route: '/dashboard/settings?tab=danger', icon: AlertTriangle },
 ];
 
 interface DashboardData {
