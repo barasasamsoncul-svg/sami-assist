@@ -2,6 +2,8 @@ const PESAPAL_BASE_URL = process.env.PESAPAL_ENV === 'live'
   ? 'https://pay.pesapal.com/v3'
   : 'https://cybqa.pesapal.com/pesapalv3';
 
+const PESAPAL_IPN_ID = process.env.PESAPAL_IPN_ID || '9ae1a973-9825-4660-b01e-d9fa25751594';
+
 export async function getPesaPalToken(): Promise<string> {
   const response = await fetch(`${PESAPAL_BASE_URL}/api/Auth/RequestToken`, {
     method: 'POST',
@@ -49,7 +51,10 @@ export async function submitOrderRequest(
       Accept: 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(orderData),
+    body: JSON.stringify({
+      ...orderData,
+      notification_id: PESAPAL_IPN_ID,
+    }),
   });
 
   const data = await response.json();
