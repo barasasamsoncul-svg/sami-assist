@@ -65,8 +65,7 @@ export default function RegisterPage() {
     ? SAMI_APPS 
     : SAMI_APPS.filter(app => app.category === activeCategory);
 
-  const handleSubmit = async () => {
-    // Validate
+const handleSubmit = async () => {
     if (!accountForm.fullName || !accountForm.email || !accountForm.password || !accountForm.businessName) {
       setError('Please fill all account details');
       return;
@@ -82,28 +81,22 @@ export default function RegisterPage() {
     setError('');
     setLoading(true);
 
-    try {
-      // Step 1: Create account
-      const registerRes = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(accountForm),
-      });
-      const registerData = await registerRes.json();
+    if (selectedPlan === 'free') {
+      // Free: Create account directly
+      try {
+        const registerRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(accountForm),
+        });
+        const registerData = await registerRes.json();
 
-      if (!registerRes.ok) {
-        throw new Error(registerData.error || 'Registration failed');
-      }
+        if (!registerRes.ok) {
+          throw new Error(registerData.error || 'Registration failed');
+        }
 
-      const businessId = registerData.business.id;
+        const businessId = registerData.business.id;
 
-      // Store data for later use
-      sessionStorage.setItem('sami_pending_business_id', businessId);
-      sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
-      sessionStorage.setItem('sami_selected_plan', selectedPlan);
-
-      if (selectedPlan === 'free') {
-        // Step 2 (Free): Install the single app
         for (const appKey of selectedApps) {
           await fetch('/api/auth/install-app', {
             method: 'POST',
@@ -112,20 +105,27 @@ export default function RegisterPage() {
           });
         }
 
-        sessionStorage.removeItem('sami_pending_business_id');
-        sessionStorage.removeItem('sami_selected_apps');
-        sessionStorage.removeItem('sami_selected_plan');
-        
         router.push('/auth/login?registered=true');
-      } else if (selectedPlan === 'standard') {
-        // Step 2 (Standard): Create PesaPal checkout
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Registration failed');
+        setLoading(false);
+      }
+    } else if (selectedPlan === 'standard') {
+      // Standard: Store data, go to PesaPal for card authorization (KSh 0 trial)
+      sessionStorage.setItem('sami_registration_data', JSON.stringify(accountForm));
+      sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
+      sessionStorage.setItem('sami_selected_plan', 'standard');
+
+      try {
         const checkoutRes = await fetch('/api/payment/create-checkout', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            plan: 'standard', 
+          body: JSON.stringify({
+            plan: 'standard',
             billingCycle: 'monthly',
-            businessId,
+            businessName: accountForm.businessName,
+            email: accountForm.email,
+            fullName: accountForm.fullName,
           }),
         });
         const checkoutData = await checkoutRes.json();
@@ -135,16 +135,13 @@ export default function RegisterPage() {
         }
 
         sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
-        
-        // Redirect to PesaPal
         window.location.href = checkoutData.redirectUrl;
-      } else if (selectedPlan === 'custom') {
-        // Custom - contact sales
-        window.location.href = 'mailto:sales@sami.tech?subject=Custom%20Plan%20Inquiry';
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Payment initiation failed');
+        setLoading(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
-      setLoading(false);
+    } else if (selectedPlan === 'custom') {
+      window.location.href = 'mailto:sales@sami.tech?subject=Custom%20Plan%20Inquiry';
     }
   };
 

@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, getUserBusinesses } from '@/lib/auth/session';
-import { queryControl } from '@/lib/db/control';
 import { getPesaPalToken, submitOrderRequest } from '@/lib/services/pesapal';
 
 const PRICING_KES = {
@@ -11,25 +9,7 @@ const PRICING_KES = {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
-
-    const { plan, billingCycle } = await request.json();
-
-    const businesses = await getUserBusinesses(session.user.id);
-    const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
-
-    if (!activeBusinessId) {
-      return NextResponse.json({ error: 'No business found' }, { status: 403 });
-    }
-
-    const businessResult = await queryControl(
-      `SELECT * FROM businesses WHERE id = $1`,
-      [activeBusinessId]
-    );
-    const business = businessResult.rows[0];
+    const { plan, billingCycle, businessName, email, fullName } = await request.json();
 
     const amount = PRICING_KES[`${plan}_${billingCycle || 'monthly'}` as keyof typeof PRICING_KES];
 
@@ -37,27 +17,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
-    // Generate unique order ID
-    const orderId = `sami_${activeBusinessId}_${Date.now()}`;
+    const orderId = `sami_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 
-    // Get app URL from request
     const appUrl = request.nextUrl.origin;
 
-    // Get PesaPal token
     const token = await getPesaPalToken();
 
-    // Submit order
+    // Trial: charge KSh 0 now, actual amount after 15 days
     const orderData = {
       id: orderId,
       currency: 'KES',
-      amount,
-      description: `SaMi ${plan} plan - ${billingCycle || 'monthly'}`,
+      amount: 0,
+      description: `SaMi ${plan} plan - 15-day free trial then KSh ${amount}/${billingCycle || 'monthly'}`,
       callback_url: `${appUrl}/api/webhooks/pesapal`,
       redirect_url: `${appUrl}/auth/payment/callback?orderTrackingId=${orderId}`,
       billing_address: {
-        email_address: business.email || session.user.email,
-        first_name: business.name || session.user.fullName.split(' ')[0] || '',
-        last_name: session.user.fullName.split(' ').slice(1).join(' ') || '',
+        email_address: email,
+        first_name: businessName || fullName?.split(' ')[0] || '',
+        last_name: fullName?.split(' ').slice(1).join(' ') || '',
       },
     };
 
@@ -67,17 +44,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to create payment link' }, { status: 500 });
     }
 
-    // Log payment initiation
-    await queryControl(
-      `INSERT INTO audit_logs (user_id, business_id, action, resource_type, details)
-       VALUES ($1, $2, 'payment_initiated', 'subscription', $3)`,
-      [session.user.id, activeBusinessId, JSON.stringify({ orderId, plan, billingCycle, amount })]
-    );
-
     return NextResponse.json({
       success: true,
       redirectUrl: response.redirect_url,
       orderTrackingId: response.order_tracking_id || orderId,
+      trialDays: 15,
+      amountAfterTrial: amount,
     });
 
   } catch (error) {

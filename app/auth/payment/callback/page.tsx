@@ -13,7 +13,7 @@ function CallbackContent() {
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    const verifyPayment = async () => {
+    const verifyAndCreateAccount = async () => {
       const orderTrackingId = searchParams.get('orderTrackingId') || sessionStorage.getItem('sami_order_tracking_id');
 
       if (!orderTrackingId) {
@@ -23,47 +23,76 @@ function CallbackContent() {
       }
 
       try {
-        const response = await fetch('/api/payment/verify', {
+        // Step 1: Verify payment (trial authorization)
+        const verifyRes = await fetch('/api/payment/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderTrackingId }),
         });
-        const data = await response.json();
+        const verifyData = await verifyRes.json();
 
-        if (data.success) {
-          setStatus('success');
-          setMessage('Payment successful! Your workspace is ready.');
-
-          const businessId = sessionStorage.getItem('sami_pending_business_id');
-          const selectedApps = JSON.parse(sessionStorage.getItem('sami_selected_apps') || '[]');
-
-          for (const appKey of selectedApps) {
-            await fetch('/api/auth/install-app', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ businessId, appKey }),
-            });
-          }
-
-          sessionStorage.removeItem('sami_pending_business_id');
-          sessionStorage.removeItem('sami_selected_apps');
-          sessionStorage.removeItem('sami_selected_plan');
-          sessionStorage.removeItem('sami_order_tracking_id');
-
-          setTimeout(() => {
-            router.push('/auth/login?registered=true');
-          }, 2000);
-        } else {
+        if (!verifyData.success) {
           setStatus('failed');
-          setMessage(data.error || 'Payment verification failed');
+          setMessage(verifyData.error || 'Payment verification failed');
+          return;
         }
+
+        // Step 2: Create account (after payment verified)
+        const registrationData = JSON.parse(sessionStorage.getItem('sami_registration_data') || '{}');
+        const selectedApps = JSON.parse(sessionStorage.getItem('sami_selected_apps') || '[]');
+        const selectedPlan = sessionStorage.getItem('sami_selected_plan') || 'standard';
+
+        const registerRes = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(registrationData),
+        });
+        const registerData = await registerRes.json();
+
+        if (!registerRes.ok) {
+          setStatus('failed');
+          setMessage(registerData.error || 'Account creation failed');
+          return;
+        }
+
+        const businessId = registerData.business.id;
+
+        // Step 3: Update plan to standard with trial
+        await fetch('/api/auth/update-plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessId, plan: selectedPlan, billingCycle: 'monthly' }),
+        });
+
+        // Step 4: Install all selected apps
+        for (const appKey of selectedApps) {
+          await fetch('/api/auth/install-app', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessId, appKey }),
+          });
+        }
+
+        // Step 5: Clean up
+        sessionStorage.removeItem('sami_registration_data');
+        sessionStorage.removeItem('sami_selected_apps');
+        sessionStorage.removeItem('sami_selected_plan');
+        sessionStorage.removeItem('sami_order_tracking_id');
+
+        setStatus('success');
+        setMessage('Your workspace is ready! 15-day trial started.');
+
+        setTimeout(() => {
+          router.push('/auth/login?registered=true');
+        }, 2000);
+
       } catch (err) {
         setStatus('failed');
-        setMessage('Payment verification failed');
+        setMessage('Failed to complete registration');
       }
     };
 
-    verifyPayment();
+    verifyAndCreateAccount();
   }, [searchParams, router]);
 
   return (
@@ -85,7 +114,7 @@ function CallbackContent() {
           {status === 'success' && (
             <>
               <CheckCircle size={48} className="mx-auto text-green-500" />
-              <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Payment Successful!</h2>
+              <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Trial Started!</h2>
               <p className="mt-1 text-sm text-gray-500">{message}</p>
               <p className="mt-2 text-sm text-gray-400">Redirecting to login...</p>
             </>
@@ -94,13 +123,13 @@ function CallbackContent() {
           {status === 'failed' && (
             <>
               <XCircle size={48} className="mx-auto text-red-500" />
-              <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Payment Failed</h2>
+              <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Failed</h2>
               <p className="mt-1 text-sm text-gray-500">{message}</p>
               <button
-                onClick={() => router.push('/auth/payment')}
+                onClick={() => router.push('/auth/register')}
                 className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
               >
-                Try Again
+                Back to Registration
               </button>
             </>
           )}
