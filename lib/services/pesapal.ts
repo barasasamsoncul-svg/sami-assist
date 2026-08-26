@@ -2,8 +2,6 @@ const PESAPAL_BASE_URL = process.env.PESAPAL_ENV === 'live'
   ? 'https://pay.pesapal.com/v3'
   : 'https://cybqa.pesapal.com/pesapalv3';
 
-const PESAPAL_IPN_ID = process.env.PESAPAL_IPN_ID || '9ae1a973-9825-4660-b01e-d9fa25751594';
-
 export async function getPesaPalToken(): Promise<string> {
   const response = await fetch(`${PESAPAL_BASE_URL}/api/Auth/RequestToken`, {
     method: 'POST',
@@ -53,7 +51,7 @@ export async function submitOrderRequest(
     },
     body: JSON.stringify({
       ...orderData,
-      notification_id: PESAPAL_IPN_ID,
+      notification_id: process.env.PESAPAL_IPN_ID,
     }),
   });
 
@@ -87,6 +85,37 @@ export async function getTransactionStatus(
   if (!response.ok) {
     console.error('PesaPal status error:', data);
     throw new Error(data.message || 'Failed to get transaction status');
+  }
+
+  return data;
+}
+
+export async function subscribeToPlan(
+  token: string,
+  subscriptionData: {
+    plan_id: string;
+    subscriber_email: string;
+    subscriber_first_name: string;
+    subscriber_last_name: string;
+    redirect_url: string;
+    callback_url: string;
+  }
+) {
+  const response = await fetch(`${PESAPAL_BASE_URL}/api/Payments/SubscribeToPlan`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(subscriptionData),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error('PesaPal subscription error:', data);
+    throw new Error(data.message || 'Failed to subscribe to plan');
   }
 
   return data;
