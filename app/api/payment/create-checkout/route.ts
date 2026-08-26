@@ -21,14 +21,21 @@ export async function POST(request: NextRequest) {
 
     const appUrl = request.nextUrl.origin;
 
-    const token = await getPesaPalToken();
+    console.log('App URL:', appUrl);
+    console.log('Order ID:', orderId);
 
-    // Trial: charge KSh 0 now, actual amount after 15 days
+    const token = await getPesaPalToken();
+    console.log('Token received:', token ? 'Yes' : 'No');
+
+    // PesaPal requires amount > 0
+    // Charge KSh 1 for card verification, refund later or credit to first month
+    const trialAmount = 1; // KSh 1 for card verification
+
     const orderData = {
       id: orderId,
       currency: 'KES',
-      amount: 0,
-      description: `SaMi ${plan} plan - 15-day free trial then KSh ${amount}/${billingCycle || 'monthly'}`,
+      amount: trialAmount,
+      description: `SaMi ${plan} plan - 15-day trial (KSh ${amount}/${billingCycle || 'monthly'} after trial)`,
       callback_url: `${appUrl}/api/webhooks/pesapal`,
       redirect_url: `${appUrl}/auth/payment/callback?orderTrackingId=${orderId}`,
       billing_address: {
@@ -38,10 +45,18 @@ export async function POST(request: NextRequest) {
       },
     };
 
+    console.log('Submitting order to PesaPal:', JSON.stringify(orderData, null, 2));
+
     const response = await submitOrderRequest(token, orderData);
 
+    console.log('PesaPal response:', JSON.stringify(response, null, 2));
+
     if (!response.redirect_url) {
-      return NextResponse.json({ error: 'Failed to create payment link' }, { status: 500 });
+      console.error('No redirect_url in response:', response);
+      return NextResponse.json({ 
+        error: response.message || 'Failed to create payment link. Please try again.',
+        details: response,
+      }, { status: 500 });
     }
 
     return NextResponse.json({
