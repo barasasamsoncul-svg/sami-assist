@@ -1,12 +1,17 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import {
+  useRouter,
+  usePathname,
+  useSearchParams,
+} from 'next/navigation';
 import Link from 'next/link';
-import { 
-  LayoutDashboard, 
-  LogOut, 
-  Menu, 
+
+import {
+  LayoutDashboard,
+  LogOut,
+  Menu,
   X,
   ChevronDown,
   Settings,
@@ -61,8 +66,15 @@ import {
   Shield,
   Monitor,
   Globe,
-  AlertTriangle
+  AlertTriangle,
+  Plus,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
+
+/* =========================================================
+   APP ICONS
+========================================================= */
 
 const APP_ICONS: Record<string, any> = {
   accounting: Calculator,
@@ -103,31 +115,154 @@ const APP_ICONS: Record<string, any> = {
   appointments: Calendar,
 };
 
-// Update SETTINGS_ITEMS in layout
+/* =========================================================
+   SETTINGS
+   Kept compatible with your current ?tab= routes.
+========================================================= */
+
 const SETTINGS_ITEMS = [
-  { key: 'profile', name: 'Profile', route: '/dashboard/settings?tab=profile', icon: User },
-  { key: 'security', name: 'Password & Security', route: '/dashboard/settings?tab=security', icon: Shield },
-  { key: 'sessions', name: 'Devices & Sessions', route: '/dashboard/settings?tab=sessions', icon: Monitor },
-  { key: 'preferences', name: 'Preferences', route: '/dashboard/settings?tab=preferences', icon: Globe },
-  { key: 'business', name: 'Business', route: '/dashboard/settings?tab=business', icon: Building2 },
-  { key: 'team', name: 'Team & Permissions', route: '/dashboard/settings?tab=team', icon: Users },
-  { key: 'apps', name: 'Apps', route: '/dashboard/settings?tab=apps', icon: AppWindow },
-  { key: 'ai', name: 'AI Usage', route: '/dashboard/settings?tab=ai', icon: Sparkles },
-  { key: 'api-keys', name: 'API Keys', route: '/dashboard/settings?tab=api-keys', icon: Key },
-  { key: 'subscription', name: 'Billing & Subscription', route: '/dashboard/settings/subscription', icon: CreditCard },
-  { key: 'audit-logs', name: 'Activity Log', route: '/dashboard/settings?tab=audit-logs', icon: History },
-  { key: 'danger', name: 'Danger Zone', route: '/dashboard/settings?tab=danger', icon: AlertTriangle },
+  {
+    key: 'profile',
+    name: 'Profile',
+    description: 'Personal information and account details',
+    route: '/dashboard/settings?tab=profile',
+    icon: User,
+    group: 'Account',
+  },
+  {
+    key: 'preferences',
+    name: 'Preferences',
+    description: 'Personalize how SaMi works for you',
+    route: '/dashboard/settings?tab=preferences',
+    icon: Globe,
+    group: 'Account',
+  },
+  {
+    key: 'security',
+    name: 'Password & Security',
+    description: 'Password, two-factor authentication and security',
+    route: '/dashboard/settings?tab=security',
+    icon: Shield,
+    group: 'Security',
+  },
+  {
+    key: 'sessions',
+    name: 'Devices & Sessions',
+    description: 'Manage devices currently signed into your account',
+    route: '/dashboard/settings?tab=sessions',
+    icon: Monitor,
+    group: 'Security',
+  },
+  {
+    key: 'audit-logs',
+    name: 'Activity Log',
+    description: 'Review important account and workspace activity',
+    route: '/dashboard/settings?tab=audit-logs',
+    icon: History,
+    group: 'Security',
+  },
+  {
+    key: 'business',
+    name: 'Business',
+    description: 'Business profile, contact and regional information',
+    route: '/dashboard/settings?tab=business',
+    icon: Building2,
+    group: 'Workspace',
+  },
+  {
+    key: 'team',
+    name: 'Team & Permissions',
+    description: 'Members, roles and access permissions',
+    route: '/dashboard/settings?tab=team',
+    icon: Users,
+    group: 'Workspace',
+  },
+  {
+    key: 'apps',
+    name: 'Apps',
+    description: 'Manage your SaMi business applications',
+    route: '/dashboard/settings?tab=apps',
+    icon: AppWindow,
+    group: 'Workspace',
+  },
+  {
+    key: 'ai',
+    name: 'AI Usage',
+    description: 'Monitor your SaMi AI usage and limits',
+    route: '/dashboard/settings?tab=ai',
+    icon: Sparkles,
+    group: 'AI',
+  },
+  {
+    key: 'api-keys',
+    name: 'API Keys',
+    description: 'Create and manage developer API access',
+    route: '/dashboard/settings?tab=api-keys',
+    icon: Key,
+    group: 'Developer',
+  },
+  {
+    key: 'subscription',
+    name: 'Billing & Subscription',
+    description: 'Plan, billing cycle and subscription management',
+    route: '/dashboard/settings/subscription',
+    icon: CreditCard,
+    group: 'Billing',
+  },
+  {
+    key: 'danger',
+    name: 'Danger Zone',
+    description: 'Account and workspace destructive actions',
+    route: '/dashboard/settings?tab=danger',
+    icon: AlertTriangle,
+    group: 'Danger Zone',
+  },
 ];
 
+/* =========================================================
+   TYPES
+========================================================= */
+
 interface DashboardData {
-  user: { id: string; email: string; fullName: string; };
-  businesses: Array<{ id: string; name: string; slug: string; role: string; }>;
-  activeBusiness: { id: string; name: string; slug: string; role: string; };
-  installedApps: Array<{ key: string; name: string; route: string; description: string; }>;
+  user: {
+    id: string;
+    email: string;
+    fullName: string;
+  };
+
+  businesses: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+  }>;
+
+  activeBusiness: {
+    id: string;
+    name: string;
+    slug: string;
+    role: string;
+  };
+
+  installedApps: Array<{
+    key: string;
+    name: string;
+    route: string;
+    description: string;
+  }>;
+
   databaseReady: boolean;
 }
 
-function SaMiLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
+/* =========================================================
+   LOGO
+========================================================= */
+
+function SaMiLogo({
+  size = 'md',
+}: {
+  size?: 'sm' | 'md' | 'lg';
+}) {
   const sizes = {
     sm: 'text-xl',
     md: 'text-2xl',
@@ -135,61 +270,330 @@ function SaMiLogo({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   };
 
   return (
-    <span className={`${sizes[size]} font-black italic tracking-tighter`}>
-      <span className="text-blue-800 dark:text-blue-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.2)]">Sa</span>
-      <span className="text-gray-900 dark:text-gray-100 drop-shadow-[2px_2px_0_rgba(0,0,0,0.2)]">Mi</span>
+    <span
+      className={`${sizes[size]} font-black italic tracking-[-0.08em] select-none`}
+    >
+      <span className="text-blue-700 dark:text-blue-500">
+        Sa
+      </span>
+
+      <span className="text-gray-900 dark:text-white">
+        Mi
+      </span>
     </span>
   );
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+/* =========================================================
+   AVATAR
+========================================================= */
+
+function UserAvatar({
+  name,
+  size = 'md',
+}: {
+  name: string;
+  size?: 'sm' | 'md' | 'lg';
+}) {
+  const sizes = {
+    sm: 'h-7 w-7 text-[10px]',
+    md: 'h-9 w-9 text-xs',
+    lg: 'h-11 w-11 text-sm',
+  };
+
+  const initials =
+    name
+      ?.trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((word) => word.charAt(0))
+      .join('')
+      .toUpperCase() || 'S';
+
+  return (
+    <div
+      className={`
+        ${sizes[size]}
+        shrink-0
+        rounded-xl
+        bg-gradient-to-br
+        from-blue-600
+        via-indigo-600
+        to-violet-600
+        flex
+        items-center
+        justify-center
+        text-white
+        font-bold
+        shadow-sm
+      `}
+    >
+      {initials}
+    </div>
+  );
+}
+
+/* =========================================================
+   NAV ITEM
+========================================================= */
+
+function NavigationItem({
+  name,
+  route,
+  icon: Icon,
+  active,
+  onClick,
+}: {
+  name: string;
+  route: string;
+  icon: any;
+  active: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <Link
+      href={route}
+      onClick={onClick}
+      className={`
+        group
+        flex
+        items-center
+        gap-3
+        w-full
+        px-2.5
+        py-2
+        rounded-xl
+        text-sm
+        font-medium
+        transition-all
+        duration-150
+        ${
+          active
+            ? `
+              bg-blue-50
+              text-blue-700
+              dark:bg-blue-500/10
+              dark:text-blue-400
+            `
+            : `
+              text-gray-600
+              dark:text-gray-400
+              hover:bg-gray-100
+              dark:hover:bg-gray-800/70
+              hover:text-gray-900
+              dark:hover:text-gray-100
+            `
+        }
+      `}
+    >
+      <span
+        className={`
+          flex
+          items-center
+          justify-center
+          h-8
+          w-8
+          rounded-lg
+          transition-all
+          ${
+            active
+              ? `
+                bg-blue-600
+                text-white
+                shadow-sm
+              `
+              : `
+                bg-gray-100
+                dark:bg-gray-800
+                text-gray-500
+                dark:text-gray-400
+                group-hover:bg-white
+                dark:group-hover:bg-gray-700
+              `
+          }
+        `}
+      >
+        <Icon size={16} strokeWidth={active ? 2.2 : 1.9} />
+      </span>
+
+      <span className="flex-1 truncate">
+        {name}
+      </span>
+
+      {active && (
+        <ChevronRight
+          size={14}
+          className="text-blue-500 dark:text-blue-400"
+        />
+      )}
+    </Link>
+  );
+}
+
+/* =========================================================
+   SETTINGS GROUP
+========================================================= */
+
+function SettingsGroup({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-7">
+      <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-gray-400 dark:text-gray-600">
+        {title}
+      </p>
+
+      <div className="space-y-0.5">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   MAIN LAYOUT
+========================================================= */
+
+function DashboardLayoutContent({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [businessMenuOpen, setBusinessMenuOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [businessMenuOpen, setBusinessMenuOpen] =
+    useState(false);
+
+  const [accountMenuOpen, setAccountMenuOpen] =
+    useState(false);
+
   const [darkMode, setDarkMode] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState('');
 
+  /* =======================================================
+     THEME
+  ======================================================= */
+
   useEffect(() => {
-    const savedTheme = localStorage.getItem('sami_theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-      setDarkMode(true);
+    const savedTheme =
+      localStorage.getItem('sami_theme');
+
+    const prefersDark =
+      window.matchMedia(
+        '(prefers-color-scheme: dark)'
+      ).matches;
+
+    const shouldUseDark =
+      savedTheme === 'dark' ||
+      (!savedTheme && prefersDark);
+
+    setDarkMode(shouldUseDark);
+
+    if (shouldUseDark) {
       document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
+
     fetchDashboardData();
   }, []);
 
-  useEffect(() => {
-    // Auto-expand settings if on settings page
-    if (pathname.startsWith('/dashboard/settings')) {
-      setSettingsOpen(true);
-    }
-  }, [pathname]);
+  /* =======================================================
+     CLOSE MENUS WHEN ROUTE CHANGES
+  ======================================================= */
 
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-    if (!darkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('sami_theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('sami_theme', 'light');
-    }
-  };
+  useEffect(() => {
+    setSidebarOpen(false);
+    setBusinessMenuOpen(false);
+    setAccountMenuOpen(false);
+  }, [pathname, searchParams]);
+
+  /* =======================================================
+     KEYBOARD SEARCH
+  ======================================================= */
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const isShortcut =
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === 'k';
+
+      if (isShortcut) {
+        event.preventDefault();
+
+        const searchInput =
+          document.getElementById(
+            'sami-global-search'
+          ) as HTMLInputElement | null;
+
+        searchInput?.focus();
+      }
+
+      if (event.key === 'Escape') {
+        setSearchQuery('');
+        setBusinessMenuOpen(false);
+        setAccountMenuOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, []);
+
+  /* =======================================================
+     FETCH DASHBOARD
+  ======================================================= */
 
   const fetchDashboardData = async () => {
     try {
-      const response = await fetch('/api/dashboard');
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to load dashboard');
-      setData(data);
+      const response =
+        await fetch('/api/dashboard');
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+            'Failed to load dashboard'
+        );
+      }
+
+      setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
-      if (err instanceof Error && err.message.includes('Not authenticated')) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong';
+
+      setError(message);
+
+      if (
+        err instanceof Error &&
+        err.message.includes(
+          'Not authenticated'
+        )
+      ) {
         router.push('/auth/login');
       }
     } finally {
@@ -197,311 +601,1130 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   };
 
+  /* =======================================================
+     LOGOUT
+  ======================================================= */
+
   const handleLogout = () => {
+    setAccountMenuOpen(false);
     router.push('/auth/logout');
   };
 
-  const switchBusiness = async (businessId: string) => {
+  /* =======================================================
+     SWITCH BUSINESS
+  ======================================================= */
+
+  const switchBusiness = async (
+    businessId: string
+  ) => {
     try {
-      await fetch('/api/auth/switch-business', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessId }),
-      });
+      const response = await fetch(
+        '/api/auth/switch-business',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body: JSON.stringify({
+            businessId,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          'Business switch failed'
+        );
+      }
+
       window.location.reload();
     } catch (error) {
-      console.error('Business switch failed:', error);
+      console.error(
+        'Business switch failed:',
+        error
+      );
     }
   };
+
+  /* =======================================================
+     NAVIGATION
+  ======================================================= */
+
+  const coreNavItems = [
+    {
+      key: 'dashboard',
+      name: 'Dashboard',
+      route: '/dashboard',
+      icon: LayoutDashboard,
+    },
+    {
+      key: 'ai',
+      name: 'SaMi AI',
+      route: '/dashboard/ai',
+      icon: Sparkles,
+    },
+  ];
+
+  const appNavItems = useMemo(() => {
+    if (!data) return [];
+
+    return data.installedApps.map((app) => ({
+      key: app.key,
+      name: app.name,
+      route: `/dashboard/${app.route}`,
+      icon:
+        APP_ICONS[app.key] || Boxes,
+    }));
+  }, [data]);
+
+  const filteredAppItems = searchQuery.trim()
+    ? appNavItems.filter((item) =>
+        item.name
+          .toLowerCase()
+          .includes(
+            searchQuery.toLowerCase()
+          )
+      )
+    : appNavItems;
+
+  /* =======================================================
+     ACTIVE SETTINGS TAB
+  ======================================================= */
+
+  const activeSettingsTab =
+    searchParams.get('tab');
+
+  const isSettingsPage =
+    pathname.startsWith(
+      '/dashboard/settings'
+    );
+
+  /* =======================================================
+     PAGE TITLE
+  ======================================================= */
 
   const getCurrentTitle = () => {
-    if (pathname === '/dashboard') return data?.activeBusiness.name || 'Dashboard';
-    if (pathname === '/dashboard/ai') return 'SaMi AI';
-    if (pathname.startsWith('/dashboard/settings')) return 'Settings';
-    const match = appNavItems.find(item => pathname.startsWith(item.route));
-    return match ? match.name : data?.activeBusiness.name || 'Dashboard';
+    if (pathname === '/dashboard') {
+      return 'Dashboard';
+    }
+
+    if (pathname === '/dashboard/ai') {
+      return 'SaMi AI';
+    }
+
+    if (
+      pathname ===
+      '/dashboard/settings/subscription'
+    ) {
+      return 'Subscription';
+    }
+
+    if (isSettingsPage) {
+      if (activeSettingsTab) {
+        const setting =
+          SETTINGS_ITEMS.find(
+            (item) =>
+              item.key ===
+              activeSettingsTab
+          );
+
+        if (setting) {
+          return setting.name;
+        }
+      }
+
+      return 'Settings';
+    }
+
+    const match =
+      appNavItems.find((item) =>
+        pathname.startsWith(item.route)
+      );
+
+    return (
+      match?.name ||
+      data?.activeBusiness.name ||
+      'Dashboard'
+    );
   };
 
-  const getCurrentLocation = () => {
-    if (pathname === '/dashboard') return 'Overview';
-    if (pathname === '/dashboard/ai') return 'Chat';
-    if (pathname === '/dashboard/settings/subscription') return 'Subscription';
-    if (pathname.startsWith('/dashboard/settings')) {
-      const tab = pathname.split('tab=')[1];
-      return tab ? tab.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : 'Settings';
+  /* =======================================================
+     PAGE DESCRIPTION
+  ======================================================= */
+
+  const getCurrentDescription = () => {
+    if (pathname === '/dashboard') {
+      return 'Everything happening across your workspace';
     }
-    const parts = pathname.split('/').filter(Boolean);
-    if (parts.length > 2) {
-      const subPath = parts.slice(2).join(' / ');
-      return subPath.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+
+    if (pathname === '/dashboard/ai') {
+      return 'Your intelligent business assistant';
     }
-    if (parts.length === 2 && parts[1] !== 'dashboard') {
-      return 'Overview';
+
+    if (
+      pathname ===
+      '/dashboard/settings/subscription'
+    ) {
+      return 'Manage your SaMi subscription';
     }
+
+    if (isSettingsPage) {
+      if (activeSettingsTab) {
+        const setting =
+          SETTINGS_ITEMS.find(
+            (item) =>
+              item.key ===
+              activeSettingsTab
+          );
+
+        if (setting) {
+          return setting.description;
+        }
+      }
+
+      return 'Manage your account and workspace';
+    }
+
     return '';
   };
+
+  /* =======================================================
+     LOADING
+  ======================================================= */
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <div className="text-center">
+        <div className="flex flex-col items-center">
           <SaMiLogo size="lg" />
-          <div className="mt-6 animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto"></div>
+
+          <div className="mt-7 h-7 w-7 rounded-full border-[3px] border-blue-600/20 border-t-blue-600 animate-spin" />
+
+          <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+            Loading your workspace...
+          </p>
         </div>
       </div>
     );
   }
+
+  /* =======================================================
+     ERROR
+  ======================================================= */
 
   if (error || !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error || 'Failed to load'}</p>
-          <button onClick={() => router.push('/auth/login')} className="text-blue-600 hover:underline">
-            Go to login
-          </button>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 px-6">
+        <div className="w-full max-w-md text-center">
+          <div className="flex justify-center">
+            <SaMiLogo size="lg" />
+          </div>
+
+          <div className="mt-8 rounded-2xl border border-red-200 dark:border-red-900/40 bg-white dark:bg-gray-900 p-7 shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 dark:bg-red-500/10">
+              <AlertTriangle
+                size={22}
+                className="text-red-600 dark:text-red-400"
+              />
+            </div>
+
+            <h2 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">
+              Unable to load SaMi
+            </h2>
+
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              {error ||
+                'Something went wrong while loading your workspace.'}
+            </p>
+
+            <button
+              onClick={() =>
+                router.push('/auth/login')
+              }
+              className="
+                mt-6
+                w-full
+                rounded-xl
+                bg-gray-900
+                dark:bg-white
+                px-4
+                py-2.5
+                text-sm
+                font-semibold
+                text-white
+                dark:text-gray-900
+                hover:opacity-90
+                transition
+              "
+            >
+              Return to login
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  const coreNavItems = [
-    { key: 'dashboard', name: 'Dashboard', route: '/dashboard', icon: LayoutDashboard },
-    { key: 'ai', name: 'SaMi AI', route: '/dashboard/ai', icon: Sparkles },
-  ];
-
-  const appNavItems = data.installedApps.map(app => ({
-    key: app.key,
-    name: app.name,
-    route: `/dashboard/${app.route}`,
-    icon: APP_ICONS[app.key] || Boxes,
-  }));
-
-  const allNavItems = [...coreNavItems, ...appNavItems];
-
-  const filteredNavItems = searchQuery
-    ? allNavItems.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : allNavItems;
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Mobile Overlay */}
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white">
+      {/* ===================================================
+          MOBILE OVERLAY
+      =================================================== */}
+
       {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+        <div
+          className="
+            fixed
+            inset-0
+            z-40
+            bg-black/50
+            backdrop-blur-sm
+            lg:hidden
+          "
+          onClick={() =>
+            setSidebarOpen(false)
+          }
+        />
       )}
 
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 transform transition-transform duration-200 lg:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex flex-col h-full">
-          {/* Logo */}
-          <div className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-            <Link href="/dashboard">
-              <SaMiLogo />
+      {/* ===================================================
+          SIDEBAR
+      =================================================== */}
+
+      <aside
+        className={`
+          fixed
+          inset-y-0
+          left-0
+          z-50
+          w-[272px]
+          bg-white
+          dark:bg-gray-950
+          border-r
+          border-gray-200
+          dark:border-gray-800
+          transform
+          transition-transform
+          duration-300
+          ease-out
+          lg:translate-x-0
+          ${
+            sidebarOpen
+              ? 'translate-x-0'
+              : '-translate-x-full'
+          }
+        `}
+      >
+        <div className="flex h-full flex-col">
+          {/* =================================================
+              LOGO HEADER
+          ================================================= */}
+
+          <div className="flex h-[68px] items-center justify-between px-5 border-b border-gray-200 dark:border-gray-800">
+            <Link
+              href="/dashboard"
+              className="flex items-center"
+            >
+              <SaMiLogo size="md" />
             </Link>
-            <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-              <X size={18} className="text-gray-500 dark:text-gray-400" />
+
+            <button
+              onClick={() =>
+                setSidebarOpen(false)
+              }
+              className="
+                lg:hidden
+                h-8
+                w-8
+                flex
+                items-center
+                justify-center
+                rounded-lg
+                text-gray-500
+                hover:bg-gray-100
+                dark:hover:bg-gray-800
+              "
+            >
+              <X size={18} />
             </button>
           </div>
 
-          {/* Search */}
-          <div className="p-3 border-b border-gray-200 dark:border-gray-800">
+          {/* =================================================
+              WORKSPACE SWITCHER
+          ================================================= */}
+
+          <div className="px-3 pt-4">
+            <button
+              onClick={() =>
+                setBusinessMenuOpen(
+                  !businessMenuOpen
+                )
+              }
+              className="
+                w-full
+                rounded-xl
+                border
+                border-gray-200
+                dark:border-gray-800
+                bg-gray-50/80
+                dark:bg-gray-900
+                p-2.5
+                hover:bg-gray-100
+                dark:hover:bg-gray-800
+                transition
+              "
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className="
+                    h-9
+                    w-9
+                    shrink-0
+                    rounded-lg
+                    bg-gradient-to-br
+                    from-blue-600
+                    to-indigo-600
+                    flex
+                    items-center
+                    justify-center
+                    text-white
+                    font-bold
+                    text-sm
+                    shadow-sm
+                  "
+                >
+                  {data.activeBusiness.name
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    Workspace
+                  </p>
+
+                  <p className="mt-0.5 truncate text-sm font-semibold text-gray-900 dark:text-white">
+                    {data.activeBusiness.name}
+                  </p>
+                </div>
+
+                <ChevronDown
+                  size={15}
+                  className={`
+                    text-gray-400
+                    transition-transform
+                    ${
+                      businessMenuOpen
+                        ? 'rotate-180'
+                        : ''
+                    }
+                  `}
+                />
+              </div>
+            </button>
+
+            {/* BUSINESS MENU */}
+
+            {businessMenuOpen && (
+              <div
+                className="
+                  absolute
+                  left-3
+                  right-3
+                  mt-2
+                  z-50
+                  overflow-hidden
+                  rounded-xl
+                  border
+                  border-gray-200
+                  dark:border-gray-800
+                  bg-white
+                  dark:bg-gray-900
+                  shadow-xl
+                "
+              >
+                <div className="p-2">
+                  <p className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                    Your workspaces
+                  </p>
+
+                  {data.businesses.map(
+                    (business) => {
+                      const active =
+                        business.id ===
+                        data.activeBusiness.id;
+
+                      return (
+                        <button
+                          key={business.id}
+                          onClick={() => {
+                            switchBusiness(
+                              business.id
+                            );
+
+                            setBusinessMenuOpen(
+                              false
+                            );
+                          }}
+                          className={`
+                            w-full
+                            flex
+                            items-center
+                            gap-3
+                            rounded-lg
+                            px-2
+                            py-2.5
+                            text-left
+                            transition
+                            ${
+                              active
+                                ? 'bg-blue-50 dark:bg-blue-500/10'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                            }
+                          `}
+                        >
+                          <div
+                            className={`
+                              h-8
+                              w-8
+                              rounded-lg
+                              flex
+                              items-center
+                              justify-center
+                              text-xs
+                              font-bold
+                              ${
+                                active
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300'
+                              }
+                            `}
+                          >
+                            {business.name
+                              .charAt(0)
+                              .toUpperCase()}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
+                              {business.name}
+                            </p>
+
+                            <p className="text-[11px] capitalize text-gray-400">
+                              {business.role}
+                            </p>
+                          </div>
+
+                          {active && (
+                            <Check
+                              size={15}
+                              className="text-blue-600"
+                            />
+                          )}
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* =================================================
+              SEARCH
+          ================================================= */}
+
+          <div className="px-3 pt-4">
             <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <Search
+                size={15}
+                className="
+                  absolute
+                  left-3
+                  top-1/2
+                  -translate-y-1/2
+                  text-gray-400
+                "
+              />
+
               <input
+                id="sami-sidebar-search"
                 type="text"
                 placeholder="Search apps..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                onChange={(event) =>
+                  setSearchQuery(
+                    event.target.value
+                  )
+                }
+                className="
+                  h-9
+                  w-full
+                  rounded-lg
+                  border
+                  border-gray-200
+                  dark:border-gray-800
+                  bg-gray-50
+                  dark:bg-gray-900
+                  pl-9
+                  pr-3
+                  text-xs
+                  text-gray-900
+                  dark:text-white
+                  placeholder:text-gray-400
+                  outline-none
+                  transition
+                  focus:border-blue-500
+                  focus:ring-2
+                  focus:ring-blue-500/10
+                "
               />
             </div>
           </div>
 
-          {/* Business Selector */}
-          <div className="p-3 border-b border-gray-200 dark:border-gray-800 relative">
-            <button
-              onClick={() => setBusinessMenuOpen(!businessMenuOpen)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-            >
-              <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0">
-                {data.activeBusiness.name.charAt(0)}
-              </div>
-              <div className="flex-1 text-left">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{data.activeBusiness.name}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{data.activeBusiness.role}</p>
-              </div>
-              <ChevronDown size={14} className={`text-gray-400 transition-transform ${businessMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
+          {/* =================================================
+              NAVIGATION
+          ================================================= */}
 
-            {businessMenuOpen && (
-              <div className="absolute left-3 right-3 top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 z-50">
-                <div className="p-1">
-                  {data.businesses.map((business) => (
-                    <button
-                      key={business.id}
-                      onClick={() => { switchBusiness(business.id); setBusinessMenuOpen(false); }}
-                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition ${
-                        business.id === data.activeBusiness.id
-                          ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      <span className="flex-1 text-left truncate">{business.name}</span>
-                      <span className="text-xs capitalize text-gray-500">{business.role}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+          <nav className="flex-1 overflow-y-auto px-3 py-5 scrollbar-thin">
+            {/* MAIN */}
 
-          {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-            {/* Core Items */}
-            {filteredNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.route || (item.route !== '/dashboard' && pathname.startsWith(item.route));
-              return (
-                <Link
+            <SettingsGroup title="Main">
+              {coreNavItems.map((item) => (
+                <NavigationItem
                   key={item.key}
-                  href={item.route}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                  }`}
-                >
-                  <Icon size={18} />
-                  <span className="flex-1">{item.name}</span>
-                  {isActive && <ChevronRight size={14} className="opacity-70" />}
-                </Link>
-              );
-            })}
+                  name={item.name}
+                  route={item.route}
+                  icon={item.icon}
+                  active={
+                    pathname === item.route ||
+                    (
+                      item.route !==
+                        '/dashboard' &&
+                      pathname.startsWith(
+                        item.route
+                      )
+                    )
+                  }
+                  onClick={() =>
+                    setSidebarOpen(false)
+                  }
+                />
+              ))}
+            </SettingsGroup>
 
-            {searchQuery && filteredNavItems.length === 0 && (
-              <p className="text-center text-sm text-gray-400 py-4">No apps found</p>
-            )}
+            {/* APPLICATIONS */}
 
-            {/* Separator */}
-            <div className="pt-4 pb-2">
-              <p className="px-3 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">System</p>
-            </div>
-
-            {/* Settings Dropdown */}
-            <div>
-              <button
-                onClick={() => setSettingsOpen(!settingsOpen)}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition ${
-                  pathname.startsWith('/dashboard/settings')
-                    ? 'bg-blue-600 text-white'
-                    : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
-              >
-                <Settings size={18} />
-                <span className="flex-1">Settings</span>
-                <ChevronDown size={14} className={`transition-transform ${settingsOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {settingsOpen && (
-                <div className="ml-4 mt-1 space-y-0.5 border-l border-gray-200 dark:border-gray-700 pl-2">
-                  {SETTINGS_ITEMS.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = pathname === item.route || pathname.includes(`tab=${item.key}`);
-                    return (
-                      <Link
-                        key={item.key}
-                        href={item.route}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition ${
-                          isActive
-                            ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium'
-                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-                        }`}
-                      >
-                        <Icon size={14} />
-                        {item.name}
-                      </Link>
-                    );
-                  })}
+            <SettingsGroup title="Applications">
+              {filteredAppItems.length > 0 ? (
+                filteredAppItems.map(
+                  (item) => (
+                    <NavigationItem
+                      key={item.key}
+                      name={item.name}
+                      route={item.route}
+                      icon={item.icon}
+                      active={pathname.startsWith(
+                        item.route
+                      )}
+                      onClick={() =>
+                        setSidebarOpen(false)
+                      }
+                    />
+                  )
+                )
+              ) : (
+                <div className="px-3 py-5 text-center">
+                  <p className="text-xs text-gray-400">
+                    No applications found
+                  </p>
                 </div>
               )}
-            </div>
-
-            {/* Database Status */}
-            <div className="pt-4">
-              <div className="px-3 py-3 rounded-lg bg-gray-100 dark:bg-gray-800">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Database</p>
-                  <span className={`h-2 w-2 rounded-full ${data.databaseReady ? 'bg-green-500 animate-pulse' : 'bg-yellow-500 animate-pulse'}`} />
-                </div>
-                <p className={`text-xs font-semibold mt-1 ${data.databaseReady ? 'text-green-600 dark:text-green-400' : 'text-yellow-600 dark:text-yellow-400'}`}>
-                  {data.databaseReady ? 'Connected' : 'Provisioning'}
-                </p>
-              </div>
-            </div>
+            </SettingsGroup>
           </nav>
 
-          {/* Footer - User Info */}
-          <div className="p-3 border-t border-gray-200 dark:border-gray-800">
-            <div className="flex items-center gap-3 px-3 py-2.5">
-              <div className="h-8 w-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-semibold shrink-0">
-                {data.user.fullName.charAt(0)}
-              </div>
+          {/* =================================================
+              SETTINGS
+          ================================================= */}
+
+          <div className="px-3 pb-3">
+            <NavigationItem
+              name="Settings"
+              route="/dashboard/settings"
+              icon={Settings}
+              active={isSettingsPage}
+              onClick={() =>
+                setSidebarOpen(false)
+              }
+            />
+          </div>
+
+          {/* =================================================
+              USER ACCOUNT
+          ================================================= */}
+
+          <div className="relative border-t border-gray-200 dark:border-gray-800 p-3">
+            <button
+              onClick={() =>
+                setAccountMenuOpen(
+                  !accountMenuOpen
+                )
+              }
+              className="
+                w-full
+                flex
+                items-center
+                gap-3
+                rounded-xl
+                p-2
+                text-left
+                hover:bg-gray-100
+                dark:hover:bg-gray-900
+                transition
+              "
+            >
+              <UserAvatar
+                name={data.user.fullName}
+              />
+
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{data.user.fullName}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{data.user.email}</p>
+                <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+                  {data.user.fullName}
+                </p>
+
+                <p className="truncate text-[11px] text-gray-400">
+                  {data.activeBusiness.role}
+                </p>
               </div>
-            </div>
-            <button onClick={handleLogout} className="mt-2 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-              <LogOut size={16} />
-              Sign Out
+
+              <ChevronDown
+                size={15}
+                className={`
+                  text-gray-400
+                  transition-transform
+                  ${
+                    accountMenuOpen
+                      ? 'rotate-180'
+                      : ''
+                  }
+                `}
+              />
             </button>
+
+            {/* ACCOUNT MENU */}
+
+            {accountMenuOpen && (
+              <div
+                className="
+                  absolute
+                  bottom-full
+                  left-3
+                  right-3
+                  mb-2
+                  overflow-hidden
+                  rounded-xl
+                  border
+                  border-gray-200
+                  dark:border-gray-800
+                  bg-white
+                  dark:bg-gray-900
+                  shadow-2xl
+                "
+              >
+                <div className="p-3 border-b border-gray-100 dark:border-gray-800">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {data.user.fullName}
+                  </p>
+
+                  <p className="mt-0.5 truncate text-xs text-gray-400">
+                    {data.user.email}
+                  </p>
+                </div>
+
+                <div className="p-1.5">
+                  <Link
+                    href="/dashboard/settings?tab=profile"
+                    onClick={() =>
+                      setAccountMenuOpen(false)
+                    }
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-gray-700
+                      dark:text-gray-300
+                      hover:bg-gray-100
+                      dark:hover:bg-gray-800
+                    "
+                  >
+                    <User size={16} />
+                    Profile
+                  </Link>
+
+                  <Link
+                    href="/dashboard/settings"
+                    onClick={() =>
+                      setAccountMenuOpen(false)
+                    }
+                    className="
+                      flex
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-gray-700
+                      dark:text-gray-300
+                      hover:bg-gray-100
+                      dark:hover:bg-gray-800
+                    "
+                  >
+                    <Settings size={16} />
+                    Settings
+                  </Link>
+
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+
+                  <button
+                    onClick={handleLogout}
+                    className="
+                      w-full
+                      flex
+                      items-center
+                      gap-3
+                      rounded-lg
+                      px-3
+                      py-2.5
+                      text-sm
+                      text-red-600
+                      dark:text-red-400
+                      hover:bg-red-50
+                      dark:hover:bg-red-500/10
+                    "
+                  >
+                    <LogOut size={16} />
+                    Sign out
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </aside>
 
-      {/* Main */}
-      <div className="lg:pl-64">
-        {/* Header */}
-        <header className="sticky top-0 z-30 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-center justify-between px-4 lg:px-6 py-3">
-            {/* Left: Module/Business Name */}
-            <div className="flex items-center gap-3 min-w-0">
-              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0">
-                <Menu size={20} className="text-gray-600 dark:text-gray-400" />
-              </button>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                {getCurrentTitle()}
-              </h1>
+      {/* =====================================================
+          MAIN AREA
+      ===================================================== */}
+
+      <div className="lg:pl-[272px]">
+        {/* ===================================================
+            TOP HEADER
+        =================================================== */}
+
+        <header
+          className="
+            sticky
+            top-0
+            z-30
+            h-[68px]
+            border-b
+            border-gray-200
+            dark:border-gray-800
+            bg-white/85
+            dark:bg-gray-950/85
+            backdrop-blur-xl
+          "
+        >
+          <div className="flex h-full items-center gap-4 px-4 lg:px-7">
+            {/* MOBILE MENU */}
+
+            <button
+              onClick={() =>
+                setSidebarOpen(true)
+              }
+              className="
+                lg:hidden
+                h-9
+                w-9
+                shrink-0
+                rounded-lg
+                flex
+                items-center
+                justify-center
+                hover:bg-gray-100
+                dark:hover:bg-gray-800
+              "
+            >
+              <Menu size={19} />
+            </button>
+
+            {/* PAGE TITLE */}
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-base font-bold text-gray-900 dark:text-white">
+                  {getCurrentTitle()}
+                </h1>
+
+                {pathname !==
+                  '/dashboard' &&
+                  !isSettingsPage && (
+                    <ChevronRight
+                      size={14}
+                      className="hidden sm:block text-gray-300 dark:text-gray-700"
+                    />
+                  )}
+              </div>
+
+              <p className="hidden sm:block truncate text-xs text-gray-400">
+                {getCurrentDescription()}
+              </p>
             </div>
 
-            {/* Middle: Breadcrumb */}
-            <div className="flex-1 flex justify-center px-4">
-              <nav className="flex items-center gap-2 text-sm">
-                <span className="text-gray-400 dark:text-gray-500">/</span>
-                <span className="font-medium text-gray-700 dark:text-gray-300">
-                  {getCurrentLocation()}
-                </span>
-              </nav>
+            {/* GLOBAL SEARCH */}
+
+            <div className="hidden md:flex w-full max-w-[360px]">
+              <div
+                className="
+                  group
+                  relative
+                  flex
+                  h-9
+                  w-full
+                  items-center
+                  rounded-xl
+                  border
+                  border-gray-200
+                  dark:border-gray-800
+                  bg-gray-50
+                  dark:bg-gray-900
+                  transition
+                  focus-within:border-blue-500
+                  focus-within:ring-2
+                  focus-within:ring-blue-500/10
+                "
+              >
+                <Search
+                  size={15}
+                  className="
+                    ml-3
+                    shrink-0
+                    text-gray-400
+                  "
+                />
+
+                <input
+                  id="sami-global-search"
+                  type="text"
+                  placeholder="Search anything..."
+                  className="
+                    min-w-0
+                    flex-1
+                    bg-transparent
+                    border-0
+                    outline-none
+                    px-2
+                    text-xs
+                    text-gray-900
+                    dark:text-white
+                    placeholder:text-gray-400
+                  "
+                />
+
+                <kbd
+                  className="
+                    mr-2
+                    hidden
+                    lg:inline-flex
+                    items-center
+                    rounded-md
+                    border
+                    border-gray-200
+                    dark:border-gray-700
+                    bg-white
+                    dark:bg-gray-800
+                    px-1.5
+                    py-0.5
+                    text-[9px]
+                    font-medium
+                    text-gray-400
+                  "
+                >
+                  ⌘ K
+                </kbd>
+              </div>
             </div>
 
-            {/* Right: Theme + Notifications */}
-            <div className="flex items-center gap-2 shrink-0">
-              <button onClick={toggleTheme} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-                {darkMode ? <Sun size={18} className="text-gray-600 dark:text-gray-400" /> : <Moon size={18} className="text-gray-600" />}
+            {/* ACTIONS */}
+
+            <div className="flex items-center gap-1 shrink-0">
+              {/* THEME */}
+
+              <button
+                onClick={() => {
+                  const next =
+                    !darkMode;
+
+                  setDarkMode(next);
+
+                  if (next) {
+                    document.documentElement.classList.add(
+                      'dark'
+                    );
+
+                    localStorage.setItem(
+                      'sami_theme',
+                      'dark'
+                    );
+                  } else {
+                    document.documentElement.classList.remove(
+                      'dark'
+                    );
+
+                    localStorage.setItem(
+                      'sami_theme',
+                      'light'
+                    );
+                  }
+                }}
+                title={
+                  darkMode
+                    ? 'Switch to light mode'
+                    : 'Switch to dark mode'
+                }
+                className="
+                  h-9
+                  w-9
+                  rounded-lg
+                  flex
+                  items-center
+                  justify-center
+                  text-gray-500
+                  dark:text-gray-400
+                  hover:bg-gray-100
+                  dark:hover:bg-gray-800
+                  transition
+                "
+              >
+                {darkMode ? (
+                  <Sun size={17} />
+                ) : (
+                  <Moon size={17} />
+                )}
               </button>
-              <button className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition relative">
-                <Bell size={18} className="text-gray-600 dark:text-gray-400" />
-                <span className="absolute top-1.5 right-1.5 h-2 w-2 bg-blue-600 rounded-full" />
+
+              {/* NOTIFICATIONS */}
+
+              <button
+                title="Notifications"
+                className="
+                  relative
+                  h-9
+                  w-9
+                  rounded-lg
+                  flex
+                  items-center
+                  justify-center
+                  text-gray-500
+                  dark:text-gray-400
+                  hover:bg-gray-100
+                  dark:hover:bg-gray-800
+                  transition
+                "
+              >
+                <Bell size={17} />
+
+                <span
+                  className="
+                    absolute
+                    right-2
+                    top-2
+                    h-1.5
+                    w-1.5
+                    rounded-full
+                    bg-blue-600
+                    ring-2
+                    ring-white
+                    dark:ring-gray-950
+                  "
+                />
+              </button>
+
+              {/* PROFILE */}
+
+              <button
+                onClick={() =>
+                  setAccountMenuOpen(
+                    !accountMenuOpen
+                  )
+                }
+                className="
+                  ml-1
+                  rounded-lg
+                  p-0.5
+                  hover:bg-gray-100
+                  dark:hover:bg-gray-800
+                  transition
+                "
+              >
+                <UserAvatar
+                  name={data.user.fullName}
+                  size="sm"
+                />
               </button>
             </div>
           </div>
         </header>
 
-        {/* Content */}
-        <main className="p-4 lg:p-6">
-          {children}
+        {/* ===================================================
+            PAGE CONTENT
+        =================================================== */}
+
+        <main className="min-h-[calc(100vh-68px)]">
+          <div className="p-4 sm:p-5 lg:p-7">
+            {children}
+          </div>
         </main>
       </div>
     </div>
+  );
+}
+
+/* =========================================================
+   SUSPENSE WRAPPER
+   Required because useSearchParams() is used above.
+========================================================= */
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+          <div className="flex flex-col items-center">
+            <SaMiLogo size="lg" />
+
+            <div className="mt-7 h-7 w-7 rounded-full border-[3px] border-blue-600/20 border-t-blue-600 animate-spin" />
+          </div>
+        </div>
+      }
+    >
+      <DashboardLayoutContent>
+        {children}
+      </DashboardLayoutContent>
+    </Suspense>
   );
 }
