@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Loader2, Shield, Mail, Lock, ArrowRight } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 function LoginForm() {
@@ -15,6 +15,11 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [darkMode, setDarkMode] = useState(false);
+  
+  // 2FA state
+  const [show2FA, setShow2FA] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
@@ -22,8 +27,13 @@ function LoginForm() {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     }
+    
     if (searchParams.get('registered') === 'true') {
-      setSuccess('Registration successful! Please sign in.');
+      setSuccess('Registration successful! Please check your email to verify your account, then sign in.');
+    }
+    
+    if (searchParams.get('verified') === 'true') {
+      setSuccess('Email verified! You can now sign in.');
     }
   }, [searchParams]);
 
@@ -56,12 +66,52 @@ function LoginForm() {
         throw new Error(data.error || 'Login failed');
       }
 
+      // Check if 2FA is required
+      if (data.requires2FA) {
+        setShow2FA(true);
+        setUserId(data.userId);
+        setSuccess('Verification code sent to your email');
+        setLoading(false);
+        return;
+      }
+
       router.push('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
-    } finally {
       setLoading(false);
     }
+  };
+
+  const handle2FAVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await fetch('/api/auth/2fa/login-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, code: twoFactorCode }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Verification failed');
+      }
+
+      router.push('/dashboard');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setLoading(false);
+    }
+  };
+
+  const handleBackToLogin = () => {
+    setShow2FA(false);
+    setTwoFactorCode('');
+    setError('');
+    setSuccess('');
   };
 
   return (
@@ -83,10 +133,10 @@ function LoginForm() {
             AI-powered business workspace
           </p>
           <h2 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">
-            Welcome back
+            {show2FA ? 'Two-Factor Authentication' : 'Welcome back'}
           </h2>
           <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            Sign in to your workspace
+            {show2FA ? 'Enter the code sent to your email' : 'Sign in to your workspace'}
           </p>
         </div>
       </div>
@@ -105,59 +155,139 @@ function LoginForm() {
         )}
 
         <div className="bg-white dark:bg-gray-900 py-8 px-6 shadow-xl shadow-gray-200/50 dark:shadow-black/20 rounded-2xl border border-gray-200 dark:border-gray-800 sm:px-10">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mt-1.5 block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-                placeholder="john@company.com"
-              />
+          {show2FA ? (
+            /* 2FA Form */
+            <form onSubmit={handle2FAVerify} className="space-y-5">
+              <div className="flex justify-center">
+                <div className="h-14 w-14 bg-blue-100 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center">
+                  <Shield size={28} className="text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+              
+              <div>
+                <label htmlFor="twoFactorCode" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 text-center">
+                  Verification Code
+                </label>
+                <input
+                  type="text"
+                  id="twoFactorCode"
+                  required
+                  maxLength={6}
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value.replace(/[^0-9]/g, ''))}
+                  className="mt-1.5 block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-center text-3xl tracking-[0.5em] text-gray-900 dark:text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                  placeholder="000000"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+                  Enter the 6-digit code sent to your email
+                </p>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || twoFactorCode.length !== 6}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Verifying...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    Verify & Login
+                    <ArrowRight size={16} />
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBackToLogin}
+                className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition"
+              >
+                Back to login
+              </button>
+            </form>
+          ) : (
+            /* Regular Login Form */
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Email Address
+                </label>
+                <div className="mt-1.5 relative">
+                  <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="email"
+                    id="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                    placeholder="john@company.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Password
+                </label>
+                <div className="mt-1.5 relative">
+                  <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="password"
+                    id="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
+                    placeholder="Your password"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-xs text-blue-600 dark:text-blue-500 hover:underline font-medium"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    Signing in...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    Sign In
+                    <ArrowRight size={16} />
+                  </span>
+                )}
+              </button>
+            </form>
+          )}
+
+          {!show2FA && (
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Don't have an account?{' '}
+                <Link href="/auth/register" className="text-blue-600 dark:text-blue-500 hover:underline font-medium">
+                  Start free
+                </Link>
+              </p>
             </div>
-
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1.5 block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
-                placeholder="Your password"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shadow-blue-600/20"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
-                  Signing in...
-                </span>
-              ) : 'Sign In'}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Don't have an account?{' '}
-              <Link href="/auth/register" className="text-blue-600 dark:text-blue-500 hover:underline font-medium">
-                Start free
-              </Link>
-            </p>
-          </div>
+          )}
         </div>
       </div>
     </div>

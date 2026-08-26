@@ -2,59 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, getUserBusinesses } from '@/lib/auth/session';
 import { queryControl } from '@/lib/db/control';
 
-// SaMi Pricing - Odoo style with AI limits
 const PRICING = {
-  free: {
-    plan: 'free',
-    name: 'One App Free',
-    includedApps: 1,
-    includedUsers: -1, // unlimited
-    pricePerUser: 0,
-    aiQueriesIncluded: 100,
-    aiQueryLimit: 100,
-    monthlyPricePerUser: 0,
-    annualPricePerUser: 0,
-  },
-  standard: {
-    plan: 'standard',
-    name: 'Standard',
-    includedApps: -1, // all apps
-    includedUsers: 0, // all users billed
-    pricePerUser: 14.90,
-    aiQueriesIncluded: 1000,
-    aiQueryLimit: 1000,
-    monthlyPricePerUser: 14.90,
-    annualPricePerUser: 11.90, // 20% discount for annual
-  },
-  custom: {
-    plan: 'custom',
-    name: 'Custom',
-    includedApps: -1, // all apps
-    includedUsers: 0, // all users billed
-    pricePerUser: 24.90,
-    aiQueriesIncluded: -1, // unlimited
-    aiQueryLimit: -1,
-    monthlyPricePerUser: 24.90,
-    annualPricePerUser: 19.90,
-  },
+  free: { plan: 'free', name: 'One App Free', includedApps: 1, includedUsers: -1, pricePerUser: 0, aiQueries: 100 },
+  standard: { plan: 'standard', name: 'Standard', includedApps: -1, includedUsers: 0, pricePerUser: 14.90, aiQueries: 1000 },
+  custom: { plan: 'custom', name: 'Custom', includedApps: -1, includedUsers: 0, pricePerUser: 24.90, aiQueries: -1 },
 };
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
 
     const businesses = await getUserBusinesses(session.user.id);
     const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
 
-    if (!activeBusinessId) return NextResponse.json({ error: 'No business found' }, { status: 403 });
+    if (!activeBusinessId) {
+      return NextResponse.json({ error: 'No business found' }, { status: 403 });
+    }
 
-    // Get subscription
+    // Get subscription from database
     const subResult = await queryControl(
-      `SELECT * FROM subscriptions WHERE business_id = $1 AND status = 'active' ORDER BY created_at DESC LIMIT 1`,
+      `SELECT * FROM subscriptions WHERE business_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [activeBusinessId]
     );
-    const subscription = subResult.rows[0] || { plan: 'free', billing_cycle: 'monthly' };
+    const subscription = subResult.rows[0];
+
+    if (!subscription) {
+      return NextResponse.json({ error: 'No subscription found' }, { status: 404 });
+    }
 
     // Count enabled apps
     const appsCount = await queryControl(
@@ -63,51 +40,62 @@ export async function GET(request: NextRequest) {
     );
     const enabledApps = parseInt(appsCount.rows[0].count);
 
-    // Count active team members (excluding owner for free plan billing)
-    const teamCount = await queryControl(
+    // Count active users
+    const usersCount = await queryControl(
       `SELECT COUNT(*) as count FROM business_users WHERE business_id = $1 AND status = 'active'`,
       [activeBusinessId]
     );
-    const activeUsers = parseInt(teamCount.rows[0].count);
+    const activeUsers = parseInt(usersCount.rows[0].count);
 
-    const planKey = subscription.plan || 'free';
-    const plan = PRICING[planKey as keyof typeof PRICING] || PRICING.free;
+    // Get billing history from audit_logs
+    const billingHistory = await queryControl(
+      `SELECT * FROM audit_logs 
+       WHERE business_id = $1 
+         AND action IN ('payment_received', 'trial_started', 'payment_failed', 'plan_updated')
+       ORDER BY created_at DESC
+       LIMIT 20`,
+      [activeBusinessId]
+    );
 
-    // Calculate billing
-    let billableUsers = 0;
-    let userCost = 0;
-    let totalMonthly = 0;
-
-    if (planKey === 'free') {
-      // Free: 1 app, unlimited users, no charge
-      billableUsers = 0;
-      userCost = 0;
-      totalMonthly = 0;
-    } else {
-      // Paid plans: charge per active user
-      billableUsers = activeUsers;
-      userCost = billableUsers * plan.pricePerUser;
-      totalMonthly = userCost;
+    // Calculate trial days remaining
+    let trialDaysRemaining = 0;
+    if (subscription.trial_ends_at && subscription.status === 'trialing') {
+      const now = new Date();
+      const trialEnd = new Date(subscription.trial_ends_at);
+      trialDaysRemaining = Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      if (trialDaysRemaining < 0) trialDaysRemaining = 0;
     }
 
+    // Build billing object
+    const planKey = subscription.plan || 'free';
+    const planInfo = PRICING[planKey as keyof typeof PRICING] || PRICING.free;
+
     const billing = {
-      plan: plan.name,
+      plan: planInfo.name,
       planKey,
+      status: subscription.status,
       billingCycle: subscription.billing_cycle || 'monthly',
-      includedApps: plan.includedApps === -1 ? 'All Apps' : plan.includedApps,
-      includedUsers: plan.includedUsers === -1 ? 'Unlimited' : 'All users billed',
-      pricePerUserMonthly: plan.monthlyPricePerUser,
-      pricePerUserAnnual: plan.annualPricePerUser,
+      trialEndsAt: subscription.trial_ends_at,
+      trialDaysRemaining,
+      currentPeriodEnd: subscription.current_period_end,
+      startedAt: subscription.started_at,
       enabledApps,
       activeUsers,
-      billableUsers,
-      userCost,
-      totalMonthly,
-      aiQueriesIncluded: plan.aiQueriesIncluded === -1 ? 'Unlimited' : `${plan.aiQueriesIncluded}/month`,
-      currency: 'USD',
+      aiQueriesUsed: subscription.ai_queries_used || 0,
+      aiQueriesLimit: subscription.ai_queries_limit || planInfo.aiQueries,
+      pricePerUser: planInfo.pricePerUser,
+      cardLast4: subscription.card_last4,
+      cardBrand: subscription.card_brand,
+      pesapalSubscriptionId: subscription.pesapal_subscription_id,
+      pesapalOrderId: subscription.pesapal_order_id,
     };
 
-    return NextResponse.json({ success: true, subscription, billing });
+    return NextResponse.json({
+      success: true,
+      subscription,
+      billing,
+      billingHistory: billingHistory.rows,
+    });
 
   } catch (error) {
     console.error('Subscription API error:', error);
@@ -118,41 +106,43 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
 
     const { plan, billingCycle } = await request.json();
 
-    if (!['free', 'standard', 'custom'].includes(plan)) {
+    if (!plan || !['free', 'standard', 'custom'].includes(plan)) {
       return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
     }
 
     const businesses = await getUserBusinesses(session.user.id);
     const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
 
-    if (!activeBusinessId) return NextResponse.json({ error: 'No business found' }, { status: 403 });
-
-    // Update subscription with billing cycle
+    // Update subscription in database
     await queryControl(
       `UPDATE subscriptions 
        SET plan = $1, 
-           updated_at = NOW(),
-           current_period_end = CASE 
-             WHEN $2 = 'monthly' THEN NOW() + INTERVAL '1 month'
-             WHEN $2 = 'annual' THEN NOW() + INTERVAL '1 year'
-             ELSE current_period_end
-           END
-       WHERE business_id = $3 AND status = 'active'`,
-      [plan, billingCycle || 'monthly', activeBusinessId]
+           billing_cycle = $2,
+           ai_queries_limit = $3,
+           updated_at = NOW()
+       WHERE business_id = $4 AND status = 'active'`,
+      [
+        plan, 
+        billingCycle || 'monthly', 
+        PRICING[plan as keyof typeof PRICING]?.aiQueries || 100,
+        activeBusinessId
+      ]
     );
 
-    // Log to audit
+    // Log
     await queryControl(
       `INSERT INTO audit_logs (user_id, business_id, action, resource_type, details)
-       VALUES ($1, $2, 'subscription_update', 'subscription', $3)`,
+       VALUES ($1, $2, 'plan_updated', 'subscription', $3)`,
       [session.user.id, activeBusinessId, JSON.stringify({ plan, billingCycle })]
     );
 
-    return NextResponse.json({ success: true, message: `Plan updated to ${plan} (${billingCycle || 'monthly'})` });
+    return NextResponse.json({ success: true, message: `Plan updated to ${plan}` });
 
   } catch (error) {
     console.error('Update subscription error:', error);

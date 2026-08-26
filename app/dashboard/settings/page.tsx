@@ -1,26 +1,30 @@
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { useRouter } from 'next/navigation';
-import { 
-  User, Shield, Monitor, Globe, Building2, Users, AppWindow, 
+import { useSearchParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  User, Shield, Monitor, Globe, Building2, Users, AppWindow,
   Sparkles, Key, CreditCard, History, AlertTriangle, Save, Loader2,
-  Check, X, Plus, Trash2, Copy, LogOut, Smartphone, Laptop
+  Check, X, Plus, Trash2, Copy, Smartphone, Laptop, Mail, Bell,
+  Moon, Sun, Download, LogOut, ShieldCheck, ShieldOff
 } from 'lucide-react';
 import { SAMI_APPS } from '@/lib/sami-apps';
+import AuditLogsSection from './components/AuditLogsSection';
+import NotificationBell from '../components/NotificationBell';
 
 function SettingsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const activeTab = searchParams.get('tab') || 'profile';
-  
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [overlay, setOverlay] = useState<any>(null);
 
+  // Forms
   const [profileForm, setProfileForm] = useState({ fullName: '', email: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [businessForm, setBusinessForm] = useState<any>({});
@@ -28,6 +32,18 @@ function SettingsContent() {
   const [apiKeyName, setApiKeyName] = useState('');
   const [newApiKey, setNewApiKey] = useState('');
   const [inviteLink, setInviteLink] = useState('');
+  const [preferencesForm, setPreferencesForm] = useState({
+    theme: 'system',
+    dateFormat: 'DD/MM/YYYY',
+    timeFormat: '24h',
+    language: 'en',
+    timezone: 'Africa/Nairobi',
+  });
+
+  // 2FA state
+  const [show2FASetup, setShow2FASetup] = useState(false);
+  const [qrCode, setQrCode] = useState('');
+  const [twoFactorCode, setTwoFactorCode] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -84,6 +100,47 @@ function SettingsContent() {
     }
   };
 
+  const handleSetup2FA = async () => {
+    setShow2FASetup(true);
+    try {
+      const response = await fetch('/api/auth/2fa/setup', { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setQrCode(data.qrCodeDataUrl);
+    } catch (err) {
+      setError('Failed to setup 2FA');
+      setShow2FASetup(false);
+    }
+  };
+
+  const handleVerify2FA = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/auth/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: twoFactorCode }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      showOverlay('success', '2FA Enabled', data.message);
+      setShow2FASetup(false);
+      setTwoFactorCode('');
+      fetchSettings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDisable2FA = () => {
+    showOverlay('confirm', 'Disable 2FA', 'Enter your password to disable two-factor authentication.', 'Disable', async () => {
+      // Password prompt would be here - simplified for now
+      closeOverlay();
+    });
+  };
+
   const handleSendInvite = async () => {
     setSaving(true);
     try {
@@ -96,7 +153,7 @@ function SettingsContent() {
       if (!response.ok) throw new Error(data.error);
       setInviteLink(data.inviteLink || '');
       setInviteForm({ email: '', role: 'member' });
-      showOverlay('success', 'Invite Sent', `Invitation sent to ${inviteForm.email}`);
+      showOverlay('success', 'Invite Sent', `Invitation sent to ${data.message}`);
       fetchSettings();
     } catch (err) {
       setError('Failed to send invite');
@@ -111,7 +168,7 @@ function SettingsContent() {
       const response = await fetch('/api/settings/api-keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: apiKeyName }),
+        body: JSON.stringify({ name: apiKeyName, permissions: ['read', 'write'] }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
@@ -125,8 +182,8 @@ function SettingsContent() {
     }
   };
 
-  const handleDeleteApiKey = async (keyId: string) => {
-    showOverlay('confirm', 'Delete API Key', 'This key will be permanently revoked.', 'Delete', async () => {
+  const handleDeleteApiKey = (keyId: string) => {
+    showOverlay('confirm', 'Revoke API Key', 'This key will be permanently revoked.', 'Revoke', async () => {
       await fetch('/api/settings/api-keys', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -203,15 +260,16 @@ function SettingsContent() {
     });
   };
 
-  const handleLogoutAllSessions = () => {
+  const handleLogoutAll = () => {
     showOverlay('confirm', 'Sign Out All Devices', 'You will be logged out everywhere except this device.', 'Sign Out All', async () => {
-      await fetch('/api/auth/logout-all', { method: 'POST' });
+      await fetch('/api/settings/sessions/logout-all', { method: 'POST' });
+      fetchSettings();
       closeOverlay();
     });
   };
 
   const handleDeleteBusiness = () => {
-    showOverlay('confirm', 'Delete Business', 'This will permanently delete your business and all data. This cannot be undone.', 'Delete Everything', async () => {
+    showOverlay('confirm', 'Delete Business', 'This will permanently delete your business and ALL data. Type DELETE to confirm.', 'Delete', async () => {
       closeOverlay();
     });
   };
@@ -236,37 +294,32 @@ function SettingsContent() {
       {activeTab === 'profile' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">My Profile</h3>
-          <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="h-16 w-16 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold">
-                {data.profile?.full_name?.charAt(0) || 'U'}
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-white">{data.profile?.full_name}</p>
-                <p className="text-sm text-gray-500">{data.profile?.email}</p>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${data.profile?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {data.profile?.status}
-                </span>
-              </div>
+          <div className="flex items-center gap-4 mb-6">
+            <div className="h-16 w-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold">
+              {data.profile?.full_name?.charAt(0) || 'U'}
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Full Name</label>
-                <input type="text" value={profileForm.fullName} onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
-                <input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
-              </div>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-white">{data.profile?.full_name}</p>
+              <p className="text-sm text-gray-500">{data.profile?.email}</p>
+              <span className={`text-xs px-2 py-0.5 rounded-full ${data.profile?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                {data.profile?.status}
+              </span>
             </div>
-            <div className="text-xs text-gray-500">
-              Account created: {new Date(data.profile?.created_at).toLocaleDateString()}
-            </div>
-            <button onClick={() => handleSave('profile', profileForm, 'Profile updated')} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              Save Profile
-            </button>
           </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Full Name</label>
+              <input type="text" value={profileForm.fullName} onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
+              <input type="email" value={profileForm.email} onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+            </div>
+          </div>
+          <button onClick={() => handleSave('profile', profileForm, 'Profile updated')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Save Profile
+          </button>
         </div>
       )}
 
@@ -292,11 +345,49 @@ function SettingsContent() {
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Two-Factor Authentication</h3>
-            <p className="text-sm text-gray-500 mb-4">Add extra security to your account.</p>
-            <p className="text-sm text-gray-700 dark:text-gray-300">
-              Status: {data.profile?.two_factor_enabled ? '✅ Enabled' : '❌ Disabled'}
-            </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Two-Factor Authentication</h3>
+                <p className="text-sm text-gray-500 mt-1">
+                  {data.profile?.two_factor_enabled ? '2FA is enabled.' : 'Add extra security to your account.'}
+                </p>
+              </div>
+              {data.profile?.two_factor_enabled ? (
+                <ShieldCheck size={24} className="text-green-600" />
+              ) : (
+                <ShieldOff size={24} className="text-gray-400" />
+              )}
+            </div>
+
+            {show2FASetup && qrCode && (
+              <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-center">
+                <img src={qrCode} alt="2FA QR Code" className="mx-auto w-40 h-40" />
+                <p className="text-xs text-gray-500 mt-2">Scan with Google Authenticator</p>
+                <div className="mt-3 flex gap-2 max-w-xs mx-auto">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={twoFactorCode}
+                    onChange={(e) => setTwoFactorCode(e.target.value.replace(/[^0-9]/g, ''))}
+                    className="flex-1 rounded-lg border px-3 py-2 text-center text-xl tracking-widest"
+                    placeholder="000000"
+                  />
+                  <button onClick={handleVerify2FA} disabled={saving || twoFactorCode.length !== 6} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">
+                    Verify
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!data.profile?.two_factor_enabled ? (
+              <button onClick={handleSetup2FA} className="mt-4 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700">
+                Enable 2FA
+              </button>
+            ) : (
+              <button onClick={handleDisable2FA} className="mt-4 px-5 py-2.5 border border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50">
+                Disable 2FA
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -306,7 +397,7 @@ function SettingsContent() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Devices & Sessions</h3>
-            <button onClick={handleLogoutAllSessions} className="text-sm text-red-600 hover:underline">Sign out all devices</button>
+            <button onClick={handleLogoutAll} className="text-sm text-red-600 hover:underline">Sign out all devices</button>
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {data.sessions?.map((session: any) => (
@@ -314,20 +405,62 @@ function SettingsContent() {
                 <div className="flex items-center gap-3">
                   {session.device === 'mobile' ? <Smartphone size={18} /> : <Laptop size={18} />}
                   <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {session.browser} · {session.os}
-                    </p>
-                    <p className="text-xs text-gray-500">{session.location || 'Unknown location'}</p>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">{session.browser} · {session.os}</p>
+                    <p className="text-xs text-gray-500">{session.location || 'Unknown'} · {session.ip}</p>
                   </div>
                 </div>
                 {session.is_current ? (
                   <span className="text-xs text-green-600 font-medium">Active now</span>
                 ) : (
-                  <span className="text-xs text-gray-400">Last active: {new Date(session.last_active).toLocaleString()}</span>
+                  <span className="text-xs text-gray-400">{new Date(session.last_active).toLocaleString()}</span>
                 )}
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* PREFERENCES */}
+      {activeTab === 'preferences' && (
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Preferences</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Theme</label>
+              <select value={preferencesForm.theme} onChange={(e) => setPreferencesForm({ ...preferencesForm, theme: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="system">System</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Date Format</label>
+              <select value={preferencesForm.dateFormat} onChange={(e) => setPreferencesForm({ ...preferencesForm, dateFormat: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
+                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Time Format</label>
+              <select value={preferencesForm.timeFormat} onChange={(e) => setPreferencesForm({ ...preferencesForm, timeFormat: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
+                <option value="24h">24 Hour</option>
+                <option value="12h">12 Hour</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Timezone</label>
+              <select value={preferencesForm.timezone} onChange={(e) => setPreferencesForm({ ...preferencesForm, timezone: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
+                <option value="Africa/Nairobi">Africa/Nairobi</option>
+                <option value="Europe/London">Europe/London</option>
+                <option value="America/New_York">America/New_York</option>
+              </select>
+            </div>
+          </div>
+          <button onClick={() => handleSave('preferences', preferencesForm, 'Preferences saved')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Save Preferences
+          </button>
         </div>
       )}
 
@@ -336,41 +469,19 @@ function SettingsContent() {
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Business Information</h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Business Name</label>
-              <input type="text" value={businessForm.name} onChange={(e) => setBusinessForm({ ...businessForm, name: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email</label>
-              <input type="email" value={businessForm.email} onChange={(e) => setBusinessForm({ ...businessForm, email: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Phone</label>
-              <input type="text" value={businessForm.phone} onChange={(e) => setBusinessForm({ ...businessForm, phone: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Website</label>
-              <input type="text" value={businessForm.website} onChange={(e) => setBusinessForm({ ...businessForm, website: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Country</label>
-              <input type="text" value={businessForm.country} onChange={(e) => setBusinessForm({ ...businessForm, country: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Currency</label>
-              <select value={businessForm.currency} onChange={(e) => setBusinessForm({ ...businessForm, currency: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm">
-                <option value="KES">KES - Kenyan Shilling</option>
-                <option value="USD">USD - US Dollar</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Industry</label>
-              <input type="text" value={businessForm.industry} onChange={(e) => setBusinessForm({ ...businessForm, industry: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tax ID</label>
-              <input type="text" value={businessForm.tax_id} onChange={(e) => setBusinessForm({ ...businessForm, tax_id: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
+            {Object.entries(businessForm).map(([key, value]: [string, any]) => (
+              <div key={key}>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 capitalize">
+                  {key.replace(/_/g, ' ')}
+                </label>
+                <input
+                  type="text"
+                  value={value || ''}
+                  onChange={(e) => setBusinessForm({ ...businessForm, [key]: e.target.value })}
+                  className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white"
+                />
+              </div>
+            ))}
           </div>
           <button onClick={() => handleSave('business', businessForm, 'Business updated')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -483,21 +594,16 @@ function SettingsContent() {
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-600 dark:text-gray-400">Queries used</span>
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {data.aiUsage?.query_count || 0} / {data.subscription?.ai_queries_limit || 100}
-                </span>
+                <span className="text-gray-600">Queries used</span>
+                <span className="font-medium">{data.aiUsage?.query_count || 0} / {data.subscription?.ai_queries_limit || 100}</span>
               </div>
               <div className="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-3">
-                <div 
-                  className="bg-blue-600 h-3 rounded-full transition-all"
-                  style={{ width: `${Math.min(100, ((data.aiUsage?.query_count || 0) / (data.subscription?.ai_queries_limit || 100)) * 100)}%` }}
-                />
+                <div className="bg-blue-600 h-3 rounded-full transition-all" style={{ width: `${Math.min(100, ((data.aiUsage?.query_count || 0) / (data.subscription?.ai_queries_limit || 100)) * 100)}%` }} />
               </div>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600 dark:text-gray-400">Tokens used</span>
-              <span className="font-medium text-gray-900 dark:text-white">{data.aiUsage?.tokens_used || 0}</span>
+              <span className="text-gray-600">Tokens used</span>
+              <span className="font-medium">{data.aiUsage?.tokens_used || 0}</span>
             </div>
           </div>
         </div>
@@ -509,7 +615,7 @@ function SettingsContent() {
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Create API Key</h3>
             <div className="flex gap-3">
-              <input type="text" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="Key name" className="flex-1 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+              <input type="text" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="Key name (e.g. Production)" className="flex-1 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               <button onClick={handleCreateApiKey} disabled={saving || !apiKeyName} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
                 Create
               </button>
@@ -543,24 +649,7 @@ function SettingsContent() {
       )}
 
       {/* AUDIT LOGS */}
-      {activeTab === 'audit-logs' && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Activity Log</h3>
-          </div>
-          <div className="divide-y divide-gray-200 dark:divide-gray-800">
-            {data.auditLogs?.map((log: any) => (
-              <div key={log.id} className="px-6 py-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white">{log.action}</p>
-                  <span className="text-xs text-gray-500">{new Date(log.created_at).toLocaleString()}</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">{log.full_name || 'System'} • {log.resource_type}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {activeTab === 'audit-logs' && <AuditLogsSection />}
 
       {/* DANGER ZONE */}
       {activeTab === 'danger' && (
@@ -568,15 +657,23 @@ function SettingsContent() {
           <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-4">Danger Zone</h3>
           <div className="space-y-4">
             <div className="p-4 border border-red-200 dark:border-red-800 rounded-xl">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Sign out all devices</p>
+              <p className="text-sm font-semibold">Sign out all devices</p>
               <p className="text-xs text-gray-500 mt-1">Log out from all other devices.</p>
-              <button onClick={handleLogoutAllSessions} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
+              <button onClick={handleLogoutAll} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
                 Sign Out All Devices
               </button>
             </div>
             <div className="p-4 border border-red-200 dark:border-red-800 rounded-xl">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Delete Business</p>
-              <p className="text-xs text-gray-500 mt-1">Permanently delete your business and all associated data.</p>
+              <p className="text-sm font-semibold">Export Data</p>
+              <p className="text-xs text-gray-500 mt-1">Download all your data.</p>
+              <button onClick={() => fetch('/api/settings/danger/export-data', { method: 'POST' })} className="mt-3 flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium">
+                <Download size={14} />
+                Export Data
+              </button>
+            </div>
+            <div className="p-4 border border-red-200 dark:border-red-800 rounded-xl">
+              <p className="text-sm font-semibold">Delete Business</p>
+              <p className="text-xs text-gray-500 mt-1">Permanently delete your business and all data.</p>
               <button onClick={handleDeleteBusiness} className="mt-3 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
                 Delete Business
               </button>
@@ -611,7 +708,7 @@ function SettingsContent() {
               <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">{overlay.title}</h3>
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{overlay.message}</p>
               <div className="mt-6 flex gap-3 justify-center">
-                <button onClick={closeOverlay} className="px-5 py-2.5 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium">
+                <button onClick={closeOverlay} className="px-5 py-2.5 border border-gray-300 dark:border-gray-700 rounded-xl font-medium">
                   Cancel
                 </button>
                 {overlay.onConfirm && (

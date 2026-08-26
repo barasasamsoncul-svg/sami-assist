@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { queryControl, getControlPool } from '@/lib/db/control';
+import { sendVerificationEmail } from '@/lib/services/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,6 +29,12 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
+      // Create verification token
+      const verificationToken = crypto.randomBytes(32).toString('hex');
+      const verificationExpires = new Date();
+      verificationExpires.setHours(verificationExpires.getHours() + 24);
+
+      // Create user
       const passwordHash = await bcrypt.hash(password, 12);
       const userResult = await client.query(
         `INSERT INTO users (email, password_hash, full_name, email_verified)
@@ -36,6 +44,15 @@ export async function POST(request: NextRequest) {
       );
       const userId = userResult.rows[0].id;
 
+      // Store verification token in auth_sessions or a new table
+      // For now, store in auth_sessions
+      await client.query(
+        `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [userId, verificationToken, verificationExpires]
+      );
+
+      // Create business
       const slug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
       const businessResult = await client.query(
         `INSERT INTO businesses (name, slug, email)
@@ -45,12 +62,14 @@ export async function POST(request: NextRequest) {
       );
       const businessId = businessResult.rows[0].id;
 
+      // Create business_user
       await client.query(
         `INSERT INTO business_users (business_id, user_id, role, status)
          VALUES ($1, $2, 'owner', 'active')`,
         [businessId, userId]
       );
 
+      // Create subscription
       await client.query(
         `INSERT INTO subscriptions (business_id, plan, status, billing_cycle, ai_queries_limit)
          VALUES ($1, 'free', 'pending', 'monthly', 100)`,
@@ -59,14 +78,24 @@ export async function POST(request: NextRequest) {
 
       await client.query('COMMIT');
 
+      // Send verification email
+      const appUrl = request.nextUrl.origin;
+      const emailResult = await sendVerificationEmail(email, verificationToken, appUrl);
+
+      if (!emailResult.success) {
+        console.error('Failed to send verification email:', emailResult.error);
+      }
+
+      // Log
       await queryControl(
-        `INSERT INTO audit_logs (user_id, business_id, action, resource_type, resource_id, details)
-         VALUES ($1, $2, 'business_created', 'business', $2, $3)`,
-        [userId, businessId, JSON.stringify({ name: businessName })]
+        `INSERT INTO audit_logs (user_id, business_id, action, resource_type, details)
+         VALUES ($1, $2, 'user_registered', 'user', $3)`,
+        [userId, businessId, JSON.stringify({ email, businessName })]
       );
 
       return NextResponse.json({
         success: true,
+        message: 'Registration successful. Please check your email to verify your account.',
         user: { id: userId, email: userResult.rows[0].email, fullName: userResult.rows[0].full_name },
         business: { id: businessId, name: businessResult.rows[0].name, slug: businessResult.rows[0].slug },
       });

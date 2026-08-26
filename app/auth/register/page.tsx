@@ -94,7 +94,7 @@ const handleSubmit = async () => {
 
         const businessId = registerData.business.id;
 
-        for (const appKey of selectedApps) {
+              for (const appKey of selectedApps) {
           await fetch('/api/auth/install-app', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -102,7 +102,9 @@ const handleSubmit = async () => {
           });
         }
 
-        router.push('/auth/login?registered=true');
+        // Show "check email" page instead of going straight to login
+        router.push('/auth/check-email');
+        
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Registration failed');
         setLoading(false);

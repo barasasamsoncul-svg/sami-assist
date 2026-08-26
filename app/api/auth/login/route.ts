@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { queryControl, getControlPool } from '@/lib/db/control';
+import { sendTwoFactorCode } from '@/lib/services/email';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
-    // Validate input
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
@@ -15,9 +16,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find user
+    // Find user (include email_verified and two_factor_enabled)
     const userResult = await queryControl(
-      `SELECT id, email, password_hash, full_name, status 
+      `SELECT id, email, password_hash, full_name, status, email_verified, two_factor_enabled 
        FROM users 
        WHERE email = $1`,
       [email.toLowerCase()]
@@ -50,7 +51,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's businesses
+    // Check if email is verified
+    if (!user.email_verified) {
+      return NextResponse.json(
+        { error: 'Please verify your email before logging in. Check your inbox for the verification link.' },
+        { status: 403 }
+      );
+    }
+
+    // Check if 2FA is enabled
+    if (user.two_factor_enabled) {
+      const twoFactorCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const codeExpires = new Date();
+      codeExpires.setMinutes(codeExpires.getMinutes() + 10);
+
+      await queryControl(
+        `INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [user.id, `2fa_${twoFactorCode}`, codeExpires]
+      );
+
+      await sendTwoFactorCode(user.email, twoFactorCode);
+
+      return NextResponse.json({
+        success: true,
+        requires2FA: true,
+        userId: user.id,
+        message: 'Verification code sent to your email',
+      });
+    }
+
+    // No 2FA - proceed with session creation
     const businessesResult = await queryControl(
       `SELECT 
         b.id,
@@ -77,37 +108,40 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session token
-    const crypto = require('crypto');
+    // Create session
     const sessionToken = crypto.randomBytes(48).toString('hex');
     const sessionExpiry = new Date();
     sessionExpiry.setDate(sessionExpiry.getDate() + 30);
 
-    // Store session in database
+    const userAgent = request.headers.get('user-agent') || '';
+    const device = userAgent.includes('Mobile') ? 'mobile' : userAgent.includes('Tablet') ? 'tablet' : 'desktop';
+    const browser = userAgent.includes('Chrome') ? 'Chrome' : userAgent.includes('Firefox') ? 'Firefox' : userAgent.includes('Safari') ? 'Safari' : userAgent.includes('Edge') ? 'Edge' : 'Unknown';
+    const os = userAgent.includes('Windows') ? 'Windows' : userAgent.includes('Mac') ? 'macOS' : userAgent.includes('Linux') ? 'Linux' : userAgent.includes('Android') ? 'Android' : userAgent.includes('iOS') ? 'iOS' : 'Unknown';
+
     const client = await getControlPool().connect();
 
     try {
       await client.query('BEGIN');
 
-      // Invalidate previous current sessions
       await client.query(
         `UPDATE sessions SET is_current = false WHERE user_id = $1`,
         [user.id]
       );
 
-       // Create new session
       await client.query(
-        `INSERT INTO sessions (user_id, token, expires_at, is_current, ip)
-         VALUES ($1, $2, $3, true, $4)`,
+        `INSERT INTO sessions (user_id, token, expires_at, is_current, ip, device, browser, os)
+         VALUES ($1, $2, $3, true, $4, $5, $6, $7)`,
         [
           user.id,
           sessionToken,
           sessionExpiry,
           request.headers.get('x-forwarded-for') || 'unknown',
+          device,
+          browser,
+          os,
         ]
       );
 
-      // Update last login
       await client.query(
         `UPDATE users SET last_login_at = NOW() WHERE id = $1`,
         [user.id]
@@ -115,7 +149,6 @@ export async function POST(request: NextRequest) {
 
       await client.query('COMMIT');
 
-      // Set cookie with session token
       const response = NextResponse.json({
         success: true,
         user: {

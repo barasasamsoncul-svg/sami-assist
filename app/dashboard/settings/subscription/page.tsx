@@ -1,35 +1,43 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Check, Loader2, Building2, Users, AppWindow, Sparkles, CreditCard } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Check, Loader2, CreditCard, Users, AppWindow, Sparkles, AlertTriangle, XCircle, CheckCircle } from 'lucide-react';
 
 interface BillingData {
-  subscription: any;
   billing: {
     plan: string;
     planKey: string;
+    status: string;
     billingCycle: string;
-    includedApps: string;
-    includedUsers: string;
-    pricePerUserMonthly: number;
-    pricePerUserAnnual: number;
+    trialEndsAt: string;
+    trialDaysRemaining: number;
+    currentPeriodEnd: string;
+    startedAt: string;
     enabledApps: number;
     activeUsers: number;
-    billableUsers: number;
-    userCost: number;
-    totalMonthly: number;
-    aiQueriesIncluded: string;
-    currency: string;
+    aiQueriesUsed: number;
+    aiQueriesLimit: number;
+    pricePerUser: number;
+    cardLast4: string;
+    cardBrand: string;
   };
+  billingHistory: Array<{
+    id: string;
+    action: string;
+    details: any;
+    created_at: string;
+  }>;
 }
 
 export default function SubscriptionPage() {
+  const router = useRouter();
   const [data, setData] = useState<BillingData | null>(null);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   useEffect(() => {
     fetchSubscription();
@@ -50,20 +58,37 @@ export default function SubscriptionPage() {
 
   const handlePlanChange = async (plan: string) => {
     setUpgrading(true);
-    setMessage('');
     setError('');
     try {
       const response = await fetch('/api/settings/subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, billingCycle }),
+        body: JSON.stringify({ plan, billingCycle: 'monthly' }),
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to update');
+      if (!response.ok) throw new Error(data.error);
       setMessage(data.message);
       fetchSubscription();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update');
+      setError(err instanceof Error ? err.message : 'Failed');
+    } finally {
+      setUpgrading(false);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setUpgrading(true);
+    try {
+      const response = await fetch('/api/settings/subscription/cancel', {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+      setMessage(data.message);
+      setShowCancelConfirm(false);
+      fetchSubscription();
+    } catch (err) {
+      setError('Failed to cancel');
     } finally {
       setUpgrading(false);
     }
@@ -79,157 +104,194 @@ export default function SubscriptionPage() {
 
   if (!data) return <div>No subscription found</div>;
 
-  const { billing } = data;
+  const { billing, billingHistory } = data;
 
   return (
     <div className="space-y-6">
       {message && (
-        <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-700 dark:text-green-400 text-sm">{message}</div>
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl text-green-700 dark:text-green-400 text-sm">{message}</div>
       )}
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>
       )}
 
-      {/* Current Summary */}
+      {/* Trial Banner */}
+      {billing.status === 'trialing' && billing.trialDaysRemaining > 0 && (
+        <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+          <p className="text-sm text-blue-700 dark:text-blue-400">
+            <strong>Trial active:</strong> {billing.trialDaysRemaining} days remaining. Your card will be charged after the trial ends.
+          </p>
+        </div>
+      )}
+
+      {billing.status === 'past_due' && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-2">
+          <AlertTriangle size={16} className="text-red-600" />
+          <p className="text-sm text-red-700 dark:text-red-400">Payment failed. Please update your payment method.</p>
+        </div>
+      )}
+
+      {/* Current Plan Summary */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm text-gray-500 dark:text-gray-400">Current Plan</h3>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white mt-1">{billing.plan}</p>
-            <p className="text-sm text-gray-500 mt-1 capitalize">{billing.billingCycle} billing</p>
+            <p className="text-sm text-gray-500">Current Plan</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{billing.plan}</p>
+            <p className="text-xs text-gray-500 mt-1 capitalize">
+              Status: <span className={`font-medium ${billing.status === 'active' ? 'text-green-600' : billing.status === 'trialing' ? 'text-blue-600' : 'text-red-600'}`}>{billing.status}</span>
+            </p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-gray-500 dark:text-gray-400">Monthly Total</p>
-            <p className="text-3xl font-bold text-blue-600 dark:text-blue-500">
-              ${billing.totalMonthly}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {billing.billableUsers} billable users × ${billing.pricePerUserMonthly}
-            </p>
+            <p className="text-sm text-gray-500">Billing Cycle</p>
+            <p className="text-xl font-bold text-gray-900 dark:text-white mt-1 capitalize">{billing.billingCycle}</p>
+            {billing.cardLast4 && (
+              <p className="text-xs text-gray-500 mt-1">💳 {billing.cardBrand} •••• {billing.cardLast4}</p>
+            )}
           </div>
         </div>
+
+        {/* Trial info */}
+        {billing.status === 'trialing' && (
+          <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-600 dark:text-gray-400">
+            Trial ends: {new Date(billing.trialEndsAt).toLocaleDateString()}
+          </div>
+        )}
+
+        {billing.currentPeriodEnd && (
+          <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl text-xs text-gray-600 dark:text-gray-400">
+            Next billing date: {new Date(billing.currentPeriodEnd).toLocaleDateString()}
+          </div>
+        )}
       </div>
 
-      {/* Usage Summary */}
-      <div className="grid sm:grid-cols-4 gap-4">
+      {/* Usage Stats */}
+      <div className="grid sm:grid-cols-3 gap-4">
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex items-center gap-2 mb-3">
             <AppWindow size={18} className="text-purple-600" />
-            <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Apps</h4>
+            <h4 className="font-semibold text-sm">Apps</h4>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{billing.enabledApps}</p>
-          <p className="text-xs text-gray-500 mt-1">{billing.includedApps}</p>
+          <p className="text-2xl font-bold">{billing.enabledApps}</p>
+          <p className="text-xs text-gray-500 mt-1">{billing.planKey === 'free' ? '1 included' : 'All apps'}</p>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex items-center gap-2 mb-3">
             <Users size={18} className="text-green-600" />
-            <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Active Users</h4>
+            <h4 className="font-semibold text-sm">Users</h4>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{billing.activeUsers}</p>
-          <p className="text-xs text-gray-500 mt-1">{billing.includedUsers}</p>
-        </div>
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <CreditCard size={18} className="text-blue-600" />
-            <h4 className="font-semibold text-gray-900 dark:text-white text-sm">Billable Users</h4>
-          </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{billing.billableUsers}</p>
-          <p className="text-xs text-gray-500 mt-1">× ${billing.pricePerUserMonthly}/user</p>
+          <p className="text-2xl font-bold">{billing.activeUsers}</p>
+          <p className="text-xs text-gray-500 mt-1">{billing.planKey === 'free' ? 'Unlimited' : `$${billing.pricePerUser}/user/mo`}</p>
         </div>
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5">
           <div className="flex items-center gap-2 mb-3">
             <Sparkles size={18} className="text-indigo-600" />
-            <h4 className="font-semibold text-gray-900 dark:text-white text-sm">AI Queries</h4>
+            <h4 className="font-semibold text-sm">AI Queries</h4>
           </div>
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{billing.aiQueriesIncluded}</p>
-          <p className="text-xs text-gray-500 mt-1">included</p>
+          <p className="text-2xl font-bold">{billing.aiQueriesUsed} / {billing.aiQueriesLimit === -1 ? '∞' : billing.aiQueriesLimit}</p>
+          <p className="text-xs text-gray-500 mt-1">per month</p>
         </div>
       </div>
 
-      {/* Billing Cycle Toggle */}
-      <div className="flex justify-center">
-        <div className="inline-flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-          <button
-            onClick={() => setBillingCycle('monthly')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${billingCycle === 'monthly' ? 'bg-white dark:bg-gray-900 shadow' : 'text-gray-500'}`}
-          >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBillingCycle('annual')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${billingCycle === 'annual' ? 'bg-white dark:bg-gray-900 shadow' : 'text-gray-500'}`}
-          >
-            Annual <span className="text-xs text-green-600">-20%</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Plans - Odoo Style Per User */}
+      {/* Plans */}
       <div className="grid sm:grid-cols-3 gap-4">
-        {/* One App Free */}
+        {/* Free */}
         <div className={`bg-white dark:bg-gray-900 rounded-2xl border-2 p-6 ${billing.planKey === 'free' ? 'border-blue-600' : 'border-gray-200 dark:border-gray-800'}`}>
-          <h4 className="font-bold text-gray-900 dark:text-white">One App Free</h4>
-          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">$0</p>
-          <p className="text-sm text-gray-500">/month</p>
+          <h4 className="font-bold">One App Free</h4>
+          <p className="text-3xl font-extrabold mt-2">$0</p>
           <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
             <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> 1 App</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Unlimited Users</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> 100 AI queries/month</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Unlimited users</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> 100 AI queries/mo</li>
           </ul>
           {billing.planKey !== 'free' ? (
-            <button onClick={() => handlePlanChange('free')} disabled={upgrading} className="mt-4 w-full px-4 py-2 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition">Downgrade</button>
+            <button onClick={() => handlePlanChange('free')} disabled={upgrading} className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">Downgrade</button>
           ) : (
-            <span className="mt-4 block text-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium">Current Plan</span>
+            <span className="mt-4 block text-center px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium">Current</span>
           )}
         </div>
 
         {/* Standard */}
-        <div className={`bg-white dark:bg-gray-900 rounded-2xl border-2 p-6 ${billing.planKey === 'standard' ? 'border-blue-600' : 'border-gray-200 dark:border-gray-800'}`}>
-          <div className="flex items-center justify-between">
-            <h4 className="font-bold text-gray-900 dark:text-white">Standard</h4>
-            <span className="text-xs bg-blue-100 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-full font-medium">Popular</span>
-          </div>
-          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
-            ${billingCycle === 'monthly' ? '14.90' : '11.90'}
-          </p>
-          <p className="text-sm text-gray-500">/user/month</p>
+        <div className={`bg-white dark:bg-gray-900 rounded-2xl border-2 p-6 ${billing.planKey === 'standard' ? 'border-blue-600' : 'border-gray-200'}`}>
+          <h4 className="font-bold">Standard</h4>
+          <p className="text-3xl font-extrabold mt-2">$14.90<span className="text-sm font-normal text-gray-500">/user/mo</span></p>
           <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> All Apps included</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Per user billing</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> 1,000 AI queries/user/month</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> All apps</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> 1,000 AI queries/user</li>
             <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Priority support</li>
           </ul>
           {billing.planKey !== 'standard' ? (
-            <button onClick={() => handlePlanChange('standard')} disabled={upgrading} className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-              {upgrading ? 'Updating...' : 'Upgrade'}
-            </button>
+            <button onClick={() => handlePlanChange('standard')} disabled={upgrading} className="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">Upgrade</button>
           ) : (
-            <span className="mt-4 block text-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium">Current Plan</span>
+            <span className="mt-4 block text-center px-4 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium">Current</span>
           )}
         </div>
 
         {/* Custom */}
-        <div className={`bg-white dark:bg-gray-900 rounded-2xl border-2 p-6 ${billing.planKey === 'custom' ? 'border-blue-600' : 'border-gray-200 dark:border-gray-800'}`}>
-          <h4 className="font-bold text-gray-900 dark:text-white">Custom</h4>
-          <p className="text-3xl font-bold text-gray-900 dark:text-white mt-2">
-            ${billingCycle === 'monthly' ? '24.90' : '19.90'}
-          </p>
-          <p className="text-sm text-gray-500">/user/month</p>
+        <div className={`bg-white dark:bg-gray-900 rounded-2xl border-2 p-6 ${billing.planKey === 'custom' ? 'border-blue-600' : 'border-gray-200'}`}>
+          <h4 className="font-bold">Custom</h4>
+          <p className="text-3xl font-extrabold mt-2">$24.90<span className="text-sm font-normal text-gray-500">/user/mo</span></p>
           <ul className="mt-4 space-y-2 text-sm text-gray-600 dark:text-gray-400">
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> All Apps + Custom</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Unlimited AI queries</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> All + Custom</li>
+            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Unlimited AI</li>
             <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Dedicated support</li>
-            <li className="flex items-center gap-2"><Check size={14} className="text-green-500" /> Custom integrations</li>
           </ul>
-          {billing.planKey !== 'custom' ? (
-            <button onClick={() => handlePlanChange('custom')} disabled={upgrading} className="mt-4 w-full px-4 py-2 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-lg text-sm font-medium hover:bg-gray-800 dark:hover:bg-gray-100 transition">
-              {upgrading ? 'Updating...' : 'Contact Sales'}
-            </button>
+          <button onClick={() => window.location.href = 'mailto:sales@sami.tech'} className="mt-4 w-full px-4 py-2 border border-gray-300 rounded-lg text-sm">Contact Sales</button>
+        </div>
+      </div>
+
+      {/* Billing History */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="text-lg font-semibold">Billing History</h3>
+        </div>
+        <div className="divide-y divide-gray-200 dark:divide-gray-800">
+          {billingHistory.length === 0 ? (
+            <p className="px-6 py-8 text-center text-sm text-gray-500">No billing history</p>
           ) : (
-            <span className="mt-4 block text-center px-4 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium">Current Plan</span>
+            billingHistory.map((item) => (
+              <div key={item.id} className="px-6 py-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium capitalize">{item.action.replace(/_/g, ' ')}</p>
+                  <p className="text-xs text-gray-500">{new Date(item.created_at).toLocaleString()}</p>
+                </div>
+                {item.action === 'payment_received' ? (
+                  <CheckCircle size={16} className="text-green-500" />
+                ) : item.action === 'payment_failed' ? (
+                  <XCircle size={16} className="text-red-500" />
+                ) : null}
+              </div>
+            ))
           )}
         </div>
       </div>
+
+      {/* Danger Zone */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-800 p-6">
+        <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Cancel Subscription</h3>
+        <p className="text-sm text-gray-500 mb-4">Your workspace will be downgraded to free plan at the end of the billing period.</p>
+        <button
+          onClick={() => setShowCancelConfirm(true)}
+          className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+        >
+          Cancel Subscription
+        </button>
+      </div>
+
+      {/* Cancel Confirmation Overlay */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Cancel Subscription?</h3>
+            <p className="text-sm text-gray-500 mt-2">
+              You will lose access to paid features at the end of your billing period. This cannot be undone.
+            </p>
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowCancelConfirm(false)} className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-sm">Keep Subscription</button>
+              <button onClick={handleCancelSubscription} disabled={upgrading} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm">Cancel Anyway</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

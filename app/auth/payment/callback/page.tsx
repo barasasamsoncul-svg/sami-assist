@@ -82,8 +82,8 @@ function CallbackContent() {
         setStatus('success');
         setMessage('Trial started! Your workspace is ready.');
 
-        setTimeout(() => {
-          router.push('/auth/login?registered=true');
+                setTimeout(() => {
+          router.push('/auth/check-email');
         }, 2000);
 
       } catch (err) {

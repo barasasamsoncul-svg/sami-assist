@@ -1,13 +1,19 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Bot, User, Trash2 } from 'lucide-react';
+import { Send, Sparkles, Bot, User, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+}
+
+interface UsageInfo {
+  used: number;
+  limit: number;
+  remaining: number | string;
 }
 
 export default function AIPage() {
@@ -22,6 +28,8 @@ export default function AIPage() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
+  const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -46,6 +54,7 @@ export default function AIPage() {
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setLoading(true);
+    setError('');
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -55,7 +64,10 @@ export default function AIPage() {
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage.content, conversationId }),
+        body: JSON.stringify({
+          message: userMessage.content,
+          conversationId,
+        }),
       });
 
       const data = await response.json();
@@ -66,6 +78,10 @@ export default function AIPage() {
 
       if (data.conversationId) {
         setConversationId(data.conversationId);
+      }
+
+      if (data.usage) {
+        setUsage(data.usage);
       }
 
       const assistantMessage: Message = {
@@ -85,6 +101,7 @@ export default function AIPage() {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      setError(error instanceof Error ? error.message : 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -98,18 +115,21 @@ export default function AIPage() {
   };
 
   const handleClearChat = () => {
-    setMessages([{
-      id: 'welcome',
-      role: 'assistant',
-      content: "Chat cleared. How can I help you with your business?",
-      timestamp: new Date(),
-    }]);
+    setMessages([
+      {
+        id: 'welcome',
+        role: 'assistant',
+        content: "Chat cleared. How can I help you with your business?",
+        timestamp: new Date(),
+      },
+    ]);
     setConversationId(null);
+    setError('');
   };
 
   return (
     <div className="h-[calc(100vh-7rem)] flex flex-col">
-      {/* Header */}
+      {/* Header with usage */}
       <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -121,32 +141,70 @@ export default function AIPage() {
               <p className="text-xs text-gray-500 dark:text-gray-400">Your business AI teammate</p>
             </div>
           </div>
-          <button onClick={handleClearChat} className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-            <Trash2 size={18} className="text-gray-500 dark:text-gray-400" />
-          </button>
+
+          <div className="flex items-center gap-3">
+            {/* Usage indicator */}
+            {usage && (
+              <div className="hidden sm:block text-right">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Queries: {usage.used}/{usage.limit === -1 ? '∞' : usage.limit}
+                </p>
+                <div className="w-24 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full mt-1">
+                  <div 
+                    className={`h-1.5 rounded-full ${usage.limit !== -1 && usage.used >= usage.limit ? 'bg-red-500' : usage.limit !== -1 && usage.used >= usage.limit * 0.8 ? 'bg-yellow-500' : 'bg-blue-600'}`}
+                    style={{ width: usage.limit === -1 ? '100%' : `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <button 
+              onClick={handleClearChat} 
+              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+              title="Clear chat"
+            >
+              <Trash2 size={18} className="text-gray-500 dark:text-gray-400" />
+            </button>
+          </div>
         </div>
+
+        {/* Error alert */}
+        {error && (
+          <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl flex items-center gap-2">
+            <AlertTriangle size={14} className="text-red-600 dark:text-red-400 shrink-0" />
+            <p className="text-xs text-red-700 dark:text-red-400">{error}</p>
+          </div>
+        )}
       </div>
 
-      {/* Chat */}
+      {/* Chat container */}
       <div className="flex-1 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden flex flex-col">
+        {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {messages.map((message) => (
-            <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+            <div
+              key={message.id}
+              className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
               {message.role === 'assistant' && (
                 <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
                   <Bot size={16} className="text-white" />
                 </div>
               )}
-              <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
-                message.role === 'user'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
-              }`}>
+
+              <div
+                className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
+                  message.role === 'user'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                }`}
+              >
                 <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                 <p className={`text-[10px] mt-1 ${message.role === 'user' ? 'text-blue-200' : 'text-gray-400 dark:text-gray-500'}`}>
                   {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </p>
               </div>
+
               {message.role === 'user' && (
                 <div className="h-8 w-8 bg-gray-300 dark:bg-gray-700 rounded-lg flex items-center justify-center shrink-0">
                   <User size={16} className="text-gray-600 dark:text-gray-300" />
@@ -189,9 +247,9 @@ export default function AIPage() {
             <button
               onClick={handleSend}
               disabled={loading || !input.trim()}
-              className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition"
+              className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              <Send size={18} />
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </div>
           <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">

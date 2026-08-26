@@ -7,7 +7,7 @@ import {
   useSearchParams,
 } from 'next/navigation';
 import Link from 'next/link';
-
+import NotificationBell from './components/NotificationBell';
 import {
   LayoutDashboard,
   LogOut,
@@ -1370,29 +1370,6 @@ function DashboardLayoutContent({
                     Profile
                   </Link>
 
-                  <Link
-                    href="/dashboard/settings"
-                    onClick={() =>
-                      setAccountMenuOpen(false)
-                    }
-                    className="
-                      flex
-                      items-center
-                      gap-3
-                      rounded-lg
-                      px-3
-                      py-2.5
-                      text-sm
-                      text-gray-700
-                      dark:text-gray-300
-                      hover:bg-gray-100
-                      dark:hover:bg-gray-800
-                    "
-                  >
-                    <Settings size={16} />
-                    Settings
-                  </Link>
-
                   <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
 
                   <button
@@ -1625,40 +1602,7 @@ function DashboardLayoutContent({
 
               {/* NOTIFICATIONS */}
 
-              <button
-                title="Notifications"
-                className="
-                  relative
-                  h-9
-                  w-9
-                  rounded-lg
-                  flex
-                  items-center
-                  justify-center
-                  text-gray-500
-                  dark:text-gray-400
-                  hover:bg-gray-100
-                  dark:hover:bg-gray-800
-                  transition
-                "
-              >
-                <Bell size={17} />
-
-                <span
-                  className="
-                    absolute
-                    right-2
-                    top-2
-                    h-1.5
-                    w-1.5
-                    rounded-full
-                    bg-blue-600
-                    ring-2
-                    ring-white
-                    dark:ring-gray-950
-                  "
-                />
-              </button>
+              <NotificationBell />
 
               {/* PROFILE */}
 

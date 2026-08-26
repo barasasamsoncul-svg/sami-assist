@@ -5,7 +5,6 @@ import { queryTenant } from '@/lib/db/tenant';
 import { queryControl } from '@/lib/db/control';
 import Groq from 'groq-sdk';
 
-// Initialize Groq
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
@@ -13,21 +12,14 @@ const groq = new Groq({
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
-
     if (!session) {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
     const { message, conversationId } = await request.json();
 
     if (!message) {
-      return NextResponse.json(
-        { error: 'Message is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
     // Get active business
@@ -35,20 +27,40 @@ export async function POST(request: NextRequest) {
     const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
 
     if (!activeBusinessId) {
-      return NextResponse.json(
-        { error: 'No business found' },
-        { status: 403 }
-      );
+      return NextResponse.json({ error: 'No business found' }, { status: 403 });
+    }
+
+    // Check subscription and AI limits
+    const subResult = await queryControl(
+      `SELECT plan, status, ai_queries_used, ai_queries_limit 
+       FROM subscriptions WHERE business_id = $1`,
+      [activeBusinessId]
+    );
+    const subscription = subResult.rows[0];
+
+    if (!subscription) {
+      return NextResponse.json({ error: 'No subscription found' }, { status: 403 });
+    }
+
+    // Check if subscription is active or trialing
+    if (!['active', 'trialing'].includes(subscription.status)) {
+      return NextResponse.json({ error: 'Your subscription is not active. Please update your payment method.' }, { status: 403 });
+    }
+
+    // Check AI query limit
+    const limit = subscription.ai_queries_limit || 100;
+    const used = subscription.ai_queries_used || 0;
+
+    if (limit !== -1 && used >= limit) {
+      return NextResponse.json({ 
+        error: 'AI query limit reached. Please upgrade your plan for more queries.' 
+      }, { status: 429 });
     }
 
     // Get tenant database name
     const databaseName = await getTenantDatabaseName(activeBusinessId);
-
     if (!databaseName) {
-      return NextResponse.json(
-        { error: 'Database not ready. Please wait for provisioning to complete.' },
-        { status: 503 }
-      );
+      return NextResponse.json({ error: 'Database not ready' }, { status: 503 });
     }
 
     // Get or create conversation
@@ -88,7 +100,7 @@ export async function POST(request: NextRequest) {
       content: row.content,
     }));
 
-    // Get database schema information
+    // Get database schema
     const schemaResult = await queryTenant(
       databaseName,
       `SELECT table_name, column_name, data_type 
@@ -97,7 +109,6 @@ export async function POST(request: NextRequest) {
        ORDER BY table_name, ordinal_position`
     );
 
-    // Build schema context for AI
     const tables: Record<string, Array<{ column: string; type: string }>> = {};
     schemaResult.rows.forEach(row => {
       if (!tables[row.table_name]) {
@@ -116,7 +127,7 @@ export async function POST(request: NextRequest) {
       })
       .join('\n');
 
-    // Get AI memory (relevant context)
+    // Get AI memory
     const memoryResult = await queryTenant(
       databaseName,
       `SELECT content, source_type, importance 
@@ -130,30 +141,14 @@ export async function POST(request: NextRequest) {
       .map(row => `- ${row.content}`)
       .join('\n');
 
-    // Build system prompt
-    const systemPrompt = `You are SaMi AI, an intelligent business assistant integrated into a B2B SaaS platform.
+    const systemPrompt = `You are SaMi AI, an intelligent business assistant.
 
-You have access to the tenant's database with the following schema:
-
+Database schema:
 ${schemaContext}
 
-${memoryContext ? `Relevant business context:\n${memoryContext}\n` : ''}
+${memoryContext ? `Business context:\n${memoryContext}\n` : ''}
 
-Your capabilities:
-1. Read and analyze business data from the database
-2. Execute tasks and actions
-3. Provide insights and recommendations
-4. Help users understand their business better
-
-Guidelines:
-- Be concise and helpful
-- Use business terminology appropriately
-- If you need to query data, explain what you're looking for
-- Format responses clearly with bullet points when listing items
-- Always maintain data privacy and security
-- If you don't have enough information, ask clarifying questions
-
-Current conversation context is provided in the messages.`;
+Be concise and helpful. Use business terminology. Format responses clearly.`;
 
     // Call Groq AI
     const completion = await groq.chat.completions.create({
@@ -176,17 +171,49 @@ Current conversation context is provided in the messages.`;
       [activeConversationId, aiResponse]
     );
 
+    // Increment AI usage counter
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    
+    await queryControl(
+      `UPDATE subscriptions SET ai_queries_used = ai_queries_used + 1, updated_at = NOW()
+       WHERE business_id = $1`,
+      [activeBusinessId]
+    );
+
+    // Upsert ai_usage
+    await queryControl(
+      `INSERT INTO ai_usage (business_id, user_id, query_count, tokens_used, month)
+       VALUES ($1, $2, 1, $3, $4)
+       ON CONFLICT (business_id, user_id, month) 
+       DO UPDATE SET query_count = ai_usage.query_count + 1, 
+                     tokens_used = ai_usage.tokens_used + $3,
+                     updated_at = NOW()`,
+      [activeBusinessId, session.user.id, completion.usage?.total_tokens || 0, currentMonth]
+    );
+
+    // Check if 80% limit reached and warn
+    const newUsed = used + 1;
+    if (limit !== -1) {
+      const percentage = (newUsed / limit) * 100;
+      if (percentage >= 80 && percentage < 100) {
+        // Warn user
+        console.log(`AI usage at ${percentage}% for business ${activeBusinessId}`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       response: aiResponse,
       conversationId: activeConversationId,
+      usage: {
+        used: newUsed,
+        limit,
+        remaining: limit === -1 ? 'Unlimited' : Math.max(0, limit - newUsed),
+      },
     });
 
   } catch (error) {
     console.error('AI Chat error:', error);
-    return NextResponse.json(
-      { error: 'AI request failed. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'AI request failed. Please try again.' }, { status: 500 });
   }
 }
