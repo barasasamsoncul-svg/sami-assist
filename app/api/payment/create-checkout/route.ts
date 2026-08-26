@@ -27,8 +27,8 @@ export async function POST(request: NextRequest) {
       currency: 'KES',
       amount: 1, // KSh 1 for card verification (trial)
       description: `SaMi ${plan} plan - 15-day trial then KSh ${amount}/${billingCycle || 'monthly'}`,
-      callback_url: `${appUrl}/api/webhooks/pesapal`,
-      redirect_url: `${appUrl}/api/payment/callback?orderTrackingId=${orderId}`,
+     callback_url: `${appUrl}/api/webhooks/pesapal`,
+redirect_url: `${appUrl}/auth/payment/callback?orderTrackingId=${orderId}`,
       billing_address: {
         email_address: email,
         first_name: businessName || fullName?.split(' ')[0] || '',
