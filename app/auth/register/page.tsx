@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
   Sun, Moon, ArrowRight, ArrowLeft, Check, 
-  CreditCard, Lock, X, Building2, AppWindow, CreditCard as PlanIcon
+  CreditCard, Lock, X
 } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 import { SAMI_APPS, APP_CATEGORIES, getRecommendedAppKeys } from '@/lib/sami-apps';
@@ -15,10 +15,7 @@ export default function RegisterPage() {
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showPayment, setShowPayment] = useState(false);
   const [activeCategory, setActiveCategory] = useState('all');
-  
-  // Mobile step state
   const [mobileStep, setMobileStep] = useState<'account' | 'apps' | 'plan'>('account');
 
   const [accountForm, setAccountForm] = useState({
@@ -30,13 +27,6 @@ export default function RegisterPage() {
 
   const [selectedApps, setSelectedApps] = useState<string[]>(getRecommendedAppKeys());
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'standard' | 'custom'>('free');
-
-  const [cardDetails, setCardDetails] = useState({
-    nameOnCard: '',
-    cardNumber: '',
-    expiry: '',
-    cvc: '',
-  });
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
@@ -75,7 +65,8 @@ export default function RegisterPage() {
     ? SAMI_APPS 
     : SAMI_APPS.filter(app => app.category === activeCategory);
 
-  const validateAndSubmit = () => {
+  const handleSubmit = async () => {
+    // Validate
     if (!accountForm.fullName || !accountForm.email || !accountForm.password || !accountForm.businessName) {
       setError('Please fill all account details');
       return;
@@ -89,73 +80,72 @@ export default function RegisterPage() {
       return;
     }
     setError('');
-
-    if (selectedPlan === 'standard') {
-      setShowPayment(true);
-    } else {
-      completeRegistration();
-    }
-  };
-
-  const completeRegistration = async () => {
     setLoading(true);
-    setError('');
 
     try {
-      const response = await fetch('/api/auth/register', {
+      // Step 1: Create account
+      const registerRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(accountForm),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Registration failed');
+      const registerData = await registerRes.json();
 
-      const businessId = data.business.id;
-
-      if (selectedPlan === 'standard') {
-        await fetch('/api/auth/update-plan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ businessId, plan: 'standard' }),
-        });
+      if (!registerRes.ok) {
+        throw new Error(registerData.error || 'Registration failed');
       }
 
-      for (const appKey of selectedApps) {
-        const installRes = await fetch('/api/auth/install-app', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ businessId, appKey }),
-        });
-        if (!installRes.ok) {
-          console.warn(`Failed to install ${appKey}`);
+      const businessId = registerData.business.id;
+
+      // Store data for later use
+      sessionStorage.setItem('sami_pending_business_id', businessId);
+      sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
+      sessionStorage.setItem('sami_selected_plan', selectedPlan);
+
+      if (selectedPlan === 'free') {
+        // Step 2 (Free): Install the single app
+        for (const appKey of selectedApps) {
+          await fetch('/api/auth/install-app', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ businessId, appKey }),
+          });
         }
-      }
 
-      router.push('/auth/login?registered=true');
+        sessionStorage.removeItem('sami_pending_business_id');
+        sessionStorage.removeItem('sami_selected_apps');
+        sessionStorage.removeItem('sami_selected_plan');
+        
+        router.push('/auth/login?registered=true');
+      } else if (selectedPlan === 'standard') {
+        // Step 2 (Standard): Create PesaPal checkout
+        const checkoutRes = await fetch('/api/payment/create-checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            plan: 'standard', 
+            billingCycle: 'monthly',
+            businessId,
+          }),
+        });
+        const checkoutData = await checkoutRes.json();
+
+        if (!checkoutRes.ok) {
+          throw new Error(checkoutData.error || 'Payment initiation failed');
+        }
+
+        sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
+        
+        // Redirect to PesaPal
+        window.location.href = checkoutData.redirectUrl;
+      } else if (selectedPlan === 'custom') {
+        // Custom - contact sales
+        window.location.href = 'mailto:sales@sami.tech?subject=Custom%20Plan%20Inquiry';
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
       setLoading(false);
-      setShowPayment(false);
     }
-  };
-
-  const handlePaymentSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (cardDetails.cardNumber.replace(/\s/g, '').length < 16) {
-      setError('Please enter a valid card number');
-      return;
-    }
-    if (!cardDetails.expiry || !cardDetails.cvc || !cardDetails.nameOnCard) {
-      setError('Please fill all card details');
-      return;
-    }
-
-    setError('');
-    setLoading(true);
-    setTimeout(() => {
-      completeRegistration();
-    }, 1500);
   };
 
   const mobileNext = () => {
@@ -185,7 +175,6 @@ export default function RegisterPage() {
     else if (mobileStep === 'plan') setMobileStep('apps');
   };
 
-  // Mobile Step Indicator
   const stepNumber = mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3;
 
   return (
@@ -195,7 +184,6 @@ export default function RegisterPage() {
       </button>
 
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="flex flex-col items-center mb-6">
           <Link href="/">
             <SaMiLogo size="lg" />
@@ -218,7 +206,6 @@ export default function RegisterPage() {
           ))}
         </div>
 
-        {/* Error */}
         {error && (
           <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">
             {error}
@@ -312,16 +299,15 @@ export default function RegisterPage() {
               <p className="text-xs text-gray-500 mt-1">All apps + custom • Unlimited AI • Dedicated support</p>
             </button>
 
-            <button onClick={validateAndSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
-              {loading ? 'Creating...' : selectedPlan === 'standard' ? 'Continue to Payment' : 'Create Workspace'}
+            <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+              {loading ? 'Processing...' : selectedPlan === 'standard' ? 'Continue to Payment' : 'Create Workspace'}
               {!loading && <ArrowRight size={16} />}
             </button>
           </div>
         </div>
 
-        {/* MOBILE: Step-by-Step Wizard */}
+        {/* MOBILE: Step-by-Step */}
         <div className="lg:hidden max-w-md mx-auto">
-          {/* Step 1: Account */}
           {mobileStep === 'account' && (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Register</h3>
@@ -350,7 +336,6 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Step 2: Apps */}
           {mobileStep === 'apps' && (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
               <div className="flex items-center justify-between mb-4">
@@ -374,9 +359,7 @@ export default function RegisterPage() {
                 ))}
               </div>
               <div className="mt-6 flex gap-3">
-                <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm">
-                  Back
-                </button>
+                <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm">Back</button>
                 <button onClick={mobileNext} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2">
                   Next: Plan
                   <ArrowRight size={16} />
@@ -385,7 +368,6 @@ export default function RegisterPage() {
             </div>
           )}
 
-          {/* Step 3: Plan */}
           {mobileStep === 'plan' && (
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Choose Plan</h3>
@@ -415,11 +397,9 @@ export default function RegisterPage() {
               </button>
 
               <div className="mt-6 flex gap-3">
-                <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm">
-                  Back
-                </button>
-                <button onClick={validateAndSubmit} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
-                  {loading ? 'Creating...' : selectedPlan === 'standard' ? 'Payment' : 'Create'}
+                <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm">Back</button>
+                <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                  {loading ? 'Processing...' : selectedPlan === 'standard' ? 'Payment' : 'Create'}
                   {!loading && <ArrowRight size={16} />}
                 </button>
               </div>
@@ -434,57 +414,6 @@ export default function RegisterPage() {
           </Link>
         </p>
       </div>
-
-      {/* Payment Overlay Modal (appears on both desktop and mobile) */}
-      {showPayment && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
-            <button onClick={() => setShowPayment(false)} className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-              <X size={18} className="text-gray-500" />
-            </button>
-
-            <div className="flex items-center gap-2 mb-6">
-              <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center">
-                <CreditCard size={20} className="text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Details</h3>
-                <p className="text-xs text-gray-500">15-day free trial • No charges until trial ends</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 mb-4 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <Lock size={14} className="text-green-500" />
-              <span className="text-xs text-gray-500">Secured payment</span>
-            </div>
-
-            <form onSubmit={handlePaymentSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Name on Card *</label>
-                <input type="text" value={cardDetails.nameOnCard} onChange={(e) => setCardDetails({ ...cardDetails, nameOnCard: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none" placeholder="John Doe" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Card Number *</label>
-                <input type="text" value={cardDetails.cardNumber} onChange={(e) => setCardDetails({ ...cardDetails, cardNumber: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none" placeholder="4242 4242 4242 4242" maxLength={19} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Expiry *</label>
-                  <input type="text" value={cardDetails.expiry} onChange={(e) => setCardDetails({ ...cardDetails, expiry: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none" placeholder="MM/YY" maxLength={5} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">CVC *</label>
-                  <input type="text" value={cardDetails.cvc} onChange={(e) => setCardDetails({ ...cardDetails, cvc: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white focus:border-blue-500 focus:outline-none" placeholder="123" maxLength={4} />
-                </div>
-              </div>
-              <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
-                {loading ? 'Processing...' : 'Start Free Trial'}
-                {!loading && <ArrowRight size={16} />}
-              </button>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
