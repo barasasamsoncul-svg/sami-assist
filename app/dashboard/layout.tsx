@@ -453,7 +453,7 @@ function SettingsGroup({
     </div>
   );
 }
-
+const [settingsOpen, setSettingsOpen] = useState(false);
 /* =========================================================
    MAIN LAYOUT
 ========================================================= */
@@ -560,6 +560,19 @@ function DashboardLayoutContent({
       );
     };
   }, []);
+
+  useEffect(() => {
+  setSidebarOpen(false);
+  setBusinessMenuOpen(false);
+  setAccountMenuOpen(false);
+  setSettingsOpen(false);
+  // Auto-expand settings if on settings page
+  if (pathname.startsWith('/dashboard/settings')) {
+    setSettingsOpen(true);
+  } else {
+    setSettingsOpen(false);
+  }
+}, [pathname, searchParams]);
 
   /* =======================================================
      FETCH DASHBOARD
@@ -1248,22 +1261,99 @@ function DashboardLayoutContent({
             </SettingsGroup>
           </nav>
 
-          {/* =================================================
-              SETTINGS
-          ================================================= */}
 
-          <div className="px-3 pb-3">
-            <NavigationItem
-              name="Settings"
-              route="/dashboard/settings"
-              icon={Settings}
-              active={isSettingsPage}
-              onClick={() =>
-                setSidebarOpen(false)
+         {/* SETTINGS */}
+<div className="px-3 pb-3">
+  <button
+    onClick={() => setSettingsOpen(!settingsOpen)}
+    className={`
+      group
+      flex
+      items-center
+      gap-3
+      w-full
+      px-2.5
+      py-2
+      rounded-xl
+      text-sm
+      font-medium
+      transition-all
+      duration-150
+      ${
+        isSettingsPage
+          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/70 hover:text-gray-900 dark:hover:text-gray-100'
+      }
+    `}
+  >
+    <span
+      className={`
+        flex
+        items-center
+        justify-center
+        h-8
+        w-8
+        rounded-lg
+        transition-all
+        ${
+          isSettingsPage
+            ? 'bg-blue-600 text-white shadow-sm'
+            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 group-hover:bg-white dark:group-hover:bg-gray-700'
+        }
+      `}
+    >
+      <Settings size={16} strokeWidth={isSettingsPage ? 2.2 : 1.9} />
+    </span>
+
+    <span className="flex-1 truncate text-left">Settings</span>
+
+    <ChevronDown
+      size={14}
+      className={`
+        transition-transform
+        ${settingsOpen ? 'rotate-180' : ''}
+      `}
+    />
+  </button>
+
+  {/* Settings Dropdown */}
+  {settingsOpen && (
+    <div className="mt-1 ml-4 pl-3 border-l border-gray-200 dark:border-gray-800 space-y-0.5">
+      {SETTINGS_ITEMS.map((item) => {
+        const Icon = item.icon;
+        const isActive = searchParams.get('tab') === item.key || 
+          (item.key === 'subscription' && pathname === '/dashboard/settings/subscription');
+
+        return (
+          <Link
+            key={item.key}
+            href={item.route}
+            onClick={() => setSidebarOpen(false)}
+            className={`
+              flex
+              items-center
+              gap-2.5
+              px-2.5
+              py-1.5
+              rounded-lg
+              text-xs
+              font-medium
+              transition-all
+              ${
+                isActive
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/70 hover:text-gray-900 dark:hover:text-gray-100'
               }
-            />
-          </div>
-
+            `}
+          >
+            <Icon size={13} strokeWidth={isActive ? 2.2 : 1.8} />
+            <span className="flex-1 truncate">{item.name}</span>
+          </Link>
+        );
+      })}
+    </div>
+  )}
+</div>
           {/* =================================================
               USER ACCOUNT
           ================================================= */}
