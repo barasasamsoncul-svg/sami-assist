@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, Check } from 'lucide-react';
+import { Sun, Moon, ArrowRight, Check, ArrowLeft } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 import { SAMI_APPS, APP_CATEGORIES } from '@/lib/sami-apps';
 
@@ -28,13 +28,14 @@ function RegisterContent() {
     businessName: '',
   });
 
-  // Start with NO apps selected
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'standard' | 'custom'>('free');
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
-    if (savedTheme === 'dark') {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
       setDarkMode(true);
       document.documentElement.classList.add('dark');
     } else {
@@ -65,7 +66,6 @@ function RegisterContent() {
     }
   };
 
-  // Auto-select plan based on app count
   useEffect(() => {
     if (selectedApps.length <= 1) {
       setSelectedPlan('free');
@@ -77,6 +77,7 @@ function RegisterContent() {
   const toggleTheme = () => {
     const next = !darkMode;
     setDarkMode(next);
+    
     if (next) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('sami_theme', 'dark');
@@ -105,7 +106,6 @@ function RegisterContent() {
   const handleSubmit = async () => {
     setError('');
 
-    // Validation
     if (!accountForm.fullName || !accountForm.password) {
       setError('Please fill all fields');
       return;
@@ -129,7 +129,6 @@ function RegisterContent() {
 
     setLoading(true);
 
-    // INVITE FLOW
     if (isInvite) {
       try {
         const response = await fetch('/api/auth/accept-invite', {
@@ -151,7 +150,6 @@ function RegisterContent() {
       return;
     }
 
-    // FREE PLAN - Direct registration
     if (selectedPlan === 'free') {
       try {
         const registerRes = await fetch('/api/auth/register', {
@@ -178,7 +176,6 @@ function RegisterContent() {
       return;
     }
 
-    // STANDARD OR CUSTOM - Go to PesaPal payment
     if (selectedPlan === 'standard' || selectedPlan === 'custom') {
       sessionStorage.setItem('sami_registration_data', JSON.stringify(accountForm));
       sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
@@ -214,11 +211,15 @@ function RegisterContent() {
         setError('Please fill all fields');
         return;
       }
+      if (accountForm.password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
       setError('');
       setMobileStep('apps');
     } else if (mobileStep === 'apps') {
       if (selectedApps.length === 0) {
-        setError('Select at least one app');
+        setError('Please select at least one app');
         return;
       }
       setError('');
@@ -238,7 +239,7 @@ function RegisterContent() {
       {/* Theme Toggle */}
       <button 
         onClick={toggleTheme} 
-        className="absolute top-4 right-4 p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition shadow-sm"
+        className="absolute top-4 right-4 p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition shadow-sm z-10"
       >
         {darkMode ? (
           <Sun size={20} className="text-yellow-400" />
@@ -248,6 +249,7 @@ function RegisterContent() {
       </button>
 
       <div className="max-w-7xl mx-auto">
+        {/* Header */}
         <div className="flex flex-col items-center mb-6">
           <Link href="/">
             <SaMiLogo size="lg" />
@@ -274,7 +276,7 @@ function RegisterContent() {
           </div>
         )}
 
-        {/* INVITE FORM */}
+        {/* ============ INVITE FORM ============ */}
         {isInvite ? (
           <div className="max-w-md mx-auto">
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
@@ -300,7 +302,7 @@ function RegisterContent() {
           </div>
         ) : (
           <>
-            {/* Mobile Step Indicator */}
+            {/* ============ MOBILE STEP INDICATOR ============ */}
             <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
               {[1, 2, 3].map((step) => (
                 <div key={step} className="flex items-center gap-2">
@@ -314,7 +316,7 @@ function RegisterContent() {
               ))}
             </div>
 
-            {/* DESKTOP: 3-Column Layout */}
+            {/* ============ DESKTOP: 3 COLUMNS ============ */}
             <div className="hidden lg:grid lg:grid-cols-3 gap-6">
               {/* Column 1: Register */}
               <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
@@ -352,17 +354,17 @@ function RegisterContent() {
                   <span className="text-xs text-gray-500 dark:text-gray-400">{selectedApps.length} selected</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
-                  <button onClick={() => setActiveCategory('all')} className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>All</button>
+                  <button onClick={() => setActiveCategory('all')} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>All</button>
                   {APP_CATEGORIES.slice(0, 6).map((cat) => (
-                    <button key={cat.key} onClick={() => setActiveCategory(cat.key)} className={`px-3 py-1.5 rounded-full text-xs font-medium transition ${activeCategory === cat.key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>{cat.name}</button>
+                    <button key={cat.key} onClick={() => setActiveCategory(cat.key)} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === cat.key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>{cat.name}</button>
                   ))}
                 </div>
                 <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
                   {filteredApps.map((app) => (
-                    <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left transition ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                    <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</span>
-                        {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600 shrink-0" />}
+                        {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-1">{app.description}</p>
                     </button>
@@ -377,47 +379,49 @@ function RegisterContent() {
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Choose Plan</h3>
                 </div>
 
-                <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900 dark:text-white text-sm">One App Free</span>
-                    <span className="text-lg font-bold text-gray-900 dark:text-white">$0</span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">1 app • Unlimited users • 100 AI queries/mo</p>
+                <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">One App Free</span><span className="font-bold text-gray-900 dark:text-white">$0</span></div>
+                  <p className="text-xs text-gray-500 mt-1">1 app • Unlimited users • 100 AI queries</p>
+                </button>
+                <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">Standard</span><span className="font-bold text-gray-900 dark:text-white">$14.90/user/mo</span></div>
+                  <p className="text-xs text-gray-500 mt-1">All apps • 1,000 AI queries • 15-day trial</p>
+                </button>
+                <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">Custom</span><span className="font-bold text-gray-900 dark:text-white">$24.90/user/mo</span></div>
+                  <p className="text-xs text-gray-500 mt-1">All + custom • Unlimited AI</p>
                 </button>
 
-                <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900 dark:text-white text-sm">Standard</span>
-                    <span className="text-lg font-bold text-gray-900 dark:text-white">$14.90<span className="text-xs text-gray-500">/user/mo</span></span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">All apps • Per user • 1,000 AI queries • 15-day trial</p>
-                </button>
-
-                <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left transition ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900 dark:text-white text-sm">Custom</span>
-                    <span className="text-lg font-bold text-gray-900 dark:text-white">$24.90<span className="text-xs text-gray-500">/user/mo</span></span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">All apps + custom • Unlimited AI • Dedicated support</p>
-                </button>
-
-                <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
                   {getButtonText()}
                   {!loading && <ArrowRight size={16} />}
                 </button>
               </div>
             </div>
 
-            {/* MOBILE: Step-by-Step */}
+            {/* ============ MOBILE: STEP BY STEP ============ */}
             <div className="lg:hidden max-w-md mx-auto">
+              {/* STEP 1: ACCOUNT */}
               {mobileStep === 'account' && (
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Register</h3>
                   <div className="space-y-4">
-                    <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} placeholder="Business Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                    <input type="text" value={accountForm.fullName} onChange={(e) => setAccountForm({ ...accountForm, fullName: e.target.value })} placeholder="Full Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                    <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} placeholder="Email *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                    <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8 characters) *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Business Name *</label>
+                      <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="Acme Ltd" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Full Name *</label>
+                      <input type="text" value={accountForm.fullName} onChange={(e) => setAccountForm({ ...accountForm, fullName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="John Doe" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email *</label>
+                      <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="john@company.com" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Password *</label>
+                      <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="Min 8 characters" />
+                    </div>
                   </div>
                   <button onClick={mobileNext} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 flex items-center justify-center gap-2">
                     Next: Select Apps
@@ -426,51 +430,56 @@ function RegisterContent() {
                 </div>
               )}
 
+              {/* STEP 2: APPS */}
               {mobileStep === 'apps' && (
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Apps</h3>
                     <span className="text-xs text-gray-500">{selectedApps.length} selected</span>
                   </div>
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    <button onClick={() => setActiveCategory('all')} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>All</button>
-                    {APP_CATEGORIES.slice(0, 5).map((cat) => (
-                      <button key={cat.key} onClick={() => setActiveCategory(cat.key)} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === cat.key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>{cat.name}</button>
-                    ))}
-                  </div>
                   <div className="space-y-2 max-h-[350px] overflow-y-auto">
                     {filteredApps.map((app) => (
                       <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{app.name}</span>
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</span>
                           {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
                         </div>
                       </button>
                     ))}
                   </div>
                   <div className="mt-6 flex gap-3">
-                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl text-sm font-semibold">Back</button>
-                    <button onClick={mobileNext} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm">Next: Plan</button>
+                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      <ArrowLeft size={14} />
+                      Back
+                    </button>
+                    <button onClick={mobileNext} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      Next: Plan
+                      <ArrowRight size={14} />
+                    </button>
                   </div>
                 </div>
               )}
 
+              {/* STEP 3: PLAN */}
               {mobileStep === 'plan' && (
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Choose Plan</h3>
                   
-                  <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                    <span className="font-semibold">One App Free</span> - <span className="font-bold">$0</span>
+                  <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">One App Free</span><span className="font-bold text-gray-900 dark:text-white">$0</span></div>
                   </button>
-                  <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                    <span className="font-semibold">Standard</span> - <span className="font-bold">$14.90/user/mo</span>
+                  <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">Standard</span><span className="font-bold text-gray-900 dark:text-white">$14.90/user/mo</span></div>
                   </button>
-                  <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                    <span className="font-semibold">Custom</span> - <span className="font-bold">$24.90/user/mo</span>
+                  <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex justify-between"><span className="font-semibold text-sm text-gray-900 dark:text-white">Custom</span><span className="font-bold text-gray-900 dark:text-white">$24.90/user/mo</span></div>
                   </button>
 
                   <div className="mt-6 flex gap-3">
-                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm font-semibold">Back</button>
+                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      <ArrowLeft size={14} />
+                      Back
+                    </button>
                     <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm">
                       {getButtonText()}
                     </button>
