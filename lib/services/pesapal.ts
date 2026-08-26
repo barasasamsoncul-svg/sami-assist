@@ -91,33 +91,3 @@ export async function getTransactionStatus(
 
   return data;
 }
-
-export async function createRecurringPaymentPlan(
-  token: string,
-  planData: {
-    name: string;
-    amount: number;
-    interval: 'MONTHLY' | 'YEARLY';
-    trial_period_days: number;
-    description: string;
-  }
-) {
-  const response = await fetch(`${PESAPAL_BASE_URL}/api/Payments/CreatePaymentPlan`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(planData),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    console.error('PesaPal plan creation error:', data);
-    throw new Error(data.message || 'Failed to create payment plan');
-  }
-
-  return data;
-}

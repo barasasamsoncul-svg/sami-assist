@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPesaPalToken, getTransactionStatus } from '@/lib/services/pesapal';
-import { queryControl } from '@/lib/db/control';
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,13 +9,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing order tracking ID' }, { status: 400 });
     }
 
-    // Get PesaPal token
     const token = await getPesaPalToken();
-
-    // Get transaction status
     const status = await getTransactionStatus(token, orderTrackingId);
 
-    // PesaPal status: status_code 1 = Completed
     if (status.status_code === 1 || status.payment_status_description === 'Completed') {
       return NextResponse.json({
         success: true,
@@ -31,7 +26,6 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Verify payment error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to verify payment';
-    return NextResponse.json({ error: errorMessage }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to verify payment' }, { status: 500 });
   }
 }

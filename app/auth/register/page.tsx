@@ -82,7 +82,6 @@ const handleSubmit = async () => {
     setLoading(true);
 
     if (selectedPlan === 'free') {
-      // Free: Create account directly
       try {
         const registerRes = await fetch('/api/auth/register', {
           method: 'POST',
@@ -91,9 +90,7 @@ const handleSubmit = async () => {
         });
         const registerData = await registerRes.json();
 
-        if (!registerRes.ok) {
-          throw new Error(registerData.error || 'Registration failed');
-        }
+        if (!registerRes.ok) throw new Error(registerData.error || 'Registration failed');
 
         const businessId = registerData.business.id;
 
@@ -111,7 +108,6 @@ const handleSubmit = async () => {
         setLoading(false);
       }
     } else if (selectedPlan === 'standard') {
-      // Standard: Store data, go to PesaPal for card authorization (KSh 0 trial)
       sessionStorage.setItem('sami_registration_data', JSON.stringify(accountForm));
       sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
       sessionStorage.setItem('sami_selected_plan', 'standard');
@@ -130,9 +126,7 @@ const handleSubmit = async () => {
         });
         const checkoutData = await checkoutRes.json();
 
-        if (!checkoutRes.ok) {
-          throw new Error(checkoutData.error || 'Payment initiation failed');
-        }
+        if (!checkoutRes.ok) throw new Error(checkoutData.error || 'Payment initiation failed');
 
         sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
         window.location.href = checkoutData.redirectUrl;
@@ -144,7 +138,6 @@ const handleSubmit = async () => {
       window.location.href = 'mailto:sales@sami.tech?subject=Custom%20Plan%20Inquiry';
     }
   };
-
   const mobileNext = () => {
     if (mobileStep === 'account') {
       if (!accountForm.fullName || !accountForm.email || !accountForm.password || !accountForm.businessName) {

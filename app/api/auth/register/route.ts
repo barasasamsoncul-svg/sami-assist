@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { queryControl, getControlPool } from '@/lib/db/control';
-import { provisionBusinessDatabase } from '@/lib/services/provisioning';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { fullName, email, password, businessName } = body;
 
-    // Validate
     if (!fullName || !email || !password || !businessName) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
@@ -16,7 +14,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
     }
 
-    // Check existing user
     const existingUser = await queryControl(
       'SELECT id FROM users WHERE email = $1',
       [email.toLowerCase()]
@@ -30,7 +27,6 @@ export async function POST(request: NextRequest) {
     try {
       await client.query('BEGIN');
 
-      // 1. Create user
       const passwordHash = await bcrypt.hash(password, 12);
       const userResult = await client.query(
         `INSERT INTO users (email, password_hash, full_name, email_verified)
@@ -40,7 +36,6 @@ export async function POST(request: NextRequest) {
       );
       const userId = userResult.rows[0].id;
 
-      // 2. Create business
       const slug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
       const businessResult = await client.query(
         `INSERT INTO businesses (name, slug, email)
@@ -50,44 +45,20 @@ export async function POST(request: NextRequest) {
       );
       const businessId = businessResult.rows[0].id;
 
-      // 3. Create business_user (owner)
       await client.query(
         `INSERT INTO business_users (business_id, user_id, role, status)
          VALUES ($1, $2, 'owner', 'active')`,
         [businessId, userId]
       );
 
-      // 4. Create subscription (free by default)
       await client.query(
         `INSERT INTO subscriptions (business_id, plan, status, billing_cycle, ai_queries_limit)
-         VALUES ($1, 'free', 'active', 'monthly', 100)`,
+         VALUES ($1, 'free', 'pending', 'monthly', 100)`,
         [businessId]
-      );
-
-      // 5. Initialize AI usage for this month
-      const currentMonth = new Date().toISOString().slice(0, 7);
-      await client.query(
-        `INSERT INTO ai_usage (business_id, user_id, query_count, tokens_used, month)
-         VALUES ($1, $2, 0, 0, $3)`,
-        [businessId, userId, currentMonth]
       );
 
       await client.query('COMMIT');
 
-      // 6. Provision tenant database (outside transaction)
-      const provisioning = await provisionBusinessDatabase(businessId, businessName, []);
-
-      if (!provisioning.success) {
-        console.error('Database provisioning failed:', provisioning.error);
-        // Log to audit
-        await queryControl(
-          `INSERT INTO audit_logs (business_id, action, resource_type, details)
-           VALUES ($1, 'provisioning_failed', 'database', $2)`,
-          [businessId, JSON.stringify({ error: provisioning.error })]
-        );
-      }
-
-      // Log registration
       await queryControl(
         `INSERT INTO audit_logs (user_id, business_id, action, resource_type, resource_id, details)
          VALUES ($1, $2, 'business_created', 'business', $2, $3)`,

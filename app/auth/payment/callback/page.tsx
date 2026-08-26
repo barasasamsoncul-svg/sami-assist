@@ -23,7 +23,7 @@ function CallbackContent() {
       }
 
       try {
-        // Step 1: Verify payment (trial authorization)
+        // Step 1: Verify payment
         const verifyRes = await fetch('/api/payment/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -37,7 +37,7 @@ function CallbackContent() {
           return;
         }
 
-        // Step 2: Create account (after payment verified)
+        // Step 2: Create account
         const registrationData = JSON.parse(sessionStorage.getItem('sami_registration_data') || '{}');
         const selectedApps = JSON.parse(sessionStorage.getItem('sami_selected_apps') || '[]');
         const selectedPlan = sessionStorage.getItem('sami_selected_plan') || 'standard';
@@ -57,14 +57,14 @@ function CallbackContent() {
 
         const businessId = registerData.business.id;
 
-        // Step 3: Update plan to standard with trial
+        // Step 3: Update plan
         await fetch('/api/auth/update-plan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ businessId, plan: selectedPlan, billingCycle: 'monthly' }),
         });
 
-        // Step 4: Install all selected apps
+        // Step 4: Install apps (this provisions database)
         for (const appKey of selectedApps) {
           await fetch('/api/auth/install-app', {
             method: 'POST',
@@ -73,14 +73,14 @@ function CallbackContent() {
           });
         }
 
-        // Step 5: Clean up
+        // Clean up
         sessionStorage.removeItem('sami_registration_data');
         sessionStorage.removeItem('sami_selected_apps');
         sessionStorage.removeItem('sami_selected_plan');
         sessionStorage.removeItem('sami_order_tracking_id');
 
         setStatus('success');
-        setMessage('Your workspace is ready! 15-day trial started.');
+        setMessage('Trial started! Your workspace is ready.');
 
         setTimeout(() => {
           router.push('/auth/login?registered=true');
@@ -107,10 +107,9 @@ function CallbackContent() {
             <>
               <Loader2 size={48} className="mx-auto text-blue-600 animate-spin" />
               <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Verifying payment...</h2>
-              <p className="mt-1 text-sm text-gray-500">Please wait while we confirm</p>
+              <p className="mt-1 text-sm text-gray-500">Please wait</p>
             </>
           )}
-
           {status === 'success' && (
             <>
               <CheckCircle size={48} className="mx-auto text-green-500" />
@@ -119,16 +118,12 @@ function CallbackContent() {
               <p className="mt-2 text-sm text-gray-400">Redirecting to login...</p>
             </>
           )}
-
           {status === 'failed' && (
             <>
               <XCircle size={48} className="mx-auto text-red-500" />
               <h2 className="mt-4 text-lg font-semibold text-gray-900 dark:text-white">Failed</h2>
               <p className="mt-1 text-sm text-gray-500">{message}</p>
-              <button
-                onClick={() => router.push('/auth/register')}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition"
-              >
+              <button onClick={() => router.push('/auth/register')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition">
                 Back to Registration
               </button>
             </>

@@ -5,10 +5,9 @@ import { queryControl } from '@/lib/db/control';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
-    console.log('PesaPal IPN received:', body);
+    console.log('PesaPal IPN:', body);
 
-    const { orderTrackingId, orderNotificationType } = body;
+    const { orderTrackingId } = body;
 
     if (!orderTrackingId) {
       return NextResponse.json({ error: 'Missing tracking ID' }, { status: 400 });
@@ -17,62 +16,29 @@ export async function POST(request: NextRequest) {
     const token = await getPesaPalToken();
     const status = await getTransactionStatus(token, orderTrackingId);
 
-    console.log('Transaction status:', status);
-
-    const orderParts = orderTrackingId.split('_');
-    const businessId = orderParts.length >= 2 ? orderParts[1] : null;
-
     if (status.status_code === 1) {
-      // Payment completed
       const amountPaid = status.amount || 0;
+      const orderParts = orderTrackingId.split('_');
+      const businessId = orderParts.length >= 3 ? orderParts[1] : null;
 
       if (businessId) {
-        if (amountPaid === 0) {
-          // Trial started (KSh 0 charge = card authorization only)
+        if (amountPaid <= 1) {
+          // Trial verification (KSh 1 charge)
           await queryControl(
-            `UPDATE subscriptions 
-             SET status = 'trialing',
-                 trial_ends_at = NOW() + INTERVAL '15 days',
-                 updated_at = NOW()
-             WHERE business_id = $1`,
+            `UPDATE subscriptions SET status = 'trialing', trial_ends_at = NOW() + INTERVAL '15 days', updated_at = NOW() WHERE business_id = $1`,
             [businessId]
-          );
-
-          await queryControl(
-            `INSERT INTO audit_logs (business_id, action, resource_type, details)
-             VALUES ($1, 'trial_started', 'subscription', $2)`,
-            [businessId, JSON.stringify({ orderTrackingId, trialDays: 15 })]
           );
         } else {
-          // Actual payment received (after trial)
+          // Actual payment
           await queryControl(
-            `UPDATE subscriptions 
-             SET status = 'active',
-                 trial_ends_at = NULL,
-                 current_period_end = NOW() + INTERVAL '1 month',
-                 updated_at = NOW()
-             WHERE business_id = $1`,
+            `UPDATE subscriptions SET status = 'active', trial_ends_at = NULL, current_period_end = NOW() + INTERVAL '1 month', updated_at = NOW() WHERE business_id = $1`,
             [businessId]
           );
-
-          await queryControl(
-            `INSERT INTO audit_logs (business_id, action, resource_type, details)
-             VALUES ($1, 'payment_completed', 'subscription', $2)`,
-            [businessId, JSON.stringify({ 
-              orderTrackingId, 
-              amount: amountPaid,
-              status: status.payment_status_description,
-            })]
-          );
         }
-      }
-    } else if (status.status_code === 2) {
-      // Payment failed
-      if (businessId) {
+
         await queryControl(
-          `INSERT INTO audit_logs (business_id, action, resource_type, details)
-           VALUES ($1, 'payment_failed', 'subscription', $2)`,
-          [businessId, JSON.stringify({ orderTrackingId, status: status.payment_status_description })]
+          `INSERT INTO audit_logs (business_id, action, resource_type, details) VALUES ($1, 'payment_verified', 'subscription', $2)`,
+          [businessId, JSON.stringify({ orderTrackingId, amount: amountPaid })]
         );
       }
     }
