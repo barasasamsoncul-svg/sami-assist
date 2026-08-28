@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, getUserBusinesses } from '@/lib/auth/session';
+import { getSession, getUserTenants } from '@/lib/auth/session';
+import { queryControl } from '@/lib/db/control';
 import { getTenantDatabaseName } from '@/lib/db/registry';
 import { queryTenant } from '@/lib/db/tenant';
-import { queryControl } from '@/lib/db/control';
-import Groq from 'groq-sdk';
-
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-});
+import { generateAIResponse, buildSystemPrompt } from '@/lib/services/ai';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,43 +18,44 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
 
-    // Get active business
-    const businesses = await getUserBusinesses(session.user.id);
-    const activeBusinessId = request.cookies.get('sami_business_id')?.value || businesses[0]?.id;
+    const tenants = await getUserTenants(session.user.id);
+    const activeTenantId = request.cookies.get('sami_tenant_id')?.value || tenants[0]?.id;
 
-    if (!activeBusinessId) {
-      return NextResponse.json({ error: 'No business found' }, { status: 403 });
+    if (!activeTenantId) {
+      return NextResponse.json({ error: 'No tenant found' }, { status: 403 });
     }
 
     // Check subscription and AI limits
     const subResult = await queryControl(
-      `SELECT plan, status, ai_queries_used, ai_queries_limit 
-       FROM subscriptions WHERE business_id = $1`,
-      [activeBusinessId]
+      `SELECT p.ai_queries_limit, s.status
+       FROM subscriptions s
+       INNER JOIN plans p ON p.id = s.plan_id
+       WHERE s.tenant_id = $1 AND s.status IN ('trialing', 'active')
+       ORDER BY s.created_at DESC LIMIT 1`,
+      [activeTenantId]
     );
-    const subscription = subResult.rows[0];
 
-    if (!subscription) {
-      return NextResponse.json({ error: 'No subscription found' }, { status: 403 });
+    if (subResult.rows.length === 0) {
+      return NextResponse.json({ error: 'No active subscription' }, { status: 403 });
     }
 
-    // Check if subscription is active or trialing
-    if (!['active', 'trialing'].includes(subscription.status)) {
-      return NextResponse.json({ error: 'Your subscription is not active. Please update your payment method.' }, { status: 403 });
+    const aiLimit = subResult.rows[0].ai_queries_limit;
+
+    // Get current month usage
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const usageResult = await queryControl(
+      `SELECT COALESCE(SUM(query_count), 0) as total
+       FROM ai_usage WHERE tenant_id = $1 AND month = $2`,
+      [activeTenantId, currentMonth]
+    );
+    const usedQueries = parseInt(usageResult.rows[0].total);
+
+    if (aiLimit !== -1 && usedQueries >= aiLimit) {
+      return NextResponse.json({ error: 'AI query limit reached. Upgrade your plan.' }, { status: 429 });
     }
 
-    // Check AI query limit
-    const limit = subscription.ai_queries_limit || 100;
-    const used = subscription.ai_queries_used || 0;
-
-    if (limit !== -1 && used >= limit) {
-      return NextResponse.json({ 
-        error: 'AI query limit reached. Please upgrade your plan for more queries.' 
-      }, { status: 429 });
-    }
-
-    // Get tenant database name
-    const databaseName = await getTenantDatabaseName(activeBusinessId);
+    // Get tenant database
+    const databaseName = await getTenantDatabaseName(activeTenantId);
     if (!databaseName) {
       return NextResponse.json({ error: 'Database not ready' }, { status: 503 });
     }
@@ -69,9 +66,7 @@ export async function POST(request: NextRequest) {
     if (!activeConversationId) {
       const conversationResult = await queryTenant(
         databaseName,
-        `INSERT INTO conversations (user_id, title)
-         VALUES ($1, $2)
-         RETURNING id`,
+        `INSERT INTO ai_conversations (user_id, title) VALUES ($1, $2) RETURNING id`,
         [session.user.id, message.substring(0, 100)]
       );
       activeConversationId = conversationResult.rows[0].id;
@@ -80,140 +75,79 @@ export async function POST(request: NextRequest) {
     // Save user message
     await queryTenant(
       databaseName,
-      `INSERT INTO messages (conversation_id, role, content)
-       VALUES ($1, 'user', $2)`,
+      `INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1, 'user', $2)`,
       [activeConversationId, message]
     );
 
     // Get conversation history
     const historyResult = await queryTenant(
       databaseName,
-      `SELECT role, content FROM messages 
-       WHERE conversation_id = $1 
-       ORDER BY created_at ASC
-       LIMIT 20`,
+      `SELECT role, content FROM ai_messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20`,
       [activeConversationId]
     );
+    const history = historyResult.rows.map((row: any) => ({ role: row.role, content: row.content }));
 
-    const history = historyResult.rows.map(row => ({
-      role: row.role,
-      content: row.content,
-    }));
-
-    // Get database schema
+    // Get schema
     const schemaResult = await queryTenant(
       databaseName,
       `SELECT table_name, column_name, data_type 
        FROM information_schema.columns 
-       WHERE table_schema = 'public'
-       ORDER BY table_name, ordinal_position`
+       WHERE table_schema = 'public' ORDER BY table_name, ordinal_position`
     );
 
-    const tables: Record<string, Array<{ column: string; type: string }>> = {};
-    schemaResult.rows.forEach(row => {
-      if (!tables[row.table_name]) {
-        tables[row.table_name] = [];
-      }
-      tables[row.table_name].push({
-        column: row.column_name,
-        type: row.data_type,
-      });
+    const tables: Record<string, string[]> = {};
+    schemaResult.rows.forEach((row: any) => {
+      if (!tables[row.table_name]) tables[row.table_name] = [];
+      tables[row.table_name].push(`${row.column_name} (${row.data_type})`);
     });
 
     const schemaContext = Object.entries(tables)
-      .map(([table, columns]) => {
-        const columnList = columns.map(c => `${c.column} (${c.type})`).join(', ');
-        return `Table ${table}: ${columnList}`;
-      })
+      .map(([table, cols]) => `Table ${table}: ${cols.join(', ')}`)
       .join('\n');
 
     // Get AI memory
     const memoryResult = await queryTenant(
       databaseName,
-      `SELECT content, source_type, importance 
-       FROM ai_memory 
-       WHERE importance >= 7
-       ORDER BY importance DESC, created_at DESC
-       LIMIT 10`
+      `SELECT content FROM ai_memory WHERE importance >= 7 ORDER BY importance DESC LIMIT 10`
     );
+    const memoryContext = memoryResult.rows.map((row: any) => `- ${row.content}`).join('\n');
 
-    const memoryContext = memoryResult.rows
-      .map(row => `- ${row.content}`)
-      .join('\n');
-
-    const systemPrompt = `You are SaMi AI, an intelligent business assistant.
-
-Database schema:
-${schemaContext}
-
-${memoryContext ? `Business context:\n${memoryContext}\n` : ''}
-
-Be concise and helpful. Use business terminology. Format responses clearly.`;
-
-    // Call Groq AI
-    const completion = await groq.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...history,
-      ],
-      model: 'mixtral-8x7b-32768',
-      temperature: 0.7,
-      max_tokens: 4096,
-    });
-
-    const aiResponse = completion.choices[0]?.message?.content || 'Sorry, I could not generate a response.';
+    // Generate AI response
+    const systemPrompt = buildSystemPrompt(schemaContext, memoryContext);
+    const aiResult = await generateAIResponse(history, systemPrompt);
 
     // Save assistant message
     await queryTenant(
       databaseName,
-      `INSERT INTO messages (conversation_id, role, content)
-       VALUES ($1, 'assistant', $2)`,
-      [activeConversationId, aiResponse]
+      `INSERT INTO ai_messages (conversation_id, role, content) VALUES ($1, 'assistant', $2)`,
+      [activeConversationId, aiResult.content]
     );
 
-    // Increment AI usage counter
-    const currentMonth = new Date().toISOString().slice(0, 7);
-    
+    // Track usage
     await queryControl(
-      `UPDATE subscriptions SET ai_queries_used = ai_queries_used + 1, updated_at = NOW()
-       WHERE business_id = $1`,
-      [activeBusinessId]
-    );
-
-    // Upsert ai_usage
-    await queryControl(
-      `INSERT INTO ai_usage (business_id, user_id, query_count, tokens_used, month)
-       VALUES ($1, $2, 1, $3, $4)
-       ON CONFLICT (business_id, user_id, month) 
+      `INSERT INTO ai_usage (tenant_id, user_id, query_count, tokens_input, tokens_output, month)
+       VALUES ($1, $2, 1, $3, $4, $5)
+       ON CONFLICT (tenant_id, user_id, model_id, month) 
        DO UPDATE SET query_count = ai_usage.query_count + 1, 
-                     tokens_used = ai_usage.tokens_used + $3,
+                     tokens_input = ai_usage.tokens_input + $3,
+                     tokens_output = ai_usage.tokens_output + $4,
                      updated_at = NOW()`,
-      [activeBusinessId, session.user.id, completion.usage?.total_tokens || 0, currentMonth]
+      [activeTenantId, session.user.id, aiResult.usage?.prompt_tokens || 0, aiResult.usage?.completion_tokens || 0, currentMonth]
     );
-
-    // Check if 80% limit reached and warn
-    const newUsed = used + 1;
-    if (limit !== -1) {
-      const percentage = (newUsed / limit) * 100;
-      if (percentage >= 80 && percentage < 100) {
-        // Warn user
-        console.log(`AI usage at ${percentage}% for business ${activeBusinessId}`);
-      }
-    }
 
     return NextResponse.json({
       success: true,
-      response: aiResponse,
+      response: aiResult.content,
       conversationId: activeConversationId,
       usage: {
-        used: newUsed,
-        limit,
-        remaining: limit === -1 ? 'Unlimited' : Math.max(0, limit - newUsed),
+        used: usedQueries + 1,
+        limit: aiLimit,
+        remaining: aiLimit === -1 ? 'Unlimited' : Math.max(0, aiLimit - usedQueries - 1),
       },
     });
 
   } catch (error) {
     console.error('AI Chat error:', error);
-    return NextResponse.json({ error: 'AI request failed. Please try again.' }, { status: 500 });
+    return NextResponse.json({ error: 'AI request failed' }, { status: 500 });
   }
 }
