@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, Mail, Loader2, CheckCircle } from 'lucide-react';
+import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, Mail, Loader2, CheckCircle, CreditCard } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 export default function SelectPlanPage() {
@@ -50,11 +50,8 @@ export default function SelectPlanPage() {
         body: JSON.stringify({ email: accountForm.email }),
       });
       const data = await response.json();
-      if (data.success) {
-        setResendMessage('Email sent. Check your inbox.');
-      } else {
-        setResendMessage(data.message || data.error || 'Failed');
-      }
+      if (data.success) setResendMessage('Email sent. Check your inbox.');
+      else setResendMessage(data.message || data.error || 'Failed');
     } catch {
       setResendMessage('Failed to resend');
     } finally {
@@ -75,9 +72,7 @@ export default function SelectPlanPage() {
             setOverlay({ type: 'success', title: 'Email Verified!', message: 'Redirecting to login...' });
             setTimeout(() => router.push('/auth/login?verified=true'), 2000);
           }
-        } catch {
-          // Keep polling
-        }
+        } catch {}
       }, 3000);
       return () => clearInterval(interval);
     }
@@ -160,7 +155,6 @@ export default function SelectPlanPage() {
           setLoading(false);
           return;
         }
-
         sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
         window.location.href = checkoutData.redirectUrl;
       } catch {
@@ -171,118 +165,113 @@ export default function SelectPlanPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4 py-12 relative">
-      <button onClick={toggleTheme} className="absolute top-4 right-4 p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-10">
-        {darkMode ? <Sun size={20} className="text-yellow-400" /> : <Moon size={20} className="text-gray-600" />}
+    <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-5 py-10 transition-colors duration-200">
+      <button onClick={toggleTheme} className="fixed top-5 right-5 z-20 h-10 w-10 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm">
+        {darkMode ? <Sun size={18} /> : <Moon size={18} />}
       </button>
 
-      <div className="max-w-lg w-full">
-        <div className="flex flex-col items-center mb-8">
-          <Link href="/"><SaMiLogo size="lg" /></Link>
-          <h2 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">Choose your plan</h2>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Step 4 of 4: Select plan</p>
-        </div>
-
-        {/* Progress */}
-        <div className="flex items-center justify-center gap-2 mb-8">
-          {[1, 2, 3, 4].map((step) => (
-            <div key={step} className="flex items-center gap-2">
-              <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                step === 4 ? 'bg-blue-600 text-white' : step < 4 ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
-              }`}>
-                {step < 4 ? <Check size={14} /> : step}
-              </div>
-              {step < 4 && <div className={`w-6 h-0.5 ${step < 4 ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-800'}`} />}
+      <div className="w-full max-w-[820px] mx-auto">
+        <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
+          <div className="px-8 py-8 sm:px-10 sm:py-9">
+            {/* Brand */}
+            <div className="mb-7">
+              <Link href="/" className="inline-flex flex-col items-start">
+                <SaMiLogo size="lg" />
+                <span className="mt-2 text-[12px] text-gray-500 dark:text-gray-400 tracking-wide">AI-powered business workspace</span>
+              </Link>
             </div>
-          ))}
-        </div>
 
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <button onClick={() => setSelectedPlan('free')} className={`w-full p-5 rounded-xl border-2 text-left mb-4 transition ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-bold text-gray-900 dark:text-white">One App Free</span>
-                <p className="text-xs text-gray-500 mt-1">1 app • Unlimited users • 100 AI queries</p>
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">$0</span>
+            {/* Header */}
+            <div className="mb-7">
+              <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">Choose your plan</h1>
+              <p className="mt-2 text-[14px] text-gray-500 dark:text-gray-400">Step 3 of 3: Select the plan that fits your business.</p>
             </div>
-          </button>
 
-          <button onClick={() => setSelectedPlan('standard')} className={`w-full p-5 rounded-xl border-2 text-left mb-4 transition ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-bold text-gray-900 dark:text-white">Standard</span>
-                <p className="text-xs text-gray-500 mt-1">All apps • Per user • 1,000 AI queries</p>
-              </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">$14.90<span className="text-sm text-gray-500">/mo</span></span>
+            {/* Plans */}
+            <div className="space-y-4 mb-5">
+              <button onClick={() => setSelectedPlan('free')} className={`w-full p-5 rounded-xl border-2 text-left transition ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-gray-900 dark:text-white text-[15px]">One App Free</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">1 app • Unlimited users • 100 AI queries</p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">$0</span>
+                </div>
+              </button>
+
+              <button onClick={() => setSelectedPlan('standard')} className={`w-full p-5 rounded-xl border-2 text-left transition ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-gray-900 dark:text-white text-[15px]">Standard</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All apps • Per user • 1,000 AI queries • 15-day trial</p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">$14.90<span className="text-sm text-gray-500">/mo</span></span>
+                </div>
+              </button>
+
+              <button onClick={() => setSelectedPlan('custom')} className={`w-full p-5 rounded-xl border-2 text-left transition ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-semibold text-gray-900 dark:text-white text-[15px]">Custom</span>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All + custom • Unlimited AI</p>
+                  </div>
+                  <span className="text-2xl font-bold text-gray-900 dark:text-white">$24.90<span className="text-sm text-gray-500">/mo</span></span>
+                </div>
+              </button>
             </div>
-          </button>
 
-          <button onClick={() => setSelectedPlan('custom')} className={`w-full p-5 rounded-xl border-2 text-left transition ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-bold text-gray-900 dark:text-white">Custom</span>
-                <p className="text-xs text-gray-500 mt-1">All + custom • Unlimited AI</p>
+            {/* Bottom action */}
+            <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-5">
+              <p className="hidden sm:block text-[11px] text-gray-400 dark:text-gray-500">You can change your plan anytime.</p>
+              <div className="flex gap-3 ml-auto">
+                <button onClick={() => router.back()} className="h-[44px] px-5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-[13px] font-semibold flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+                  <ArrowLeft size={15} /> Back
+                </button>
+                <button onClick={handleSubmit} disabled={loading} className="h-[44px] px-5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold flex items-center gap-2 transition disabled:opacity-60">
+                  {loading ? <Loader2 size={15} className="animate-spin" /> : selectedPlan === 'free' ? 'Create Account' : 'Continue to Payment'}
+                  {!loading && <ArrowRight size={15} />}
+                </button>
               </div>
-              <span className="text-2xl font-bold text-gray-900 dark:text-white">$24.90<span className="text-sm text-gray-500">/mo</span></span>
             </div>
-          </button>
-
-          <div className="mt-6 flex gap-3">
-            <button onClick={() => router.back()} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
-              <ArrowLeft size={14} /> Back
-            </button>
-            <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
-              {loading ? 'Processing...' : selectedPlan === 'free' ? 'Create Account' : 'Continue to Payment'}
-              {!loading && <ArrowRight size={14} />}
-            </button>
           </div>
+        </section>
+
+        <div className="mt-4 flex justify-end items-center gap-5 px-1">
+          <Link href="/help" className="text-[12px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Help</Link>
+          <Link href="/auth/terms" className="text-[12px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Terms</Link>
+          <Link href="/auth/privacy" className="text-[12px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Privacy</Link>
         </div>
       </div>
 
-      {/* OVERLAY */}
+      {/* Overlay */}
       {overlay && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center relative">
-            <button onClick={() => setOverlay(null)} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-              <X size={18} className="text-gray-500" />
-            </button>
+        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-5" onClick={() => setOverlay(null)}>
+          <div className="w-full max-w-[390px] bg-white dark:bg-[#15191e] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-7 relative" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setOverlay(null)} className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"><X size={17} /></button>
 
-            {overlay.type === 'verify' && (
-              <div className="h-14 w-14 bg-blue-100 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center mx-auto">
-                <Mail size={28} className="text-blue-600" />
-              </div>
-            )}
-            {overlay.type === 'success' && (
-              <div className="h-14 w-14 bg-green-100 dark:bg-green-900/20 rounded-2xl flex items-center justify-center mx-auto">
-                <CheckCircle size={28} className="text-green-600" />
-              </div>
-            )}
-            {overlay.type === 'error' && (
-              <div className="h-14 w-14 bg-red-100 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto">
-                <AlertTriangle size={28} className="text-red-600" />
-              </div>
-            )}
+            {overlay.type === 'verify' && <div className="h-12 w-12 rounded-xl bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center"><Mail size={25} className="text-blue-600" /></div>}
+            {overlay.type === 'success' && <div className="h-12 w-12 rounded-xl bg-green-100 dark:bg-green-950/40 flex items-center justify-center"><CheckCircle size={25} className="text-green-600" /></div>}
+            {overlay.type === 'error' && <div className="h-12 w-12 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center"><AlertTriangle size={25} className="text-red-600" /></div>}
 
-            <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{overlay.title}</h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{overlay.message}</p>
+            <h2 className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white">{overlay.title}</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">{overlay.message}</p>
 
             {overlay.type === 'verify' && (
               <>
                 {resendMessage && <p className="mt-3 text-sm text-green-600">{resendMessage}</p>}
-                <button onClick={handleResend} disabled={resending} className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                  {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                <button onClick={handleResend} disabled={resending} className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition disabled:opacity-60">
+                  {resending ? <Loader2 size={15} className="animate-spin" /> : <Mail size={15} />}
                   {resending ? 'Sending...' : 'Resend Email'}
                 </button>
               </>
             )}
 
             {overlay.type !== 'verify' && (
-              <button onClick={() => setOverlay(null)} className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold">OK</button>
+              <button onClick={() => setOverlay(null)} className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition">Continue</button>
             )}
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
