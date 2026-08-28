@@ -40,12 +40,10 @@ export async function POST(request: NextRequest) {
     }
 
     const aiLimit = subResult.rows[0].ai_queries_limit;
-
-    // Get current month usage
     const currentMonth = new Date().toISOString().slice(0, 7);
+
     const usageResult = await queryControl(
-      `SELECT COALESCE(SUM(query_count), 0) as total
-       FROM ai_usage WHERE tenant_id = $1 AND month = $2`,
+      `SELECT COALESCE(SUM(query_count), 0) as total FROM ai_usage WHERE tenant_id = $1 AND month = $2`,
       [activeTenantId, currentMonth]
     );
     const usedQueries = parseInt(usageResult.rows[0].total);
@@ -79,7 +77,7 @@ export async function POST(request: NextRequest) {
       [activeConversationId, message]
     );
 
-    // Get conversation history
+    // Get history
     const historyResult = await queryTenant(
       databaseName,
       `SELECT role, content FROM ai_messages WHERE conversation_id = $1 ORDER BY created_at ASC LIMIT 20`,
@@ -90,22 +88,11 @@ export async function POST(request: NextRequest) {
     // Get schema
     const schemaResult = await queryTenant(
       databaseName,
-      `SELECT table_name, column_name, data_type 
-       FROM information_schema.columns 
-       WHERE table_schema = 'public' ORDER BY table_name, ordinal_position`
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
     );
+    const schemaContext = schemaResult.rows.map((row: any) => `- ${row.table_name}`).join('\n');
 
-    const tables: Record<string, string[]> = {};
-    schemaResult.rows.forEach((row: any) => {
-      if (!tables[row.table_name]) tables[row.table_name] = [];
-      tables[row.table_name].push(`${row.column_name} (${row.data_type})`);
-    });
-
-    const schemaContext = Object.entries(tables)
-      .map(([table, cols]) => `Table ${table}: ${cols.join(', ')}`)
-      .join('\n');
-
-    // Get AI memory
+    // Get memory
     const memoryResult = await queryTenant(
       databaseName,
       `SELECT content FROM ai_memory WHERE importance >= 7 ORDER BY importance DESC LIMIT 10`
@@ -127,8 +114,8 @@ export async function POST(request: NextRequest) {
     await queryControl(
       `INSERT INTO ai_usage (tenant_id, user_id, query_count, tokens_input, tokens_output, month)
        VALUES ($1, $2, 1, $3, $4, $5)
-       ON CONFLICT (tenant_id, user_id, model_id, month) 
-       DO UPDATE SET query_count = ai_usage.query_count + 1, 
+       ON CONFLICT (tenant_id, user_id, month) 
+       DO UPDATE SET query_count = ai_usage.query_count + 1,
                      tokens_input = ai_usage.tokens_input + $3,
                      tokens_output = ai_usage.tokens_output + $4,
                      updated_at = NOW()`,
