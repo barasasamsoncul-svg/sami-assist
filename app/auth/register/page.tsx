@@ -3,7 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, Check, ArrowLeft, Mail, Loader2, X } from 'lucide-react';
+import { Sun, Moon, ArrowRight, Check, ArrowLeft, Mail, Loader2, X, AlertTriangle, CheckCircle } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 import { SAMI_APPS, APP_CATEGORIES } from '@/lib/sami-apps';
 
@@ -14,7 +14,6 @@ function RegisterContent() {
 
   const [darkMode, setDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [mobileStep, setMobileStep] = useState<'account' | 'apps' | 'plan'>('account');
 
@@ -35,9 +34,14 @@ function RegisterContent() {
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<'free' | 'standard' | 'custom'>('free');
 
-  // Verification overlay state
-  const [showVerifyOverlay, setShowVerifyOverlay] = useState(false);
-  const [registeredEmail, setRegisteredEmail] = useState('');
+  // Overlay state
+  const [overlay, setOverlay] = useState<null | {
+    type: 'error' | 'success' | 'warning' | 'verify';
+    title: string;
+    message: string;
+    email?: string;
+  }>(null);
+
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
@@ -82,20 +86,23 @@ function RegisterContent() {
     }
   };
 
+  const closeOverlay = () => setOverlay(null);
+
   const toggleApp = (appKey: string) => {
     setSelectedApps(prev => prev.includes(appKey) ? prev.filter(k => k !== appKey) : [...prev, appKey]);
   };
 
   const filteredApps = activeCategory === 'all' ? SAMI_APPS : SAMI_APPS.filter(app => app.category === activeCategory);
 
-  const handleResendFromOverlay = async () => {
+  const handleResend = async () => {
+    const emailToSend = overlay?.email || accountForm.email;
     setResending(true);
     setResendMessage('');
     try {
       const response = await fetch('/api/auth/resend-verification', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: registeredEmail }),
+        body: JSON.stringify({ email: emailToSend }),
       });
       const data = await response.json();
       if (data.success) {
@@ -113,26 +120,24 @@ function RegisterContent() {
   };
 
   const handleSubmit = async () => {
-    setError('');
-
     if (!accountForm.firstName || !accountForm.lastName || !accountForm.email || !accountForm.password) {
-      setError('First name, last name, email, and password are required');
+      setOverlay({ type: 'error', title: 'Missing Fields', message: 'First name, last name, email, and password are required.' });
       return;
     }
     if (accountForm.password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setOverlay({ type: 'error', title: 'Weak Password', message: 'Password must be at least 8 characters.' });
       return;
     }
     if (!accountForm.acceptTerms || !accountForm.acceptPrivacy) {
-      setError('You must accept Terms of Service and Privacy Policy');
+      setOverlay({ type: 'error', title: 'Terms Required', message: 'You must accept Terms of Service and Privacy Policy.' });
       return;
     }
     if (!isInvite && !accountForm.businessName) {
-      setError('Business name is required');
+      setOverlay({ type: 'error', title: 'Business Required', message: 'Business name is required.' });
       return;
     }
     if (!isInvite && selectedApps.length === 0) {
-      setError('Select at least one app');
+      setOverlay({ type: 'error', title: 'No Apps Selected', message: 'Select at least one app.' });
       return;
     }
 
@@ -150,10 +155,15 @@ function RegisterContent() {
           }),
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error);
-        router.push('/auth/login?invited=true');
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed');
+        if (!response.ok) {
+          setOverlay({ type: 'error', title: 'Failed', message: data.error || 'Failed to accept invite' });
+          setLoading(false);
+          return;
+        }
+        setOverlay({ type: 'success', title: 'Invite Accepted!', message: 'You have joined the workspace. Redirecting to login...' });
+        setTimeout(() => router.push('/auth/login?invited=true'), 2000);
+      } catch {
+        setOverlay({ type: 'error', title: 'Failed', message: 'Something went wrong' });
         setLoading(false);
       }
       return;
@@ -177,14 +187,21 @@ function RegisterContent() {
           body: JSON.stringify(registerBody),
         });
         const registerData = await registerRes.json();
-        if (!registerRes.ok) throw new Error(registerData.error);
+        if (!registerRes.ok) {
+          setOverlay({ type: 'error', title: 'Registration Failed', message: registerData.error || 'Failed to register' });
+          setLoading(false);
+          return;
+        }
 
-        // Show verification overlay
-        setRegisteredEmail(accountForm.email);
-        setShowVerifyOverlay(true);
+        setOverlay({
+          type: 'verify',
+          title: 'Verify Your Email',
+          message: `We sent a verification link to ${accountForm.email}. Check your inbox. The link expires in 15 minutes.`,
+          email: accountForm.email,
+        });
         setLoading(false);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Registration failed');
+      } catch {
+        setOverlay({ type: 'error', title: 'Registration Failed', message: 'Something went wrong' });
         setLoading(false);
       }
       return;
@@ -208,32 +225,35 @@ function RegisterContent() {
           }),
         });
         const checkoutData = await checkoutRes.json();
-        if (!checkoutRes.ok) throw new Error(checkoutData.error);
+        if (!checkoutRes.ok) {
+          setOverlay({ type: 'error', title: 'Payment Failed', message: checkoutData.error || 'Failed to initiate payment' });
+          setLoading(false);
+          return;
+        }
 
         sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
         window.location.href = checkoutData.redirectUrl;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Payment initiation failed');
+      } catch {
+        setOverlay({ type: 'error', title: 'Payment Failed', message: 'Something went wrong' });
         setLoading(false);
       }
     }
   };
 
   const mobileNext = () => {
-    setError('');
     if (mobileStep === 'account') {
       if (!accountForm.firstName || !accountForm.lastName || !accountForm.email || !accountForm.password) {
-        setError('Fill all required fields');
+        setOverlay({ type: 'error', title: 'Missing Fields', message: 'Fill all required fields.' });
         return;
       }
       if (!accountForm.acceptTerms || !accountForm.acceptPrivacy) {
-        setError('Accept Terms and Privacy');
+        setOverlay({ type: 'error', title: 'Terms Required', message: 'Accept Terms and Privacy Policy.' });
         return;
       }
       setMobileStep('apps');
     } else if (mobileStep === 'apps') {
       if (selectedApps.length === 0) {
-        setError('Select at least one app');
+        setOverlay({ type: 'error', title: 'No Apps', message: 'Select at least one app.' });
         return;
       }
       setMobileStep('plan');
@@ -241,7 +261,6 @@ function RegisterContent() {
   };
 
   const mobileBack = () => {
-    setError('');
     if (mobileStep === 'apps') setMobileStep('account');
     else if (mobileStep === 'plan') setMobileStep('apps');
   };
@@ -269,10 +288,6 @@ function RegisterContent() {
             </>
           )}
         </div>
-
-        {error && (
-          <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>
-        )}
 
         {isInvite ? (
           <div className="max-w-md mx-auto">
@@ -384,7 +399,7 @@ function RegisterContent() {
             <div className="lg:hidden max-w-md mx-auto">
               {mobileStep === 'account' && (
                 <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Account</h3>
+                  <h3 className="text-lg font-semibold mb-4">Account</h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
@@ -442,36 +457,68 @@ function RegisterContent() {
         </p>
       </div>
 
-      {/* VERIFICATION OVERLAY */}
-      {showVerifyOverlay && (
+      {/* OVERLAY */}
+      {overlay && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center relative">
-            <button onClick={() => setShowVerifyOverlay(false)} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            <button onClick={closeOverlay} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
               <X size={18} className="text-gray-500" />
             </button>
-            <div className="h-14 w-14 bg-blue-100 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center mx-auto">
-              <Mail size={28} className="text-blue-600 dark:text-blue-400" />
-            </div>
-            <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Verify Your Email</h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              We sent a verification link to <strong className="text-gray-900 dark:text-white">{registeredEmail}</strong>
-            </p>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Check your inbox. The link expires in 15 minutes.
-            </p>
 
-            {resendMessage && (
-              <p className="mt-3 text-sm text-green-600 dark:text-green-400">{resendMessage}</p>
+            {overlay.type === 'success' && (
+              <div className="h-14 w-14 bg-green-100 dark:bg-green-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <CheckCircle size={28} className="text-green-600" />
+              </div>
+            )}
+            {overlay.type === 'error' && (
+              <div className="h-14 w-14 bg-red-100 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <AlertTriangle size={28} className="text-red-600" />
+              </div>
+            )}
+            {overlay.type === 'warning' && (
+              <div className="h-14 w-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <AlertTriangle size={28} className="text-yellow-600" />
+              </div>
+            )}
+            {overlay.type === 'verify' && (
+              <div className="h-14 w-14 bg-blue-100 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <Mail size={28} className="text-blue-600" />
+              </div>
             )}
 
-            <button
-              onClick={handleResendFromOverlay}
-              disabled={resending}
-              className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-              {resending ? 'Sending...' : 'Resend Email'}
-            </button>
+            <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{overlay.title}</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{overlay.message}</p>
+
+            {overlay.type === 'verify' && (
+              <>
+                {resendMessage && <p className="mt-3 text-sm text-green-600">{resendMessage}</p>}
+                <div className="mt-5 space-y-3">
+                  <button
+                    onClick={handleResend}
+                    disabled={resending}
+                    className="w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                    {resending ? 'Sending...' : 'Resend Email'}
+                  </button>
+                  <button
+                    onClick={closeOverlay}
+                    className="w-full px-5 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            )}
+
+            {overlay.type !== 'verify' && (
+              <button
+                onClick={closeOverlay}
+                className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
+              >
+                OK
+              </button>
+            )}
           </div>
         </div>
       )}

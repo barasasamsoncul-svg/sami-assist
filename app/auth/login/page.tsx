@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, Loader2, Mail, Lock, ArrowRight, Smartphone, Shield, AlertTriangle, X } from 'lucide-react';
+import { Sun, Moon, Loader2, Mail, Lock, ArrowRight, Smartphone, Shield, AlertTriangle, X, CheckCircle } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 function LoginForm() {
@@ -13,8 +13,6 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [darkMode, setDarkMode] = useState(false);
 
   const [loginMode, setLoginMode] = useState<'password' | 'authenticator'>('password');
@@ -24,7 +22,14 @@ function LoginForm() {
   const [authEmail, setAuthEmail] = useState('');
   const [authCode, setAuthCode] = useState('');
 
-  const [showVerifyOverlay, setShowVerifyOverlay] = useState(false);
+  // Overlay state
+  const [overlay, setOverlay] = useState<null | {
+    type: 'error' | 'success' | 'warning';
+    title: string;
+    message: string;
+    action?: 'resend' | 'login' | 'none';
+  }>(null);
+
   const [resending, setResending] = useState(false);
   const [resendMessage, setResendMessage] = useState('');
 
@@ -39,9 +44,15 @@ function LoginForm() {
       document.documentElement.classList.remove('dark');
     }
 
-    if (searchParams.get('verified') === 'true') setSuccess('Email verified! You can now log in.');
-    if (searchParams.get('invited') === 'true') setSuccess('Invite accepted! Please log in.');
-    if (searchParams.get('reset') === 'true') setSuccess('Password reset! Log in.');
+    if (searchParams.get('verified') === 'true') {
+      setOverlay({ type: 'success', title: 'Email Verified!', message: 'Your email has been verified. You can now log in.', action: 'none' });
+    }
+    if (searchParams.get('invited') === 'true') {
+      setOverlay({ type: 'success', title: 'Invite Accepted!', message: 'You have joined the workspace. Please log in.', action: 'none' });
+    }
+    if (searchParams.get('reset') === 'true') {
+      setOverlay({ type: 'success', title: 'Password Reset!', message: 'Your password has been reset. Log in with your new password.', action: 'none' });
+    }
   }, [searchParams]);
 
   const toggleTheme = () => {
@@ -55,6 +66,8 @@ function LoginForm() {
       localStorage.setItem('sami_theme', 'light');
     }
   };
+
+  const closeOverlay = () => setOverlay(null);
 
   const handleResendFromOverlay = async () => {
     setResending(true);
@@ -82,8 +95,6 @@ function LoginForm() {
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
@@ -96,11 +107,13 @@ function LoginForm() {
 
       if (!response.ok) {
         if (data.error && data.error.includes('verify your email')) {
-          setShowVerifyOverlay(true);
+          setOverlay({ type: 'warning', title: 'Email Not Verified', message: 'You need to verify your email before logging in.', action: 'resend' });
           setLoading(false);
           return;
         }
-        throw new Error(data.error || 'Login failed');
+        setOverlay({ type: 'error', title: 'Login Failed', message: data.error || 'Invalid credentials', action: 'none' });
+        setLoading(false);
+        return;
       }
 
       if (data.requires2FA) {
@@ -111,15 +124,14 @@ function LoginForm() {
       }
 
       router.push('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch {
+      setOverlay({ type: 'error', title: 'Login Failed', message: 'Something went wrong. Please try again.', action: 'none' });
       setLoading(false);
     }
   };
 
   const handle2FAVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     try {
@@ -141,18 +153,21 @@ function LoginForm() {
       });
 
       const authData = await authResponse.json();
-      if (!authResponse.ok) throw new Error(authData.error || 'Invalid code');
+      if (!authResponse.ok) {
+        setOverlay({ type: 'error', title: 'Invalid Code', message: authData.error || 'Invalid verification code', action: 'none' });
+        setLoading(false);
+        return;
+      }
 
       router.push('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Verification failed');
+    } catch {
+      setOverlay({ type: 'error', title: 'Verification Failed', message: 'Something went wrong', action: 'none' });
       setLoading(false);
     }
   };
 
   const handleSendEmailCode = async () => {
     setLoading(true);
-    setError('');
     try {
       const response = await fetch('/api/auth/2fa/send-email-code', {
         method: 'POST',
@@ -161,9 +176,9 @@ function LoginForm() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
-      setSuccess('Code sent to your email');
+      setOverlay({ type: 'success', title: 'Code Sent', message: '2FA code sent to your email.', action: 'none' });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send code');
+      setOverlay({ type: 'error', title: 'Failed', message: err instanceof Error ? err.message : 'Failed to send code', action: 'none' });
     } finally {
       setLoading(false);
     }
@@ -171,8 +186,6 @@ function LoginForm() {
 
   const handleAuthenticatorLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setLoading(true);
 
     try {
@@ -183,11 +196,15 @@ function LoginForm() {
       });
       const data = await response.json();
 
-      if (!response.ok) throw new Error(data.error || 'Login failed');
+      if (!response.ok) {
+        setOverlay({ type: 'error', title: 'Login Failed', message: data.error || 'Invalid credentials', action: 'none' });
+        setLoading(false);
+        return;
+      }
 
       router.push('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch {
+      setOverlay({ type: 'error', title: 'Login Failed', message: 'Something went wrong', action: 'none' });
       setLoading(false);
     }
   };
@@ -209,9 +226,6 @@ function LoginForm() {
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        {success && <div className="mb-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl text-green-700 dark:text-green-400 text-sm">{success}</div>}
-        {error && <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>}
-
         <div className="bg-white dark:bg-gray-900 py-8 px-6 shadow-xl rounded-2xl border border-gray-200 dark:border-gray-800 sm:px-10">
           {show2FA ? (
             <form onSubmit={handle2FAVerify} className="space-y-5">
@@ -225,6 +239,7 @@ function LoginForm() {
               <button type="submit" disabled={loading || twoFactorCode.length !== 6} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
                 {loading ? 'Verifying...' : 'Verify & Login'}
               </button>
+              <button type="button" onClick={() => { setShow2FA(false); setTwoFactorCode(''); }} className="w-full text-center text-sm text-gray-500">Back</button>
             </form>
           ) : loginMode === 'password' ? (
             <>
@@ -258,7 +273,7 @@ function LoginForm() {
                 <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
               </div>
 
-              <button onClick={() => { setLoginMode('authenticator'); setError(''); setSuccess(''); }} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 font-medium hover:border-blue-500">
+              <button onClick={() => setLoginMode('authenticator')} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 font-medium hover:border-blue-500">
                 <Smartphone size={18} />
                 Use Authenticator Instead
               </button>
@@ -277,9 +292,7 @@ function LoginForm() {
                   {loading ? 'Logging in...' : 'Login with Authenticator'}
                 </button>
               </form>
-              <button onClick={() => { setLoginMode('password'); setError(''); setSuccess(''); }} className="mt-4 w-full text-center text-sm text-gray-500 hover:text-gray-700">
-                Back to password login
-              </button>
+              <button onClick={() => setLoginMode('password')} className="mt-4 w-full text-center text-sm text-gray-500">Back to password login</button>
             </>
           )}
         </div>
@@ -291,33 +304,55 @@ function LoginForm() {
         )}
       </div>
 
-      {/* EMAIL NOT VERIFIED OVERLAY */}
-      {showVerifyOverlay && (
+      {/* OVERLAY */}
+      {overlay && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center relative">
-            <button onClick={() => setShowVerifyOverlay(false)} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            <button onClick={closeOverlay} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
               <X size={18} className="text-gray-500" />
             </button>
-            <div className="h-14 w-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-2xl flex items-center justify-center mx-auto">
-              <AlertTriangle size={28} className="text-yellow-600" />
-            </div>
-            <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Email Not Verified</h3>
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              You need to verify your email before logging in.
-            </p>
 
-            {resendMessage && (
-              <p className="mt-3 text-sm text-green-600 dark:text-green-400">{resendMessage}</p>
+            {overlay.type === 'success' && (
+              <div className="h-14 w-14 bg-green-100 dark:bg-green-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <CheckCircle size={28} className="text-green-600" />
+              </div>
+            )}
+            {overlay.type === 'error' && (
+              <div className="h-14 w-14 bg-red-100 dark:bg-red-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <AlertTriangle size={28} className="text-red-600" />
+              </div>
+            )}
+            {overlay.type === 'warning' && (
+              <div className="h-14 w-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-2xl flex items-center justify-center mx-auto">
+                <AlertTriangle size={28} className="text-yellow-600" />
+              </div>
             )}
 
-            <button
-              onClick={handleResendFromOverlay}
-              disabled={resending}
-              className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
-              {resending ? 'Sending...' : 'Resend Verification Email'}
-            </button>
+            <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">{overlay.title}</h3>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{overlay.message}</p>
+
+            {overlay.action === 'resend' && (
+              <>
+                {resendMessage && <p className="mt-3 text-sm text-green-600">{resendMessage}</p>}
+                <button
+                  onClick={handleResendFromOverlay}
+                  disabled={resending}
+                  className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                  {resending ? 'Sending...' : 'Resend Verification Email'}
+                </button>
+              </>
+            )}
+
+            {overlay.action !== 'resend' && (
+              <button
+                onClick={closeOverlay}
+                className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
+              >
+                OK
+              </button>
+            )}
           </div>
         </div>
       )}
