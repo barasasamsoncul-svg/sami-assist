@@ -167,7 +167,7 @@ function RegisterContent() {
           }
         }
 
-        router.push('/auth/check-email');
+        router.push(`/auth/check-email?email=${encodeURIComponent(accountForm.email)}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Registration failed');
         setLoading(false);
