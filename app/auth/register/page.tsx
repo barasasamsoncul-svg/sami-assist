@@ -82,6 +82,12 @@ function RegisterContent() {
 
   const filteredApps = activeCategory === 'all' ? SAMI_APPS : SAMI_APPS.filter(app => app.category === activeCategory);
 
+  const getButtonText = () => {
+    if (loading) return 'Processing...';
+    if (selectedPlan === 'free') return 'Create Account';
+    return 'Continue to Payment';
+  };
+
   const handleSubmit = async () => {
     setError('');
 
@@ -129,7 +135,6 @@ function RegisterContent() {
       return;
     }
 
-    // Normal registration
     const registerBody = {
       firstName: accountForm.firstName,
       lastName: accountForm.lastName,
@@ -149,6 +154,18 @@ function RegisterContent() {
         });
         const registerData = await registerRes.json();
         if (!registerRes.ok) throw new Error(registerData.error);
+
+        // Create tenant and install apps
+        const tenantId = registerData.tenant?.id;
+        if (tenantId) {
+          for (const appKey of selectedApps) {
+            await fetch('/api/auth/install-app', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tenantId, appKey }),
+            });
+          }
+        }
 
         router.push('/auth/check-email');
       } catch (err) {
@@ -187,6 +204,81 @@ function RegisterContent() {
     }
   };
 
+  const mobileNext = () => {
+    setError('');
+    if (mobileStep === 'account') {
+      if (!accountForm.firstName || !accountForm.lastName || !accountForm.email || !accountForm.password) {
+        setError('Fill all required fields');
+        return;
+      }
+      if (accountForm.password.length < 8) {
+        setError('Password must be at least 8 characters');
+        return;
+      }
+      if (!accountForm.acceptTerms || !accountForm.acceptPrivacy) {
+        setError('Accept Terms and Privacy');
+        return;
+      }
+      setMobileStep('apps');
+    } else if (mobileStep === 'apps') {
+      if (selectedApps.length === 0) {
+        setError('Select at least one app');
+        return;
+      }
+      setMobileStep('plan');
+    }
+  };
+
+  const mobileBack = () => {
+    setError('');
+    if (mobileStep === 'apps') setMobileStep('account');
+    else if (mobileStep === 'plan') setMobileStep('apps');
+  };
+
+  const stepNumber = mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3;
+
+  // SHARED ACCOUNT FORM
+  const renderAccountFields = () => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">First Name *</label>
+          <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="John" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Last Name *</label>
+          <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Doe" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email *</label>
+        <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} placeholder="john@company.com" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Phone (optional)</label>
+        <input type="text" value={accountForm.phone} onChange={(e) => setAccountForm({ ...accountForm, phone: e.target.value })} placeholder="+254 700 000 000" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Password *</label>
+        <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Minimum 8 characters" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Business Name *</label>
+        <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} placeholder="Acme Ltd" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+      </div>
+      <div className="space-y-3 pt-2">
+        <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={accountForm.acceptTerms} onChange={(e) => setAccountForm({ ...accountForm, acceptTerms: e.target.checked })} className="h-4 w-4" />
+          I accept the <span className="text-blue-600 hover:underline">Terms of Service</span>
+        </label>
+        <label className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={accountForm.acceptPrivacy} onChange={(e) => setAccountForm({ ...accountForm, acceptPrivacy: e.target.checked })} className="h-4 w-4" />
+          I accept the <span className="text-blue-600 hover:underline">Privacy Policy</span>
+        </label>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8 px-4 sm:px-6 lg:px-8 relative">
       <button onClick={toggleTheme} className="absolute top-4 right-4 p-2.5 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 z-10">
@@ -199,28 +291,28 @@ function RegisterContent() {
           {isInvite ? (
             <>
               <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Accept Invitation</h2>
-              <p className="mt-2 text-sm text-gray-500">Join <strong>{inviteData?.tenant_name}</strong></p>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">Join <strong>{inviteData?.tenant_name}</strong></p>
             </>
           ) : (
             <>
               <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Create your account</h2>
-              <p className="mt-1 text-sm text-gray-500">Start your SaMi workspace</p>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Start your SaMi workspace</p>
             </>
           )}
         </div>
 
         {error && (
-          <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 text-sm">{error}</div>
+          <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>
         )}
 
         {isInvite ? (
           <div className="max-w-md mx-auto">
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
               <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-4">
-                <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Last Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <input type="email" value={accountForm.email} disabled className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
-                <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+                <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Last Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
+                <input type="email" value={accountForm.email} disabled className="w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
+                <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-900 dark:text-white" />
                 <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
                   {loading ? 'Joining...' : 'Accept Invite'}
                 </button>
@@ -228,71 +320,177 @@ function RegisterContent() {
             </div>
           </div>
         ) : (
-          <div className="hidden lg:grid lg:grid-cols-3 gap-6">
-            {/* Column 1: Account */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Account</h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                  <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Last Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+          <>
+            {/* MOBILE STEP INDICATOR */}
+            <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
+              {[1, 2, 3].map((step) => (
+                <div key={step} className="flex items-center gap-2">
+                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                    step === stepNumber ? 'bg-blue-600 text-white' 
+                    : step < stepNumber ? 'bg-green-500 text-white' 
+                    : 'bg-gray-200 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                  }`}>
+                    {step < stepNumber ? <Check size={14} /> : step}
+                  </div>
+                  {step < 3 && <div className={`w-8 h-0.5 ${step < stepNumber ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-800'}`} />}
                 </div>
-                <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} placeholder="Email *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <input type="text" value={accountForm.phone} onChange={(e) => setAccountForm({ ...accountForm, phone: e.target.value })} placeholder="Phone (optional)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8) *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} placeholder="Business Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={accountForm.acceptTerms} onChange={(e) => setAccountForm({ ...accountForm, acceptTerms: e.target.checked })} />
-                    I accept Terms of Service
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={accountForm.acceptPrivacy} onChange={(e) => setAccountForm({ ...accountForm, acceptPrivacy: e.target.checked })} />
-                    I accept Privacy Policy
-                  </label>
+              ))}
+            </div>
+
+            {/* DESKTOP 3-COLUMN */}
+            <div className="hidden lg:grid lg:grid-cols-3 gap-6">
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">1</div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Account</h3>
                 </div>
+                {renderAccountFields()}
+              </div>
+
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 bg-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">2</div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Apps</h3>
+                  </div>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{selectedApps.length} selected</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <button onClick={() => setActiveCategory('all')} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>All</button>
+                  {APP_CATEGORIES.slice(0, 6).map((cat) => (
+                    <button key={cat.key} onClick={() => setActiveCategory(cat.key)} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === cat.key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'}`}>{cat.name}</button>
+                  ))}
+                </div>
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
+                  {filteredApps.map((app) => (
+                    <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left transition ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</span>
+                        {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">3</div>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Choose Plan</h3>
+                </div>
+
+                <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-900 dark:text-white text-sm">One App Free</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-white">$0</span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">1 app • Unlimited users • 100 AI queries</p>
+                </button>
+
+                <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-900 dark:text-white text-sm">Standard</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-white">$14.90<span className="text-xs text-gray-500 dark:text-gray-400">/user/mo</span></span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All apps • Per user • 1,000 AI queries • 15-day trial</p>
+                </button>
+
+                <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-900 dark:text-white text-sm">Custom</span>
+                    <span className="text-lg font-bold text-gray-900 dark:text-white">$24.90<span className="text-xs text-gray-500 dark:text-gray-400">/user/mo</span></span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">All + custom • Unlimited AI</p>
+                </button>
+
+                <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                  {getButtonText()}
+                  {!loading && <ArrowRight size={16} />}
+                </button>
               </div>
             </div>
 
-            {/* Column 2: Apps */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Select Apps</h3>
-                <span className="text-xs text-gray-500">{selectedApps.length} selected</span>
-              </div>
-              <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                {filteredApps.map((app) => (
-                  <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+            {/* MOBILE STEP-BY-STEP */}
+            <div className="lg:hidden max-w-md mx-auto">
+              {mobileStep === 'account' && (
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Account</h3>
+                  {renderAccountFields()}
+                  <button onClick={mobileNext} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 flex items-center justify-center gap-2">
+                    Next: Select Apps
+                    <ArrowRight size={16} />
+                  </button>
+                </div>
+              )}
+
+              {mobileStep === 'apps' && (
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Select Apps</h3>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{selectedApps.length} selected</span>
+                  </div>
+                  <div className="space-y-2 max-h-[350px] overflow-y-auto">
+                    {filteredApps.map((app) => (
+                      <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left transition ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</span>
+                          {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-6 flex gap-3">
+                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      <ArrowLeft size={14} /> Back
+                    </button>
+                    <button onClick={mobileNext} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      Next: Plan <ArrowRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {mobileStep === 'plan' && (
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Choose Plan</h3>
+
+                  <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{app.name}</span>
-                      {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
+                      <span className="font-semibold text-gray-900 dark:text-white text-sm">One App Free</span>
+                      <span className="font-bold text-gray-900 dark:text-white">$0</span>
                     </div>
                   </button>
-                ))}
-              </div>
-            </div>
 
-            {/* Column 3: Plan */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-              <h3 className="text-lg font-semibold mb-4">Choose Plan</h3>
-              <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                <span className="font-semibold">Free</span> - <span className="font-bold">$0</span>
-              </button>
-              <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                <span className="font-semibold">Standard</span> - <span className="font-bold">$14.90/user/mo</span>
-              </button>
-              <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                <span className="font-semibold">Custom</span> - <span className="font-bold">$24.90/user/mo</span>
-              </button>
-              <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-                {loading ? 'Processing...' : selectedPlan === 'free' ? 'Create Account' : 'Continue to Payment'}
-              </button>
+                  <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-900 dark:text-white text-sm">Standard</span>
+                      <span className="font-bold text-gray-900 dark:text-white">$14.90/user/mo</span>
+                    </div>
+                  </button>
+
+                  <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 transition ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-gray-900 dark:text-white text-sm">Custom</span>
+                      <span className="font-bold text-gray-900 dark:text-white">$24.90/user/mo</span>
+                    </div>
+                  </button>
+
+                  <div className="mt-6 flex gap-3">
+                    <button onClick={mobileBack} className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold text-sm flex items-center justify-center gap-1">
+                      <ArrowLeft size={14} /> Back
+                    </button>
+                    <button onClick={handleSubmit} disabled={loading} className="flex-1 bg-blue-600 text-white py-3 rounded-xl font-semibold text-sm">
+                      {getButtonText()}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
+          </>
         )}
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          Already have an account? <Link href="/auth/login" className="text-blue-600 hover:underline">Sign in</Link>
+        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+          Already have an account? <Link href="/auth/login" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Sign in</Link>
         </p>
       </div>
     </div>
@@ -301,7 +499,7 @@ function RegisterContent() {
 
 export default function RegisterPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950">Loading...</div>}>
       <RegisterContent />
     </Suspense>
   );
