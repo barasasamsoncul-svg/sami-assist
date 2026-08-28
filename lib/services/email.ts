@@ -1,110 +1,195 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = process.env.EMAIL_FROM || 'SaMi <onboarding@resend.dev>';
+// Email configuration from environment variables
+// Works with Gmail now, any SMTP provider later (Zoho, custom domain)
+const EMAIL_PROVIDER = process.env.EMAIL_PROVIDER || 'smtp';
+const SMTP_HOST = process.env.SMTP_HOST;
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587');
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const FROM_EMAIL = process.env.EMAIL_FROM || 'SaMi <no-reply@sami.tech>';
+
+let transporter: nodemailer.Transporter | null = null;
+
+function getTransporter(): nodemailer.Transporter {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_PORT === 465,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASSWORD,
+      },
+    });
+  }
+  return transporter;
+}
 
 export async function sendEmail(to: string, subject: string, html: string) {
   try {
-    const { data, error } = await resend.emails.send({
+    if (!SMTP_HOST || !SMTP_USER || !SMTP_PASSWORD) {
+      console.error('Email not configured. Missing SMTP credentials.');
+      return { success: false, error: 'Email not configured' };
+    }
+
+    const mailer = getTransporter();
+
+    const info = await mailer.sendMail({
       from: FROM_EMAIL,
       to,
       subject,
       html,
     });
 
-    if (error) {
-      console.error('Email send error:', error);
-      return { success: false, error };
-    }
-
-    return { success: true, data };
+    console.log('Email sent:', info.messageId);
+    return { success: true, data: info };
   } catch (error) {
-    console.error('Email exception:', error);
+    console.error('Email send error:', error);
     return { success: false, error };
   }
 }
 
+// Branded email template wrapper
+function brandedTemplate(title: string, content: string): string {
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${title}</title>
+    </head>
+    <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; background: #f5f7fb;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #f5f7fb; padding: 30px 0;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width: 600px; width: 100%;">
+              <!-- Header -->
+              <tr>
+                <td style="background: #ffffff; border-radius: 16px 16px 0 0; padding: 40px; text-align: center;">
+                  <span style="font-size: 32px; font-weight: 900; font-style: italic; letter-spacing: -1px;">
+                    <span style="color: #1e40af;">Sa</span><span style="color: #111827;">Mi</span>
+                  </span>
+                  <p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">AI-powered business workspace</p>
+                </td>
+              </tr>
+              <!-- Content -->
+              <tr>
+                <td style="background: #ffffff; padding: 0 40px 40px; text-align: center;">
+                  ${content}
+                </td>
+              </tr>
+              <!-- Footer -->
+              <tr>
+                <td style="background: #ffffff; border-radius: 0 0 16px 16px; padding: 30px 40px; text-align: center; border-top: 1px solid #f0f0f0;">
+                  <p style="margin: 0; color: #9ca3af; font-size: 11px;">
+                    © ${new Date().getFullYear()} SaMi Technologies. All rights reserved.
+                  </p>
+                  <p style="margin: 4px 0 0; color: #d1d5db; font-size: 10px;">
+                    This email was sent by SaMi. Please do not reply to this email.
+                  </p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+}
+
+// Verification Email
 export async function sendVerificationEmail(to: string, token: string, appUrl: string) {
   const link = `${appUrl}/auth/verify-email?token=${token}`;
   
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-      <div style="background: white; border-radius: 12px; padding: 40px; text-align: center;">
-        <h1 style="color: #1e40af; font-size: 28px; font-weight: bold; margin: 0; font-style: italic;">SaMi</h1>
-        <p style="color: #6b7280; font-size: 14px; margin-top: 5px;">AI-powered business workspace</p>
-        <h2 style="color: #111827; font-size: 20px; margin-top: 30px;">Verify your email address</h2>
-        <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">Click the button below to verify your email and activate your account.</p>
-        <a href="${link}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 20px;">Verify Email</a>
-        <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">If you didn't create an account, ignore this email.</p>
-      </div>
-    </div>
+  const content = `
+    <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Verify your email address</h2>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+      Click the button below to verify your email and activate your SaMi account.
+      This link expires in 24 hours.
+    </p>
+    <a href="${link}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">
+      Verify Email
+    </a>
+    <p style="margin: 20px 0 0; color: #9ca3af; font-size: 12px;">
+      If you didn't create an account, you can safely ignore this email.
+    </p>
+    <p style="margin: 8px 0 0; color: #d1d5db; font-size: 11px;">
+      Button not working? Copy this link: ${link}
+    </p>
   `;
 
-  return sendEmail(to, 'Verify your SaMi email', html);
+  return sendEmail(to, 'Verify your SaMi email', brandedTemplate('Verify Email', content));
 }
 
+// Welcome Email
 export async function sendWelcomeEmail(to: string, fullName: string, tenantName: string, appUrl: string) {
   const dashboardLink = `${appUrl}/dashboard`;
   
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-      <div style="background: white; border-radius: 12px; padding: 40px;">
-        <h1 style="color: #1e40af; font-size: 28px; font-weight: bold; margin: 0; font-style: italic;">SaMi</h1>
-        <h2 style="color: #111827; font-size: 20px; margin-top: 30px;">Welcome to SaMi, ${fullName}! 🎉</h2>
-        <p style="color: #6b7280; font-size: 14px; line-height: 1.6;">Your workspace <strong>${tenantName}</strong> is ready.</p>
-        <a href="${dashboardLink}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 20px;">Go to Dashboard</a>
-      </div>
-    </div>
+  const content = `
+    <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Welcome to SaMi, ${fullName}! 🎉</h2>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+      Your workspace <strong style="color: #111827;">${tenantName}</strong> is ready.
+      Start exploring your apps and let SaMi AI help you work smarter.
+    </p>
+    <a href="${dashboardLink}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">
+      Go to Dashboard
+    </a>
   `;
 
-  return sendEmail(to, 'Welcome to SaMi!', html);
+  return sendEmail(to, 'Welcome to SaMi!', brandedTemplate('Welcome', content));
 }
 
+// Password Reset Email
 export async function sendPasswordResetEmail(to: string, token: string, appUrl: string) {
   const link = `${appUrl}/auth/reset-password?token=${token}`;
   
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-      <div style="background: white; border-radius: 12px; padding: 40px; text-align: center;">
-        <h1 style="color: #1e40af; font-size: 28px; font-weight: bold; margin: 0; font-style: italic;">SaMi</h1>
-        <h2 style="color: #111827; font-size: 20px; margin-top: 30px;">Reset your password</h2>
-        <p style="color: #6b7280; font-size: 14px;">This link expires in 1 hour.</p>
-        <a href="${link}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 20px;">Reset Password</a>
-      </div>
-    </div>
+  const content = `
+    <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Reset your password</h2>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+      Click the button below to reset your password.
+      This link expires in 1 hour.
+    </p>
+    <a href="${link}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">
+      Reset Password
+    </a>
+    <p style="margin: 20px 0 0; color: #9ca3af; font-size: 12px;">
+      If you didn't request this, you can safely ignore this email.
+    </p>
   `;
 
-  return sendEmail(to, 'Reset your SaMi password', html);
+  return sendEmail(to, 'Reset your SaMi password', brandedTemplate('Reset Password', content));
 }
 
+// 2FA Code Email
 export async function sendTwoFactorCode(to: string, code: string) {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-      <div style="background: white; border-radius: 12px; padding: 40px; text-align: center;">
-        <h1 style="color: #1e40af; font-size: 28px; font-weight: bold; margin: 0; font-style: italic;">SaMi</h1>
-        <h2 style="color: #111827; font-size: 20px; margin-top: 30px;">Your verification code</h2>
-        <div style="background: #f3f4f6; border-radius: 12px; padding: 20px; margin-top: 20px;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #111827;">${code}</span>
-        </div>
-        <p style="color: #9ca3af; font-size: 12px; margin-top: 20px;">This code expires in 10 minutes.</p>
-      </div>
+  const content = `
+    <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Your verification code</h2>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;">Use this code to complete your login:</p>
+    <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; margin: 16px 0;">
+      <span style="font-size: 36px; font-weight: 700; letter-spacing: 10px; color: #111827;">${code}</span>
     </div>
+    <p style="margin: 0; color: #9ca3af; font-size: 12px;">This code expires in 10 minutes.</p>
   `;
 
-  return sendEmail(to, 'Your SaMi verification code', html);
+  return sendEmail(to, 'Your SaMi verification code', brandedTemplate('Verification Code', content));
 }
 
+// Invite Email
 export async function sendInviteEmail(to: string, inviteLink: string, tenantName: string, inviterName: string) {
-  const html = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f9fafb;">
-      <div style="background: white; border-radius: 12px; padding: 40px; text-align: center;">
-        <h1 style="color: #1e40af; font-size: 28px; font-weight: bold; margin: 0; font-style: italic;">SaMi</h1>
-        <h2 style="color: #111827; font-size: 20px; margin-top: 30px;">You've been invited! 🎉</h2>
-        <p style="color: #6b7280; font-size: 14px;">${inviterName} invited you to join <strong>${tenantName}</strong> on SaMi.</p>
-        <a href="${inviteLink}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 20px;">Accept Invite</a>
-      </div>
-    </div>
+  const content = `
+    <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">You've been invited! 🎉</h2>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+      <strong style="color: #111827;">${inviterName}</strong> invited you to join
+      <strong style="color: #111827;">${tenantName}</strong> on SaMi.
+    </p>
+    <a href="${inviteLink}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">
+      Accept Invite
+    </a>
+    <p style="margin: 20px 0 0; color: #9ca3af; font-size: 12px;">This invitation expires in 7 days.</p>
   `;
 
-  return sendEmail(to, `Invitation to join ${tenantName} on SaMi`, html);
+  return sendEmail(to, `Invitation to join ${tenantName} on SaMi`, brandedTemplate('Invitation', content));
 }
