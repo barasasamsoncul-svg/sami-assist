@@ -10,41 +10,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Token required' }, { status: 400 });
     }
 
-    // Find verification token
+    // Find token
     const result = await queryControl(
-      `SELECT ua.id, ua.user_id, ua.created_at, u.email, u.full_name
+      `SELECT ua.id, ua.user_id, ua.verified_at, ua.revoked_at, ua.created_at,
+              u.email, u.full_name
        FROM user_authenticators ua
        INNER JOIN users u ON u.id = ua.user_id
        WHERE ua.type = 'email_verification' 
-         AND ua.secret_encrypted = $1 
-         AND ua.verified_at IS NULL
-         AND ua.revoked_at IS NULL`,
+         AND ua.secret_encrypted = $1`,
       [token]
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: 'Invalid or expired verification link' }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'invalid', 
+        message: 'Invalid verification link.' 
+      }, { status: 400 });
     }
 
-    const { id, user_id, created_at, email, full_name } = result.rows[0];
+    const { id, user_id, verified_at, revoked_at, created_at, email, full_name } = result.rows[0];
 
-    // Check if token expired (24 hours)
-    const tokenAge = Date.now() - new Date(created_at).getTime();
-    if (tokenAge > 24 * 60 * 60 * 1000) {
+    // Check if already used
+    if (verified_at || revoked_at) {
+      return NextResponse.json({ 
+        error: 'already_used', 
+        message: 'Email already verified. Please login.' 
+      }, { status: 400 });
+    }
+
+    // Check if expired (15 minutes)
+    const age = Date.now() - new Date(created_at).getTime();
+    if (age > 15 * 60 * 1000) {
       await queryControl(`UPDATE user_authenticators SET revoked_at = NOW() WHERE id = $1`, [id]);
-      return NextResponse.json({ error: 'Verification link expired. Request a new one.' }, { status: 400 });
+      return NextResponse.json({ 
+        error: 'expired', 
+        message: 'Link expired. Resend a new verification email.' 
+      }, { status: 400 });
     }
 
-    // Mark email verified and activate account
+    // Verify email
     await queryControl(
       `UPDATE users SET email_verified_at = NOW(), status = 'active', updated_at = NOW() WHERE id = $1`,
       [user_id]
     );
 
-    // Revoke token
-    await queryControl(`UPDATE user_authenticators SET verified_at = NOW(), revoked_at = NOW() WHERE id = $1`, [id]);
+    // Mark token used
+    await queryControl(
+      `UPDATE user_authenticators SET verified_at = NOW(), revoked_at = NOW() WHERE id = $1`,
+      [id]
+    );
 
-    // Get tenant for welcome email
+    // Send welcome email
     const tenantResult = await queryControl(
       `SELECT t.name FROM tenant_users tu INNER JOIN tenants t ON t.id = tu.tenant_id
        WHERE tu.user_id = $1 AND tu.is_owner = true LIMIT 1`,
@@ -62,10 +78,10 @@ export async function POST(request: NextRequest) {
       [user_id]
     );
 
-    return NextResponse.json({ success: true, message: 'Email verified. Account activated.' });
+    return NextResponse.json({ success: true, message: 'Email verified successfully' });
 
   } catch (error) {
     console.error('Verify email error:', error);
-    return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 });
+    return NextResponse.json({ error: 'failed', message: 'Failed to verify email' }, { status: 500 });
   }
 }

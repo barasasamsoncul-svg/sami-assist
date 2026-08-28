@@ -3,7 +3,7 @@
 import { useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, Loader2, Mail, Lock, ArrowRight, Smartphone, Shield, AlertTriangle } from 'lucide-react';
+import { Sun, Moon, Loader2, Mail, Lock, ArrowRight, Smartphone, Shield, AlertTriangle, X } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 function LoginForm() {
@@ -23,7 +23,10 @@ function LoginForm() {
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authCode, setAuthCode] = useState('');
+
   const [showVerifyOverlay, setShowVerifyOverlay] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
@@ -38,7 +41,7 @@ function LoginForm() {
 
     if (searchParams.get('verified') === 'true') setSuccess('Email verified! You can now log in.');
     if (searchParams.get('invited') === 'true') setSuccess('Invite accepted! Please log in.');
-    if (searchParams.get('reset') === 'true') setSuccess('Password reset! Log in with new password.');
+    if (searchParams.get('reset') === 'true') setSuccess('Password reset! Log in.');
   }, [searchParams]);
 
   const toggleTheme = () => {
@@ -50,6 +53,30 @@ function LoginForm() {
     } else {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('sami_theme', 'light');
+    }
+  };
+
+  const handleResendFromOverlay = async () => {
+    setResending(true);
+    setResendMessage('');
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setResendMessage('Email sent. Check your inbox.');
+      } else if (data.message) {
+        setResendMessage(data.message);
+      } else {
+        setResendMessage(data.error || 'Failed to resend');
+      }
+    } catch {
+      setResendMessage('Failed to resend');
+    } finally {
+      setResending(false);
     }
   };
 
@@ -79,7 +106,6 @@ function LoginForm() {
       if (data.requires2FA) {
         setShow2FA(true);
         setUserId(data.userId);
-        setSuccess('2FA required. Enter code.');
         setLoading(false);
         return;
       }
@@ -194,7 +220,7 @@ function LoginForm() {
                   <Shield size={28} className="text-blue-600" />
                 </div>
               </div>
-              <input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value.replace(/[^0-9]/g, ''))} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-center text-3xl tracking-[0.5em] text-gray-900 dark:text-white" placeholder="000000" autoFocus />
+              <input type="text" maxLength={6} value={twoFactorCode} onChange={(e) => setTwoFactorCode(e.target.value.replace(/[^0-9]/g, ''))} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-center text-3xl tracking-[0.5em]" placeholder="000000" autoFocus />
               <button onClick={handleSendEmailCode} type="button" className="w-full text-center text-sm text-blue-600 hover:underline">Send code to email</button>
               <button type="submit" disabled={loading || twoFactorCode.length !== 6} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
                 {loading ? 'Verifying...' : 'Verify & Login'}
@@ -207,14 +233,14 @@ function LoginForm() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email Address</label>
                   <div className="mt-1.5 relative">
                     <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="john@company.com" />
+                    <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm" placeholder="john@company.com" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Password</label>
                   <div className="mt-1.5 relative">
                     <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                    <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm text-gray-900 dark:text-white" placeholder="Your password" />
+                    <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-10 pr-4 py-2.5 text-sm" placeholder="Your password" />
                   </div>
                 </div>
                 <div className="flex justify-end">
@@ -232,7 +258,7 @@ function LoginForm() {
                 <div className="flex-1 h-px bg-gray-200 dark:bg-gray-800" />
               </div>
 
-              <button onClick={() => { setLoginMode('authenticator'); setError(''); setSuccess(''); }} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:border-blue-500">
+              <button onClick={() => { setLoginMode('authenticator'); setError(''); setSuccess(''); }} className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-gray-200 dark:border-gray-700 font-medium hover:border-blue-500">
                 <Smartphone size={18} />
                 Use Authenticator Instead
               </button>
@@ -244,7 +270,6 @@ function LoginForm() {
                   <div className="h-14 w-14 bg-green-100 dark:bg-green-900/20 rounded-2xl flex items-center justify-center mx-auto">
                     <Smartphone size={28} className="text-green-600" />
                   </div>
-                  <p className="text-sm text-gray-500 mt-2">Login with authenticator app</p>
                 </div>
                 <input type="email" required value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" placeholder="Email" />
                 <input type="text" required maxLength={6} value={authCode} onChange={(e) => setAuthCode(e.target.value.replace(/[^0-9]/g, ''))} className="block w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-center text-3xl tracking-[0.5em]" placeholder="000000" autoFocus />
@@ -270,27 +295,29 @@ function LoginForm() {
       {showVerifyOverlay && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-8 shadow-2xl max-w-sm w-full text-center relative">
+            <button onClick={() => setShowVerifyOverlay(false)} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X size={18} className="text-gray-500" />
+            </button>
             <div className="h-14 w-14 bg-yellow-100 dark:bg-yellow-900/20 rounded-2xl flex items-center justify-center mx-auto">
               <AlertTriangle size={28} className="text-yellow-600" />
             </div>
             <h3 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">Email Not Verified</h3>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              You need to verify your email before logging in. Check your inbox for the verification link.
+              You need to verify your email before logging in.
             </p>
-            <div className="mt-6 space-y-3">
-              <button
-                onClick={() => router.push(`/auth/check-email?email=${encodeURIComponent(email)}`)}
-                className="w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
-              >
-                Go to Verify Email
-              </button>
-              <button
-                onClick={() => setShowVerifyOverlay(false)}
-                className="w-full px-5 py-3 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition"
-              >
-                Cancel
-              </button>
-            </div>
+
+            {resendMessage && (
+              <p className="mt-3 text-sm text-green-600 dark:text-green-400">{resendMessage}</p>
+            )}
+
+            <button
+              onClick={handleResendFromOverlay}
+              disabled={resending}
+              className="mt-5 w-full px-5 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {resending ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+              {resending ? 'Sending...' : 'Resend Verification Email'}
+            </button>
           </div>
         </div>
       )}
