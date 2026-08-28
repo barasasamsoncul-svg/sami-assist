@@ -8,11 +8,12 @@ export async function POST(request: NextRequest) {
     const { email, password } = await request.json();
 
     if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
+      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
     }
 
     const normalizedEmail = email.toLowerCase();
 
+    // Find user
     const userResult = await queryControl(
       `SELECT id, email, password_hash, full_name, status, email_verified_at
        FROM users WHERE email = $1 AND deleted_at IS NULL`,
@@ -25,18 +26,28 @@ export async function POST(request: NextRequest) {
 
     const user = userResult.rows[0];
 
-    if (user.status !== 'active') {
-      return NextResponse.json({ error: 'Account is not active' }, { status: 403 });
+    // Check account status
+    if (user.status === 'pending') {
+      return NextResponse.json({ error: 'Please verify your email first' }, { status: 403 });
     }
 
+    if (user.status === 'suspended') {
+      return NextResponse.json({ error: 'Account suspended. Contact support.' }, { status: 403 });
+    }
+
+    if (user.status === 'deactivated') {
+      return NextResponse.json({ error: 'Account deactivated. Contact support to reactivate.' }, { status: 403 });
+    }
+
+    if (user.status !== 'active') {
+      return NextResponse.json({ error: 'Account not active' }, { status: 403 });
+    }
+
+    // Verify password
     const passwordValid = await bcrypt.compare(password, user.password_hash);
 
     if (!passwordValid) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 });
-    }
-
-    if (!user.email_verified_at) {
-      return NextResponse.json({ error: 'Please verify your email first' }, { status: 403 });
     }
 
     // Check 2FA
@@ -51,14 +62,16 @@ export async function POST(request: NextRequest) {
         success: true,
         requires2FA: true,
         userId: user.id,
-        message: 'Two-factor authentication required',
       });
     }
 
-    const { sessionToken, sessionExpiry } = await createSession(user.id, request);
+    // Create session
+    const { sessionToken } = await createSession(user.id, request);
 
+    // Update last login
     await queryControl(`UPDATE users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
 
+    // Log
     await queryControl(
       `INSERT INTO audit_logs (user_id, actor_type, action, resource_type, module, result, metadata)
        VALUES ($1, 'human', 'login', 'session', 'auth', 'success', $2)`,

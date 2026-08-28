@@ -22,7 +22,14 @@ function RegisterContent() {
   const [isInvite, setIsInvite] = useState(false);
 
   const [accountForm, setAccountForm] = useState({
-    fullName: '', email: '', password: '', businessName: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    password: '',
+    businessName: '',
+    acceptTerms: false,
+    acceptPrivacy: false,
   });
 
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
@@ -75,25 +82,19 @@ function RegisterContent() {
 
   const filteredApps = activeCategory === 'all' ? SAMI_APPS : SAMI_APPS.filter(app => app.category === activeCategory);
 
-  const getButtonText = () => {
-    if (loading) return 'Processing...';
-    if (selectedPlan === 'free') return 'Create Workspace';
-    return 'Continue to Payment';
-  };
-
   const handleSubmit = async () => {
     setError('');
 
-    if (!accountForm.fullName || !accountForm.password) {
-      setError('Please fill all fields');
+    if (!accountForm.firstName || !accountForm.lastName || !accountForm.email || !accountForm.password) {
+      setError('First name, last name, email, and password are required');
       return;
     }
     if (accountForm.password.length < 8) {
       setError('Password must be at least 8 characters');
       return;
     }
-    if (!isInvite && !accountForm.email) {
-      setError('Email is required');
+    if (!accountForm.acceptTerms || !accountForm.acceptPrivacy) {
+      setError('You must accept Terms of Service and Privacy Policy');
       return;
     }
     if (!isInvite && !accountForm.businessName) {
@@ -112,7 +113,11 @@ function RegisterContent() {
         const response = await fetch('/api/auth/accept-invite', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ inviteToken, fullName: accountForm.fullName, password: accountForm.password }),
+          body: JSON.stringify({
+            inviteToken,
+            fullName: `${accountForm.firstName} ${accountForm.lastName}`,
+            password: accountForm.password,
+          }),
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error);
@@ -124,24 +129,27 @@ function RegisterContent() {
       return;
     }
 
+    // Normal registration
+    const registerBody = {
+      firstName: accountForm.firstName,
+      lastName: accountForm.lastName,
+      email: accountForm.email,
+      phone: accountForm.phone,
+      password: accountForm.password,
+      acceptTerms: accountForm.acceptTerms,
+      acceptPrivacy: accountForm.acceptPrivacy,
+    };
+
     if (selectedPlan === 'free') {
       try {
         const registerRes = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(accountForm),
+          body: JSON.stringify(registerBody),
         });
         const registerData = await registerRes.json();
         if (!registerRes.ok) throw new Error(registerData.error);
 
-        const tenantId = registerData.tenant.id;
-        for (const appKey of selectedApps) {
-          await fetch('/api/auth/install-app', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ tenantId, appKey }),
-          });
-        }
         router.push('/auth/check-email');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Registration failed');
@@ -151,7 +159,7 @@ function RegisterContent() {
     }
 
     if (selectedPlan === 'standard' || selectedPlan === 'custom') {
-      sessionStorage.setItem('sami_registration_data', JSON.stringify(accountForm));
+      sessionStorage.setItem('sami_registration_data', JSON.stringify(registerBody));
       sessionStorage.setItem('sami_selected_apps', JSON.stringify(selectedApps));
       sessionStorage.setItem('sami_selected_plan', selectedPlan);
 
@@ -164,7 +172,7 @@ function RegisterContent() {
             billingCycle: 'monthly',
             businessName: accountForm.businessName,
             email: accountForm.email,
-            fullName: accountForm.fullName,
+            fullName: `${accountForm.firstName} ${accountForm.lastName}`,
           }),
         });
         const checkoutData = await checkoutRes.json();
@@ -191,125 +199,96 @@ function RegisterContent() {
           {isInvite ? (
             <>
               <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Accept Invitation</h2>
-              <p className="mt-2 text-sm text-gray-500">Join <strong className="text-blue-600">{inviteData?.tenant_name}</strong></p>
+              <p className="mt-2 text-sm text-gray-500">Join <strong>{inviteData?.tenant_name}</strong></p>
             </>
           ) : (
             <>
-              <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Create your workspace</h2>
-              <p className="mt-1 text-sm text-gray-500">Set up your account, pick apps, choose a plan</p>
+              <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Create your account</h2>
+              <p className="mt-1 text-sm text-gray-500">Start your SaMi workspace</p>
             </>
           )}
         </div>
 
         {error && (
-          <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-400 text-sm">{error}</div>
+          <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 text-sm">{error}</div>
         )}
 
         {isInvite ? (
           <div className="max-w-md mx-auto">
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
               <form onSubmit={(e) => { e.preventDefault(); handleSubmit(); }} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1.5">Full Name *</label>
-                  <input type="text" value={accountForm.fullName} onChange={(e) => setAccountForm({ ...accountForm, fullName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" placeholder="John Doe" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5">Email</label>
-                  <input type="email" value={accountForm.email} disabled className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1.5">Password *</label>
-                  <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" placeholder="Min 8 characters" />
-                </div>
-                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
-                  {loading ? 'Joining...' : 'Accept Invite & Join'}
-                  {!loading && <ArrowRight size={16} />}
+                <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Last Name" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="email" value={accountForm.email} disabled className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
+                <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+                  {loading ? 'Joining...' : 'Accept Invite'}
                 </button>
               </form>
             </div>
           </div>
         ) : (
-          <>
-            {/* Mobile Steps */}
-            <div className="lg:hidden flex items-center justify-center gap-2 mb-6">
-              {[1, 2, 3].map((step) => (
-                <div key={step} className="flex items-center gap-2">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    step === (mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3) ? 'bg-blue-600 text-white' 
-                    : step < (mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3) ? 'bg-green-500 text-white' 
-                    : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
-                  }`}>
-                    {step < (mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3) ? <Check size={14} /> : step}
-                  </div>
-                  {step < 3 && <div className={`w-8 h-0.5 ${step < (mobileStep === 'account' ? 1 : mobileStep === 'apps' ? 2 : 3) ? 'bg-green-500' : 'bg-gray-200'}`} />}
+          <div className="hidden lg:grid lg:grid-cols-3 gap-6">
+            {/* Column 1: Account */}
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="text-lg font-semibold mb-4">Account</h3>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="text" value={accountForm.firstName} onChange={(e) => setAccountForm({ ...accountForm, firstName: e.target.value })} placeholder="First Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                  <input type="text" value={accountForm.lastName} onChange={(e) => setAccountForm({ ...accountForm, lastName: e.target.value })} placeholder="Last Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
                 </div>
-              ))}
+                <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} placeholder="Email *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="text" value={accountForm.phone} onChange={(e) => setAccountForm({ ...accountForm, phone: e.target.value })} placeholder="Phone (optional)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8) *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} placeholder="Business Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={accountForm.acceptTerms} onChange={(e) => setAccountForm({ ...accountForm, acceptTerms: e.target.checked })} />
+                    I accept Terms of Service
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={accountForm.acceptPrivacy} onChange={(e) => setAccountForm({ ...accountForm, acceptPrivacy: e.target.checked })} />
+                    I accept Privacy Policy
+                  </label>
+                </div>
+              </div>
             </div>
 
-            {/* Desktop 3-Column */}
-            <div className="hidden lg:grid lg:grid-cols-3 gap-6">
-              {/* Column 1: Register */}
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="h-8 w-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">1</div>
-                  <h3 className="text-lg font-semibold">Register</h3>
-                </div>
-                <div className="space-y-4">
-                  <input type="text" value={accountForm.businessName} onChange={(e) => setAccountForm({ ...accountForm, businessName: e.target.value })} placeholder="Business Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                  <input type="text" value={accountForm.fullName} onChange={(e) => setAccountForm({ ...accountForm, fullName: e.target.value })} placeholder="Full Name *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                  <input type="email" value={accountForm.email} onChange={(e) => setAccountForm({ ...accountForm, email: e.target.value })} placeholder="Email *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                  <input type="password" value={accountForm.password} onChange={(e) => setAccountForm({ ...accountForm, password: e.target.value })} placeholder="Password (min 8) *" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                </div>
+            {/* Column 2: Apps */}
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Select Apps</h3>
+                <span className="text-xs text-gray-500">{selectedApps.length} selected</span>
               </div>
-
-              {/* Column 2: Apps */}
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 bg-purple-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">2</div>
-                    <h3 className="text-lg font-semibold">Select Apps</h3>
-                  </div>
-                  <span className="text-xs text-gray-500">{selectedApps.length} selected</span>
-                </div>
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  <button onClick={() => setActiveCategory('all')} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>All</button>
-                  {APP_CATEGORIES.slice(0, 6).map((cat) => (
-                    <button key={cat.key} onClick={() => setActiveCategory(cat.key)} className={`px-3 py-1.5 rounded-full text-xs font-medium ${activeCategory === cat.key ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800'}`}>{cat.name}</button>
-                  ))}
-                </div>
-                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-                  {filteredApps.map((app) => (
-                    <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">{app.name}</span>
-                        {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Column 3: Plan */}
-              <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-                <div className="flex items-center gap-2 mb-5">
-                  <div className="h-8 w-8 bg-green-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">3</div>
-                  <h3 className="text-lg font-semibold">Choose Plan</h3>
-                </div>
-                <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                  <span className="font-semibold">One App Free</span> - <span className="font-bold">$0</span>
-                </button>
-                <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                  <span className="font-semibold">Standard</span> - <span className="font-bold">$14.90/user/mo</span>
-                </button>
-                <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                  <span className="font-semibold">Custom</span> - <span className="font-bold">$24.90/user/mo</span>
-                </button>
-                <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-                  {getButtonText()}
-                </button>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {filteredApps.map((app) => (
+                  <button key={app.key} onClick={() => toggleApp(app.key)} className={`w-full p-3 rounded-xl border-2 text-left ${selectedApps.includes(app.key) ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">{app.name}</span>
+                      {selectedApps.includes(app.key) && <Check size={16} className="text-blue-600" />}
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
-          </>
+
+            {/* Column 3: Plan */}
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+              <h3 className="text-lg font-semibold mb-4">Choose Plan</h3>
+              <button onClick={() => setSelectedPlan('free')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'free' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
+                <span className="font-semibold">Free</span> - <span className="font-bold">$0</span>
+              </button>
+              <button onClick={() => setSelectedPlan('standard')} className={`w-full p-4 rounded-xl border-2 text-left mb-3 ${selectedPlan === 'standard' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
+                <span className="font-semibold">Standard</span> - <span className="font-bold">$14.90/user/mo</span>
+              </button>
+              <button onClick={() => setSelectedPlan('custom')} className={`w-full p-4 rounded-xl border-2 text-left ${selectedPlan === 'custom' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
+                <span className="font-semibold">Custom</span> - <span className="font-bold">$24.90/user/mo</span>
+              </button>
+              <button onClick={handleSubmit} disabled={loading} className="mt-4 w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+                {loading ? 'Processing...' : selectedPlan === 'free' ? 'Create Account' : 'Continue to Payment'}
+              </button>
+            </div>
+          </div>
         )}
 
         <p className="text-center text-sm text-gray-500 mt-6">

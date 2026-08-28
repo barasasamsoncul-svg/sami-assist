@@ -10,8 +10,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Token required' }, { status: 400 });
     }
 
+    // Find verification token
     const result = await queryControl(
-      `SELECT ua.id, ua.user_id, u.email, u.full_name
+      `SELECT ua.id, ua.user_id, ua.created_at, u.email, u.full_name
        FROM user_authenticators ua
        INNER JOIN users u ON u.id = ua.user_id
        WHERE ua.type = 'email_verification' 
@@ -22,14 +23,28 @@ export async function POST(request: NextRequest) {
     );
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ error: 'Invalid or expired link' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid or expired verification link' }, { status: 400 });
     }
 
-    const { user_id, email, full_name } = result.rows[0];
+    const { id, user_id, created_at, email, full_name } = result.rows[0];
 
-    await queryControl(`UPDATE users SET email_verified_at = NOW() WHERE id = $1`, [user_id]);
-    await queryControl(`UPDATE user_authenticators SET verified_at = NOW(), revoked_at = NOW() WHERE id = $1`, [result.rows[0].id]);
+    // Check if token expired (24 hours)
+    const tokenAge = Date.now() - new Date(created_at).getTime();
+    if (tokenAge > 24 * 60 * 60 * 1000) {
+      await queryControl(`UPDATE user_authenticators SET revoked_at = NOW() WHERE id = $1`, [id]);
+      return NextResponse.json({ error: 'Verification link expired. Request a new one.' }, { status: 400 });
+    }
 
+    // Mark email verified and activate account
+    await queryControl(
+      `UPDATE users SET email_verified_at = NOW(), status = 'active', updated_at = NOW() WHERE id = $1`,
+      [user_id]
+    );
+
+    // Revoke token
+    await queryControl(`UPDATE user_authenticators SET verified_at = NOW(), revoked_at = NOW() WHERE id = $1`, [id]);
+
+    // Get tenant for welcome email
     const tenantResult = await queryControl(
       `SELECT t.name FROM tenant_users tu INNER JOIN tenants t ON t.id = tu.tenant_id
        WHERE tu.user_id = $1 AND tu.is_owner = true LIMIT 1`,
@@ -47,9 +62,10 @@ export async function POST(request: NextRequest) {
       [user_id]
     );
 
-    return NextResponse.json({ success: true, message: 'Email verified' });
+    return NextResponse.json({ success: true, message: 'Email verified. Account activated.' });
 
   } catch (error) {
+    console.error('Verify email error:', error);
     return NextResponse.json({ error: 'Failed to verify email' }, { status: 500 });
   }
 }

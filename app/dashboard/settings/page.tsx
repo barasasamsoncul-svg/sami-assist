@@ -22,7 +22,12 @@ function SettingsContent() {
   const [error, setError] = useState('');
   const [overlay, setOverlay] = useState<any>(null);
 
-  const [profileForm, setProfileForm] = useState({ fullName: '', phone: '' });
+  const [profileForm, setProfileForm] = useState({ 
+  fullName: '', 
+  phone: '',
+  firstName: '',
+  lastName: '',
+});
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [businessForm, setBusinessForm] = useState({ name: '' });
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'member' });
@@ -46,7 +51,12 @@ function SettingsContent() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setData(data);
-      setProfileForm({ fullName: data.profile?.full_name || '', phone: data.profile?.phone || '' });
+      setProfileForm({ 
+        fullName: data.profile?.full_name || '', 
+        phone: data.profile?.phone || '',
+        firstName: data.profile?.first_name || '',
+        lastName: data.profile?.last_name || ''
+      });
       setBusinessForm({ name: data.tenant?.name || '' });
     } catch (err) {
       setError('Failed to load settings');
@@ -245,34 +255,179 @@ function SettingsContent() {
       {error && <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 text-sm">{error}</div>}
 
       {/* PROFILE */}
-      {activeTab === 'profile' && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h3 className="text-lg font-semibold mb-4">My Profile</h3>
-          <div className="flex items-center gap-4 mb-6">
-            <div className="h-16 w-16 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold">
-              {data.profile?.full_name?.charAt(0) || 'U'}
-            </div>
-            <div>
-              <p className="font-semibold">{data.profile?.full_name}</p>
-              <p className="text-sm text-gray-500">{data.profile?.email}</p>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${data.profile?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100'}`}>{data.profile?.status}</span>
-            </div>
+{activeTab === 'profile' && (
+  <div className="space-y-6">
+    {/* Profile Header with Avatar */}
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+      <h3 className="text-lg font-semibold mb-4">Profile Picture</h3>
+      <div className="flex items-center gap-6">
+        {data.profile?.avatar_url ? (
+          <img 
+            src={data.profile.avatar_url} 
+            alt="Profile" 
+            className="h-20 w-20 rounded-2xl object-cover"
+          />
+        ) : (
+          <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
+            {data.profile?.full_name?.charAt(0) || 'U'}
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Full Name</label>
-              <input type="text" value={profileForm.fullName} onChange={(e) => setProfileForm({ ...profileForm, fullName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1.5">Phone</label>
-              <input type="text" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-            </div>
+        )}
+        <div className="space-y-2">
+          <div className="flex gap-2">
+            <button 
+              onClick={() => {
+                const url = prompt('Enter image URL:');
+                if (url) {
+                  fetch('/api/settings/profile/upload-picture', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ avatarUrl: url }),
+                  }).then(() => fetchSettings());
+                }
+              }}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+            >
+              Upload Picture
+            </button>
+            {data.profile?.avatar_url && (
+              <button 
+                onClick={() => {
+                  fetch('/api/settings/profile/upload-picture', { method: 'DELETE' })
+                    .then(() => fetchSettings());
+                }}
+                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
+              >
+                Remove
+              </button>
+            )}
           </div>
-          <button onClick={() => handleSave('profile', profileForm, 'Profile updated')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save
-          </button>
+          <p className="text-xs text-gray-500">Recommended: 400x400 or larger</p>
         </div>
-      )}
+      </div>
+    </div>
+
+    {/* Profile Information */}
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+      <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
+      
+      {/* Account Status */}
+      <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center gap-2">
+        <span className="text-sm text-gray-500">Status:</span>
+        <span className={`text-sm font-medium capitalize px-3 py-1 rounded-full ${
+          data.profile?.status === 'active' ? 'bg-green-100 text-green-700' 
+          : data.profile?.status === 'pending' ? 'bg-yellow-100 text-yellow-700'
+          : 'bg-gray-100 text-gray-600'
+        }`}>
+          {data.profile?.status}
+        </span>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <label className="block text-sm font-medium mb-1.5">First Name</label>
+          <input 
+            type="text" 
+            value={data.profile?.first_name || ''} 
+            onChange={(e) => {
+              const firstName = e.target.value;
+              const fullName = `${firstName} ${data.profile?.last_name || ''}`.trim();
+              setProfileForm({ 
+  fullName: data.profile?.full_name || '', 
+  phone: data.profile?.phone || '',
+  firstName: data.profile?.first_name || '',
+  lastName: data.profile?.last_name || '',
+});
+            }}
+            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Last Name</label>
+          <input 
+            type="text" 
+            value={data.profile?.last_name || ''} 
+            onChange={(e) => {
+              const lastName = e.target.value;
+              const fullName = `${data.profile?.first_name || ''} ${lastName}`.trim();
+              setProfileForm({ ...profileForm, fullName, lastName });
+            }}
+            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Phone</label>
+          <input 
+            type="text" 
+            value={profileForm.phone || ''} 
+            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
+            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
+            placeholder="+254 700 000 000"
+          />
+        </div>
+      </div>
+      <button 
+        onClick={() => handleSave('profile', profileForm, 'Profile updated')} 
+        disabled={saving} 
+        className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50"
+      >
+        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+        Save Profile
+      </button>
+    </div>
+
+    {/* Email Management */}
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+      <h3 className="text-lg font-semibold mb-4">Email Address</h3>
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium">{data.profile?.email}</p>
+          <p className="text-xs text-gray-500 mt-1">
+            {data.profile?.email_verified_at ? '✓ Verified' : 'Not verified'}
+          </p>
+        </div>
+        <button 
+          onClick={() => {
+            const newEmail = prompt('Enter new email address:');
+            if (newEmail) {
+              fetch('/api/settings/profile/change-email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ newEmail }),
+              }).then(res => res.json()).then(data => {
+                if (data.success) showOverlay('success', 'Check Your Email', 'Verification sent to new email address.');
+                else setError(data.error || 'Failed');
+              });
+            }
+          }}
+          className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+        >
+          Change Email
+        </button>
+      </div>
+    </div>
+
+    {/* Account Deletion */}
+    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-800 p-6">
+      <h3 className="text-lg font-semibold text-red-600 mb-2">Delete Account</h3>
+      <p className="text-sm text-gray-500 mb-4">
+        Request account deletion. You have 30 days to cancel.
+      </p>
+      <button 
+        onClick={() => showOverlay('confirm', 'Delete Account', 'Your account will be deactivated and deleted in 30 days.', 'Request Deletion', async () => {
+          const response = await fetch('/api/settings/danger/request-deletion', { method: 'POST' });
+          const data = await response.json();
+          if (data.success) {
+            closeOverlay();
+            router.push('/auth/login');
+          }
+        })}
+        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
+      >
+        Request Deletion
+      </button>
+    </div>
+  </div>
+)}
 
       {/* SECURITY */}
       {activeTab === 'security' && (
