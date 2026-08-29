@@ -6,7 +6,7 @@ import {
   User, Shield, Monitor, Globe, Building2, Users, AppWindow,
   Sparkles, Key, CreditCard, AlertTriangle, Save, Loader2,
   Check, X, Plus, Trash2, Copy, Smartphone, Laptop, Download,
-  ShieldCheck, ShieldOff, History
+  ShieldCheck, ShieldOff, History, Mail, Camera, Phone
 } from 'lucide-react';
 import { SAMI_APPS } from '@/lib/sami-apps';
 import AuditLogsSection from './components/AuditLogsSection';
@@ -22,12 +22,8 @@ function SettingsContent() {
   const [error, setError] = useState('');
   const [overlay, setOverlay] = useState<any>(null);
 
-  const [profileForm, setProfileForm] = useState({ 
-  fullName: '', 
-  phone: '',
-  firstName: '',
-  lastName: '',
-});
+  // Profile forms
+  const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [businessForm, setBusinessForm] = useState({ name: '' });
   const [inviteForm, setInviteForm] = useState({ email: '', role: 'member' });
@@ -36,9 +32,15 @@ function SettingsContent() {
   const [inviteLink, setInviteLink] = useState('');
   const [preferencesForm, setPreferencesForm] = useState({ theme: 'system', dateFormat: 'DD/MM/YYYY', timeFormat: '24h' });
 
+  // 2FA
   const [show2FASetup, setShow2FASetup] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
+
+  // Email change
+  const [showEmailChange, setShowEmailChange] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [emailVerificationToken, setEmailVerificationToken] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -51,11 +53,10 @@ function SettingsContent() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setData(data);
-      setProfileForm({ 
-        fullName: data.profile?.full_name || '', 
+      setProfileForm({
+        firstName: data.profile?.firstName || '',
+        lastName: data.profile?.lastName || '',
         phone: data.profile?.phone || '',
-        firstName: data.profile?.first_name || '',
-        lastName: data.profile?.last_name || ''
       });
       setBusinessForm({ name: data.tenant?.name || '' });
     } catch (err) {
@@ -83,12 +84,108 @@ function SettingsContent() {
       showOverlay('success', 'Saved', msg);
       fetchSettings();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed');
+      showOverlay('error', 'Failed', err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setSaving(false);
     }
   };
 
+  // Avatar handlers
+  const handleSetAvatar = async () => {
+    const fileId = prompt('Enter file ID (from file upload):');
+    if (!fileId) return;
+    
+    try {
+      const response = await fetch('/api/settings/profile/avatar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        showOverlay('success', 'Updated', data.message);
+        fetchSettings();
+      } else {
+        showOverlay('error', 'Failed', data.error);
+      }
+    } catch {
+      showOverlay('error', 'Failed', 'Could not update avatar');
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    try {
+      const response = await fetch('/api/settings/profile/avatar', { method: 'DELETE' });
+      const data = await response.json();
+      if (data.success) {
+        showOverlay('success', 'Removed', data.message);
+        fetchSettings();
+      } else {
+        showOverlay('error', 'Failed', data.error);
+      }
+    } catch {
+      showOverlay('error', 'Failed', 'Could not remove avatar');
+    }
+  };
+
+  // Email change handlers
+  const handleRequestEmailChange = async () => {
+    if (!newEmail) {
+      showOverlay('error', 'Missing Email', 'Please enter a new email address.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch('/api/settings/profile/change-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newEmail }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        showOverlay('success', 'Check Your Email', data.message);
+        setShowEmailChange(false);
+        setNewEmail('');
+      } else {
+        showOverlay('error', 'Failed', data.error);
+      }
+    } catch {
+      showOverlay('error', 'Failed', 'Could not request email change');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleVerifyEmailChange = async () => {
+    if (!emailVerificationToken) {
+      showOverlay('error', 'Missing Token', 'Please enter the verification token from your email.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch('/api/settings/profile/verify-email-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: emailVerificationToken }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        showOverlay('success', 'Email Changed', data.message);
+        setEmailVerificationToken('');
+        fetchSettings();
+      } else {
+        showOverlay('error', 'Failed', data.error);
+      }
+    } catch {
+      showOverlay('error', 'Failed', 'Could not verify email change');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // 2FA handlers
   const handleSetup2FA = async () => {
     setShow2FASetup(true);
     try {
@@ -96,8 +193,8 @@ function SettingsContent() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error);
       setQrCode(data.qrCodeDataUrl);
-    } catch (err) {
-      setError('Failed to setup 2FA');
+    } catch {
+      showOverlay('error', 'Failed', 'Could not setup 2FA');
       setShow2FASetup(false);
     }
   };
@@ -117,12 +214,13 @@ function SettingsContent() {
       setTwoFactorCode('');
       fetchSettings();
     } catch (err) {
-      setError('Failed to verify');
+      showOverlay('error', 'Failed', err instanceof Error ? err.message : 'Could not verify');
     } finally {
       setSaving(false);
     }
   };
 
+  // Team handlers
   const handleSendInvite = async () => {
     setSaving(true);
     try {
@@ -138,12 +236,13 @@ function SettingsContent() {
       showOverlay('success', 'Invite Sent', data.message);
       fetchSettings();
     } catch (err) {
-      setError('Failed to send invite');
+      showOverlay('error', 'Failed', err instanceof Error ? err.message : 'Could not send invite');
     } finally {
       setSaving(false);
     }
   };
 
+  // API Key handlers
   const handleCreateApiKey = async () => {
     setSaving(true);
     try {
@@ -157,8 +256,9 @@ function SettingsContent() {
       setNewApiKey(data.key);
       setApiKeyName('');
       fetchSettings();
+      showOverlay('success', 'API Key Created', 'Copy this key now. You won\'t see it again!');
     } catch (err) {
-      setError('Failed to create key');
+      showOverlay('error', 'Failed', 'Could not create API key');
     } finally {
       setSaving(false);
     }
@@ -176,6 +276,7 @@ function SettingsContent() {
     });
   };
 
+  // App handlers
   const handleInstallApp = async (appKey: string) => {
     setSaving(true);
     try {
@@ -195,7 +296,7 @@ function SettingsContent() {
       showOverlay('success', 'Installed', data.message);
       fetchSettings();
     } catch (err) {
-      setError('Failed to install');
+      showOverlay('error', 'Failed', 'Could not install app');
     } finally {
       setSaving(false);
     }
@@ -213,8 +314,8 @@ function SettingsContent() {
       if (!response.ok) throw new Error(data.error);
       showOverlay('success', 'Updated', data.message);
       fetchSettings();
-    } catch (err) {
-      setError('Failed to toggle');
+    } catch {
+      showOverlay('error', 'Failed', 'Could not update app');
     } finally {
       setSaving(false);
     }
@@ -252,191 +353,135 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6">
-      {error && <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-700 text-sm">{error}</div>}
-
-      {/* PROFILE */}
-{activeTab === 'profile' && (
-  <div className="space-y-6">
-    {/* Profile Header with Avatar */}
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-      <h3 className="text-lg font-semibold mb-4">Profile Picture</h3>
-      <div className="flex items-center gap-6">
-        {data.profile?.avatar_url ? (
-          <img 
-            src={data.profile.avatar_url} 
-            alt="Profile" 
-            className="h-20 w-20 rounded-2xl object-cover"
-          />
-        ) : (
-          <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
-            {data.profile?.full_name?.charAt(0) || 'U'}
+      {/* =====================================================
+          SECTION: PROFILE
+          ===================================================== */}
+      {activeTab === 'profile' && (
+        <div className="space-y-6">
+          {/* PROFILE PICTURE */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Camera size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Profile Picture</h3>
+            </div>
+            <div className="flex items-center gap-6">
+              {data.profile?.avatarFileId ? (
+                <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
+                  {data.profile?.firstName?.charAt(0) || 'U'}
+                </div>
+              ) : (
+                <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
+                  {data.profile?.firstName?.charAt(0) || 'U'}
+                </div>
+              )}
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <button onClick={handleSetAvatar} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Set Avatar</button>
+                  {data.profile?.avatarFileId && (
+                    <button onClick={handleRemoveAvatar} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20">Remove</button>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500">Max 5MB. JPG, PNG, WebP, GIF</p>
+              </div>
+            </div>
           </div>
-        )}
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            <button 
-              onClick={() => {
-                const url = prompt('Enter image URL:');
-                if (url) {
-                  fetch('/api/settings/profile/upload-picture', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ avatarUrl: url }),
-                  }).then(() => fetchSettings());
-                }
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-            >
-              Upload Picture
+
+          {/* PERSONAL INFORMATION */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <User size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Personal Information</h3>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center gap-2">
+              <span className="text-sm text-gray-500">Account Status:</span>
+              <span className={`text-sm font-medium capitalize px-3 py-1 rounded-full ${
+                data.profile?.status === 'active' ? 'bg-green-100 text-green-700' 
+                : data.profile?.status === 'pending' ? 'bg-yellow-100 text-yellow-700'
+                : 'bg-gray-100 text-gray-600'
+              }`}>
+                {data.profile?.status || 'active'}
+              </span>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">First Name</label>
+                <input type="text" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Last Name</label>
+                <input type="text" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Phone</label>
+                <input type="text" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" placeholder="+254 700 000 000" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Member Since</label>
+                <input type="text" value={data.profile?.createdAt ? new Date(data.profile.createdAt).toLocaleDateString() : ''} disabled className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
+              </div>
+            </div>
+            <button onClick={() => handleSave('profile', profileForm, 'Profile updated')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              Save Profile
             </button>
-            {data.profile?.avatar_url && (
-              <button 
-                onClick={() => {
-                  fetch('/api/settings/profile/upload-picture', { method: 'DELETE' })
-                    .then(() => fetchSettings());
-                }}
-                className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50"
-              >
-                Remove
+          </div>
+
+          {/* EMAIL MANAGEMENT */}
+          <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Mail size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Email Address</h3>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">{data.profile?.email}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {data.profile?.emailVerifiedAt ? '✓ Verified' : '⚠ Not verified'}
+                </p>
+              </div>
+              <button onClick={() => { setShowEmailChange(!showEmailChange); setNewEmail(''); setEmailVerificationToken(''); }} className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
+                Change Email
               </button>
+            </div>
+
+            {showEmailChange && (
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">New Email Address</label>
+                  <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@example.com" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                </div>
+                <button onClick={handleRequestEmailChange} disabled={saving || !newEmail} className="w-full px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
+                  Send Verification Email
+                </button>
+
+                <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <label className="block text-sm font-medium mb-1.5">Verification Token (from email)</label>
+                  <input type="text" value={emailVerificationToken} onChange={(e) => setEmailVerificationToken(e.target.value)} placeholder="Paste verification token" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+                  <button onClick={handleVerifyEmailChange} disabled={saving || !emailVerificationToken} className="mt-2 w-full px-5 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:opacity-50">
+                    Verify & Change Email
+                  </button>
+                </div>
+              </div>
             )}
           </div>
-          <p className="text-xs text-gray-500">Recommended: 400x400 or larger</p>
         </div>
-      </div>
-    </div>
+      )}
 
-    {/* Profile Information */}
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-      <h3 className="text-lg font-semibold mb-4">Personal Information</h3>
-      
-      {/* Account Status */}
-      <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center gap-2">
-        <span className="text-sm text-gray-500">Status:</span>
-        <span className={`text-sm font-medium capitalize px-3 py-1 rounded-full ${
-          data.profile?.status === 'active' ? 'bg-green-100 text-green-700' 
-          : data.profile?.status === 'pending' ? 'bg-yellow-100 text-yellow-700'
-          : 'bg-gray-100 text-gray-600'
-        }`}>
-          {data.profile?.status}
-        </span>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label className="block text-sm font-medium mb-1.5">First Name</label>
-          <input 
-            type="text" 
-            value={data.profile?.first_name || ''} 
-            onChange={(e) => {
-              const firstName = e.target.value;
-              const fullName = `${firstName} ${data.profile?.last_name || ''}`.trim();
-              setProfileForm({ 
-  fullName: data.profile?.full_name || '', 
-  phone: data.profile?.phone || '',
-  firstName: data.profile?.first_name || '',
-  lastName: data.profile?.last_name || '',
-});
-            }}
-            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1.5">Last Name</label>
-          <input 
-            type="text" 
-            value={data.profile?.last_name || ''} 
-            onChange={(e) => {
-              const lastName = e.target.value;
-              const fullName = `${data.profile?.first_name || ''} ${lastName}`.trim();
-              setProfileForm({ ...profileForm, fullName, lastName });
-            }}
-            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium mb-1.5">Phone</label>
-          <input 
-            type="text" 
-            value={profileForm.phone || ''} 
-            onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-            className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" 
-            placeholder="+254 700 000 000"
-          />
-        </div>
-      </div>
-      <button 
-        onClick={() => handleSave('profile', profileForm, 'Profile updated')} 
-        disabled={saving} 
-        className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50"
-      >
-        {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-        Save Profile
-      </button>
-    </div>
-
-    {/* Email Management */}
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-      <h3 className="text-lg font-semibold mb-4">Email Address</h3>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium">{data.profile?.email}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            {data.profile?.email_verified_at ? '✓ Verified' : 'Not verified'}
-          </p>
-        </div>
-        <button 
-          onClick={() => {
-            const newEmail = prompt('Enter new email address:');
-            if (newEmail) {
-              fetch('/api/settings/profile/change-email', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ newEmail }),
-              }).then(res => res.json()).then(data => {
-                if (data.success) showOverlay('success', 'Check Your Email', 'Verification sent to new email address.');
-                else setError(data.error || 'Failed');
-              });
-            }
-          }}
-          className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
-        >
-          Change Email
-        </button>
-      </div>
-    </div>
-
-    {/* Account Deletion */}
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-800 p-6">
-      <h3 className="text-lg font-semibold text-red-600 mb-2">Delete Account</h3>
-      <p className="text-sm text-gray-500 mb-4">
-        Request account deletion. You have 30 days to cancel.
-      </p>
-      <button 
-        onClick={() => showOverlay('confirm', 'Delete Account', 'Your account will be deactivated and deleted in 30 days.', 'Request Deletion', async () => {
-          const response = await fetch('/api/settings/danger/request-deletion', { method: 'POST' });
-          const data = await response.json();
-          if (data.success) {
-            closeOverlay();
-            router.push('/auth/login');
-          }
-        })}
-        className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700"
-      >
-        Request Deletion
-      </button>
-    </div>
-  </div>
-)}
-
-      {/* SECURITY */}
+      {/* =====================================================
+          SECTION: SECURITY
+          ===================================================== */}
       {activeTab === 'security' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h3 className="text-lg font-semibold mb-4">Change Password</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Shield size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold">Change Password</h3>
+            </div>
             <div className="space-y-4">
               <input type="password" value={passwordForm.currentPassword} onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })} placeholder="Current Password" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-              <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} placeholder="New Password" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
+              <input type="password" value={passwordForm.newPassword} onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })} placeholder="New Password (min 8)" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               <button onClick={() => handleSave('password', passwordForm, 'Password changed')} disabled={saving} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Change Password
               </button>
@@ -444,12 +489,12 @@ function SettingsContent() {
           </div>
 
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={18} className="text-blue-600" />
                 <h3 className="text-lg font-semibold">Two-Factor Authentication</h3>
-                <p className="text-sm text-gray-500">{data.profile?.two_factor_enabled ? '2FA enabled' : 'Add extra security'}</p>
               </div>
-              {data.profile?.two_factor_enabled ? <ShieldCheck size={24} className="text-green-600" /> : <ShieldOff size={24} className="text-gray-400" />}
+              {data.profile?.twoFactorEnabled ? <ShieldCheck size={24} className="text-green-600" /> : <ShieldOff size={24} className="text-gray-400" />}
             </div>
 
             {show2FASetup && qrCode && (
@@ -462,7 +507,7 @@ function SettingsContent() {
               </div>
             )}
 
-            {!data.profile?.two_factor_enabled ? (
+            {!data.profile?.twoFactorEnabled ? (
               <button onClick={handleSetup2FA} className="mt-4 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700">Enable 2FA</button>
             ) : (
               <button onClick={() => showOverlay('confirm', 'Disable 2FA', 'Enter password to disable.', 'Disable', closeOverlay)} className="mt-4 px-5 py-2.5 border border-red-300 text-red-600 rounded-xl font-semibold hover:bg-red-50">Disable 2FA</button>
@@ -471,11 +516,16 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* SESSIONS */}
+      {/* =====================================================
+          SECTION: SESSIONS
+          ===================================================== */}
       {activeTab === 'sessions' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Devices & Sessions</h3>
+            <div className="flex items-center gap-2">
+              <Monitor size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold">Devices & Sessions</h3>
+            </div>
             <button onClick={handleLogoutAll} className="text-sm text-red-600 hover:underline">Sign out all</button>
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
@@ -495,10 +545,15 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* PREFERENCES */}
+      {/* =====================================================
+          SECTION: PREFERENCES
+          ===================================================== */}
       {activeTab === 'preferences' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h3 className="text-lg font-semibold mb-4">Preferences</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <Globe size={18} className="text-blue-600" />
+            <h3 className="text-lg font-semibold">Preferences</h3>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium mb-1.5">Theme</label>
@@ -523,10 +578,15 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* BUSINESS */}
+      {/* =====================================================
+          SECTION: BUSINESS
+          ===================================================== */}
       {activeTab === 'business' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-          <h3 className="text-lg font-semibold mb-4">Business</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <Building2 size={18} className="text-blue-600" />
+            <h3 className="text-lg font-semibold">Business</h3>
+          </div>
           <div>
             <label className="block text-sm font-medium mb-1.5">Business Name</label>
             <input type="text" value={businessForm.name} onChange={(e) => setBusinessForm({ ...businessForm, name: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
@@ -537,11 +597,16 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* TEAM */}
+      {/* =====================================================
+          SECTION: TEAM
+          ===================================================== */}
       {activeTab === 'team' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h3 className="text-lg font-semibold mb-4">Invite Team Member</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Users size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold">Invite Team Member</h3>
+            </div>
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="sm:col-span-2">
                 <input type="email" value={inviteForm.email} onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })} placeholder="teammate@company.com" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
@@ -589,12 +654,17 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* APPS */}
+      {/* =====================================================
+          SECTION: APPS
+          ===================================================== */}
       {activeTab === 'apps' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
-            <h3 className="text-lg font-semibold">Manage Apps</h3>
-            <p className="text-sm text-gray-500">Plan: <span className="capitalize">{data.subscription?.plan_name || 'free'}</span></p>
+            <div className="flex items-center gap-2">
+              <AppWindow size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold">Manage Apps</h3>
+            </div>
+            <p className="text-sm text-gray-500 mt-1">Plan: <span className="capitalize">{data.subscription?.plan_name || 'free'}</span></p>
           </div>
           <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {SAMI_APPS.map((app) => {
@@ -622,11 +692,16 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* API KEYS */}
+      {/* =====================================================
+          SECTION: API KEYS
+          ===================================================== */}
       {activeTab === 'api-keys' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
-            <h3 className="text-lg font-semibold mb-4">Create API Key</h3>
+            <div className="flex items-center gap-2 mb-4">
+              <Key size={18} className="text-blue-600" />
+              <h3 className="text-lg font-semibold">Create API Key</h3>
+            </div>
             <div className="flex gap-3">
               <input type="text" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} placeholder="Key name" className="flex-1 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               <button onClick={handleCreateApiKey} disabled={saving || !apiKeyName} className="px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">Create</button>
@@ -655,13 +730,20 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* AUDIT LOGS */}
+      {/* =====================================================
+          SECTION: AUDIT LOGS
+          ===================================================== */}
       {activeTab === 'audit-logs' && <AuditLogsSection />}
 
-      {/* DANGER */}
+      {/* =====================================================
+          SECTION: DANGER ZONE
+          ===================================================== */}
       {activeTab === 'danger' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-800 p-6">
-          <h3 className="text-lg font-semibold text-red-600 mb-4">Danger Zone</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle size={18} className="text-red-600" />
+            <h3 className="text-lg font-semibold text-red-600">Danger Zone</h3>
+          </div>
           <div className="space-y-4">
             <div className="p-4 border border-red-200 dark:border-red-800 rounded-xl">
               <p className="text-sm font-semibold">Sign out all devices</p>
@@ -675,19 +757,22 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* OVERLAY */}
+      {/* =====================================================
+          OVERLAY
+          ===================================================== */}
       {overlay && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6">
-            <button onClick={closeOverlay} className="absolute top-4 right-4 p-1"><X size={18} className="text-gray-500" /></button>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
+            <button onClick={closeOverlay} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} className="text-gray-500" /></button>
             <div className="text-center">
-              {overlay.type === 'warning' && <AlertTriangle size={32} className="mx-auto text-yellow-600" />}
-              {overlay.type === 'confirm' && <AlertTriangle size={32} className="mx-auto text-red-600" />}
-              {overlay.type === 'success' && <Check size={32} className="mx-auto text-green-600" />}
-              <h3 className="mt-4 text-lg font-bold">{overlay.title}</h3>
-              <p className="mt-2 text-sm text-gray-500">{overlay.message}</p>
+              {overlay.type === 'warning' && <div className="h-12 w-12 bg-yellow-100 rounded-full flex items-center justify-center mx-auto"><AlertTriangle size={24} className="text-yellow-600" /></div>}
+              {overlay.type === 'confirm' && <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center mx-auto"><AlertTriangle size={24} className="text-red-600" /></div>}
+              {overlay.type === 'success' && <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center mx-auto"><Check size={24} className="text-green-600" /></div>}
+              {overlay.type === 'error' && <div className="h-12 w-12 bg-red-100 rounded-full flex items-center justify-center mx-auto"><X size={24} className="text-red-600" /></div>}
+              <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">{overlay.title}</h3>
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{overlay.message}</p>
               <div className="mt-6 flex gap-3 justify-center">
-                <button onClick={closeOverlay} className="px-5 py-2.5 border border-gray-300 rounded-xl font-medium">Cancel</button>
+                <button onClick={closeOverlay} className="px-5 py-2.5 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-medium">Cancel</button>
                 {overlay.onConfirm && (
                   <button onClick={overlay.onConfirm} className={`px-5 py-2.5 rounded-xl font-semibold text-white ${overlay.type === 'warning' ? 'bg-blue-600' : 'bg-red-600'}`}>
                     {overlay.action || 'Confirm'}

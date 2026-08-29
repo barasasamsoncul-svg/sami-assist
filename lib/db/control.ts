@@ -1,4 +1,4 @@
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 
 let controlPool: Pool | null = null;
 
@@ -34,11 +34,19 @@ export async function queryControl(text: string, params?: any[]) {
   return result;
 }
 
-export async function queryControlTransaction<T>(
-  callback: (client: any) => Promise<T>
+/**
+ * Execute a callback within a transaction.
+ * 
+ * The callback receives a PoolClient.
+ * If the callback succeeds, COMMIT.
+ * If the callback throws, ROLLBACK.
+ */
+export async function withControlTransaction<T>(
+  callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {
   const pool = getControlPool();
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
     const result = await callback(client);
