@@ -6,7 +6,7 @@ import {
   User, Shield, Monitor, Globe, Building2, Users, AppWindow,
   Sparkles, Key, CreditCard, AlertTriangle, Save, Loader2,
   Check, X, Plus, Trash2, Copy, Smartphone, Laptop, Download,
-  ShieldCheck, ShieldOff, History, Mail, Camera, Phone
+  ShieldCheck, ShieldOff, History, Mail, Camera
 } from 'lucide-react';
 import { SAMI_APPS } from '@/lib/sami-apps';
 import AuditLogsSection from './components/AuditLogsSection';
@@ -19,10 +19,8 @@ function SettingsContent() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
   const [overlay, setOverlay] = useState<any>(null);
 
-  // Profile forms
   const [profileForm, setProfileForm] = useState({ firstName: '', lastName: '', phone: '' });
   const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '' });
   const [businessForm, setBusinessForm] = useState({ name: '' });
@@ -32,15 +30,13 @@ function SettingsContent() {
   const [inviteLink, setInviteLink] = useState('');
   const [preferencesForm, setPreferencesForm] = useState({ theme: 'system', dateFormat: 'DD/MM/YYYY', timeFormat: '24h' });
 
-  // 2FA
   const [show2FASetup, setShow2FASetup] = useState(false);
   const [qrCode, setQrCode] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
 
-  // Email change
   const [showEmailChange, setShowEmailChange] = useState(false);
   const [newEmail, setNewEmail] = useState('');
-  const [emailVerificationToken, setEmailVerificationToken] = useState('');
+  const [emailCode, setEmailCode] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -59,8 +55,8 @@ function SettingsContent() {
         phone: data.profile?.phone || '',
       });
       setBusinessForm({ name: data.tenant?.name || '' });
-    } catch (err) {
-      setError('Failed to load settings');
+    } catch {
+      setOverlay({ type: 'error', title: 'Failed', message: 'Could not load settings' });
     } finally {
       setLoading(false);
     }
@@ -90,11 +86,10 @@ function SettingsContent() {
     }
   };
 
-  // Avatar handlers
+  // Avatar
   const handleSetAvatar = async () => {
-    const fileId = prompt('Enter file ID (from file upload):');
+    const fileId = prompt('Enter file ID:');
     if (!fileId) return;
-    
     try {
       const response = await fetch('/api/settings/profile/avatar', {
         method: 'POST',
@@ -128,13 +123,12 @@ function SettingsContent() {
     }
   };
 
-  // Email change handlers
+  // Email Change
   const handleRequestEmailChange = async () => {
     if (!newEmail) {
       showOverlay('error', 'Missing Email', 'Please enter a new email address.');
       return;
     }
-
     setSaving(true);
     try {
       const response = await fetch('/api/settings/profile/change-email', {
@@ -144,48 +138,47 @@ function SettingsContent() {
       });
       const data = await response.json();
       if (data.success) {
-        showOverlay('success', 'Check Your Email', data.message);
-        setShowEmailChange(false);
-        setNewEmail('');
+        showOverlay('success', 'Code Sent', data.message);
       } else {
         showOverlay('error', 'Failed', data.error);
       }
     } catch {
-      showOverlay('error', 'Failed', 'Could not request email change');
+      showOverlay('error', 'Failed', 'Could not send code');
     } finally {
       setSaving(false);
     }
   };
 
   const handleVerifyEmailChange = async () => {
-    if (!emailVerificationToken) {
-      showOverlay('error', 'Missing Token', 'Please enter the verification token from your email.');
+    if (emailCode.length !== 6) {
+      showOverlay('error', 'Invalid Code', 'Enter the 6-digit code from your email.');
       return;
     }
-
     setSaving(true);
     try {
       const response = await fetch('/api/settings/profile/verify-email-change', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: emailVerificationToken }),
+        body: JSON.stringify({ code: emailCode }),
       });
       const data = await response.json();
       if (data.success) {
         showOverlay('success', 'Email Changed', data.message);
-        setEmailVerificationToken('');
+        setShowEmailChange(false);
+        setNewEmail('');
+        setEmailCode('');
         fetchSettings();
       } else {
         showOverlay('error', 'Failed', data.error);
       }
     } catch {
-      showOverlay('error', 'Failed', 'Could not verify email change');
+      showOverlay('error', 'Failed', 'Could not verify');
     } finally {
       setSaving(false);
     }
   };
 
-  // 2FA handlers
+  // 2FA
   const handleSetup2FA = async () => {
     setShow2FASetup(true);
     try {
@@ -220,7 +213,7 @@ function SettingsContent() {
     }
   };
 
-  // Team handlers
+  // Team
   const handleSendInvite = async () => {
     setSaving(true);
     try {
@@ -242,7 +235,7 @@ function SettingsContent() {
     }
   };
 
-  // API Key handlers
+  // API Keys
   const handleCreateApiKey = async () => {
     setSaving(true);
     try {
@@ -256,8 +249,8 @@ function SettingsContent() {
       setNewApiKey(data.key);
       setApiKeyName('');
       fetchSettings();
-      showOverlay('success', 'API Key Created', 'Copy this key now. You won\'t see it again!');
-    } catch (err) {
+      showOverlay('success', 'API Key Created', 'Copy this key now!');
+    } catch {
       showOverlay('error', 'Failed', 'Could not create API key');
     } finally {
       setSaving(false);
@@ -276,7 +269,7 @@ function SettingsContent() {
     });
   };
 
-  // App handlers
+  // Apps
   const handleInstallApp = async (appKey: string) => {
     setSaving(true);
     try {
@@ -295,7 +288,7 @@ function SettingsContent() {
       }
       showOverlay('success', 'Installed', data.message);
       fetchSettings();
-    } catch (err) {
+    } catch {
       showOverlay('error', 'Failed', 'Could not install app');
     } finally {
       setSaving(false);
@@ -322,7 +315,7 @@ function SettingsContent() {
   };
 
   const handleUninstallApp = (appKey: string) => {
-    showOverlay('confirm', 'Uninstall App', 'This will delete all data. Cannot be undone.', 'Uninstall', async () => {
+    showOverlay('confirm', 'Uninstall App', 'This will delete all data.', 'Uninstall', async () => {
       await fetch('/api/settings/apps', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
@@ -353,32 +346,24 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6">
-      {/* =====================================================
-          SECTION: PROFILE
-          ===================================================== */}
+      {/* PROFILE */}
       {activeTab === 'profile' && (
         <div className="space-y-6">
-          {/* PROFILE PICTURE */}
+          {/* Profile Picture */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <div className="flex items-center gap-2 mb-4">
               <Camera size={18} className="text-blue-600" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Profile Picture</h3>
             </div>
             <div className="flex items-center gap-6">
-              {data.profile?.avatarFileId ? (
-                <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
-                  {data.profile?.firstName?.charAt(0) || 'U'}
-                </div>
-              ) : (
-                <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
-                  {data.profile?.firstName?.charAt(0) || 'U'}
-                </div>
-              )}
+              <div className="h-20 w-20 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center text-white text-3xl font-bold">
+                {data.profile?.firstName?.charAt(0) || 'U'}
+              </div>
               <div className="space-y-2">
                 <div className="flex gap-2">
                   <button onClick={handleSetAvatar} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">Set Avatar</button>
                   {data.profile?.avatarFileId && (
-                    <button onClick={handleRemoveAvatar} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20">Remove</button>
+                    <button onClick={handleRemoveAvatar} className="px-4 py-2 border border-red-300 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50">Remove</button>
                   )}
                 </div>
                 <p className="text-xs text-gray-500">Max 5MB. JPG, PNG, WebP, GIF</p>
@@ -386,49 +371,38 @@ function SettingsContent() {
             </div>
           </div>
 
-          {/* PERSONAL INFORMATION */}
+          {/* Personal Info */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <div className="flex items-center gap-2 mb-4">
               <User size={18} className="text-blue-600" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Personal Information</h3>
             </div>
-
             <div className="mb-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-xl flex items-center gap-2">
-              <span className="text-sm text-gray-500">Account Status:</span>
-              <span className={`text-sm font-medium capitalize px-3 py-1 rounded-full ${
-                data.profile?.status === 'active' ? 'bg-green-100 text-green-700' 
-                : data.profile?.status === 'pending' ? 'bg-yellow-100 text-yellow-700'
-                : 'bg-gray-100 text-gray-600'
-              }`}>
+              <span className="text-sm text-gray-500">Status:</span>
+              <span className={`text-sm font-medium capitalize px-3 py-1 rounded-full ${data.profile?.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                 {data.profile?.status || 'active'}
               </span>
             </div>
-
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">First Name</label>
+                <label className="block text-sm font-medium mb-1.5">First Name</label>
                 <input type="text" value={profileForm.firstName} onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Last Name</label>
+                <label className="block text-sm font-medium mb-1.5">Last Name</label>
                 <input type="text" value={profileForm.lastName} onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Phone</label>
-                <input type="text" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" placeholder="+254 700 000 000" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Member Since</label>
-                <input type="text" value={data.profile?.createdAt ? new Date(data.profile.createdAt).toLocaleDateString() : ''} disabled className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed" />
+                <label className="block text-sm font-medium mb-1.5">Phone</label>
+                <input type="text" value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} placeholder="+254 700 000 000" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
               </div>
             </div>
             <button onClick={() => handleSave('profile', profileForm, 'Profile updated')} disabled={saving} className="mt-4 flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-              Save Profile
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save Profile
             </button>
           </div>
 
-          {/* EMAIL MANAGEMENT */}
+          {/* Email */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
             <div className="flex items-center gap-2 mb-4">
               <Mail size={18} className="text-blue-600" />
@@ -437,41 +411,35 @@ function SettingsContent() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium">{data.profile?.email}</p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {data.profile?.emailVerifiedAt ? '✓ Verified' : '⚠ Not verified'}
-                </p>
+                <p className="text-xs text-gray-500 mt-1">{data.profile?.emailVerifiedAt ? '✓ Verified' : '⚠ Not verified'}</p>
               </div>
-              <button onClick={() => { setShowEmailChange(!showEmailChange); setNewEmail(''); setEmailVerificationToken(''); }} className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800">
-                Change Email
+              <button onClick={() => { setShowEmailChange(!showEmailChange); setNewEmail(''); setEmailCode(''); }} className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50">
+                {showEmailChange ? 'Cancel' : 'Change Email'}
               </button>
             </div>
-
             {showEmailChange && (
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-1.5">New Email Address</label>
                   <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@example.com" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
                 </div>
                 <button onClick={handleRequestEmailChange} disabled={saving || !newEmail} className="w-full px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 disabled:opacity-50">
-                  Send Verification Email
+                  Send Verification Code
                 </button>
-
-                <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-                  <label className="block text-sm font-medium mb-1.5">Verification Token (from email)</label>
-                  <input type="text" value={emailVerificationToken} onChange={(e) => setEmailVerificationToken(e.target.value)} placeholder="Paste verification token" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm" />
-                  <button onClick={handleVerifyEmailChange} disabled={saving || !emailVerificationToken} className="mt-2 w-full px-5 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:opacity-50">
-                    Verify & Change Email
-                  </button>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5">Verification Code</label>
+                  <input type="text" maxLength={6} value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/[^0-9]/g, ''))} placeholder="000000" className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 text-sm text-center text-2xl tracking-[0.5em]" />
                 </div>
+                <button onClick={handleVerifyEmailChange} disabled={saving || emailCode.length !== 6} className="w-full px-5 py-2.5 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 disabled:opacity-50">
+                  Verify & Change Email
+                </button>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: SECURITY
-          ===================================================== */}
+      {/* SECURITY */}
       {activeTab === 'security' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
@@ -496,7 +464,6 @@ function SettingsContent() {
               </div>
               {data.profile?.twoFactorEnabled ? <ShieldCheck size={24} className="text-green-600" /> : <ShieldOff size={24} className="text-gray-400" />}
             </div>
-
             {show2FASetup && qrCode && (
               <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-xl text-center">
                 <img src={qrCode} alt="2FA QR" className="mx-auto w-40 h-40" />
@@ -506,7 +473,6 @@ function SettingsContent() {
                 </div>
               </div>
             )}
-
             {!data.profile?.twoFactorEnabled ? (
               <button onClick={handleSetup2FA} className="mt-4 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700">Enable 2FA</button>
             ) : (
@@ -516,9 +482,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: SESSIONS
-          ===================================================== */}
+      {/* SESSIONS */}
       {activeTab === 'sessions' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
@@ -545,9 +509,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: PREFERENCES
-          ===================================================== */}
+      {/* PREFERENCES */}
       {activeTab === 'preferences' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -578,9 +540,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: BUSINESS
-          ===================================================== */}
+      {/* BUSINESS */}
       {activeTab === 'business' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -597,9 +557,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: TEAM
-          ===================================================== */}
+      {/* TEAM */}
       {activeTab === 'team' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
@@ -654,9 +612,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: APPS
-          ===================================================== */}
+      {/* APPS */}
       {activeTab === 'apps' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <div className="p-6 border-b border-gray-200 dark:border-gray-800">
@@ -692,9 +648,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: API KEYS
-          ===================================================== */}
+      {/* API KEYS */}
       {activeTab === 'api-keys' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
@@ -730,14 +684,10 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          SECTION: AUDIT LOGS
-          ===================================================== */}
+      {/* AUDIT LOGS */}
       {activeTab === 'audit-logs' && <AuditLogsSection />}
 
-      {/* =====================================================
-          SECTION: DANGER ZONE
-          ===================================================== */}
+      {/* DANGER */}
       {activeTab === 'danger' && (
         <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-800 p-6">
           <div className="flex items-center gap-2 mb-4">
@@ -757,9 +707,7 @@ function SettingsContent() {
         </div>
       )}
 
-      {/* =====================================================
-          OVERLAY
-          ===================================================== */}
+      {/* OVERLAY */}
       {overlay && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full p-6 relative">
