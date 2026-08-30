@@ -1,107 +1,460 @@
+
 import nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
-export async function sendVerificationEmail(email: string, code: string, name: string) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+type SendVerificationEmailResult = {
+  success: boolean;
+  messageId?: string;
+};
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to: email,
-    subject: 'SaMi - Email Verification Code',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; border-radius: 12px;">
-        <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a202c; font-size: 24px; margin: 0;">SaMi</h1>
-            <p style="color: #718096; font-size: 14px; margin: 5px 0 0;">AI-powered business workspace</p>
-          </div>
-          
-          <h2 style="color: #1a202c; margin-bottom: 20px;">Welcome to SaMi, ${name}! 👋</h2>
-          
-          <p style="color: #4a5568; margin-bottom: 20px; line-height: 1.6;">
-            Thanks for signing up! To get started, please verify your email address by entering the code below.
-          </p>
-          
-          <div style="background-color: #ebf8ff; padding: 20px; border-radius: 8px; text-align: center; margin: 25px 0; border: 1px solid #bee3f8;">
-            <span style="font-size: 40px; font-weight: bold; letter-spacing: 12px; color: #2b6cb0; font-family: monospace;">${code}</span>
-          </div>
-          
-          <p style="color: #4a5568; font-size: 14px; margin-bottom: 10px;">
-            ⏰ This code will expire in <strong>15 minutes</strong>.
-          </p>
-          
-          <p style="color: #718096; font-size: 13px; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-            If you didn't create an account with SaMi, please ignore this email.
-          </p>
-          
-          <div style="margin-top: 30px; text-align: center; color: #a0aec0; font-size: 12px;">
-            <p>© ${new Date().getFullYear()} SaMi. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
-    `,
-  });
+type VerificationEmailOptions = {
+  email: string;
+  code: string;
+  name: string;
+};
+
+let transporter: Transporter | null = null;
+
+/**
+ * Escape user-controlled values before placing them into HTML.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-export async function sendWelcomeEmail(email: string, name: string) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false,
+/**
+ * Normalize an email address.
+ */
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Get or create the SMTP transporter.
+ *
+ * Keeping one transporter instead of creating a new connection
+ * for every email is better for performance and reliability.
+ */
+function getTransporter(): Transporter {
+  if (transporter) {
+    return transporter;
+  }
+
+  const host = process.env.SMTP_HOST;
+  const user = process.env.SMTP_USER;
+  const password = process.env.SMTP_PASSWORD;
+
+  if (!host || !user || !password) {
+    throw new Error('SMTP configuration is incomplete');
+  }
+
+  const port = Number.parseInt(
+    process.env.SMTP_PORT || '587',
+    10
+  );
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error('Invalid SMTP_PORT configuration');
+  }
+
+  const secure =
+    process.env.SMTP_SECURE === 'true' ||
+    port === 465;
+
+  transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure,
+
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user,
+      pass: password,
     },
+
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
+
+    // Do NOT use:
+    // tls: { rejectUnauthorized: false }
+    //
+    // SMTP certificate validation should remain enabled.
   });
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM,
-    to: email,
-    subject: 'Welcome to SaMi - Your AI-Powered Workspace',
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f8f9fa; border-radius: 12px;">
-        <div style="background-color: #ffffff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-          <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #1a202c; font-size: 24px; margin: 0;">SaMi</h1>
-            <p style="color: #718096; font-size: 14px; margin: 5px 0 0;">AI-powered business workspace</p>
-          </div>
-          
-          <h2 style="color: #1a202c; margin-bottom: 20px;">Welcome to SaMi, ${name}! 🎉</h2>
-          
-          <p style="color: #4a5568; margin-bottom: 20px; line-height: 1.6;">
-            Your account has been successfully verified and your workspace is ready.
-          </p>
-          
-          <div style="background-color: #f0fff4; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #c6f6d5;">
-            <h3 style="color: #276749; margin: 0 0 10px 0;">What's next?</h3>
-            <ul style="color: #4a5568; margin: 0; padding-left: 20px; line-height: 1.8;">
-              <li>Login to your SaMi workspace</li>
-              <li>Configure your apps and settings</li>
-              <li>Start managing your business with AI</li>
-            </ul>
-          </div>
-          
-          <a href="${process.env.NEXT_PUBLIC_APP_URL}/auth/login" 
-             style="display: inline-block; background-color: #3182ce; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; margin: 10px 0;">
-            Login to SaMi →
-          </a>
-          
-          <p style="color: #718096; font-size: 13px; margin-top: 25px; padding-top: 20px; border-top: 1px solid #e2e8f0;">
-            Need help? Check out our <a href="${process.env.NEXT_PUBLIC_APP_URL}/help" style="color: #3182ce;">Help Center</a>.
-          </p>
-          
-          <div style="margin-top: 30px; text-align: center; color: #a0aec0; font-size: 12px;">
-            <p>© ${new Date().getFullYear()} SaMi. All rights reserved.</p>
-          </div>
-        </div>
-      </div>
-    `,
-  });
+  return transporter;
+}
+
+/**
+ * Send a SaMi email verification code.
+ *
+ * This service is responsible only for email delivery.
+ * Verification-code generation, hashing, expiry and database
+ * persistence should be handled by the authentication/identity layer.
+ */
+export async function sendVerificationEmail(
+  email: string,
+  code: string,
+  name: string
+): Promise<SendVerificationEmailResult> {
+  const normalizedEmail = normalizeEmail(email);
+  const safeName = escapeHtml(name.trim() || 'there');
+  const safeCode = escapeHtml(code.trim());
+
+  if (!normalizedEmail) {
+    throw new Error('Recipient email is required');
+  }
+
+  if (!safeCode) {
+    throw new Error('Verification code is required');
+  }
+
+  // ---------------------------------------------------------
+  // DEVELOPMENT FALLBACK
+  // ---------------------------------------------------------
+  //
+  // In production, SMTP must be configured.
+  //
+  const smtpConfigured =
+    Boolean(process.env.SMTP_HOST) &&
+    Boolean(process.env.SMTP_USER) &&
+    Boolean(process.env.SMTP_PASSWORD);
+
+  if (!smtpConfigured) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'SMTP is not configured. Email delivery is required in production.'
+      );
+    }
+
+    // Development only.
+    //
+    // We deliberately do not print the verification code.
+    // If you need local development codes, use a dedicated
+    // development-only verification mechanism instead.
+    console.warn(
+      `[SaMi] SMTP is not configured. Verification email was not sent to ${normalizedEmail}.`
+    );
+
+    return {
+      success: false,
+    };
+  }
+
+  // ---------------------------------------------------------
+  // EMAIL CONTENT
+  // ---------------------------------------------------------
+
+  const subject = 'SaMi — Verify your email address';
+
+  const text = `
+Welcome to SaMi, ${name.trim() || 'there'}!
+
+Thanks for signing up.
+
+Your SaMi verification code is:
+
+${code.trim()}
+
+This code will expire in 15 minutes.
+
+If you did not create a SaMi account, you can safely ignore this email.
+
+SaMi
+AI-powered business workspace
+  `.trim();
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>Verify your SaMi email</title>
+</head>
+
+<body
+  style="
+    margin:0;
+    padding:0;
+    background:#f6f7f9;
+    font-family:
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif;
+  "
+>
+  <table
+    role="presentation"
+    width="100%"
+    cellpadding="0"
+    cellspacing="0"
+    border="0"
+    style="background:#f6f7f9; padding:40px 16px;"
+  >
+    <tr>
+      <td align="center">
+
+        <table
+          role="presentation"
+          width="100%"
+          cellpadding="0"
+          cellspacing="0"
+          border="0"
+          style="
+            max-width:600px;
+            background:#ffffff;
+            border:1px solid #e5e7eb;
+            border-radius:14px;
+            overflow:hidden;
+          "
+        >
+
+          <!-- HEADER -->
+          <tr>
+            <td
+              style="
+                padding:32px 32px 24px;
+                text-align:center;
+                border-bottom:1px solid #eef0f2;
+              "
+            >
+              <div
+                style="
+                  font-size:30px;
+                  line-height:36px;
+                  font-weight:800;
+                  color:#111827;
+                  letter-spacing:-1px;
+                "
+              >
+                SaMi
+              </div>
+
+              <div
+                style="
+                  margin-top:5px;
+                  font-size:13px;
+                  line-height:20px;
+                  color:#6b7280;
+                "
+              >
+                AI-powered business workspace
+              </div>
+            </td>
+          </tr>
+
+          <!-- CONTENT -->
+          <tr>
+            <td style="padding:36px 32px 32px;">
+
+              <h1
+                style="
+                  margin:0;
+                  font-size:24px;
+                  line-height:32px;
+                  font-weight:700;
+                  color:#111827;
+                "
+              >
+                Welcome to SaMi, ${safeName}!
+              </h1>
+
+              <p
+                style="
+                  margin:14px 0 0;
+                  font-size:16px;
+                  line-height:26px;
+                  color:#4b5563;
+                "
+              >
+                Thanks for creating your SaMi account.
+                Please verify your email address using the
+                verification code below.
+              </p>
+
+              <!-- CODE BOX -->
+              <table
+                role="presentation"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+                style="margin-top:28px;"
+              >
+                <tr>
+                  <td
+                    align="center"
+                    style="
+                      padding:26px 16px;
+                      background:#f8fafc;
+                      border:1px dashed #cbd5e1;
+                      border-radius:10px;
+                    "
+                  >
+                    <div
+                      style="
+                        margin-bottom:10px;
+                        font-size:12px;
+                        line-height:18px;
+                        font-weight:700;
+                        letter-spacing:1.5px;
+                        color:#64748b;
+                      "
+                    >
+                      VERIFICATION CODE
+                    </div>
+
+                    <div
+                      style="
+                        display:inline-block;
+                        padding:12px 18px;
+                        background:#ffffff;
+                        border:1px solid #e2e8f0;
+                        border-radius:8px;
+                        font-family:
+                          'Courier New',
+                          Courier,
+                          monospace;
+                        font-size:34px;
+                        line-height:42px;
+                        font-weight:700;
+                        letter-spacing:8px;
+                        color:#111827;
+                      "
+                    >
+                      ${safeCode}
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <p
+                style="
+                  margin:22px 0 0;
+                  font-size:14px;
+                  line-height:22px;
+                  color:#4b5563;
+                "
+              >
+                <strong>This code expires in 15 minutes.</strong>
+              </p>
+
+              <p
+                style="
+                  margin:12px 0 0;
+                  font-size:14px;
+                  line-height:22px;
+                  color:#6b7280;
+                "
+              >
+                For your security, never share this verification
+                code with anyone.
+              </p>
+
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td
+              style="
+                padding:24px 32px 28px;
+                background:#fafafa;
+                border-top:1px solid #eef0f2;
+                text-align:center;
+              "
+            >
+              <p
+                style="
+                  margin:0 0 8px;
+                  font-size:13px;
+                  line-height:20px;
+                  color:#6b7280;
+                "
+              >
+                If you didn't create a SaMi account,
+                you can safely ignore this email.
+              </p>
+
+              <p
+                style="
+                  margin:0;
+                  font-size:12px;
+                  line-height:18px;
+                  color:#9ca3af;
+                "
+              >
+                © ${new Date().getFullYear()} SaMi.
+                All rights reserved.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+
+  // ---------------------------------------------------------
+  // SEND
+  // ---------------------------------------------------------
+
+  const mailer = getTransporter();
+
+  const fromAddress =
+    process.env.EMAIL_FROM?.trim() ||
+    `SaMi <${process.env.SMTP_USER}>`;
+
+  try {
+    const info = await mailer.sendMail({
+      from: fromAddress,
+      to: normalizedEmail,
+      subject,
+
+      // Plain-text fallback for email clients that don't render HTML.
+      text,
+
+      html,
+
+      // Helpful headers for transactional email.
+      headers: {
+        'X-SaMi-Email-Type': 'verification',
+        'X-Auto-Response-Suppress': 'All',
+      },
+    });
+
+    console.log(
+      `[SaMi] Verification email sent successfully. Message ID: ${info.messageId}`
+    );
+
+    return {
+      success: true,
+      messageId: info.messageId,
+    };
+  } catch (error) {
+    console.error('[SaMi] Verification email delivery failed:', error);
+
+    // IMPORTANT:
+    // Do not print the verification code here.
+    // Do not silently report success.
+    throw new Error('Verification email could not be sent');
+  }
 }
