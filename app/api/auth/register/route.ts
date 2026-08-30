@@ -5,7 +5,6 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '@/lib/services/email';
 import { createPesaPalOrder } from '@/lib/services/pesapal';
-import { SAMI_APPS } from '@/lib/sami-apps';
 
 export async function POST(request: NextRequest) {
   try {
@@ -73,8 +72,9 @@ export async function POST(request: NextRequest) {
           full_name, 
           phone, 
           status, 
-          created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
         RETURNING id, email`,
         [
           email.toLowerCase(),
@@ -89,14 +89,33 @@ export async function POST(request: NextRequest) {
 
       const userId = userResult.rows[0].id;
 
-      // 2. Create tenant
+      // 2. Create tenant with unique slug
+      const baseSlug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      let slug = baseSlug;
+      let slugCounter = 1;
+
+      // Check if slug exists and generate unique one
+      while (true) {
+        const existingTenant = await queryControl(
+          `SELECT id FROM tenants WHERE slug = $1 AND deleted_at IS NULL`,
+          [slug]
+        );
+        
+        if (existingTenant.rows.length === 0) {
+          break;
+        }
+        
+        slug = `${baseSlug}-${slugCounter}`;
+        slugCounter++;
+      }
+
       const tenantResult = await queryControl(
-        `INSERT INTO tenants (name, slug, status, created_at)
-         VALUES ($1, $2, $3, NOW())
+        `INSERT INTO tenants (name, slug, status, created_at, updated_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
          RETURNING id`,
         [
           businessName,
-          businessName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          slug,
           requiresPayment ? 'pending_payment' : 'provisioning'
         ]
       );
@@ -105,9 +124,9 @@ export async function POST(request: NextRequest) {
 
       // 3. Link user to tenant
       await queryControl(
-        `INSERT INTO tenant_users (tenant_id, user_id, status, created_at)
-         VALUES ($1, $2, $3, NOW())`,
-        [tenantId, userId, 'active']
+        `INSERT INTO tenant_users (tenant_id, user_id, status, is_owner, created_at)
+         VALUES ($1, $2, $3, $4, NOW())`,
+        [tenantId, userId, 'active', true]
       );
 
       // 4. Assign admin role
@@ -117,13 +136,13 @@ export async function POST(request: NextRequest) {
 
       if (roleResult.rows.length > 0) {
         await queryControl(
-          `INSERT INTO user_roles (user_id, role_id, tenant_id, created_at)
+          `INSERT INTO user_roles (tenant_id, user_id, role_id, created_at)
            VALUES ($1, $2, $3, NOW())`,
-          [userId, roleResult.rows[0].id, tenantId]
+          [tenantId, userId, roleResult.rows[0].id]
         );
       }
 
-      // 5. Create subscription
+      // 5. Get plan ID
       const planResult = await queryControl(
         `SELECT id FROM plans WHERE key = $1`,
         [finalPlan]
@@ -136,9 +155,17 @@ export async function POST(request: NextRequest) {
       if (planResult.rows.length > 0) {
         const planId = planResult.rows[0].id;
         const subResult = await queryControl(
-          `INSERT INTO subscriptions (tenant_id, plan_id, status, started_at, trial_ends_at, current_period_start)
-           VALUES ($1, $2, $3, NOW(), $4, NOW())
-           RETURNING id`,
+          `INSERT INTO subscriptions (
+            tenant_id, 
+            plan_id, 
+            status, 
+            started_at, 
+            trial_ends_at, 
+            current_period_start,
+            created_at,
+            updated_at
+          ) VALUES ($1, $2, $3, NOW(), $4, NOW(), NOW(), NOW())
+          RETURNING id`,
           [tenantId, planId, subscriptionStatus, trialEndsAt]
         );
         subscriptionId = subResult.rows[0].id;
@@ -177,7 +204,7 @@ export async function POST(request: NextRequest) {
 
       // 9. If no payment required, provision immediately
       if (!requiresPayment) {
-        // Provision tenant in background (fire and forget)
+        // Provision tenant in background
         provisionTenant(tenantId, selectedApps)
           .then(() => console.log(`Tenant ${tenantId} provisioned successfully`))
           .catch(err => console.error(`Provisioning failed for ${tenantId}:`, err));
@@ -219,6 +246,28 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       console.error('Registration error:', error);
+      
+      // Clean up on error - delete the user if registration failed
+      if (error) {
+        try {
+          // Get the user we just created
+          const userToDelete = await queryControl(
+            `SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL`,
+            [email.toLowerCase()]
+          );
+          
+          if (userToDelete.rows.length > 0) {
+            // Soft delete the user
+            await queryControl(
+              `UPDATE users SET deleted_at = NOW() WHERE id = $1`,
+              [userToDelete.rows[0].id]
+            );
+          }
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+      }
+      
       return NextResponse.json(
         { error: 'Registration failed. Please try again.' },
         { status: 500 }
