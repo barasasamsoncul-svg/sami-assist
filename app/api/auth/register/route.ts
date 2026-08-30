@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import { queryControl } from '@/lib/db/control';
 import { provisionTenant } from '@/lib/services/tenant-provisioning';
@@ -9,6 +10,7 @@ import { createPesaPalOrder } from '@/lib/services/pesapal';
 export const runtime = 'nodejs';
 
 const VERIFICATION_EXPIRY_MINUTES = 15;
+const TRIAL_DAYS = 15;
 const BCRYPT_ROUNDS = 12;
 
 const ALLOWED_PLANS = new Set([
@@ -17,18 +19,27 @@ const ALLOWED_PLANS = new Set([
   'custom',
 ]);
 
+/**
+ * Normalize email addresses consistently.
+ */
 function normalizeEmail(value: unknown): string {
   return typeof value === 'string'
     ? value.trim().toLowerCase()
     : '';
 }
 
+/**
+ * Normalize names.
+ */
 function normalizeName(value: unknown): string {
   return typeof value === 'string'
     ? value.trim()
     : '';
 }
 
+/**
+ * Normalize phone number.
+ */
 function normalizePhone(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -39,6 +50,9 @@ function normalizePhone(value: unknown): string | null {
   return phone.length > 0 ? phone : null;
 }
 
+/**
+ * Create a URL-safe workspace slug.
+ */
 function createSlug(value: string): string {
   return value
     .toLowerCase()
@@ -48,12 +62,18 @@ function createSlug(value: string): string {
     .slice(0, 80);
 }
 
+/**
+ * Generate cryptographically secure 6-digit code.
+ */
 function generateVerificationCode(): string {
   return crypto
     .randomInt(100000, 1000000)
     .toString();
 }
 
+/**
+ * Hash verification code before storing it.
+ */
 function hashVerificationCode(code: string): string {
   return crypto
     .createHash('sha256')
@@ -61,27 +81,44 @@ function hashVerificationCode(code: string): string {
     .digest('hex');
 }
 
+/**
+ * Validate email format.
+ */
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/**
+ * Validate password length.
+ *
+ * Authentication policy can be strengthened later with
+ * breached-password checking and password history.
+ */
 function isValidPassword(password: string): boolean {
-  if (password.length < 8) {
-    return false;
-  }
-
-  if (password.length > 128) {
-    return false;
-  }
-
-  return true;
+  return (
+    password.length >= 8 &&
+    password.length <= 128
+  );
 }
 
-export async function POST(request: NextRequest) {
+/**
+ * Validate tenant ID format before using it in follow-up
+ * operations.
+ */
+function isValidTenantId(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= 128
+  );
+}
+
+export async function POST(
+  request: NextRequest
+) {
   try {
     /*
      * ============================================================
-     * 1. Parse request
+     * 1. PARSE REQUEST
      * ============================================================
      */
 
@@ -99,27 +136,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const firstName = normalizeName(body.firstName);
-    const lastName = normalizeName(body.lastName);
-    const email = normalizeEmail(body.email);
-    const phone = normalizePhone(body.phone);
+    const firstName =
+      normalizeName(body.firstName);
+
+    const lastName =
+      normalizeName(body.lastName);
+
+    const email =
+      normalizeEmail(body.email);
+
+    const phone =
+      normalizePhone(body.phone);
+
     const password =
       typeof body.password === 'string'
         ? body.password
         : '';
 
-    const businessName = normalizeName(body.businessName);
+    const businessName =
+      normalizeName(body.businessName);
 
     const requestedPlan =
       typeof body.plan === 'string'
         ? body.plan.trim().toLowerCase()
         : 'free';
 
-    const rawSelectedApps = body.selectedApps;
+    const rawSelectedApps =
+      body.selectedApps;
 
     /*
      * ============================================================
-     * 2. Validate basic fields
+     * 2. BASIC VALIDATION
      * ============================================================
      */
 
@@ -144,7 +191,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Please enter a valid email address.',
+          error:
+            'Please enter a valid email address.',
         },
         { status: 400 }
       );
@@ -161,7 +209,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (businessName.length < 2 || businessName.length > 120) {
+    if (
+      businessName.length < 2 ||
+      businessName.length > 120
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -174,7 +225,7 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 3. Validate selected apps
+     * 3. VALIDATE SELECTED APPS
      * ============================================================
      */
 
@@ -182,7 +233,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Please select at least one SaMi app.',
+          error:
+            'Please select at least one SaMi app.',
         },
         { status: 400 }
       );
@@ -195,7 +247,9 @@ export async function POST(request: NextRequest) {
             (app): app is string =>
               typeof app === 'string'
           )
-          .map((app) => app.trim().toLowerCase())
+          .map((app) =>
+            app.trim().toLowerCase()
+          )
           .filter(Boolean)
       ),
     ];
@@ -204,20 +258,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Please select at least one SaMi app.',
+          error:
+            'Please select at least one SaMi app.',
         },
         { status: 400 }
       );
     }
 
-    /*
-     * Prevent unreasonable payloads.
-     */
     if (selectedApps.length > 50) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Too many apps selected.',
+          error:
+            'Too many apps selected.',
         },
         { status: 400 }
       );
@@ -225,7 +278,7 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 4. Validate requested plan
+     * 4. VALIDATE PLAN
      * ============================================================
      */
 
@@ -233,7 +286,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Invalid subscription plan.',
+          error:
+            'Invalid subscription plan.',
         },
         { status: 400 }
       );
@@ -241,60 +295,62 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 5. Check email
+     * 5. CHECK EXISTING USER
      * ============================================================
      */
 
-    const existingUser = await queryControl(
-      `
-        SELECT
-          id,
-          email,
-          status,
-          email_verified_at,
-          deleted_at
-        FROM users
-        WHERE LOWER(email) = $1
-        LIMIT 1
-      `,
-      [email]
-    );
+    const existingUser =
+      await queryControl(
+        `
+          SELECT
+            id,
+            email,
+            status,
+            email_verified_at,
+            deleted_at
+          FROM users
+          WHERE LOWER(email) = $1
+          LIMIT 1
+        `,
+        [email]
+      );
 
     if (existingUser.rows.length > 0) {
-      const existing = existingUser.rows[0];
+      const existing =
+        existingUser.rows[0];
 
       /*
-       * Never automatically destroy a soft-deleted account during
-       * registration. That is destructive and can remove historical
-       * tenant/payment/session data.
+       * Never automatically destroy soft-deleted accounts.
        */
       if (existing.deleted_at) {
         return NextResponse.json(
           {
             success: false,
+            code:
+              'ACCOUNT_PREVIOUSLY_DELETED',
             error:
-              'An account previously associated with this email exists. Please contact SaMi support to restore or permanently remove it.',
+              'An account previously associated with this email exists. Please contact SaMi support.',
           },
           { status: 409 }
         );
       }
 
       /*
-       * If the account exists but is still awaiting verification,
-       * tell the client to continue verification instead of creating
-       * another account.
+       * Existing but unverified account.
        */
       if (
         !existing.email_verified_at &&
         (
-          existing.status === 'pending_verification' ||
+          existing.status ===
+            'pending_verification' ||
           existing.status === 'pending'
         )
       ) {
         return NextResponse.json(
           {
             success: false,
-            code: 'EMAIL_VERIFICATION_REQUIRED',
+            code:
+              'EMAIL_VERIFICATION_REQUIRED',
             error:
               'An account with this email already exists and is awaiting email verification.',
           },
@@ -305,8 +361,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          code: 'EMAIL_ALREADY_REGISTERED',
-          error: 'An account with this email already exists.',
+          code:
+            'EMAIL_ALREADY_REGISTERED',
+          error:
+            'An account with this email already exists.',
         },
         { status: 409 }
       );
@@ -314,33 +372,39 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 6. Validate selected apps against the control database
+     * 6. VALIDATE APPS AGAINST CONTROL DATABASE
      * ============================================================
-     *
-     * Do not trust app keys supplied by the browser.
      */
 
-    const moduleResult = await queryControl(
-      `
-        SELECT
-          id,
-          key
-        FROM modules
-        WHERE key = ANY($1::text[])
-          AND deleted_at IS NULL
-      `,
-      [selectedApps]
-    );
+    const moduleResult =
+      await queryControl(
+        `
+          SELECT
+            id,
+            key,
+            name,
+            version,
+            status
+          FROM modules
+          WHERE key = ANY($1::text[])
+            AND deleted_at IS NULL
+        `,
+        [selectedApps]
+      );
 
-    const validApps = moduleResult.rows.map(
-      (row) => String(row.key)
-    );
+    const validApps =
+      moduleResult.rows.map(
+        (row) => String(row.key)
+      );
 
-    const validAppSet = new Set(validApps);
+    const validAppSet =
+      new Set(validApps);
 
-    const invalidApps = selectedApps.filter(
-      (appKey) => !validAppSet.has(appKey)
-    );
+    const invalidApps =
+      selectedApps.filter(
+        (appKey) =>
+          !validAppSet.has(appKey)
+      );
 
     if (invalidApps.length > 0) {
       return NextResponse.json(
@@ -356,53 +420,41 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 7. Determine subscription
+     * 7. DETERMINE PLAN
      * ============================================================
      *
-     * Existing SaMi behavior:
-     * - one app can use the free path
-     * - multiple apps require Standard
+     * Current SaMi business rule:
      *
-     * Keep that behavior for compatibility.
+     * One app:
+     *   free / standard / custom
+     *
+     * Multiple apps:
+     *   standard
      */
 
-    const requiresPayment = selectedApps.length > 1;
+    const requiresPayment =
+      selectedApps.length > 1;
 
-    const finalPlan = requiresPayment
-      ? 'standard'
-      : requestedPlan;
+    const finalPlan =
+      requiresPayment
+        ? 'standard'
+        : requestedPlan;
 
     /*
-     * A multi-app workspace cannot remain on free.
+     * ============================================================
+     * 8. HASH PASSWORD
+     * ============================================================
      */
-    if (
-      requiresPayment &&
-      finalPlan === 'free'
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Multiple apps require the Standard plan.',
-        },
-        { status: 400 }
+
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        BCRYPT_ROUNDS
       );
-    }
 
     /*
      * ============================================================
-     * 8. Hash password
-     * ============================================================
-     */
-
-    const passwordHash = await bcrypt.hash(
-      password,
-      BCRYPT_ROUNDS
-    );
-
-    /*
-     * ============================================================
-     * 9. Create unique tenant slug
+     * 9. CREATE UNIQUE TENANT SLUG
      * ============================================================
      */
 
@@ -412,34 +464,43 @@ export async function POST(request: NextRequest) {
 
     let slug = baseSlug;
 
-    for (let counter = 1; counter <= 100; counter++) {
-      const existingTenant = await queryControl(
-        `
-          SELECT id
-          FROM tenants
-          WHERE slug = $1
-            AND deleted_at IS NULL
-          LIMIT 1
-        `,
-        [slug]
-      );
+    for (
+      let counter = 1;
+      counter <= 100;
+      counter++
+    ) {
+      const existingTenant =
+        await queryControl(
+          `
+            SELECT id
+            FROM tenants
+            WHERE slug = $1
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [slug]
+        );
 
-      if (existingTenant.rows.length === 0) {
+      if (
+        existingTenant.rows.length === 0
+      ) {
         break;
       }
 
-      slug = `${baseSlug}-${counter}`;
+      slug =
+        `${baseSlug}-${counter}`;
 
       if (counter === 100) {
-        slug = `${baseSlug}-${crypto
-          .randomBytes(4)
-          .toString('hex')}`;
+        slug =
+          `${baseSlug}-${crypto
+            .randomBytes(4)
+            .toString('hex')}`;
       }
     }
 
     /*
      * ============================================================
-     * 10. Create verification code
+     * 10. CREATE VERIFICATION CODE
      * ============================================================
      */
 
@@ -461,11 +522,8 @@ export async function POST(request: NextRequest) {
 
     /*
      * ============================================================
-     * 11. Create user
+     * 11. CREATE ACCOUNT RECORDS
      * ============================================================
-     *
-     * IMPORTANT:
-     * The user is NOT active yet.
      */
 
     let userId: string | null = null;
@@ -473,51 +531,59 @@ export async function POST(request: NextRequest) {
     let subscriptionId: string | null = null;
 
     try {
-      const userResult = await queryControl(
-        `
-          INSERT INTO users (
-            email,
-            password_hash,
-            first_name,
-            last_name,
-            full_name,
-            phone,
-            status,
-            email_verified_at,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            NULL,
-            NOW(),
-            NOW()
-          )
-          RETURNING id, email
-        `,
-        [
-          email,
-          passwordHash,
-          firstName,
-          lastName,
-          `${firstName} ${lastName}`,
-          phone,
-          'pending_verification',
-        ]
-      );
+      /*
+       * ----------------------------------------------------------
+       * USER
+       * ----------------------------------------------------------
+       */
 
-      userId = userResult.rows[0].id;
+      const userResult =
+        await queryControl(
+          `
+            INSERT INTO users (
+              email,
+              password_hash,
+              first_name,
+              last_name,
+              full_name,
+              phone,
+              status,
+              email_verified_at,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              NULL,
+              NOW(),
+              NOW()
+            )
+            RETURNING id, email
+          `,
+          [
+            email,
+            passwordHash,
+            firstName,
+            lastName,
+            `${firstName} ${lastName}`,
+            phone,
+            'pending_verification',
+          ]
+        );
+
+      userId =
+        userResult.rows[0].id;
 
       /*
-       * ==========================================================
-       * 12. Create tenant
-       * ==========================================================
+       * ----------------------------------------------------------
+       * TENANT
+       * ----------------------------------------------------------
        */
 
       const tenantStatus =
@@ -551,12 +617,22 @@ export async function POST(request: NextRequest) {
           ]
         );
 
-      tenantId = tenantResult.rows[0].id;
+      tenantId =
+        tenantResult.rows[0].id;
+
+      function isValidTenantId(
+  value: unknown
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.trim().length > 0
+  );
+}
 
       /*
-       * ==========================================================
-       * 13. Connect owner to tenant
-       * ==========================================================
+       * ----------------------------------------------------------
+       * OWNER MEMBERSHIP
+       * ----------------------------------------------------------
        */
 
       await queryControl(
@@ -585,22 +661,25 @@ export async function POST(request: NextRequest) {
       );
 
       /*
-       * ==========================================================
-       * 14. Assign admin role
-       * ==========================================================
+       * ----------------------------------------------------------
+       * ADMIN ROLE
+       * ----------------------------------------------------------
        */
 
-      const roleResult = await queryControl(
-        `
-          SELECT id
-          FROM roles
-          WHERE name = 'admin'
-            AND is_system = true
-          LIMIT 1
-        `
-      );
+      const roleResult =
+        await queryControl(
+          `
+            SELECT id
+            FROM roles
+            WHERE name = 'admin'
+              AND is_system = true
+            LIMIT 1
+          `
+        );
 
-      if (roleResult.rows.length === 0) {
+      if (
+        roleResult.rows.length === 0
+      ) {
         throw new Error(
           'System administrator role is not configured.'
         );
@@ -629,35 +708,42 @@ export async function POST(request: NextRequest) {
       );
 
       /*
-       * ==========================================================
-       * 15. Get subscription plan
-       * ==========================================================
+       * ----------------------------------------------------------
+       * PLAN
+       * ----------------------------------------------------------
        */
 
-      const planResult = await queryControl(
-        `
-          SELECT id
-          FROM plans
-          WHERE key = $1
-            AND deleted_at IS NULL
-          LIMIT 1
-        `,
-        [finalPlan]
-      );
+      const planResult =
+        await queryControl(
+          `
+            SELECT
+              id,
+              key,
+              name,
+              included_apps
+            FROM plans
+            WHERE key = $1
+              AND deleted_at IS NULL
+            LIMIT 1
+          `,
+          [finalPlan]
+        );
 
-      if (planResult.rows.length === 0) {
+      if (
+        planResult.rows.length === 0
+      ) {
         throw new Error(
           `Subscription plan "${finalPlan}" is not configured.`
         );
       }
 
-      const planId =
-        planResult.rows[0].id;
+      const plan =
+        planResult.rows[0];
 
       /*
-       * ==========================================================
-       * 16. Create subscription
-       * ==========================================================
+       * ----------------------------------------------------------
+       * SUBSCRIPTION
+       * ----------------------------------------------------------
        */
 
       const subscriptionStatus =
@@ -670,7 +756,7 @@ export async function POST(request: NextRequest) {
           ? null
           : new Date(
               Date.now() +
-                15 *
+                TRIAL_DAYS *
                   24 *
                   60 *
                   60 *
@@ -704,7 +790,7 @@ export async function POST(request: NextRequest) {
           `,
           [
             tenantId,
-            planId,
+            plan.id,
             subscriptionStatus,
             trialEndsAt,
           ]
@@ -714,20 +800,28 @@ export async function POST(request: NextRequest) {
         subscriptionResult.rows[0].id;
 
       /*
-       * ==========================================================
-       * 17. Reserve/install selected modules
-       * ==========================================================
+       * ----------------------------------------------------------
+       * RESERVE SELECTED APPS
+       * ----------------------------------------------------------
        *
-       * They remain pending until verification/payment/provisioning
-       * is complete.
+       * Apps stay pending until:
+       *
+       * verification
+       * +
+       * payment where required
+       * +
+       * provisioning
        */
 
-      for (const row of moduleResult.rows) {
+      for (
+        const row of moduleResult.rows
+      ) {
         await queryControl(
           `
             INSERT INTO tenant_modules (
               tenant_id,
               module_id,
+              version,
               status,
               installed_at
             )
@@ -735,6 +829,7 @@ export async function POST(request: NextRequest) {
               $1,
               $2,
               $3,
+              'pending',
               NULL
             )
             ON CONFLICT DO NOTHING
@@ -742,15 +837,15 @@ export async function POST(request: NextRequest) {
           [
             tenantId,
             row.id,
-            'pending',
+            row.version || null,
           ]
         );
       }
 
       /*
-       * ==========================================================
-       * 18. Remove previous verification codes
-       * ==========================================================
+       * ----------------------------------------------------------
+       * REMOVE OLD VERIFICATION CODES
+       * ----------------------------------------------------------
        */
 
       await queryControl(
@@ -762,9 +857,9 @@ export async function POST(request: NextRequest) {
       );
 
       /*
-       * ==========================================================
-       * 19. Store verification code
-       * ==========================================================
+       * ----------------------------------------------------------
+       * STORE NEW VERIFICATION CODE
+       * ----------------------------------------------------------
        */
 
       await queryControl(
@@ -791,11 +886,8 @@ export async function POST(request: NextRequest) {
 
       /*
        * ==========================================================
-       * 20. Send verification email
+       * 12. SEND VERIFICATION EMAIL
        * ==========================================================
-       *
-       * Registration should NOT report success if we know that
-       * the verification email could not be sent.
        */
 
       try {
@@ -811,34 +903,48 @@ export async function POST(request: NextRequest) {
         );
 
         /*
-         * Cleanup the newly-created registration because the user
-         * cannot complete the required verification flow.
+         * Best-effort cleanup.
          */
 
         if (tenantId) {
-          await queryControl(
-            `
-              DELETE FROM tenants
-              WHERE id = $1
-            `,
-            [tenantId]
-          );
+          try {
+            await queryControl(
+              `
+                DELETE FROM tenants
+                WHERE id = $1
+              `,
+              [tenantId]
+            );
+          } catch (cleanupError) {
+            console.error(
+              'Tenant cleanup failed:',
+              cleanupError
+            );
+          }
         }
 
         if (userId) {
-          await queryControl(
-            `
-              DELETE FROM users
-              WHERE id = $1
-            `,
-            [userId]
-          );
+          try {
+            await queryControl(
+              `
+                DELETE FROM users
+                WHERE id = $1
+              `,
+              [userId]
+            );
+          } catch (cleanupError) {
+            console.error(
+              'User cleanup failed:',
+              cleanupError
+            );
+          }
         }
 
         return NextResponse.json(
           {
             success: false,
-            code: 'VERIFICATION_EMAIL_FAILED',
+            code:
+              'VERIFICATION_EMAIL_FAILED',
             error:
               'We could not send your verification email. Please try again.',
           },
@@ -848,46 +954,54 @@ export async function POST(request: NextRequest) {
 
       /*
        * ==========================================================
-       * 21. Payment path
+       * 13. PAYMENT REQUIRED
        * ==========================================================
        */
 
       if (requiresPayment) {
-        const standardPrice = Number(
-          process.env
-            .PESAPAL_PRICE_STANDARD_MONTHLY ||
-            2000
-        );
+        const standardPrice =
+          Number(
+            process.env
+              .PESAPAL_PRICE_STANDARD_MONTHLY ||
+              2000
+          );
 
-        const customPrice = Number(
-          process.env
-            .PESAPAL_PRICE_CUSTOM_MONTHLY ||
-            3340
-        );
+        const customPrice =
+          Number(
+            process.env
+              .PESAPAL_PRICE_CUSTOM_MONTHLY ||
+              3340
+          );
 
         const amount =
           finalPlan === 'standard'
             ? standardPrice
             : customPrice;
-if (!tenantId) {
-  throw new Error('Tenant was not created.');
-}
 
-if (!subscriptionId) {
-  throw new Error('Subscription was not created.');
-}
+        if (!tenantId) {
+          throw new Error(
+            'Tenant was not created.'
+          );
+        }
 
-const pesapalOrder = await createPesaPalOrder({
-  tenantId,
-  subscriptionId,
-  amount,
-  email,
-  firstName,
-  lastName,
-  businessName,
-  plan: finalPlan,
-  selectedApps,
-});
+        if (!subscriptionId) {
+          throw new Error(
+            'Subscription was not created.'
+          );
+        }
+
+        const pesapalOrder =
+          await createPesaPalOrder({
+            tenantId,
+            subscriptionId,
+            amount,
+            email,
+            firstName,
+            lastName,
+            businessName,
+            plan: finalPlan,
+            selectedApps,
+          });
 
         return NextResponse.json(
           {
@@ -927,10 +1041,8 @@ const pesapalOrder = await createPesaPalOrder({
 
       /*
        * ==========================================================
-       * 22. Free/trial path
+       * 14. FREE / TRIAL RESPONSE
        * ==========================================================
-       *
-       * DO NOT provision before email verification.
        */
 
       return NextResponse.json(
@@ -949,13 +1061,15 @@ const pesapalOrder = await createPesaPalOrder({
             id: tenantId,
             name: businessName,
             slug,
-            status: 'pending_verification',
+            status:
+              'pending_verification',
           },
 
           subscription: {
             id: subscriptionId,
             plan: finalPlan,
             status: 'pending',
+            trialDays: TRIAL_DAYS,
           },
 
           selectedApps,
@@ -965,7 +1079,14 @@ const pesapalOrder = await createPesaPalOrder({
         },
         { status: 201 }
       );
+
     } catch (error) {
+      /*
+       * ==========================================================
+       * REGISTRATION DATABASE ERROR
+       * ==========================================================
+       */
+
       console.error(
         'Registration database error:',
         error
@@ -974,8 +1095,7 @@ const pesapalOrder = await createPesaPalOrder({
       /*
        * Best-effort cleanup.
        *
-       * We intentionally do not perform a dangerous broad deletion
-       * of an existing account.
+       * We only delete records created during this registration.
        */
 
       if (tenantId) {
@@ -1001,7 +1121,7 @@ const pesapalOrder = await createPesaPalOrder({
             `
               DELETE FROM users
               WHERE id = $1
-            `,
+          `,
             [userId]
           );
         } catch (cleanupError) {
@@ -1021,7 +1141,14 @@ const pesapalOrder = await createPesaPalOrder({
         { status: 500 }
       );
     }
+
   } catch (error) {
+    /*
+     * ============================================================
+     * UNEXPECTED ERROR
+     * ============================================================
+     */
+
     console.error(
       'Unexpected registration error:',
       error

@@ -7,12 +7,6 @@ type SendVerificationEmailResult = {
   messageId?: string;
 };
 
-type VerificationEmailOptions = {
-  email: string;
-  code: string;
-  name: string;
-};
-
 let transporter: Transporter | null = null;
 
 /**
@@ -37,8 +31,8 @@ function normalizeEmail(email: string): string {
 /**
  * Get or create the SMTP transporter.
  *
- * Keeping one transporter instead of creating a new connection
- * for every email is better for performance and reliability.
+ * One transporter is reused instead of creating a new
+ * SMTP connection for every email.
  */
 function getTransporter(): Transporter {
   if (transporter) {
@@ -79,11 +73,6 @@ function getTransporter(): Transporter {
     connectionTimeout: 10_000,
     greetingTimeout: 10_000,
     socketTimeout: 15_000,
-
-    // Do NOT use:
-    // tls: { rejectUnauthorized: false }
-    //
-    // SMTP certificate validation should remain enabled.
   });
 
   return transporter;
@@ -92,9 +81,11 @@ function getTransporter(): Transporter {
 /**
  * Send a SaMi email verification code.
  *
- * This service is responsible only for email delivery.
- * Verification-code generation, hashing, expiry and database
- * persistence should be handled by the authentication/identity layer.
+ * This function deliberately does NOT depend on
+ * NEXT_PUBLIC_APP_URL.
+ *
+ * Verification is code-based, so no application URL
+ * is required for this email.
  */
 export async function sendVerificationEmail(
   email: string,
@@ -102,8 +93,11 @@ export async function sendVerificationEmail(
   name: string
 ): Promise<SendVerificationEmailResult> {
   const normalizedEmail = normalizeEmail(email);
-  const safeName = escapeHtml(name.trim() || 'there');
-  const safeCode = escapeHtml(code.trim());
+  const cleanName = name.trim() || 'there';
+  const cleanCode = code.trim();
+
+  const safeName = escapeHtml(cleanName);
+  const safeCode = escapeHtml(cleanCode);
 
   if (!normalizedEmail) {
     throw new Error('Recipient email is required');
@@ -113,12 +107,16 @@ export async function sendVerificationEmail(
     throw new Error('Verification code is required');
   }
 
-  // ---------------------------------------------------------
-  // DEVELOPMENT FALLBACK
-  // ---------------------------------------------------------
-  //
-  // In production, SMTP must be configured.
-  //
+  if (!/^\d{6}$/.test(cleanCode)) {
+    throw new Error('Verification code must contain exactly 6 digits');
+  }
+
+  /*
+   * ============================================================
+   * SMTP CONFIGURATION
+   * ============================================================
+   */
+
   const smtpConfigured =
     Boolean(process.env.SMTP_HOST) &&
     Boolean(process.env.SMTP_USER) &&
@@ -131,11 +129,6 @@ export async function sendVerificationEmail(
       );
     }
 
-    // Development only.
-    //
-    // We deliberately do not print the verification code.
-    // If you need local development codes, use a dedicated
-    // development-only verification mechanism instead.
     console.warn(
       `[SaMi] SMTP is not configured. Verification email was not sent to ${normalizedEmail}.`
     );
@@ -145,20 +138,22 @@ export async function sendVerificationEmail(
     };
   }
 
-  // ---------------------------------------------------------
-  // EMAIL CONTENT
-  // ---------------------------------------------------------
+  /*
+   * ============================================================
+   * EMAIL CONTENT
+   * ============================================================
+   */
 
   const subject = 'SaMi — Verify your email address';
 
   const text = `
-Welcome to SaMi, ${name.trim() || 'there'}!
+Welcome to SaMi, ${cleanName}!
 
 Thanks for signing up.
 
 Your SaMi verification code is:
 
-${code.trim()}
+${cleanCode}
 
 This code will expire in 15 minutes.
 
@@ -173,12 +168,15 @@ AI-powered business workspace
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   >
+
   <meta name="color-scheme" content="light">
   <meta name="supported-color-schemes" content="light">
+
   <title>Verify your SaMi email</title>
 </head>
 
@@ -203,7 +201,10 @@ AI-powered business workspace
     cellpadding="0"
     cellspacing="0"
     border="0"
-    style="background:#f6f7f9; padding:40px 16px;"
+    style="
+      background:#f6f7f9;
+      padding:40px 16px;
+    "
   >
     <tr>
       <td align="center">
@@ -224,6 +225,7 @@ AI-powered business workspace
         >
 
           <!-- HEADER -->
+
           <tr>
             <td
               style="
@@ -258,6 +260,7 @@ AI-powered business workspace
           </tr>
 
           <!-- CONTENT -->
+
           <tr>
             <td style="padding:36px 32px 32px;">
 
@@ -286,7 +289,8 @@ AI-powered business workspace
                 verification code below.
               </p>
 
-              <!-- CODE BOX -->
+              <!-- CODE -->
+
               <table
                 role="presentation"
                 width="100%"
@@ -369,6 +373,7 @@ AI-powered business workspace
           </tr>
 
           <!-- FOOTER -->
+
           <tr>
             <td
               style="
@@ -413,9 +418,11 @@ AI-powered business workspace
 </html>
   `.trim();
 
-  // ---------------------------------------------------------
-  // SEND
-  // ---------------------------------------------------------
+  /*
+   * ============================================================
+   * SEND
+   * ============================================================
+   */
 
   const mailer = getTransporter();
 
@@ -428,13 +435,9 @@ AI-powered business workspace
       from: fromAddress,
       to: normalizedEmail,
       subject,
-
-      // Plain-text fallback for email clients that don't render HTML.
       text,
-
       html,
 
-      // Helpful headers for transactional email.
       headers: {
         'X-SaMi-Email-Type': 'verification',
         'X-Auto-Response-Suppress': 'All',
@@ -450,11 +453,13 @@ AI-powered business workspace
       messageId: info.messageId,
     };
   } catch (error) {
-    console.error('[SaMi] Verification email delivery failed:', error);
+    console.error(
+      '[SaMi] Verification email delivery failed:',
+      error
+    );
 
-    // IMPORTANT:
-    // Do not print the verification code here.
-    // Do not silently report success.
-    throw new Error('Verification email could not be sent');
+    throw new Error(
+      'Verification email could not be sent'
+    );
   }
 }
