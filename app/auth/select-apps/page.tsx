@@ -3,36 +3,68 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, Loader2 } from 'lucide-react';
+import { 
+  Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle,
+  Calculator, Receipt, FileText, BarChart, Folder, PenTool,
+  Users, ShoppingCart, Repeat, Home, Store, Utensils,
+  Package, Factory, Boxes, ShoppingBag, Wrench, ShieldCheck,
+  UserRound, Car, UserPlus, ClipboardCheck, CalendarOff, UserSearch,
+  Megaphone, Mail, MessageSquare, CalendarDays, Workflow, ClipboardList,
+  Briefcase, Clock, MapPin, Headphones, CalendarClock, Calendar
+} from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
+import { SAMI_APPS, APP_CATEGORIES, getApp } from '@/lib/sami-apps';
 
-const APP_CATEGORIES = [
-  { key: 'all', name: 'All' },
-  { key: 'sales', name: 'Sales' },
-  { key: 'finance', name: 'Finance' },
-  { key: 'hr', name: 'HR' },
-  { key: 'marketing', name: 'Marketing' },
-  { key: 'operations', name: 'Operations' },
-];
+// Map icons to components
+const iconMap: Record<string, any> = {
+  calculator: Calculator,
+  receipt: Receipt,
+  'file-text': FileText,
+  'bar-chart': BarChart,
+  folder: Folder,
+  'pen-tool': PenTool,
+  users: Users,
+  'shopping-cart': ShoppingCart,
+  repeat: Repeat,
+  home: Home,
+  store: Store,
+  utensils: Utensils,
+  package: Package,
+  factory: Factory,
+  boxes: Boxes,
+  'shopping-bag': ShoppingBag,
+  wrench: Wrench,
+  'shield-check': ShieldCheck,
+  'user-round': UserRound,
+  car: Car,
+  'user-plus': UserPlus,
+  'clipboard-check': ClipboardCheck,
+  'calendar-off': CalendarOff,
+  'user-search': UserSearch,
+  megaphone: Megaphone,
+  mail: Mail,
+  'message-square': MessageSquare,
+  'calendar-days': CalendarDays,
+  workflow: Workflow,
+  'clipboard-list': ClipboardList,
+  briefcase: Briefcase,
+  clock: Clock,
+  'map-pin': MapPin,
+  headphones: Headphones,
+  'calendar-clock': CalendarClock,
+  calendar: Calendar,
+};
 
-const AVAILABLE_APPS = [
-  { key: 'crm', name: 'CRM', description: 'Customer Relationship Management', category: 'sales', icon: '🤝' },
-  { key: 'leads', name: 'Leads', description: 'Sales lead tracking', category: 'sales', icon: '🎯' },
-  { key: 'invoicing', name: 'Invoicing', description: 'Create and send invoices', category: 'finance', icon: '📄' },
-  { key: 'expenses', name: 'Expenses', description: 'Track business expenses', category: 'finance', icon: '💰' },
-  { key: 'payroll', name: 'Payroll', description: 'Manage employee payroll', category: 'hr', icon: '👥' },
-  { key: 'recruitment', name: 'Recruitment', description: 'Hire and onboard employees', category: 'hr', icon: '📋' },
-  { key: 'email_marketing', name: 'Email Marketing', description: 'Email marketing campaigns', category: 'marketing', icon: '📧' },
-  { key: 'analytics', name: 'Analytics', description: 'Business analytics & reporting', category: 'operations', icon: '📊' },
-];
+function getIconComponent(iconName: string) {
+  return iconMap[iconName] || Package;
+}
 
 export default function SelectAppsPage() {
   const router = useRouter();
   const [darkMode, setDarkMode] = useState(false);
   const [selectedApps, setSelectedApps] = useState<string[]>([]);
   const [activeCategory, setActiveCategory] = useState('all');
-  const [loading, setLoading] = useState(false);
-  const [overlay, setOverlay] = useState<null | { type: 'error' | 'success'; title: string; message: string }>(null);
+  const [overlay, setOverlay] = useState<null | { type: 'error'; title: string; message: string }>(null);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('sami_theme');
@@ -57,8 +89,8 @@ export default function SelectAppsPage() {
   };
 
   const filteredApps = activeCategory === 'all' 
-    ? AVAILABLE_APPS 
-    : AVAILABLE_APPS.filter(app => app.category === activeCategory);
+    ? SAMI_APPS 
+    : SAMI_APPS.filter(app => app.category === activeCategory);
 
   const handleNext = () => {
     if (selectedApps.length === 0) {
@@ -91,7 +123,17 @@ export default function SelectAppsPage() {
             </div>
 
             {/* Category Tabs */}
-            <div className="flex flex-wrap gap-1.5 mb-5">
+            <div className="flex flex-wrap gap-1.5 mb-5 max-h-[120px] overflow-y-auto">
+              <button 
+                onClick={() => setActiveCategory('all')} 
+                className={`px-4 py-2 rounded-full text-xs font-medium transition ${
+                  activeCategory === 'all' 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                All ({SAMI_APPS.length})
+              </button>
               {APP_CATEGORIES.map((cat) => (
                 <button
                   key={cat.key}
@@ -102,37 +144,53 @@ export default function SelectAppsPage() {
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
-                  {cat.name}
+                  {cat.name} ({SAMI_APPS.filter(a => a.category === cat.key).length})
                 </button>
               ))}
             </div>
 
             {/* Apps Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[400px] overflow-y-auto pr-2 mb-5">
-              {filteredApps.map((app) => (
-                <button
-                  key={app.key}
-                  onClick={() => toggleApp(app.key)}
-                  className={`p-4 rounded-xl border-2 text-left transition-all ${
-                    selectedApps.includes(app.key) 
-                      ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-sm' 
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">{app.icon}</span>
-                      <span className="text-sm font-medium text-gray-900 dark:text-white">{app.name}</span>
-                    </div>
-                    {selectedApps.includes(app.key) && (
-                      <div className="h-5 w-5 rounded-full bg-blue-600 flex items-center justify-center">
-                        <Check size={12} className="text-white" />
+              {filteredApps.map((app) => {
+                const IconComponent = getIconComponent(app.icon);
+                const isSelected = selectedApps.includes(app.key);
+                const isRecommended = app.recommended;
+                
+                return (
+                  <button
+                    key={app.key}
+                    onClick={() => toggleApp(app.key)}
+                    className={`p-4 rounded-xl border-2 text-left transition-all relative ${
+                      isSelected 
+                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-sm' 
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                    }`}
+                  >
+                    {isRecommended && (
+                      <div className="absolute -top-1.5 right-3 bg-blue-600 text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                        Recommended
                       </div>
                     )}
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-1">{app.description}</p>
-                </button>
-              ))}
+                    
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          isSelected ? 'bg-blue-100 dark:bg-blue-900/50' : 'bg-gray-100 dark:bg-gray-800'
+                        }`}>
+                          <IconComponent size={16} className={isSelected ? 'text-blue-600' : 'text-gray-500 dark:text-gray-400'} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-900 dark:text-white truncate">{app.name}</span>
+                            {isSelected && <Check size={14} className="text-blue-600 flex-shrink-0" />}
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{app.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Selected count and actions */}
@@ -172,10 +230,8 @@ export default function SelectAppsPage() {
             <button onClick={() => setOverlay(null)} className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
               <X size={17} />
             </button>
-            <div className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-              overlay.type === 'error' ? 'bg-red-100 dark:bg-red-950/40' : 'bg-green-100 dark:bg-green-950/40'
-            }`}>
-              {overlay.type === 'error' ? <AlertTriangle size={25} className="text-red-600" /> : <Check size={25} className="text-green-600" />}
+            <div className="h-12 w-12 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center">
+              <AlertTriangle size={25} className="text-red-600" />
             </div>
             <h2 className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white">{overlay.title}</h2>
             <p className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">{overlay.message}</p>

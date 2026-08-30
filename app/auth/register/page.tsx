@@ -397,6 +397,7 @@ export default function RegisterPage() {
 
         {/* Bottom links */}
         <div className="mt-4 flex justify-end items-center gap-5 px-1">
+                   <Link href="/auth/login" className="text-[12px] text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium">Sign In</Link>
           <Link href="/help" className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition">Help</Link>
           <Link href="/auth/terms" className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition">Terms</Link>
           <Link href="/auth/privacy" className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition">Privacy</Link>
