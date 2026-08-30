@@ -1,120 +1,234 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { queryControl } from '@/lib/db/control';
+import { provisionTenant } from '@/lib/services/tenant-provisioning';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { queryControl, getControlPool } from '@/lib/db/control';
 import { sendVerificationEmail } from '@/lib/services/email';
+import { createPesaPalOrder } from '@/lib/services/pesapal';
+import { SAMI_APPS } from '@/lib/sami-apps';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { firstName, lastName, email, phone, password, businessName, acceptTerms, acceptPrivacy } = body;
+    const { 
+      firstName, 
+      lastName, 
+      email, 
+      phone, 
+      password, 
+      businessName, 
+      plan, 
+      selectedApps 
+    } = body;
 
+    // Validation
     if (!firstName || !lastName || !email || !password || !businessName) {
-      return NextResponse.json({ error: 'All required fields must be provided' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Missing required fields' },
+        { status: 400 }
+      );
     }
 
     if (password.length < 8) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Password must be at least 8 characters' },
+        { status: 400 }
+      );
     }
 
-    const normalizedEmail = email.toLowerCase();
-    const fullName = `${firstName} ${lastName}`.trim();
+    if (!selectedApps || selectedApps.length === 0) {
+      return NextResponse.json(
+        { error: 'Please select at least one app' },
+        { status: 400 }
+      );
+    }
 
+    // Check if user exists
     const existingUser = await queryControl(
       `SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL`,
-      [normalizedEmail]
+      [email.toLowerCase()]
     );
 
     if (existingUser.rows.length > 0) {
-      return NextResponse.json({ error: 'Email already registered' }, { status: 409 });
+      return NextResponse.json(
+        { error: 'Email already registered' },
+        { status: 400 }
+      );
     }
 
-    const client = await getControlPool().connect();
+    // Determine if payment is required (more than 1 app = paid plan)
+    const requiresPayment = selectedApps.length > 1;
+    const finalPlan = requiresPayment ? 'standard' : plan;
 
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
     try {
-      await client.query('BEGIN');
-
-      // Create user
-      const passwordHash = await bcrypt.hash(password, 12);
-      const userResult = await client.query(
-        `INSERT INTO users (email, password_hash, full_name, first_name, last_name, phone, status)
-         VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-         RETURNING id, email, full_name`,
-        [normalizedEmail, passwordHash, fullName, firstName, lastName, phone || null]
+      // 1. Create user
+      const userResult = await queryControl(
+        `INSERT INTO users (
+          email, 
+          password_hash, 
+          first_name, 
+          last_name, 
+          full_name, 
+          phone, 
+          status, 
+          created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING id, email`,
+        [
+          email.toLowerCase(),
+          hashedPassword,
+          firstName,
+          lastName,
+          `${firstName} ${lastName}`,
+          phone || null,
+          'active'
+        ]
       );
+
       const userId = userResult.rows[0].id;
 
-      // Create tenant
-      const slug = businessName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-') + '-' + Date.now();
-      const tenantResult = await client.query(
-        `INSERT INTO tenants (name, slug, status)
-         VALUES ($1, $2, 'active')
-         RETURNING id, name, slug`,
-        [businessName, slug]
+      // 2. Create tenant
+      const tenantResult = await queryControl(
+        `INSERT INTO tenants (name, slug, status, created_at)
+         VALUES ($1, $2, $3, NOW())
+         RETURNING id`,
+        [
+          businessName,
+          businessName.toLowerCase().replace(/[^a-z0-9]/g, '-'),
+          requiresPayment ? 'pending_payment' : 'provisioning'
+        ]
       );
+
       const tenantId = tenantResult.rows[0].id;
 
-      // Link user to tenant as owner
-      await client.query(
-        `INSERT INTO tenant_users (tenant_id, user_id, status, is_owner)
-         VALUES ($1, $2, 'active', true)`,
-        [tenantId, userId]
+      // 3. Link user to tenant
+      await queryControl(
+        `INSERT INTO tenant_users (tenant_id, user_id, status, created_at)
+         VALUES ($1, $2, $3, NOW())`,
+        [tenantId, userId, 'active']
       );
 
-      // Assign Owner role
-      const ownerRole = await client.query(`SELECT id FROM roles WHERE name = 'Owner' LIMIT 1`);
-      const ownerRoleId = ownerRole.rows[0]?.id;
-      if (ownerRoleId) {
-        await client.query(
-          `INSERT INTO user_roles (tenant_id, user_id, role_id) VALUES ($1, $2, $3)`,
-          [tenantId, userId, ownerRoleId]
+      // 4. Assign admin role
+      const roleResult = await queryControl(
+        `SELECT id FROM roles WHERE name = 'admin' AND is_system = true LIMIT 1`
+      );
+
+      if (roleResult.rows.length > 0) {
+        await queryControl(
+          `INSERT INTO user_roles (user_id, role_id, tenant_id, created_at)
+           VALUES ($1, $2, $3, NOW())`,
+          [userId, roleResult.rows[0].id, tenantId]
         );
       }
 
-      // Create subscription
-      const freePlan = await client.query(`SELECT id FROM plans WHERE key = 'free' LIMIT 1`);
-      const freePlanId = freePlan.rows[0]?.id;
-      if (!freePlanId) throw new Error('Free plan not found');
-
-      await client.query(
-        `INSERT INTO subscriptions (tenant_id, plan_id, status, billing_cycle)
-         VALUES ($1, $2, 'pending', 'monthly')`,
-        [tenantId, freePlanId]
+      // 5. Create subscription
+      const planResult = await queryControl(
+        `SELECT id FROM plans WHERE key = $1`,
+        [finalPlan]
       );
 
-      // Create verification token
-      const verificationToken = crypto.randomBytes(32).toString('hex');
-      const verificationExpires = new Date();
-      verificationExpires.setMinutes(verificationExpires.getMinutes() + 15);
+      let subscriptionStatus = requiresPayment ? 'pending_payment' : 'active';
+      let trialEndsAt = requiresPayment ? new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) : null;
+      let subscriptionId = null;
 
-      await client.query(
-        `INSERT INTO user_authenticators (user_id, type, secret_encrypted, label, expires_at, created_at)
-         VALUES ($1, 'email_verification', $2, 'Email Verification', $3, NOW())`,
-        [userId, verificationToken, verificationExpires]
+      if (planResult.rows.length > 0) {
+        const planId = planResult.rows[0].id;
+        const subResult = await queryControl(
+          `INSERT INTO subscriptions (tenant_id, plan_id, status, started_at, trial_ends_at, current_period_start)
+           VALUES ($1, $2, $3, NOW(), $4, NOW())
+           RETURNING id`,
+          [tenantId, planId, subscriptionStatus, trialEndsAt]
+        );
+        subscriptionId = subResult.rows[0].id;
+      }
+
+      // 6. Install selected apps (pending if payment required)
+      const appStatus = requiresPayment ? 'pending' : 'installed';
+      for (const appKey of selectedApps) {
+        const moduleResult = await queryControl(
+          `SELECT id FROM modules WHERE key = $1 AND deleted_at IS NULL`,
+          [appKey]
+        );
+
+        if (moduleResult.rows.length > 0) {
+          await queryControl(
+            `INSERT INTO tenant_modules (tenant_id, module_id, status, installed_at)
+             VALUES ($1, $2, $3, NOW())`,
+            [tenantId, moduleResult.rows[0].id, appStatus]
+          );
+        }
+      }
+
+      // 7. Generate verification code
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      await queryControl(
+        `INSERT INTO email_verifications (email, code_hash, expires_at, created_at)
+         VALUES ($1, $2, $3, NOW())`,
+        [email.toLowerCase(), hashedCode, expiresAt]
       );
 
-      await client.query('COMMIT');
+      // 8. Send verification email
+      await sendVerificationEmail(email, code, firstName);
 
-      // Send verification email
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
-      await sendVerificationEmail(normalizedEmail, verificationToken, appUrl);
+      // 9. If no payment required, provision immediately
+      if (!requiresPayment) {
+        // Provision tenant in background (fire and forget)
+        provisionTenant(tenantId, selectedApps)
+          .then(() => console.log(`Tenant ${tenantId} provisioned successfully`))
+          .catch(err => console.error(`Provisioning failed for ${tenantId}:`, err));
+        
+        return NextResponse.json({
+          success: true,
+          requiresPayment: false,
+          user: { id: userId, email },
+          tenant: { id: tenantId },
+          message: 'Account created. Please verify your email.'
+        });
+      }
 
+      // 10. Create PesaPal order for payment
+      const amount = finalPlan === 'standard' ? 
+        parseInt(process.env.PESAPAL_PRICE_STANDARD_MONTHLY || '2000') :
+        parseInt(process.env.PESAPAL_PRICE_CUSTOM_MONTHLY || '3340');
+      
+      const pesapalOrder = await createPesaPalOrder({
+        tenantId,
+        subscriptionId,
+        amount,
+        email,
+        firstName,
+        lastName,
+        businessName,
+        plan: finalPlan,
+        selectedApps
+      });
+      
       return NextResponse.json({
         success: true,
-        message: 'Account created. Check your email to verify.',
-        user: { id: userId, email: normalizedEmail, fullName },
-        tenant: { id: tenantId, name: businessName },
+        requiresPayment: true,
+        pesapalOrder,
+        user: { id: userId, email },
+        tenant: { id: tenantId },
+        message: 'Account created. Please complete payment to activate your workspace.'
       });
 
     } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
+      console.error('Registration error:', error);
+      return NextResponse.json(
+        { error: 'Registration failed. Please try again.' },
+        { status: 500 }
+      );
     }
-
   } catch (error) {
     console.error('Registration error:', error);
-    return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Registration failed. Please try again.' },
+      { status: 500 }
+    );
   }
 }
