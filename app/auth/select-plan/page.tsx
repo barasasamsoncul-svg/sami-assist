@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, Mail, Loader2, CheckCircle, CreditCard } from 'lucide-react';
+import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, Mail, Loader2, CheckCircle } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 export default function SelectPlanPage() {
@@ -94,73 +94,44 @@ export default function SelectPlanPage() {
       acceptPrivacy: true,
     };
 
-    if (selectedPlan === 'free') {
-      try {
-        const registerRes = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(registerBody),
-        });
-        const registerData = await registerRes.json();
-        if (!registerRes.ok) {
-          setOverlay({ type: 'error', title: 'Registration Failed', message: registerData.error });
-          setLoading(false);
-          return;
-        }
-
-        const tenantId = registerData.tenant?.id;
-        if (tenantId) {
-          for (const appKey of selectedApps) {
-            await fetch('/api/auth/install-app', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ tenantId, appKey }),
-            });
-          }
-        }
-
-        setOverlay({
-          type: 'verify',
-          title: 'Verify Your Email',
-          message: `We sent a verification link to ${accountForm.email}. Check your inbox.`,
-          email: accountForm.email,
-        });
+    try {
+      // Step 1: Create account
+      const registerRes = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(registerBody),
+      });
+      const registerData = await registerRes.json();
+      if (!registerRes.ok) {
+        setOverlay({ type: 'error', title: 'Registration Failed', message: registerData.error });
         setLoading(false);
-      } catch {
-        setOverlay({ type: 'error', title: 'Failed', message: 'Registration failed' });
-        setLoading(false);
+        return;
       }
-      return;
-    }
 
-    if (selectedPlan === 'standard' || selectedPlan === 'custom') {
-      sessionStorage.setItem('sami_registration_data', JSON.stringify(registerBody));
-      sessionStorage.setItem('sami_selected_plan', selectedPlan);
+      const tenantId = registerData.tenant?.id;
 
-      try {
-        const checkoutRes = await fetch('/api/payment/create-checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            plan: selectedPlan,
-            billingCycle: 'monthly',
-            businessName: accountForm.businessName,
-            email: accountForm.email,
-            fullName: `${accountForm.firstName} ${accountForm.lastName}`,
-          }),
-        });
-        const checkoutData = await checkoutRes.json();
-        if (!checkoutRes.ok) {
-          setOverlay({ type: 'error', title: 'Payment Failed', message: checkoutData.error });
-          setLoading(false);
-          return;
+      // Step 2: Install selected apps (this provisions database + installs schemas)
+      if (tenantId) {
+        for (const appKey of selectedApps) {
+          await fetch('/api/auth/install-app', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tenantId, appKey }),
+          });
         }
-        sessionStorage.setItem('sami_order_tracking_id', checkoutData.orderTrackingId);
-        window.location.href = checkoutData.redirectUrl;
-      } catch {
-        setOverlay({ type: 'error', title: 'Failed', message: 'Payment initiation failed' });
-        setLoading(false);
       }
+
+      // Step 3: Show verification overlay
+      setOverlay({
+        type: 'verify',
+        title: 'Verify Your Email',
+        message: `We sent a verification link to ${accountForm.email}. Check your inbox.`,
+        email: accountForm.email,
+      });
+      setLoading(false);
+    } catch {
+      setOverlay({ type: 'error', title: 'Failed', message: 'Registration failed' });
+      setLoading(false);
     }
   };
 
@@ -173,7 +144,6 @@ export default function SelectPlanPage() {
       <div className="w-full max-w-[820px] mx-auto">
         <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
           <div className="px-8 py-8 sm:px-10 sm:py-9">
-            {/* Brand */}
             <div className="mb-7">
               <Link href="/" className="inline-flex flex-col items-start">
                 <SaMiLogo size="lg" />
@@ -181,7 +151,6 @@ export default function SelectPlanPage() {
               </Link>
             </div>
 
-            {/* Header */}
             <div className="mb-7">
               <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">Choose your plan</h1>
               <p className="mt-2 text-[14px] text-gray-500 dark:text-gray-400">Step 3 of 3: Select the plan that fits your business.</p>

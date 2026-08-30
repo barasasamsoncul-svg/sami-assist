@@ -3,6 +3,10 @@
 -- Installed in every tenant database
 -- ============================================================
 
+-- ============================================================
+-- ORGANIZATION STRUCTURE
+-- ============================================================
+
 -- Companies (Odoo: res.company - multi-company)
 CREATE TABLE IF NOT EXISTS companies (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -59,7 +63,10 @@ CREATE TABLE IF NOT EXISTS departments (
 
 CREATE INDEX IF NOT EXISTS idx_departments_company ON departments(company_id);
 
--- Company Users (user access to companies)
+-- ============================================================
+-- COMPANY USERS (user access to companies)
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS company_users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -73,7 +80,10 @@ CREATE TABLE IF NOT EXISTS company_users (
 
 CREATE INDEX IF NOT EXISTS idx_company_users_user ON company_users(user_id);
 
--- Company Settings
+-- ============================================================
+-- COMPANY SETTINGS
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS company_settings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -83,7 +93,10 @@ CREATE TABLE IF NOT EXISTS company_settings (
     UNIQUE(company_id)
 );
 
--- Documents (Odoo: ir.attachment)
+-- ============================================================
+-- DOCUMENTS (Odoo: ir.attachment)
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
@@ -97,6 +110,10 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_company ON documents(company_id);
+
+-- ============================================================
+-- AI CONTEXT (SaMi AI Core)
+-- ============================================================
 
 -- AI Conversations
 CREATE TABLE IF NOT EXISTS ai_conversations (
@@ -162,7 +179,10 @@ CREATE TABLE IF NOT EXISTS ai_actions (
 
 CREATE INDEX IF NOT EXISTS idx_ai_actions_company ON ai_actions(company_id);
 
--- Tenant Audit Logs
+-- ============================================================
+-- TENANT AUDIT LOGS
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID,

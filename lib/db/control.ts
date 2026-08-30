@@ -34,13 +34,6 @@ export async function queryControl(text: string, params?: any[]) {
   return result;
 }
 
-/**
- * Execute a callback within a transaction.
- * 
- * The callback receives a PoolClient.
- * If the callback succeeds, COMMIT.
- * If the callback throws, ROLLBACK.
- */
 export async function withControlTransaction<T>(
   callback: (client: PoolClient) => Promise<T>
 ): Promise<T> {

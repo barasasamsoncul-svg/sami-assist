@@ -84,8 +84,7 @@ export async function installAppSchema(databaseName: string, appKey: string): Pr
 export async function registerTenantDatabase(tenantId: string, databaseName: string): Promise<void> {
   await queryControl(
     `INSERT INTO tenant_databases (tenant_id, database_name, provider, status, provisioned_at)
-     VALUES ($1, $2, 'neon', 'active', NOW())
-     ON CONFLICT (tenant_id) DO UPDATE SET database_name = $2, status = 'active', provisioned_at = NOW()`,
+     VALUES ($1, $2, 'neon', 'active', NOW())`,
     [tenantId, databaseName]
   );
   console.log(`✅ Database registered for tenant ${tenantId}`);

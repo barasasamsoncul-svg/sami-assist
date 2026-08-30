@@ -8,16 +8,7 @@ export interface SessionUser {
   fullName: string;
   firstName: string;
   lastName: string;
-  avatarUrl: string;
-}
-
-export interface SessionTenant {
-  id: string;
-  name: string;
-  slug: string;
-  logoUrl: string;
-  role: string;
-  isOwner: boolean;
+  avatarFileId: string | null;
 }
 
 export interface Session {
@@ -48,7 +39,7 @@ export async function getSession(): Promise<Session | null> {
       u.full_name,
       u.first_name,
       u.last_name,
-      u.avatar_url,
+      u.avatar_file_id,
       u.status
      FROM sessions s
      INNER JOIN users u ON u.id = s.user_id
@@ -80,84 +71,15 @@ export async function getSession(): Promise<Session | null> {
       fullName: row.full_name || '',
       firstName: row.first_name || '',
       lastName: row.last_name || '',
-      avatarUrl: row.avatar_url || '',
+      avatarFileId: row.avatar_file_id || null,
     },
   };
-}
-
-export async function getUserTenants(userId: string): Promise<SessionTenant[]> {
-  const result = await queryControl(
-    `SELECT 
-      t.id,
-      t.name,
-      t.slug,
-      t.logo_url,
-      tu.is_owner,
-      COALESCE(
-        (SELECT r.name FROM user_roles ur 
-         INNER JOIN roles r ON r.id = ur.role_id 
-         WHERE ur.user_id = tu.user_id AND ur.tenant_id = tu.tenant_id 
-         ORDER BY ur.created_at ASC LIMIT 1),
-        CASE WHEN tu.is_owner THEN 'Owner' ELSE 'Member' END
-      ) as role
-     FROM tenant_users tu
-     INNER JOIN tenants t ON t.id = tu.tenant_id
-     WHERE tu.user_id = $1 
-       AND tu.status = 'active'
-       AND t.status = 'active'
-       AND t.deleted_at IS NULL
-     ORDER BY tu.joined_at ASC`,
-    [userId]
-  );
-
-  return result.rows.map((row: any) => ({
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    logoUrl: row.logo_url || '',
-    role: row.role || 'Member',
-    isOwner: row.is_owner || false,
-  }));
-}
-
-export async function getUserPermissions(tenantId: string, userId: string): Promise<string[]> {
-  const result = await queryControl(
-    `SELECT DISTINCT p.resource || ':' || p.action as permission
-     FROM user_roles ur
-     INNER JOIN role_permissions rp ON rp.role_id = ur.role_id
-     INNER JOIN permissions p ON p.id = rp.permission_id
-     WHERE ur.tenant_id = $1 AND ur.user_id = $2`,
-    [tenantId, userId]
-  );
-
-  let permissions = result.rows.map((row: any) => row.permission);
-
-  const ownerCheck = await queryControl(
-    `SELECT is_owner FROM tenant_users WHERE tenant_id = $1 AND user_id = $2`,
-    [tenantId, userId]
-  );
-
-  if (ownerCheck.rows[0]?.is_owner) {
-    permissions = ['*'];
-  }
-
-  return permissions;
-}
-
-export async function hasPermission(
-  tenantId: string,
-  userId: string,
-  requiredPermission: string
-): Promise<boolean> {
-  const permissions = await getUserPermissions(tenantId, userId);
-  if (permissions.includes('*')) return true;
-  return permissions.includes(requiredPermission);
 }
 
 export async function createSession(
   userId: string,
   request: Request
-): Promise<{ sessionToken: string; sessionExpiry: Date }> {
+): Promise<{ sessionToken: string }> {
   const sessionToken = crypto.randomBytes(48).toString('hex');
   const tokenHash = hashToken(sessionToken);
   const sessionExpiry = new Date();
@@ -180,7 +102,7 @@ export async function createSession(
     [userId, tokenHash, ip, userAgent, deviceType, browser, os, sessionExpiry]
   );
 
-  return { sessionToken, sessionExpiry };
+  return { sessionToken };
 }
 
 export async function revokeSession(sessionId: string, userId: string): Promise<void> {

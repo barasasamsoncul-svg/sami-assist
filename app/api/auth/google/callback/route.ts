@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryControl, getControlPool } from '@/lib/db/control';
-import crypto from 'crypto';
+import { queryControl } from '@/lib/db/control';
 
 export async function GET(request: NextRequest) {
   try {
@@ -51,48 +50,21 @@ export async function GET(request: NextRequest) {
     const email = googleUser.email.toLowerCase();
     const firstName = googleUser.given_name || '';
     const lastName = googleUser.family_name || '';
-    const fullName = googleUser.name || `${firstName} ${lastName}`.trim();
     const avatarUrl = googleUser.picture || '';
 
     // Check if user exists
     const existingUser = await queryControl(
-      `SELECT id, email_verified_at FROM users WHERE email = $1 AND deleted_at IS NULL`,
+      `SELECT id FROM users WHERE email = $1 AND deleted_at IS NULL`,
       [email]
     );
 
     if (existingUser.rows.length > 0) {
-      // User exists - check if email verified
-      if (existingUser.rows[0].email_verified_at) {
-        // Email verified - create session and redirect to dashboard
-        // For now, redirect to login with success
-        return NextResponse.redirect(new URL('/auth/login?google=true', request.url));
-      } else {
-        // Update email_verified
-        await queryControl(
-          `UPDATE users SET email_verified_at = NOW(), status = 'active', updated_at = NOW() WHERE id = $1`,
-          [existingUser.rows[0].id]
-        );
-        return NextResponse.redirect(new URL('/auth/login?google=true', request.url));
-      }
+      // User exists - redirect to login
+      return NextResponse.redirect(new URL('/auth/login?google=true', request.url));
     }
 
-    // New user - save Google data and redirect to google-complete
-    const tempId = crypto.randomBytes(16).toString('hex');
-
-    // Store temporarily (in production use a proper flow)
-    const googleData = {
-      tempId,
-      email,
-      firstName,
-      lastName,
-      fullName,
-      avatarUrl,
-      emailVerified: true,
-    };
-
-    // Save to sessionStorage via redirect URL params (temporary)
+    // New user - redirect to google-complete
     const redirectUrl = new URL('/auth/google-complete', request.url);
-    redirectUrl.searchParams.set('tempId', tempId);
     redirectUrl.searchParams.set('email', email);
     redirectUrl.searchParams.set('firstName', firstName);
     redirectUrl.searchParams.set('lastName', lastName);

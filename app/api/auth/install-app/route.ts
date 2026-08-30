@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, getUserTenants } from '@/lib/auth/session';
 import { queryControl } from '@/lib/db/control';
 import { getTenantDatabaseName } from '@/lib/db/registry';
 import { getTenantPool } from '@/lib/db/tenant';
@@ -9,9 +8,6 @@ import path from 'path';
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-
     const { tenantId, appKey } = await request.json();
 
     if (!tenantId || !appKey) {
@@ -23,11 +19,9 @@ export async function POST(request: NextRequest) {
       `SELECT id, key, name, version FROM modules WHERE key = $1 AND status = 'active'`,
       [appKey]
     );
-
     if (moduleResult.rows.length === 0) {
       return NextResponse.json({ error: 'Module not found' }, { status: 404 });
     }
-
     const module = moduleResult.rows[0];
 
     // Check plan limits
@@ -38,7 +32,6 @@ export async function POST(request: NextRequest) {
        ORDER BY s.created_at DESC LIMIT 1`,
       [tenantId]
     );
-
     if (subResult.rows.length === 0) {
       return NextResponse.json({ error: 'No active subscription' }, { status: 403 });
     }
@@ -47,8 +40,9 @@ export async function POST(request: NextRequest) {
       `SELECT COUNT(*) as count FROM tenant_modules WHERE tenant_id = $1 AND status = 'installed'`,
       [tenantId]
     );
+    const installedCount = parseInt(countResult.rows[0].count);
 
-    if (subResult.rows[0].included_apps !== -1 && parseInt(countResult.rows[0].count) >= subResult.rows[0].included_apps) {
+    if (subResult.rows[0].included_apps !== -1 && installedCount >= subResult.rows[0].included_apps) {
       return NextResponse.json({
         error: 'upgrade_required',
         message: 'Free plan includes only 1 app. Upgrade to install more.',
@@ -72,7 +66,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Record
+    // Record installation
     await queryControl(
       `INSERT INTO tenant_modules (tenant_id, module_id, version, status, installed_at)
        VALUES ($1, $2, $3, 'installed', NOW())
@@ -83,7 +77,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, message: `${module.name} installed` });
 
   } catch (error) {
-    console.error('Install error:', error);
-    return NextResponse.json({ error: 'Failed to install' }, { status: 500 });
+    console.error('Install app error:', error);
+    return NextResponse.json({ error: 'Failed to install app' }, { status: 500 });
   }
 }

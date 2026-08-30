@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle, AppWindow } from 'lucide-react';
+import { Sun, Moon, ArrowRight, ArrowLeft, Check, X, AlertTriangle } from 'lucide-react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 import { SAMI_APPS, APP_CATEGORIES } from '@/lib/sami-apps';
 

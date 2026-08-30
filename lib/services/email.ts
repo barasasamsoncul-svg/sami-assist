@@ -76,7 +76,7 @@ export async function sendVerificationEmail(to: string, token: string, appUrl: s
   const link = `${appUrl}/auth/verify-email?token=${token}`;
   const content = `
     <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Verify your email address</h2>
-    <p style="margin: 16px 0; color: #6b7280; font-size: 14px; line-height: 1.6;">Click the button below to verify your email and activate your account.</p>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;">Click below to verify your email and activate your account.</p>
     <a href="${link}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">Verify Email</a>
   `;
   return sendEmail(to, 'Verify your SaMi email', brandedTemplate('Verify Email', content));
@@ -114,11 +114,10 @@ export async function sendTwoFactorCode(to: string, code: string) {
   return sendEmail(to, 'Your SaMi verification code', brandedTemplate('Verification Code', content));
 }
 
-// NEW: Email change code
 export async function sendEmailChangeCode(to: string, code: string) {
   const content = `
     <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">Your email change code</h2>
-    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;">Enter this code to verify your new email address:</p>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;">Enter this code to verify your new email:</p>
     <div style="background: #f3f4f6; border-radius: 12px; padding: 24px; margin: 16px 0;">
       <span style="font-size: 36px; font-weight: 700; letter-spacing: 10px; color: #111827;">${code}</span>
     </div>
@@ -130,7 +129,7 @@ export async function sendEmailChangeCode(to: string, code: string) {
 export async function sendInviteEmail(to: string, inviteLink: string, tenantName: string, inviterName: string) {
   const content = `
     <h2 style="margin: 0; color: #111827; font-size: 22px; font-weight: 700;">You've been invited! 🎉</h2>
-    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;"><strong>${inviterName}</strong> invited you to join <strong>${tenantName}</strong> on SaMi.</p>
+    <p style="margin: 16px 0; color: #6b7280; font-size: 14px;"><strong>${inviterName}</strong> invited you to join <strong>${tenantName}</strong>.</p>
     <a href="${inviteLink}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 14px 36px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 15px; margin-top: 8px;">Accept Invite</a>
   `;
   return sendEmail(to, `Invitation to join ${tenantName}`, brandedTemplate('Invitation', content));
