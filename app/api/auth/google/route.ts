@@ -34,27 +34,16 @@ export async function GET(
 
     /*
      * ============================================================
-     * 2. Determine callback URL
-     * ============================================================
      *
-     * NEXT_PUBLIC_APP_URL should be your actual SaMi URL in
-     * production.
-     *
-     * Example:
-     *
-     * https://your-domain.com
-     *
-     * For local development we fall back to the current origin.
-     */
+ * ============================================================
+ * 3. Build exact redirect URI
+ * ============================================================
+ *
+ * Use the request origin for the callback URL.
+ */
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL;
-
-    const redirectUri =
-      appUrl
-        ? `${appUrl.replace(/\/+$/, '')}/api/auth/google/callback`
-        : `${request.nextUrl.origin}/api/auth/google/callback`;
-
+const redirectUri =
+  `${request.nextUrl.origin}/api/auth/google/callback`;
     /*
      * ============================================================
      * 3. Generate OAuth state

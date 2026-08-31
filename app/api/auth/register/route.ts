@@ -1001,6 +1001,7 @@ export async function POST(
             businessName,
             plan: finalPlan,
             selectedApps,
+            origin: request.nextUrl.origin, 
           });
 
         return NextResponse.json(

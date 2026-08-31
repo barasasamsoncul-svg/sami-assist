@@ -63,21 +63,16 @@ export async function GET(
 
     /*
      * ============================================================
-     * 3. Build exact redirect URI
-     * ============================================================
      *
-     * Prefer NEXT_PUBLIC_APP_URL in production so the callback
-     * matches the URL registered in Google Cloud.
-     */
+ * ============================================================
+ * 3. Build exact redirect URI
+ * ============================================================
+ *
+ * Use the request origin for the callback URL.
+ */
 
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL;
-
-    const redirectUri =
-      appUrl
-        ? `${appUrl.replace(/\/+$/, '')}/api/auth/google/callback`
-        : `${request.nextUrl.origin}/api/auth/google/callback`;
-
+const redirectUri =
+  `${request.nextUrl.origin}/api/auth/google/callback`;
     /*
      * ============================================================
      * 4. Exchange authorization code for Google tokens

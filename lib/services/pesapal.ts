@@ -32,6 +32,7 @@ interface PesaPalOrder {
   businessName: string;
   plan: string;
   selectedApps: string[];
+   origin?: string;
 }
 
 interface PesaPalTokenResponse {
@@ -233,28 +234,22 @@ export async function createPesaPalOrder(
     await getPesaPalAccessToken();
 
   /*
-   * ==========================================================
-   * Validate required environment variables
-   * ==========================================================
-   */
+   *
+ * ============================================================
+ * 1. Validate required environment variables
+ * ============================================================
+ */
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL;
+const ipnId = process.env.PESAPAL_IPN_ID;
 
-  const ipnId =
-    process.env.PESAPAL_IPN_ID;
+if (!ipnId) {
+  throw new Error(
+    'PESAPAL_IPN_ID is not configured.'
+  );
+}
 
-  if (!appUrl) {
-    throw new Error(
-      'NEXT_PUBLIC_APP_URL is not configured.'
-    );
-  }
-
-  if (!ipnId) {
-    throw new Error(
-      'PESAPAL_IPN_ID is not configured.'
-    );
-  }
+// Use request origin for callback URL
+const appUrl = data.origin || 'http://localhost:3000';
 
   /*
    * ==========================================================
