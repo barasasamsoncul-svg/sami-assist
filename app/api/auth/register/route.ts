@@ -469,16 +469,16 @@ export async function POST(
 
     /*
      * ============================================================
-     * 10. CREATE VERIFICATION CODE (for free plan only)
+     * 10. CREATE VERIFICATION CODE (ONLY FOR FREE PLANS)
      * ============================================================
+     * 
+     * Paid plans: Verification code is generated AFTER payment
+     * in the PesaPal callback.
      */
-
     let verificationCode = '';
     let verificationHash = '';
     let verificationExpiresAt: Date | null = null;
 
-    // Only generate verification code for free plans
-    // Paid plans get verification code after payment callback
     if (!requiresPayment) {
       verificationCode = generateVerificationCode();
       verificationHash = hashVerificationCode(verificationCode);
@@ -797,25 +797,20 @@ export async function POST(
 
       /*
        * ----------------------------------------------------------
-       * REMOVE OLD VERIFICATION CODES
-       * ----------------------------------------------------------
-       */
-
-      await queryControl(
-        `
-          DELETE FROM email_verifications
-          WHERE email = $1
-        `,
-        [email]
-      );
-
-      /*
-       * ----------------------------------------------------------
        * STORE VERIFICATION CODE (ONLY FOR FREE PLANS)
        * ----------------------------------------------------------
        */
 
       if (!requiresPayment && verificationCode) {
+        // Remove old verification codes
+        await queryControl(
+          `
+            DELETE FROM email_verifications
+            WHERE email = $1
+          `,
+          [email]
+        );
+
         await queryControl(
           `
             INSERT INTO email_verifications (
@@ -843,11 +838,11 @@ export async function POST(
        * ==========================================================
        * 12. SEND VERIFICATION EMAIL (ONLY FOR FREE PLANS)
        * ==========================================================
-       *
+       * 
        * Paid plans:
        *   Email verification is sent AFTER payment and provisioning
        *   in the PesaPal callback.
-       *
+       * 
        * Free plans:
        *   Email verification is sent immediately after registration.
        */
@@ -859,6 +854,7 @@ export async function POST(
             verificationCode,
             firstName
           );
+          console.log(`[SaMi] Verification email sent to ${email}`);
         } catch (emailError) {
           console.error(
             'Verification email failed:',
@@ -868,7 +864,6 @@ export async function POST(
           /*
            * Best-effort cleanup.
            */
-
           if (tenantId) {
             try {
               await queryControl(
@@ -972,7 +967,6 @@ export async function POST(
       /*
        * Best-effort cleanup.
        */
-
       if (tenantId) {
         try {
           await queryControl(

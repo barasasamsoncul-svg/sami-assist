@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -20,6 +19,18 @@ type MessageState = {
   text: string;
 } | null;
 
+type VerifyResponse = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  requiresPayment?: boolean;
+  pesapalOrder?: {
+    redirectUrl?: string;
+    orderTrackingId?: string;
+    merchantReference?: string;
+  };
+};
+
 export default function VerifyEmailPage() {
   const router = useRouter();
 
@@ -31,6 +42,7 @@ export default function VerifyEmailPage() {
   const [success, setSuccess] = useState(false);
   const [email, setEmail] = useState('');
   const [timeLeft, setTimeLeft] = useState(60);
+  const [redirectingToPayment, setRedirectingToPayment] = useState(false);
 
   const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -184,11 +196,7 @@ export default function VerifyEmailPage() {
         }),
       });
 
-      let data: {
-        success?: boolean;
-        error?: string;
-        message?: string;
-      } = {};
+      let data: VerifyResponse = {};
 
       try {
         data = await response.json();
@@ -204,33 +212,63 @@ export default function VerifyEmailPage() {
             data.message ||
             'The verification code is invalid or has expired. Please try again.',
         });
-
+        setLoading(false);
         return;
       }
 
       /*
-       * Verification successful.
+       * ============================================================
+       * PAID PLAN: Redirect to PesaPal after verification
+       * ============================================================
+       * 
+       * For paid plans, email verification happens AFTER payment.
+       * The user verifies email, then goes to PesaPal to pay.
+       */
+      if (data.requiresPayment && data.pesapalOrder?.redirectUrl) {
+        setSuccess(true);
+        setRedirectingToPayment(true);
+        setMessage({
+          type: 'success',
+          text: 'Email verified! Redirecting to payment...',
+        });
+
+        sessionStorage.removeItem('sami_verification_email');
+
+        redirectTimerRef.current = setTimeout(() => {
+          if (data.pesapalOrder?.redirectUrl) {
+            window.location.href = data.pesapalOrder.redirectUrl;
+          }
+        }, 1500);
+
+        setLoading(false);
+        return;
+      }
+
+      /*
+       * ============================================================
+       * FREE PLAN: Redirect to login after verification
+       * ============================================================
+       * 
+       * For free plans, email verification is the final step.
+       * After verification, user can login.
        */
       setSuccess(true);
+      setRedirectingToPayment(false);
       setMessage(null);
 
-      /*
-       * The email is no longer needed after successful verification.
-       */
       sessionStorage.removeItem('sami_verification_email');
 
-      /*
-       * Keep the redirect short so the user sees confirmation.
-       */
       redirectTimerRef.current = setTimeout(() => {
         router.replace('/auth/login?verified=true');
       }, 1500);
+
+      setLoading(false);
+
     } catch {
       setMessage({
         type: 'error',
         text: 'We could not verify your email right now. Please check your connection and try again.',
       });
-    } finally {
       setLoading(false);
     }
   };
@@ -284,15 +322,7 @@ export default function VerifyEmailPage() {
         return;
       }
 
-      /*
-       * Restart resend cooldown.
-       */
       setTimeLeft(60);
-
-      /*
-       * Clear the previous code so the user doesn't accidentally
-       * submit an expired code.
-       */
       setCode('');
 
       setMessage({
@@ -398,8 +428,9 @@ export default function VerifyEmailPage() {
               </h1>
 
               <p className="mt-2 text-[14px] leading-relaxed text-gray-500 dark:text-gray-400">
-                Your SaMi account has been successfully
-                verified.
+                {redirectingToPayment
+                  ? 'Your email has been verified. Redirecting to payment...'
+                  : 'Your SaMi account has been successfully verified.'}
               </p>
 
               <div className="mt-6 flex items-center justify-center gap-2 text-[12px] text-gray-400 dark:text-gray-500">
@@ -407,7 +438,9 @@ export default function VerifyEmailPage() {
                   size={14}
                   className="animate-spin"
                 />
-                Redirecting to sign in...
+                {redirectingToPayment
+                  ? 'Redirecting to payment...'
+                  : 'Redirecting to sign in...'}
               </div>
             </div>
           ) : (
