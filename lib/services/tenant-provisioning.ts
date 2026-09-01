@@ -250,11 +250,12 @@ function getValidatedApps(appKeys: unknown): string[] {
  * lib/sami_tenant_core.sql
  */
 async function readTenantCoreSchema(): Promise<string> {
-  const schemaPath = path.join(
-    process.cwd(),
-    "lib",
-    "sami_tenant_core.sql"
-  );
+   const schemaPath = path.join(
+  process.cwd(),
+  "lib",
+  "schema",
+  "tenant-core.sql"
+);
 
   try {
     const sql = await fs.readFile(

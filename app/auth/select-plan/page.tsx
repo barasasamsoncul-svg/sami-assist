@@ -251,10 +251,6 @@ export default function SelectPlanPage() {
         return;
       }
 
-      /*
-       * Free is allowed only when exactly one app is selected.
-       * Multiple apps automatically require Standard.
-       */
       const finalPlan: PlanKey =
         selectedApps.length > 1
           ? 'standard'
@@ -295,43 +291,53 @@ export default function SelectPlanPage() {
       }
 
       /*
-       * Paid plan
-       *
-       * The API should return something similar to:
-       *
-       * {
-       *   requiresPayment: true,
-       *   pesapalOrder: {
-       *     redirectUrl: "https://..."
-       *   }
-       * }
+       * ==========================================================
+       * PAID PLAN - Payment happens AFTER email verification
+       * ==========================================================
        */
-      if (
-        data?.requiresPayment &&
-        data?.pesapalOrder?.redirectUrl
-      ) {
+      if (data?.requiresPayment) {
         const monthlyPrice =
           finalPlan === 'standard'
             ? 'KES 2,000'
             : 'KES 3,340';
 
+        const verificationEmail =
+          accountForm.email.toLowerCase().trim();
+
+        sessionStorage.setItem(
+          'sami_verification_email',
+          verificationEmail
+        );
+
+        sessionStorage.setItem(
+          'sami_requires_payment',
+          'true'
+        );
+
+        sessionStorage.setItem(
+          'sami_payment_plan',
+          finalPlan
+        );
+
         setOverlay({
-          type: 'payment',
-          title: 'Complete your payment',
-          message: `Your 15-day free trial is ready. After the trial, your ${finalPlan} plan will cost ${monthlyPrice}/month.`,
-          redirectUrl:
-            data.pesapalOrder.redirectUrl,
+          type: 'success',
+          title: 'Account created',
+          message: `We've sent a verification code to ${verificationEmail}. Please check your inbox. After verification, you'll be redirected to payment for your ${finalPlan} plan (${monthlyPrice}/month).`,
         });
 
         setLoading(false);
+
+        setTimeout(() => {
+          router.push('/auth/verify-email');
+        }, 2500);
+
         return;
       }
 
       /*
-       * Free plan
-       *
-       * The registration API should send the
-       * email verification code.
+       * ==========================================================
+       * FREE PLAN - Just verify email and login
+       * ==========================================================
        */
       if (data?.success) {
         const verificationEmail =
@@ -340,6 +346,11 @@ export default function SelectPlanPage() {
         sessionStorage.setItem(
           'sami_verification_email',
           verificationEmail
+        );
+
+        sessionStorage.setItem(
+          'sami_requires_payment',
+          'false'
         );
 
         setOverlay({

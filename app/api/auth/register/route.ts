@@ -1,11 +1,8 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { queryControl } from '@/lib/db/control';
-import { provisionTenant } from '@/lib/services/tenant-provisioning';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '@/lib/services/email';
-import { createPesaPalOrder } from '@/lib/services/pesapal';
 
 export const runtime = 'nodejs';
 
@@ -90,25 +87,11 @@ function isValidEmail(email: string): boolean {
 
 /**
  * Validate password length.
- *
- * Authentication policy can be strengthened later with
- * breached-password checking and password history.
  */
 function isValidPassword(password: string): boolean {
   return (
     password.length >= 8 &&
     password.length <= 128
-  );
-}
-
-/**
- * Validate tenant ID format before using it in follow-up
- * operations.
- */
-function isValidTenantId(value: string): boolean {
-  return (
-    value.length > 0 &&
-    value.length <= 128
   );
 }
 
@@ -319,9 +302,6 @@ export async function POST(
       const existing =
         existingUser.rows[0];
 
-      /*
-       * Never automatically destroy soft-deleted accounts.
-       */
       if (existing.deleted_at) {
         return NextResponse.json(
           {
@@ -335,9 +315,6 @@ export async function POST(
         );
       }
 
-      /*
-       * Existing but unverified account.
-       */
       if (
         !existing.email_verified_at &&
         (
@@ -422,14 +399,6 @@ export async function POST(
      * ============================================================
      * 7. DETERMINE PLAN
      * ============================================================
-     *
-     * Current SaMi business rule:
-     *
-     * One app:
-     *   free / standard / custom
-     *
-     * Multiple apps:
-     *   standard
      */
 
     const requiresPayment =
@@ -620,15 +589,6 @@ export async function POST(
       tenantId =
         tenantResult.rows[0].id;
 
-      function isValidTenantId(
-  value: unknown
-): value is string {
-  return (
-    typeof value === 'string' &&
-    value.trim().length > 0
-  );
-}
-
       /*
        * ----------------------------------------------------------
        * OWNER MEMBERSHIP
@@ -803,14 +763,6 @@ export async function POST(
        * ----------------------------------------------------------
        * RESERVE SELECTED APPS
        * ----------------------------------------------------------
-       *
-       * Apps stay pending until:
-       *
-       * verification
-       * +
-       * payment where required
-       * +
-       * provisioning
        */
 
       for (
@@ -954,102 +906,14 @@ export async function POST(
 
       /*
        * ==========================================================
-       * 13. PAYMENT REQUIRED
-       * ==========================================================
-       */
-
-      if (requiresPayment) {
-        const standardPrice =
-          Number(
-            process.env
-              .PESAPAL_PRICE_STANDARD_MONTHLY ||
-              2000
-          );
-
-        const customPrice =
-          Number(
-            process.env
-              .PESAPAL_PRICE_CUSTOM_MONTHLY ||
-              3340
-          );
-
-        const amount =
-          finalPlan === 'standard'
-            ? standardPrice
-            : customPrice;
-
-        if (!tenantId) {
-          throw new Error(
-            'Tenant was not created.'
-          );
-        }
-
-        if (!subscriptionId) {
-          throw new Error(
-            'Subscription was not created.'
-          );
-        }
-
-        const pesapalOrder =
-          await createPesaPalOrder({
-            tenantId,
-            subscriptionId,
-            amount,
-            email,
-            firstName,
-            lastName,
-            businessName,
-            plan: finalPlan,
-            selectedApps,
-            origin: request.nextUrl.origin, 
-          });
-
-        return NextResponse.json(
-          {
-            success: true,
-            requiresPayment: true,
-            verificationRequired: true,
-
-            user: {
-              id: userId,
-              email,
-              emailVerified: false,
-            },
-
-            tenant: {
-              id: tenantId,
-              name: businessName,
-              slug,
-              status: 'pending_payment',
-            },
-
-            subscription: {
-              id: subscriptionId,
-              plan: finalPlan,
-              status: 'pending_payment',
-            },
-
-            selectedApps,
-
-            pesapalOrder,
-
-            message:
-              'Account created. Please verify your email and complete payment to activate your workspace.',
-          },
-          { status: 201 }
-        );
-      }
-
-      /*
-       * ==========================================================
-       * 14. FREE / TRIAL RESPONSE
+       * 13. RETURN RESPONSE (NO PESAPAL - Payment happens after verification)
        * ==========================================================
        */
 
       return NextResponse.json(
         {
           success: true,
-          requiresPayment: false,
+          requiresPayment: requiresPayment,
           verificationRequired: true,
 
           user: {
@@ -1062,21 +926,21 @@ export async function POST(
             id: tenantId,
             name: businessName,
             slug,
-            status:
-              'pending_verification',
+            status: requiresPayment ? 'pending_payment' : 'pending_verification',
           },
 
           subscription: {
             id: subscriptionId,
             plan: finalPlan,
-            status: 'pending',
+            status: requiresPayment ? 'pending_payment' : 'pending',
             trialDays: TRIAL_DAYS,
           },
 
           selectedApps,
 
-          message:
-            'Account created. We sent a verification code to your email. Please verify your email to continue.',
+          message: requiresPayment 
+            ? 'Account created. Please verify your email, then complete payment to activate your workspace.'
+            : 'Account created. We sent a verification code to your email. Please verify your email to continue.',
         },
         { status: 201 }
       );
@@ -1095,8 +959,6 @@ export async function POST(
 
       /*
        * Best-effort cleanup.
-       *
-       * We only delete records created during this registration.
        */
 
       if (tenantId) {

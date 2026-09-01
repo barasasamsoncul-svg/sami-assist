@@ -1,4 +1,3 @@
-
 import {
   NextRequest,
   NextResponse,
@@ -16,24 +15,9 @@ import {
   getPesaPalTransactionStatus,
 } from '@/lib/services/pesapal';
 
-export const runtime = 'nodejs';
+import crypto from 'crypto'
 
-/*
- * ============================================================
- * PesaPal IPN
- * ============================================================
- *
- * PesaPal API 3.0 sends:
- *
- * OrderNotificationType
- * OrderTrackingId
- * OrderMerchantReference
- *
- * It does NOT send the trusted payment status.
- *
- * We therefore query PesaPal ourselves before activating
- * anything.
- */
+export const runtime = 'nodejs';
 
 export async function POST(
   request: NextRequest
@@ -70,12 +54,6 @@ export async function POST(
       ).trim()
         .toUpperCase();
 
-    /*
-     * ==========================================================
-     * 2. Validate notification
-     * ==========================================================
-     */
-
     if (!orderTrackingId) {
       return NextResponse.json(
         {
@@ -98,13 +76,6 @@ export async function POST(
       );
     }
 
-    /*
-     * API 3.0 IPN notifications normally use IPNCHANGE.
-     *
-     * We don't reject an empty notification type too aggressively
-     * because some environments/configurations may omit it.
-     */
-
     if (
       notificationType &&
       notificationType !==
@@ -118,16 +89,8 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 3. Find our payment transaction
+     * 2. Find our payment transaction
      * ==========================================================
-     *
-     * Match BOTH:
-     *
-     * - PesaPal tracking ID
-     * - our merchant reference
-     *
-     * This prevents a payment notification from accidentally
-     * being attached to another SaMi transaction.
      */
 
     const transactionResult =
@@ -167,11 +130,6 @@ export async function POST(
         }
       );
 
-      /*
-       * Return a controlled response rather than throwing.
-       * This allows us to log the unknown transaction.
-       */
-
       return NextResponse.json(
         {
           success: false,
@@ -193,13 +151,8 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 4. Idempotency
+     * 3. Idempotency
      * ==========================================================
-     *
-     * PesaPal may notify us more than once.
-     *
-     * If the transaction is already completed, don't provision
-     * the workspace again.
      */
 
     if (
@@ -219,7 +172,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 5. Ask PesaPal for the REAL status
+     * 4. Ask PesaPal for the REAL status
      * ==========================================================
      */
 
@@ -233,13 +186,8 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 6. Verify amount/currency
+     * 5. Verify amount/currency
      * ==========================================================
-     *
-     * Never activate a subscription merely because the status
-     * says COMPLETED.
-     *
-     * Make sure the payment amount matches our transaction.
      */
 
     if (
@@ -251,13 +199,10 @@ export async function POST(
         'PesaPal amount mismatch:',
         {
           tenantId,
-
           expected:
             transaction.amount,
-
           received:
             payment.amount,
-
           orderTrackingId,
         }
       );
@@ -279,10 +224,8 @@ export async function POST(
           JSON.stringify({
             failureReason:
               'amount_mismatch',
-
             pesapalAmount:
               payment.amount,
-
             expectedAmount:
               transaction.amount,
           }),
@@ -310,10 +253,8 @@ export async function POST(
         'PesaPal currency mismatch:',
         {
           tenantId,
-
           expected:
             transaction.currency,
-
           received:
             payment.currency,
         }
@@ -331,7 +272,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 7. Handle PENDING
+     * 6. Handle PENDING
      * ==========================================================
      */
 
@@ -356,7 +297,6 @@ export async function POST(
           JSON.stringify({
             pesapalStatus:
               'PENDING',
-
             lastCheckedAt:
               new Date().toISOString(),
           }),
@@ -376,7 +316,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 8. Handle FAILED / INVALID
+     * 7. Handle FAILED / INVALID
      * ==========================================================
      */
 
@@ -403,22 +343,15 @@ export async function POST(
           JSON.stringify({
             pesapalStatus:
               paymentStatus,
-
             paymentMethod:
               payment.paymentMethod,
-
             confirmationCode:
               payment.confirmationCode,
-
             lastCheckedAt:
               new Date().toISOString(),
           }),
         ]
       );
-
-      /*
-       * Keep subscription pending/failed rather than activating it.
-       */
 
       if (subscriptionId) {
         await queryControl(
@@ -451,7 +384,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 9. Only COMPLETED can activate the subscription
+     * 8. Only COMPLETED can activate
      * ==========================================================
      */
 
@@ -464,7 +397,6 @@ export async function POST(
         {
           status:
             paymentStatus,
-
           orderTrackingId,
         }
       );
@@ -481,7 +413,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 10. Mark payment completed
+     * 9. Mark payment completed
      * ==========================================================
      */
 
@@ -502,13 +434,10 @@ export async function POST(
         JSON.stringify({
           pesapalStatus:
             'COMPLETED',
-
           paymentMethod:
             payment.paymentMethod,
-
           confirmationCode:
             payment.confirmationCode,
-
           completedAt:
             new Date().toISOString(),
         }),
@@ -517,7 +446,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 11. Activate subscription
+     * 10. Activate subscription
      * ==========================================================
      */
 
@@ -547,7 +476,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 12. Get apps reserved during registration
+     * 11. Get apps reserved during registration
      * ==========================================================
      */
 
@@ -578,7 +507,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 13. Provision workspace
+     * 12. Provision workspace
      * ==========================================================
      */
 
@@ -588,15 +517,6 @@ export async function POST(
         selectedApps
       );
     } catch (provisionError) {
-      /*
-       * IMPORTANT:
-       *
-       * Payment remains completed.
-       *
-       * We do NOT reverse the payment just because provisioning
-       * failed. The workspace can be retried/repaired separately.
-       */
-
       console.error(
         'Tenant provisioning failed after successful payment:',
         {
@@ -632,7 +552,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 14. Activate tenant
+     * 13. Activate tenant
      * ==========================================================
      */
 
@@ -649,7 +569,7 @@ export async function POST(
 
     /*
      * ==========================================================
-     * 15. Mark reserved apps as installed
+     * 14. Mark reserved apps as installed
      * ==========================================================
      */
 
@@ -671,6 +591,55 @@ export async function POST(
 
     /*
      * ==========================================================
+     * 15. Send verification email after payment & provisioning
+     * ==========================================================
+     */
+
+    // Get user details
+    const userResult =
+      await queryControl(
+        `
+          SELECT u.id, u.email, u.first_name
+          FROM users u
+          INNER JOIN tenant_users tu ON tu.user_id = u.id
+          WHERE tu.tenant_id = $1
+            AND tu.is_owner = true
+            AND u.deleted_at IS NULL
+          LIMIT 1
+        `,
+        [tenantId]
+      );
+
+    if (userResult.rows.length > 0) {
+      const user = userResult.rows[0];
+
+      // Generate verification code
+      const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const hashedCode = crypto.createHash('sha256').update(verificationCode).digest('hex');
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+      // Store verification code
+      await queryControl(
+        `
+          INSERT INTO email_verifications (email, code_hash, expires_at, created_at)
+          VALUES ($1, $2, $3, NOW())
+        `,
+        [user.email, hashedCode, expiresAt]
+      );
+
+      // Send verification email
+      try {
+        const { sendVerificationEmail } = await import('@/lib/services/email');
+        await sendVerificationEmail(user.email, verificationCode, user.first_name);
+        console.log(`[SaMi] Verification email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error('[SaMi] Failed to send verification email:', emailError);
+        // Don't fail the callback, just log error
+      }
+    }
+
+    /*
+     * ==========================================================
      * 16. Success
      * ==========================================================
      */
@@ -678,19 +647,12 @@ export async function POST(
     return NextResponse.json(
       {
         success: true,
-
-        paymentCompleted:
-          true,
-
-        workspaceProvisioned:
-          true,
-
+        paymentCompleted: true,
+        workspaceProvisioned: true,
         tenantId,
-
         subscriptionId,
-
         message:
-          'Payment confirmed and workspace activated.',
+          'Payment confirmed and workspace activated. Check your email for verification.',
       },
       { status: 200 }
     );
