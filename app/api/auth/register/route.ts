@@ -469,25 +469,26 @@ export async function POST(
 
     /*
      * ============================================================
-     * 10. CREATE VERIFICATION CODE
+     * 10. CREATE VERIFICATION CODE (for free plan only)
      * ============================================================
      */
 
-    const verificationCode =
-      generateVerificationCode();
+    let verificationCode = '';
+    let verificationHash = '';
+    let verificationExpiresAt: Date | null = null;
 
-    const verificationHash =
-      hashVerificationCode(
-        verificationCode
-      );
-
-    const verificationExpiresAt =
-      new Date(
+    // Only generate verification code for free plans
+    // Paid plans get verification code after payment callback
+    if (!requiresPayment) {
+      verificationCode = generateVerificationCode();
+      verificationHash = hashVerificationCode(verificationCode);
+      verificationExpiresAt = new Date(
         Date.now() +
           VERIFICATION_EXPIRY_MINUTES *
             60 *
             1000
       );
+    }
 
     /*
      * ============================================================
@@ -810,103 +811,114 @@ export async function POST(
 
       /*
        * ----------------------------------------------------------
-       * STORE NEW VERIFICATION CODE
+       * STORE VERIFICATION CODE (ONLY FOR FREE PLANS)
        * ----------------------------------------------------------
        */
 
-      await queryControl(
-        `
-          INSERT INTO email_verifications (
+      if (!requiresPayment && verificationCode) {
+        await queryControl(
+          `
+            INSERT INTO email_verifications (
+              email,
+              code_hash,
+              expires_at,
+              created_at
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              NOW()
+            )
+          `,
+          [
             email,
-            code_hash,
-            expires_at,
-            created_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            NOW()
-          )
-        `,
-        [
-          email,
-          verificationHash,
-          verificationExpiresAt,
-        ]
-      );
-
-      /*
-       * ==========================================================
-       * 12. SEND VERIFICATION EMAIL
-       * ==========================================================
-       */
-
-      try {
-        await sendVerificationEmail(
-          email,
-          verificationCode,
-          firstName
-        );
-      } catch (emailError) {
-        console.error(
-          'Verification email failed:',
-          emailError
-        );
-
-        /*
-         * Best-effort cleanup.
-         */
-
-        if (tenantId) {
-          try {
-            await queryControl(
-              `
-                DELETE FROM tenants
-                WHERE id = $1
-              `,
-              [tenantId]
-            );
-          } catch (cleanupError) {
-            console.error(
-              'Tenant cleanup failed:',
-              cleanupError
-            );
-          }
-        }
-
-        if (userId) {
-          try {
-            await queryControl(
-              `
-                DELETE FROM users
-                WHERE id = $1
-              `,
-              [userId]
-            );
-          } catch (cleanupError) {
-            console.error(
-              'User cleanup failed:',
-              cleanupError
-            );
-          }
-        }
-
-        return NextResponse.json(
-          {
-            success: false,
-            code:
-              'VERIFICATION_EMAIL_FAILED',
-            error:
-              'We could not send your verification email. Please try again.',
-          },
-          { status: 503 }
+            verificationHash,
+            verificationExpiresAt,
+          ]
         );
       }
 
       /*
        * ==========================================================
-       * 13. RETURN RESPONSE (NO PESAPAL - Payment happens after verification)
+       * 12. SEND VERIFICATION EMAIL (ONLY FOR FREE PLANS)
+       * ==========================================================
+       *
+       * Paid plans:
+       *   Email verification is sent AFTER payment and provisioning
+       *   in the PesaPal callback.
+       *
+       * Free plans:
+       *   Email verification is sent immediately after registration.
+       */
+
+      if (!requiresPayment) {
+        try {
+          await sendVerificationEmail(
+            email,
+            verificationCode,
+            firstName
+          );
+        } catch (emailError) {
+          console.error(
+            'Verification email failed:',
+            emailError
+          );
+
+          /*
+           * Best-effort cleanup.
+           */
+
+          if (tenantId) {
+            try {
+              await queryControl(
+                `
+                  DELETE FROM tenants
+                  WHERE id = $1
+                `,
+                [tenantId]
+              );
+            } catch (cleanupError) {
+              console.error(
+                'Tenant cleanup failed:',
+                cleanupError
+              );
+            }
+          }
+
+          if (userId) {
+            try {
+              await queryControl(
+                `
+                  DELETE FROM users
+                  WHERE id = $1
+                `,
+                [userId]
+              );
+            } catch (cleanupError) {
+              console.error(
+                'User cleanup failed:',
+                cleanupError
+              );
+            }
+          }
+
+          return NextResponse.json(
+            {
+              success: false,
+              code:
+                'VERIFICATION_EMAIL_FAILED',
+              error:
+                'We could not send your verification email. Please try again.',
+            },
+            { status: 503 }
+          );
+        }
+      }
+
+      /*
+       * ==========================================================
+       * 13. RETURN RESPONSE
        * ==========================================================
        */
 
@@ -914,7 +926,7 @@ export async function POST(
         {
           success: true,
           requiresPayment: requiresPayment,
-          verificationRequired: true,
+          verificationRequired: !requiresPayment, // Only free plans need verification now
 
           user: {
             id: userId,
@@ -933,13 +945,13 @@ export async function POST(
             id: subscriptionId,
             plan: finalPlan,
             status: requiresPayment ? 'pending_payment' : 'pending',
-            trialDays: TRIAL_DAYS,
+            trialDays: requiresPayment ? 15 : TRIAL_DAYS,
           },
 
           selectedApps,
 
-          message: requiresPayment 
-            ? 'Account created. Please verify your email, then complete payment to activate your workspace.'
+          message: requiresPayment
+            ? 'Account created. You will be redirected to complete payment.'
             : 'Account created. We sent a verification code to your email. Please verify your email to continue.',
         },
         { status: 201 }
