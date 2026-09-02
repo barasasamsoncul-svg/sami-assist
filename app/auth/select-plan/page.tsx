@@ -292,51 +292,27 @@ export default function SelectPlanPage() {
 
       /*
        * ==========================================================
-       * PAID PLAN - Payment happens AFTER email verification
+       * PAID PLAN - Redirect to PesaPal immediately
        * ==========================================================
        */
-      if (data?.requiresPayment) {
-        const monthlyPrice =
-          finalPlan === 'standard'
-            ? 'KES 2,000'
-            : 'KES 3,340';
-
-        const verificationEmail =
-          accountForm.email.toLowerCase().trim();
-
-        sessionStorage.setItem(
-          'sami_verification_email',
-          verificationEmail
-        );
-
-        sessionStorage.setItem(
-          'sami_requires_payment',
-          'true'
-        );
-
-        sessionStorage.setItem(
-          'sami_payment_plan',
-          finalPlan
-        );
+      if (data?.requiresPayment && data?.pesapalOrder?.redirectUrl) {
+        // Store email for later verification (after payment)
+        sessionStorage.setItem('sami_verification_email', accountForm.email);
 
         setOverlay({
-          type: 'success',
-          title: 'Account created',
-          message: `We've sent a verification code to ${verificationEmail}. Please check your inbox. After verification, you'll be redirected to payment for your ${finalPlan} plan (${monthlyPrice}/month).`,
+          type: 'payment',
+          title: 'Complete Payment',
+          message: `Your 15-day free trial is ready. Complete payment to activate your workspace.`,
+          redirectUrl: data.pesapalOrder.redirectUrl,
         });
 
         setLoading(false);
-
-        setTimeout(() => {
-          router.push('/auth/verify-email');
-        }, 2500);
-
         return;
       }
 
       /*
        * ==========================================================
-       * FREE PLAN - Just verify email and login
+       * FREE PLAN - Go to verify email
        * ==========================================================
        */
       if (data?.success) {
@@ -348,15 +324,10 @@ export default function SelectPlanPage() {
           verificationEmail
         );
 
-        sessionStorage.setItem(
-          'sami_requires_payment',
-          'false'
-        );
-
         setOverlay({
           type: 'success',
           title: 'Account created',
-          message: `We've sent a verification code to ${verificationEmail}. Please check your inbox.`,
+          message: `We've sent a verification code to ${verificationEmail}. Please check your inbox to activate your account.`,
         });
 
         setLoading(false);
@@ -633,7 +604,7 @@ export default function SelectPlanPage() {
                     handleCreateAccount
                   }
                   disabled={loading}
-                  className="h-[44px] px-6 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="h-[44px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <>
