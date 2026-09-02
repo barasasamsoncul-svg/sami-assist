@@ -49,9 +49,6 @@ function hashVerificationCode(
 
 /**
  * Safely extract a required database ID.
- *
- * PostgreSQL/pg can expose returned values as
- * nullable depending on inferred types.
  */
 function requireDatabaseId(
   value: unknown,
@@ -102,31 +99,9 @@ function normalizeAmount(
 }
 
 /**
- * POST /api/auth/pesapal-callback
- *
- * Handles PesaPal IPN callbacks after payment.
- *
- * Flow:
- *
- * 1. Read PesaPal notification.
- * 2. Find our payment transaction.
- * 3. Ask PesaPal for the authoritative status.
- * 4. Verify amount and currency.
- * 5. Handle pending/failed payments.
- * 6. Activate subscription only after COMPLETED.
- * 7. Provision the tenant.
- * 8. Activate tenant/modules.
- * 9. Generate email verification code.
- * 10. Send verification email.
- *
- * IMPORTANT:
- * Payment completion and workspace provisioning are
- * deliberately treated as separate operations.
- *
- * A successful payment must never be lost just because
- * tenant provisioning temporarily fails.
+ * Main handler for PesaPal callback (supports both POST and GET)
  */
-export async function POST(
+async function handlePesaPalCallback(
   request: NextRequest
 ) {
   try {
@@ -134,39 +109,57 @@ export async function POST(
     // 1. READ PESA PAL NOTIFICATION
     // ==========================================================
 
-    let body: Record<string, unknown>;
+    let body: Record<string, unknown> = {};
+    let orderTrackingId = '';
+    let merchantReference = '';
+    let notificationType = '';
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid request body.',
-        },
-        { status: 400 }
-      );
+    // Check if it's a GET request with query params
+    if (request.method === 'GET') {
+      const url = new URL(request.url);
+      orderTrackingId = url.searchParams.get('OrderTrackingId') || 
+                        url.searchParams.get('order_tracking_id') || 
+                        '';
+      merchantReference = url.searchParams.get('OrderMerchantReference') || 
+                          url.searchParams.get('merchant_reference') || 
+                          '';
+      notificationType = url.searchParams.get('OrderNotificationType') || 
+                         url.searchParams.get('order_notification_type') || 
+                         '';
+    } else {
+      // POST request with JSON body
+      try {
+        body = await request.json();
+      } catch {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid request body.',
+          },
+          { status: 400 }
+        );
+      }
+
+      orderTrackingId = String(
+        body.OrderTrackingId ??
+          body.order_tracking_id ??
+          ''
+      ).trim();
+
+      merchantReference = String(
+        body.OrderMerchantReference ??
+          body.merchant_reference ??
+          ''
+      ).trim();
+
+      notificationType = String(
+        body.OrderNotificationType ??
+          body.order_notification_type ??
+          ''
+      )
+        .trim()
+        .toUpperCase();
     }
-
-    const orderTrackingId = String(
-      body.OrderTrackingId ??
-        body.order_tracking_id ??
-        ''
-    ).trim();
-
-    const merchantReference = String(
-      body.OrderMerchantReference ??
-        body.merchant_reference ??
-        ''
-    ).trim();
-
-    const notificationType = String(
-      body.OrderNotificationType ??
-        body.order_notification_type ??
-        ''
-    )
-      .trim()
-      .toUpperCase();
 
     // ==========================================================
     // 2. VALIDATE NOTIFICATION
@@ -193,6 +186,13 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    console.log('[SaMi] PesaPal callback received:', {
+      orderTrackingId,
+      merchantReference,
+      notificationType,
+      method: request.method,
+    });
 
     if (
       notificationType &&
@@ -245,17 +245,12 @@ export async function POST(
         }
       );
 
-      /*
-       * Returning 404 may cause PesaPal to retry the
-       * notification. That is preferable to silently
-       * acknowledging a transaction SaMi does not know.
-       */
       return NextResponse.json(
         {
           success: false,
           error: 'Transaction not found.',
         },
-        { status: 404 }
+        { status: 200 }
       );
     }
 
@@ -294,16 +289,6 @@ export async function POST(
     // 4. IDEMPOTENCY / RECOVERY CHECK
     // ==========================================================
 
-    /*
-     * A payment marked completed normally needs no further
-     * processing.
-     *
-     * HOWEVER:
-     *
-     * If payment completed but tenant provisioning previously
-     * failed, we intentionally continue so the callback can
-     * retry provisioning.
-     */
     if (
       transactionStatus === 'completed'
     ) {
@@ -339,10 +324,6 @@ export async function POST(
           .trim()
           .toLowerCase();
 
-      /*
-       * Payment is already complete and workspace is active.
-       * Nothing else needs to happen.
-       */
       if (
         tenantStatus === 'active'
       ) {
@@ -361,9 +342,6 @@ export async function POST(
         );
       }
 
-      /*
-       * Otherwise continue and attempt provisioning again.
-       */
       console.log(
         `[SaMi] Payment ${transactionId} is completed but tenant ${tenantId} is ${tenantStatus}. Retrying workspace provisioning.`
       );
@@ -406,10 +384,6 @@ export async function POST(
         payment.amount
       );
 
-    /*
-     * Only perform the amount comparison when PesaPal
-     * actually supplied an amount.
-     */
     if (
       receivedAmount !== null &&
       expectedAmount !== null &&
@@ -459,7 +433,7 @@ export async function POST(
           error:
             'Payment amount mismatch.',
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -533,7 +507,7 @@ export async function POST(
           error:
             'Payment currency mismatch.',
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -668,7 +642,7 @@ export async function POST(
           error:
             'Unknown payment status.',
         },
-        { status: 409 }
+        { status: 200 }
       );
     }
 
@@ -767,9 +741,6 @@ export async function POST(
     // ==========================================================
 
     try {
-      /*
-       * tenantId is guaranteed to be a string here.
-       */
       await provisionTenant(
         tenantId,
         selectedApps
@@ -778,10 +749,6 @@ export async function POST(
       console.log(
         `[SaMi] Tenant ${tenantId} provisioned successfully after payment`
       );
-
-      // ----------------------------------------------------------
-      // ACTIVATE TENANT
-      // ----------------------------------------------------------
 
       await queryControl(
         `
@@ -793,10 +760,6 @@ export async function POST(
         `,
         [tenantId]
       );
-
-      // ----------------------------------------------------------
-      // MARK MODULES INSTALLED
-      // ----------------------------------------------------------
 
       await queryControl(
         `
@@ -823,15 +786,6 @@ export async function POST(
         }
       );
 
-      /*
-       * IMPORTANT:
-       *
-       * We do NOT reverse the successful payment.
-       * The customer has already paid.
-       *
-       * We mark the tenant as provisioning_failed so
-       * a retry/recovery process can provision it later.
-       */
       await queryControl(
         `
           UPDATE tenants
@@ -891,10 +845,6 @@ export async function POST(
       const user =
         userResult.rows[0];
 
-      /*
-       * If the owner is already verified, do not generate
-       * another verification code.
-       */
       if (!user.email_verified_at) {
         const verificationCode =
           generateVerificationCode();
@@ -912,10 +862,6 @@ export async function POST(
                 1000
           );
 
-        // --------------------------------------------------------
-        // DELETE OLD CODES
-        // --------------------------------------------------------
-
         await queryControl(
           `
             DELETE FROM email_verifications
@@ -923,10 +869,6 @@ export async function POST(
           `,
           [user.email]
         );
-
-        // --------------------------------------------------------
-        // STORE NEW CODE
-        // --------------------------------------------------------
 
         await queryControl(
           `
@@ -950,10 +892,6 @@ export async function POST(
           ]
         );
 
-        // --------------------------------------------------------
-        // SEND VERIFICATION EMAIL
-        // --------------------------------------------------------
-
         try {
           await sendVerificationEmail(
             user.email,
@@ -967,11 +905,6 @@ export async function POST(
             `[SaMi] Verification email sent to ${user.email}`
           );
         } catch (emailError) {
-          /*
-           * Payment and provisioning have already succeeded.
-           * Email failure must not cause the payment callback
-           * to be considered failed.
-           */
           console.error(
             '[SaMi] Failed to send verification email:',
             emailError
@@ -1001,10 +934,6 @@ export async function POST(
       { status: 200 }
     );
   } catch (error) {
-    // ==========================================================
-    // GLOBAL ERROR HANDLER
-    // ==========================================================
-
     console.error(
       '[SaMi] PesaPal IPN processing error:',
       error
@@ -1019,4 +948,24 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+/**
+ * POST /api/auth/pesapal-callback
+ */
+export async function POST(
+  request: NextRequest
+) {
+  return handlePesaPalCallback(request);
+}
+
+/**
+ * GET /api/auth/pesapal-callback
+ * 
+ * PesaPal sometimes sends GET requests with query parameters
+ */
+export async function GET(
+  request: NextRequest
+) {
+  return handlePesaPalCallback(request);
 }
