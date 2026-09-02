@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -293,11 +292,45 @@ export default function SelectAppsPage() {
   };
 
   /* ------------------------------------------------------------------------ */
+  /* Get category color                                                       */
+  /* ------------------------------------------------------------------------ */
+
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      finance: 'from-emerald-500/20 to-emerald-600/10 border-emerald-200 dark:border-emerald-800/30',
+      documents: 'from-amber-500/20 to-amber-600/10 border-amber-200 dark:border-amber-800/30',
+      sales: 'from-blue-500/20 to-blue-600/10 border-blue-200 dark:border-blue-800/30',
+      commerce: 'from-purple-500/20 to-purple-600/10 border-purple-200 dark:border-purple-800/30',
+      supply_chain: 'from-orange-500/20 to-orange-600/10 border-orange-200 dark:border-orange-800/30',
+      operations: 'from-cyan-500/20 to-cyan-600/10 border-cyan-200 dark:border-cyan-800/30',
+      people: 'from-pink-500/20 to-pink-600/10 border-pink-200 dark:border-pink-800/30',
+      marketing: 'from-rose-500/20 to-rose-600/10 border-rose-200 dark:border-rose-800/30',
+      work: 'from-indigo-500/20 to-indigo-600/10 border-indigo-200 dark:border-indigo-800/30',
+    };
+    return colors[category] || 'from-gray-500/20 to-gray-600/10 border-gray-200 dark:border-gray-800/30';
+  };
+
+  const getCategoryBadgeColor = (category: string) => {
+    const colors: Record<string, string> = {
+      finance: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+      documents: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+      sales: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+      commerce: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+      supply_chain: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+      operations: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+      people: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+      marketing: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+      work: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    };
+    return colors[category] || 'bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300';
+  };
+
+  /* ------------------------------------------------------------------------ */
   /* Render                                                                   */
   /* ------------------------------------------------------------------------ */
 
   return (
-    <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-5 py-10 transition-colors duration-200">
+    <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-4 py-8 sm:px-6 sm:py-10 transition-colors duration-200">
       {/* Theme button */}
       <button
         type="button"
@@ -316,7 +349,7 @@ export default function SelectAppsPage() {
         )}
       </button>
 
-      <div className="w-full max-w-[820px] mx-auto">
+      <div className="w-full max-w-7xl mx-auto">
         {/* Main card */}
         <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
           <div className="px-6 py-7 sm:px-10 sm:py-9">
@@ -373,7 +406,7 @@ export default function SelectAppsPage() {
             {/* Category tabs                                                     */}
             {/* ---------------------------------------------------------------- */}
 
-            <div className="mb-5">
+            <div className="mb-6">
               <div className="flex flex-wrap gap-1.5">
                 {/* All */}
                 <button
@@ -419,7 +452,7 @@ export default function SelectAppsPage() {
             {/* Selection summary                                                 */}
             {/* ---------------------------------------------------------------- */}
 
-            <div className="mb-4 flex items-center justify-between gap-4">
+            <div className="mb-5 flex items-center justify-between gap-4">
               <p className="text-[12px] text-gray-500 dark:text-gray-400">
                 {filteredApps.length}{' '}
                 {filteredApps.length === 1
@@ -436,9 +469,11 @@ export default function SelectAppsPage() {
               </p>
             </div>
 
-          
+            {/* ---------------------------------------------------------------- */}
+            {/* Apps grid - 3D card style with colors                            */}
+            {/* ---------------------------------------------------------------- */}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto pr-1 mb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[480px] overflow-y-auto pr-1 mb-6">
               {filteredApps.map((app) => {
                 const IconComponent = getIconComponent(
                   app.icon
@@ -450,16 +485,20 @@ export default function SelectAppsPage() {
                 const isRecommended =
                   Boolean(app.recommended);
 
+                const categoryColor = getCategoryColor(app.category);
+                const categoryBadgeColor = getCategoryBadgeColor(app.category);
+                const categoryName = APP_CATEGORIES.find(c => c.key === app.category)?.name || app.category;
+
                 return (
                   <button
                     key={app.key}
                     type="button"
                     onClick={() => toggleApp(app.key)}
                     aria-pressed={isSelected}
-                    className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
                       isSelected
-                        ? 'border-blue-600 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 shadow-lg shadow-blue-500/10 dark:shadow-blue-500/5 scale-[1.02]'
-                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-0.5'
+                        ? `border-blue-600 bg-gradient-to-br ${categoryColor} shadow-lg shadow-blue-500/15 dark:shadow-blue-500/10 scale-[1.02]`
+                        : 'border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/80 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-1'
                     }`}
                   >
                     {/* Recommended badge */}
@@ -483,10 +522,10 @@ export default function SelectAppsPage() {
                     <div className="flex flex-col items-center text-center">
                       {/* Icon with 3D effect */}
                       <div
-                        className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-200 ${
+                        className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-300 ${
                           isSelected
-                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30'
-                            : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20'
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/40 scale-110'
+                            : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20 group-hover:scale-105'
                         }`}
                       >
                         <IconComponent
@@ -508,9 +547,9 @@ export default function SelectAppsPage() {
                         {app.description}
                       </p>
 
-                      {/* Category tag */}
-                      <span className="mt-2 inline-block px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[9px] font-medium text-gray-500 dark:text-gray-400">
-                        {APP_CATEGORIES.find(c => c.key === app.category)?.name || app.category}
+                      {/* Category tag with color */}
+                      <span className={`mt-2 inline-block px-2.5 py-0.5 rounded-full text-[9px] font-medium ${categoryBadgeColor}`}>
+                        {categoryName}
                       </span>
                     </div>
                   </button>
@@ -519,15 +558,15 @@ export default function SelectAppsPage() {
 
               {/* Empty category */}
               {filteredApps.length === 0 && (
-                <div className="col-span-full py-12 text-center">
-                  <div className="mx-auto h-14 w-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                <div className="col-span-full py-16 text-center">
+                  <div className="mx-auto h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <Package
-                      size={24}
+                      size={28}
                       className="text-gray-400"
                     />
                   </div>
 
-                  <p className="mt-3 text-sm font-medium text-gray-900 dark:text-white">
+                  <p className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
                     No apps in this category
                   </p>
 
@@ -538,7 +577,9 @@ export default function SelectAppsPage() {
               )}
             </div>
 
-     
+            {/* ---------------------------------------------------------------- */}
+            {/* Bottom actions                                                    */}
+            {/* ---------------------------------------------------------------- */}
 
             <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -616,7 +657,9 @@ export default function SelectAppsPage() {
         </div>
       </div>
 
-     
+      {/* ---------------------------------------------------------------------- */}
+      {/* Error overlay                                                          */}
+      {/* ---------------------------------------------------------------------- */}
 
       {overlay && (
         <div

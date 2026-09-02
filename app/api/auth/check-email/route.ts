@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { queryControl } from '@/lib/db/control';
 
@@ -11,7 +10,6 @@ export async function GET(request: NextRequest) {
       ?.trim()
       .toLowerCase();
 
-    // Validate email exists
     if (!email) {
       return NextResponse.json(
         {
@@ -22,9 +20,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Basic email validation
-    const emailRegex =
-      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
       return NextResponse.json(
@@ -36,7 +32,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check whether an active/non-deleted account exists
     const result = await queryControl(
       `
         SELECT id

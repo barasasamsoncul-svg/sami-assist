@@ -4,67 +4,34 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { sendVerificationEmail } from '@/lib/services/email';
 import { provisionTenant } from '@/lib/services/tenant-provisioning';
-import { z } from 'zod';
+import { createPesaPalOrder } from '@/lib/services/pesapal';
 
 export const runtime = 'nodejs';
 
 const VERIFICATION_EXPIRY_MINUTES = 15;
 const TRIAL_DAYS = 15;
 const BCRYPT_ROUNDS = 12;
-const MAX_APPS = 50;
-const MAX_BUSINESS_NAME_LENGTH = 120;
-const MIN_BUSINESS_NAME_LENGTH = 2;
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_MAX_LENGTH = 128;
 
 const ALLOWED_PLANS = new Set(['free', 'standard', 'custom']);
 
-// Validation schema using Zod
-const registerSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(80, 'First name too long'),
-  lastName: z.string().min(1, 'Last name is required').max(80, 'Last name too long'),
-  email: z.string().email('Invalid email address').max(254, 'Email too long'),
-  phone: z.string().optional().nullable(),
-  password: z.string()
-    .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
-    .max(PASSWORD_MAX_LENGTH, `Password must be less than ${PASSWORD_MAX_LENGTH} characters`),
-  businessName: z.string()
-    .min(MIN_BUSINESS_NAME_LENGTH, `Business name must be at least ${MIN_BUSINESS_NAME_LENGTH} characters`)
-    .max(MAX_BUSINESS_NAME_LENGTH, `Business name must be less than ${MAX_BUSINESS_NAME_LENGTH} characters`),
-  plan: z.string().optional().default('free'),
-  selectedApps: z.array(z.string()).min(1, 'Select at least one app'),
-});
-
-type RegisterInput = z.infer<typeof registerSchema>;
-
-/**
- * Normalize email addresses consistently.
- */
 function normalizeEmail(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim().toLowerCase();
 }
 
-/**
- * Normalize names.
- */
 function normalizeName(value: unknown): string {
   if (typeof value !== 'string') return '';
   return value.trim();
 }
 
-/**
- * Normalize phone number.
- */
 function normalizePhone(value: unknown): string | null {
   if (typeof value !== 'string') return null;
+
   const phone = value.trim();
+
   return phone.length > 0 ? phone : null;
 }
 
-/**
- * Create a URL-safe workspace slug.
- */
 function createSlug(value: string): string {
   return value
     .toLowerCase()
@@ -74,176 +41,204 @@ function createSlug(value: string): string {
     .slice(0, 80);
 }
 
-/**
- * Generate cryptographically secure 6-digit code.
- */
 function generateVerificationCode(): string {
   return crypto.randomInt(100000, 1000000).toString();
 }
 
-/**
- * Hash verification code before storing it.
- */
 function hashVerificationCode(code: string): string {
   return crypto.createHash('sha256').update(code).digest('hex');
 }
 
-/**
- * Rate limiting check
- */
-async function checkRateLimit(email: string): Promise<{ allowed: boolean; message?: string }> {
-  const recentAttempts = await queryControl(
-    `
-      SELECT COUNT(*) as count
-      FROM audit_logs
-      WHERE action = 'registration_attempt'
-        AND metadata->>'email' = $1
-        AND created_at > NOW() - INTERVAL '1 hour'
-    `,
-    [email]
-  );
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
-  const count = parseInt(recentAttempts.rows[0]?.count || '0');
-  if (count >= 5) {
-    return { allowed: false, message: 'Too many registration attempts. Please try again later.' };
-  }
-
-  return { allowed: true };
+function isValidPassword(password: string): boolean {
+  return password.length >= 8 && password.length <= 128;
 }
 
 /**
- * Log registration attempt
+ * Safely extract a database ID.
+ *
+ * pg can infer returned columns as nullable depending on the query/type
+ * definitions. We validate the value before using it anywhere that
+ * requires a definite string.
  */
-async function logRegistrationAttempt(email: string, success: boolean, error?: string) {
-  await queryControl(
-    `
-      INSERT INTO audit_logs (
-        action,
-        resource_type,
-        result,
-        metadata,
-        created_at
-      )
-      VALUES (
-        'registration_attempt',
-        'user',
-        $1,
-        $2,
-        NOW()
-      )
-    `,
-    [
-      success ? 'success' : 'failure',
-      JSON.stringify({ email, error: error || null }),
-    ]
-  );
+function requireDatabaseId(
+  value: unknown,
+  entityName: string
+): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(
+      `Invalid ${entityName} ID returned from database.`
+    );
+  }
+
+  return value;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    /*
-     * ============================================================
-     * 1. PARSE REQUEST
-     * ============================================================
-     */
-
     let body: Record<string, unknown>;
 
     try {
       body = await request.json();
     } catch {
       return NextResponse.json(
-        { success: false, error: 'Invalid request body.' },
+        {
+          success: false,
+          error: 'Invalid request body.',
+        },
         { status: 400 }
       );
     }
 
-    /*
-     * ============================================================
-     * 2. VALIDATE REQUEST
-     * ============================================================
-     */
+    const firstName = normalizeName(body.firstName);
+    const lastName = normalizeName(body.lastName);
+    const email = normalizeEmail(body.email);
+    const phone = normalizePhone(body.phone);
+    const password =
+      typeof body.password === 'string'
+        ? body.password
+        : '';
 
-    let validatedData: RegisterInput;
+    const businessName = normalizeName(body.businessName);
 
-    try {
-      validatedData = registerSchema.parse({
-        firstName: normalizeName(body.firstName),
-        lastName: normalizeName(body.lastName),
-        email: normalizeEmail(body.email),
-        phone: normalizePhone(body.phone),
-        password: typeof body.password === 'string' ? body.password : '',
-        businessName: normalizeName(body.businessName),
-        plan: typeof body.plan === 'string' ? body.plan.trim().toLowerCase() : 'free',
-        selectedApps: Array.isArray(body.selectedApps)
-          ? body.selectedApps.filter((app): app is string => typeof app === 'string')
-          : [],
-      });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        const firstError = error.issues[0]?.message || 'Validation failed';
-        return NextResponse.json(
-          { success: false, error: firstError },
-          { status: 400 }
-        );
-      }
+    const requestedPlan =
+      typeof body.plan === 'string'
+        ? body.plan.trim().toLowerCase()
+        : 'free';
+
+    const rawSelectedApps = body.selectedApps;
+
+    // ------------------------------------------------------------
+    // BASIC VALIDATION
+    // ------------------------------------------------------------
+
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !businessName
+    ) {
       return NextResponse.json(
-        { success: false, error: 'Invalid input' },
+        {
+          success: false,
+          error:
+            'First name, last name, email, password and business name are required.',
+        },
         { status: 400 }
       );
     }
 
-    const { firstName, lastName, email, phone, password, businessName, plan: requestedPlan, selectedApps } = validatedData;
-
-    /*
-     * ============================================================
-     * 3. RATE LIMITING
-     * ============================================================
-     */
-
-    const rateLimit = await checkRateLimit(email);
-    if (!rateLimit.allowed) {
+    if (!isValidEmail(email)) {
       return NextResponse.json(
-        { success: false, error: rateLimit.message },
-        { status: 429 }
-      );
-    }
-
-    /*
-     * ============================================================
-     * 4. VALIDATE SELECTED APPS (MAX LIMIT)
-     * ============================================================
-     */
-
-    if (selectedApps.length > MAX_APPS) {
-      return NextResponse.json(
-        { success: false, error: `Too many apps selected. Maximum ${MAX_APPS} allowed.` },
+        {
+          success: false,
+          error: 'Please enter a valid email address.',
+        },
         { status: 400 }
       );
     }
 
-    /*
-     * ============================================================
-     * 5. VALIDATE PLAN
-     * ============================================================
-     */
+    if (!isValidPassword(password)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Password must be between 8 and 128 characters.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (
+      businessName.length < 2 ||
+      businessName.length > 120
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Business name must be between 2 and 120 characters.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // ------------------------------------------------------------
+    // SELECTED APPS
+    // ------------------------------------------------------------
+
+    if (!Array.isArray(rawSelectedApps)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Please select at least one SaMi app.',
+        },
+        { status: 400 }
+      );
+    }
+
+    const selectedApps = [
+      ...new Set(
+        rawSelectedApps
+          .filter(
+            (app): app is string =>
+              typeof app === 'string'
+          )
+          .map((app) => app.trim().toLowerCase())
+          .filter(Boolean)
+      ),
+    ];
+
+    if (selectedApps.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Please select at least one SaMi app.',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (selectedApps.length > 50) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Too many apps selected.',
+        },
+        { status: 400 }
+      );
+    }
+
+    // ------------------------------------------------------------
+    // PLAN VALIDATION
+    // ------------------------------------------------------------
 
     if (!ALLOWED_PLANS.has(requestedPlan)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid subscription plan.' },
+        {
+          success: false,
+          error: 'Invalid subscription plan.',
+        },
         { status: 400 }
       );
     }
 
-    /*
-     * ============================================================
-     * 6. CHECK EXISTING USER
-     * ============================================================
-     */
+    // ------------------------------------------------------------
+    // CHECK EXISTING USER
+    // ------------------------------------------------------------
 
     const existingUser = await queryControl(
       `
-        SELECT id, email, status, email_verified_at, deleted_at
+        SELECT
+          id,
+          email,
+          status,
+          email_verified_at,
+          deleted_at
         FROM users
         WHERE LOWER(email) = $1
         LIMIT 1
@@ -259,18 +254,26 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             code: 'ACCOUNT_PREVIOUSLY_DELETED',
-            error: 'An account previously associated with this email exists. Please contact SaMi support.',
+            error:
+              'An account previously associated with this email exists. Please contact SaMi support.',
           },
           { status: 409 }
         );
       }
 
-      if (!existing.email_verified_at && (existing.status === 'pending_verification' || existing.status === 'pending')) {
+      if (
+        !existing.email_verified_at &&
+        (
+          existing.status === 'pending_verification' ||
+          existing.status === 'pending'
+        )
+      ) {
         return NextResponse.json(
           {
             success: false,
             code: 'EMAIL_VERIFICATION_REQUIRED',
-            error: 'An account with this email already exists and is awaiting email verification.',
+            error:
+              'An account with this email already exists and is awaiting email verification.',
           },
           { status: 409 }
         );
@@ -280,21 +283,25 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           code: 'EMAIL_ALREADY_REGISTERED',
-          error: 'An account with this email already exists.',
+          error:
+            'An account with this email already exists.',
         },
         { status: 409 }
       );
     }
 
-    /*
-     * ============================================================
-     * 7. VALIDATE APPS AGAINST CONTROL DATABASE
-     * ============================================================
-     */
+    // ------------------------------------------------------------
+    // VALIDATE SELECTED APPS AGAINST CONTROL DATABASE
+    // ------------------------------------------------------------
 
     const moduleResult = await queryControl(
       `
-        SELECT id, key, name, version, status
+        SELECT
+          id,
+          key,
+          name,
+          version,
+          status
         FROM modules
         WHERE key = ANY($1::text[])
           AND deleted_at IS NULL
@@ -302,45 +309,63 @@ export async function POST(request: NextRequest) {
       [selectedApps]
     );
 
-    const validApps = moduleResult.rows.map((row) => String(row.key));
+    const validApps = moduleResult.rows.map(
+      (row) => String(row.key)
+    );
+
     const validAppSet = new Set(validApps);
-    const invalidApps = selectedApps.filter((appKey) => !validAppSet.has(appKey));
+
+    const invalidApps = selectedApps.filter(
+      (appKey) => !validAppSet.has(appKey)
+    );
 
     if (invalidApps.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          error: 'One or more selected SaMi apps are unavailable.',
+          error:
+            'One or more selected SaMi apps are unavailable.',
           invalidApps,
         },
         { status: 400 }
       );
     }
 
-    /*
-     * ============================================================
-     * 8. DETERMINE PLAN
-     * ============================================================
-     */
+    // ------------------------------------------------------------
+    // DETERMINE PLAN
+    // ------------------------------------------------------------
 
+    /*
+     * Current business rule:
+     *
+     * One selected app  -> requested plan
+     * Multiple apps     -> standard plan + payment
+     */
     const requiresPayment = selectedApps.length > 1;
-    const finalPlan = requiresPayment ? 'standard' : requestedPlan;
 
-    /*
-     * ============================================================
-     * 9. HASH PASSWORD
-     * ============================================================
-     */
+    const finalPlan = requiresPayment
+      ? 'standard'
+      : requestedPlan;
 
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    // ------------------------------------------------------------
+    // HASH PASSWORD
+    // ------------------------------------------------------------
 
-    /*
-     * ============================================================
-     * 10. CREATE UNIQUE TENANT SLUG
-     * ============================================================
-     */
+    const passwordHash = await bcrypt.hash(
+      password,
+      BCRYPT_ROUNDS
+    );
 
-    const baseSlug = createSlug(businessName) || `workspace-${crypto.randomBytes(4).toString('hex')}`;
+    // ------------------------------------------------------------
+    // CREATE UNIQUE TENANT SLUG
+    // ------------------------------------------------------------
+
+    const baseSlug =
+      createSlug(businessName) ||
+      `workspace-${crypto
+        .randomBytes(4)
+        .toString('hex')}`;
+
     let slug = baseSlug;
 
     for (let counter = 1; counter <= 100; counter++) {
@@ -348,36 +373,37 @@ export async function POST(request: NextRequest) {
         `
           SELECT id
           FROM tenants
-          WHERE slug = $1 AND deleted_at IS NULL
+          WHERE slug = $1
+            AND deleted_at IS NULL
           LIMIT 1
         `,
         [slug]
       );
 
-      if (existingTenant.rows.length === 0) break;
+      if (existingTenant.rows.length === 0) {
+        break;
+      }
+
       slug = `${baseSlug}-${counter}`;
 
       if (counter === 100) {
-        slug = `${baseSlug}-${crypto.randomBytes(4).toString('hex')}`;
+        slug =
+          `${baseSlug}-${crypto
+            .randomBytes(4)
+            .toString('hex')}`;
       }
     }
 
-    /*
-     * ============================================================
-     * 11. CREATE ACCOUNT RECORDS
-     * ============================================================
-     */
-
+    // These remain nullable only until their corresponding
+    // database records are successfully created.
     let userId: string | null = null;
     let tenantId: string | null = null;
     let subscriptionId: string | null = null;
 
     try {
-      /*
-       * ----------------------------------------------------------
-       * USER
-       * ----------------------------------------------------------
-       */
+      // ----------------------------------------------------------
+      // CREATE USER
+      // ----------------------------------------------------------
 
       const userResult = await queryControl(
         `
@@ -400,7 +426,7 @@ export async function POST(request: NextRequest) {
             $4,
             $5,
             $6,
-            $7,
+            'pending_verification',
             NULL,
             NOW(),
             NOW()
@@ -414,19 +440,27 @@ export async function POST(request: NextRequest) {
           lastName,
           `${firstName} ${lastName}`,
           phone,
-          'pending_verification',
         ]
       );
 
-      userId = userResult.rows[0].id;
+      if (userResult.rows.length === 0) {
+        throw new Error(
+          'User was not created by the database.'
+        );
+      }
 
-      /*
-       * ----------------------------------------------------------
-       * TENANT
-       * ----------------------------------------------------------
-       */
+      userId = requireDatabaseId(
+        userResult.rows[0].id,
+        'user'
+      );
 
-      const tenantStatus = requiresPayment ? 'pending_payment' : 'provisioning';
+      // ----------------------------------------------------------
+      // CREATE TENANT
+      // ----------------------------------------------------------
+
+      const tenantStatus = requiresPayment
+        ? 'pending_payment'
+        : 'provisioning';
 
       const tenantResult = await queryControl(
         `
@@ -446,16 +480,27 @@ export async function POST(request: NextRequest) {
           )
           RETURNING id
         `,
-        [businessName, slug, tenantStatus]
+        [
+          businessName,
+          slug,
+          tenantStatus,
+        ]
       );
 
-      tenantId = tenantResult.rows[0].id;
+      if (tenantResult.rows.length === 0) {
+        throw new Error(
+          'Tenant was not created by the database.'
+        );
+      }
 
-      /*
-       * ----------------------------------------------------------
-       * OWNER MEMBERSHIP
-       * ----------------------------------------------------------
-       */
+      tenantId = requireDatabaseId(
+        tenantResult.rows[0].id,
+        'tenant'
+      );
+
+      // ----------------------------------------------------------
+      // OWNER MEMBERSHIP
+      // ----------------------------------------------------------
 
       await queryControl(
         `
@@ -469,32 +514,41 @@ export async function POST(request: NextRequest) {
           VALUES (
             $1,
             $2,
-            $3,
-            $4,
+            'active',
+            true,
             NOW()
           )
         `,
-        [tenantId, userId, 'active', true]
+        [
+          tenantId,
+          userId,
+        ]
       );
 
-      /*
-       * ----------------------------------------------------------
-       * ADMIN ROLE
-       * ----------------------------------------------------------
-       */
+      // ----------------------------------------------------------
+      // ADMIN ROLE
+      // ----------------------------------------------------------
 
       const roleResult = await queryControl(
         `
           SELECT id
           FROM roles
-          WHERE name = 'admin' AND is_system = true
+          WHERE name = 'admin'
+            AND is_system = true
           LIMIT 1
         `
       );
 
       if (roleResult.rows.length === 0) {
-        throw new Error('System administrator role is not configured.');
+        throw new Error(
+          'System administrator role is not configured.'
+        );
       }
+
+      const roleId = requireDatabaseId(
+        roleResult.rows[0].id,
+        'admin role'
+      );
 
       await queryControl(
         `
@@ -511,78 +565,118 @@ export async function POST(request: NextRequest) {
             NOW()
           )
         `,
-        [tenantId, userId, roleResult.rows[0].id]
+        [
+          tenantId,
+          userId,
+          roleId,
+        ]
       );
 
-      /*
-       * ----------------------------------------------------------
-       * PLAN
-       * ----------------------------------------------------------
-       */
+      // ----------------------------------------------------------
+      // PLAN
+      // ----------------------------------------------------------
 
       const planResult = await queryControl(
         `
-          SELECT id, key, name, included_apps
+          SELECT
+            id,
+            key,
+            name,
+            included_apps
           FROM plans
-          WHERE key = $1 AND deleted_at IS NULL
+          WHERE key = $1
+            AND deleted_at IS NULL
           LIMIT 1
         `,
         [finalPlan]
       );
 
       if (planResult.rows.length === 0) {
-        throw new Error(`Subscription plan "${finalPlan}" is not configured.`);
+        throw new Error(
+          `Subscription plan "${finalPlan}" is not configured.`
+        );
       }
 
       const plan = planResult.rows[0];
 
-      /*
-       * ----------------------------------------------------------
-       * SUBSCRIPTION
-       * ----------------------------------------------------------
-       */
-
-      const subscriptionStatus = requiresPayment ? 'pending_payment' : 'pending';
-      const trialEndsAt = requiresPayment
-        ? null
-        : new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-
-      const subscriptionResult = await queryControl(
-        `
-          INSERT INTO subscriptions (
-            tenant_id,
-            plan_id,
-            status,
-            started_at,
-            trial_ends_at,
-            current_period_start,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            NOW(),
-            $4,
-            NOW(),
-            NOW(),
-            NOW()
-          )
-          RETURNING id
-        `,
-        [tenantId, plan.id, subscriptionStatus, trialEndsAt]
+      const planId = requireDatabaseId(
+        plan.id,
+        'subscription plan'
       );
 
-      subscriptionId = subscriptionResult.rows[0].id;
+      // ----------------------------------------------------------
+      // SUBSCRIPTION
+      // ----------------------------------------------------------
 
-      /*
-       * ----------------------------------------------------------
-       * RESERVE SELECTED APPS
-       * ----------------------------------------------------------
-       */
+      const subscriptionStatus = requiresPayment
+        ? 'pending_payment'
+        : 'pending';
+
+      const trialEndsAt = requiresPayment
+        ? null
+        : new Date(
+            Date.now() +
+              TRIAL_DAYS *
+                24 *
+                60 *
+                60 *
+                1000
+          );
+
+      const subscriptionResult =
+        await queryControl(
+          `
+            INSERT INTO subscriptions (
+              tenant_id,
+              plan_id,
+              status,
+              started_at,
+              trial_ends_at,
+              current_period_start,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              NOW(),
+              $4,
+              NOW(),
+              NOW(),
+              NOW()
+            )
+            RETURNING id
+          `,
+          [
+            tenantId,
+            planId,
+            subscriptionStatus,
+            trialEndsAt,
+          ]
+        );
+
+      if (subscriptionResult.rows.length === 0) {
+        throw new Error(
+          'Subscription was not created by the database.'
+        );
+      }
+
+      subscriptionId = requireDatabaseId(
+        subscriptionResult.rows[0].id,
+        'subscription'
+      );
+
+      // ----------------------------------------------------------
+      // RESERVE SELECTED APPS
+      // ----------------------------------------------------------
 
       for (const row of moduleResult.rows) {
+        const moduleId = requireDatabaseId(
+          row.id,
+          'module'
+        );
+
         await queryControl(
           `
             INSERT INTO tenant_modules (
@@ -601,68 +695,121 @@ export async function POST(request: NextRequest) {
             )
             ON CONFLICT DO NOTHING
           `,
-          [tenantId, row.id, row.version || null]
+          [
+            tenantId,
+            moduleId,
+            row.version || null,
+          ]
         );
       }
 
-      /*
-       * ==========================================================
-       * 12. FREE PLAN: PROVISION + SEND EMAIL
-       * ==========================================================
-       */
+      // ==========================================================
+      // FREE PLAN
+      // ==========================================================
 
       if (!requiresPayment) {
-        // Provision tenant
+        // --------------------------------------------------------
+        // PROVISION TENANT
+        // --------------------------------------------------------
+
         try {
-          if (tenantId === null) {
-            throw new Error('Tenant was not created.');
-          }
+          /*
+           * tenantId has already been validated above and is
+           * therefore a definite string here.
+           */
+          await provisionTenant(
+            tenantId,
+            selectedApps
+          );
 
-          await provisionTenant(tenantId, selectedApps);
-          console.log(`[SaMi] Tenant ${tenantId} provisioned successfully`);
+          console.log(
+            `[SaMi] Tenant ${tenantId} provisioned successfully`
+          );
 
-          // Update tenant to active
+          // ------------------------------------------------------
+          // UPDATE TENANT TO ACTIVE
+          // ------------------------------------------------------
+
           await queryControl(
             `
               UPDATE tenants
-              SET status = 'active', updated_at = NOW()
+              SET
+                status = 'active',
+                updated_at = NOW()
               WHERE id = $1
             `,
             [tenantId]
           );
 
-          // Update tenant_modules to installed
+          // ------------------------------------------------------
+          // MARK MODULES AS INSTALLED
+          // ------------------------------------------------------
+
           await queryControl(
             `
               UPDATE tenant_modules
-              SET status = 'installed', installed_at = NOW()
-              WHERE tenant_id = $1 AND status = 'pending'
+              SET
+                status = 'installed',
+                installed_at = NOW()
+              WHERE tenant_id = $1
+                AND status = 'pending'
             `,
             [tenantId]
           );
 
-          // Update subscription to active (only if subscriptionId is not null)
-          if (subscriptionId !== null) {
+          // ------------------------------------------------------
+          // ACTIVATE SUBSCRIPTION
+          // ------------------------------------------------------
+
+          if (subscriptionId) {
             await queryControl(
               `
                 UPDATE subscriptions
-                SET status = 'active', updated_at = NOW()
-                WHERE id = $1 AND status = 'pending'
+                SET
+                  status = 'active',
+                  updated_at = NOW()
+                WHERE id = $1
+                  AND status = 'pending'
               `,
               [subscriptionId]
             );
           }
         } catch (provisionError) {
-          console.error('[SaMi] Provisioning error:', provisionError);
-          // Don't fail registration, just log error
+          /*
+           * Registration itself can still be completed even if
+           * provisioning fails temporarily. The tenant remains
+           * available for recovery/re-provisioning.
+           */
+          console.error(
+            '[SaMi] Provisioning error:',
+            provisionError
+          );
         }
 
-        // Generate verification code
-        const verificationCode = generateVerificationCode();
-        const verificationHash = hashVerificationCode(verificationCode);
-        const verificationExpiresAt = new Date(Date.now() + VERIFICATION_EXPIRY_MINUTES * 60 * 1000);
+        // --------------------------------------------------------
+        // GENERATE EMAIL VERIFICATION CODE
+        // --------------------------------------------------------
 
-        // Remove old verification codes
+        const verificationCode =
+          generateVerificationCode();
+
+        const verificationHash =
+          hashVerificationCode(
+            verificationCode
+          );
+
+        const verificationExpiresAt =
+          new Date(
+            Date.now() +
+              VERIFICATION_EXPIRY_MINUTES *
+                60 *
+                1000
+          );
+
+        // --------------------------------------------------------
+        // REMOVE OLD VERIFICATION CODES
+        // --------------------------------------------------------
+
         await queryControl(
           `
             DELETE FROM email_verifications
@@ -671,7 +818,10 @@ export async function POST(request: NextRequest) {
           [email]
         );
 
-        // Store verification code
+        // --------------------------------------------------------
+        // STORE NEW VERIFICATION CODE
+        // --------------------------------------------------------
+
         await queryControl(
           `
             INSERT INTO email_verifications (
@@ -687,110 +837,275 @@ export async function POST(request: NextRequest) {
               NOW()
             )
           `,
-          [email, verificationHash, verificationExpiresAt]
+          [
+            email,
+            verificationHash,
+            verificationExpiresAt,
+          ]
         );
 
-        // Send verification email
+        // --------------------------------------------------------
+        // SEND VERIFICATION EMAIL
+        // --------------------------------------------------------
+
         try {
-          await sendVerificationEmail(email, verificationCode, firstName);
-          console.log(`[SaMi] Verification email sent to ${email}`);
+          await sendVerificationEmail(
+            email,
+            verificationCode,
+            firstName
+          );
+
+          console.log(
+            `[SaMi] Verification email sent to ${email}`
+          );
         } catch (emailError) {
-          console.error('[SaMi] Failed to send verification email:', emailError);
-          // Don't fail registration, just log error
+          console.error(
+            '[SaMi] Failed to send verification email:',
+            emailError
+          );
+
+          /*
+           * Do not expose SMTP/internal errors to the client.
+           * The account is still created and the user can use
+           * the resend-code flow later.
+           */
         }
+
+        // --------------------------------------------------------
+        // FREE PLAN RESPONSE
+        // --------------------------------------------------------
+
+        return NextResponse.json(
+          {
+            success: true,
+            requiresPayment: false,
+
+            user: {
+              id: userId,
+              email,
+              emailVerified: false,
+            },
+
+            tenant: {
+              id: tenantId,
+              name: businessName,
+              slug,
+              status: 'active',
+            },
+
+            subscription: {
+              id: subscriptionId,
+              plan: finalPlan,
+              status: 'active',
+              trialDays: TRIAL_DAYS,
+            },
+
+            selectedApps,
+
+            message:
+              'Account created. We sent a verification code to your email. Please verify your email to login.',
+          },
+          { status: 201 }
+        );
       }
 
-      /*
-       * ==========================================================
-       * 13. LOG SUCCESS
-       * ==========================================================
-       */
+      // ==========================================================
+      // PAID PLAN
+      // ==========================================================
 
-      await logRegistrationAttempt(email, true);
+      if (requiresPayment) {
+        const standardPrice = parseInt(
+          process.env.PESAPAL_PRICE_STANDARD_MONTHLY ||
+            '2000',
+          10
+        );
 
-      /*
-       * ==========================================================
-       * 14. RETURN RESPONSE
-       * ==========================================================
-       */
+        const customPrice = parseInt(
+          process.env.PESAPAL_PRICE_CUSTOM_MONTHLY ||
+            '3340',
+          10
+        );
+
+        const amount =
+          finalPlan === 'standard'
+            ? standardPrice
+            : customPrice;
+
+        if (
+          !Number.isFinite(amount) ||
+          amount <= 0
+        ) {
+          throw new Error(
+            'Invalid PesaPal subscription amount configured.'
+          );
+        }
+
+        /*
+         * At this point tenantId and subscriptionId have both
+         * already been validated after their INSERT operations.
+         */
+        const pesapalOrder =
+          await createPesaPalOrder({
+            tenantId,
+            subscriptionId,
+            amount,
+            email,
+            firstName,
+            lastName,
+            businessName,
+            plan: finalPlan,
+            selectedApps,
+
+            /*
+             * request.nextUrl.origin is the actual origin of
+             * the current request.
+             *
+             * This means registration does NOT depend on
+             * NEXT_PUBLIC_APP_URL.
+             */
+            origin: request.nextUrl.origin,
+          });
+
+        return NextResponse.json(
+          {
+            success: true,
+            requiresPayment: true,
+
+            pesapalOrder,
+
+            user: {
+              id: userId,
+              email,
+              emailVerified: false,
+            },
+
+            tenant: {
+              id: tenantId,
+              name: businessName,
+              slug,
+              status: 'pending_payment',
+            },
+
+            subscription: {
+              id: subscriptionId,
+              plan: finalPlan,
+              status: 'pending_payment',
+              trialDays: 0,
+            },
+
+            selectedApps,
+
+            message:
+              'Account created. Please complete payment to activate your workspace.',
+          },
+          { status: 201 }
+        );
+      }
+
+      // ==========================================================
+      // FALLBACK
+      // ==========================================================
 
       return NextResponse.json(
         {
           success: true,
-          requiresPayment: requiresPayment,
+          requiresPayment: false,
+
           user: {
             id: userId,
             email,
             emailVerified: false,
           },
+
           tenant: {
             id: tenantId,
             name: businessName,
             slug,
-            status: requiresPayment ? 'pending_payment' : 'active',
+            status: 'active',
           },
+
           subscription: {
             id: subscriptionId,
             plan: finalPlan,
-            status: requiresPayment ? 'pending_payment' : 'active',
-            trialDays: requiresPayment ? 15 : TRIAL_DAYS,
+            status: 'active',
+            trialDays: TRIAL_DAYS,
           },
+
           selectedApps,
-          message: requiresPayment
-            ? 'Account created. Please complete payment to activate your workspace.'
-            : 'Account created. We sent a verification code to your email. Please verify your email to login.',
+
+          message:
+            'Account created. We sent a verification code to your email. Please verify your email to login.',
         },
         { status: 201 }
       );
     } catch (error) {
-      /*
-       * ==========================================================
-       * REGISTRATION DATABASE ERROR
-       * ==========================================================
-       */
+      console.error(
+        'Registration database error:',
+        error
+      );
 
-      console.error('Registration database error:', error);
+      // ----------------------------------------------------------
+      // CLEANUP TENANT
+      // ----------------------------------------------------------
 
-      await logRegistrationAttempt(email, false, error instanceof Error ? error.message : 'Unknown error');
-
-      // Best-effort cleanup
       if (tenantId) {
         try {
-          await queryControl(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+          await queryControl(
+            `
+              DELETE FROM tenants
+              WHERE id = $1
+            `,
+            [tenantId]
+          );
         } catch (cleanupError) {
-          console.error('Tenant cleanup failed:', cleanupError);
+          console.error(
+            'Tenant cleanup failed:',
+            cleanupError
+          );
         }
       }
 
+      // ----------------------------------------------------------
+      // CLEANUP USER
+      // ----------------------------------------------------------
+
       if (userId) {
         try {
-          await queryControl(`DELETE FROM users WHERE id = $1`, [userId]);
+          await queryControl(
+            `
+              DELETE FROM users
+              WHERE id = $1
+            `,
+            [userId]
+          );
         } catch (cleanupError) {
-          console.error('User cleanup failed:', cleanupError);
+          console.error(
+            'User cleanup failed:',
+            cleanupError
+          );
         }
       }
 
       return NextResponse.json(
         {
           success: false,
-          error: 'Registration could not be completed. Please try again.',
+          error:
+            'Registration could not be completed. Please try again.',
         },
         { status: 500 }
       );
     }
   } catch (error) {
-    /*
-     * ============================================================
-     * UNEXPECTED ERROR
-     * ============================================================
-     */
-
-    console.error('Unexpected registration error:', error);
+    console.error(
+      'Unexpected registration error:',
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Registration failed. Please try again.',
+        error:
+          'Registration failed. Please try again.',
       },
       { status: 500 }
     );

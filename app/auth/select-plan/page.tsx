@@ -148,34 +148,27 @@ export default function SelectPlanPage() {
       if (plan.key === 'standard') {
         return [
           'relative p-5 rounded-xl border-2 text-left transition-all',
-          'border-blue-600',
-          'bg-blue-50 dark:bg-blue-900/20',
-          'shadow-sm',
+          'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-lg shadow-blue-500/10 scale-[1.02]',
         ].join(' ');
       }
 
       if (plan.key === 'custom') {
         return [
           'relative p-5 rounded-xl border-2 text-left transition-all',
-          'border-purple-600',
-          'bg-purple-50 dark:bg-purple-900/20',
-          'shadow-sm',
+          'border-purple-600 bg-purple-50 dark:bg-purple-900/20 shadow-lg shadow-purple-500/10 scale-[1.02]',
         ].join(' ');
       }
 
       return [
         'relative p-5 rounded-xl border-2 text-left transition-all',
-        'border-gray-600',
-        'bg-gray-50 dark:bg-gray-800/60',
-        'shadow-sm',
+        'border-gray-600 bg-gray-50 dark:bg-gray-800/60 shadow-lg scale-[1.02]',
       ].join(' ');
     }
 
     return [
       'relative p-5 rounded-xl border-2 text-left transition-all',
       'border-gray-200 dark:border-gray-700',
-      'hover:border-gray-300 dark:hover:border-gray-600',
-      'hover:bg-gray-50 dark:hover:bg-gray-800/50',
+      'hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50 hover:shadow-lg hover:-translate-y-0.5',
       'cursor-pointer',
     ].join(' ');
   };
@@ -472,9 +465,10 @@ export default function SelectPlanPage() {
                   >
                     {/* Selected indicator */}
                     {isSelected && (
-                      <div className="absolute top-3 right-3 h-5 w-5 rounded-full bg-blue-600 flex items-center justify-center">
+                      <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
                         <Check
-                          size={12}
+                          size={14}
+                          strokeWidth={3}
                           className="text-white"
                         />
                       </div>
@@ -483,7 +477,7 @@ export default function SelectPlanPage() {
                     {/* Popular badge */}
                     {plan.key ===
                       'standard' && (
-                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap">
+                      <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap shadow-md shadow-blue-500/30">
                         Most Popular
                       </div>
                     )}

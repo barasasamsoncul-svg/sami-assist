@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryControl } from '@/lib/db/control';
 import crypto from 'crypto';
+
+import { queryControl, withControlTransaction } from '@/lib/db/control';
 
 export const runtime = 'nodejs';
 
@@ -36,7 +37,9 @@ function isValidEmail(email: string): boolean {
 }
 
 /**
- * Hash the verification code.
+ * Hash the verification code before comparing it with the database.
+ *
+ * Verification codes are never stored or queried in plain text.
  */
 function hashVerificationCode(code: string): string {
   return crypto
@@ -47,18 +50,35 @@ function hashVerificationCode(code: string): string {
 
 /**
  * POST /api/auth/verify-code
- * 
- * This endpoint ONLY verifies the email code.
- * - Provisioning happens in register (free) or callback (paid)
- * - Email sending happens in register (free) or callback (paid)
+ *
+ * This endpoint ONLY verifies the email verification code.
+ *
+ * Responsibilities:
+ * - Validate email + 6-digit code
+ * - Find the user
+ * - Atomically consume the verification code
+ * - Mark the email as verified
+ * - Activate the account
+ * - Invalidate all remaining verification codes
+ * - Return tenant/subscription information
+ *
+ * NOT responsible for:
+ * - Sending verification emails
+ * - Creating verification codes
+ * - Provisioning tenants
+ * - Creating payments
+ * - Creating sessions
+ * - Redirecting users
+ *
+ * Email sending happens during registration/payment completion.
+ * Tenant provisioning happens during registration/payment completion.
+ * Login creates the authenticated session.
  */
 export async function POST(request: NextRequest) {
   try {
-    /*
-     * ============================================================
-     * 1. Parse request
-     * ============================================================
-     */
+    // ============================================================
+    // 1. Parse request
+    // ============================================================
 
     let body: unknown;
 
@@ -70,7 +90,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'Invalid request body.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -82,11 +102,9 @@ export async function POST(request: NextRequest) {
     const email = normalizeEmail(rawBody.email);
     const code = normalizeCode(rawBody.code);
 
-    /*
-     * ============================================================
-     * 2. Validate input
-     * ============================================================
-     */
+    // ============================================================
+    // 2. Validate input
+    // ============================================================
 
     if (!email || !code) {
       return NextResponse.json(
@@ -94,7 +112,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'Email and verification code are required.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -104,7 +122,7 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'Please enter a valid email address.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -114,54 +132,196 @@ export async function POST(request: NextRequest) {
           success: false,
           error: 'Verification code must be 6 digits.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    /*
-     * ============================================================
-     * 3. Find user
-     * ============================================================
-     */
+    // ============================================================
+    // 3. Hash submitted code
+    // ============================================================
 
-    const userResult = await queryControl(
-      `
-        SELECT
-          id,
-          email,
-          first_name,
-          last_name,
-          full_name,
-          status,
-          email_verified_at,
-          deleted_at
-        FROM users
-        WHERE LOWER(email) = $1
-          AND deleted_at IS NULL
-        LIMIT 1
-      `,
-      [email]
+    const hashedCode = hashVerificationCode(code);
+
+    // ============================================================
+    // 4. Atomically verify everything
+    // ============================================================
+    //
+    // These operations must succeed or fail together:
+    //
+    // 1. Find and consume the verification code
+    // 2. Mark email as verified
+    // 3. Activate the account
+    // 4. Invalidate all remaining codes
+    //
+    // Using a transaction prevents partially completed verification.
+    // ============================================================
+
+    const verificationResult = await withControlTransaction(
+      async (client) => {
+        // ----------------------------------------------------------
+        // Find the user
+        // ----------------------------------------------------------
+
+        const userResult = await client.query(
+          `
+            SELECT
+              id,
+              email,
+              first_name,
+              last_name,
+              full_name,
+              status,
+              email_verified_at,
+              deleted_at
+            FROM users
+            WHERE LOWER(email) = $1
+              AND deleted_at IS NULL
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [email],
+        );
+
+        if (userResult.rows.length === 0) {
+          return {
+            type: 'invalid' as const,
+          };
+        }
+
+        const user = userResult.rows[0];
+
+        // ----------------------------------------------------------
+        // Already verified
+        // ----------------------------------------------------------
+
+        if (user.email_verified_at) {
+          return {
+            type: 'already_verified' as const,
+            user,
+          };
+        }
+
+        // ----------------------------------------------------------
+        // Consume the newest valid verification code
+        // ----------------------------------------------------------
+
+        const codeResult = await client.query(
+          `
+            UPDATE email_verifications
+            SET used_at = NOW()
+            WHERE id = (
+              SELECT id
+              FROM email_verifications
+              WHERE email = $1
+                AND code_hash = $2
+                AND expires_at > NOW()
+                AND used_at IS NULL
+                AND deleted_at IS NULL
+              ORDER BY created_at DESC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id
+          `,
+          [email, hashedCode],
+        );
+
+        if (codeResult.rows.length === 0) {
+          return {
+            type: 'invalid' as const,
+          };
+        }
+
+        // ----------------------------------------------------------
+        // Mark email as verified
+        // ----------------------------------------------------------
+
+        const updateUserResult = await client.query(
+          `
+            UPDATE users
+            SET
+              email_verified_at = NOW(),
+              updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NULL
+              AND email_verified_at IS NULL
+            RETURNING
+              id,
+              email,
+              first_name,
+              last_name,
+              full_name,
+              status,
+              email_verified_at
+          `,
+          [user.id],
+        );
+
+        if (updateUserResult.rows.length === 0) {
+          throw new Error(
+            'Unable to update user verification status.',
+          );
+        }
+
+        const verifiedUser = updateUserResult.rows[0];
+
+        // ----------------------------------------------------------
+        // Invalidate all other verification codes
+        // ----------------------------------------------------------
+
+        await client.query(
+          `
+            UPDATE email_verifications
+            SET deleted_at = NOW()
+            WHERE email = $1
+              AND used_at IS NULL
+              AND deleted_at IS NULL
+          `,
+          [email],
+        );
+
+        // ----------------------------------------------------------
+        // Activate account
+        // ----------------------------------------------------------
+
+        await client.query(
+          `
+            UPDATE users
+            SET
+              status = 'active',
+              updated_at = NOW()
+            WHERE id = $1
+              AND deleted_at IS NULL
+          `,
+          [verifiedUser.id],
+        );
+
+        return {
+          type: 'verified' as const,
+          user: verifiedUser,
+        };
+      },
     );
 
-    if (userResult.rows.length === 0) {
+    // ============================================================
+    // 5. Invalid / expired code
+    // ============================================================
+
+    if (verificationResult.type === 'invalid') {
       return NextResponse.json(
         {
           success: false,
           error: 'Invalid or expired verification code.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    const user = userResult.rows[0];
+    // ============================================================
+    // 6. Already verified
+    // ============================================================
 
-    /*
-     * ============================================================
-     * 4. Already verified
-     * ============================================================
-     */
-
-    if (user.email_verified_at) {
+    if (verificationResult.type === 'already_verified') {
       return NextResponse.json(
         {
           success: true,
@@ -169,131 +329,15 @@ export async function POST(request: NextRequest) {
           alreadyVerified: true,
           message: 'Email is already verified.',
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
-    /*
-     * ============================================================
-     * 5. Hash submitted code
-     * ============================================================
-     */
+    const verifiedUser = verificationResult.user;
 
-    const hashedCode = hashVerificationCode(code);
-
-    /*
-     * ============================================================
-     * 6. Atomically consume verification code
-     * ============================================================
-     */
-
-    const verificationResult = await queryControl(
-      `
-        UPDATE email_verifications
-        SET used_at = NOW()
-        WHERE id = (
-          SELECT id
-          FROM email_verifications
-          WHERE email = $1
-            AND code_hash = $2
-            AND expires_at > NOW()
-            AND used_at IS NULL
-            AND deleted_at IS NULL
-          ORDER BY created_at DESC
-          LIMIT 1
-          FOR UPDATE SKIP LOCKED
-        )
-        RETURNING id
-      `,
-      [email, hashedCode]
-    );
-
-    if (verificationResult.rows.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid or expired verification code.',
-        },
-        { status: 400 }
-      );
-    }
-
-    /*
-     * ============================================================
-     * 7. Mark email as verified
-     * ============================================================
-     */
-
-    const updateUserResult = await queryControl(
-      `
-        UPDATE users
-        SET
-          email_verified_at = NOW(),
-          updated_at = NOW()
-        WHERE id = $1
-          AND deleted_at IS NULL
-          AND email_verified_at IS NULL
-        RETURNING
-          id,
-          email,
-          first_name,
-          last_name,
-          full_name,
-          status,
-          email_verified_at
-      `,
-      [user.id]
-    );
-
-    if (updateUserResult.rows.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unable to verify your email. Please try again.',
-        },
-        { status: 409 }
-      );
-    }
-
-    const verifiedUser = updateUserResult.rows[0];
-
-    /*
-     * ============================================================
-     * 8. Invalidate remaining verification codes
-     * ============================================================
-     */
-
-    await queryControl(
-      `
-        UPDATE email_verifications
-        SET deleted_at = NOW()
-        WHERE email = $1
-          AND used_at IS NULL
-          AND deleted_at IS NULL
-      `,
-      [email]
-    );
-
-    /*
-     * ============================================================
-     * 9. Update user status
-     * ============================================================
-     */
-
-    await queryControl(
-      `
-        UPDATE users
-        SET status = 'active', updated_at = NOW()
-        WHERE id = $1 AND deleted_at IS NULL
-      `,
-      [verifiedUser.id]
-    );
-
-    /*
-     * ============================================================
-     * 10. Get tenant info for response
-     * ============================================================
-     */
+    // ============================================================
+    // 7. Get tenant information
+    // ============================================================
 
     const tenantResult = await queryControl(
       `
@@ -307,23 +351,23 @@ export async function POST(request: NextRequest) {
           ON t.id = tu.tenant_id
         WHERE tu.user_id = $1
           AND t.deleted_at IS NULL
-        ORDER BY tu.is_owner DESC
+        ORDER BY tu.is_owner DESC, tu.created_at ASC
         LIMIT 1
       `,
-      [verifiedUser.id]
+      [verifiedUser.id],
     );
 
-    const tenant = tenantResult.rows.length > 0
-      ? tenantResult.rows[0]
-      : null;
+    const tenant =
+      tenantResult.rows.length > 0
+        ? tenantResult.rows[0]
+        : null;
 
-    /*
-     * ============================================================
-     * 11. Get subscription info for response
-     * ============================================================
-     */
+    // ============================================================
+    // 8. Get subscription information
+    // ============================================================
 
     let subscription = null;
+
     if (tenant) {
       const subscriptionResult = await queryControl(
         `
@@ -341,7 +385,7 @@ export async function POST(request: NextRequest) {
           ORDER BY s.created_at DESC
           LIMIT 1
         `,
-        [tenant.id]
+        [tenant.id],
       );
 
       if (subscriptionResult.rows.length > 0) {
@@ -349,17 +393,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    /*
-     * ============================================================
-     * 12. Success response
-     * ============================================================
-     */
+    // ============================================================
+    // 9. Success response
+    // ============================================================
 
     return NextResponse.json(
       {
         success: true,
         verified: true,
         alreadyVerified: false,
+
         user: {
           id: verifiedUser.id,
           email: verifiedUser.email,
@@ -369,6 +412,7 @@ export async function POST(request: NextRequest) {
           emailVerified: true,
           status: 'active',
         },
+
         tenant: tenant
           ? {
               id: tenant.id,
@@ -377,6 +421,7 @@ export async function POST(request: NextRequest) {
               status: tenant.status,
             }
           : null,
+
         subscription: subscription
           ? {
               id: subscription.id,
@@ -385,20 +430,24 @@ export async function POST(request: NextRequest) {
               trialEndsAt: subscription.trial_ends_at,
             }
           : null,
-        message: 'Email verified successfully. You can now login.',
-      },
-      { status: 200 }
-    );
 
+        message:
+          'Email verified successfully. You can now login.',
+      },
+      { status: 200 },
+    );
   } catch (error) {
-    console.error('[SaMi] Email verification error:', error);
+    console.error(
+      '[SaMi] Email verification error:',
+      error,
+    );
 
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to verify email. Please try again.',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
