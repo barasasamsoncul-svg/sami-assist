@@ -436,11 +436,11 @@ export default function SelectAppsPage() {
               </p>
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Apps grid                                                         */}
-            {/* ---------------------------------------------------------------- */}
+            /* ---------------------------------------------------------------- */
+            /* Apps grid - 3D card style                                        */
+            /* ---------------------------------------------------------------- */
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[420px] overflow-y-auto pr-1 mb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto pr-1 mb-5">
               {filteredApps.map((app) => {
                 const IconComponent = getIconComponent(
                   app.icon
@@ -458,60 +458,62 @@ export default function SelectAppsPage() {
                     type="button"
                     onClick={() => toggleApp(app.key)}
                     aria-pressed={isSelected}
-                    className={`p-4 rounded-xl border-2 text-left transition-all relative focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
                       isSelected
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20 shadow-sm'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        ? 'border-blue-600 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 shadow-lg shadow-blue-500/10 dark:shadow-blue-500/5 scale-[1.02]'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/50 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-0.5'
                     }`}
                   >
                     {/* Recommended badge */}
                     {isRecommended && (
-                      <div className="absolute -top-1.5 right-3 bg-blue-600 text-white text-[8px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      <div className="absolute -top-2 right-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[8px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-md shadow-blue-500/30">
                         Recommended
                       </div>
                     )}
 
-                    <div className="flex items-start gap-3">
-                      {/* Icon */}
+                    {/* Selected checkmark */}
+                    {isSelected && (
+                      <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
+                        <Check
+                          size={14}
+                          strokeWidth={3}
+                          className="text-white"
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex flex-col items-center text-center">
+                      {/* Icon with 3D effect */}
                       <div
-                        className={`h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-200 ${
                           isSelected
-                            ? 'bg-blue-100 dark:bg-blue-900/50'
-                            : 'bg-gray-100 dark:bg-gray-800'
+                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/30'
+                            : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20'
                         }`}
                       >
                         <IconComponent
-                          size={16}
+                          size={24}
                           className={
                             isSelected
-                              ? 'text-blue-600 dark:text-blue-400'
-                              : 'text-gray-500 dark:text-gray-400'
+                              ? 'text-white drop-shadow-sm'
+                              : 'text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400'
                           }
+                          strokeWidth={1.5}
                         />
                       </div>
 
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                            {app.name}
-                          </span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {app.name}
+                      </span>
 
-                          {isSelected && (
-                            <span className="h-5 w-5 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-                              <Check
-                                size={12}
-                                strokeWidth={3}
-                                className="text-white"
-                              />
-                            </span>
-                          )}
-                        </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed line-clamp-2">
+                        {app.description}
+                      </p>
 
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
-                          {app.description}
-                        </p>
-                      </div>
+                      {/* Category tag */}
+                      <span className="mt-2 inline-block px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[9px] font-medium text-gray-500 dark:text-gray-400">
+                        {APP_CATEGORIES.find(c => c.key === app.category)?.name || app.category}
+                      </span>
                     </div>
                   </button>
                 );
@@ -520,9 +522,9 @@ export default function SelectAppsPage() {
               {/* Empty category */}
               {filteredApps.length === 0 && (
                 <div className="col-span-full py-12 text-center">
-                  <div className="mx-auto h-12 w-12 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                  <div className="mx-auto h-14 w-14 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <Package
-                      size={21}
+                      size={24}
                       className="text-gray-400"
                     />
                   </div>
@@ -538,9 +540,9 @@ export default function SelectAppsPage() {
               )}
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Bottom actions                                                    */}
-            {/* ---------------------------------------------------------------- */}
+            /* ---------------------------------------------------------------- */
+            /* Bottom actions                                                    */
+            /* ---------------------------------------------------------------- */
 
             <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
@@ -573,7 +575,7 @@ export default function SelectAppsPage() {
                 <button
                   type="button"
                   onClick={handleNext}
-                  className="h-[44px] px-6 rounded-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-sm"
+                  className="h-[44px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25"
                 >
                   Next: Plan
                   <ArrowRight size={15} />
@@ -619,8 +621,8 @@ export default function SelectAppsPage() {
       </div>
 
       {/* ---------------------------------------------------------------------- */}
-      {/* Error overlay                                                          */}
-      {/* ---------------------------------------------------------------------- */}
+      /* Error overlay                                                          */
+      /* ---------------------------------------------------------------------- */
 
       {overlay && (
         <div
