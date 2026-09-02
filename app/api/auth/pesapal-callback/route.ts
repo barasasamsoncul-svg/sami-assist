@@ -250,7 +250,7 @@ async function handlePesaPalCallback(
           success: false,
           error: 'Transaction not found.',
         },
-        { status: 200 }
+        { status: 404 }
       );
     }
 
@@ -327,18 +327,10 @@ async function handlePesaPalCallback(
       if (
         tenantStatus === 'active'
       ) {
-        return NextResponse.json(
-          {
-            success: true,
-            alreadyProcessed: true,
-            paymentCompleted: true,
-            workspaceProvisioned: true,
-            tenantId,
-            subscriptionId,
-            message:
-              'Payment and workspace have already been processed.',
-          },
-          { status: 200 }
+        // ✅ Already provisioned - redirect to login
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
+        return NextResponse.redirect(
+          new URL('/auth/login?payment=success', appUrl)
         );
       }
 
@@ -433,7 +425,7 @@ async function handlePesaPalCallback(
           error:
             'Payment amount mismatch.',
         },
-        { status: 200 }
+        { status: 400 }
       );
     }
 
@@ -507,7 +499,7 @@ async function handlePesaPalCallback(
           error:
             'Payment currency mismatch.',
         },
-        { status: 200 }
+        { status: 400 }
       );
     }
 
@@ -642,7 +634,7 @@ async function handlePesaPalCallback(
           error:
             'Unknown payment status.',
         },
-        { status: 200 }
+        { status: 409 }
       );
     }
 
@@ -797,18 +789,10 @@ async function handlePesaPalCallback(
         [tenantId]
       );
 
-      return NextResponse.json(
-        {
-          success: true,
-          paymentCompleted: true,
-          workspaceProvisioned: false,
-          provisioningPending: true,
-          tenantId,
-          subscriptionId,
-          message:
-            'Payment confirmed. Workspace provisioning is still in progress.',
-        },
-        { status: 200 }
+      // ✅ Even if provisioning fails, redirect to verification page
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
+      return NextResponse.redirect(
+        new URL('/auth/verify-email', appUrl)
       );
     }
 
@@ -918,34 +902,27 @@ async function handlePesaPalCallback(
     }
 
     // ==========================================================
-    // 17. SUCCESS
+    // 17. ✅ SUCCESS - REDIRECT TO VERIFICATION PAGE
     // ==========================================================
 
-    return NextResponse.json(
-      {
-        success: true,
-        paymentCompleted: true,
-        workspaceProvisioned: true,
-        tenantId,
-        subscriptionId,
-        message:
-          'Payment confirmed and workspace activated. Check your email for verification.',
-      },
-      { status: 200 }
+    // Store email in session for verification page
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
+    
+    // Redirect to verification page
+    return NextResponse.redirect(
+      new URL('/auth/verify-email', appUrl)
     );
+
   } catch (error) {
     console.error(
       '[SaMi] PesaPal IPN processing error:',
       error
     );
 
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          'Failed to process PesaPal notification.',
-      },
-      { status: 500 }
+    // On error, redirect to login with error
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
+    return NextResponse.redirect(
+      new URL('/auth/login?payment=error', appUrl)
     );
   }
 }
