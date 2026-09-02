@@ -436,9 +436,7 @@ export default function SelectAppsPage() {
               </p>
             </div>
 
-            /* ---------------------------------------------------------------- */
-            /* Apps grid - 3D card style                                        */
-            /* ---------------------------------------------------------------- */
+          
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[420px] overflow-y-auto pr-1 mb-5">
               {filteredApps.map((app) => {
@@ -540,9 +538,7 @@ export default function SelectAppsPage() {
               )}
             </div>
 
-            /* ---------------------------------------------------------------- */
-            /* Bottom actions                                                    */
-            /* ---------------------------------------------------------------- */
+     
 
             <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
