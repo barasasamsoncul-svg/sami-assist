@@ -260,7 +260,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread ON {schema}.notifications(us
 
 CREATE TABLE IF NOT EXISTS {schema}.tags (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID NOT NULL REFERENCES {schema}.companies(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES {schema}.companies(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     color VARCHAR(7) DEFAULT '#6366f1',
     model VARCHAR(100),
@@ -338,7 +338,7 @@ CREATE INDEX IF NOT EXISTS idx_files_record ON {schema}.files(model, record_id);
 
 CREATE TABLE IF NOT EXISTS {schema}.sequences (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID NOT NULL REFERENCES {schema}.companies(id) ON DELETE CASCADE,
+    company_id UUID REFERENCES {schema}.companies(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     prefix VARCHAR(50),
     suffix VARCHAR(50),
@@ -359,7 +359,7 @@ CREATE INDEX IF NOT EXISTS idx_sequences_company ON {schema}.sequences(company_i
 
 CREATE TABLE IF NOT EXISTS {schema}.system_parameters (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    company_id UUID REFERENCES {schema}.companies(id),
+    company_id UUID REFERENCES {schema}.companies(id) ON DELETE CASCADE,
     key VARCHAR(100) NOT NULL,
     value TEXT,
     is_global BOOLEAN DEFAULT false,
@@ -374,7 +374,12 @@ CREATE INDEX IF NOT EXISTS idx_system_parameters_company ON {schema}.system_para
 -- INITIAL DATA
 -- ============================================================
 
--- Insert default sequences
+-- Insert default company (if none exists)
+INSERT INTO {schema}.companies (name, legal_name, currency, timezone, is_active, created_at)
+SELECT 'Default Company', 'Default Company', 'KES', 'Africa/Nairobi', true, NOW()
+WHERE NOT EXISTS (SELECT 1 FROM {schema}.companies LIMIT 1);
+
+-- Insert default sequences (company_id is NULL for global sequences)
 INSERT INTO {schema}.sequences (company_id, name, prefix, padding, next_number, created_at)
 VALUES 
     (NULL, 'invoice', 'INV', 5, 1, NOW()),
@@ -383,7 +388,7 @@ VALUES
     (NULL, 'payment', 'PAY', 5, 1, NOW())
 ON CONFLICT (company_id, name) DO NOTHING;
 
--- Insert default tags
+-- Insert default tags (company_id is NULL for global tags)
 INSERT INTO {schema}.tags (company_id, name, color, created_at)
 VALUES 
     (NULL, 'VIP', '#8b5cf6', NOW()),
@@ -392,3 +397,12 @@ VALUES
     (NULL, 'Feature', '#10b981', NOW()),
     (NULL, 'Enhancement', '#3b82f6', NOW())
 ON CONFLICT DO NOTHING;
+
+-- Insert default system parameters
+INSERT INTO {schema}.system_parameters (company_id, key, value, is_global, created_at)
+VALUES 
+    (NULL, 'company.currency', 'KES', true, NOW()),
+    (NULL, 'company.timezone', 'Africa/Nairobi', true, NOW()),
+    (NULL, 'notification.email_enabled', 'true', true, NOW()),
+    (NULL, 'notification.sms_enabled', 'false', true, NOW())
+ON CONFLICT (company_id, key) DO NOTHING;
