@@ -1,6 +1,7 @@
 import { queryControl } from '@/lib/db/control';
 import fs from 'fs';
 import path from 'path';
+import { Client } from 'pg';
 
 interface TenantDatabaseProvisionResult {
   databaseId: string;
@@ -9,87 +10,150 @@ interface TenantDatabaseProvisionResult {
   databasePort: number;
 }
 
+interface AppInstallResult {
+  appKey: string;
+  success: boolean;
+  error?: string;
+}
+
 /**
- * Read SaMi CORE tenant schema.
- * Expected: lib/schema/tenant-core.sql
+ * Create a physical database for a tenant using admin connection
  */
-async function readTenantCoreSchema(): Promise<string> {
-  const schemaPath = path.join(process.cwd(), 'lib', 'schema', 'tenant-core.sql');
+async function createTenantDatabase(tenantId: string, tenantName: string): Promise<{
+  databaseName: string;
+  host: string;
+  port: number;
+}> {
+  const cleanName = tenantName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .slice(0, 30);
+  
+  const dbName = `sami_${cleanName}_${tenantId.slice(0, 8)}`;
+
+  const adminClient = new Client({
+    host: process.env.POSTGRES_HOST,
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: 'postgres',
+    user: process.env.POSTGRES_ADMIN_USER,
+    password: process.env.POSTGRES_ADMIN_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+  });
+
+  await adminClient.connect();
 
   try {
-    const sql = await fs.promises.readFile(schemaPath, 'utf8');
-    if (!sql.trim()) {
-      throw new Error('SaMi tenant CORE schema is empty.');
-    }
-    return sql;
-  } catch (error) {
-    throw new Error(
-      `Unable to read SaMi tenant CORE schema at ${schemaPath}: ${error instanceof Error ? error.message : String(error)}`
+    const checkResult = await adminClient.query(
+      `SELECT 1 FROM pg_database WHERE datname = $1`,
+      [dbName]
     );
+
+    if (checkResult.rows.length === 0) {
+      await adminClient.query(`CREATE DATABASE ${dbName}`);
+      console.log(`[SaMi] Created database ${dbName}`);
+    } else {
+      console.log(`[SaMi] Database ${dbName} already exists`);
+    }
+  } finally {
+    await adminClient.end();
   }
+
+  return {
+    databaseName: dbName,
+    host: process.env.POSTGRES_HOST || '',
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+  };
 }
 
 /**
- * Read an application's tenant schema.
- * Expected: lib/apps/<appKey>/schema.sql
+ * Install core schema into a tenant's physical database
+ * FAILS the entire provisioning if core schema fails
  */
-async function readAppSchema(appKey: string): Promise<string> {
-  const safeAppKey = appKey.trim().toLowerCase();
-  if (!/^[a-z0-9_-]+$/.test(safeAppKey)) {
-    throw new Error(`Invalid app key "${appKey}".`);
-  }
+async function installCoreSchema(databaseName: string): Promise<void> {
+  const tenantClient = new Client({
+    host: process.env.POSTGRES_HOST,
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: databaseName,
+    user: process.env.POSTGRES_ADMIN_USER,
+    password: process.env.POSTGRES_ADMIN_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+  });
 
-  const schemaPath = path.join(process.cwd(), 'lib', 'apps', safeAppKey, 'schema.sql');
+  await tenantClient.connect();
 
   try {
-    const sql = await fs.promises.readFile(schemaPath, 'utf8');
-    if (!sql.trim()) {
-      throw new Error(`Schema for app "${safeAppKey}" is empty.`);
+    const coreSchemaPath = path.join(process.cwd(), 'lib', 'schema', 'tenant-core.sql');
+    if (!fs.existsSync(coreSchemaPath)) {
+      throw new Error(`Core schema file not found at ${coreSchemaPath}`);
     }
-    return sql;
-  } catch (error) {
-    throw new Error(
-      `Unable to read schema for app "${safeAppKey}" at ${schemaPath}: ${error instanceof Error ? error.message : String(error)}`
-    );
+
+    let coreSql = fs.readFileSync(coreSchemaPath, 'utf8');
+    coreSql = coreSql.replace(/\{schema\}/g, 'public');
+    
+    const statements = coreSql.split(';').filter(stmt => stmt.trim().length > 0);
+    for (let i = 0; i < statements.length; i++) {
+      const statement = statements[i];
+      try {
+        await tenantClient.query(statement);
+      } catch (error) {
+        throw new Error(
+          `Core schema failed at statement ${i + 1}/${statements.length}: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+    console.log(`[SaMi] Core schema installed successfully in ${databaseName}`);
+  } finally {
+    await tenantClient.end();
   }
 }
 
 /**
- * Split SQL into statements.
+ * Install a single app schema into a tenant's physical database
+ * Returns success/failure without throwing
  */
-function splitSqlStatements(sql: string): string[] {
-  return sql
-    .replace(/\r\n/g, '\n')
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean)
-    .filter((statement) => {
-      const withoutComments = statement.replace(/^\s*--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
-      return withoutComments.length > 0;
-    });
-}
+async function installAppSchema(databaseName: string, appKey: string): Promise<AppInstallResult> {
+  const tenantClient = new Client({
+    host: process.env.POSTGRES_HOST,
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: databaseName,
+    user: process.env.POSTGRES_ADMIN_USER,
+    password: process.env.POSTGRES_ADMIN_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+  });
 
-/**
- * Execute SQL statements using queryControl (same database)
- */
-async function runSqlStatements(sql: string, label: string): Promise<void> {
-  const statements = splitSqlStatements(sql);
+  await tenantClient.connect();
 
-  if (statements.length === 0) {
-    throw new Error(`${label} contains no executable SQL statements.`);
-  }
-
-  for (let index = 0; index < statements.length; index++) {
-    const statement = statements[index];
-    try {
-      await queryControl(statement);
-      console.log(`[SaMi] Executed SQL ${index + 1}/${statements.length} for ${label}`);
-    } catch (error) {
-      console.error(`[SaMi] SQL Error in ${label} at statement ${index + 1}:`, error);
-      throw new Error(
-        `${label} failed at SQL statement ${index + 1}/${statements.length}: ${error instanceof Error ? error.message : String(error)}`
-      );
+  try {
+    const appSchemaPath = path.join(process.cwd(), 'lib', 'apps', appKey, 'schema.sql');
+    if (!fs.existsSync(appSchemaPath)) {
+      return {
+        appKey,
+        success: false,
+        error: `Schema file not found for app "${appKey}" at ${appSchemaPath}`,
+      };
     }
+
+    let appSql = fs.readFileSync(appSchemaPath, 'utf8');
+    appSql = appSql.replace(/\{schema\}/g, 'public');
+    
+    const statements = appSql.split(';').filter(stmt => stmt.trim().length > 0);
+    for (let i = 0; i < statements.length; i++) {
+      const statement = statements[i];
+      try {
+        await tenantClient.query(statement);
+      } catch (error) {
+        return {
+          appKey,
+          success: false,
+          error: `Failed at statement ${i + 1}/${statements.length}: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    }
+    
+    console.log(`[SaMi] App ${appKey} schema installed successfully in ${databaseName}`);
+    return { appKey, success: true };
+  } finally {
+    await tenantClient.end();
   }
 }
 
@@ -114,33 +178,10 @@ function getValidatedApps(appKeys: unknown): string[] {
 }
 
 /**
- * Ensure tenant_databases table exists
- */
-export async function ensureTenantDatabaseRegistry(): Promise<void> {
-  await queryControl(`
-    CREATE TABLE IF NOT EXISTS tenant_databases (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-      provider VARCHAR(50) NOT NULL DEFAULT 'postgresql',
-      region VARCHAR(100),
-      database_identifier VARCHAR(255) NOT NULL,
-      database_name VARCHAR(255) NOT NULL,
-      database_host VARCHAR(255),
-      database_port INTEGER DEFAULT 5432,
-      status VARCHAR(50) NOT NULL DEFAULT 'provisioning',
-      provisioned_at TIMESTAMPTZ,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (tenant_id)
-    )
-  `);
-
-  await queryControl(`CREATE INDEX IF NOT EXISTS idx_tenant_databases_tenant_id ON tenant_databases(tenant_id)`);
-  await queryControl(`CREATE INDEX IF NOT EXISTS idx_tenant_databases_status ON tenant_databases(status)`);
-}
-
-/**
- * PROVISION TENANT - Creates schema and installs core + app schemas
+ * PROVISION TENANT - Creates physical database and installs schemas
+ * 
+ * Core schema must succeed - fails entire provisioning if it fails
+ * App schemas can fail individually - does NOT fail entire provisioning
  */
 export async function provisionTenant(
   tenantId: string,
@@ -153,6 +194,7 @@ export async function provisionTenant(
   databaseHost?: string;
   databasePort?: number;
   appsInstalled: string[];
+  appsFailed: AppInstallResult[];
 }> {
   console.log(`[SaMi] Starting provisioning for tenant ${tenantId}`);
 
@@ -171,79 +213,51 @@ export async function provisionTenant(
     }
 
     const tenant = tenantResult.rows[0];
-    console.log(`[SaMi] Tenant found: ${tenant.name} (${tenant.status})`);
-
-    // 2. Get validated apps
     const selectedApps = getValidatedApps(selectedAppsInput);
-    console.log(`[SaMi] Apps to install: ${selectedApps.join(', ')}`);
 
-    // 3. Generate schema name
-    const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
-    console.log(`[SaMi] Schema name: ${schemaName}`);
+    // 2. Create physical database
+    const dbInfo = await createTenantDatabase(tenantId, tenant.name);
+    console.log(`[SaMi] Created database ${dbInfo.databaseName}`);
 
-    // 4. Ensure tenant_databases table exists
-    await ensureTenantDatabaseRegistry();
+    // 3. Install core schema (MUST succeed)
+    await installCoreSchema(dbInfo.databaseName);
+    console.log(`[SaMi] Core schema installed in ${dbInfo.databaseName}`);
 
-    // 5. Check if schema already exists
-    const schemaCheck = await queryControl(
-      `
-        SELECT schema_name 
-        FROM information_schema.schemata 
-        WHERE schema_name = $1
-      `,
-      [schemaName]
-    );
+    // 4. Install each app schema (individual failures are caught)
+    const appResults: AppInstallResult[] = [];
+    const successfulApps: string[] = [];
 
-    const schemaExists = schemaCheck.rows.length > 0;
-    console.log(`[SaMi] Schema exists: ${schemaExists}`);
-
-    if (!schemaExists) {
-      // 6. Create schema
-      await queryControl(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
-      console.log(`[SaMi] Created schema ${schemaName}`);
-    }
-
-    // 7. Install core schema
-    try {
-      console.log(`[SaMi] Installing core schema...`);
-      const coreSchema = await readTenantCoreSchema();
-      const coreSql = coreSchema.replace(/\{schema\}/g, schemaName);
-      await runSqlStatements(coreSql, 'SaMi CORE schema');
-      console.log(`[SaMi] Core schema installed successfully`);
-    } catch (coreError) {
-      console.error(`[SaMi] Core schema installation failed:`, coreError);
-      throw new Error(`Core schema installation failed: ${coreError instanceof Error ? coreError.message : String(coreError)}`);
-    }
-
-    // 8. Install each app schema
     for (const appKey of selectedApps) {
-      try {
-        console.log(`[SaMi] Installing app schema: ${appKey}`);
-        const appSchema = await readAppSchema(appKey);
-        const appSql = appSchema.replace(/\{schema\}/g, schemaName);
-        await runSqlStatements(appSql, `App "${appKey}" schema`);
-        console.log(`[SaMi] App ${appKey} schema installed successfully`);
-      } catch (appError) {
-        console.error(`[SaMi] App ${appKey} schema installation failed:`, appError);
-        // Continue with other apps
+      const result = await installAppSchema(dbInfo.databaseName, appKey);
+      appResults.push(result);
+      
+      if (result.success) {
+        successfulApps.push(appKey);
+      } else {
+        console.error(`[SaMi] App ${appKey} installation failed:`, result.error);
       }
     }
 
-    // 9. Update tenant_modules to installed
+    // 5. Update tenant_modules based on installation results
     for (const appKey of selectedApps) {
+      const result = appResults.find(r => r.appKey === appKey);
+      const status = result?.success ? 'installed' : 'failed';
+      
       await queryControl(
         `
           UPDATE tenant_modules
-          SET status = 'installed', installed_at = NOW()
+          SET 
+            status = $3,
+            installed_at = CASE WHEN $3 = 'installed' THEN NOW() ELSE installed_at END,
+            updated_at = NOW()
           WHERE tenant_id = $1
           AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
         `,
-        [tenantId, appKey]
+        [tenantId, appKey, status]
       );
-      console.log(`[SaMi] Updated tenant_modules for ${appKey}`);
     }
 
-    // 10. Update tenant_databases
+    // 6. Update tenant_databases registry
     const dbResult = await queryControl(
       `
         INSERT INTO tenant_databases (
@@ -254,13 +268,14 @@ export async function provisionTenant(
           database_name,
           database_host,
           database_port,
+          schema_version,
           status,
           provisioned_at,
           created_at,
           updated_at
         )
         VALUES (
-          $1, 'postgresql', $2, $3, $4, $5, $6, 'active', NOW(), NOW(), NOW()
+          $1, 'postgresql', $2, $3, $4, $5, $6, '1.0.0', 'active', NOW(), NOW(), NOW()
         )
         ON CONFLICT (tenant_id)
         DO UPDATE SET
@@ -270,6 +285,7 @@ export async function provisionTenant(
           database_name = EXCLUDED.database_name,
           database_host = EXCLUDED.database_host,
           database_port = EXCLUDED.database_port,
+          schema_version = EXCLUDED.schema_version,
           status = 'active',
           provisioned_at = NOW(),
           updated_at = NOW()
@@ -278,17 +294,16 @@ export async function provisionTenant(
       [
         tenantId,
         process.env.POSTGRES_REGION || 'us-east-1',
-        schemaName,
-        process.env.POSTGRES_DB || 'sami_control',
-        process.env.POSTGRES_HOST || 'localhost',
-        parseInt(process.env.POSTGRES_PORT || '5432'),
+        `tenant_${tenantId.replace(/-/g, '_')}`,
+        dbInfo.databaseName,
+        dbInfo.host,
+        dbInfo.port,
       ]
     );
 
     const databaseId = dbResult.rows.length > 0 ? String(dbResult.rows[0].id) : '';
-    console.log(`[SaMi] Updated tenant_databases for ${tenantId}`);
 
-    // 11. Update tenant status to active
+    // 7. Update tenant status to active (even if some apps failed)
     await queryControl(
       `
         UPDATE tenants SET status = 'active', updated_at = NOW()
@@ -296,24 +311,30 @@ export async function provisionTenant(
       `,
       [tenantId]
     );
-    console.log(`[SaMi] Tenant ${tenantId} status updated to active`);
 
-    console.log(`[SaMi] ✅ Tenant ${tenantId} provisioned successfully. Schema=${schemaName}, Apps=${selectedApps.join(', ')}`);
+    const failedCount = appResults.filter(r => !r.success).length;
+    const successCount = appResults.filter(r => r.success).length;
+
+    console.log(
+      `[SaMi] ✅ Tenant ${tenantId} provisioned successfully. Database=${dbInfo.databaseName}, ` +
+      `Apps: ${successCount} installed, ${failedCount} failed`
+    );
 
     return {
       success: true,
       tenantId,
       databaseId,
-      databaseName: process.env.POSTGRES_DB || 'sami_control',
-      databaseHost: process.env.POSTGRES_HOST || 'localhost',
-      databasePort: parseInt(process.env.POSTGRES_PORT || '5432'),
-      appsInstalled: selectedApps,
+      databaseName: dbInfo.databaseName,
+      databaseHost: dbInfo.host,
+      databasePort: dbInfo.port,
+      appsInstalled: successfulApps,
+      appsFailed: appResults.filter(r => !r.success),
     };
 
   } catch (error) {
     console.error(`[SaMi] ❌ Provisioning failed for tenant ${tenantId}:`, error);
 
-    // Update tenant status to failed
+    // Update tenant status to failed (core schema failed)
     try {
       await queryControl(
         `
@@ -330,11 +351,6 @@ export async function provisionTenant(
   }
 }
 
-/**
- * Alias for compatibility with install-app route
- * 
- * This is used by app/api/auth/install-app/route.ts
- */
 export async function provisionTenantDatabase(
   tenantId: string,
   businessSlug: string,
@@ -342,19 +358,14 @@ export async function provisionTenantDatabase(
 ): Promise<TenantDatabaseProvisionResult> {
   void businessSlug;
   const result = await provisionTenant(tenantId, appKeys);
-  
-  // Ensure we return the correct type
   return {
     databaseId: result.databaseId || '',
-    databaseName: result.databaseName || process.env.POSTGRES_DB || 'sami_control',
-    databaseHost: result.databaseHost || process.env.POSTGRES_HOST || 'localhost',
-    databasePort: result.databasePort || parseInt(process.env.POSTGRES_PORT || '5432'),
+    databaseName: result.databaseName || '',
+    databaseHost: result.databaseHost || '',
+    databasePort: result.databasePort || 5432,
   };
 }
 
-/**
- * Delete tenant database record
- */
 export async function deleteTenantDatabase(tenantId: string): Promise<void> {
   const result = await queryControl(
     `
@@ -367,6 +378,34 @@ export async function deleteTenantDatabase(tenantId: string): Promise<void> {
     return;
   }
 
+  const databaseName = result.rows[0].database_name;
+
+  const adminClient = new Client({
+    host: process.env.POSTGRES_HOST,
+    port: parseInt(process.env.POSTGRES_PORT || '5432'),
+    database: 'postgres',
+    user: process.env.POSTGRES_ADMIN_USER,
+    password: process.env.POSTGRES_ADMIN_PASSWORD,
+    ssl: { rejectUnauthorized: false },
+  });
+
+  await adminClient.connect();
+
+  try {
+    await adminClient.query(
+      `
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = $1 AND pid <> pg_backend_pid()
+      `,
+      [databaseName]
+    );
+
+    await adminClient.query(`DROP DATABASE IF EXISTS ${databaseName}`);
+    console.log(`[SaMi] Dropped database ${databaseName}`);
+  } finally {
+    await adminClient.end();
+  }
+
   await queryControl(`DELETE FROM tenant_databases WHERE tenant_id = $1`, [tenantId]);
-  console.log(`[SaMi] Deleted tenant database record for ${tenantId}`);
 }
