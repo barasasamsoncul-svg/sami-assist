@@ -238,23 +238,31 @@ export async function provisionTenant(
       }
     }
 
-    // 5. Update tenant_modules based on installation results
+    // 5. Update tenant_modules based on installation results (FIXED)
     for (const appKey of selectedApps) {
       const result = appResults.find(r => r.appKey === appKey);
-      const status = result?.success ? 'installed' : 'failed';
       
-      await queryControl(
-        `
-          UPDATE tenant_modules
-          SET 
-            status = $3,
-            installed_at = CASE WHEN $3 = 'installed' THEN NOW() ELSE installed_at END,
-            updated_at = NOW()
-          WHERE tenant_id = $1
-          AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
-        `,
-        [tenantId, appKey, status]
-      );
+      if (result?.success) {
+        await queryControl(
+          `
+            UPDATE tenant_modules
+            SET status = 'installed', installed_at = NOW(), updated_at = NOW()
+            WHERE tenant_id = $1
+            AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
+          `,
+          [tenantId, appKey]
+        );
+      } else {
+        await queryControl(
+          `
+            UPDATE tenant_modules
+            SET status = 'failed', updated_at = NOW()
+            WHERE tenant_id = $1
+            AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
+          `,
+          [tenantId, appKey]
+        );
+      }
     }
 
     // 6. Update tenant_databases registry
