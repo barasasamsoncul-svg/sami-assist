@@ -328,9 +328,8 @@ async function handlePesaPalCallback(
         tenantStatus === 'active'
       ) {
         // ✅ Already provisioned - redirect to login
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
         return NextResponse.redirect(
-          new URL('/auth/login?payment=success', appUrl)
+          new URL('/auth/login?payment=success', request.nextUrl.origin)
         );
       }
 
@@ -790,9 +789,8 @@ async function handlePesaPalCallback(
       );
 
       // ✅ Even if provisioning fails, redirect to verification page
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
       return NextResponse.redirect(
-        new URL('/auth/verify-email', appUrl)
+        new URL('/auth/verify-email', request.nextUrl.origin)
       );
     }
 
@@ -905,12 +903,9 @@ async function handlePesaPalCallback(
     // 17. ✅ SUCCESS - REDIRECT TO VERIFICATION PAGE
     // ==========================================================
 
-    // Store email in session for verification page
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
-    
     // Redirect to verification page
     return NextResponse.redirect(
-      new URL('/auth/verify-email', appUrl)
+      new URL('/auth/verify-email', request.nextUrl.origin)
     );
 
   } catch (error) {
@@ -920,9 +915,8 @@ async function handlePesaPalCallback(
     );
 
     // On error, redirect to login with error
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'http://localhost:3000';
     return NextResponse.redirect(
-      new URL('/auth/login?payment=error', appUrl)
+      new URL('/auth/login?payment=error', request.nextUrl.origin)
     );
   }
 }
