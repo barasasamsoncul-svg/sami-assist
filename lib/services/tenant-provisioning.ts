@@ -244,49 +244,46 @@ export async function provisionTenant(
     }
 
     // 10. Update tenant_databases
-    const dbResult = await queryControl(
-      `
-        INSERT INTO tenant_databases (
-          tenant_id,
-          provider,
-          region,
-          database_identifier,
-          database_name,
-          database_host,
-          database_port,
-          status,
-          provisioned_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          $1, 'postgresql', $2, $3, $4, $5, $6, 'active', NOW(), NOW(), NOW()
-        )
-        ON CONFLICT (tenant_id)
-        DO UPDATE SET
-          provider = EXCLUDED.provider,
-          region = EXCLUDED.region,
-          database_identifier = EXCLUDED.database_identifier,
-          database_name = EXCLUDED.database_name,
-          database_host = EXCLUDED.database_host,
-          database_port = EXCLUDED.database_port,
-          status = 'active',
-          provisioned_at = NOW(),
-          updated_at = NOW()
-        RETURNING id
-      `,
-      [
-        tenantId,
-        process.env.POSTGRES_REGION || 'us-east-1',
-        schemaName,
-        process.env.POSTGRES_DB || 'sami_control',
-        process.env.POSTGRES_HOST || 'localhost',
-        parseInt(process.env.POSTGRES_PORT || '5432'),
-      ]
-    );
+const dbResult = await queryControl(
+  `
+    INSERT INTO tenant_databases (
+      tenant_id,
+      provider,
+      region,
+      database_identifier,
+      database_name,
+      schema_version,
+      status,
+      provisioned_at,
+      created_at,
+      updated_at
+    )
+    VALUES (
+      $1, 'postgresql', $2, $3, $4, $5, 'active', NOW(), NOW(), NOW()
+    )
+    ON CONFLICT (tenant_id)
+    DO UPDATE SET
+      provider = EXCLUDED.provider,
+      region = EXCLUDED.region,
+      database_identifier = EXCLUDED.database_identifier,
+      database_name = EXCLUDED.database_name,
+      schema_version = EXCLUDED.schema_version,
+      status = 'active',
+      provisioned_at = NOW(),
+      updated_at = NOW()
+    RETURNING id
+  `,
+  [
+    tenantId,
+    process.env.POSTGRES_REGION || 'us-east-1',
+    schemaName,
+    process.env.POSTGRES_DB || 'sami_control',
+    '1.0.0',
+  ]
+);
 
-    const databaseId = dbResult.rows.length > 0 ? String(dbResult.rows[0].id) : '';
-    console.log(`[SaMi] Updated tenant_databases for ${tenantId}`);
+const databaseId = dbResult.rows.length > 0 ? String(dbResult.rows[0].id) : '';
+console.log(`[SaMi] Updated tenant_databases for ${tenantId}`);
 
     // 11. Update tenant status to active
     await queryControl(
