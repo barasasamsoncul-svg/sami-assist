@@ -114,6 +114,32 @@ function getValidatedApps(appKeys: unknown): string[] {
 }
 
 /**
+ * Ensure tenant_databases table exists
+ */
+export async function ensureTenantDatabaseRegistry(): Promise<void> {
+  await queryControl(`
+    CREATE TABLE IF NOT EXISTS tenant_databases (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      provider VARCHAR(50) NOT NULL DEFAULT 'postgresql',
+      region VARCHAR(100),
+      database_identifier VARCHAR(255) NOT NULL,
+      database_name VARCHAR(255) NOT NULL,
+      database_host VARCHAR(255),
+      database_port INTEGER DEFAULT 5432,
+      status VARCHAR(50) NOT NULL DEFAULT 'provisioning',
+      provisioned_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id)
+    )
+  `);
+
+  await queryControl(`CREATE INDEX IF NOT EXISTS idx_tenant_databases_tenant_id ON tenant_databases(tenant_id)`);
+  await queryControl(`CREATE INDEX IF NOT EXISTS idx_tenant_databases_status ON tenant_databases(status)`);
+}
+
+/**
  * PROVISION TENANT - Creates schema and installs core + app schemas
  */
 export async function provisionTenant(
@@ -122,6 +148,10 @@ export async function provisionTenant(
 ): Promise<{
   success: boolean;
   tenantId: string;
+  databaseId?: string;
+  databaseName?: string;
+  databaseHost?: string;
+  databasePort?: number;
   appsInstalled: string[];
 }> {
   console.log(`[SaMi] Starting provisioning for tenant ${tenantId}`);
@@ -151,7 +181,10 @@ export async function provisionTenant(
     const schemaName = `tenant_${tenantId.replace(/-/g, '_')}`;
     console.log(`[SaMi] Schema name: ${schemaName}`);
 
-    // 4. Check if schema already exists
+    // 4. Ensure tenant_databases table exists
+    await ensureTenantDatabaseRegistry();
+
+    // 5. Check if schema already exists
     const schemaCheck = await queryControl(
       `
         SELECT schema_name 
@@ -165,12 +198,12 @@ export async function provisionTenant(
     console.log(`[SaMi] Schema exists: ${schemaExists}`);
 
     if (!schemaExists) {
-      // 5. Create schema
+      // 6. Create schema
       await queryControl(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
       console.log(`[SaMi] Created schema ${schemaName}`);
     }
 
-    // 6. Install core schema
+    // 7. Install core schema
     try {
       console.log(`[SaMi] Installing core schema...`);
       const coreSchema = await readTenantCoreSchema();
@@ -182,7 +215,7 @@ export async function provisionTenant(
       throw new Error(`Core schema installation failed: ${coreError instanceof Error ? coreError.message : String(coreError)}`);
     }
 
-    // 7. Install each app schema
+    // 8. Install each app schema
     for (const appKey of selectedApps) {
       try {
         console.log(`[SaMi] Installing app schema: ${appKey}`);
@@ -196,7 +229,7 @@ export async function provisionTenant(
       }
     }
 
-    // 8. Update tenant_modules to installed
+    // 9. Update tenant_modules to installed
     for (const appKey of selectedApps) {
       await queryControl(
         `
@@ -210,8 +243,8 @@ export async function provisionTenant(
       console.log(`[SaMi] Updated tenant_modules for ${appKey}`);
     }
 
-    // 9. Update tenant_databases
-    await queryControl(
+    // 10. Update tenant_databases
+    const dbResult = await queryControl(
       `
         INSERT INTO tenant_databases (
           tenant_id,
@@ -240,6 +273,7 @@ export async function provisionTenant(
           status = 'active',
           provisioned_at = NOW(),
           updated_at = NOW()
+        RETURNING id
       `,
       [
         tenantId,
@@ -250,9 +284,11 @@ export async function provisionTenant(
         parseInt(process.env.POSTGRES_PORT || '5432'),
       ]
     );
+
+    const databaseId = dbResult.rows.length > 0 ? String(dbResult.rows[0].id) : '';
     console.log(`[SaMi] Updated tenant_databases for ${tenantId}`);
 
-    // 10. Update tenant status to active
+    // 11. Update tenant status to active
     await queryControl(
       `
         UPDATE tenants SET status = 'active', updated_at = NOW()
@@ -267,6 +303,10 @@ export async function provisionTenant(
     return {
       success: true,
       tenantId,
+      databaseId,
+      databaseName: process.env.POSTGRES_DB || 'sami_control',
+      databaseHost: process.env.POSTGRES_HOST || 'localhost',
+      databasePort: parseInt(process.env.POSTGRES_PORT || '5432'),
       appsInstalled: selectedApps,
     };
 
@@ -288,4 +328,45 @@ export async function provisionTenant(
 
     throw error;
   }
+}
+
+/**
+ * Alias for compatibility with install-app route
+ * 
+ * This is used by app/api/auth/install-app/route.ts
+ */
+export async function provisionTenantDatabase(
+  tenantId: string,
+  businessSlug: string,
+  appKeys: unknown
+): Promise<TenantDatabaseProvisionResult> {
+  void businessSlug;
+  const result = await provisionTenant(tenantId, appKeys);
+  
+  // Ensure we return the correct type
+  return {
+    databaseId: result.databaseId || '',
+    databaseName: result.databaseName || process.env.POSTGRES_DB || 'sami_control',
+    databaseHost: result.databaseHost || process.env.POSTGRES_HOST || 'localhost',
+    databasePort: result.databasePort || parseInt(process.env.POSTGRES_PORT || '5432'),
+  };
+}
+
+/**
+ * Delete tenant database record
+ */
+export async function deleteTenantDatabase(tenantId: string): Promise<void> {
+  const result = await queryControl(
+    `
+      SELECT database_name FROM tenant_databases WHERE tenant_id = $1 LIMIT 1
+    `,
+    [tenantId]
+  );
+
+  if (result.rows.length === 0) {
+    return;
+  }
+
+  await queryControl(`DELETE FROM tenant_databases WHERE tenant_id = $1`, [tenantId]);
+  console.log(`[SaMi] Deleted tenant database record for ${tenantId}`);
 }
