@@ -73,7 +73,7 @@ const THEME_STORAGE_KEY =
   'sami_theme';
 
 const NEXT_ROUTE =
-  '/auth/select-plan';
+  '/select-plan';
 
 /* -------------------------------------------------------------------------- */
 /* Icon mapping                                                               */

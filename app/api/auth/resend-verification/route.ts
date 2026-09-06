@@ -1,51 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queryControl } from '@/lib/db/control';
 import crypto from 'crypto';
-import { sendVerificationEmail } from '@/lib/services/email';
+import { queryControl } from '@/lib/db/control';
+import { sendVerificationEmail } from '@/lib/services/email-verification-email';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-const CODE_EXPIRY_MINUTES = 15;
-const RESEND_COOLDOWN_SECONDS = 60;
+const CODE_EXPIRY_MINUTES = 10;
+
+function normalizeEmail(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function hashCode(code: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(code)
+    .digest('hex');
+}
+
+function createVerificationCode(): string {
+  return String(crypto.randomInt(100000, 999999));
+}
+
+function getAppBaseUrl(request: NextRequest): string {
+  const forwardedHost = request.headers
+    .get('x-forwarded-host')
+    ?.split(',')[0]
+    ?.trim();
+
+  const forwardedProto = request.headers
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim();
+
+  if (forwardedHost) {
+    return `${forwardedProto || 'https'}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get('host')?.trim();
+
+  if (host) {
+    const protocol = host.includes('localhost')
+      ? 'http'
+      : 'https';
+
+    return `${protocol}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+function successResponse() {
+  return NextResponse.json({
+    success: true,
+    message:
+      'If this email needs verification, a new code has been sent.',
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
-    let body: unknown;
+    const body = await request.json().catch(() => ({}));
 
-    try {
-      body = await request.json();
-    } catch {
+    const email = normalizeEmail(body.email);
+
+    if (!isValidEmail(email)) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Invalid request body',
-        },
-        { status: 400 }
-      );
-    }
-
-    const email =
-      typeof (body as { email?: unknown })?.email === 'string'
-        ? (body as { email: string }).email.trim().toLowerCase()
-        : '';
-
-    if (!email) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Email required',
-        },
-        { status: 400 }
-      );
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Please enter a valid email address',
+          error: 'Enter a valid email address.',
         },
         { status: 400 }
       );
@@ -53,141 +81,122 @@ export async function POST(request: NextRequest) {
 
     const userResult = await queryControl(
       `
-        SELECT id, first_name, email_verified_at, status
+        SELECT
+          id,
+          email,
+          first_name,
+          status
         FROM users
-        WHERE email = $1 AND deleted_at IS NULL
+        WHERE LOWER(email) = LOWER($1)
+          AND deleted_at IS NULL
         LIMIT 1
       `,
       [email]
     );
 
     if (userResult.rows.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Unable to send a verification code. Please check your email address.',
-        },
-        { status: 404 }
-      );
+      return successResponse();
     }
 
     const user = userResult.rows[0];
 
-    if (user.email_verified_at) {
-      return NextResponse.json(
-        {
-          success: false,
-          alreadyVerified: true,
-          error: 'This email address is already verified.',
-        },
-        { status: 409 }
-      );
+    if (String(user.status).toLowerCase() === 'active') {
+      return successResponse();
     }
 
-    // Check cooldown
-    const recentCodeResult = await queryControl(
-      `
-        SELECT id, created_at
-        FROM email_verifications
-        WHERE email = $1 AND deleted_at IS NULL
-        ORDER BY created_at DESC
-        LIMIT 1
-      `,
-      [email]
+    if (
+      String(user.status).toLowerCase() !==
+      'pending_verification'
+    ) {
+      return successResponse();
+    }
+
+    const code = createVerificationCode();
+    const codeHash = hashCode(code);
+
+    const expiresAt = new Date(
+      Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000
     );
 
-    if (recentCodeResult.rows.length > 0) {
-      const recentCode = recentCodeResult.rows[0];
-      const createdAt = new Date(recentCode.created_at);
-      const secondsSinceLastCode = Math.floor((Date.now() - createdAt.getTime()) / 1000);
-
-      if (secondsSinceLastCode < RESEND_COOLDOWN_SECONDS) {
-        const retryAfter = Math.max(1, RESEND_COOLDOWN_SECONDS - secondsSinceLastCode);
-
-        return NextResponse.json(
-          {
-            success: false,
-            error: `Please wait ${retryAfter} seconds before requesting another code.`,
-            retryAfter,
-          },
-          {
-            status: 429,
-            headers: {
-              'Retry-After': retryAfter.toString(),
-            },
-          }
-        );
-      }
-    }
-
-    // Invalidate old codes
     await queryControl(
       `
         UPDATE email_verifications
         SET deleted_at = NOW()
-        WHERE email = $1 AND deleted_at IS NULL
+        WHERE LOWER(email) = LOWER($1)
+          AND used_at IS NULL
+          AND deleted_at IS NULL
       `,
       [email]
     );
 
-    // Generate new code
-    const code = crypto.randomInt(100000, 1000000).toString();
-    const hashedCode = crypto.createHash('sha256').update(code).digest('hex');
-    const expiresAt = new Date(Date.now() + CODE_EXPIRY_MINUTES * 60 * 1000);
-
-    const verificationResult = await queryControl(
+    await queryControl(
       `
-        INSERT INTO email_verifications (email, code_hash, expires_at, created_at)
-        VALUES ($1, $2, $3, NOW())
-        RETURNING id
+        INSERT INTO email_verifications (
+          email,
+          code_hash,
+          expires_at
+        )
+        VALUES ($1, $2, $3)
       `,
-      [email, hashedCode, expiresAt]
+      [email, codeHash, expiresAt]
     );
 
-    const verificationId = verificationResult.rows[0]?.id;
+    const verifyUrl = `${getAppBaseUrl(
+      request
+    )}/verify-email?email=${encodeURIComponent(email)}`;
 
-    // Send email
-    try {
-      await sendVerificationEmail(email, code, user.first_name || 'there');
-    } catch (emailError) {
-      console.error('Verification email send error:', emailError);
+    await sendVerificationEmail({
+      email,
+      firstName: user.first_name || null,
+      code,
+      verifyUrl,
+    });
 
-      if (verificationId) {
-        await queryControl(
-          `
-            UPDATE email_verifications
-            SET deleted_at = NOW()
-            WHERE id = $1 AND deleted_at IS NULL
-          `,
-          [verificationId]
-        );
-      }
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'We could not send the verification email. Please try again.',
-        },
-        { status: 503 }
+    await queryControl(
+      `
+        INSERT INTO audit_logs (
+          user_id,
+          event_type,
+          entity_type,
+          entity_id,
+          ip_address,
+          user_agent,
+          metadata
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `,
+      [
+        user.id,
+        'EMAIL_VERIFICATION_RESENT',
+        'user',
+        user.id,
+        request.headers.get('x-forwarded-for') ||
+          request.headers.get('x-real-ip') ||
+          null,
+        request.headers.get('user-agent') || null,
+        JSON.stringify({
+          email,
+        }),
+      ]
+    ).catch((error) => {
+      console.error(
+        '[Auth] Failed to write resend verification audit log:',
+        error
       );
-    }
+    });
 
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Verification code sent successfully.',
-        expiresIn: CODE_EXPIRY_MINUTES * 60,
-        cooldown: RESEND_COOLDOWN_SECONDS,
-      },
-      { status: 200 }
-    );
+    return successResponse();
   } catch (error) {
-    console.error('Resend verification error:', error);
+    console.error(
+      '[Auth] Resend verification failed:',
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Failed to send verification code. Please try again.',
+        error:
+          'Could not resend verification code. Please try again.',
       },
       { status: 500 }
     );
