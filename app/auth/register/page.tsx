@@ -86,6 +86,9 @@ export default function RegisterPage() {
    */
 
   useEffect(() => {
+    // Only run in browser
+    if (typeof window === 'undefined') return;
+    
     try {
       const savedTheme =
         localStorage.getItem(THEME_STORAGE_KEY);
@@ -166,6 +169,9 @@ export default function RegisterPage() {
    */
 
   useEffect(() => {
+    // Only run in browser
+    if (typeof window === 'undefined') return;
+    
     const handlePageShow = () => {
       resetGoogleState();
     };
@@ -261,6 +267,9 @@ export default function RegisterPage() {
    */
 
   useEffect(() => {
+    // Only run in browser
+    if (typeof window === 'undefined') return;
+    
     const googleError =
       searchParams.get('google_error');
 
@@ -621,12 +630,14 @@ export default function RegisterPage() {
        * The server must still validate and process the
        * registration independently.
        */
-      sessionStorage.setItem(
-        REGISTRATION_STORAGE_KEY,
-        JSON.stringify(
-          registrationData
-        )
-      );
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem(
+          REGISTRATION_STORAGE_KEY,
+          JSON.stringify(
+            registrationData
+          )
+        );
+      }
 
       router.push(
         '/auth/select-apps'
@@ -729,6 +740,9 @@ export default function RegisterPage() {
    */
 
   useEffect(() => {
+    // Only run in browser
+    if (typeof window === 'undefined') return;
+    
     const handleKeyDown = (
       event: KeyboardEvent
     ) => {
