@@ -521,9 +521,8 @@ export async function getSession(): Promise<Session | null> {
     await getSessionTokenHashFromCookie();
 
   if (!tokenHash) {
-    await clearSessionCookie();
-    return null;
-  }
+  return null;
+}
 
   const result = await queryControl(
     `
@@ -563,9 +562,8 @@ export async function getSession(): Promise<Session | null> {
   );
 
   if (result.rows.length === 0) {
-    await clearSessionCookie();
-    return null;
-  }
+  return null;
+}
 
   const row = result.rows[0];
 
