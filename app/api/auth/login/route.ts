@@ -14,6 +14,30 @@ const MAX_EMAIL_LENGTH = 320;
 const MAX_PASSWORD_LENGTH = 128;
 
 // ============================================================
+// TYPES
+// ============================================================
+
+type LoginRequest = {
+  email?: unknown;
+  password?: unknown;
+  rememberMe?: unknown;
+};
+
+type UserRow = {
+  id: string;
+  email: string;
+  password_hash: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  phone: string | null;
+  status: string;
+  email_verified_at: Date | string | null;
+  avatar_file_id: string | null;
+  deleted_at: Date | string | null;
+};
+
+// ============================================================
 // HELPERS
 // ============================================================
 
@@ -33,15 +57,48 @@ function isValidEmail(email: string): boolean {
   );
 }
 
+/**
+ * Keep authentication failure responses deliberately generic
+ * so we don't reveal whether an email address exists.
+ */
 function invalidCredentialsResponse() {
   return NextResponse.json(
     {
       success: false,
+      authenticated: false,
       code: 'INVALID_CREDENTIALS',
       error: 'Invalid email or password.',
     },
     {
       status: 401,
+    }
+  );
+}
+
+/**
+ * Standard account-state response.
+ */
+function accountUnavailableResponse(
+  code:
+    | 'ACCOUNT_LOCKED'
+    | 'ACCOUNT_SUSPENDED'
+    | 'ACCOUNT_DISABLED'
+    | 'ACCOUNT_DELETED'
+    | 'ACCOUNT_CANCELLED'
+    | 'ACCOUNT_BANNED'
+    | 'ACCOUNT_UNAVAILABLE',
+  error: string,
+  status = 403
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      authenticated: false,
+      code,
+      error,
+    },
+    {
+      status,
     }
   );
 }
@@ -67,7 +124,15 @@ function invalidCredentialsResponse() {
  *    ↓
  * Verify email
  *    ↓
- * Ensure account is active
+ * Activate pending verified account
+ *    ↓
+ * Check active status
+ *    ↓
+ * Future Identity Core checks:
+ *    ├── 2FA
+ *    ├── device verification
+ *    ├── suspicious-login verification
+ *    └── other authentication challenges
  *    ↓
  * Create server-side session
  *    ↓
@@ -82,7 +147,9 @@ function invalidCredentialsResponse() {
  * - Raw session tokens are never stored in the database.
  * - Session creation is handled by lib/auth/session.ts.
  * - The login API does NOT perform redirects.
- * - There is no dashboard dependency.
+ * - The login API does NOT depend on the dashboard.
+ * - Authentication state is communicated using stable codes.
+ * - The frontend decides which authentication screen to display.
  */
 
 export async function POST(request: NextRequest) {
@@ -99,6 +166,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
+          authenticated: false,
           code: 'INVALID_REQUEST',
           error: 'Invalid request body.',
         },
@@ -116,6 +184,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
+          authenticated: false,
           code: 'INVALID_REQUEST',
           error: 'Invalid request body.',
         },
@@ -125,11 +194,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = body as {
-      email?: unknown;
-      password?: unknown;
-      rememberMe?: unknown;
-    };
+    const data = body as LoginRequest;
 
     // ========================================================
     // 2. NORMALIZE INPUT
@@ -143,25 +208,29 @@ export async function POST(request: NextRequest) {
         : '';
 
     /**
-     * Currently session.ts uses a fixed 30-day session.
+     * The login page sends rememberMe.
      *
-     * We accept rememberMe so the frontend can send it without
-     * breaking the API, but session.ts remains authoritative.
+     * IMPORTANT:
+     * createSession() currently owns the session lifetime.
+     * Until createSession() accepts a session-lifetime option,
+     * we deliberately do not pretend that rememberMe changes
+     * the session duration.
      */
     const rememberMe = data.rememberMe === true;
 
-    // Prevent unused-variable warnings while keeping the API
-    // compatible with the login form.
+    // Keep API compatibility and make the intended behavior
+    // explicit without changing session.ts from this route.
     void rememberMe;
 
     // ========================================================
-    // 3. VALIDATE CREDENTIALS
+    // 3. VALIDATE REQUEST
     // ========================================================
 
     if (!email || !password) {
       return NextResponse.json(
         {
           success: false,
+          authenticated: false,
           code: 'MISSING_CREDENTIALS',
           error: 'Email and password are required.',
         },
@@ -175,6 +244,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
+          authenticated: false,
           code: 'INVALID_EMAIL',
           error: 'Please enter a valid email address.',
         },
@@ -184,6 +254,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    /**
+     * We intentionally return the generic authentication error
+     * for an excessively long password instead of exposing
+     * validation details about the password.
+     */
     if (password.length > MAX_PASSWORD_LENGTH) {
       return invalidCredentialsResponse();
     }
@@ -225,22 +300,16 @@ export async function POST(request: NextRequest) {
       return invalidCredentialsResponse();
     }
 
-    const user = userResult.rows[0];
+    const user = userResult.rows[0] as UserRow;
 
     // ========================================================
     // 5. DELETED ACCOUNT
     // ========================================================
 
     if (user.deleted_at) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'ACCOUNT_UNAVAILABLE',
-          error: 'This account is no longer available.',
-        },
-        {
-          status: 403,
-        }
+      return accountUnavailableResponse(
+        'ACCOUNT_DELETED',
+        'This account is no longer available.'
       );
     }
 
@@ -249,29 +318,51 @@ export async function POST(request: NextRequest) {
     // ========================================================
 
     /**
-     * These statuses are never allowed to authenticate.
+     * These statuses must never receive a normal session.
+     *
+     * We return distinct codes because the frontend is capable
+     * of presenting the appropriate state.
      */
 
-    const blockedStatuses = new Set([
-      'suspended',
-      'disabled',
-      'deleted',
-      'cancelled',
-      'banned',
-    ]);
+    switch (user.status) {
+      case 'suspended':
+        return accountUnavailableResponse(
+          'ACCOUNT_SUSPENDED',
+          'This account has been suspended. Please contact SaMi support.'
+        );
 
-    if (blockedStatuses.has(user.status)) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'ACCOUNT_UNAVAILABLE',
-          error:
-            'This account is currently unavailable. Please contact SaMi support.',
-        },
-        {
-          status: 403,
-        }
-      );
+      case 'disabled':
+        return accountUnavailableResponse(
+          'ACCOUNT_DISABLED',
+          'This account is disabled. Please contact your administrator.'
+        );
+
+      case 'deleted':
+        return accountUnavailableResponse(
+          'ACCOUNT_DELETED',
+          'This account is no longer available.'
+        );
+
+      case 'cancelled':
+        return accountUnavailableResponse(
+          'ACCOUNT_CANCELLED',
+          'This account has been cancelled. Please contact SaMi support.'
+        );
+
+      case 'banned':
+        return accountUnavailableResponse(
+          'ACCOUNT_BANNED',
+          'This account is unavailable. Please contact SaMi support.'
+        );
+
+      case 'locked':
+        return accountUnavailableResponse(
+          'ACCOUNT_LOCKED',
+          'This account is temporarily locked. Please try again later.'
+        );
+
+      default:
+        break;
     }
 
     // ========================================================
@@ -282,6 +373,11 @@ export async function POST(request: NextRequest) {
       !user.password_hash ||
       typeof user.password_hash !== 'string'
     ) {
+      /**
+       * This should never normally happen.
+       *
+       * Do not reveal the internal database state to the client.
+       */
       console.error(
         '[SaMi] User has no valid password hash:',
         user.id
@@ -316,9 +412,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
+          authenticated: false,
           code: 'EMAIL_VERIFICATION_REQUIRED',
           error:
             'Please verify your email address before signing in.',
+          nextStep: 'verify-email',
           user: {
             id: user.id,
             email: user.email,
@@ -341,8 +439,8 @@ export async function POST(request: NextRequest) {
      * pending
      * pending_verification
      *
-     * Once the email is verified and the password is correct,
-     * the account can become active.
+     * Once the email has been verified and the password is
+     * correct, the account can become active.
      */
 
     if (
@@ -374,16 +472,9 @@ export async function POST(request: NextRequest) {
          * The account changed between the initial SELECT and
          * this update.
          */
-        return NextResponse.json(
-          {
-            success: false,
-            code: 'ACCOUNT_UNAVAILABLE',
-            error:
-              'Unable to activate this account. Please try again.',
-          },
-          {
-            status: 403,
-          }
+        return accountUnavailableResponse(
+          'ACCOUNT_UNAVAILABLE',
+          'Unable to activate this account. Please try again.'
         );
       }
 
@@ -397,82 +488,101 @@ export async function POST(request: NextRequest) {
     /**
      * Only active users should receive a normal authenticated
      * session.
-     *
-     * This is important because getSession() in session.ts
-     * also requires:
-     *
-     * u.status = 'active'
      */
 
     if (user.status !== 'active') {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'ACCOUNT_UNAVAILABLE',
-          error:
-            'This account is not currently available for sign in.',
-        },
-        {
-          status: 403,
-        }
+      return accountUnavailableResponse(
+        'ACCOUNT_UNAVAILABLE',
+        'This account is not currently available for sign in.'
       );
     }
 
     // ========================================================
-    // 12. CREATE SESSION
+    // 12. FUTURE AUTHENTICATION CHALLENGES
     // ========================================================
 
     /**
-     * Your session.ts requires:
+     * IMPORTANT:
      *
-     * createSession(userId, request)
+     * Do NOT create fake 2FA/device-verification behavior here.
      *
-     * The request allows the session system to record:
+     * When Identity Core implements those systems, this is the
+     * correct point in the flow to evaluate them:
      *
-     * - IP address
-     * - User-Agent
-     * - device type
-     * - browser
-     * - operating system
+     * Password verified
+     *       ↓
+     * Email verified
+     *       ↓
+     * Account active
+     *       ↓
+     * Authentication challenge
+     *       ↓
+     * Session
      *
-     * It also creates the:
+     * For example:
      *
-     * __Host-sami_session
+     * if (requiresTwoFactor) {
+     *   return NextResponse.json({
+     *     success: false,
+     *     authenticated: false,
+     *     code: 'TWO_FACTOR_REQUIRED',
+     *     nextStep: '2fa',
+     *   }, { status: 200 });
+     * }
      *
-     * HttpOnly cookie.
+     * The actual implementation should use a short-lived,
+     * server-side challenge rather than storing credentials
+     * or authentication secrets in browser storage.
+     */
+
+    // ========================================================
+    // 13. CREATE SERVER-SIDE SESSION
+    // ========================================================
+
+    /**
+     * session.ts is authoritative for session creation.
+     *
+     * It is responsible for:
+     *
+     * - generating the session token
+     * - storing the session securely
+     * - recording request metadata
+     * - setting the __Host-sami_session cookie
+     * - enforcing the session lifetime
      */
 
     const session = await createSession(
-      user.id,
-      request
-    );
+  user.id,
+  request,
+  {
+    rememberMe,
+  }
+);
 
     // ========================================================
-    // 13. RETURN AUTHENTICATED USER
+    // 14. BUILD SAFE USER RESPONSE
     // ========================================================
 
     /**
-     * We intentionally do NOT query:
+     * Never return:
      *
-     * - tenants
-     * - subscriptions
-     * - workspaces
-     * - dashboard
-     *
-     * Login should authenticate the user.
-     *
-     * Those features can be added later when their routes
-     * actually exist.
+     * - password_hash
+     * - session token
+     * - internal authentication secrets
+     * - database credentials
      */
 
     const fullName =
       user.full_name ||
       `${user.first_name || ''} ${user.last_name || ''}`.trim();
 
+    // ========================================================
+    // 15. SUCCESS RESPONSE
+    // ========================================================
+
     return NextResponse.json(
       {
         success: true,
-
         authenticated: true,
 
         user: {
@@ -533,6 +643,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
+        authenticated: false,
         code: 'LOGIN_FAILED',
         error:
           'Unable to sign in right now. Please try again.',
