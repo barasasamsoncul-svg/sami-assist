@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { queryControl } from '@/lib/db/control';
 import { createSession } from '@/lib/auth/session';
 import { verifyPassword } from '@/lib/auth/password';
+import { getTwoFactorStatus } from '@/lib/auth/two-factor';
+import { createLoginChallenge } from '@/lib/auth/login-challenges';
 import {
   findUserForLogin,
   getAccountContextForUser,
@@ -364,6 +366,41 @@ export async function POST(request: NextRequest) {
         { status: validation.httpStatus }
       );
     }
+
+    const twoFactorStatus = await getTwoFactorStatus(user.id);
+
+if (twoFactorStatus.enabled) {
+  const challenge = await createLoginChallenge({
+    userId: user.id,
+    email,
+    rememberMe,
+  });
+
+  await recordAuthEvent({
+    request,
+    userId: user.id,
+    tenantId: accountContext.tenant?.id || null,
+    eventType: 'TWO_FACTOR_REQUIRED',
+    entityType: 'user',
+    entityId: user.id,
+    metadata: {
+      email,
+      challengeExpiresAt: challenge.expiresAt.toISOString(),
+    },
+  });
+
+  return NextResponse.json(
+    {
+      success: false,
+      code: 'TWO_FACTOR_REQUIRED',
+      message: 'Two-factor verification is required.',
+      email,
+      challengeToken: challenge.challengeToken,
+      next: '/login/two-factor',
+    },
+    { status: 403 }
+  );
+}
 
     const session = await createSession(user.id, request, {
       rememberMe,

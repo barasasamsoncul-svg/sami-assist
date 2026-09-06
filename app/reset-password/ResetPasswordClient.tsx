@@ -1,5 +1,9 @@
 'use client';
 
+
+
+import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   FormEvent,
   useMemo,
@@ -130,6 +134,18 @@ export default function ResetPasswordClient() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white">
+      {overlay && (
+        <SaMiOverlay
+          open={true}
+          type={overlay.type}
+          title={overlay.title}
+          message={overlay.message}
+          primaryAction={overlay.primaryAction}
+          secondaryAction={overlay.secondaryAction}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+
       <div className="min-h-screen px-4 py-8 flex flex-col">
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between">
           <Link

@@ -1,5 +1,9 @@
-'use client';
+﻿'use client';
 
+
+
+import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 import Link from 'next/link';
 import { FormEvent, useMemo, useState } from 'react';
 import {
@@ -290,6 +294,9 @@ export default function SettingsClient({
   const [notice, setNotice] =
     useState<NoticeState | null>(null);
 
+  const [overlay, setOverlay] =
+    useState<ReturnType<typeof getAuthOverlayMessage> | null>(null);
+
   async function handleChangePassword(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -301,6 +308,7 @@ export default function SettingsClient({
 
     setSubmitting(true);
     setNotice(null);
+    setOverlay(null);
 
     try {
       const response = await fetch('/api/auth/change-password', {
@@ -328,19 +336,16 @@ export default function SettingsClient({
       setNewPassword('');
       setConfirmPassword('');
 
-      setNotice({
-        type: 'success',
-        message:
-          data.message || 'Password changed successfully.',
-      });
+      setOverlay(getAuthOverlayMessage('PASSWORD_CHANGED'));
     } catch (error) {
-      setNotice({
-        type: 'error',
-        message:
-          error instanceof Error
-            ? error.message
-            : 'Could not change password.',
-      });
+      setOverlay(
+        getAuthOverlayMessage('CHANGE_PASSWORD_ERROR', {
+          fallback:
+            error instanceof Error
+              ? error.message
+              : 'Could not change password.',
+        })
+      );
     } finally {
       setSubmitting(false);
     }
@@ -576,6 +581,18 @@ export default function SettingsClient({
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white">
+      {overlay && (
+        <SaMiOverlay
+          open={true}
+          type={overlay.type}
+          title={overlay.title}
+          message={overlay.message}
+          primaryAction={overlay.primaryAction}
+          secondaryAction={overlay.secondaryAction}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+
       <div className="mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

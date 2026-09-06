@@ -1,5 +1,9 @@
-'use client';
+﻿'use client';
 
+
+
+import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -13,8 +17,11 @@ import { FormEvent, useMemo, useState } from 'react';
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 type OverlayState = {
-  type: 'error' | 'success';
+  type: 'error' | 'success' | 'warning' | 'info';
+  title?: string;
   message: string;
+  primaryAction?: ReturnType<typeof getAuthOverlayMessage>['primaryAction'];
+  secondaryAction?: ReturnType<typeof getAuthOverlayMessage>['secondaryAction'];
 };
 
 function normalizeCode(value: string): string {
@@ -165,6 +172,18 @@ export default function VerifyEmailClient() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950 dark:bg-slate-950 dark:text-white">
+      {overlay && (
+        <SaMiOverlay
+          open={true}
+          type={overlay.type}
+          title={overlay.title || (overlay.type === 'success' ? 'Success' : overlay.type === 'warning' ? 'Warning' : overlay.type === 'info' ? 'Notice' : 'Something went wrong')}
+          message={overlay.message}
+          primaryAction={overlay.primaryAction}
+          secondaryAction={overlay.secondaryAction}
+          onClose={() => setOverlay(null)}
+        />
+      )}
+
       <div className="flex min-h-screen items-center justify-center px-4 py-10">
         <div className="w-full max-w-md">
           <Link
