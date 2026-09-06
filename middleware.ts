@@ -1,0 +1,121 @@
+import { NextRequest, NextResponse } from 'next/server';
+
+const AUTH_COOKIE_NAMES = [
+  '__Host-sami_session',
+  'sami_session',
+];
+
+const PROTECTED_PATHS = [
+  '/dashboard',
+  '/settings',
+  '/account',
+  '/billing',
+  '/apps',
+  '/workspace',
+  '/invoices',
+  '/customers',
+  '/products',
+  '/inventory',
+  '/pos',
+  '/crm',
+  '/reports',
+  '/analytics',
+  '/team',
+  '/organization',
+];
+
+const AUTH_PAGES = [
+  '/login',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+];
+
+function hasSessionCookie(request: NextRequest): boolean {
+  return AUTH_COOKIE_NAMES.some((cookieName) => {
+    const value = request.cookies.get(cookieName)?.value;
+
+    return typeof value === 'string' && value.length > 0;
+  });
+}
+
+function isProtectedPath(pathname: string): boolean {
+  return PROTECTED_PATHS.some((path) => {
+    return (
+      pathname === path ||
+      pathname.startsWith(`${path}/`)
+    );
+  });
+}
+
+function isAuthPage(pathname: string): boolean {
+  return AUTH_PAGES.some((path) => {
+    return (
+      pathname === path ||
+      pathname.startsWith(`${path}/`)
+    );
+  });
+}
+
+function buildLoginRedirectUrl(
+  request: NextRequest
+): URL {
+  const loginUrl = new URL('/login', request.url);
+
+  const nextPath =
+    request.nextUrl.pathname +
+    request.nextUrl.search;
+
+  loginUrl.searchParams.set('next', nextPath);
+
+  return loginUrl;
+}
+
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  const sessionCookieExists =
+    hasSessionCookie(request);
+
+  /**
+   * Protect private pages.
+   *
+   * This middleware is only a fast edge gate.
+   * The database session is still verified by getSession()
+   * inside server pages and API routes.
+   */
+  if (
+    isProtectedPath(pathname) &&
+    !sessionCookieExists
+  ) {
+    return NextResponse.redirect(
+      buildLoginRedirectUrl(request)
+    );
+  }
+
+  /**
+   * Do not redirect users away from auth pages only because
+   * a cookie exists. The cookie may be expired, revoked, or fake.
+   *
+   * The login/register pages can stay accessible safely.
+   */
+  if (isAuthPage(pathname)) {
+    return NextResponse.next();
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: [
+    /*
+      Match all normal app routes except:
+      - API routes
+      - Next.js internals
+      - static files
+      - favicon / robots / sitemap
+    */
+    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)',
+  ],
+};

@@ -1,45 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-
 import { queryControl } from '@/lib/db/control';
-import { createSession } from '@/lib/auth/session';
+import {
+  createSession,
+  getSessionRequestMetadata,
+} from '@/lib/auth/session';
+import { verifyPassword } from '@/lib/auth/password';
+import {
+  findUserForLogin,
+  getAccountContextForUser,
+  validateAccountCanLogin,
+  type AccountContext,
+  type AuthUserRecord,
+} from '@/lib/auth/account-context';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// ============================================================
-// CONSTANTS
-// ============================================================
-
-const MAX_EMAIL_LENGTH = 320;
-const MAX_PASSWORD_LENGTH = 128;
-
-// ============================================================
-// TYPES
-// ============================================================
-
-type LoginRequest = {
+type LoginBody = {
   email?: unknown;
   password?: unknown;
   rememberMe?: unknown;
 };
-
-type UserRow = {
-  id: string;
-  email: string;
-  password_hash: string | null;
-  first_name: string | null;
-  last_name: string | null;
-  full_name: string | null;
-  phone: string | null;
-  status: string;
-  email_verified_at: Date | string | null;
-  avatar_file_id: string | null;
-  deleted_at: Date | string | null;
-};
-
-// ============================================================
-// HELPERS
-// ============================================================
 
 function normalizeEmail(value: unknown): string {
   if (typeof value !== 'string') {
@@ -49,608 +30,328 @@ function normalizeEmail(value: unknown): string {
   return value.trim().toLowerCase();
 }
 
-function isValidEmail(email: string): boolean {
-  return (
-    email.length > 0 &&
-    email.length <= MAX_EMAIL_LENGTH &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-  );
+function normalizePassword(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  return value;
 }
 
-/**
- * Keep authentication failure responses deliberately generic
- * so we don't reveal whether an email address exists.
- */
-function invalidCredentialsResponse() {
-  return NextResponse.json(
-    {
-      success: false,
-      authenticated: false,
-      code: 'INVALID_CREDENTIALS',
-      error: 'Invalid email or password.',
-    },
-    {
-      status: 401,
-    }
-  );
+function normalizeRememberMe(value: unknown): boolean {
+  return value === true;
 }
 
-/**
- * Standard account-state response.
- */
-function accountUnavailableResponse(
-  code:
-    | 'ACCOUNT_LOCKED'
-    | 'ACCOUNT_SUSPENDED'
-    | 'ACCOUNT_DISABLED'
-    | 'ACCOUNT_DELETED'
-    | 'ACCOUNT_CANCELLED'
-    | 'ACCOUNT_BANNED'
-    | 'ACCOUNT_UNAVAILABLE',
-  error: string,
-  status = 403
+function jsonError(
+  status: number,
+  code: string,
+  message: string,
+  extra?: Record<string, unknown>
 ) {
   return NextResponse.json(
     {
       success: false,
-      authenticated: false,
       code,
-      error,
+      message,
+      ...(extra || {}),
     },
-    {
-      status,
-    }
+    { status }
   );
 }
 
-// ============================================================
-// POST /api/auth/login
-// ============================================================
+function publicUser(user: AuthUserRecord) {
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.fullName,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    avatarFileId: user.avatarFileId,
+    status: user.status,
+  };
+}
 
-/**
- * SaMi login flow:
- *
- * Login form
- *    ↓
- * Validate request
- *    ↓
- * Normalize email
- *    ↓
- * Find user
- *    ↓
- * Check account availability
- *    ↓
- * Verify password
- *    ↓
- * Verify email
- *    ↓
- * Activate pending verified account
- *    ↓
- * Check active status
- *    ↓
- * Future Identity Core checks:
- *    ├── 2FA
- *    ├── device verification
- *    ├── suspicious-login verification
- *    └── other authentication challenges
- *    ↓
- * Create server-side session
- *    ↓
- * Set __Host-sami_session cookie
- *    ↓
- * Return authenticated user
- *
- * IMPORTANT:
- *
- * - Raw passwords are never stored.
- * - Raw passwords are never logged.
- * - Raw session tokens are never stored in the database.
- * - Session creation is handled by lib/auth/session.ts.
- * - The login API does NOT perform redirects.
- * - The login API does NOT depend on the dashboard.
- * - Authentication state is communicated using stable codes.
- * - The frontend decides which authentication screen to display.
- */
+async function recordLoginHistory(params: {
+  request: Request;
+  userId: string | null;
+  sessionId?: string | null;
+  successful: boolean;
+  failureReason?: string | null;
+}): Promise<void> {
+  try {
+    const metadata =
+      getSessionRequestMetadata(params.request);
+
+    await queryControl(
+      `
+        INSERT INTO login_history (
+          user_id,
+          session_id,
+          ip_address,
+          user_agent,
+          device_type,
+          browser,
+          operating_system,
+          successful,
+          failure_reason,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          NOW()
+        )
+      `,
+      [
+        params.userId,
+        params.sessionId || null,
+        metadata.ipAddress,
+        metadata.userAgent,
+        metadata.deviceType,
+        metadata.browser,
+        metadata.operatingSystem,
+        params.successful,
+        params.failureReason || null,
+      ]
+    );
+  } catch (error) {
+    /**
+     * Login must not fail just because optional history tables
+     * are not created yet.
+     */
+    console.error(
+      '[Auth] Failed to record login history:',
+      error
+    );
+  }
+}
+
+async function recordAuditEvent(params: {
+  request: Request;
+  userId: string;
+  tenantId: string | null;
+  eventType: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const requestMetadata =
+      getSessionRequestMetadata(params.request);
+
+    await queryControl(
+      `
+        INSERT INTO audit_logs (
+          tenant_id,
+          user_id,
+          event_type,
+          entity_type,
+          entity_id,
+          ip_address,
+          user_agent,
+          metadata,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'auth',
+          $2,
+          $4,
+          $5,
+          $6,
+          NOW()
+        )
+      `,
+      [
+        params.tenantId,
+        params.userId,
+        params.eventType,
+        requestMetadata.ipAddress,
+        requestMetadata.userAgent,
+        JSON.stringify(params.metadata || {}),
+      ]
+    );
+  } catch (error) {
+    console.error(
+      '[Auth] Failed to record audit event:',
+      error
+    );
+  }
+}
 
 export async function POST(request: NextRequest) {
+  let body: LoginBody;
+
   try {
-    // ========================================================
-    // 1. PARSE REQUEST
-    // ========================================================
-
-    let body: unknown;
-
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          authenticated: false,
-          code: 'INVALID_REQUEST',
-          error: 'Invalid request body.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      Array.isArray(body)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          authenticated: false,
-          code: 'INVALID_REQUEST',
-          error: 'Invalid request body.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const data = body as LoginRequest;
-
-    // ========================================================
-    // 2. NORMALIZE INPUT
-    // ========================================================
-
-    const email = normalizeEmail(data.email);
-
-    const password =
-      typeof data.password === 'string'
-        ? data.password
-        : '';
-
-    /**
-     * The login page sends rememberMe.
-     *
-     * IMPORTANT:
-     * createSession() currently owns the session lifetime.
-     * Until createSession() accepts a session-lifetime option,
-     * we deliberately do not pretend that rememberMe changes
-     * the session duration.
-     */
-    const rememberMe = data.rememberMe === true;
-
-    // Keep API compatibility and make the intended behavior
-    // explicit without changing session.ts from this route.
-    void rememberMe;
-
-    // ========================================================
-    // 3. VALIDATE REQUEST
-    // ========================================================
-
-    if (!email || !password) {
-      return NextResponse.json(
-        {
-          success: false,
-          authenticated: false,
-          code: 'MISSING_CREDENTIALS',
-          error: 'Email and password are required.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (!isValidEmail(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          authenticated: false,
-          code: 'INVALID_EMAIL',
-          error: 'Please enter a valid email address.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    /**
-     * We intentionally return the generic authentication error
-     * for an excessively long password instead of exposing
-     * validation details about the password.
-     */
-    if (password.length > MAX_PASSWORD_LENGTH) {
-      return invalidCredentialsResponse();
-    }
-
-    // ========================================================
-    // 4. FIND USER
-    // ========================================================
-
-    /**
-     * We intentionally do not immediately reveal whether an
-     * email exists.
-     *
-     * Unknown email and incorrect password return the same
-     * authentication response.
-     */
-
-    const userResult = await queryControl(
-      `
-        SELECT
-          id,
-          email,
-          password_hash,
-          first_name,
-          last_name,
-          full_name,
-          phone,
-          status,
-          email_verified_at,
-          avatar_file_id,
-          deleted_at
-        FROM users
-        WHERE LOWER(email) = $1
-        LIMIT 1
-      `,
-      [email]
+    body = await request.json();
+  } catch {
+    return jsonError(
+      400,
+      'INVALID_JSON',
+      'Invalid request body.'
     );
+  }
 
-    if (userResult.rows.length === 0) {
-      return invalidCredentialsResponse();
-    }
+  const email = normalizeEmail(body.email);
+  const password = normalizePassword(body.password);
+  const rememberMe = normalizeRememberMe(body.rememberMe);
 
-    const user = userResult.rows[0] as UserRow;
+  if (!email || !email.includes('@')) {
+    return jsonError(
+      400,
+      'INVALID_EMAIL',
+      'Please enter a valid email address.'
+    );
+  }
 
-    // ========================================================
-    // 5. DELETED ACCOUNT
-    // ========================================================
+  if (!password) {
+    return jsonError(
+      400,
+      'PASSWORD_REQUIRED',
+      'Please enter your password.'
+    );
+  }
 
-    if (user.deleted_at) {
-      return accountUnavailableResponse(
-        'ACCOUNT_DELETED',
-        'This account is no longer available.'
+  try {
+    const user = await findUserForLogin(email);
+
+    if (!user) {
+      await recordLoginHistory({
+        request,
+        userId: null,
+        successful: false,
+        failureReason: 'INVALID_CREDENTIALS',
+      });
+
+      return jsonError(
+        401,
+        'INVALID_CREDENTIALS',
+        'Invalid email or password.'
       );
     }
 
-    // ========================================================
-    // 6. ACCOUNT STATUS CHECK
-    // ========================================================
-
-    /**
-     * These statuses must never receive a normal session.
-     *
-     * We return distinct codes because the frontend is capable
-     * of presenting the appropriate state.
-     */
-
-    switch (user.status) {
-      case 'suspended':
-        return accountUnavailableResponse(
-          'ACCOUNT_SUSPENDED',
-          'This account has been suspended. Please contact SaMi support.'
-        );
-
-      case 'disabled':
-        return accountUnavailableResponse(
-          'ACCOUNT_DISABLED',
-          'This account is disabled. Please contact your administrator.'
-        );
-
-      case 'deleted':
-        return accountUnavailableResponse(
-          'ACCOUNT_DELETED',
-          'This account is no longer available.'
-        );
-
-      case 'cancelled':
-        return accountUnavailableResponse(
-          'ACCOUNT_CANCELLED',
-          'This account has been cancelled. Please contact SaMi support.'
-        );
-
-      case 'banned':
-        return accountUnavailableResponse(
-          'ACCOUNT_BANNED',
-          'This account is unavailable. Please contact SaMi support.'
-        );
-
-      case 'locked':
-        return accountUnavailableResponse(
-          'ACCOUNT_LOCKED',
-          'This account is temporarily locked. Please try again later.'
-        );
-
-      default:
-        break;
-    }
-
-    // ========================================================
-    // 7. PASSWORD HASH VALIDATION
-    // ========================================================
-
-    if (
-      !user.password_hash ||
-      typeof user.password_hash !== 'string'
-    ) {
-      /**
-       * This should never normally happen.
-       *
-       * Do not reveal the internal database state to the client.
-       */
-      console.error(
-        '[SaMi] User has no valid password hash:',
-        user.id
-      );
-
-      return invalidCredentialsResponse();
-    }
-
-    // ========================================================
-    // 8. VERIFY PASSWORD
-    // ========================================================
-
-    const passwordMatches = await bcrypt.compare(
+    const passwordValid = await verifyPassword(
       password,
-      user.password_hash
+      user.passwordHash
     );
 
-    if (!passwordMatches) {
-      return invalidCredentialsResponse();
-    }
+    if (!passwordValid) {
+      await recordLoginHistory({
+        request,
+        userId: user.id,
+        successful: false,
+        failureReason: 'INVALID_CREDENTIALS',
+      });
 
-    // ========================================================
-    // 9. EMAIL VERIFICATION
-    // ========================================================
-
-    /**
-     * Email verification is required before creating an
-     * authenticated application session.
-     */
-
-    if (!user.email_verified_at) {
-      return NextResponse.json(
-        {
-          success: false,
-          authenticated: false,
-          code: 'EMAIL_VERIFICATION_REQUIRED',
-          error:
-            'Please verify your email address before signing in.',
-          nextStep: 'verify-email',
-          user: {
-            id: user.id,
-            email: user.email,
-            emailVerified: false,
-          },
+      await recordAuditEvent({
+        request,
+        userId: user.id,
+        tenantId: null,
+        eventType: 'LOGIN_FAILED',
+        metadata: {
+          reason: 'INVALID_CREDENTIALS',
         },
-        {
-          status: 403,
-        }
+      });
+
+      return jsonError(
+        401,
+        'INVALID_CREDENTIALS',
+        'Invalid email or password.'
       );
     }
 
-    // ========================================================
-    // 10. ACTIVATE VERIFIED ACCOUNT
-    // ========================================================
+    const accountContext: AccountContext =
+      await getAccountContextForUser(user.id);
 
-    /**
-     * Registration may initially create users as:
-     *
-     * pending
-     * pending_verification
-     *
-     * Once the email has been verified and the password is
-     * correct, the account can become active.
-     */
+    const validation =
+      validateAccountCanLogin(user, accountContext);
 
-    if (
-      user.status === 'pending_verification' ||
-      user.status === 'pending'
-    ) {
-      const activationResult = await queryControl(
-        `
-          UPDATE users
-          SET
-            status = 'active',
-            updated_at = NOW()
-          WHERE id = $1
-            AND deleted_at IS NULL
-            AND email_verified_at IS NOT NULL
-            AND status IN (
-              'pending_verification',
-              'pending'
-            )
-          RETURNING
-            id,
-            status
-        `,
-        [user.id]
-      );
+    if (!validation.allowed) {
+      await recordLoginHistory({
+        request,
+        userId: user.id,
+        successful: false,
+        failureReason: validation.code,
+      });
 
-      if (activationResult.rows.length === 0) {
-        /**
-         * The account changed between the initial SELECT and
-         * this update.
-         */
-        return accountUnavailableResponse(
-          'ACCOUNT_UNAVAILABLE',
-          'Unable to activate this account. Please try again.'
-        );
-      }
+      await recordAuditEvent({
+        request,
+        userId: user.id,
+        tenantId: accountContext.tenant?.id || null,
+        eventType: 'LOGIN_BLOCKED',
+        metadata: {
+          code: validation.code,
+          reason: validation.message,
+        },
+      });
 
-      user.status = 'active';
-    }
-
-    // ========================================================
-    // 11. FINAL ACTIVE-ACCOUNT CHECK
-    // ========================================================
-
-    /**
-     * Only active users should receive a normal authenticated
-     * session.
-     */
-
-    if (user.status !== 'active') {
-      return accountUnavailableResponse(
-        'ACCOUNT_UNAVAILABLE',
-        'This account is not currently available for sign in.'
+      return jsonError(
+        validation.httpStatus,
+        validation.code,
+        validation.message,
+        validation.next
+          ? { next: validation.next }
+          : undefined
       );
     }
-
-    // ========================================================
-    // 12. FUTURE AUTHENTICATION CHALLENGES
-    // ========================================================
-
-    /**
-     * IMPORTANT:
-     *
-     * Do NOT create fake 2FA/device-verification behavior here.
-     *
-     * When Identity Core implements those systems, this is the
-     * correct point in the flow to evaluate them:
-     *
-     * Password verified
-     *       ↓
-     * Email verified
-     *       ↓
-     * Account active
-     *       ↓
-     * Authentication challenge
-     *       ↓
-     * Session
-     *
-     * For example:
-     *
-     * if (requiresTwoFactor) {
-     *   return NextResponse.json({
-     *     success: false,
-     *     authenticated: false,
-     *     code: 'TWO_FACTOR_REQUIRED',
-     *     nextStep: '2fa',
-     *   }, { status: 200 });
-     * }
-     *
-     * The actual implementation should use a short-lived,
-     * server-side challenge rather than storing credentials
-     * or authentication secrets in browser storage.
-     */
-
-    // ========================================================
-    // 13. CREATE SERVER-SIDE SESSION
-    // ========================================================
-
-    /**
-     * session.ts is authoritative for session creation.
-     *
-     * It is responsible for:
-     *
-     * - generating the session token
-     * - storing the session securely
-     * - recording request metadata
-     * - setting the __Host-sami_session cookie
-     * - enforcing the session lifetime
-     */
 
     const session = await createSession(
-  user.id,
-  request,
-  {
-    rememberMe,
-  }
-);
+      user.id,
+      request,
+      {
+        rememberMe,
+      }
+    );
 
-    // ========================================================
-    // 14. BUILD SAFE USER RESPONSE
-    // ========================================================
+    await recordLoginHistory({
+      request,
+      userId: user.id,
+      sessionId: session.sessionId,
+      successful: true,
+    });
 
-    /**
-     * Never return:
-     *
-     * - password_hash
-     * - session token
-     * - internal authentication secrets
-     * - database credentials
-     */
-
-    const fullName =
-      user.full_name ||
-      `${user.first_name || ''} ${user.last_name || ''}`.trim();
-
-    // ========================================================
-    // 15. SUCCESS RESPONSE
-    // ========================================================
+    await recordAuditEvent({
+      request,
+      userId: user.id,
+      tenantId: accountContext.tenant?.id || null,
+      eventType: 'LOGIN_SUCCESS',
+      metadata: {
+        rememberMe,
+        sessionId: session.sessionId,
+      },
+    });
 
     return NextResponse.json(
       {
         success: true,
-        authenticated: true,
-
-        user: {
-          id: user.id,
-          email: user.email,
-
-          firstName:
-            user.first_name || '',
-
-          lastName:
-            user.last_name || '',
-
-          fullName,
-
-          phone:
-            user.phone || null,
-
-          emailVerified:
-            Boolean(user.email_verified_at),
-
-          avatarFileId:
-            user.avatar_file_id || null,
-
-          status: 'active',
-        },
-
+        message: 'Login successful.',
+        user: publicUser(user),
+        tenant: accountContext.tenant,
+        subscription: accountContext.subscription,
+        role: accountContext.role,
+        modules: accountContext.modules,
         session: {
           id: session.sessionId,
-          expiresAt: session.expiresAt,
+          expiresAt:
+            session.expiresAt.toISOString(),
         },
-
-        message: 'Login successful.',
       },
-      {
-        status: 200,
-      }
+      { status: 200 }
     );
   } catch (error) {
-    // ========================================================
-    // UNEXPECTED ERROR
-    // ========================================================
+    console.error('[Auth] Login failed:', error);
 
-    /**
-     * Never expose:
-     *
-     * - SQL errors
-     * - database credentials
-     * - password information
-     * - session tokens
-     * - internal stack traces
-     */
-
-    console.error(
-      '[SaMi] Login error:',
-      error
-    );
-
-    return NextResponse.json(
-      {
-        success: false,
-        authenticated: false,
-        code: 'LOGIN_FAILED',
-        error:
-          'Unable to sign in right now. Please try again.',
-      },
-      {
-        status: 500,
-      }
+    return jsonError(
+      500,
+      'LOGIN_FAILED',
+      'Something went wrong while signing you in.'
     );
   }
 }

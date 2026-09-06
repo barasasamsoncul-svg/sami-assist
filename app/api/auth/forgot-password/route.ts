@@ -1,377 +1,262 @@
-
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-
 import { queryControl } from '@/lib/db/control';
+import { sendPasswordResetEmail } from '@/lib/services/password-reset-email';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// ============================================================
-// CONSTANTS
-// ============================================================
+const RESET_TOKEN_BYTES = 48;
+const RESET_TOKEN_EXPIRY_MINUTES = 30;
 
-const MAX_PASSWORD_LENGTH = 128;
-const MIN_PASSWORD_LENGTH = 8;
+type ForgotPasswordBody = {
+  email?: unknown;
+};
 
-// ============================================================
-// HELPERS
-// ============================================================
+function normalizeEmail(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
 
-function hashResetToken(token: string): string {
+  return value.trim().toLowerCase();
+}
+
+function generateResetToken(): string {
+  return crypto
+    .randomBytes(RESET_TOKEN_BYTES)
+    .toString('base64url');
+}
+
+function hashToken(token: string): string {
   return crypto
     .createHash('sha256')
     .update(token, 'utf8')
     .digest('hex');
 }
 
-// ============================================================
-// POST /api/auth/reset-password
-// ============================================================
+function getAppBaseUrl(request: NextRequest): string {
+  const forwardedHost = request.headers
+    .get('x-forwarded-host')
+    ?.split(',')[0]
+    ?.trim();
 
-/**
- * Password reset flow:
- *
- * Reset page
- *     ↓
- * Token + new password
- *     ↓
- * Hash token
- *     ↓
- * Atomically consume valid token
- *     ↓
- * Update password hash
- *     ↓
- * Revoke ALL existing sessions
- *     ↓
- * Return success
- *
- * The raw reset token is never stored in the database.
- */
+  const forwardedProto = request.headers
+    .get('x-forwarded-proto')
+    ?.split(',')[0]
+    ?.trim();
 
-export async function POST(
-  request: NextRequest
+  if (forwardedHost) {
+    return `${forwardedProto || 'https'}://${forwardedHost}`;
+  }
+
+  const host = request.headers.get('host')?.trim();
+
+  if (host) {
+    const protocol =
+      request.nextUrl.protocol?.replace(':', '') ||
+      (host.includes('localhost') ? 'http' : 'https');
+
+    return `${protocol}://${host}`;
+  }
+
+  return request.nextUrl.origin;
+}
+
+function successResponse() {
+  return NextResponse.json(
+    {
+      success: true,
+      message:
+        'If the email exists, a password reset link has been sent.',
+    },
+    { status: 200 }
+  );
+}
+
+function errorResponse(
+  status: number,
+  code: string,
+  message: string
 ) {
+  return NextResponse.json(
+    {
+      success: false,
+      code,
+      message,
+    },
+    { status }
+  );
+}
+
+async function recordPasswordResetRequested(
+  userId: string
+): Promise<void> {
   try {
-    // ========================================================
-    // 1. PARSE REQUEST
-    // ========================================================
+    await queryControl(
+      `
+        INSERT INTO audit_logs (
+          tenant_id,
+          user_id,
+          event_type,
+          entity_type,
+          entity_id,
+          metadata,
+          created_at
+        )
+        VALUES (
+          NULL,
+          $1,
+          'PASSWORD_RESET_REQUESTED',
+          'auth',
+          $1,
+          '{}'::jsonb,
+          NOW()
+        )
+      `,
+      [userId]
+    );
+  } catch (error) {
+    console.error(
+      '[Auth] Failed to record password reset request:',
+      error
+    );
+  }
+}
 
-    let body: unknown;
+export async function POST(request: NextRequest) {
+  let body: ForgotPasswordBody;
 
-    try {
-      body = await request.json();
-    } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'INVALID_REQUEST',
-          error: 'Invalid request body.',
-        },
-        {
-          status: 400,
-        }
-      );
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(
+      400,
+      'INVALID_JSON',
+      'Invalid request body.'
+    );
+  }
+
+  const email = normalizeEmail(body.email);
+
+  if (!email || !email.includes('@')) {
+    return errorResponse(
+      400,
+      'INVALID_EMAIL',
+      'Please enter a valid email address.'
+    );
+  }
+
+  try {
+    const userResult = await queryControl(
+      `
+        SELECT
+          id,
+          email,
+          first_name,
+          status
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [email]
+    );
+
+    /*
+      Security:
+      Do not reveal whether the email exists.
+      This prevents attackers from checking registered emails.
+    */
+    if (userResult.rows.length === 0) {
+      return successResponse();
     }
 
-    if (
-      !body ||
-      typeof body !== 'object' ||
-      Array.isArray(body)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'INVALID_REQUEST',
-          error: 'Invalid request body.',
-        },
-        {
-          status: 400,
-        }
-      );
+    const user = userResult.rows[0];
+
+    const userStatus = String(
+      user.status || ''
+    ).toLowerCase();
+
+    const allowedStatuses = [
+      'active',
+      'locked',
+      'pending_verification',
+    ];
+
+    if (!allowedStatuses.includes(userStatus)) {
+      return successResponse();
     }
 
-    const data = body as {
-      token?: unknown;
-      password?: unknown;
-      confirmPassword?: unknown;
-    };
+    const rawToken = generateResetToken();
 
-    // ========================================================
-    // 2. VALIDATE INPUT
-    // ========================================================
+    const tokenHash = hashToken(rawToken);
 
-    const token =
-      typeof data.token === 'string'
-        ? data.token.trim()
-        : '';
-
-    const password =
-      typeof data.password === 'string'
-        ? data.password
-        : '';
-
-    const confirmPassword =
-      typeof data.confirmPassword === 'string'
-        ? data.confirmPassword
-        : '';
-
-    if (!token) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'INVALID_RESET_TOKEN',
-          error:
-            'This password reset link is invalid or has expired.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (!password) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'PASSWORD_REQUIRED',
-          error: 'New password is required.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      password.length <
-      MIN_PASSWORD_LENGTH
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'WEAK_PASSWORD',
-          error:
-            'Password must be at least 8 characters.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      password.length >
-      MAX_PASSWORD_LENGTH
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'INVALID_PASSWORD',
-          error:
-            'Password is too long.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    if (
-      confirmPassword &&
-      password !== confirmPassword
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'PASSWORD_MISMATCH',
-          error:
-            'Passwords do not match.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    // ========================================================
-    // 3. HASH TOKEN
-    // ========================================================
-
-    const tokenHash =
-      hashResetToken(token);
-
-    // ========================================================
-    // 4. HASH NEW PASSWORD
-    // ========================================================
-
-    const passwordHash =
-      await bcrypt.hash(
-        password,
-        12
-      );
-
-    // ========================================================
-    // 5. ATOMICALLY CONSUME RESET TOKEN
-    // ========================================================
-
-    /**
-     * PostgreSQL UPDATE ... RETURNING ensures the token can
-     * only be consumed once.
-     */
-
-    const resetResult =
-      await queryControl(
-        `
-          UPDATE password_resets
-          SET
-            used_at = NOW()
-          WHERE id = (
-            SELECT id
-            FROM password_resets
-            WHERE token_hash = $1
-              AND expires_at > NOW()
-              AND used_at IS NULL
-              AND deleted_at IS NULL
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-          )
-          RETURNING
-            id,
-            user_id
-        `,
-        [tokenHash]
-      );
-
-    if (
-      resetResult.rows.length === 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'INVALID_RESET_TOKEN',
-          error:
-            'This password reset link is invalid or has expired.',
-        },
-        {
-          status: 400,
-        }
-      );
-    }
-
-    const reset =
-      resetResult.rows[0];
-
-    // ========================================================
-    // 6. UPDATE PASSWORD
-    // ========================================================
-
-    const userResult =
-      await queryControl(
-        `
-          UPDATE users
-          SET
-            password_hash = $1,
-            updated_at = NOW()
-          WHERE id = $2
-            AND deleted_at IS NULL
-          RETURNING
-            id,
-            email,
-            first_name
-        `,
-        [
-          passwordHash,
-          reset.user_id,
-        ]
-      );
-
-    if (
-      userResult.rows.length === 0
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: 'PASSWORD_RESET_FAILED',
-          error:
-            'Unable to reset your password. Please try again.',
-        },
-        {
-          status: 409,
-        }
-      );
-    }
-
-    // ========================================================
-    // 7. INVALIDATE OTHER RESET TOKENS
-    // ========================================================
+    const expiresAt = new Date(
+      Date.now() +
+        RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000
+    );
 
     await queryControl(
       `
-        UPDATE password_resets
-        SET
-          deleted_at = NOW()
+        UPDATE password_reset_tokens
+        SET deleted_at = NOW()
         WHERE user_id = $1
           AND used_at IS NULL
           AND deleted_at IS NULL
       `,
-      [reset.user_id]
+      [user.id]
     );
-
-    // ========================================================
-    // 8. REVOKE ALL SESSIONS
-    // ========================================================
-
-    /**
-     * Password recovery is a security-sensitive event.
-     *
-     * Any previously authenticated browser/device must be
-     * forced to authenticate again with the new password.
-     */
 
     await queryControl(
       `
-        UPDATE sessions
-        SET
-          is_current = false,
-          revoked_at = NOW()
-        WHERE user_id = $1
-          AND revoked_at IS NULL
+        INSERT INTO password_reset_tokens (
+          user_id,
+          token_hash,
+          expires_at,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          NOW()
+        )
       `,
-      [reset.user_id]
+      [user.id, tokenHash, expiresAt]
     );
 
-    // ========================================================
-    // 9. SUCCESS
-    // ========================================================
+    const resetUrl =
+      `${getAppBaseUrl(request)}/reset-password` +
+      `?token=${encodeURIComponent(rawToken)}` +
+      `&email=${encodeURIComponent(user.email)}`;
 
-    return NextResponse.json(
-      {
-        success: true,
-        passwordReset: true,
-        message:
-          'Your password has been reset successfully. Please sign in with your new password.',
-      },
-      {
-        status: 200,
-      }
-    );
+    const emailResult =
+      await sendPasswordResetEmail({
+        email: user.email,
+        firstName: user.first_name || '',
+        resetUrl,
+      });
+
+    if (!emailResult.success) {
+      console.error(
+        '[Auth] Failed to send password reset email:',
+        emailResult.error
+      );
+    }
+
+    await recordPasswordResetRequested(user.id);
+
+    return successResponse();
   } catch (error) {
     console.error(
-      '[SaMi] Reset-password error:',
+      '[Auth] Forgot password failed:',
       error
     );
 
-    return NextResponse.json(
-      {
-        success: false,
-        code: 'PASSWORD_RESET_FAILED',
-        error:
-          'Unable to reset your password right now. Please try again.',
-      },
-      {
-        status: 500,
-      }
+    return errorResponse(
+      500,
+      'FORGOT_PASSWORD_FAILED',
+      'Something went wrong. Please try again.'
     );
   }
 }

@@ -5,46 +5,19 @@ import crypto from 'crypto';
 /**
  * SaMi Session Management
  *
- * Authentication architecture:
+ * Server-only authentication foundation.
  *
- * Register
- *   ↓
- * Email verification
- *   ↓
- * Account active
- *   ↓
- * Login
- *   ↓
- * Password verification
- *   ↓
- * Authentication challenges (future)
- *   ↓
- * createSession()
- *   ↓
- * __Host-sami_session cookie
- *   ↓
- * getSession()
- *   ↓
- * Protected pages / APIs
- *
- * Security model:
- *
- * - Raw passwords are never handled here.
- * - Raw session tokens are NEVER stored in the database.
- * - Database stores only SHA-256(token).
- * - Browser receives the raw token only as an HttpOnly cookie.
- * - Cookie is Secure in production.
- * - Cookie uses SameSite=Lax.
- * - Cookie uses __Host- prefix.
- * - Database expiration is authoritative.
- * - Logout revokes the database session and deletes cookie.
- * - Session validation checks user state.
- * - Session activity is refreshed periodically.
- *
- * IMPORTANT:
- *
- * This file is server-only.
- * Never import it into Client Components.
+ * Supports:
+ * - Secure opaque session tokens
+ * - SHA-256 token hashing
+ * - HttpOnly cookies
+ * - Production __Host- cookie
+ * - Local development cookie compatibility
+ * - Session revocation
+ * - Session rotation
+ * - Activity refresh
+ * - Device metadata stored on sessions
+ * - Settings-compatible active session listing
  */
 
 // ============================================================
@@ -60,24 +33,61 @@ export interface SessionUser {
   avatarFileId: string | null;
 }
 
+export interface SessionDevice {
+  ipAddress: string;
+  userAgent: string;
+  deviceType: string;
+  browser: string;
+  operatingSystem: string;
+  lastActiveAt: Date | null;
+}
+
 export interface Session {
   sessionId: string;
   user: SessionUser;
+  device: SessionDevice;
   expiresAt: Date;
 }
 
 export interface CreateSessionOptions {
   /**
-   * When true, the session is allowed to live for the full
-   * persistent-session lifetime.
-   *
-   * When false, the session uses the shorter browser-session
-   * lifetime.
-   *
-   * NOTE:
-   * The server-side database expiration remains authoritative.
+   * true = longer persistent session.
+   * false = shorter server-side session.
    */
   rememberMe?: boolean;
+
+  /**
+   * When true, all existing active sessions for the user are revoked
+   * before creating the new session.
+   *
+   * Default:
+   * - true, unless SAMI_ALLOW_MULTIPLE_ACTIVE_SESSIONS=true
+   *
+   * This keeps your current one-current-session behavior by default,
+   * while allowing Settings > Devices / Sessions later.
+   */
+  revokeExistingSessions?: boolean;
+}
+
+export interface SessionRequestMetadata {
+  ipAddress: string;
+  userAgent: string;
+  deviceType: string;
+  browser: string;
+  operatingSystem: string;
+}
+
+export interface UserSessionListItem {
+  sessionId: string;
+  ipAddress: string;
+  userAgent: string;
+  deviceType: string;
+  browser: string;
+  operatingSystem: string;
+  isCurrent: boolean;
+  lastActiveAt: Date | null;
+  expiresAt: Date;
+  createdAt: Date | null;
 }
 
 // ============================================================
@@ -85,68 +95,38 @@ export interface CreateSessionOptions {
 // ============================================================
 
 /**
- * __Host- cookie requirements:
+ * Important:
  *
- * - Secure
- * - Path=/
- * - No Domain attribute
- *
- * This gives the cookie stronger browser scoping.
+ * __Host- cookies must be Secure.
+ * In production we use the stronger __Host- cookie.
+ * In local development we use a normal cookie so localhost works reliably.
  */
-export const SESSION_COOKIE_NAME = '__Host-sami_session';
+export const SESSION_COOKIE_NAME =
+  process.env.NODE_ENV === 'production'
+    ? '__Host-sami_session'
+    : 'sami_session';
 
-/**
- * Persistent session lifetime.
- *
- * Used when "Keep me signed in" is enabled.
- */
 const REMEMBERED_SESSION_DAYS = 30;
 
-/**
- * Normal browser-session lifetime.
- *
- * This is intentionally shorter than a remembered session.
- *
- * IMPORTANT:
- * A browser session cookie disappears when the browser closes,
- * but the database session also expires after this period.
- */
 const NORMAL_SESSION_DAYS = 1;
 
-/**
- * Refresh last_active_at at most once every 5 minutes.
- *
- * This prevents every protected request from generating a
- * database UPDATE.
- */
 const ACTIVITY_REFRESH_MINUTES = 5;
+
+const SESSION_TOKEN_BYTES = 64;
+
+const ALLOW_MULTIPLE_ACTIVE_SESSIONS =
+  process.env.SAMI_ALLOW_MULTIPLE_ACTIVE_SESSIONS === 'true';
 
 // ============================================================
 // TOKEN HELPERS
 // ============================================================
 
-/**
- * Generate a cryptographically secure opaque session token.
- *
- * 64 random bytes = 512 bits of entropy.
- *
- * The token contains no:
- * - user ID
- * - email
- * - role
- * - timestamps
- * - business information
- */
 function generateSessionToken(): string {
-  return crypto.randomBytes(64).toString('base64url');
+  return crypto
+    .randomBytes(SESSION_TOKEN_BYTES)
+    .toString('base64url');
 }
 
-/**
- * Hash the raw session token before storing/querying it.
- *
- * If the database is compromised, the attacker does not
- * immediately receive usable browser session tokens.
- */
 function hashToken(token: string): string {
   return crypto
     .createHash('sha256')
@@ -154,71 +134,73 @@ function hashToken(token: string): string {
     .digest('hex');
 }
 
+function isValidSessionToken(token: unknown): token is string {
+  return (
+    typeof token === 'string' &&
+    token.length >= 80 &&
+    token.length <= 200
+  );
+}
+
 // ============================================================
 // REQUEST METADATA
 // ============================================================
 
+function cleanHeaderValue(value: string | null, maxLength: number): string {
+  return (value || '').trim().slice(0, maxLength);
+}
+
 function getClientIp(request: Request): string {
-  /**
-   * x-forwarded-for may contain:
-   *
-   * client, proxy1, proxy2
-   *
-   * We use the first value because it normally represents the
-   * originating client IP behind a trusted reverse proxy.
-   *
-   * IMPORTANT:
-   * Only trust this header when your deployment infrastructure
-   * controls the proxy chain.
-   */
-  const forwardedFor = request.headers.get(
-    'x-forwarded-for'
+  const cloudflareIp = cleanHeaderValue(
+    request.headers.get('cf-connecting-ip'),
+    255
   );
+
+  if (cloudflareIp) {
+    return cloudflareIp;
+  }
+
+  const forwardedFor = request.headers.get('x-forwarded-for');
 
   if (forwardedFor) {
     const firstIp = forwardedFor
       .split(',')[0]
-      ?.trim();
+      ?.trim()
+      .slice(0, 255);
 
     if (firstIp) {
-      return firstIp.slice(0, 255);
+      return firstIp;
     }
   }
 
-  const realIp = request.headers.get(
-    'x-real-ip'
+  const realIp = cleanHeaderValue(
+    request.headers.get('x-real-ip'),
+    255
   );
 
   if (realIp) {
-    return realIp
-      .trim()
-      .slice(0, 255);
+    return realIp;
   }
 
   return 'unknown';
 }
 
 function getUserAgent(request: Request): string {
-  return (
-    request.headers.get('user-agent') || ''
-  ).slice(0, 1000);
+  return cleanHeaderValue(
+    request.headers.get('user-agent'),
+    1000
+  );
 }
 
-function detectDeviceType(
-  userAgent: string
-): string {
+function detectDeviceType(userAgent: string): string {
   const ua = userAgent.toLowerCase();
 
-  if (
-    /tablet|ipad|playbook|silk/i.test(ua)
-  ) {
+  if (/tablet|ipad|playbook|silk/i.test(ua)) {
     return 'tablet';
   }
 
   if (
-    /mobile|iphone|ipod|android.*mobile|windows phone/i.test(
-      ua
-    )
+    /mobile|iphone|ipod|android.*mobile|windows phone/i.test(ua)
   ) {
     return 'mobile';
   }
@@ -226,26 +208,18 @@ function detectDeviceType(
   return 'desktop';
 }
 
-function detectBrowser(
-  userAgent: string
-): string {
+function detectBrowser(userAgent: string): string {
   const ua = userAgent.toLowerCase();
 
   if (ua.includes('edg/')) {
     return 'Edge';
   }
 
-  if (
-    ua.includes('opr/') ||
-    ua.includes('opera')
-  ) {
+  if (ua.includes('opr/') || ua.includes('opera')) {
     return 'Opera';
   }
 
-  if (
-    ua.includes('chrome/') &&
-    !ua.includes('edg/')
-  ) {
+  if (ua.includes('chrome/') && !ua.includes('edg/')) {
     return 'Chrome';
   }
 
@@ -261,25 +235,16 @@ function detectBrowser(
     return 'Safari';
   }
 
-  if (
-    ua.includes('msie') ||
-    ua.includes('trident/')
-  ) {
+  if (ua.includes('msie') || ua.includes('trident/')) {
     return 'Internet Explorer';
   }
 
   return 'Unknown';
 }
 
-function detectOperatingSystem(
-  userAgent: string
-): string {
+function detectOperatingSystem(userAgent: string): string {
   const ua = userAgent.toLowerCase();
 
-  /**
-   * Check iOS before macOS because iPad user agents can
-   * contain Macintosh in newer Safari versions.
-   */
   if (
     ua.includes('iphone') ||
     ua.includes('ipad') ||
@@ -314,27 +279,35 @@ function detectOperatingSystem(
   return 'Unknown';
 }
 
+export function getSessionRequestMetadata(
+  request: Request
+): SessionRequestMetadata {
+  const userAgent = getUserAgent(request);
+
+  return {
+    ipAddress: getClientIp(request),
+    userAgent,
+    deviceType: detectDeviceType(userAgent),
+    browser: detectBrowser(userAgent),
+    operatingSystem: detectOperatingSystem(userAgent),
+  };
+}
+
 // ============================================================
 // SESSION EXPIRATION
 // ============================================================
 
-function getSessionLifetimeDays(
-  rememberMe: boolean
-): number {
+function getSessionLifetimeDays(rememberMe: boolean): number {
   return rememberMe
     ? REMEMBERED_SESSION_DAYS
     : NORMAL_SESSION_DAYS;
 }
 
-function calculateSessionExpiration(
-  rememberMe: boolean
-): Date {
-  const days =
-    getSessionLifetimeDays(rememberMe);
+function calculateSessionExpiration(rememberMe: boolean): Date {
+  const days = getSessionLifetimeDays(rememberMe);
 
   return new Date(
-    Date.now() +
-      days * 24 * 60 * 60 * 1000
+    Date.now() + days * 24 * 60 * 60 * 1000
   );
 }
 
@@ -350,64 +323,78 @@ function getSessionCookieOptions(
     process.env.NODE_ENV === 'production';
 
   const options: {
-    httpOnly: boolean;
+    httpOnly: true;
     secure: boolean;
     sameSite: 'lax';
-    path: string;
-    expires: Date;
+    path: '/';
+    expires?: Date;
     maxAge?: number;
   } = {
-    /**
-     * Prevent JavaScript from reading the authentication
-     * cookie.
-     */
     httpOnly: true,
-
-    /**
-     * HTTPS only in production.
-     *
-     * Local development can therefore continue using:
-     *
-     * http://localhost:3000
-     */
     secure: isProduction,
-
-    /**
-     * Good protection against cross-site request attacks while
-     * preserving normal browser navigation.
-     */
     sameSite: 'lax',
-
-    /**
-     * Required for __Host- cookies.
-     */
     path: '/',
-
-    /**
-     * Match server-side expiration.
-     */
-    expires: expiresAt,
   };
 
   /**
-   * Remembered sessions receive an explicit persistent
-   * browser lifetime.
+   * Remembered sessions are persistent browser cookies.
    *
-   * Normal sessions intentionally omit maxAge so the browser
-   * treats them as session cookies.
+   * Normal sessions do not receive maxAge/expires, so the browser
+   * treats them like session cookies. The database expiry still remains
+   * authoritative.
    */
   if (rememberMe) {
+    options.expires = expiresAt;
     options.maxAge = Math.max(
       0,
       Math.floor(
-        (expiresAt.getTime() -
-          Date.now()) /
-          1000
+        (expiresAt.getTime() - Date.now()) / 1000
       )
     );
   }
 
   return options;
+}
+
+function getClearCookieOptions() {
+  return {
+    httpOnly: true as const,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax' as const,
+    path: '/',
+    maxAge: 0,
+    expires: new Date(0),
+  };
+}
+
+// ============================================================
+// COOKIE TOKEN READER
+// ============================================================
+
+async function getRawSessionTokenFromCookie(): Promise<string | null> {
+  const cookieStore = await cookies();
+
+  const sessionCookie = cookieStore.get(
+    SESSION_COOKIE_NAME
+  );
+
+  const sessionToken = sessionCookie?.value;
+
+  if (!isValidSessionToken(sessionToken)) {
+    return null;
+  }
+
+  return sessionToken;
+}
+
+async function getSessionTokenHashFromCookie(): Promise<string | null> {
+  const sessionToken = await getRawSessionTokenFromCookie();
+
+  if (!sessionToken) {
+    return null;
+  }
+
+  return hashToken(sessionToken);
 }
 
 // ============================================================
@@ -428,73 +415,33 @@ export async function createSession(
     );
   }
 
-  const rememberMe =
-    options.rememberMe === true;
+  const rememberMe = options.rememberMe === true;
 
-  /**
-   * Generate the raw token.
-   *
-   * It exists only in server memory and the outgoing cookie.
-   */
-  const sessionToken =
-    generateSessionToken();
+  const revokeExistingSessions =
+    options.revokeExistingSessions ??
+    !ALLOW_MULTIPLE_ACTIVE_SESSIONS;
 
-  /**
-   * Store only the hash in PostgreSQL.
-   */
-  const tokenHash =
-    hashToken(sessionToken);
+  const sessionToken = generateSessionToken();
 
-  const expiresAt =
-    calculateSessionExpiration(
-      rememberMe
+  const tokenHash = hashToken(sessionToken);
+
+  const expiresAt = calculateSessionExpiration(rememberMe);
+
+  const metadata = getSessionRequestMetadata(request);
+
+  if (revokeExistingSessions) {
+    await queryControl(
+      `
+        UPDATE sessions
+        SET
+          is_current = false,
+          revoked_at = NOW()
+        WHERE user_id = $1
+          AND revoked_at IS NULL
+      `,
+      [userId]
     );
-
-  const userAgent =
-    getUserAgent(request);
-
-  const ipAddress =
-    getClientIp(request);
-
-  const deviceType =
-    detectDeviceType(userAgent);
-
-  const browser =
-    detectBrowser(userAgent);
-
-  const operatingSystem =
-    detectOperatingSystem(userAgent);
-
-  // ==========================================================
-  // REVOKE EXISTING CURRENT SESSION
-  // ==========================================================
-
-  /**
-   * SaMi currently uses one current session per user.
-   *
-   * This is intentionally preserved from your existing
-   * architecture so we do not unexpectedly change existing
-   * account/security behavior.
-   *
-   * Later, SaMi can support multiple trusted devices by
-   * removing this global revocation and adding session/device
-   * management.
-   */
-  await queryControl(
-    `
-      UPDATE sessions
-      SET
-        is_current = false,
-        revoked_at = NOW()
-      WHERE user_id = $1
-        AND revoked_at IS NULL
-    `,
-    [userId]
-  );
-
-  // ==========================================================
-  // CREATE DATABASE SESSION
-  // ==========================================================
+  }
 
   const result = await queryControl(
     `
@@ -529,38 +476,26 @@ export async function createSession(
     [
       userId,
       tokenHash,
-      ipAddress,
-      userAgent,
-      deviceType,
-      browser,
-      operatingSystem,
+      metadata.ipAddress,
+      metadata.userAgent,
+      metadata.deviceType,
+      metadata.browser,
+      metadata.operatingSystem,
       expiresAt,
     ]
   );
 
   if (result.rows.length === 0) {
-    throw new Error(
-      'Failed to create session.'
-    );
+    throw new Error('Failed to create session.');
   }
 
-  const sessionId =
-    result.rows[0].id;
+  const sessionId = result.rows[0].id;
 
-  const databaseExpiresAt =
-    new Date(result.rows[0].expires_at);
+  const databaseExpiresAt = new Date(
+    result.rows[0].expires_at
+  );
 
-  // ==========================================================
-  // SET AUTHENTICATION COOKIE
-  // ==========================================================
-
-  /**
-   * The raw token is placed directly into the HttpOnly cookie.
-   *
-   * It is NEVER returned to the client as JSON.
-   */
-  const cookieStore =
-    await cookies();
+  const cookieStore = await cookies();
 
   cookieStore.set(
     SESSION_COOKIE_NAME,
@@ -582,26 +517,13 @@ export async function createSession(
 // ============================================================
 
 export async function getSession(): Promise<Session | null> {
-  const cookieStore =
-    await cookies();
+  const tokenHash =
+    await getSessionTokenHashFromCookie();
 
-  const sessionCookie =
-    cookieStore.get(
-      SESSION_COOKIE_NAME
-    );
-
-  const sessionToken =
-    sessionCookie?.value;
-
-  if (!sessionToken) {
+  if (!tokenHash) {
+    await clearSessionCookie();
     return null;
   }
-
-  /**
-   * Never query PostgreSQL using the raw browser token.
-   */
-  const tokenHash =
-    hashToken(sessionToken);
 
   const result = await queryControl(
     `
@@ -609,8 +531,13 @@ export async function getSession(): Promise<Session | null> {
         s.id AS session_id,
         s.expires_at,
         s.last_active_at,
+        s.ip_address,
+        s.user_agent,
+        s.device_type,
+        s.browser,
+        s.operating_system,
 
-        u.id,
+        u.id AS user_id,
         u.email,
         u.full_name,
         u.first_name,
@@ -624,15 +551,10 @@ export async function getSession(): Promise<Session | null> {
         ON u.id = s.user_id
 
       WHERE s.session_token_hash = $1
-
         AND s.is_current = true
-
         AND s.revoked_at IS NULL
-
         AND s.expires_at > NOW()
-
         AND u.status = 'active'
-
         AND u.deleted_at IS NULL
 
       LIMIT 1
@@ -640,159 +562,182 @@ export async function getSession(): Promise<Session | null> {
     [tokenHash]
   );
 
-  // ==========================================================
-  // INVALID SESSION
-  // ==========================================================
-
-  /**
-   * Covers:
-   *
-   * - invalid token
-   * - expired session
-   * - revoked session
-   * - non-current session
-   * - inactive account
-   * - deleted account
-   */
   if (result.rows.length === 0) {
     await clearSessionCookie();
-
     return null;
   }
 
-  const row =
-    result.rows[0];
+  const row = result.rows[0];
 
-  // ==========================================================
-  // REFRESH ACTIVITY
-  // ==========================================================
-
-  const lastActiveAt =
+  await refreshSessionActivityIfNeeded(
+    row.session_id,
     row.last_active_at
-      ? new Date(
-          row.last_active_at
-        )
-      : null;
+  );
+
+  return {
+    sessionId: row.session_id,
+
+    user: {
+      id: row.user_id,
+      email: row.email,
+      fullName: row.full_name || '',
+      firstName: row.first_name || '',
+      lastName: row.last_name || '',
+      avatarFileId: row.avatar_file_id || null,
+    },
+
+    device: {
+      ipAddress: row.ip_address || 'unknown',
+      userAgent: row.user_agent || '',
+      deviceType: row.device_type || 'desktop',
+      browser: row.browser || 'Unknown',
+      operatingSystem:
+        row.operating_system || 'Unknown',
+      lastActiveAt: row.last_active_at
+        ? new Date(row.last_active_at)
+        : null,
+    },
+
+    expiresAt: new Date(row.expires_at),
+  };
+}
+
+async function refreshSessionActivityIfNeeded(
+  sessionId: string,
+  lastActiveAtValue: unknown
+): Promise<void> {
+  const lastActiveAt = lastActiveAtValue
+    ? new Date(String(lastActiveAtValue))
+    : null;
 
   const shouldRefreshActivity =
     !lastActiveAt ||
-    Date.now() -
-      lastActiveAt.getTime() >
-      ACTIVITY_REFRESH_MINUTES *
-        60 *
-        1000;
+    Date.now() - lastActiveAt.getTime() >
+      ACTIVITY_REFRESH_MINUTES * 60 * 1000;
 
-  if (shouldRefreshActivity) {
+  if (!shouldRefreshActivity) {
+    return;
+  }
+
+  try {
     await queryControl(
       `
         UPDATE sessions
         SET last_active_at = NOW()
         WHERE id = $1
+          AND is_current = true
           AND revoked_at IS NULL
           AND expires_at > NOW()
       `,
-      [row.session_id]
+      [sessionId]
+    );
+  } catch (error) {
+    console.error(
+      '[Session] Failed to refresh session activity:',
+      error
     );
   }
-
-  return {
-    sessionId:
-      row.session_id,
-
-    user: {
-      id: row.id,
-
-      email:
-        row.email,
-
-      fullName:
-        row.full_name || '',
-
-      firstName:
-        row.first_name || '',
-
-      lastName:
-        row.last_name || '',
-
-      avatarFileId:
-        row.avatar_file_id || null,
-    },
-
-    expiresAt:
-      new Date(row.expires_at),
-  };
 }
 
 // ============================================================
 // REQUIRE SESSION
 // ============================================================
 
-/**
- * Use this when authentication is mandatory.
- *
- * Example:
- *
- * const session = await requireSession();
- *
- * const userId = session.user.id;
- */
 export async function requireSession(): Promise<Session> {
-  const session =
-    await getSession();
+  const session = await getSession();
 
   if (!session) {
-    throw new Error(
-      'UNAUTHENTICATED'
-    );
+    throw new Error('UNAUTHENTICATED');
   }
 
   return session;
 }
 
 // ============================================================
-// GET CURRENT USER
+// CURRENT USER HELPERS
 // ============================================================
 
-/**
- * Returns the authenticated user or null.
- */
 export async function getCurrentUser(): Promise<SessionUser | null> {
-  const session =
-    await getSession();
+  const session = await getSession();
 
   return session?.user ?? null;
 }
 
-/**
- * Returns the authenticated user or throws.
- */
 export async function requireCurrentUser(): Promise<SessionUser> {
-  const session =
-    await requireSession();
+  const session = await requireSession();
 
   return session.user;
 }
 
-// ============================================================
-// GET CURRENT USER ID
-// ============================================================
-
 export async function getCurrentUserId(): Promise<string | null> {
-  const session =
-    await getSession();
+  const session = await getSession();
 
   return session?.user.id ?? null;
 }
 
-// ============================================================
-// IS AUTHENTICATED
-// ============================================================
-
 export async function isAuthenticated(): Promise<boolean> {
-  const session =
-    await getSession();
+  const session = await getSession();
 
   return session !== null;
+}
+
+/**
+ * Compatibility aliases for routes that already use these names.
+ */
+export const getAuthenticatedUser = getCurrentUser;
+
+export const requireAuthenticatedUser = requireCurrentUser;
+
+// ============================================================
+// SESSION SETTINGS HELPERS
+// ============================================================
+
+export async function listActiveSessions(
+  userId: string
+): Promise<UserSessionListItem[]> {
+  if (!userId) {
+    return [];
+  }
+
+  const result = await queryControl(
+    `
+      SELECT
+        id,
+        ip_address,
+        user_agent,
+        device_type,
+        browser,
+        operating_system,
+        is_current,
+        last_active_at,
+        expires_at,
+        created_at
+      FROM sessions
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND expires_at > NOW()
+      ORDER BY last_active_at DESC NULLS LAST, created_at DESC
+    `,
+    [userId]
+  );
+
+  return result.rows.map((row: any) => ({
+    sessionId: row.id,
+    ipAddress: row.ip_address || 'unknown',
+    userAgent: row.user_agent || '',
+    deviceType: row.device_type || 'desktop',
+    browser: row.browser || 'Unknown',
+    operatingSystem:
+      row.operating_system || 'Unknown',
+    isCurrent: row.is_current === true,
+    lastActiveAt: row.last_active_at
+      ? new Date(row.last_active_at)
+      : null,
+    expiresAt: new Date(row.expires_at),
+    createdAt: row.created_at
+      ? new Date(row.created_at)
+      : null,
+  }));
 }
 
 // ============================================================
@@ -817,43 +762,19 @@ export async function revokeSession(
         AND user_id = $2
         AND revoked_at IS NULL
     `,
-    [
-      sessionId,
-      userId,
-    ]
+    [sessionId, userId]
   );
 }
 
 // ============================================================
-// LOGOUT
+// LOGOUT CURRENT BROWSER SESSION
 // ============================================================
 
-/**
- * Logout the current browser session.
- *
- * Steps:
- *
- * 1. Read HttpOnly cookie server-side.
- * 2. Hash token.
- * 3. Revoke matching database session.
- * 4. Delete browser cookie.
- */
 export async function logout(): Promise<void> {
-  const cookieStore =
-    await cookies();
+  const tokenHash =
+    await getSessionTokenHashFromCookie();
 
-  const sessionCookie =
-    cookieStore.get(
-      SESSION_COOKIE_NAME
-    );
-
-  const sessionToken =
-    sessionCookie?.value;
-
-  if (sessionToken) {
-    const tokenHash =
-      hashToken(sessionToken);
-
+  if (tokenHash) {
     await queryControl(
       `
         UPDATE sessions
@@ -878,10 +799,7 @@ export async function revokeAllOtherSessions(
   userId: string,
   currentSessionId: string
 ): Promise<void> {
-  if (
-    !userId ||
-    !currentSessionId
-  ) {
+  if (!userId || !currentSessionId) {
     return;
   }
 
@@ -895,10 +813,7 @@ export async function revokeAllOtherSessions(
         AND id != $2
         AND revoked_at IS NULL
     `,
-    [
-      userId,
-      currentSessionId,
-    ]
+    [userId, currentSessionId]
   );
 }
 
@@ -906,17 +821,6 @@ export async function revokeAllOtherSessions(
 // REVOKE ALL SESSIONS
 // ============================================================
 
-/**
- * Useful after:
- *
- * - password change
- * - email change
- * - account compromise
- * - security incident
- * - administrator forced logout
- * - MFA reset
- * - identity recovery
- */
 export async function revokeAllSessions(
   userId: string
 ): Promise<void> {
@@ -936,10 +840,6 @@ export async function revokeAllSessions(
     [userId]
   );
 
-  /**
-   * Also remove the current browser cookie if this function
-   * is being called from the current authenticated request.
-   */
   await clearSessionCookie();
 }
 
@@ -947,17 +847,6 @@ export async function revokeAllSessions(
 // SESSION ROTATION
 // ============================================================
 
-/**
- * Rotate the current authenticated session.
- *
- * Useful after sensitive authentication events:
- *
- * - password change
- * - email change
- * - MFA activation
- * - privilege elevation
- * - account recovery
- */
 export async function rotateSession(
   request: Request,
   options: CreateSessionOptions = {}
@@ -965,8 +854,7 @@ export async function rotateSession(
   sessionId: string;
   expiresAt: Date;
 } | null> {
-  const session =
-    await getSession();
+  const session = await getSession();
 
   if (!session) {
     return null;
@@ -980,7 +868,17 @@ export async function rotateSession(
   return createSession(
     session.user.id,
     request,
-    options
+    {
+      ...options,
+
+      /**
+       * Rotation should replace the current session.
+       * It should not automatically destroy every other device unless
+       * the caller explicitly requests it.
+       */
+      revokeExistingSessions:
+        options.revokeExistingSessions ?? false,
+    }
   );
 }
 
@@ -989,26 +887,11 @@ export async function rotateSession(
 // ============================================================
 
 export async function clearSessionCookie(): Promise<void> {
-  const cookieStore =
-    await cookies();
+  const cookieStore = await cookies();
 
   cookieStore.set(
     SESSION_COOKIE_NAME,
     '',
-    {
-      httpOnly: true,
-
-      secure:
-        process.env.NODE_ENV ===
-        'production',
-
-      sameSite: 'lax',
-
-      path: '/',
-
-      maxAge: 0,
-
-      expires: new Date(0),
-    }
+    getClearCookieOptions()
   );
 }

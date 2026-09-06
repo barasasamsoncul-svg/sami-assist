@@ -33,7 +33,8 @@ export async function GET() {
         authenticated: true,
         user: session.user,
         tenant: accountContext.tenant,
-        subscription: accountContext.subscription,
+        subscription:
+          accountContext.subscription,
         role: accountContext.role,
         modules: accountContext.modules,
         session: {
@@ -59,12 +60,16 @@ export async function GET() {
       { status: 200 }
     );
   } catch (error) {
-    console.error('[Auth] Failed to load current user:', error);
+    console.error(
+      '[Auth] Refresh session failed:',
+      error
+    );
 
     return NextResponse.json(
       {
         authenticated: false,
-        error: 'Failed to load current user.',
+        error:
+          'Failed to refresh session.',
       },
       { status: 500 }
     );
