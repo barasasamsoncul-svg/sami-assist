@@ -9,11 +9,17 @@ import {
   Bot,
   Building2,
   ChevronRight,
+  Clock3,
   CreditCard,
   Crown,
+  FileStack,
   Folder,
+  HelpCircle,
+  Inbox,
   LayoutDashboard,
+  ListChecks,
   Loader2,
+  LockKeyhole,
   LogOut,
   Menu,
   MessageSquare,
@@ -21,11 +27,12 @@ import {
   Search,
   Settings,
   ShieldCheck,
-  Sparkles,
+  Star,
   UserCog,
+  UserRound,
   Users,
+  WandSparkles,
   X,
-  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -102,93 +109,144 @@ type DashboardClientProps = {
   session: DashboardSession;
 };
 
-type WorkspaceLink = {
+type NavItem = {
   title: string;
   href: string;
   icon: LucideIcon;
-  description?: string;
   ownerOnly?: boolean;
   adminOnly?: boolean;
 };
 
-const primaryLinks: WorkspaceLink[] = [
+type WorkItem = {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+};
+
+const mainNav: NavItem[] = [
   {
     title: 'SaMi AI',
     href: '/ai',
     icon: Bot,
-    description: 'Ask, analyze, automate, and search your workspace.',
   },
   {
     title: 'Dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
-    description: 'Your workspace command center.',
   },
 ];
 
-const workspaceLinks: WorkspaceLink[] = [
+const workspaceNav: NavItem[] = [
   {
     title: 'Workspace',
     href: '/settings/workspace',
     icon: Building2,
-    description: 'Business profile and workspace identity.',
   },
   {
     title: 'Team',
     href: '/team',
     icon: Users,
-    description: 'Members, invitations, roles, and permissions.',
     adminOnly: true,
   },
   {
     title: 'Files',
     href: '/files',
     icon: Folder,
-    description: 'Documents and knowledge for your workspace.',
   },
   {
     title: 'Notifications',
     href: '/notifications',
     icon: Bell,
-    description: 'Alerts, reminders, and business updates.',
   },
   {
     title: 'Integrations',
     href: '/integrations',
     icon: Plug,
-    description: 'Connect payments, APIs, webhooks, and external tools.',
     adminOnly: true,
   },
   {
     title: 'Billing',
     href: '/billing',
     icon: CreditCard,
-    description: 'Plan, subscription, and payments.',
     ownerOnly: true,
   },
   {
     title: 'Security',
     href: '/settings/security',
     icon: ShieldCheck,
-    description: 'Sessions, devices, passwords, and account safety.',
   },
   {
     title: 'Settings',
     href: '/settings',
     icon: Settings,
-    description: 'Profile, preferences, and workspace settings.',
   },
 ];
 
-function canSeeLink(
-  link: WorkspaceLink,
+const yourWorkItems: WorkItem[] = [
+  {
+    title: 'Recent records',
+    description: 'Records opened from your apps will appear here.',
+    icon: Clock3,
+  },
+  {
+    title: 'Recently opened apps',
+    description: 'Quickly return to apps you use often.',
+    icon: AppWindow,
+  },
+  {
+    title: 'Assigned work',
+    description: 'Tasks assigned to you by installed apps.',
+    icon: ListChecks,
+  },
+  {
+    title: 'Drafts',
+    description: 'Unfinished records from your workspace.',
+    icon: FileStack,
+  },
+  {
+    title: 'Favorites',
+    description: 'Pinned records and saved shortcuts.',
+    icon: Star,
+  },
+];
+
+const activityItems: WorkItem[] = [
+  {
+    title: 'Tasks requiring attention',
+    description: 'Important items from your apps and workspace.',
+    icon: Inbox,
+  },
+  {
+    title: 'Mentions',
+    description: 'Comments and mentions will appear here.',
+    icon: MessageSquare,
+  },
+  {
+    title: 'Approvals',
+    description: 'Approvals requested by apps will appear here.',
+    icon: ListChecks,
+  },
+  {
+    title: 'Reminders',
+    description: 'Follow-ups and scheduled reminders.',
+    icon: Bell,
+  },
+  {
+    title: 'Recent activity',
+    description: 'Workspace activity will appear here.',
+    icon: Clock3,
+  },
+];
+
+function canSeeItem(
+  item: NavItem,
   membership: DashboardMembership
 ): boolean {
-  if (link.ownerOnly && !membership?.isOwner) {
+  if (item.ownerOnly && !membership?.isOwner) {
     return false;
   }
 
-  if (link.adminOnly && !membership?.isAdmin) {
+  if (item.adminOnly && !membership?.isAdmin) {
     return false;
   }
 
@@ -244,7 +302,8 @@ function statusClass(status?: string | null): string {
     value.includes('failed') ||
     value.includes('cancelled') ||
     value.includes('expired') ||
-    value.includes('suspended')
+    value.includes('suspended') ||
+    value.includes('disabled')
   ) {
     return 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/40 dark:text-red-300 dark:ring-red-900/60';
   }
@@ -273,26 +332,11 @@ function getAccessIcon(access?: string | null): LucideIcon {
     return UserCog;
   }
 
-  return Users;
+  return UserRound;
 }
 
 function appHref(moduleKey: string): string {
   return `/apps/${encodeURIComponent(moduleKey)}`;
-}
-
-function formatDate(value: string | null): string {
-  if (!value) {
-    return 'Not available';
-  }
-
-  try {
-    return new Intl.DateTimeFormat('en-KE', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    }).format(new Date(value));
-  } catch {
-    return 'Not available';
-  }
 }
 
 export default function DashboardClient({
@@ -311,9 +355,7 @@ export default function DashboardClient({
 
   const displayName = getDisplayName(user);
 
-  const AccessIcon = getAccessIcon(
-    membership?.accessLevel
-  );
+  const AccessIcon = getAccessIcon(membership?.accessLevel);
 
   const apps = useMemo(
     () =>
@@ -326,10 +368,10 @@ export default function DashboardClient({
     [modules]
   );
 
-  const visibleWorkspaceLinks = useMemo(
+  const visibleWorkspaceNav = useMemo(
     () =>
-      workspaceLinks.filter((link) =>
-        canSeeLink(link, membership)
+      workspaceNav.filter((item) =>
+        canSeeItem(item, membership)
       ),
     [membership]
   );
@@ -359,7 +401,7 @@ export default function DashboardClient({
       {sidebarOpen && (
         <button
           type="button"
-          aria-label="Close sidebar"
+          aria-label="Close sidebar overlay"
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden"
         />
@@ -374,19 +416,16 @@ export default function DashboardClient({
       >
         <div className="flex h-full flex-col">
           <div className="flex h-20 items-center justify-between px-5">
-            <Link
-              href="/dashboard"
-              className="flex items-center gap-3"
-            >
+            <Link href="/dashboard" className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white dark:bg-white dark:text-slate-950">
                 <SaMiLogo />
               </div>
 
-              <div>
-                <p className="text-sm font-black tracking-tight">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black tracking-tight">
                   SaMi
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                   AI business workspace
                 </p>
               </div>
@@ -405,7 +444,7 @@ export default function DashboardClient({
           <div className="px-4">
             <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white dark:bg-white dark:text-slate-950">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white dark:bg-white dark:text-slate-950">
                   {getInitials(user)}
                 </div>
 
@@ -444,14 +483,14 @@ export default function DashboardClient({
 
           <nav className="mt-5 flex-1 overflow-y-auto px-4 pb-4">
             <div className="space-y-1">
-              {primaryLinks.map((link) => {
-                const Icon = link.icon;
-                const active = link.href === '/dashboard';
+              {mainNav.map((item) => {
+                const Icon = item.icon;
+                const active = item.href === '/dashboard';
 
                 return (
                   <Link
-                    key={link.title}
-                    href={link.href}
+                    key={item.title}
+                    href={item.href}
                     className={[
                       'flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition',
                       active
@@ -460,7 +499,7 @@ export default function DashboardClient({
                     ].join(' ')}
                   >
                     <Icon className="h-5 w-5" />
-                    {link.title}
+                    {item.title}
                   </Link>
                 );
               })}
@@ -487,23 +526,24 @@ export default function DashboardClient({
                     Choose apps
                   </Link>
                 ) : (
-                  apps.map((module) => (
+                  apps.map((app) => (
                     <Link
-                      key={module.key}
-                      href={appHref(module.key)}
+                      key={app.key}
+                      href={appHref(app.key)}
                       className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                     >
-                      <AppWindow className="h-5 w-5" />
+                      <AppWindow className="h-5 w-5 shrink-0" />
 
                       <span className="min-w-0 flex-1 truncate">
-                        {module.name}
+                        {app.name}
                       </span>
 
                       <span
                         className={[
-                          'h-2 w-2 rounded-full',
-                          module.status.toLowerCase() === 'installed' ||
-                          module.status.toLowerCase() === 'enabled'
+                          'h-2 w-2 shrink-0 rounded-full',
+                          app.status.toLowerCase() === 'installed' ||
+                          app.status.toLowerCase() === 'enabled' ||
+                          app.status.toLowerCase() === 'active'
                             ? 'bg-emerald-500'
                             : 'bg-amber-500',
                         ].join(' ')}
@@ -520,17 +560,17 @@ export default function DashboardClient({
               </p>
 
               <div className="space-y-1">
-                {visibleWorkspaceLinks.map((link) => {
-                  const Icon = link.icon;
+                {visibleWorkspaceNav.map((item) => {
+                  const Icon = item.icon;
 
                   return (
                     <Link
-                      key={link.title}
-                      href={link.href}
+                      key={item.title}
+                      href={item.href}
                       className="flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                     >
                       <Icon className="h-5 w-5" />
-                      {link.title}
+                      {item.title}
                     </Link>
                   );
                 })}
@@ -578,11 +618,11 @@ export default function DashboardClient({
               </h1>
             </div>
 
-            <div className="hidden min-w-0 max-w-lg flex-1 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-800 dark:bg-slate-900 md:flex">
+            <div className="hidden min-w-0 max-w-xl flex-1 items-center rounded-2xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-800 dark:bg-slate-900 md:flex">
               <Search className="h-5 w-5 text-slate-400" />
 
               <input
-                placeholder="Search workspace..."
+                placeholder="Search SaMi..."
                 className="h-11 min-w-0 flex-1 bg-transparent px-3 text-sm font-medium outline-none placeholder:text-slate-400"
               />
             </div>
@@ -594,156 +634,166 @@ export default function DashboardClient({
             >
               <Bell className="h-5 w-5" />
             </Link>
+
+            <Link
+              href="/help"
+              className="hidden rounded-2xl border border-slate-200 bg-white p-3 text-slate-700 shadow-sm hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800 sm:block"
+              aria-label="Help"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Link>
           </div>
         </header>
 
         <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-            <div className="relative overflow-hidden rounded-[2rem] bg-slate-950 p-6 text-white shadow-2xl shadow-slate-950/20 sm:p-8">
-              <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-24 left-20 h-72 w-72 rounded-full bg-cyan-500/20 blur-3xl" />
-
-              <div className="relative">
-                <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white/80 ring-1 ring-white/10">
-                  <Sparkles className="h-4 w-4" />
+          <section className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
+            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <p className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  <WandSparkles className="h-4 w-4" />
                   AI-powered business workspace
-                </div>
-
-                <h2 className="mt-6 max-w-3xl text-3xl font-black tracking-tight sm:text-5xl">
-                  Run your workspace with SaMi AI.
-                </h2>
-
-                <p className="mt-4 max-w-3xl text-sm leading-7 text-white/65 sm:text-base">
-                  Ask SaMi, open your apps, manage your team,
-                  organize files, connect tools, and control your
-                  workspace from one professional place.
                 </p>
 
-                <div className="mt-7 flex flex-col gap-3 sm:flex-row">
-                  <Link
-                    href="/ai"
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-sm font-black text-slate-950 transition hover:bg-slate-200"
-                  >
-                    Open SaMi AI
-                    <ArrowRight className="h-5 w-5" />
-                  </Link>
+                <h2 className="mt-5 max-w-3xl text-3xl font-black tracking-tight sm:text-5xl">
+                  Welcome back, {displayName}.
+                </h2>
 
-                  <Link
-                    href="/apps"
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-white/10 px-5 text-sm font-black text-white ring-1 ring-white/15 transition hover:bg-white/15"
-                  >
-                    Manage apps
-                    <AppWindow className="h-5 w-5" />
-                  </Link>
-                </div>
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-500 dark:text-slate-400 sm:text-base">
+                  Here’s what’s happening in your workspace.
+                  Open an app, ask SaMi, review your work, or
+                  continue where you left off.
+                </p>
               </div>
-            </div>
 
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-center gap-3">
-                <div
-                  className={[
-                    'flex h-12 w-12 items-center justify-center rounded-2xl ring-1',
-                    accessClass(membership?.accessLevel),
-                  ].join(' ')}
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Link
+                  href="/ai"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                 >
-                  <AccessIcon className="h-6 w-6" />
-                </div>
+                  Ask SaMi
+                  <ArrowRight className="h-5 w-5" />
+                </Link>
 
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black">
-                    {membership?.label || 'Workspace Member'}
-                  </p>
-
-                  <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                    Owner: {getOwnerName(owner)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Plan
-                  </p>
-                  <p className="mt-1 truncate text-sm font-black">
-                    {subscription?.planName ||
-                      subscription?.planKey ||
-                      'Free'}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Apps
-                  </p>
-                  <p className="mt-1 text-sm font-black">
-                    {apps.length}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Workspace
-                  </p>
-                  <p className="mt-1 truncate text-sm font-black capitalize">
-                    {normalizeStatus(tenant?.status)}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-3 dark:bg-slate-950">
-                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Device
-                  </p>
-                  <p className="mt-1 truncate text-sm font-black">
-                    {session.device.browser}
-                  </p>
-                </div>
+                <Link
+                  href="/apps"
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 dark:hover:bg-slate-800"
+                >
+                  View all apps
+                  <AppWindow className="h-5 w-5" />
+                </Link>
               </div>
             </div>
           </section>
 
-          <section className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div className="flex items-center gap-3">
-                <MessageSquare className="h-5 w-5 text-slate-400" />
+          <section className="mt-6">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-black">
+                  Apps
+                </h2>
 
+                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                  Open the apps enabled for this workspace.
+                </p>
+              </div>
+
+              <Link
+                href="/apps"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                View all apps
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
+
+            {apps.length === 0 ? (
+              <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center dark:border-slate-700 dark:bg-slate-900">
+                <AppWindow className="mx-auto h-10 w-10 text-slate-400" />
+
+                <p className="mt-4 text-base font-black">
+                  No apps enabled yet
+                </p>
+
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  Once this workspace has apps installed, they will
+                  appear here as your main launcher.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+                {apps.map((app) => (
+                  <Link
+                    key={app.key}
+                    href={appHref(app.key)}
+                    className="group rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-950"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-slate-950 text-white dark:bg-white dark:text-slate-950">
+                        <AppWindow className="h-7 w-7" />
+                      </div>
+
+                      <span
+                        className={[
+                          'rounded-full px-2.5 py-1 text-xs font-black capitalize ring-1',
+                          statusClass(app.status),
+                        ].join(' ')}
+                      >
+                        {normalizeStatus(app.status)}
+                      </span>
+                    </div>
+
+                    <p className="mt-5 truncate text-base font-black">
+                      {app.name}
+                    </p>
+
+                    <div className="mt-4 flex items-center gap-1 text-xs font-black text-blue-600 dark:text-blue-400">
+                      Open app
+                      <ChevronRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="mt-6 grid gap-5 xl:grid-cols-2">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-black">
-                    Ask SaMi
+                    Your work
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Your AI assistant for this workspace.
+                    A personal workspace view across your apps.
                   </p>
                 </div>
               </div>
 
-              <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950">
-                <div className="flex items-start gap-3">
-                  <div className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white dark:bg-white dark:text-slate-950">
-                    <Bot className="h-5 w-5" />
-                  </div>
+              <div className="mt-5 space-y-3">
+                {yourWorkItems.map((item) => {
+                  const Icon = item.icon;
 
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">
-                      What should we work on?
-                    </p>
+                  return (
+                    <div
+                      key={item.title}
+                      className="flex items-start gap-3 rounded-3xl border border-slate-200 p-4 dark:border-slate-800"
+                    >
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        <Icon className="h-5 w-5" />
+                      </div>
 
-                    <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                      Ask about your apps, files, customers, reports,
-                      payments, team, or daily work.
-                    </p>
-                  </div>
-                </div>
-
-                <Link
-                  href="/ai"
-                  className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                >
-                  Start with SaMi AI
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {item.description}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -751,200 +801,176 @@ export default function DashboardClient({
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-black">
-                    Apps
+                    Activity
                   </h2>
 
                   <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Your enabled workspace apps.
+                    Updates, reminders, approvals, and mentions.
                   </p>
                 </div>
-
-                <Link
-                  href="/apps"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-4 py-2 text-sm font-bold hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-950"
-                >
-                  Manage
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
               </div>
 
-              <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                {apps.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700 sm:col-span-2">
-                    <AppWindow className="mx-auto h-8 w-8 text-slate-400" />
+              <div className="mt-5 space-y-3">
+                {activityItems.map((item) => {
+                  const Icon = item.icon;
 
-                    <p className="mt-3 text-sm font-black">
-                      No apps enabled
-                    </p>
-
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Your workspace apps will appear here.
-                    </p>
-                  </div>
-                ) : (
-                  apps.map((module) => (
-                    <Link
-                      key={module.key}
-                      href={appHref(module.key)}
-                      className="group rounded-3xl border border-slate-200 p-4 transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-lg dark:border-slate-800 dark:hover:bg-slate-950"
+                  return (
+                    <div
+                      key={item.title}
+                      className="flex items-start gap-3 rounded-3xl border border-slate-200 p-4 dark:border-slate-800"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                          <AppWindow className="h-5 w-5" />
-                        </div>
-
-                        <span
-                          className={[
-                            'rounded-full px-2.5 py-1 text-xs font-black capitalize ring-1',
-                            statusClass(module.status),
-                          ].join(' ')}
-                        >
-                          {normalizeStatus(module.status)}
-                        </span>
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        <Icon className="h-5 w-5" />
                       </div>
 
-                      <p className="mt-4 truncate text-sm font-black">
-                        {module.name}
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                        Workspace app
-                      </p>
-
-                      <div className="mt-4 flex items-center gap-1 text-xs font-black text-blue-600 dark:text-blue-400">
-                        Open
-                        <ChevronRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-black">
+                          {item.title}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {item.description}
+                        </p>
                       </div>
-                    </Link>
-                  ))
-                )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </section>
 
-          <section className="mt-6">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-black">
-                  Workspace
-                </h2>
+          <section className="mt-6 grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-[2rem] border border-slate-200 bg-slate-950 p-6 text-white shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-950">
+                  <Bot className="h-6 w-6" />
+                </div>
 
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  Manage your business workspace.
+                <div>
+                  <h2 className="text-lg font-black">
+                    SaMi AI
+                  </h2>
+
+                  <p className="mt-1 text-sm text-white/60">
+                    Ask anything about your workspace.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-3xl border border-white/10 bg-white/5 p-4">
+                <p className="text-sm leading-6 text-white/75">
+                  “What needs my attention today?”
                 </p>
               </div>
+
+              <Link
+                href="/ai"
+                className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-white px-4 text-sm font-black text-slate-950 transition hover:bg-slate-200"
+              >
+                Ask SaMi
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {visibleWorkspaceLinks.map((link) => {
-                const Icon = link.icon;
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-black">
+                    Dynamic insights
+                  </h2>
 
-                return (
-                  <Link
-                    key={link.title}
-                    href={link.href}
-                    className="group rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-50 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-950"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                        <Icon className="h-5 w-5" />
-                      </div>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    Apps can register widgets here when available.
+                  </p>
+                </div>
+              </div>
 
-                      <ChevronRight className="h-5 w-5 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500" />
-                    </div>
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-3xl border border-dashed border-slate-300 p-5 dark:border-slate-700">
+                  <AppWindow className="h-5 w-5 text-slate-400" />
 
-                    <p className="mt-4 text-sm font-black">
-                      {link.title}
-                    </p>
+                  <p className="mt-4 text-sm font-black">
+                    App widget slot
+                  </p>
 
-                    {link.description && (
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                        {link.description}
-                      </p>
-                    )}
-                  </Link>
-                );
-              })}
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Installed apps will provide insights here.
+                  </p>
+                </div>
+
+                <div className="rounded-3xl border border-dashed border-slate-300 p-5 dark:border-slate-700">
+                  <WandSparkles className="h-5 w-5 text-slate-400" />
+
+                  <p className="mt-4 text-sm font-black">
+                    AI insight slot
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    SaMi AI can summarize app activity here.
+                  </p>
+                </div>
+              </div>
             </div>
           </section>
 
           <section className="mt-6 grid gap-4 md:grid-cols-3">
             <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <Zap className="h-5 w-5 text-slate-400" />
+              <Building2 className="h-5 w-5 text-slate-400" />
 
               <p className="mt-4 text-sm font-black">
-                AI automation
+                Workspace
               </p>
 
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Use SaMi AI to speed up daily work.
+              <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+                {tenant?.name || 'Not available'}
               </p>
             </div>
 
             <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <ShieldCheck className="h-5 w-5 text-slate-400" />
+              <Crown className="h-5 w-5 text-slate-400" />
 
               <p className="mt-4 text-sm font-black">
-                Secure access
+                Owner
               </p>
 
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
+                {getOwnerName(owner)}
+              </p>
+            </div>
+
+            <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <LockKeyhole className="h-5 w-5 text-slate-400" />
+
+              <p className="mt-4 text-sm font-black">
+                Secure session
+              </p>
+
+              <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
                 {session.device.browser} on{' '}
                 {session.device.operatingSystem}
               </p>
             </div>
-
-            <div className="rounded-[1.7rem] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <CreditCard className="h-5 w-5 text-slate-400" />
-
-              <p className="mt-4 text-sm font-black">
-                Subscription
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                {subscription?.planName ||
-                  subscription?.planKey ||
-                  'Free'}{' '}
-                · {normalizeStatus(subscription?.status)}
-              </p>
-
-              {membership?.isOwner && (
-                <Link
-                  href="/billing"
-                  className="mt-4 inline-flex items-center gap-1 text-xs font-black text-blue-600 dark:text-blue-400"
-                >
-                  Manage billing
-                  <ChevronRight className="h-4 w-4" />
-                </Link>
-              )}
-            </div>
           </section>
 
           <section className="mt-6 flex flex-wrap items-center justify-between gap-3 pb-4 text-xs text-slate-500 dark:text-slate-400">
-            <p>
-              SaMi · AI-powered business workspace
-            </p>
+            <p>SaMi · AI-powered business workspace</p>
 
             <div className="flex flex-wrap items-center gap-4">
+              <span className="capitalize">
+                {subscription?.planName ||
+                  subscription?.planKey ||
+                  'Free'}{' '}
+                plan
+              </span>
+
+              <span className="capitalize">
+                {membership?.accessLevel || 'member'}
+              </span>
+
               <Link
                 href="/settings"
                 className="font-bold hover:text-slate-950 dark:hover:text-white"
               >
                 Settings
-              </Link>
-
-              <Link
-                href="/settings/security"
-                className="font-bold hover:text-slate-950 dark:hover:text-white"
-              >
-                Security
-              </Link>
-
-              <Link
-                href="/help"
-                className="font-bold hover:text-slate-950 dark:hover:text-white"
-              >
-                Help
               </Link>
             </div>
           </section>

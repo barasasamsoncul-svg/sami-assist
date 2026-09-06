@@ -8,8 +8,9 @@ export const dynamic = 'force-dynamic';
 export default async function DashboardPage() {
   const session = await requirePageSession('/dashboard');
 
-  const accountContext =
-    await getAccountContextForUser(session.user.id);
+  const accountContext = await getAccountContextForUser(
+    session.user.id
+  );
 
   return (
     <DashboardClient
