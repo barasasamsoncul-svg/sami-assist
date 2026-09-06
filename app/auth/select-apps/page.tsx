@@ -1,6 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -57,6 +63,19 @@ import {
 } from '@/lib/sami-apps';
 
 /* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const SELECTED_APPS_STORAGE_KEY =
+  'sami_selected_apps';
+
+const THEME_STORAGE_KEY =
+  'sami_theme';
+
+const NEXT_ROUTE =
+  '/auth/select-plan';
+
+/* -------------------------------------------------------------------------- */
 /* Icon mapping                                                               */
 /* -------------------------------------------------------------------------- */
 
@@ -99,9 +118,17 @@ const iconMap: Record<string, LucideIcon> = {
   calendar: Calendar,
 };
 
-function getIconComponent(iconName?: string): LucideIcon {
-  if (!iconName) return Package;
-  return iconMap[iconName] ?? Package;
+function getIconComponent(
+  iconName?: string
+): LucideIcon {
+  if (!iconName) {
+    return Package;
+  }
+
+  return (
+    iconMap[iconName] ??
+    Package
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -114,6 +141,100 @@ type OverlayState = {
   message: string;
 };
 
+type CategoryColorMap = Record<
+  string,
+  string
+>;
+
+/* -------------------------------------------------------------------------- */
+/* Storage helpers                                                            */
+/* -------------------------------------------------------------------------- */
+
+function getValidAppKeys(): Set<string> {
+  return new Set(
+    SAMI_APPS.map(
+      (app) => app.key
+    )
+  );
+}
+
+function readSelectedApps(): string[] {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return [];
+  }
+
+  try {
+    const stored =
+      sessionStorage.getItem(
+        SELECTED_APPS_STORAGE_KEY
+      );
+
+    if (!stored) {
+      return [];
+    }
+
+    const parsed =
+      JSON.parse(stored);
+
+    if (
+      !Array.isArray(parsed)
+    ) {
+      return [];
+    }
+
+    const validKeys =
+      getValidAppKeys();
+
+    /*
+     * Validate everything coming from sessionStorage.
+     *
+     * This prevents stale/invalid app keys from being
+     * carried into the next onboarding step.
+     */
+    const validSelectedApps =
+      parsed.filter(
+        (key): key is string =>
+          typeof key === 'string' &&
+          validKeys.has(key)
+      );
+
+    /*
+     * Remove duplicates while preserving
+     * the original selection order.
+     */
+    return [
+      ...new Set(
+        validSelectedApps
+      ),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+function saveSelectedApps(
+  apps: string[]
+): boolean {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return false;
+  }
+
+  try {
+    sessionStorage.setItem(
+      SELECTED_APPS_STORAGE_KEY,
+      JSON.stringify(apps)
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Page                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -121,209 +242,419 @@ type OverlayState = {
 export default function SelectAppsPage() {
   const router = useRouter();
 
-  const [darkMode, setDarkMode] = useState(false);
-  const [selectedApps, setSelectedApps] = useState<string[]>([]);
-  const [activeCategory, setActiveCategory] = useState('all');
-  const [overlay, setOverlay] = useState<OverlayState | null>(null);
+  const [darkMode, setDarkMode] =
+    useState(false);
+
+  const [
+    selectedApps,
+    setSelectedApps,
+  ] = useState<string[]>([]);
+
+  const [
+    activeCategory,
+    setActiveCategory,
+  ] = useState('all');
+
+  const [
+    overlay,
+    setOverlay,
+  ] = useState<OverlayState | null>(
+    null
+  );
+
+  const [
+    navigating,
+    setNavigating,
+  ] = useState(false);
+
+  const mountedRef =
+    useRef(false);
 
   /* ------------------------------------------------------------------------ */
   /* Theme                                                                    */
   /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
+    mountedRef.current = true;
+
     try {
-      const savedTheme = localStorage.getItem('sami_theme');
-      const prefersDark = window.matchMedia(
-        '(prefers-color-scheme: dark)'
-      ).matches;
+      const savedTheme =
+        localStorage.getItem(
+          THEME_STORAGE_KEY
+        );
+
+      const prefersDark =
+        window.matchMedia(
+          '(prefers-color-scheme: dark)'
+        ).matches;
 
       const shouldUseDark =
         savedTheme === 'dark' ||
-        (!savedTheme && prefersDark);
+        (
+          savedTheme !== 'light' &&
+          prefersDark
+        );
 
-      setDarkMode(shouldUseDark);
+      setDarkMode(
+        shouldUseDark
+      );
 
       document.documentElement.classList.toggle(
         'dark',
         shouldUseDark
       );
     } catch {
-      // Ignore localStorage/theme errors.
+      /*
+       * Theme storage is optional.
+       * The page continues normally if
+       * localStorage is unavailable.
+       */
     }
+
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   /* ------------------------------------------------------------------------ */
-  /* Restore previously selected apps                                        */
+  /* Restore selected apps                                                    */
   /* ------------------------------------------------------------------------ */
 
   useEffect(() => {
-    try {
-      const savedApps = sessionStorage.getItem('sami_selected_apps');
+    const restoredApps =
+      readSelectedApps();
 
-      if (!savedApps) return;
+    setSelectedApps(
+      restoredApps
+    );
 
-      const parsed = JSON.parse(savedApps);
-
-      if (!Array.isArray(parsed)) return;
-
-      const validAppKeys = new Set(
-        SAMI_APPS.map((app) => app.key)
+    /*
+     * If old/stale values were present,
+     * normalize storage immediately.
+     */
+    if (
+      restoredApps.length > 0
+    ) {
+      saveSelectedApps(
+        restoredApps
       );
-
-      const validSelectedApps = parsed.filter(
-        (key): key is string =>
-          typeof key === 'string' &&
-          validAppKeys.has(key)
-      );
-
-      setSelectedApps(validSelectedApps);
-    } catch {
-      // Ignore invalid session storage data.
     }
   }, []);
 
-  const toggleTheme = () => {
-    const next = !darkMode;
+  /* ------------------------------------------------------------------------ */
+  /* Escape key                                                               */
+  /* ------------------------------------------------------------------------ */
 
-    setDarkMode(next);
+  useEffect(() => {
+    if (!overlay) {
+      return;
+    }
 
-    document.documentElement.classList.toggle(
-      'dark',
-      next
+    const handleKeyDown =
+      (event: KeyboardEvent) => {
+        if (
+          event.key === 'Escape'
+        ) {
+          setOverlay(null);
+        }
+      };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
     );
 
-    try {
-      localStorage.setItem(
-        'sami_theme',
-        next ? 'dark' : 'light'
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
       );
-    } catch {
-      // Ignore localStorage errors.
-    }
-  };
+    };
+  }, [overlay]);
 
   /* ------------------------------------------------------------------------ */
-  /* App selection                                                            */
+  /* Theme toggle                                                             */
   /* ------------------------------------------------------------------------ */
 
-  const toggleApp = (appKey: string) => {
-    setSelectedApps((current) => {
-      const next = current.includes(appKey)
-        ? current.filter((key) => key !== appKey)
-        : [...current, appKey];
+  const toggleTheme =
+    useCallback(() => {
+      setDarkMode(
+        (current) => {
+          const next =
+            !current;
 
-      try {
-        sessionStorage.setItem(
-          'sami_selected_apps',
-          JSON.stringify(next)
+          document.documentElement.classList.toggle(
+            'dark',
+            next
+          );
+
+          try {
+            localStorage.setItem(
+              THEME_STORAGE_KEY,
+              next
+                ? 'dark'
+                : 'light'
+            );
+          } catch {
+            // Ignore storage errors.
+          }
+
+          return next;
+        }
+      );
+    }, []);
+
+  /* ------------------------------------------------------------------------ */
+  /* App selection                                                             */
+  /* ------------------------------------------------------------------------ */
+
+  const toggleApp =
+    useCallback(
+      (appKey: string) => {
+        if (navigating) {
+          return;
+        }
+
+        const validKeys =
+          getValidAppKeys();
+
+        /*
+         * Never allow arbitrary values to enter
+         * onboarding state.
+         */
+        if (
+          !validKeys.has(
+            appKey
+          )
+        ) {
+          return;
+        }
+
+        setSelectedApps(
+          (current) => {
+            const next =
+              current.includes(
+                appKey
+              )
+                ? current.filter(
+                    (key) =>
+                      key !==
+                      appKey
+                  )
+                : [
+                    ...current,
+                    appKey,
+                  ];
+
+            /*
+             * Persist immediately so Back/Next
+             * and browser navigation do not lose
+             * the selection.
+             */
+            saveSelectedApps(
+              next
+            );
+
+            return next;
+          }
         );
-      } catch {
-        // Ignore sessionStorage errors.
-      }
-
-      return next;
-    });
-  };
+      },
+      [navigating]
+    );
 
   /* ------------------------------------------------------------------------ */
   /* Filtering                                                                */
   /* ------------------------------------------------------------------------ */
 
-  const filteredApps = useMemo(() => {
-    if (activeCategory === 'all') {
-      return SAMI_APPS;
-    }
+  const filteredApps =
+    useMemo(() => {
+      if (
+        activeCategory ===
+        'all'
+      ) {
+        return SAMI_APPS;
+      }
 
-    return SAMI_APPS.filter(
-      (app) => app.category === activeCategory
+      return SAMI_APPS.filter(
+        (app) =>
+          app.category ===
+          activeCategory
+      );
+    }, [activeCategory]);
+
+  /* ------------------------------------------------------------------------ */
+  /* Category colors                                                           */
+  /* ------------------------------------------------------------------------ */
+
+  const categoryColors: CategoryColorMap =
+    useMemo(
+      () => ({
+        finance:
+          'from-emerald-500/20 to-emerald-600/10 border-emerald-200 dark:border-emerald-800/30',
+
+        documents:
+          'from-amber-500/20 to-amber-600/10 border-amber-200 dark:border-amber-800/30',
+
+        sales:
+          'from-blue-500/20 to-blue-600/10 border-blue-200 dark:border-blue-800/30',
+
+        commerce:
+          'from-purple-500/20 to-purple-600/10 border-purple-200 dark:border-purple-800/30',
+
+        supply_chain:
+          'from-orange-500/20 to-orange-600/10 border-orange-200 dark:border-orange-800/30',
+
+        operations:
+          'from-cyan-500/20 to-cyan-600/10 border-cyan-200 dark:border-cyan-800/30',
+
+        people:
+          'from-pink-500/20 to-pink-600/10 border-pink-200 dark:border-pink-800/30',
+
+        marketing:
+          'from-rose-500/20 to-rose-600/10 border-rose-200 dark:border-rose-800/30',
+
+        work:
+          'from-indigo-500/20 to-indigo-600/10 border-indigo-200 dark:border-indigo-800/30',
+      }),
+      []
     );
-  }, [activeCategory]);
+
+  const categoryBadgeColors: CategoryColorMap =
+    useMemo(
+      () => ({
+        finance:
+          'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+
+        documents:
+          'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+
+        sales:
+          'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+
+        commerce:
+          'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+
+        supply_chain:
+          'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
+
+        operations:
+          'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
+
+        people:
+          'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
+
+        marketing:
+          'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
+
+        work:
+          'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+      }),
+      []
+    );
+
+  /* ------------------------------------------------------------------------ */
+  /* Category helpers                                                         */
+  /* ------------------------------------------------------------------------ */
+
+  const getCategoryColor =
+    useCallback(
+      (category: string) =>
+        categoryColors[
+          category
+        ] ??
+        'from-gray-500/20 to-gray-600/10 border-gray-200 dark:border-gray-800/30',
+      [categoryColors]
+    );
+
+  const getCategoryBadgeColor =
+    useCallback(
+      (category: string) =>
+        categoryBadgeColors[
+          category
+        ] ??
+        'bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300',
+      [categoryBadgeColors]
+    );
 
   /* ------------------------------------------------------------------------ */
   /* Continue                                                                 */
   /* ------------------------------------------------------------------------ */
 
-  const handleNext = () => {
-    if (selectedApps.length === 0) {
-      setOverlay({
-        type: 'error',
-        title: 'No Apps Selected',
-        message:
-          'Select at least one app to continue. You can always add more apps later.',
-      });
+  const handleNext =
+    useCallback(() => {
+      if (navigating) {
+        return;
+      }
 
-      return;
-    }
+      if (
+        selectedApps.length ===
+        0
+      ) {
+        setOverlay({
+          type: 'error',
+          title:
+            'No Apps Selected',
+          message:
+            'Select at least one app to continue. You can always add more apps later.',
+        });
 
-    try {
-      sessionStorage.setItem(
-        'sami_selected_apps',
-        JSON.stringify(selectedApps)
+        return;
+      }
+
+      const saved =
+        saveSelectedApps(
+          selectedApps
+        );
+
+      if (!saved) {
+        setOverlay({
+          type: 'error',
+          title:
+            'Unable to save selection',
+          message:
+            'Your browser could not save the selected apps. Please check your browser storage settings and try again.',
+        });
+
+        return;
+      }
+
+      setNavigating(
+        true
       );
-    } catch {
-      setOverlay({
-        type: 'error',
-        title: 'Unable to save selection',
-        message:
-          'Your browser could not save the selected apps. Please check your browser storage settings and try again.',
-      });
 
-      return;
-    }
-
-    router.push('/auth/select-plan');
-  };
+      router.push(
+        NEXT_ROUTE
+      );
+    }, [
+      navigating,
+      selectedApps,
+      router,
+    ]);
 
   /* ------------------------------------------------------------------------ */
   /* Back                                                                     */
   /* ------------------------------------------------------------------------ */
 
-  const handleBack = () => {
-    try {
-      sessionStorage.setItem(
-        'sami_selected_apps',
-        JSON.stringify(selectedApps)
+  const handleBack =
+    useCallback(() => {
+      if (navigating) {
+        return;
+      }
+
+      /*
+       * Back navigation should preserve
+       * the current onboarding state.
+       */
+      saveSelectedApps(
+        selectedApps
       );
-    } catch {
-      // Ignore storage errors when going back.
-    }
 
-    router.back();
-  };
-
-  /* ------------------------------------------------------------------------ */
-  /* Get category color                                                       */
-  /* ------------------------------------------------------------------------ */
-
-  const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      finance: 'from-emerald-500/20 to-emerald-600/10 border-emerald-200 dark:border-emerald-800/30',
-      documents: 'from-amber-500/20 to-amber-600/10 border-amber-200 dark:border-amber-800/30',
-      sales: 'from-blue-500/20 to-blue-600/10 border-blue-200 dark:border-blue-800/30',
-      commerce: 'from-purple-500/20 to-purple-600/10 border-purple-200 dark:border-purple-800/30',
-      supply_chain: 'from-orange-500/20 to-orange-600/10 border-orange-200 dark:border-orange-800/30',
-      operations: 'from-cyan-500/20 to-cyan-600/10 border-cyan-200 dark:border-cyan-800/30',
-      people: 'from-pink-500/20 to-pink-600/10 border-pink-200 dark:border-pink-800/30',
-      marketing: 'from-rose-500/20 to-rose-600/10 border-rose-200 dark:border-rose-800/30',
-      work: 'from-indigo-500/20 to-indigo-600/10 border-indigo-200 dark:border-indigo-800/30',
-    };
-    return colors[category] || 'from-gray-500/20 to-gray-600/10 border-gray-200 dark:border-gray-800/30';
-  };
-
-  const getCategoryBadgeColor = (category: string) => {
-    const colors: Record<string, string> = {
-      finance: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-      documents: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-      sales: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-      commerce: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-      supply_chain: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-      operations: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-      people: 'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
-      marketing: 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-      work: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-    };
-    return colors[category] || 'bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300';
-  };
+      router.back();
+    }, [
+      navigating,
+      selectedApps,
+      router,
+    ]);
 
   /* ------------------------------------------------------------------------ */
   /* Render                                                                   */
@@ -331,7 +662,11 @@ export default function SelectAppsPage() {
 
   return (
     <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-4 py-8 sm:px-6 sm:py-10 transition-colors duration-200">
-      {/* Theme button */}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Theme button                                                       */}
+      {/* ------------------------------------------------------------------ */}
+
       <button
         type="button"
         onClick={toggleTheme}
@@ -343,47 +678,66 @@ export default function SelectAppsPage() {
         className="fixed top-5 right-5 z-20 h-10 w-10 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
       >
         {darkMode ? (
-          <Sun size={18} />
+          <Sun
+            size={18}
+          />
         ) : (
-          <Moon size={18} />
+          <Moon
+            size={18}
+          />
         )}
       </button>
 
+      {/* ------------------------------------------------------------------ */}
+      {/* Container                                                          */}
+      {/* ------------------------------------------------------------------ */}
+
       <div className="w-full max-w-7xl mx-auto">
-        {/* Main card */}
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Main card                                                        */}
+        {/* ---------------------------------------------------------------- */}
+
         <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
+
           <div className="px-6 py-7 sm:px-10 sm:py-9">
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Brand                                                            */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Brand                                                        */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="mb-7">
               <Link
                 href="/"
                 className="inline-flex flex-col items-start"
               >
-                <SaMiLogo size="lg" />
+                <SaMiLogo
+                  size="lg"
+                />
 
                 <span className="mt-2 text-[12px] text-gray-500 dark:text-gray-400 tracking-wide">
-                  AI-powered business workspace
+                  AI-powered business
+                  workspace
                 </span>
               </Link>
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Header                                                           */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Header                                                       */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="mb-7">
+
               <div className="flex items-center justify-between gap-4">
+
                 <div>
                   <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">
                     Select your apps
                   </h1>
 
                   <p className="mt-2 text-[14px] text-gray-500 dark:text-gray-400">
-                    Choose the apps your business needs.
+                    Choose the apps your
+                    business needs.
                   </p>
                 </div>
 
@@ -392,241 +746,436 @@ export default function SelectAppsPage() {
                     Step 2 of 3
                   </span>
                 </div>
+
               </div>
 
               {/* Mobile step indicator */}
+
               <div className="mt-4 sm:hidden">
                 <span className="inline-flex h-7 px-3 items-center rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
                   Step 2 of 3
                 </span>
               </div>
+
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Category tabs                                                     */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Category tabs                                                 */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="mb-6">
-              <div className="flex flex-wrap gap-1.5">
+
+              <div
+                className="flex flex-wrap gap-1.5"
+                role="tablist"
+                aria-label="App categories"
+              >
+
                 {/* All */}
+
                 <button
                   type="button"
-                  onClick={() => setActiveCategory('all')}
+                  role="tab"
+                  aria-selected={
+                    activeCategory ===
+                    'all'
+                  }
+                  onClick={() =>
+                    setActiveCategory(
+                      'all'
+                    )
+                  }
                   className={`px-4 py-2 rounded-full text-xs font-medium transition ${
-                    activeCategory === 'all'
+                    activeCategory ===
+                    'all'
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
                   }`}
                 >
-                  All ({SAMI_APPS.length})
+                  All (
+                  {
+                    SAMI_APPS.length
+                  }
+                  )
                 </button>
 
                 {/* Categories */}
-                {APP_CATEGORIES.map((category) => {
-                  const categoryCount = SAMI_APPS.filter(
-                    (app) =>
-                      app.category === category.key
-                  ).length;
 
-                  return (
-                    <button
-                      key={category.key}
-                      type="button"
-                      onClick={() =>
-                        setActiveCategory(category.key)
-                      }
-                      className={`px-4 py-2 rounded-full text-xs font-medium transition ${
-                        activeCategory === category.key
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                      }`}
-                    >
-                      {category.name} ({categoryCount})
-                    </button>
-                  );
-                })}
+                {APP_CATEGORIES.map(
+                  (
+                    category
+                  ) => {
+                    const categoryCount =
+                      SAMI_APPS.filter(
+                        (app) =>
+                          app.category ===
+                          category.key
+                      ).length;
+
+                    return (
+                      <button
+                        key={
+                          category.key
+                        }
+                        type="button"
+                        role="tab"
+                        aria-selected={
+                          activeCategory ===
+                          category.key
+                        }
+                        onClick={() =>
+                          setActiveCategory(
+                            category.key
+                          )
+                        }
+                        className={`px-4 py-2 rounded-full text-xs font-medium transition ${
+                          activeCategory ===
+                          category.key
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {
+                          category.name
+                        }{' '}
+                        (
+                        {
+                          categoryCount
+                        }
+                        )
+                      </button>
+                    );
+                  }
+                )}
+
               </div>
+
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Selection summary                                                 */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Selection summary                                             */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="mb-5 flex items-center justify-between gap-4">
+
               <p className="text-[12px] text-gray-500 dark:text-gray-400">
-                {filteredApps.length}{' '}
-                {filteredApps.length === 1
-                  ? 'app'
-                  : 'apps'}{' '}
+                {
+                  filteredApps.length
+                }{' '}
+                {
+                  filteredApps.length ===
+                  1
+                    ? 'app'
+                    : 'apps'
+                }{' '}
                 available
               </p>
 
               <p className="text-[12px] text-gray-600 dark:text-gray-400">
                 <span className="font-semibold text-gray-900 dark:text-white">
-                  {selectedApps.length}
+                  {
+                    selectedApps.length
+                  }
                 </span>{' '}
                 selected
               </p>
+
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Apps grid - 3D card style with colors                            */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Apps grid                                                     */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[480px] overflow-y-auto pr-1 mb-6">
-              {filteredApps.map((app) => {
-                const IconComponent = getIconComponent(
-                  app.icon
-                );
 
-                const isSelected =
-                  selectedApps.includes(app.key);
+              {filteredApps.map(
+                (app) => {
+                  const IconComponent =
+                    getIconComponent(
+                      app.icon
+                    );
 
-                const isRecommended =
-                  Boolean(app.recommended);
+                  const isSelected =
+                    selectedApps.includes(
+                      app.key
+                    );
 
-                const categoryColor = getCategoryColor(app.category);
-                const categoryBadgeColor = getCategoryBadgeColor(app.category);
-                const categoryName = APP_CATEGORIES.find(c => c.key === app.category)?.name || app.category;
+                  const isRecommended =
+                    Boolean(
+                      app.recommended
+                    );
 
-                return (
-                  <button
-                    key={app.key}
-                    type="button"
-                    onClick={() => toggleApp(app.key)}
-                    aria-pressed={isSelected}
-                    className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                      isSelected
-                        ? `border-blue-600 bg-gradient-to-br ${categoryColor} shadow-lg shadow-blue-500/15 dark:shadow-blue-500/10 scale-[1.02]`
-                        : 'border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/80 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-1'
-                    }`}
-                  >
-                    {/* Recommended badge */}
-                    {isRecommended && (
-                      <div className="absolute -top-2 right-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[8px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-md shadow-blue-500/30">
-                        Recommended
-                      </div>
-                    )}
+                  const categoryColor =
+                    getCategoryColor(
+                      app.category
+                    );
 
-                    {/* Selected checkmark */}
-                    {isSelected && (
-                      <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
-                        <Check
-                          size={14}
-                          strokeWidth={3}
-                          className="text-white"
-                        />
-                      </div>
-                    )}
+                  const categoryBadgeColor =
+                    getCategoryBadgeColor(
+                      app.category
+                    );
 
-                    <div className="flex flex-col items-center text-center">
-                      {/* Icon with 3D effect */}
-                      <div
-                        className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-300 ${
-                          isSelected
-                            ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/40 scale-110'
-                            : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20 group-hover:scale-105'
-                        }`}
-                      >
-                        <IconComponent
-                          size={24}
-                          className={
+                  const categoryName =
+                    APP_CATEGORIES.find(
+                      (category) =>
+                        category.key ===
+                        app.category
+                    )?.name ??
+                    app.category;
+
+                  return (
+                    <button
+                      key={
+                        app.key
+                      }
+                      type="button"
+                      onClick={() =>
+                        toggleApp(
+                          app.key
+                        )
+                      }
+                      disabled={
+                        navigating
+                      }
+                      aria-pressed={
+                        isSelected
+                      }
+                      aria-label={`${
+                        isSelected
+                          ? 'Remove'
+                          : 'Select'
+                      } ${app.name}`}
+                      className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-70 ${
+                        isSelected
+                          ? `border-blue-600 bg-gradient-to-br ${categoryColor} shadow-lg shadow-blue-500/15 dark:shadow-blue-500/10 scale-[1.02]`
+                          : 'border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/80 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-1'
+                      }`}
+                    >
+
+                      {/* Recommended badge */}
+
+                      {isRecommended && (
+                        <div className="absolute -top-2 right-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[8px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-md shadow-blue-500/30">
+                          Recommended
+                        </div>
+                      )}
+
+                      {/* Selected checkmark */}
+
+                      {isSelected && (
+                        <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
+                          <Check
+                            size={
+                              14
+                            }
+                            strokeWidth={
+                              3
+                            }
+                            className="text-white"
+                          />
+                        </div>
+                      )}
+
+                      {/* Card */}
+
+                      <div className="flex flex-col items-center text-center">
+
+                        {/* Icon */}
+
+                        <div
+                          className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-300 ${
                             isSelected
-                              ? 'text-white drop-shadow-sm'
-                              : 'text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                              ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/40 scale-110'
+                              : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20 group-hover:scale-105'
+                          }`}
+                        >
+                          <IconComponent
+                            size={
+                              24
+                            }
+                            className={
+                              isSelected
+                                ? 'text-white drop-shadow-sm'
+                                : 'text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400'
+                            }
+                            strokeWidth={
+                              1.5
+                            }
+                          />
+                        </div>
+
+                        {/* Name */}
+
+                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {
+                            app.name
                           }
-                          strokeWidth={1.5}
-                        />
+                        </span>
+
+                        {/* Description */}
+
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed line-clamp-2">
+                          {
+                            app.description
+                          }
+                        </p>
+
+                        {/* Category */}
+
+                        <span
+                          className={`mt-2 inline-block px-2.5 py-0.5 rounded-full text-[9px] font-medium ${categoryBadgeColor}`}
+                        >
+                          {
+                            categoryName
+                          }
+                        </span>
+
                       </div>
+                    </button>
+                  );
+                }
+              )}
 
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                        {app.name}
-                      </span>
+              {/* ---------------------------------------------------------- */}
+              {/* Empty state                                                 */}
+              {/* ---------------------------------------------------------- */}
 
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed line-clamp-2">
-                        {app.description}
-                      </p>
-
-                      {/* Category tag with color */}
-                      <span className={`mt-2 inline-block px-2.5 py-0.5 rounded-full text-[9px] font-medium ${categoryBadgeColor}`}>
-                        {categoryName}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-
-              {/* Empty category */}
-              {filteredApps.length === 0 && (
+              {filteredApps.length ===
+                0 && (
                 <div className="col-span-full py-16 text-center">
+
                   <div className="mx-auto h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
                     <Package
-                      size={28}
+                      size={
+                        28
+                      }
                       className="text-gray-400"
                     />
                   </div>
 
                   <p className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
-                    No apps in this category
+                    No apps in this
+                    category
                   </p>
 
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Try another category.
+                    Try another
+                    category.
                   </p>
+
                 </div>
               )}
+
             </div>
 
-            {/* ---------------------------------------------------------------- */}
-            {/* Bottom actions                                                    */}
-            {/* ---------------------------------------------------------------- */}
+            {/* ------------------------------------------------------------ */}
+            {/* Bottom actions                                                */}
+            {/* ------------------------------------------------------------ */}
 
             <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+
               <div>
+
                 <p className="text-[13px] text-gray-600 dark:text-gray-400">
+
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    {selectedApps.length}
+                    {
+                      selectedApps.length
+                    }
                   </span>{' '}
+
                   app
-                  {selectedApps.length !== 1
-                    ? 's'
-                    : ''}{' '}
+                  {
+                    selectedApps.length !==
+                    1
+                      ? 's'
+                      : ''
+                  }{' '}
                   selected
+
                 </p>
 
                 <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                  You can change your apps later.
+                  You can change your
+                  apps later.
                 </p>
+
               </div>
 
               <div className="flex gap-3">
+
+                {/* Back */}
+
                 <button
                   type="button"
-                  onClick={handleBack}
-                  className="h-[44px] px-5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+                  onClick={
+                    handleBack
+                  }
+                  disabled={
+                    navigating
+                  }
+                  className="h-[44px] px-5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  <ArrowLeft size={15} />
+                  <ArrowLeft
+                    size={
+                      15
+                    }
+                  />
                   Back
                 </button>
 
+                {/* Next */}
+
                 <button
                   type="button"
-                  onClick={handleNext}
-                  className="h-[44px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25"
+                  onClick={
+                    handleNext
+                  }
+                  disabled={
+                    navigating
+                  }
+                  className="h-[44px] min-w-[130px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Next: Plan
-                  <ArrowRight size={15} />
+                  {navigating ? (
+                    <>
+                      <span
+                        className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin"
+                        aria-hidden="true"
+                      />
+
+                      <span>
+                        Loading...
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span>
+                        Next: Plan
+                      </span>
+
+                      <ArrowRight
+                        size={
+                          15
+                        }
+                      />
+                    </>
+                  )}
                 </button>
+
               </div>
+
             </div>
+
           </div>
+
         </section>
 
-        {/* -------------------------------------------------------------------- */}
-        {/* Footer links                                                         */}
-        {/* -------------------------------------------------------------------- */}
+        {/* ---------------------------------------------------------------- */}
+        {/* Footer                                                           */}
+        {/* ---------------------------------------------------------------- */}
 
         <div className="mt-4 flex flex-wrap justify-end items-center gap-x-5 gap-y-2 px-1">
+
           <Link
             href="/auth/login"
             className="text-[12px] text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition"
@@ -654,68 +1203,99 @@ export default function SelectAppsPage() {
           >
             Privacy
           </Link>
+
         </div>
+
       </div>
 
-      {/* ---------------------------------------------------------------------- */}
-      {/* Error overlay                                                          */}
-      {/* ---------------------------------------------------------------------- */}
+      {/* ------------------------------------------------------------------ */}
+      {/* Error overlay                                                      */}
+      {/* ------------------------------------------------------------------ */}
 
       {overlay && (
         <div
           className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-5"
-          onClick={() => setOverlay(null)}
+          onClick={() =>
+            setOverlay(null)
+          }
         >
+
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="apps-error-title"
+            aria-describedby="apps-error-message"
             className="w-full max-w-[390px] bg-white dark:bg-[#15191e] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-7 relative"
             onClick={(event) =>
               event.stopPropagation()
             }
           >
+
             {/* Close */}
+
             <button
               type="button"
-              onClick={() => setOverlay(null)}
+              onClick={() =>
+                setOverlay(null)
+              }
               aria-label="Close"
               className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
-              <X size={17} />
+              <X
+                size={
+                  17
+                }
+              />
             </button>
 
             {/* Icon */}
+
             <div className="h-12 w-12 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center">
               <AlertTriangle
-                size={25}
+                size={
+                  25
+                }
                 className="text-red-600 dark:text-red-400"
               />
             </div>
 
             {/* Message */}
+
             <h2
               id="apps-error-title"
               className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white"
             >
-              {overlay.title}
+              {
+                overlay.title
+              }
             </h2>
 
-            <p className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400">
-              {overlay.message}
+            <p
+              id="apps-error-message"
+              className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400"
+            >
+              {
+                overlay.message
+              }
             </p>
 
             {/* Action */}
+
             <button
               type="button"
-              onClick={() => setOverlay(null)}
+              onClick={() =>
+                setOverlay(null)
+              }
               className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition"
             >
               Continue
             </button>
+
           </div>
+
         </div>
       )}
+
     </main>
   );
 }

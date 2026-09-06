@@ -1,4 +1,5 @@
 import { queryControl } from '@/lib/db/control';
+
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
@@ -10,7 +11,7 @@ interface TenantDatabaseProvisionResult {
   databasePort: number;
 }
 
-interface AppInstallResult {
+export interface AppInstallResult {
   appKey: string;
   success: boolean;
   error?: string;
@@ -22,6 +23,22 @@ interface TenantDatabaseInfo {
   port: number;
 }
 
+interface TenantRow {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+}
+
+interface ExistingTenantDatabaseRow {
+  id: string;
+  database_name: string;
+  database_host: string;
+  database_port: number;
+  status: string;
+  schema_version: string | null;
+}
+
 /**
  * ================================================================
  * SaMi Tenant Database Provisioning
@@ -30,34 +47,73 @@ interface TenantDatabaseInfo {
  * ARCHITECTURE
  *
  * sami_control
- *    |
- *    +---- tenant A -> sami_company_a_xxxxxxxx
- *    |
- *    +---- tenant B -> sami_company_b_xxxxxxxx
- *    |
- *    +---- tenant C -> sami_company_c_xxxxxxxx
+ *     |
+ *     +---- tenant A -> physical PostgreSQL database
+ *     |
+ *     +---- tenant B -> physical PostgreSQL database
+ *     |
+ *     +---- tenant C -> physical PostgreSQL database
  *
  * Each tenant receives a PHYSICAL PostgreSQL DATABASE.
  *
- * Tenant databases use their own "public" schema.
+ * The Control DB only stores tenant metadata and the physical
+ * database registry.
+ *
+ * Tenant application tables live inside the tenant's physical DB.
+ *
+ * ================================================================
+ *
+ * PROVISIONING STATE MACHINE
+ *
+ * pending/provisioning
+ *        |
+ *        v
+ * physical database
+ *        |
+ *        v
+ * core schema
+ *        |
+ *        v
+ * selected app schemas
+ *        |
+ *        v
+ * all apps successful?
+ *     /       \
+ *   NO         YES
+ *   |           |
+ *   v           v
+ * failed      active
  *
  * IMPORTANT:
- * - sami_control is NEVER used to store tenant application tables.
- * - tenant_databases in sami_control is ONLY a registry.
- * - CREATE DATABASE is executed against the PostgreSQL ADMIN database.
- * - Tenant schemas are installed after connecting directly to the
- *   newly-created tenant database.
+ *
+ * A tenant MUST NOT become active when even one requested app
+ * failed to install.
+ *
  * ================================================================
  */
 
 const DEFAULT_POSTGRES_PORT = 5432;
 const DEFAULT_ADMIN_DATABASE = 'postgres';
 const DEFAULT_REGION = 'us-east-1';
+
 const CORE_SCHEMA_VERSION = '1.0.0';
 
 /**
- * Get PostgreSQL configuration.
+ * Internal PostgreSQL advisory lock namespace.
+ *
+ * We derive a deterministic advisory lock from the tenant ID.
+ *
+ * This prevents two requests from provisioning the same tenant
+ * concurrently.
  */
+const PROVISIONING_LOCK_NAMESPACE = 741921;
+
+/**
+ * ================================================================
+ * PostgreSQL CONFIGURATION
+ * ================================================================
+ */
+
 function getPostgresConfig() {
   const host = process.env.POSTGRES_HOST;
   const user = process.env.POSTGRES_ADMIN_USER;
@@ -76,7 +132,8 @@ function getPostgresConfig() {
   }
 
   const port = Number.parseInt(
-    process.env.POSTGRES_PORT || String(DEFAULT_POSTGRES_PORT),
+    process.env.POSTGRES_PORT ||
+      String(DEFAULT_POSTGRES_PORT),
     10,
   );
 
@@ -84,16 +141,6 @@ function getPostgresConfig() {
     throw new Error('POSTGRES_PORT is invalid.');
   }
 
-  /**
-   * IMPORTANT:
-   *
-   * Do NOT use POSTGRES_DB here.
-   *
-   * POSTGRES_DB may point to sami_control.
-   *
-   * Database creation must happen from a separate administrative
-   * database, normally "postgres".
-   */
   const adminDatabase =
     process.env.POSTGRES_ADMIN_DATABASE ||
     DEFAULT_ADMIN_DATABASE;
@@ -108,27 +155,37 @@ function getPostgresConfig() {
 }
 
 /**
- * Quote a PostgreSQL identifier safely.
- *
- * Database names cannot be passed as normal query parameters.
- * Therefore identifiers must be safely quoted.
+ * ================================================================
+ * POSTGRES SSL
+ * ================================================================
  */
+
+function getPostgresSsl() {
+  if (process.env.NODE_ENV === 'production') {
+    return {
+      rejectUnauthorized: false,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * ================================================================
+ * SAFE IDENTIFIER QUOTING
+ * ================================================================
+ */
+
 function quoteIdentifier(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
 
 /**
- * Generate a safe physical database name.
- *
- * Example:
- *
- * Acme Corporation
- * tenant UUID: 8b9c1d23-....
- *
- * becomes:
- *
- * sami_acme_corporation_8b9c1d23
+ * ================================================================
+ * SAFE DATABASE NAME
+ * ================================================================
  */
+
 function generateDatabaseName(
   tenantId: string,
   tenantName: string,
@@ -149,20 +206,21 @@ function generateDatabaseName(
     .slice(0, 12)
     .toLowerCase();
 
+  if (!tenantSuffix) {
+    throw new Error(
+      `Unable to generate a safe database suffix for tenant ${tenantId}.`,
+    );
+  }
+
   return `sami_${safeName}_${tenantSuffix}`;
 }
 
 /**
- * Create a PostgreSQL client connected to the ADMIN database.
- *
- * This connection is used ONLY for:
- * - checking whether a database exists
- * - CREATE DATABASE
- * - DROP DATABASE
- * - terminating connections
- *
- * It is NOT used for tenant application data.
+ * ================================================================
+ * ADMIN CLIENT
+ * ================================================================
  */
+
 function createAdminClient(): Client {
   const config = getPostgresConfig();
 
@@ -172,18 +230,19 @@ function createAdminClient(): Client {
     database: config.adminDatabase,
     user: config.user,
     password: config.password,
-
-    ssl:
-      process.env.NODE_ENV === 'production'
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: getPostgresSsl(),
   });
 }
 
 /**
- * Create a client connected directly to a tenant database.
+ * ================================================================
+ * TENANT CLIENT
+ * ================================================================
  */
-function createTenantClient(databaseName: string): Client {
+
+function createTenantClient(
+  databaseName: string,
+): Client {
   const config = getPostgresConfig();
 
   return new Client({
@@ -192,21 +251,29 @@ function createTenantClient(databaseName: string): Client {
     database: databaseName,
     user: config.user,
     password: config.password,
-
-    ssl:
-      process.env.NODE_ENV === 'production'
-        ? { rejectUnauthorized: false }
-        : undefined,
+    ssl: getPostgresSsl(),
   });
 }
 
 /**
- * Execute SQL file against a tenant database.
+ * ================================================================
+ * TENANT SQL FILE EXECUTION
+ * ================================================================
  *
- * The SQL is installed into the tenant database's PUBLIC schema.
+ * The complete SQL file is executed in a PostgreSQL transaction.
  *
- * This does NOT create a schema inside sami_control.
+ * This is important because if a schema file contains:
+ *
+ *   table A
+ *   table B
+ *   function C
+ *
+ * and function C fails, the transaction rolls back instead of
+ * leaving half an installed schema.
+ *
+ * ================================================================
  */
+
 async function executeTenantSqlFile(
   databaseName: string,
   sqlFilePath: string,
@@ -229,12 +296,14 @@ async function executeTenantSqlFile(
   }
 
   /**
-   * Tenant schemas may use {schema}.
+   * Tenant schemas use {schema}.
    *
-   * Because we are connecting directly to the tenant database,
-   * the tenant's application tables belong in PUBLIC.
+   * Tenant databases use their own public schema.
    */
-  sql = sql.replace(/\{schema\}/g, 'public');
+  sql = sql.replace(
+    /\{schema\}/g,
+    'public',
+  );
 
   const tenantClient =
     createTenantClient(databaseName);
@@ -242,14 +311,24 @@ async function executeTenantSqlFile(
   await tenantClient.connect();
 
   try {
-    /**
-     * Execute the SQL file as one PostgreSQL command.
-     *
-     * This is preferable to simply splitting on semicolons,
-     * because PostgreSQL functions, triggers, DO blocks, etc.
-     * can themselves contain semicolons.
-     */
-    await tenantClient.query(sql);
+    await tenantClient.query('BEGIN');
+
+    try {
+      await tenantClient.query(sql);
+
+      await tenantClient.query('COMMIT');
+    } catch (error) {
+      try {
+        await tenantClient.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error(
+          `[SaMi] Failed to rollback schema transaction for "${databaseName}":`,
+          rollbackError,
+        );
+      }
+
+      throw error;
+    }
 
     console.log(
       `[SaMi] SQL installed successfully in database "${databaseName}".`,
@@ -261,19 +340,54 @@ async function executeTenantSqlFile(
 
 /**
  * ================================================================
- * CREATE PHYSICAL TENANT DATABASE
+ * TENANT DATABASE EXISTS
  * ================================================================
  */
+
+async function tenantDatabaseExists(
+  databaseName: string,
+): Promise<boolean> {
+  const adminClient =
+    createAdminClient();
+
+  await adminClient.connect();
+
+  try {
+    const result =
+      await adminClient.query(
+        `
+          SELECT 1
+          FROM pg_database
+          WHERE datname = $1
+          LIMIT 1
+        `,
+        [databaseName],
+      );
+
+    return result.rows.length > 0;
+  } finally {
+    await adminClient.end();
+  }
+}
+
+/**
+ * ================================================================
+ * CREATE / REUSE PHYSICAL TENANT DATABASE
+ * ================================================================
+ */
+
 async function createTenantDatabase(
   tenantId: string,
   tenantName: string,
 ): Promise<TenantDatabaseInfo> {
-  const config = getPostgresConfig();
+  const config =
+    getPostgresConfig();
 
-  const databaseName = generateDatabaseName(
-    tenantId,
-    tenantName,
-  );
+  const databaseName =
+    generateDatabaseName(
+      tenantId,
+      tenantName,
+    );
 
   const adminClient =
     createAdminClient();
@@ -281,9 +395,6 @@ async function createTenantDatabase(
   await adminClient.connect();
 
   try {
-    /**
-     * Check whether the physical database already exists.
-     */
     const existingDatabase =
       await adminClient.query(
         `
@@ -296,11 +407,9 @@ async function createTenantDatabase(
         [databaseName],
       );
 
-    if (existingDatabase.rows.length === 0) {
-      /**
-       * PostgreSQL does not allow a database name to be passed
-       * through $1, so safely quote the identifier.
-       */
+    if (
+      existingDatabase.rows.length === 0
+    ) {
       const quotedDatabaseName =
         quoteIdentifier(databaseName);
 
@@ -313,12 +422,12 @@ async function createTenantDatabase(
       );
     } else {
       console.log(
-        `[SaMi] Tenant database already exists: ${databaseName}`,
+        `[SaMi] ♻️ Reusing existing tenant database: ${databaseName}`,
       );
     }
 
     /**
-     * Verify the database really exists after CREATE DATABASE.
+     * Always verify existence after creation/reuse.
      */
     const verifyResult =
       await adminClient.query(
@@ -332,9 +441,11 @@ async function createTenantDatabase(
         [databaseName],
       );
 
-    if (verifyResult.rows.length === 0) {
+    if (
+      verifyResult.rows.length === 0
+    ) {
       throw new Error(
-        `Tenant database "${databaseName}" could not be verified after creation.`,
+        `Tenant database "${databaseName}" could not be verified.`,
       );
     }
 
@@ -350,18 +461,51 @@ async function createTenantDatabase(
 
 /**
  * ================================================================
- * INSTALL CORE TENANT DATABASE
+ * GET REGISTERED TENANT DATABASE
  * ================================================================
  */
+
+async function getRegisteredTenantDatabase(
+  tenantId: string,
+): Promise<ExistingTenantDatabaseRow | null> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          database_name,
+          database_host,
+          database_port,
+          status,
+          schema_version
+        FROM tenant_databases
+        WHERE tenant_id = $1
+        LIMIT 1
+      `,
+      [tenantId],
+    );
+
+  return (
+    result.rows[0] || null
+  );
+}
+
+/**
+ * ================================================================
+ * INSTALL CORE SCHEMA
+ * ================================================================
+ */
+
 async function installCoreSchema(
   databaseName: string,
 ): Promise<void> {
-  const coreSchemaPath = path.join(
-    process.cwd(),
-    'lib',
-    'schema',
-    'tenant-core.sql',
-  );
+  const coreSchemaPath =
+    path.join(
+      process.cwd(),
+      'lib',
+      'schema',
+      'tenant-core.sql',
+    );
 
   console.log(
     `[SaMi] Installing core schema into tenant database "${databaseName}"...`,
@@ -379,9 +523,10 @@ async function installCoreSchema(
 
 /**
  * ================================================================
- * INSTALL APP DATABASE
+ * INSTALL APP SCHEMA
  * ================================================================
  */
+
 async function installAppSchema(
   databaseName: string,
   appKey: string,
@@ -389,16 +534,19 @@ async function installAppSchema(
   const normalizedAppKey =
     appKey.trim().toLowerCase();
 
-  const appSchemaPath = path.join(
-    process.cwd(),
-    'lib',
-    'apps',
-    normalizedAppKey,
-    'schema.sql',
-  );
+  const appSchemaPath =
+    path.join(
+      process.cwd(),
+      'lib',
+      'apps',
+      normalizedAppKey,
+      'schema.sql',
+    );
 
   try {
-    if (!fs.existsSync(appSchemaPath)) {
+    if (
+      !fs.existsSync(appSchemaPath)
+    ) {
       return {
         appKey: normalizedAppKey,
         success: false,
@@ -448,6 +596,7 @@ async function installAppSchema(
  * VALIDATE SELECTED APPS
  * ================================================================
  */
+
 function getValidatedApps(
   appKeys: unknown,
 ): string[] {
@@ -461,7 +610,9 @@ function getValidatedApps(
     ...new Set(
       appKeys
         .filter(
-          (key): key is string =>
+          (
+            key,
+          ): key is string =>
             typeof key === 'string',
         )
         .map((key) =>
@@ -471,7 +622,9 @@ function getValidatedApps(
     ),
   ];
 
-  if (selectedApps.length === 0) {
+  if (
+    selectedApps.length === 0
+  ) {
     throw new Error(
       'At least one valid SaMi app must be selected.',
     );
@@ -482,23 +635,235 @@ function getValidatedApps(
 
 /**
  * ================================================================
- * REGISTER PHYSICAL DATABASE IN CONTROL DATABASE
+ * VALIDATE APPS AGAINST CONTROL DB
  * ================================================================
  *
- * IMPORTANT:
+ * This is an important security boundary.
  *
- * This function does NOT create a database.
+ * The provisioning service must not install an arbitrary folder
+ * supplied by a request.
  *
- * It only records where the tenant database is located.
- *
- * sami_control.tenant_databases
- *        |
- *        +--> database_name = sami_acme_xxxxx
- *        +--> database_host = ...
- *        +--> database_port = 5432
- *
- * The actual tenant tables are NOT stored here.
+ * The requested app keys must exist in the Control DB modules
+ * table and must not be deleted.
+ * ================================================================
  */
+
+async function validateAppsAgainstControlDatabase(
+  selectedApps: string[],
+): Promise<void> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          key
+        FROM modules
+        WHERE key = ANY($1::text[])
+          AND deleted_at IS NULL
+      `,
+      [selectedApps],
+    );
+
+  const validApps = new Set<string>(
+    result.rows.map(
+      (row: { key: string }) =>
+        row.key.trim().toLowerCase(),
+    ),
+  );
+
+  const invalidApps =
+    selectedApps.filter(
+      (appKey) =>
+        !validApps.has(appKey),
+    );
+
+  if (
+    invalidApps.length > 0
+  ) {
+    throw new Error(
+      `The following selected apps are not valid active modules: ${invalidApps.join(', ')}`,
+    );
+  }
+}
+
+/**
+ * ================================================================
+ * UPDATE TENANT MODULE STATUS
+ * ================================================================
+ */
+
+async function updateTenantModuleStatus(
+  tenantId: string,
+  appKey: string,
+  success: boolean,
+  error?: string,
+): Promise<void> {
+  if (success) {
+    await queryControl(
+      `
+        UPDATE tenant_modules
+        SET
+          status = 'installed',
+          installed_at = NOW(),
+          updated_at = NOW()
+        WHERE tenant_id = $1
+          AND module_id = (
+            SELECT id
+            FROM modules
+            WHERE key = $2
+              AND deleted_at IS NULL
+          )
+      `,
+      [
+        tenantId,
+        appKey,
+      ],
+    );
+
+    return;
+  }
+
+  /**
+   * We intentionally don't add an "error" column because the
+   * existing tenant_modules schema has not been confirmed to have
+   * one.
+   *
+   * The actual error remains available in the application logs
+   * and in the provisioning result.
+   */
+  await queryControl(
+    `
+      UPDATE tenant_modules
+      SET
+        status = 'failed',
+        updated_at = NOW()
+      WHERE tenant_id = $1
+        AND module_id = (
+          SELECT id
+          FROM modules
+          WHERE key = $2
+            AND deleted_at IS NULL
+        )
+    `,
+    [
+      tenantId,
+      appKey,
+    ],
+  );
+
+  if (error) {
+    console.error(
+      `[SaMi] App "${appKey}" marked failed for tenant ${tenantId}: ${error}`,
+    );
+  }
+}
+
+/**
+ * ================================================================
+ * MARK ALL REQUESTED MODULES FAILED
+ * ================================================================
+ */
+
+async function markAllModulesFailed(
+  tenantId: string,
+  selectedApps: string[],
+): Promise<void> {
+  for (const appKey of selectedApps) {
+    try {
+      await updateTenantModuleStatus(
+        tenantId,
+        appKey,
+        false,
+      );
+    } catch (error) {
+      console.error(
+        `[SaMi] Failed to mark module "${appKey}" as failed:`,
+        error,
+      );
+    }
+  }
+}
+
+/**
+ * ================================================================
+ * MARK TENANT PROVISIONING
+ * ================================================================
+ */
+
+async function markTenantProvisioning(
+  tenantId: string,
+): Promise<void> {
+  await queryControl(
+    `
+      UPDATE tenants
+      SET
+        status = 'provisioning',
+        updated_at = NOW()
+      WHERE id = $1
+        AND deleted_at IS NULL
+    `,
+    [tenantId],
+  );
+}
+
+/**
+ * ================================================================
+ * MARK TENANT PROVISIONING FAILED
+ * ================================================================
+ */
+
+async function markTenantProvisioningFailed(
+  tenantId: string,
+): Promise<void> {
+  await queryControl(
+    `
+      UPDATE tenants
+      SET
+        status = 'provisioning_failed',
+        updated_at = NOW()
+      WHERE id = $1
+        AND deleted_at IS NULL
+    `,
+    [tenantId],
+  );
+}
+
+/**
+ * ================================================================
+ * ACTIVATE TENANT
+ * ================================================================
+ *
+ * This function is ONLY called after:
+ *
+ * 1. Core schema succeeded.
+ * 2. Every requested app succeeded.
+ * 3. Every module status was updated.
+ * 4. Physical DB was registered.
+ *
+ * ================================================================
+ */
+
+async function activateTenant(
+  tenantId: string,
+): Promise<void> {
+  await queryControl(
+    `
+      UPDATE tenants
+      SET
+        status = 'active',
+        updated_at = NOW()
+      WHERE id = $1
+        AND deleted_at IS NULL
+    `,
+    [tenantId],
+  );
+}
+
+/**
+ * ================================================================
+ * REGISTER PHYSICAL DATABASE
+ * ================================================================
+ */
+
 async function registerTenantDatabase(
   tenantId: string,
   databaseName: string,
@@ -509,130 +874,245 @@ async function registerTenantDatabase(
     process.env.POSTGRES_REGION ||
     DEFAULT_REGION;
 
-  const result = await queryControl(
-    `
-      INSERT INTO tenant_databases (
-        tenant_id,
-        provider,
+  const result =
+    await queryControl(
+      `
+        INSERT INTO tenant_databases (
+          tenant_id,
+          provider,
+          region,
+          database_identifier,
+          database_name,
+          database_host,
+          database_port,
+          schema_version,
+          status,
+          provisioned_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          'postgresql',
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          'active',
+          NOW(),
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (tenant_id)
+        DO UPDATE SET
+          provider = EXCLUDED.provider,
+          region = EXCLUDED.region,
+          database_identifier = EXCLUDED.database_identifier,
+          database_name = EXCLUDED.database_name,
+          database_host = EXCLUDED.database_host,
+          database_port = EXCLUDED.database_port,
+          schema_version = EXCLUDED.schema_version,
+          status = 'active',
+          provisioned_at = NOW(),
+          updated_at = NOW()
+        RETURNING id
+      `,
+      [
+        tenantId,
         region,
-        database_identifier,
-        database_name,
-        database_host,
-        database_port,
-        schema_version,
-        status,
-        provisioned_at,
-        created_at,
-        updated_at
-      )
-      VALUES (
-        $1,
-        'postgresql',
-        $2,
-        $3,
-        $4,
-        $5,
-        $6,
-        $7,
-        'active',
-        NOW(),
-        NOW(),
-        NOW()
-      )
-      ON CONFLICT (tenant_id)
-      DO UPDATE SET
-        provider = EXCLUDED.provider,
-        region = EXCLUDED.region,
-        database_identifier = EXCLUDED.database_identifier,
-        database_name = EXCLUDED.database_name,
-        database_host = EXCLUDED.database_host,
-        database_port = EXCLUDED.database_port,
-        schema_version = EXCLUDED.schema_version,
-        status = 'active',
-        provisioned_at = NOW(),
-        updated_at = NOW()
-      RETURNING id
-    `,
-    [
-      tenantId,
+        databaseName,
+        databaseName,
+        host,
+        port,
+        CORE_SCHEMA_VERSION,
+      ],
+    );
 
-      region,
-
-      /**
-       * IMPORTANT:
-       *
-       * The identifier is the REAL physical database name.
-       */
-      databaseName,
-
-      databaseName,
-      host,
-      port,
-      CORE_SCHEMA_VERSION,
-    ],
-  );
-
-  if (result.rows.length === 0) {
+  if (
+    result.rows.length === 0
+  ) {
     throw new Error(
       `Failed to register tenant database for tenant ${tenantId}.`,
     );
   }
 
-  return String(result.rows[0].id);
+  return String(
+    result.rows[0].id,
+  );
 }
 
 /**
  * ================================================================
- * UPDATE TENANT MODULE STATUS
+ * ADVISORY LOCK
+ * ================================================================
+ *
+ * PostgreSQL advisory locks are connection-scoped.
+ *
+ * We acquire the lock and hold the same admin connection for the
+ * entire provisioning operation.
+ *
+ * This prevents concurrent requests from provisioning the same
+ * tenant simultaneously.
+ *
  * ================================================================
  */
-async function updateTenantModuleStatus(
+
+function createLockKey(
   tenantId: string,
-  appKey: string,
-  success: boolean,
-): Promise<void> {
-  if (success) {
-    await queryControl(
-      `
-        UPDATE tenant_modules
-        SET status = 'installed', installed_at = NOW(), updated_at = NOW()
-        WHERE tenant_id = $1
-        AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
-      `,
-      [tenantId, appKey]
-    );
-  } else {
-    await queryControl(
-      `
-        UPDATE tenant_modules
-        SET status = 'failed', updated_at = NOW()
-        WHERE tenant_id = $1
-        AND module_id = (SELECT id FROM modules WHERE key = $2 AND deleted_at IS NULL)
-      `,
-      [tenantId, appKey]
-    );
+): bigint {
+  const hash = cryptoHashToBigInt(
+    `${PROVISIONING_LOCK_NAMESPACE}:${tenantId}`,
+  );
+
+  return hash;
+}
+
+/**
+ * We intentionally use Node's built-in crypto rather than adding
+ * another dependency.
+ */
+import crypto from 'crypto';
+
+function cryptoHashToBigInt(
+  value: string,
+): bigint {
+  const digest =
+    crypto
+      .createHash('sha256')
+      .update(value)
+      .digest();
+
+  /**
+   * PostgreSQL advisory lock accepts BIGINT.
+   *
+   * Take the first 8 bytes and convert to a signed bigint.
+   */
+  let result = BigInt("0");
+
+  for (
+    let index = 0;
+    index < 8;
+    index++
+  ) {
+    result =
+      (result << BigInt("8")) |
+      BigInt(digest[index]);
   }
+
+  /**
+   * Convert unsigned 64-bit value into signed BIGINT range.
+   */
+  if (
+    result >
+    BigInt("9223372036854775807")
+  ) {
+    result -=
+      BigInt("18446744073709551616");
+  }
+
+  return result;
+}
+
+/**
+ * Acquire a tenant-scoped PostgreSQL advisory lock.
+ *
+ * Uses PostgreSQL's hashtext() so we don't need JavaScript BigInt
+ * or BigInt literals, keeping compatibility with lower TS targets.
+ */
+async function acquireTenantProvisioningLock(
+  client: Client,
+  tenantId: string
+): Promise<void> {
+  const lockKey = `sami:tenant-provisioning:${tenantId}`;
+
+  await client.query(
+    `SELECT pg_advisory_lock(hashtext($1))`,
+    [lockKey]
+  );
+}
+
+/**
+ * Release the tenant-scoped PostgreSQL advisory lock.
+ */
+async function releaseTenantProvisioningLock(
+  client: Client,
+  tenantId: string
+): Promise<void> {
+  const lockKey = `sami:tenant-provisioning:${tenantId}`;
+
+  await client.query(
+    `SELECT pg_advisory_unlock(hashtext($1))`,
+    [lockKey]
+  );
+}
+/**
+ * ================================================================
+ * VERIFY TENANT DATABASE CONNECTION
+ * ================================================================
+ */
+
+async function verifyTenantDatabaseConnection(
+  databaseName: string,
+): Promise<void> {
+  const client =
+    createTenantClient(
+      databaseName,
+    );
+
+  await client.connect();
+
+  try {
+    const result =
+      await client.query(
+        'SELECT current_database() AS database_name',
+      );
+
+    const connectedDatabase =
+      result.rows[0]
+        ?.database_name;
+
+    if (
+      connectedDatabase !==
+      databaseName
+    ) {
+      throw new Error(
+        `Connected to "${connectedDatabase}" instead of expected tenant database "${databaseName}".`,
+      );
+    }
+  } finally {
+    await client.end();
+  }
+}
+
+/**
+ * ================================================================
+ * CHECK CORE DATABASE HEALTH
+ * ================================================================
+ *
+ * We intentionally do not assume a specific application table
+ * exists because the exact tenant-core.sql contents have not been
+ * provided here.
+ *
+ * We only verify that the physical database is reachable.
+ * ================================================================
+ */
+
+async function verifyTenantDatabase(
+  databaseName: string,
+): Promise<void> {
+  await verifyTenantDatabaseConnection(
+    databaseName,
+  );
 }
 
 /**
  * ================================================================
  * PROVISION TENANT
  * ================================================================
- *
- * Creates:
- *
- *   PostgreSQL database
- *        ↓
- *   sami_<tenant>_<id>
- *        ↓
- *   public schema
- *        ↓
- *   tenant-core.sql
- *        ↓
- *   selected app schemas
- *
- * The control database is NEVER used for tenant tables.
  */
+
 export async function provisionTenant(
   tenantId: string,
   selectedAppsInput: unknown,
@@ -662,12 +1142,24 @@ export async function provisionTenant(
     `[SaMi] ========================================`,
   );
 
-  let databaseName: string | undefined;
+  let databaseName:
+    | string
+    | undefined;
+
+  let adminClient:
+    | Client
+    | undefined;
+
+  let lockAcquired = false;
+
+  let selectedApps: string[] = [];
 
   try {
-    // ============================================================
-    // 1. Validate tenant in CONTROL database
-    // ============================================================
+    /**
+     * ============================================================
+     * 1. VALIDATE TENANT
+     * ============================================================
+     */
 
     const tenantResult =
       await queryControl(
@@ -685,19 +1177,31 @@ export async function provisionTenant(
         [tenantId],
       );
 
-    if (tenantResult.rows.length === 0) {
+    if (
+      tenantResult.rows.length === 0
+    ) {
       throw new Error(
         `Tenant ${tenantId} not found.`,
       );
     }
 
     const tenant =
-      tenantResult.rows[0];
+      tenantResult.rows[0] as TenantRow;
 
-    const selectedApps =
+    /**
+     * ============================================================
+     * 2. VALIDATE SELECTED APPS
+     * ============================================================
+     */
+
+    selectedApps =
       getValidatedApps(
         selectedAppsInput,
       );
+
+    await validateAppsAgainstControlDatabase(
+      selectedApps,
+    );
 
     console.log(
       `[SaMi] Tenant: ${tenant.name}`,
@@ -707,9 +1211,50 @@ export async function provisionTenant(
       `[SaMi] Apps requested: ${selectedApps.join(', ')}`,
     );
 
-    // ============================================================
-    // 2. CREATE PHYSICAL DATABASE
-    // ============================================================
+    /**
+     * ============================================================
+     * 3. ACQUIRE PROVISIONING LOCK
+     * ============================================================
+     */
+
+    adminClient =
+      createAdminClient();
+
+    await adminClient.connect();
+
+    await acquireTenantProvisioningLock(
+      adminClient,
+      tenantId,
+    );
+
+    lockAcquired = true;
+
+    /**
+     * ============================================================
+     * 4. MARK TENANT AS PROVISIONING
+     * ============================================================
+     */
+
+    await markTenantProvisioning(
+      tenantId,
+    );
+
+    /**
+     * ============================================================
+     * 5. CHECK EXISTING DATABASE REGISTRY
+     * ============================================================
+     */
+
+    const existingRegistry =
+      await getRegisteredTenantDatabase(
+        tenantId,
+      );
+
+    /**
+     * ============================================================
+     * 6. CREATE OR REUSE PHYSICAL DATABASE
+     * ============================================================
+     */
 
     const dbInfo =
       await createTenantDatabase(
@@ -721,7 +1266,7 @@ export async function provisionTenant(
       dbInfo.databaseName;
 
     console.log(
-      `[SaMi] ✅ Physical database assigned: ${databaseName}`,
+      `[SaMi] Physical database: ${databaseName}`,
     );
 
     console.log(
@@ -732,17 +1277,52 @@ export async function provisionTenant(
       `[SaMi] Port: ${dbInfo.port}`,
     );
 
-    // ============================================================
-    // 3. INSTALL CORE TABLES
-    // ============================================================
+    /**
+     * ============================================================
+     * 7. VERIFY PHYSICAL DATABASE
+     * ============================================================
+     */
+
+    await verifyTenantDatabase(
+      dbInfo.databaseName,
+    );
+
+    /**
+     * ============================================================
+     * 8. CORE SCHEMA
+     * ============================================================
+     *
+     * IMPORTANT:
+     *
+     * We install core before apps.
+     *
+     * The SQL file itself should use idempotent PostgreSQL
+     * constructs such as:
+     *
+     *   CREATE TABLE IF NOT EXISTS
+     *   CREATE INDEX IF NOT EXISTS
+     *   CREATE OR REPLACE FUNCTION
+     *
+     * for retry safety.
+     *
+     * The transaction in executeTenantSqlFile prevents partial
+     * execution of the file.
+     * ============================================================
+     */
+
+    console.log(
+      `[SaMi] Installing core schema...`,
+    );
 
     await installCoreSchema(
       dbInfo.databaseName,
     );
 
-    // ============================================================
-    // 4. INSTALL SELECTED APPS
-    // ============================================================
+    /**
+     * ============================================================
+     * 9. INSTALL SELECTED APPS
+     * ============================================================
+     */
 
     const appResults:
       AppInstallResult[] = [];
@@ -750,14 +1330,18 @@ export async function provisionTenant(
     const successfulApps:
       string[] = [];
 
-    for (const appKey of selectedApps) {
+    for (
+      const appKey of selectedApps
+    ) {
       const result =
         await installAppSchema(
           dbInfo.databaseName,
           appKey,
         );
 
-      appResults.push(result);
+      appResults.push(
+        result,
+      );
 
       if (result.success) {
         successfulApps.push(
@@ -766,27 +1350,132 @@ export async function provisionTenant(
       }
     }
 
-    // ============================================================
-    // 5. UPDATE MODULE STATUS IN CONTROL DATABASE
-    // ============================================================
+    /**
+     * ============================================================
+     * 10. UPDATE MODULE STATUS
+     * ============================================================
+     */
 
-    for (const appKey of selectedApps) {
-      const result =
-        appResults.find(
-          (item) =>
-            item.appKey === appKey,
+    for (
+      const result of appResults
+    ) {
+      try {
+        await updateTenantModuleStatus(
+          tenantId,
+          result.appKey,
+          result.success,
+          result.error,
         );
+      } catch (moduleStatusError) {
+        /**
+         * If we cannot update Control DB module status, the
+         * provisioning operation itself must fail.
+         *
+         * Otherwise Control DB could say "pending" while the
+         * physical database is actually installed.
+         */
+        throw new Error(
+          `Failed to update module status for "${result.appKey}": ${
+            moduleStatusError instanceof Error
+              ? moduleStatusError.message
+              : String(moduleStatusError)
+          }`,
+        );
+      }
+    }
 
-      await updateTenantModuleStatus(
+    /**
+     * ============================================================
+     * 11. CHECK FOR ANY FAILED APP
+     * ============================================================
+     *
+     * THIS IS THE CRITICAL HARDENING.
+     *
+     * The old implementation registered the database and
+     * activated the tenant even when an app failed.
+     *
+     * That is no longer allowed.
+     * ============================================================
+     */
+
+    const failedApps =
+      appResults.filter(
+        (result) =>
+          !result.success,
+      );
+
+    if (
+      failedApps.length > 0
+    ) {
+      const failureSummary =
+        failedApps
+          .map(
+            (result) =>
+              `${result.appKey}: ${
+                result.error ||
+                'unknown installation error'
+              }`,
+          )
+          .join('; ');
+
+      await markTenantProvisioningFailed(
         tenantId,
-        appKey,
-        Boolean(result?.success),
+      );
+
+      console.error(
+        `[SaMi] ❌ Provisioning stopped because ${failedApps.length} app(s) failed: ${failureSummary}`,
+      );
+
+      /**
+       * IMPORTANT:
+       *
+       * The physical database is intentionally NOT deleted.
+       *
+       * This allows an administrator/recovery process to inspect
+       * and retry the tenant instead of destroying potentially
+       * useful provisioning state.
+       */
+
+      return {
+        success: false,
+        tenantId,
+        databaseName:
+          dbInfo.databaseName,
+        databaseHost:
+          dbInfo.host,
+        databasePort:
+          dbInfo.port,
+        appsInstalled:
+          successfulApps,
+        appsFailed:
+          failedApps,
+      };
+    }
+
+    /**
+     * ============================================================
+     * 12. ENSURE ALL SELECTED APPS WERE INSTALLED
+     * ============================================================
+     */
+
+    if (
+      successfulApps.length !==
+      selectedApps.length
+    ) {
+      await markTenantProvisioningFailed(
+        tenantId,
+      );
+
+      throw new Error(
+        `Provisioning integrity check failed. Requested ${selectedApps.length} apps but installed ${successfulApps.length}.`,
       );
     }
 
-    // ============================================================
-    // 6. REGISTER PHYSICAL DATABASE
-    // ============================================================
+    /**
+     * ============================================================
+     * 13. REGISTER PHYSICAL DATABASE
+     * ============================================================
+     */
 
     const databaseId =
       await registerTenantDatabase(
@@ -796,30 +1485,34 @@ export async function provisionTenant(
         dbInfo.port,
       );
 
-    // ============================================================
-    // 7. ACTIVATE TENANT
-    // ============================================================
+    /**
+     * ============================================================
+     * 14. FINAL DATABASE HEALTH CHECK
+     * ============================================================
+     */
 
-    await queryControl(
-      `
-        UPDATE tenants
-        SET
-          status = 'active',
-          updated_at = NOW()
-        WHERE id = $1
-      `,
-      [tenantId],
+    await verifyTenantDatabase(
+      dbInfo.databaseName,
     );
 
-    // ============================================================
-    // 8. FINAL RESULT
-    // ============================================================
+    /**
+     * ============================================================
+     * 15. ACTIVATE TENANT
+     * ============================================================
+     *
+     * This is the FIRST point at which the tenant becomes active.
+     * ============================================================
+     */
 
-    const failedApps =
-      appResults.filter(
-        (result) =>
-          !result.success,
-      );
+    await activateTenant(
+      tenantId,
+    );
+
+    /**
+     * ============================================================
+     * 16. FINAL SUCCESS
+     * ============================================================
+     */
 
     console.log(
       `[SaMi] ========================================`,
@@ -842,7 +1535,7 @@ export async function provisionTenant(
     );
 
     console.log(
-      `[SaMi] Apps failed: ${failedApps.length}`,
+      `[SaMi] Apps failed: 0`,
     );
 
     console.log(
@@ -861,8 +1554,7 @@ export async function provisionTenant(
         dbInfo.port,
       appsInstalled:
         successfulApps,
-      appsFailed:
-        failedApps,
+      appsFailed: [],
     };
   } catch (error) {
     console.error(
@@ -870,20 +1562,27 @@ export async function provisionTenant(
       error,
     );
 
-    // ============================================================
-    // Mark tenant as provisioning_failed
-    // ============================================================
+    /**
+     * Mark all requested modules failed when a fatal provisioning
+     * error occurs.
+     *
+     * This is intentionally best-effort.
+     */
+    if (
+      selectedApps.length > 0
+    ) {
+      await markAllModulesFailed(
+        tenantId,
+        selectedApps,
+      );
+    }
 
+    /**
+     * Mark tenant as provisioning_failed.
+     */
     try {
-      await queryControl(
-        `
-          UPDATE tenants
-          SET
-            status = 'provisioning_failed',
-            updated_at = NOW()
-          WHERE id = $1
-        `,
-        [tenantId],
+      await markTenantProvisioningFailed(
+        tenantId,
       );
     } catch (statusError) {
       console.error(
@@ -892,7 +1591,47 @@ export async function provisionTenant(
       );
     }
 
+    /**
+     * DO NOT automatically drop the physical database here.
+     *
+     * Reasons:
+     *
+     * 1. The database may contain useful recovery information.
+     * 2. A paid customer may already have completed payment.
+     * 3. The next provisioning attempt can reuse the database.
+     * 4. Automatic deletion makes production recovery harder.
+     */
+    if (databaseName) {
+      console.error(
+        `[SaMi] Physical database "${databaseName}" was preserved for recovery.`,
+      );
+    }
+
     throw error;
+  } finally {
+    /**
+     * Release advisory lock before closing the connection.
+     */
+    if (
+      adminClient &&
+      lockAcquired
+    ) {
+      await releaseTenantProvisioningLock(
+        adminClient,
+        tenantId,
+      );
+    }
+
+    if (adminClient) {
+      try {
+        await adminClient.end();
+      } catch (error) {
+        console.error(
+          `[SaMi] Failed to close provisioning admin connection:`,
+          error,
+        );
+      }
+    }
   }
 }
 
@@ -901,17 +1640,18 @@ export async function provisionTenant(
  * BACKWARD-COMPATIBLE DATABASE PROVISIONING FUNCTION
  * ================================================================
  */
+
 export async function provisionTenantDatabase(
   tenantId: string,
   businessSlug: string,
   appKeys: unknown,
 ): Promise<TenantDatabaseProvisionResult> {
   /**
-   * businessSlug is retained for compatibility with existing
-   * callers.
+   * Retained for compatibility with existing callers.
    *
-   * Database naming is based on the tenant's actual database
-   * record/name to guarantee uniqueness.
+   * Database naming is based on the actual tenant record rather
+   * than businessSlug so that the tenant UUID remains part of the
+   * physical database identity.
    */
   void businessSlug;
 
@@ -927,8 +1667,21 @@ export async function provisionTenantDatabase(
     !result.databaseHost ||
     !result.databaseId
   ) {
+    const failedSummary =
+      result.appsFailed.length > 0
+        ? result.appsFailed
+            .map(
+              (app) =>
+                `${app.appKey}: ${
+                  app.error ||
+                  'installation failed'
+                }`,
+            )
+            .join('; ')
+        : 'unknown provisioning failure';
+
     throw new Error(
-      `Tenant database provisioning did not complete successfully for tenant ${tenantId}.`,
+      `Tenant database provisioning did not complete successfully for tenant ${tenantId}. ${failedSummary}`,
     );
   }
 
@@ -954,9 +1707,12 @@ export async function provisionTenantDatabase(
  *
  * This permanently deletes the tenant database and its data.
  *
- * This should only be called from a protected administrative
+ * This should ONLY be called from a protected administrative
  * operation.
+ *
+ * ================================================================
  */
+
 export async function deleteTenantDatabase(
   tenantId: string,
 ): Promise<void> {
@@ -972,7 +1728,9 @@ export async function deleteTenantDatabase(
       [tenantId],
     );
 
-  if (result.rows.length === 0) {
+  if (
+    result.rows.length === 0
+  ) {
     console.log(
       `[SaMi] No tenant database registry entry found for ${tenantId}.`,
     );
@@ -984,7 +1742,8 @@ export async function deleteTenantDatabase(
     result.rows[0].database_name;
 
   if (
-    typeof databaseName !== 'string' ||
+    typeof databaseName !==
+      'string' ||
     !databaseName.trim()
   ) {
     throw new Error(
@@ -1028,10 +1787,9 @@ export async function deleteTenantDatabase(
     await adminClient.end();
   }
 
-  // ============================================================
-  // Remove registry entry from CONTROL database
-  // ============================================================
-
+  /**
+   * Remove registry entry from Control DB.
+   */
   await queryControl(
     `
       DELETE FROM tenant_databases

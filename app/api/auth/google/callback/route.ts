@@ -1,4 +1,3 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { queryControl } from '@/lib/db/control';
 import crypto from 'crypto';
@@ -13,13 +12,137 @@ const GOOGLE_USERINFO_URL =
 
 const GOOGLE_STATE_TTL_MINUTES = 10;
 
+/*
+ * ================================================================
+ * Google OAuth callback
+ *
+ * Flow:
+ *
+ * Register
+ *    ↓
+ * /api/auth/google
+ *    ↓
+ * Google
+ *    ↓
+ * /api/auth/google/callback
+ *    ↓
+ * ┌───────────────────────────────┐
+ * │                               │
+ * │ success                       │ failure
+ * │   ↓                               ↓
+ * │ create signup state           /auth/register?error=...
+ * │   ↓
+ * │ /auth/google-complete
+ * │
+ * └───────────────────────────────┘
+ *
+ * IMPORTANT:
+ *
+ * This callback does NOT create the final SaMi account.
+ *
+ * It only verifies the Google identity and creates a short-lived
+ * server-side signup state.
+ *
+ * The final account creation happens in the Google completion
+ * step.
+ * ================================================================
+ */
+
 export async function GET(
   request: NextRequest
 ) {
   try {
     /*
      * ============================================================
-     * 1. Get authorization code
+     * 1. Handle Google OAuth errors FIRST
+     * ============================================================
+     *
+     * When the user presses "Cancel" on Google's screen,
+     * Google normally returns:
+     *
+     *   ?error=access_denied
+     *
+     * There will be NO authorization code.
+     *
+     * Your previous implementation checked for "code" first,
+     * which caused cancellation to be reported as a generic
+     * Google error.
+     */
+
+    const oauthError =
+      request.nextUrl.searchParams.get(
+        'error'
+      );
+
+    const oauthErrorDescription =
+      request.nextUrl.searchParams.get(
+        'error_description'
+      );
+
+    if (oauthError) {
+      console.warn(
+        'Google OAuth returned an error:',
+        {
+          error: oauthError,
+          description:
+            oauthErrorDescription,
+        }
+      );
+
+      switch (oauthError) {
+        case 'access_denied':
+          return redirectToRegister(
+            request,
+            'cancelled'
+          );
+
+        case 'invalid_request':
+          return redirectToRegister(
+            request,
+            'google_invalid_request'
+          );
+
+        case 'unauthorized_client':
+          return redirectToRegister(
+            request,
+            'google_unauthorized'
+          );
+
+        case 'unsupported_response_type':
+          return redirectToRegister(
+            request,
+            'google_unsupported_response'
+          );
+
+        case 'invalid_scope':
+          return redirectToRegister(
+            request,
+            'google_invalid_scope'
+          );
+
+        case 'server_error':
+          return redirectToRegister(
+            request,
+            'google_server_error'
+          );
+
+        case 'temporarily_unavailable':
+          return redirectToRegister(
+            request,
+            'google_unavailable'
+          );
+
+        default:
+          return redirectToRegister(
+            request,
+            'google_failed'
+          );
+      }
+    }
+
+    /*
+     * ============================================================
+     * 2. Get authorization code
      * ============================================================
      */
 
@@ -29,15 +152,19 @@ export async function GET(
       );
 
     if (!code) {
+      console.error(
+        'Google callback did not contain an authorization code.'
+      );
+
       return redirectToRegister(
         request,
-        'google'
+        'google_missing_code'
       );
     }
 
     /*
      * ============================================================
-     * 2. Get Google configuration
+     * 3. Get Google configuration
      * ============================================================
      */
 
@@ -63,19 +190,19 @@ export async function GET(
 
     /*
      * ============================================================
+     * 4. Build exact redirect URI
+     * ============================================================
      *
- * ============================================================
- * 3. Build exact redirect URI
- * ============================================================
- *
- * Use the request origin for the callback URL.
- */
+     * This MUST exactly match the URI configured in Google
+     * Cloud Console.
+     */
 
-const redirectUri =
-  `${request.nextUrl.origin}/api/auth/google/callback`;
+    const redirectUri =
+      `${request.nextUrl.origin}/api/auth/google/callback`;
+
     /*
      * ============================================================
-     * 4. Exchange authorization code for Google tokens
+     * 5. Exchange authorization code for Google tokens
      * ============================================================
      */
 
@@ -88,6 +215,7 @@ const redirectUri =
           headers: {
             'Content-Type':
               'application/x-www-form-urlencoded',
+
             Accept:
               'application/json',
           },
@@ -133,8 +261,7 @@ const redirectUri =
         );
     } catch {
       console.error(
-        'Invalid Google token response:',
-        tokenText
+        'Invalid Google token response.'
       );
     }
 
@@ -164,7 +291,7 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 5. Get Google user information
+     * 6. Get Google user information
      * ============================================================
      */
 
@@ -207,8 +334,7 @@ const redirectUri =
         );
     } catch {
       console.error(
-        'Invalid Google userinfo response:',
-        userText
+        'Invalid Google userinfo response.'
       );
     }
 
@@ -232,7 +358,7 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 6. Validate Google identity
+     * 7. Validate Google identity
      * ============================================================
      */
 
@@ -248,7 +374,7 @@ const redirectUri =
     }
 
     /*
-     * Google should confirm that the email belongs to the
+     * Google must confirm that the email belongs to the
      * authenticated Google account.
      */
 
@@ -263,7 +389,7 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 7. Normalize Google account information
+     * 8. Normalize Google account information
      * ============================================================
      */
 
@@ -292,7 +418,7 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 8. Check whether SaMi account already exists
+     * 9. Check whether SaMi account already exists
      * ============================================================
      */
 
@@ -306,7 +432,7 @@ const redirectUri =
             email_verified_at,
             deleted_at
           FROM users
-          WHERE email = $1
+          WHERE LOWER(email) = $1
           LIMIT 1
         `,
         [email]
@@ -319,11 +445,9 @@ const redirectUri =
         existingUser.rows[0];
 
       /*
-       * A soft-deleted account should not automatically be treated
-       * as a completely new Google identity here.
-       *
-       * The normal account-recovery/re-registration flow should
-       * decide what happens to it.
+       * ----------------------------------------------------------
+       * Soft-deleted account
+       * ----------------------------------------------------------
        */
 
       if (user.deleted_at) {
@@ -334,11 +458,14 @@ const redirectUri =
       }
 
       /*
-       * Existing account.
+       * ----------------------------------------------------------
+       * Existing account
+       * ----------------------------------------------------------
        *
-       * Do not create another user.
+       * Do NOT create another account.
        *
-       * Your login flow should handle the Google sign-in.
+       * Send the user to login where the existing Google
+       * authentication flow can handle them.
        */
 
       return NextResponse.redirect(
@@ -351,28 +478,25 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 9. Create short-lived server-side signup state
+     * 10. Create short-lived server-side signup state
      * ============================================================
      *
-     * IMPORTANT:
-     *
-     * We do NOT put:
+     * We intentionally DO NOT put:
      *
      *   email
      *   firstName
      *   lastName
      *   avatar
+     *   Google subject
      *
-     * in the browser URL.
+     * into the browser URL.
      *
-     * Instead, create a random state ID and store the information
-     * server-side.
-     *
-     * This requires a google_signup_states table.
+     * Only an opaque random state identifier is exposed.
      */
 
     const stateId =
-      crypto.randomBytes(32)
+      crypto
+        .randomBytes(32)
         .toString('hex');
 
     const stateHash =
@@ -431,7 +555,7 @@ const redirectUri =
 
     /*
      * ============================================================
-     * 10. Redirect to Google completion page
+     * 11. Redirect to Google completion page
      * ============================================================
      */
 
@@ -450,6 +574,12 @@ const redirectUri =
       redirectUrl
     );
   } catch (error) {
+    /*
+     * ============================================================
+     * 12. Global failure
+     * ============================================================
+     */
+
     console.error(
       'Google callback error:',
       error
@@ -465,6 +595,12 @@ const redirectUri =
 /*
  * ================================================================
  * Redirect helper
+ * ================================================================
+ *
+ * Every recoverable Google failure ends up here.
+ *
+ * The register page understands these error codes and resets
+ * the Google button automatically.
  * ================================================================
  */
 

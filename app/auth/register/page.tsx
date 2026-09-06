@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Sun,
@@ -19,6 +19,7 @@ import {
   User,
   ShieldCheck,
 } from 'lucide-react';
+
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 type OverlayType = 'error' | 'warning' | 'success';
@@ -38,15 +39,27 @@ type RegisterForm = {
   businessName: string;
 };
 
+type TouchedState = Partial<
+  Record<keyof RegisterForm, boolean>
+>;
+
+const REGISTRATION_STORAGE_KEY = 'sami_account_form';
+const THEME_STORAGE_KEY = 'sami_theme';
+
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [darkMode, setDarkMode] = useState(false);
+
   const [checkingEmail, setCheckingEmail] = useState(false);
+
   const [googleLoading, setGoogleLoading] = useState(false);
+
   const [showPassword, setShowPassword] = useState(false);
 
-  const [overlay, setOverlay] = useState<OverlayState | null>(null);
+  const [overlay, setOverlay] =
+    useState<OverlayState | null>(null);
 
   const [form, setForm] = useState<RegisterForm>({
     firstName: '',
@@ -57,9 +70,14 @@ export default function RegisterPage() {
     businessName: '',
   });
 
-  const [touched, setTouched] = useState<
-    Partial<Record<keyof RegisterForm, boolean>>
-  >({});
+  const [touched, setTouched] =
+    useState<TouchedState>({});
+
+  const googleStartedAtRef =
+    useRef<number | null>(null);
+
+  const googleRecoveryTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /*
    * ------------------------------------------------------------
@@ -68,23 +86,31 @@ export default function RegisterPage() {
    */
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('sami_theme');
+    try {
+      const savedTheme =
+        localStorage.getItem(THEME_STORAGE_KEY);
 
-    const prefersDark =
-      window.matchMedia?.(
-        '(prefers-color-scheme: dark)'
-      ).matches ?? false;
+      const prefersDark =
+        window.matchMedia?.(
+          '(prefers-color-scheme: dark)'
+        ).matches ?? false;
 
-    const useDark =
-      savedTheme === 'dark' ||
-      (!savedTheme && prefersDark);
+      const useDark =
+        savedTheme === 'dark' ||
+        (!savedTheme && prefersDark);
 
-    setDarkMode(useDark);
+      setDarkMode(useDark);
 
-    document.documentElement.classList.toggle(
-      'dark',
-      useDark
-    );
+      document.documentElement.classList.toggle(
+        'dark',
+        useDark
+      );
+    } catch (error) {
+      console.error(
+        'Failed to initialize theme:',
+        error
+      );
+    }
   }, []);
 
   const toggleTheme = () => {
@@ -97,11 +123,269 @@ export default function RegisterPage() {
       next
     );
 
-    localStorage.setItem(
-      'sami_theme',
-      next ? 'dark' : 'light'
-    );
+    try {
+      localStorage.setItem(
+        THEME_STORAGE_KEY,
+        next ? 'dark' : 'light'
+      );
+    } catch (error) {
+      console.error(
+        'Failed to save theme:',
+        error
+      );
+    }
   };
+
+  /*
+   * ------------------------------------------------------------
+   * Google OAuth recovery
+   *
+   * This is important because the browser can restore this
+   * page from bfcache/history with the old loading state.
+   * ------------------------------------------------------------
+   */
+
+  const resetGoogleState = useCallback(() => {
+    setGoogleLoading(false);
+    googleStartedAtRef.current = null;
+
+    if (googleRecoveryTimerRef.current) {
+      clearTimeout(
+        googleRecoveryTimerRef.current
+      );
+
+      googleRecoveryTimerRef.current = null;
+    }
+  }, []);
+
+  /*
+   * Browser back/forward cache recovery.
+   *
+   * If Google fails and the user comes back to this page,
+   * the page must never remain permanently locked.
+   */
+
+  useEffect(() => {
+    const handlePageShow = () => {
+      resetGoogleState();
+    };
+
+    const handleVisibilityChange = () => {
+      /*
+       * Do not immediately reset while the OAuth navigation
+       * is still happening.
+       *
+       * Once the document becomes visible again after the
+       * Google flow, recover the button.
+       */
+      if (
+        document.visibilityState === 'visible' &&
+        googleStartedAtRef.current
+      ) {
+        const elapsed =
+          Date.now() -
+          googleStartedAtRef.current;
+
+        if (elapsed > 1500) {
+          resetGoogleState();
+        }
+      }
+    };
+
+    const handleFocus = () => {
+      if (googleStartedAtRef.current) {
+        const elapsed =
+          Date.now() -
+          googleStartedAtRef.current;
+
+        /*
+         * If the user has returned to the page after OAuth,
+         * don't leave the button stuck.
+         */
+        if (elapsed > 1500) {
+          resetGoogleState();
+        }
+      }
+    };
+
+    window.addEventListener(
+      'pageshow',
+      handlePageShow
+    );
+
+    document.addEventListener(
+      'visibilitychange',
+      handleVisibilityChange
+    );
+
+    window.addEventListener(
+      'focus',
+      handleFocus
+    );
+
+    return () => {
+      window.removeEventListener(
+        'pageshow',
+        handlePageShow
+      );
+
+      document.removeEventListener(
+        'visibilitychange',
+        handleVisibilityChange
+      );
+
+      window.removeEventListener(
+        'focus',
+        handleFocus
+      );
+
+      if (googleRecoveryTimerRef.current) {
+        clearTimeout(
+          googleRecoveryTimerRef.current
+        );
+      }
+    };
+  }, [resetGoogleState]);
+
+  /*
+   * ------------------------------------------------------------
+   * Google OAuth error handling
+   * ------------------------------------------------------------
+   *
+   * Your callback can redirect to:
+   *
+   * /auth/register?google_error=cancelled
+   * /auth/register?google_error=failed
+   * /auth/register?google_error=account_exists
+   * ------------------------------------------------------------
+   */
+
+  useEffect(() => {
+    const googleError =
+      searchParams.get('google_error');
+
+    const genericError =
+      searchParams.get('error');
+
+    const errorCode =
+      googleError || genericError;
+
+    if (!errorCode) {
+      return;
+    }
+
+    resetGoogleState();
+
+    let title = 'Google sign-in failed';
+    let message =
+      'We could not complete registration with Google. Please try again or continue with email.';
+
+    switch (errorCode) {
+  case 'cancelled':
+  case 'access_denied':
+    title = 'Google sign-up cancelled';
+    message =
+      'Google sign-up was cancelled. You can try again or continue with email instead.';
+    break;
+
+  case 'google_config':
+    title = 'Google sign-up unavailable';
+    message =
+      'Google sign-up is not configured correctly on the server. Please continue with email or try again later.';
+    break;
+
+  case 'google_token':
+    title = 'Google sign-up could not be completed';
+    message =
+      'We could not complete the secure connection with Google. Please try again.';
+    break;
+
+  case 'google_email':
+    title = 'Google account information unavailable';
+    message =
+      'We could not retrieve the required information from Google. Please try again.';
+    break;
+
+  case 'google_identity':
+    title = 'Google identity could not be verified';
+    message =
+      'We could not verify your Google identity. Please try again.';
+    break;
+
+  case 'google_unverified':
+    title = 'Google email is not verified';
+    message =
+      'Your Google email must be verified before you can create a SaMi account.';
+    break;
+
+  case 'google_account_deleted':
+    title = 'Account unavailable';
+    message =
+      'A previously deleted SaMi account is associated with this Google email. Please use account recovery or contact support.';
+    break;
+
+  case 'google_missing_code':
+  case 'google_invalid_request':
+  case 'google_unauthorized':
+  case 'google_unsupported_response':
+  case 'google_invalid_scope':
+    title = 'Google sign-up could not start';
+    message =
+      'The Google authentication request was invalid. Please try again.';
+    break;
+
+  case 'google_server_error':
+  case 'google_unavailable':
+    title = 'Google is temporarily unavailable';
+    message =
+      'Google could not complete the authentication request right now. Please try again shortly.';
+    break;
+
+  case 'google_failed':
+  default:
+    title = 'Google sign-up failed';
+    message =
+      'Google could not complete your registration. Please try again or continue with email.';
+    break;
+}
+
+    setOverlay({
+      type: 'error',
+      title,
+      message,
+    });
+
+    /*
+     * Remove the error from the URL after processing it.
+     *
+     * This prevents the same error modal from appearing again
+     * when the page is refreshed or revisited.
+     */
+    const cleanUrl = new URL(
+      window.location.href
+    );
+
+    cleanUrl.searchParams.delete(
+      'google_error'
+    );
+
+    cleanUrl.searchParams.delete('error');
+
+    cleanUrl.searchParams.delete(
+      'error_description'
+    );
+
+    window.history.replaceState(
+      {},
+      '',
+      cleanUrl.pathname +
+        cleanUrl.search +
+        cleanUrl.hash
+    );
+  }, [
+    searchParams,
+    resetGoogleState,
+  ]);
 
   /*
    * ------------------------------------------------------------
@@ -117,6 +401,14 @@ export default function RegisterPage() {
       ...current,
       [field]: value,
     }));
+
+    /*
+     * If the user starts correcting a field,
+     * close a validation overlay related to it.
+     */
+    if (overlay?.type === 'error') {
+      setOverlay(null);
+    }
   };
 
   const markTouched = (
@@ -201,9 +493,7 @@ export default function RegisterPage() {
       'businessName',
     ];
 
-    const nextTouched: Partial<
-      Record<keyof RegisterForm, boolean>
-    > = {};
+    const nextTouched: TouchedState = {};
 
     requiredFields.forEach((field) => {
       nextTouched[field] = true;
@@ -236,16 +526,22 @@ export default function RegisterPage() {
 
   /*
    * ------------------------------------------------------------
-   * Continue registration
+   * Continue email registration
    * ------------------------------------------------------------
    */
 
   const handleNext = async () => {
-    if (checkingEmail || googleLoading) {
+    if (
+      checkingEmail ||
+      googleLoading
+    ) {
       return;
     }
 
-    const validationError = validateForm();
+    setOverlay(null);
+
+    const validationError =
+      validateForm();
 
     if (validationError) {
       setOverlay({
@@ -257,15 +553,16 @@ export default function RegisterPage() {
       return;
     }
 
-    const email = form.email
-      .trim()
-      .toLowerCase();
+    const email =
+      form.email.trim().toLowerCase();
 
     setCheckingEmail(true);
 
     try {
       const response = await fetch(
-        `/api/auth/check-email?email=${encodeURIComponent(email)}`,
+        `/api/auth/check-email?email=${encodeURIComponent(
+          email
+        )}`,
         {
           method: 'GET',
           headers: {
@@ -277,11 +574,12 @@ export default function RegisterPage() {
 
       if (!response.ok) {
         throw new Error(
-          'Email check failed'
+          `Email check failed: ${response.status}`
         );
       }
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (data.exists) {
         setOverlay({
@@ -294,37 +592,45 @@ export default function RegisterPage() {
         return;
       }
 
-      /*
-       * Save temporary registration information.
-       *
-       * Important:
-       * sessionStorage is only being used to carry the
-       * registration wizard from one page to another.
-       *
-       * The password is still sent to the server through
-       * the final registration API and should never be
-       * trusted from sessionStorage by itself.
-       */
-
       const registrationData = {
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
+        firstName:
+          form.firstName.trim(),
+
+        lastName:
+          form.lastName.trim(),
+
         email,
-        phone: form.phone.trim(),
-        password: form.password,
+
+        phone:
+          form.phone.trim(),
+
+        password:
+          form.password,
+
         businessName:
           form.businessName.trim(),
 
         authProvider: 'email',
+
         googleAuth: false,
       };
 
+      /*
+       * Carry the registration wizard forward.
+       *
+       * The server must still validate and process the
+       * registration independently.
+       */
       sessionStorage.setItem(
-        'sami_account_form',
-        JSON.stringify(registrationData)
+        REGISTRATION_STORAGE_KEY,
+        JSON.stringify(
+          registrationData
+        )
       );
 
-      router.push('/auth/select-apps');
+      router.push(
+        '/auth/select-apps'
+      );
     } catch (error) {
       console.error(
         'Email availability check failed:',
@@ -344,20 +650,108 @@ export default function RegisterPage() {
 
   /*
    * ------------------------------------------------------------
-   * Google
+   * Google registration
+   * ------------------------------------------------------------
+   *
+   * IMPORTANT:
+   *
+   * We deliberately use location.assign rather than manually
+   * manipulating history.
+   *
+   * The callback should return the user to:
+   *
+   * /auth/register
+   *
+   * or:
+   *
+   * /auth/register?google_error=...
    * ------------------------------------------------------------
    */
 
   const handleGoogleSignIn = () => {
-    if (googleLoading || checkingEmail) {
+    if (
+      googleLoading ||
+      checkingEmail
+    ) {
       return;
     }
 
+    setOverlay(null);
+
     setGoogleLoading(true);
 
-    window.location.href =
-      '/api/auth/google';
+    googleStartedAtRef.current =
+      Date.now();
+
+    /*
+     * Safety recovery.
+     *
+     * If the OAuth endpoint is unreachable, blocked,
+     * misconfigured, or doesn't navigate away, the user
+     * should NEVER be trapped permanently.
+     */
+    googleRecoveryTimerRef.current =
+      setTimeout(() => {
+        /*
+         * Only recover if the browser is still displaying
+         * this page.
+         */
+        if (
+          document.visibilityState ===
+          'visible'
+        ) {
+          resetGoogleState();
+
+          setOverlay({
+            type: 'error',
+            title: 'Google sign-up is taking too long',
+            message:
+              'We could not connect to Google. Please try again or continue with email.',
+          });
+        }
+      }, 15000);
+
+    /*
+     * Start OAuth.
+     *
+     * The browser leaves this page and goes to your
+     * Google authentication endpoint.
+     */
+    window.location.assign(
+      '/api/auth/google'
+    );
   };
+
+  /*
+   * ------------------------------------------------------------
+   * Keyboard handling
+   * ------------------------------------------------------------
+   */
+
+  useEffect(() => {
+    const handleKeyDown = (
+      event: KeyboardEvent
+    ) => {
+      if (
+        event.key === 'Escape' &&
+        overlay
+      ) {
+        setOverlay(null);
+      }
+    };
+
+    window.addEventListener(
+      'keydown',
+      handleKeyDown
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleKeyDown
+      );
+    };
+  }, [overlay]);
 
   /*
    * ------------------------------------------------------------
@@ -383,11 +777,14 @@ export default function RegisterPage() {
   return (
     <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-5 py-10 transition-colors duration-200">
       {/* Theme toggle */}
-
       <button
         type="button"
         onClick={toggleTheme}
-        aria-label="Toggle theme"
+        aria-label={
+          darkMode
+            ? 'Switch to light mode'
+            : 'Switch to dark mode'
+        }
         className="fixed top-5 right-5 z-20 h-10 w-10 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
       >
         {darkMode ? (
@@ -398,14 +795,10 @@ export default function RegisterPage() {
       </button>
 
       <div className="w-full max-w-[820px] mx-auto">
-
         {/* Main card */}
-
         <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
           <div className="px-8 py-8 sm:px-10 sm:py-9">
-
             {/* Brand */}
-
             <div className="mb-7">
               <Link
                 href="/"
@@ -420,7 +813,6 @@ export default function RegisterPage() {
             </div>
 
             {/* Header */}
-
             <div className="mb-7">
               <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">
                 Create your account
@@ -434,13 +826,17 @@ export default function RegisterPage() {
             </div>
 
             {/* Google sign up */}
-
             <button
               type="button"
-              onClick={handleGoogleSignIn}
+              onClick={
+                handleGoogleSignIn
+              }
               disabled={
                 googleLoading ||
                 checkingEmail
+              }
+              aria-busy={
+                googleLoading
               }
               className="relative w-full h-[48px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-medium text-[14px] flex items-center justify-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 active:scale-[0.995] transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
@@ -485,8 +881,30 @@ export default function RegisterPage() {
               </span>
             </button>
 
-            {/* Divider */}
+            {/* Google recovery hint */}
+            {googleLoading && (
+              <div className="mt-2 text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetGoogleState();
 
+                    setOverlay({
+                      type: 'error',
+                      title:
+                        'Google sign-up stopped',
+                      message:
+                        'The Google sign-up attempt was stopped. You can try again or continue with email.',
+                    });
+                  }}
+                  className="text-[11px] text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition"
+                >
+                  Having trouble? Cancel and try again
+                </button>
+              </div>
+            )}
+
+            {/* Divider */}
             <div className="flex items-center gap-4 my-7">
               <div className="h-px bg-gray-200 dark:bg-gray-800 flex-1" />
 
@@ -498,15 +916,10 @@ export default function RegisterPage() {
             </div>
 
             {/* Form */}
-
             <div className="space-y-5">
-
               {/* Names */}
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                 {/* First name */}
-
                 <div>
                   <label
                     htmlFor="firstName"
@@ -525,7 +938,9 @@ export default function RegisterPage() {
                       id="firstName"
                       type="text"
                       autoComplete="given-name"
-                      value={form.firstName}
+                      value={
+                        form.firstName
+                      }
                       onChange={(e) =>
                         updateField(
                           'firstName',
@@ -533,7 +948,9 @@ export default function RegisterPage() {
                         )
                       }
                       onBlur={() =>
-                        markTouched('firstName')
+                        markTouched(
+                          'firstName'
+                        )
                       }
                       placeholder="John"
                       maxLength={80}
@@ -559,7 +976,6 @@ export default function RegisterPage() {
                 </div>
 
                 {/* Last name */}
-
                 <div>
                   <label
                     htmlFor="lastName"
@@ -578,7 +994,9 @@ export default function RegisterPage() {
                       id="lastName"
                       type="text"
                       autoComplete="family-name"
-                      value={form.lastName}
+                      value={
+                        form.lastName
+                      }
                       onChange={(e) =>
                         updateField(
                           'lastName',
@@ -586,7 +1004,9 @@ export default function RegisterPage() {
                         )
                       }
                       onBlur={() =>
-                        markTouched('lastName')
+                        markTouched(
+                          'lastName'
+                        )
                       }
                       placeholder="Doe"
                       maxLength={80}
@@ -613,7 +1033,6 @@ export default function RegisterPage() {
               </div>
 
               {/* Email */}
-
               <div>
                 <label
                   htmlFor="email"
@@ -640,31 +1059,36 @@ export default function RegisterPage() {
                       )
                     }
                     onBlur={() =>
-                      markTouched('email')
+                      markTouched(
+                        'email'
+                      )
                     }
                     placeholder="john@company.com"
                     maxLength={254}
                     className={`${inputBase} pl-10 ${
-                      getFieldError('email')
+                      getFieldError(
+                        'email'
+                      )
                         ? errorBorder
                         : normalBorder
                     }`}
                   />
                 </div>
 
-                {getFieldError('email') && (
+                {getFieldError(
+                  'email'
+                ) && (
                   <p className="mt-1 text-[11px] text-red-500">
-                    {getFieldError('email')}
+                    {getFieldError(
+                      'email'
+                    )}
                   </p>
                 )}
               </div>
 
               {/* Phone + Business */}
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
                 {/* Phone */}
-
                 <div>
                   <label
                     htmlFor="phone"
@@ -701,7 +1125,6 @@ export default function RegisterPage() {
                 </div>
 
                 {/* Business */}
-
                 <div>
                   <label
                     htmlFor="businessName"
@@ -720,7 +1143,9 @@ export default function RegisterPage() {
                       id="businessName"
                       type="text"
                       autoComplete="organization"
-                      value={form.businessName}
+                      value={
+                        form.businessName
+                      }
                       onChange={(e) =>
                         updateField(
                           'businessName',
@@ -757,7 +1182,6 @@ export default function RegisterPage() {
               </div>
 
               {/* Password */}
-
               <div>
                 <label
                   htmlFor="password"
@@ -788,7 +1212,9 @@ export default function RegisterPage() {
                       )
                     }
                     onBlur={() =>
-                      markTouched('password')
+                      markTouched(
+                        'password'
+                      )
                     }
                     placeholder="At least 8 characters"
                     maxLength={128}
@@ -805,7 +1231,8 @@ export default function RegisterPage() {
                     type="button"
                     onClick={() =>
                       setShowPassword(
-                        (current) => !current
+                        (current) =>
+                          !current
                       )
                     }
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
@@ -841,7 +1268,6 @@ export default function RegisterPage() {
             </div>
 
             {/* Bottom action */}
-
             <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between gap-5">
               <p className="hidden sm:block max-w-[380px] text-[11px] leading-relaxed text-gray-400 dark:text-gray-500">
                 By continuing, you agree to
@@ -864,12 +1290,15 @@ export default function RegisterPage() {
                       size={16}
                       className="animate-spin"
                     />
+
                     Checking...
                   </>
                 ) : (
                   <>
                     Next
-                    <ArrowRight size={16} />
+                    <ArrowRight
+                      size={16}
+                    />
                   </>
                 )}
               </button>
@@ -878,7 +1307,6 @@ export default function RegisterPage() {
         </section>
 
         {/* Bottom links */}
-
         <div className="mt-4 flex justify-end items-center gap-5 px-1">
           <Link
             href="/auth/login"
@@ -911,34 +1339,41 @@ export default function RegisterPage() {
       </div>
 
       {/* Overlay */}
-
       {overlay && (
         <div
           className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-5"
-          onClick={() => setOverlay(null)}
+          onClick={() =>
+            setOverlay(null)
+          }
+          role="presentation"
         >
           <div
             className="w-full max-w-[390px] bg-white dark:bg-[#15191e] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-7 relative"
-            onClick={(e) =>
-              e.stopPropagation()
+            onClick={(event) =>
+              event.stopPropagation()
             }
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="register-dialog-title"
           >
             <button
               type="button"
               onClick={() =>
                 setOverlay(null)
               }
-              aria-label="Close"
-              className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+              aria-label="Close dialog"
+              className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
             >
               <X size={17} />
             </button>
 
             <div
               className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                overlay.type === 'error'
+                overlay.type ===
+                'error'
                   ? 'bg-red-100 dark:bg-red-950/40'
-                  : overlay.type === 'warning'
+                  : overlay.type ===
+                      'warning'
                     ? 'bg-yellow-100 dark:bg-yellow-950/40'
                     : 'bg-green-100 dark:bg-green-950/40'
               }`}
@@ -962,7 +1397,10 @@ export default function RegisterPage() {
               )}
             </div>
 
-            <h2 className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white">
+            <h2
+              id="register-dialog-title"
+              className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white"
+            >
               {overlay.title}
             </h2>
 
