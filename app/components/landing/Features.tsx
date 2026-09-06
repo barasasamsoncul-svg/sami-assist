@@ -111,7 +111,7 @@ export default function Features() {
               </p>
 
               <a
-                href="/auth/register"
+                href="/register"
                 className="mt-7 inline-flex rounded-xl bg-white px-6 py-3 font-semibold text-gray-950 transition hover:bg-gray-100"
               >
                 Build your workspace

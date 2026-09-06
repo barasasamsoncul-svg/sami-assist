@@ -470,7 +470,7 @@ export async function GET(
 
       return NextResponse.redirect(
         new URL(
-          '/auth/login?google=true',
+          '/login?google=true',
           request.url
         )
       );
@@ -610,7 +610,7 @@ function redirectToRegister(
 ) {
   const url =
     new URL(
-      '/auth/register',
+      '/register',
       request.url
     );
 

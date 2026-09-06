@@ -65,14 +65,14 @@ export default function Navbar() {
         {/* Actions */}
         <div className="flex items-center gap-2 sm:gap-3">
           <Link
-            href="/auth/login"
+            href="/login"
             className="rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-100 hover:text-gray-950 sm:px-5"
           >
             Sign In
           </Link>
 
           <Link
-            href="/auth/register"
+            href="/register"
             className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 hover:shadow-blue-600/30 sm:px-6"
           >
             Start Free

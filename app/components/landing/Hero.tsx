@@ -32,7 +32,7 @@ export default function Hero() {
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <Link
-              href="/auth/register"
+              href="/register"
               className="rounded-xl bg-blue-600 px-7 py-4 text-center font-semibold text-white shadow-xl shadow-blue-600/20 transition hover:bg-blue-700"
             >
               Start Free

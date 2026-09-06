@@ -663,7 +663,7 @@ async function processCompletedPayment(
 
     return redirectTo(
       origin,
-      '/auth/verify-email?payment=success'
+      '/verify-email?payment=success'
     );
   }
 
@@ -797,7 +797,7 @@ async function processCompletedPayment(
 
     return redirectTo(
       origin,
-      '/auth/login?payment=success'
+      '/login?payment=success'
     );
   }
 
@@ -840,7 +840,7 @@ async function processCompletedPayment(
 
   return redirectTo(
     origin,
-    '/auth/verify-email?payment=success'
+    '/verify-email?payment=success'
   );
 }
 

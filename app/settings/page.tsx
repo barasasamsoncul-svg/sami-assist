@@ -168,7 +168,7 @@ export default function SettingsPage() {
         }
 
         if (response.status === 401) {
-          router.replace('/auth/login');
+          router.replace('/login');
           return;
         }
 
@@ -176,7 +176,7 @@ export default function SettingsPage() {
           await response.json();
 
         if (!response.ok || !data.authenticated || !data.user) {
-          router.replace('/auth/login');
+          router.replace('/login');
           return;
         }
 
@@ -227,7 +227,7 @@ export default function SettingsPage() {
         throw new Error('Logout failed');
       }
 
-      router.replace('/auth/login');
+      router.replace('/login');
       router.refresh();
     } catch {
       setSigningOut(false);

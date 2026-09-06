@@ -64,7 +64,7 @@ export default function Home() {
                 </ul>
 
                 <a
-                  href="/auth/register"
+                  href="/register"
                   className="mt-8 block rounded-xl border border-gray-300 px-5 py-3 text-center font-semibold text-gray-900 transition hover:bg-gray-50"
                 >
                   Start Free
@@ -100,7 +100,7 @@ export default function Home() {
                 </ul>
 
                 <a
-                  href="/auth/register"
+                  href="/register"
                   className="mt-8 block rounded-xl bg-white px-5 py-3 text-center font-semibold text-gray-950 transition hover:bg-gray-100"
                 >
                   Get Started

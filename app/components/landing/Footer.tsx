@@ -51,7 +51,7 @@ export default function Footer() {
 
               <li>
                 <Link
-                  href="/auth/register"
+                  href="/register"
                   className="transition hover:text-blue-600"
                 >
                   Start Free
@@ -60,7 +60,7 @@ export default function Footer() {
 
               <li>
                 <Link
-                  href="/auth/login"
+                  href="/login"
                   className="transition hover:text-blue-600"
                 >
                   Sign In
