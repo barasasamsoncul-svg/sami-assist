@@ -629,7 +629,7 @@ export default function RegisterPage() {
       );
 
       router.push(
-        '/auth/select-apps'
+        '/select-apps'
       );
     } catch (error) {
       console.error(
@@ -660,7 +660,7 @@ export default function RegisterPage() {
    *
    * The callback should return the user to:
    *
-   * /auth/register
+   * /register
    *
    * or:
    *
