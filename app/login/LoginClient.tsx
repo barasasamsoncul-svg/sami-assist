@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
-  CheckCircle2,
   Eye,
   EyeOff,
   Loader2,
@@ -25,43 +24,15 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
 
 type LoginResponse = {
-  success: boolean;
+  success?: boolean;
   code?: string;
   error?: string;
   message?: string;
   next?: string;
-
   email?: string;
   challengeToken?: string;
   retryAfterSeconds?: number | null;
   lockedUntil?: string | null;
-
-  user?: {
-    id: string;
-    email: string;
-    fullName?: string;
-    firstName?: string;
-    lastName?: string;
-    avatarFileId?: string | null;
-  };
-
-  tenant?: {
-    id: string;
-    name: string;
-    slug: string;
-    status: string;
-  } | null;
-
-  owner?: unknown;
-  membership?: unknown;
-  subscription?: unknown;
-  role?: unknown;
-  modules?: unknown[];
-
-  session?: {
-    id: string;
-    expiresAt: string;
-  };
 };
 
 function isValidEmail(value: string): boolean {
@@ -69,17 +40,9 @@ function isValidEmail(value: string): boolean {
 }
 
 function safeNextPath(value: string | null): string {
-  if (!value) {
-    return '/dashboard';
-  }
-
-  if (!value.startsWith('/')) {
-    return '/dashboard';
-  }
-
-  if (value.startsWith('//')) {
-    return '/dashboard';
-  }
+  if (!value) return '/dashboard';
+  if (!value.startsWith('/')) return '/dashboard';
+  if (value.startsWith('//')) return '/dashboard';
 
   if (
     value.startsWith('/login') ||
@@ -144,9 +107,7 @@ function LoginClientInner() {
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (submitting) {
-      return;
-    }
+    if (submitting) return;
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -177,13 +138,11 @@ function LoginClientInner() {
         }),
       });
 
-      const data = (await response
-        .json()
-        .catch(() => ({
-          success: false,
-          code: 'LOGIN_ERROR',
-          error: 'Login failed. Please try again.',
-        }))) as LoginResponse;
+      const data = (await response.json().catch(() => ({
+        success: false,
+        code: 'LOGIN_ERROR',
+        error: 'Login failed. Please try again.',
+      }))) as LoginResponse;
 
       if (
         data.code === 'TWO_FACTOR_REQUIRED' &&
@@ -240,7 +199,7 @@ function LoginClientInner() {
       type: 'info',
       title: 'Google sign-in coming soon',
       message:
-        'Google authentication will be connected in this Authentication category after password login, verification, sessions, lockout, and 2FA are stable.',
+        'Google authentication will be connected after password login, verification, sessions, lockout, and two-factor authentication are stable.',
     });
   }
 
@@ -502,13 +461,24 @@ function LoginClientInner() {
       </div>
 
       <div className="fixed bottom-4 left-0 right-0 hidden justify-center gap-5 text-xs font-bold text-slate-400 lg:flex">
-        <Link href="/help" className="hover:text-slate-700 dark:hover:text-white">
+        <Link
+          href="/help"
+          className="hover:text-slate-700 dark:hover:text-white"
+        >
           Help
         </Link>
-        <Link href="/terms" className="hover:text-slate-700 dark:hover:text-white">
+
+        <Link
+          href="/terms"
+          className="hover:text-slate-700 dark:hover:text-white"
+        >
           Terms
         </Link>
-        <Link href="/privacy" className="hover:text-slate-700 dark:hover:text-white">
+
+        <Link
+          href="/privacy"
+          className="hover:text-slate-700 dark:hover:text-white"
+        >
           Privacy
         </Link>
       </div>
