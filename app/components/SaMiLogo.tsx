@@ -1,275 +1,176 @@
-import React, { useId } from 'react';
+'use client';
 
-type SaMiLogoSize = 'sm' | 'md' | 'lg' | 'xl';
+import React from 'react';
 
 type SaMiLogoProps = {
-  size?: SaMiLogoSize;
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
-  showTagline?: boolean;
 };
 
-const sizeMap: Record<SaMiLogoSize, number> = {
-  sm: 180,
-  md: 240,
-  lg: 320,
-  xl: 420,
+const SIZE_MAP: Record<NonNullable<SaMiLogoProps['size']>, { width: number; height: number }> = {
+  sm: { width: 170, height: 72 },
+  md: { width: 220, height: 92 },
+  lg: { width: 290, height: 118 },
+  xl: { width: 360, height: 146 },
 };
 
 export default function SaMiLogo({
   size = 'lg',
   className = '',
-  showTagline = true,
 }: SaMiLogoProps) {
-  const width = sizeMap[size];
-  const id = useId().replace(/:/g, '');
-
-  const cyanBluePink = `sami-grad-main-${id}`;
-  const cyanBluePink2 = `sami-grad-main-2-${id}`;
-  const beamGlow = `sami-beam-glow-${id}`;
-  const markGlow = `sami-mark-glow-${id}`;
-  const textGlow = `sami-text-glow-${id}`;
-  const softBlur = `sami-soft-blur-${id}`;
-  const beamBg = `sami-beam-bg-${id}`;
-  const wordmarkGrad = `sami-wordmark-grad-${id}`;
-  const floorFade = `sami-floor-fade-${id}`;
+  const { width, height } = SIZE_MAP[size];
 
   return (
     <div
-      className={`inline-flex items-center justify-center ${className}`}
+      className={className}
       aria-label="SaMi logo"
       role="img"
-      style={{ lineHeight: 0 }}
+      style={{
+        width,
+        height,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
     >
       <svg
         width={width}
-        viewBox="0 0 920 560"
+        height={height}
+        viewBox="0 0 620 240"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
+        style={{
+          overflow: 'visible',
+          display: 'block',
+        }}
       >
         <defs>
-          <linearGradient id={cyanBluePink} x1="250" y1="80" x2="610" y2="420" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#66F6FF" />
-            <stop offset="42%" stopColor="#1F6BFF" />
-            <stop offset="74%" stopColor="#4638FF" />
-            <stop offset="100%" stopColor="#FF53D7" />
+          <linearGradient id="samiMainGradient" x1="80" y1="40" x2="520" y2="170" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#e9f7ff" />
+            <stop offset="18%" stopColor="#8ae7ff" />
+            <stop offset="42%" stopColor="#3fb6ff" />
+            <stop offset="70%" stopColor="#6b7dff" />
+            <stop offset="100%" stopColor="#d7dcff" />
           </linearGradient>
 
-          <linearGradient id={cyanBluePink2} x1="480" y1="120" x2="760" y2="390" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#7DFFF7" />
-            <stop offset="42%" stopColor="#3A7BFF" />
-            <stop offset="78%" stopColor="#6047FF" />
-            <stop offset="100%" stopColor="#FF66E1" />
+          <linearGradient id="samiReflectionGradient" x1="120" y1="120" x2="520" y2="220" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#d8eeff" stopOpacity="0.24" />
+            <stop offset="50%" stopColor="#89cbff" stopOpacity="0.14" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.06" />
           </linearGradient>
 
-          <linearGradient id={wordmarkGrad} x1="300" y1="390" x2="680" y2="500" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#7CF9FF" />
-            <stop offset="40%" stopColor="#4B86FF" />
-            <stop offset="75%" stopColor="#6552FF" />
-            <stop offset="100%" stopColor="#D46BFF" />
+          <linearGradient id="taglineGradient" x1="120" y1="0" x2="500" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#dff8ff" />
+            <stop offset="50%" stopColor="#72d3ff" />
+            <stop offset="100%" stopColor="#dff8ff" />
           </linearGradient>
 
-          <linearGradient id={beamBg} x1="170" y1="0" x2="750" y2="0" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="rgba(15,23,42,0.08)" />
-            <stop offset="50%" stopColor="rgba(15,23,42,0.18)" />
-            <stop offset="100%" stopColor="rgba(15,23,42,0.08)" />
-          </linearGradient>
-
-          <linearGradient id={floorFade} x1="460" y1="380" x2="460" y2="545" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#3D7CFF" stopOpacity="0.32" />
-            <stop offset="100%" stopColor="#3D7CFF" stopOpacity="0" />
-          </linearGradient>
-
-          <filter id={markGlow} x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="10" result="blur" />
+          <filter id="mainGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur1" />
             <feColorMatrix
-              in="blur"
+              in="blur1"
               type="matrix"
               values="
                 1 0 0 0 0
-                0 1 0 0 0
-                0 0 1 0 0
-                0 0 0 1 0
+                0 1 0 0 0.72
+                0 0 1 0 1
+                0 0 0 0.55 0
               "
             />
           </filter>
 
-          <filter id={beamGlow} x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="7" result="blur" />
+          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3.2" result="blur2" />
           </filter>
 
-          <filter id={textGlow} x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="3.5" result="blur" />
-          </filter>
-
-          <filter id={softBlur} x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="12" result="blur" />
+          <filter id="reflectionBlur" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="2.6" />
           </filter>
         </defs>
 
-        {/* subtle lower glow */}
-        <ellipse
-          cx="460"
-          cy="470"
-          rx="250"
-          ry="36"
-          fill="url(#floorFade)"
-          opacity="0.9"
-        />
+        {/* Main SaMi glow */}
+        <text
+          x="310"
+          y="112"
+          textAnchor="middle"
+          fontSize="112"
+          fontWeight="700"
+          fontStyle="italic"
+          fontFamily="Inter, Segoe UI, Arial, sans-serif"
+          letterSpacing="-4"
+          fill="#79d8ff"
+          opacity="0.55"
+          filter="url(#mainGlow)"
+        >
+          SaMi
+        </text>
 
-        {/* glowing SM mark */}
-        <g opacity="0.28" filter={`url(#${markGlow})`}>
-          <text
-            x="265"
-            y="325"
-            fontSize="320"
-            fontWeight="900"
-            fontStyle="italic"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            fill={`url(#${cyanBluePink})`}
-            letterSpacing="-18"
-          >
-            S
-          </text>
+        {/* Main SaMi */}
+        <text
+          x="310"
+          y="112"
+          textAnchor="middle"
+          fontSize="112"
+          fontWeight="700"
+          fontStyle="italic"
+          fontFamily="Inter, Segoe UI, Arial, sans-serif"
+          letterSpacing="-4"
+          fill="url(#samiMainGradient)"
+        >
+          SaMi
+        </text>
 
-          <text
-            x="470"
-            y="325"
-            fontSize="290"
-            fontWeight="900"
-            fontStyle="italic"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            fill={`url(#${cyanBluePink2})`}
-            letterSpacing="-22"
-          >
-            M
-          </text>
-        </g>
+        {/* Reflection / translucent echo */}
+        <text
+          x="312"
+          y="165"
+          textAnchor="middle"
+          fontSize="86"
+          fontWeight="700"
+          fontStyle="italic"
+          fontFamily="Inter, Segoe UI, Arial, sans-serif"
+          letterSpacing="-3"
+          fill="url(#samiReflectionGradient)"
+          opacity="0.55"
+          filter="url(#reflectionBlur)"
+        >
+          SaMi
+        </text>
 
-        <g>
-          <text
-            x="265"
-            y="325"
-            fontSize="320"
-            fontWeight="900"
-            fontStyle="italic"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            fill={`url(#${cyanBluePink})`}
-            stroke="rgba(255,255,255,0.55)"
-            strokeWidth="1.4"
-            letterSpacing="-18"
-          >
-            S
-          </text>
-
-          <text
-            x="470"
-            y="325"
-            fontSize="290"
-            fontWeight="900"
-            fontStyle="italic"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            fill={`url(#${cyanBluePink2})`}
-            stroke="rgba(255,255,255,0.48)"
+        {/* Tagline crossing the center */}
+        <g transform="translate(0,0)">
+          <line
+            x1="98"
+            y1="121"
+            x2="212"
+            y2="121"
+            stroke="url(#taglineGradient)"
+            strokeOpacity="0.65"
             strokeWidth="1.2"
-            letterSpacing="-22"
-          >
-            M
-          </text>
-        </g>
-
-        {/* center beam */}
-        {showTagline && (
-          <g>
-            <line
-              x1="70"
-              y1="270"
-              x2="850"
-              y2="270"
-              stroke="#3E86FF"
-              strokeWidth="4"
-              opacity="0.95"
-            />
-            <line
-              x1="70"
-              y1="270"
-              x2="850"
-              y2="270"
-              stroke="#5E5CFF"
-              strokeWidth="2"
-              opacity="0.8"
-              filter={`url(#${beamGlow})`}
-            />
-
-            <circle cx="148" cy="270" r="5.5" fill="#A9F8FF" />
-            <circle cx="772" cy="270" r="5.5" fill="#F08BFF" />
-
-            <rect
-              x="165"
-              y="236"
-              width="590"
-              height="68"
-              rx="22"
-              fill="rgba(7,18,43,0.48)"
-              stroke="rgba(79,137,255,0.7)"
-              strokeWidth="1.4"
-            />
-
-            <rect
-              x="165"
-              y="236"
-              width="590"
-              height="68"
-              rx="22"
-              fill="transparent"
-              stroke="rgba(92,186,255,0.45)"
-              strokeWidth="5"
-              filter={`url(#${beamGlow})`}
-            />
-
-            <text
-              x="460"
-              y="280"
-              textAnchor="middle"
-              fontSize="22"
-              fontWeight="500"
-              letterSpacing="8"
-              fontFamily="Inter, Segoe UI, Arial, sans-serif"
-              fill="rgba(255,255,255,0.96)"
-            >
-              AI-POWERED BUSINESS WORKSPACE
-            </text>
-          </g>
-        )}
-
-        {/* SaMi wordmark / reflection below */}
-        <g>
-          <text
-            x="460"
-            y="485"
-            textAnchor="middle"
-            fontSize="112"
-            fontWeight="800"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            letterSpacing="-4"
-            fill={`url(#${wordmarkGrad})`}
-            opacity="0.38"
-          >
-            SaMi
-          </text>
+          />
+          <line
+            x1="410"
+            y1="121"
+            x2="522"
+            y2="121"
+            stroke="url(#taglineGradient)"
+            strokeOpacity="0.65"
+            strokeWidth="1.2"
+          />
 
           <text
-            x="460"
-            y="485"
+            x="310"
+            y="126"
             textAnchor="middle"
-            fontSize="112"
-            fontWeight="800"
-            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
-            letterSpacing="-4"
-            fill={`url(#${wordmarkGrad})`}
-            opacity="0.18"
-            filter={`url(#${softBlur})`}
+            fontSize="17"
+            fontWeight="700"
+            fontFamily="Inter, Segoe UI, Arial, sans-serif"
+            letterSpacing="4.4"
+            fill="#bfeeff"
+            opacity="0.92"
+            filter="url(#softGlow)"
           >
-            SaMi
+            AI POWERED BUSINESS WORKSPACE
           </text>
         </g>
       </svg>
