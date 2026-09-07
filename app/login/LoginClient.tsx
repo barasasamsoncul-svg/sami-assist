@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -49,7 +49,8 @@ function safeNextPath(value: string | null): string {
     value.startsWith('/register') ||
     value.startsWith('/forgot-password') ||
     value.startsWith('/reset-password') ||
-    value.startsWith('/verify-email')
+    value.startsWith('/verify-email') ||
+    value.startsWith('/login/two-factor')
   ) {
     return '/dashboard';
   }
@@ -80,9 +81,7 @@ function LoginClientInner() {
     const reason = searchParams.get('reason');
     const emailParam = searchParams.get('email');
 
-    if (emailParam) {
-      setEmail(emailParam);
-    }
+    if (emailParam) setEmail(emailParam);
 
     if (verified === '1') {
       setOverlay(getAuthOverlayMessage('EMAIL_VERIFIED'));
@@ -127,9 +126,7 @@ function LoginClientInner() {
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           email: cleanEmail,
@@ -144,24 +141,10 @@ function LoginClientInner() {
         error: 'Login failed. Please try again.',
       }))) as LoginResponse;
 
-      if (
-        data.code === 'TWO_FACTOR_REQUIRED' &&
-        data.challengeToken
-      ) {
-        window.sessionStorage.setItem(
-          'sami_2fa_email',
-          data.email || cleanEmail
-        );
-
-        window.sessionStorage.setItem(
-          'sami_2fa_challenge',
-          data.challengeToken
-        );
-
-        window.sessionStorage.setItem(
-          'sami_2fa_remember',
-          String(rememberMe)
-        );
+      if (data.code === 'TWO_FACTOR_REQUIRED' && data.challengeToken) {
+        window.sessionStorage.setItem('sami_2fa_email', data.email || cleanEmail);
+        window.sessionStorage.setItem('sami_2fa_challenge', data.challengeToken);
+        window.sessionStorage.setItem('sami_2fa_remember', String(rememberMe));
 
         router.push(data.next || '/login/two-factor');
         return;
@@ -244,8 +227,7 @@ function LoginClientInner() {
                 </h1>
 
                 <p className="mt-5 max-w-md text-base leading-7 text-slate-300">
-                  Sign in to access your workspace, apps, settings,
-                  sessions, and SaMi AI.
+                  Sign in to access your workspace, apps, settings, sessions, and SaMi AI.
                 </p>
               </div>
             </div>
@@ -290,39 +272,31 @@ function LoginClientInner() {
             </div>
 
             <div className="mx-auto max-w-md">
-              <div>
-                <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">
-                  Sign in
-                </p>
+              <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-400">
+                Sign in
+              </p>
 
-                <h2 className="mt-3 text-3xl font-black tracking-tight">
-                  Access your workspace
-                </h2>
+              <h2 className="mt-3 text-3xl font-black tracking-tight">
+                Access your workspace
+              </h2>
 
-                <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Use your SaMi account email and password.
-                </p>
-              </div>
+              <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Use your SaMi account email and password.
+              </p>
 
               <form onSubmit={handleLogin} className="mt-8 space-y-5">
                 <div>
-                  <label
-                    htmlFor="email"
-                    className="text-sm font-bold text-slate-700 dark:text-slate-200"
-                  >
+                  <label htmlFor="email" className="text-sm font-bold text-slate-700 dark:text-slate-200">
                     Email address
                   </label>
 
                   <div className="mt-2 flex h-12 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 transition focus-within:border-slate-400 focus-within:ring-4 focus-within:ring-slate-100 dark:border-slate-800 dark:bg-slate-950 dark:focus-within:border-slate-600 dark:focus-within:ring-slate-800">
                     <Mail className="h-5 w-5 text-slate-400" />
-
                     <input
                       id="email"
                       type="email"
                       value={email}
-                      onChange={(event) =>
-                        setEmail(event.target.value)
-                      }
+                      onChange={(event) => setEmail(event.target.value)}
                       autoComplete="email"
                       placeholder="you@example.com"
                       className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
@@ -332,17 +306,11 @@ function LoginClientInner() {
 
                 <div>
                   <div className="flex items-center justify-between gap-4">
-                    <label
-                      htmlFor="password"
-                      className="text-sm font-bold text-slate-700 dark:text-slate-200"
-                    >
+                    <label htmlFor="password" className="text-sm font-bold text-slate-700 dark:text-slate-200">
                       Password
                     </label>
 
-                    <Link
-                      href="/forgot-password"
-                      className="text-sm font-black text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
-                    >
+                    <Link href="/forgot-password" className="text-sm font-black text-blue-600 transition hover:text-blue-700 dark:text-blue-400">
                       Forgot?
                     </Link>
                   </div>
@@ -354,9 +322,7 @@ function LoginClientInner() {
                       id="password"
                       type={showPassword ? 'text' : 'password'}
                       value={password}
-                      onChange={(event) =>
-                        setPassword(event.target.value)
-                      }
+                      onChange={(event) => setPassword(event.target.value)}
                       autoComplete="current-password"
                       placeholder="Enter your password"
                       className="h-full min-w-0 flex-1 bg-transparent text-sm font-medium outline-none"
@@ -364,21 +330,11 @@ function LoginClientInner() {
 
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowPassword((value) => !value)
-                      }
-                      aria-label={
-                        showPassword
-                          ? 'Hide password'
-                          : 'Show password'
-                      }
+                      onClick={() => setShowPassword((value) => !value)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                       className="rounded-xl p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-5 w-5" />
-                      ) : (
-                        <Eye className="h-5 w-5" />
-                      )}
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                     </button>
                   </div>
                 </div>
@@ -396,9 +352,7 @@ function LoginClientInner() {
                   <input
                     type="checkbox"
                     checked={rememberMe}
-                    onChange={(event) =>
-                      setRememberMe(event.target.checked)
-                    }
+                    onChange={(event) => setRememberMe(event.target.checked)}
                     className="h-5 w-5 rounded border-slate-300"
                   />
                 </label>
@@ -408,20 +362,14 @@ function LoginClientInner() {
                   disabled={submitting}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                 >
-                  {submitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-5 w-5" />
-                  )}
+                  {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
                   Sign in
                 </button>
               </form>
 
               <div className="my-6 flex items-center gap-3">
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-                <span className="text-xs font-bold text-slate-400">
-                  OR
-                </span>
+                <span className="text-xs font-bold text-slate-400">OR</span>
                 <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
               </div>
 
@@ -440,18 +388,14 @@ function LoginClientInner() {
                 <div className="flex gap-3">
                   <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
                   <p className="text-sm leading-6">
-                    For your security, repeated failed attempts may
-                    temporarily lock your account.
+                    For your security, repeated failed attempts may temporarily lock your account.
                   </p>
                 </div>
               </div>
 
               <p className="mt-7 text-center text-sm text-slate-500 dark:text-slate-400">
                 Don&apos;t have an account?{' '}
-                <Link
-                  href="/register"
-                  className="font-black text-slate-950 hover:underline dark:text-white"
-                >
+                <Link href="/register" className="font-black text-slate-950 hover:underline dark:text-white">
                   Create account
                 </Link>
               </p>
@@ -461,26 +405,9 @@ function LoginClientInner() {
       </div>
 
       <div className="fixed bottom-4 left-0 right-0 hidden justify-center gap-5 text-xs font-bold text-slate-400 lg:flex">
-        <Link
-          href="/help"
-          className="hover:text-slate-700 dark:hover:text-white"
-        >
-          Help
-        </Link>
-
-        <Link
-          href="/terms"
-          className="hover:text-slate-700 dark:hover:text-white"
-        >
-          Terms
-        </Link>
-
-        <Link
-          href="/privacy"
-          className="hover:text-slate-700 dark:hover:text-white"
-        >
-          Privacy
-        </Link>
+        <Link href="/help" className="hover:text-slate-700 dark:hover:text-white">Help</Link>
+        <Link href="/terms" className="hover:text-slate-700 dark:hover:text-white">Terms</Link>
+        <Link href="/privacy" className="hover:text-slate-700 dark:hover:text-white">Privacy</Link>
       </div>
     </main>
   );
