@@ -1,12 +1,10 @@
-import { Suspense } from 'react';
+import { redirectIfAuthenticated } from '@/lib/auth/require-page-session';
 import RegisterClient from './RegisterClient';
 
-export const dynamic = 'force-static';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export default function RegisterPage() {
-  return (
-    <Suspense fallback={null}>
-      <RegisterClient />
-    </Suspense>
-  );
+export default async function RegisterPage() {
+  await redirectIfAuthenticated('/dashboard');
+  return <RegisterClient />;
 }

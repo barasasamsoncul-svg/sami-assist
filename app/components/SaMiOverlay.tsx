@@ -1,19 +1,9 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
-import {
-  AlertTriangle,
-  CheckCircle2,
-  Info,
-  ShieldAlert,
-  X,
-} from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Info, ShieldAlert, X } from 'lucide-react';
 
-export type SaMiOverlayType =
-  | 'success'
-  | 'error'
-  | 'warning'
-  | 'info';
+export type SaMiOverlayType = 'success' | 'error' | 'warning' | 'info';
 
 export type SaMiOverlayAction = {
   label: string;
@@ -31,53 +21,46 @@ type SaMiOverlayProps = {
   onClose: () => void;
 };
 
-function getStyles(type: SaMiOverlayType) {
+function visual(type: SaMiOverlayType) {
   if (type === 'success') {
     return {
-      icon: CheckCircle2,
-      iconWrap:
-        'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300',
-      ring: 'ring-emerald-200 dark:ring-emerald-900/60',
+      Icon: CheckCircle2,
+      icon: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300',
     };
   }
 
   if (type === 'warning') {
     return {
-      icon: ShieldAlert,
-      iconWrap:
-        'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-300',
-      ring: 'ring-amber-200 dark:ring-amber-900/60',
+      Icon: ShieldAlert,
+      icon: 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-300',
     };
   }
 
   if (type === 'info') {
     return {
-      icon: Info,
-      iconWrap:
-        'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300',
-      ring: 'ring-blue-200 dark:ring-blue-900/60',
+      Icon: Info,
+      icon: 'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300',
     };
   }
 
   return {
-    icon: AlertTriangle,
-    iconWrap:
-      'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300',
-    ring: 'ring-red-200 dark:ring-red-900/60',
+    Icon: AlertTriangle,
+    icon: 'bg-red-50 text-red-600 dark:bg-red-950/50 dark:text-red-300',
   };
 }
 
-function ActionButton({
+function OverlayAction({
   action,
-  variant,
+  primary,
+  onClose,
 }: {
   action: SaMiOverlayAction;
-  variant: 'primary' | 'secondary';
+  primary: boolean;
+  onClose: () => void;
 }) {
-  const className =
-    variant === 'primary'
-      ? 'inline-flex h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
-      : 'inline-flex h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800';
+  const className = primary
+    ? 'inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
+    : 'inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-800';
 
   if (action.href) {
     return (
@@ -88,7 +71,14 @@ function ActionButton({
   }
 
   return (
-    <button type="button" onClick={action.onClick} className={className}>
+    <button
+      type="button"
+      onClick={() => {
+        action.onClick?.();
+        if (!action.onClick) onClose();
+      }}
+      className={className}
+    >
       {action.label}
     </button>
   );
@@ -105,16 +95,21 @@ export default function SaMiOverlay({
 }: SaMiOverlayProps) {
   if (!open) return null;
 
-  const styles = getStyles(type);
-  const Icon = styles.icon;
+  const { Icon, icon } = visual(type);
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm">
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
       <div
-        className={[
-          'relative w-full max-w-md rounded-[2rem] bg-white p-6 shadow-2xl ring-1 dark:bg-slate-900',
-          styles.ring,
-        ].join(' ')}
+        className="relative w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sami-overlay-title"
       >
         <button
           type="button"
@@ -125,16 +120,11 @@ export default function SaMiOverlay({
           <X className="h-5 w-5" />
         </button>
 
-        <div
-          className={[
-            'flex h-14 w-14 items-center justify-center rounded-2xl',
-            styles.iconWrap,
-          ].join(' ')}
-        >
+        <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${icon}`}>
           <Icon className="h-7 w-7" />
         </div>
 
-        <h2 className="mt-5 text-xl font-black tracking-tight text-slate-950 dark:text-white">
+        <h2 id="sami-overlay-title" className="mt-5 text-xl font-black tracking-tight text-slate-950 dark:text-white">
           {title}
         </h2>
 
@@ -145,11 +135,10 @@ export default function SaMiOverlay({
         {(primaryAction || secondaryAction) && (
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             {primaryAction && (
-              <ActionButton action={primaryAction} variant="primary" />
+              <OverlayAction action={primaryAction} primary onClose={onClose} />
             )}
-
             {secondaryAction && (
-              <ActionButton action={secondaryAction} variant="secondary" />
+              <OverlayAction action={secondaryAction} primary={false} onClose={onClose} />
             )}
           </div>
         )}
