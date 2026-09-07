@@ -1,325 +1,278 @@
 import React, { useId } from 'react';
 
-type SaMiLogoSize = 'sm' | 'md' | 'lg' | 'hero' | number;
+type SaMiLogoSize = 'sm' | 'md' | 'lg' | 'xl';
 
 type SaMiLogoProps = {
   size?: SaMiLogoSize;
   className?: string;
-  markOnly?: boolean;
   showTagline?: boolean;
-  showReflection?: boolean;
-  showBackground?: boolean;
 };
 
-function resolveWidth(size: SaMiLogoSize): number {
-  if (typeof size === 'number') return size;
-
-  switch (size) {
-    case 'sm':
-      return 140;
-    case 'md':
-      return 220;
-    case 'lg':
-      return 320;
-    case 'hero':
-      return 560;
-    default:
-      return 220;
-  }
-}
+const sizeMap: Record<SaMiLogoSize, number> = {
+  sm: 180,
+  md: 240,
+  lg: 320,
+  xl: 420,
+};
 
 export default function SaMiLogo({
   size = 'lg',
   className = '',
-  markOnly = false,
   showTagline = true,
-  showReflection = true,
-  showBackground = true,
 }: SaMiLogoProps) {
-  const width = resolveWidth(size);
-  const id = useId();
+  const width = sizeMap[size];
+  const id = useId().replace(/:/g, '');
 
-  const bgGradient = `sami-bg-${id}`;
-  const radialGlow = `sami-radial-${id}`;
-  const markGradientA = `sami-mark-a-${id}`;
-  const markGradientB = `sami-mark-b-${id}`;
-  const textGradient = `sami-text-${id}`;
-  const barGradient = `sami-bar-${id}`;
-  const lineGradient = `sami-line-${id}`;
-  const glowFilter = `sami-glow-${id}`;
-  const softGlowFilter = `sami-soft-glow-${id}`;
-  const blurFilter = `sami-blur-${id}`;
-
-  const renderTagline = !markOnly && showTagline;
-  const renderReflection = !markOnly && showReflection;
-  const renderBackground = showBackground;
+  const cyanBluePink = `sami-grad-main-${id}`;
+  const cyanBluePink2 = `sami-grad-main-2-${id}`;
+  const beamGlow = `sami-beam-glow-${id}`;
+  const markGlow = `sami-mark-glow-${id}`;
+  const textGlow = `sami-text-glow-${id}`;
+  const softBlur = `sami-soft-blur-${id}`;
+  const beamBg = `sami-beam-bg-${id}`;
+  const wordmarkGrad = `sami-wordmark-grad-${id}`;
+  const floorFade = `sami-floor-fade-${id}`;
 
   return (
-    <svg
-      viewBox="0 0 1200 760"
-      width={width}
-      height="auto"
-      className={className}
-      role="img"
+    <div
+      className={`inline-flex items-center justify-center ${className}`}
       aria-label="SaMi logo"
-      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      style={{ lineHeight: 0 }}
     >
-      <defs>
-        <linearGradient id={bgGradient} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#020617" />
-          <stop offset="45%" stopColor="#031540" />
-          <stop offset="75%" stopColor="#040d2a" />
-          <stop offset="100%" stopColor="#01040f" />
-        </linearGradient>
+      <svg
+        width={width}
+        viewBox="0 0 920 560"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id={cyanBluePink} x1="250" y1="80" x2="610" y2="420" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#66F6FF" />
+            <stop offset="42%" stopColor="#1F6BFF" />
+            <stop offset="74%" stopColor="#4638FF" />
+            <stop offset="100%" stopColor="#FF53D7" />
+          </linearGradient>
 
-        <radialGradient id={radialGlow} cx="50%" cy="45%" r="55%">
-          <stop offset="0%" stopColor="#123dff" stopOpacity="0.35" />
-          <stop offset="55%" stopColor="#123dff" stopOpacity="0.08" />
-          <stop offset="100%" stopColor="#123dff" stopOpacity="0" />
-        </radialGradient>
+          <linearGradient id={cyanBluePink2} x1="480" y1="120" x2="760" y2="390" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#7DFFF7" />
+            <stop offset="42%" stopColor="#3A7BFF" />
+            <stop offset="78%" stopColor="#6047FF" />
+            <stop offset="100%" stopColor="#FF66E1" />
+          </linearGradient>
 
-        <linearGradient id={markGradientA} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#69f0ff" />
-          <stop offset="40%" stopColor="#1781ff" />
-          <stop offset="72%" stopColor="#2146ff" />
-          <stop offset="100%" stopColor="#ff5cff" />
-        </linearGradient>
+          <linearGradient id={wordmarkGrad} x1="300" y1="390" x2="680" y2="500" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#7CF9FF" />
+            <stop offset="40%" stopColor="#4B86FF" />
+            <stop offset="75%" stopColor="#6552FF" />
+            <stop offset="100%" stopColor="#D46BFF" />
+          </linearGradient>
 
-        <linearGradient id={markGradientB} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#ff7bff" />
-          <stop offset="35%" stopColor="#6a5cff" />
-          <stop offset="70%" stopColor="#2b7cff" />
-          <stop offset="100%" stopColor="#8cf7ff" />
-        </linearGradient>
+          <linearGradient id={beamBg} x1="170" y1="0" x2="750" y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="rgba(15,23,42,0.08)" />
+            <stop offset="50%" stopColor="rgba(15,23,42,0.18)" />
+            <stop offset="100%" stopColor="rgba(15,23,42,0.08)" />
+          </linearGradient>
 
-        <linearGradient id={textGradient} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#5ce9ff" />
-          <stop offset="50%" stopColor="#7a7cff" />
-          <stop offset="100%" stopColor="#d48cff" />
-        </linearGradient>
+          <linearGradient id={floorFade} x1="460" y1="380" x2="460" y2="545" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#3D7CFF" stopOpacity="0.32" />
+            <stop offset="100%" stopColor="#3D7CFF" stopOpacity="0" />
+          </linearGradient>
 
-        <linearGradient id={barGradient} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#07152f" stopOpacity="0.92" />
-          <stop offset="50%" stopColor="#0a1840" stopOpacity="0.82" />
-          <stop offset="100%" stopColor="#081027" stopOpacity="0.92" />
-        </linearGradient>
-
-        <linearGradient id={lineGradient} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#3bbcff" />
-          <stop offset="50%" stopColor="#4d79ff" />
-          <stop offset="100%" stopColor="#cc63ff" />
-        </linearGradient>
-
-        <filter
-          id={glowFilter}
-          x="-50%"
-          y="-50%"
-          width="200%"
-          height="200%"
-        >
-          <feGaussianBlur stdDeviation="8" result="blur1" />
-          <feColorMatrix
-            in="blur1"
-            type="matrix"
-            values="
-              1 0 0 0 0
-              0 1 0 0 0
-              0 0 1 0 0
-              0 0 0 1.3 0
-            "
-            result="glow"
-          />
-          <feMerge>
-            <feMergeNode in="glow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-
-        <filter
-          id={softGlowFilter}
-          x="-50%"
-          y="-50%"
-          width="200%"
-          height="200%"
-        >
-          <feGaussianBlur stdDeviation="18" result="blur1" />
-          <feColorMatrix
-            in="blur1"
-            type="matrix"
-            values="
-              1 0 0 0 0
-              0 1 0 0 0
-              0 0 1 0 0
-              0 0 0 0.8 0
-            "
-            result="glow"
-          />
-          <feMerge>
-            <feMergeNode in="glow" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-
-        <filter
-          id={blurFilter}
-          x="-50%"
-          y="-50%"
-          width="200%"
-          height="200%"
-        >
-          <feGaussianBlur stdDeviation="10" />
-        </filter>
-      </defs>
-
-      {renderBackground && (
-        <>
-          <rect width="1200" height="760" fill={`url(#${bgGradient})`} />
-          <rect width="1200" height="760" fill={`url(#${radialGlow})`} />
-          <ellipse
-            cx="600"
-            cy="640"
-            rx="320"
-            ry="44"
-            fill="#1b7fff"
-            opacity="0.35"
-            filter={`url(#${blurFilter})`}
-          />
-          <ellipse
-            cx="600"
-            cy="685"
-            rx="500"
-            ry="60"
-            fill="#142455"
-            opacity="0.35"
-            filter={`url(#${blurFilter})`}
-          />
-        </>
-      )}
-
-      {/* Main SM mark */}
-      <g filter={`url(#${softGlowFilter})`}>
-        <text
-          x="405"
-          y="500"
-          fontSize="410"
-          fontWeight="700"
-          fontFamily="Inter, Segoe UI, Arial, sans-serif"
-          fill={`url(#${markGradientA})`}
-          stroke="#b9ffff"
-          strokeOpacity="0.75"
-          strokeWidth="2"
-          textAnchor="middle"
-        >
-          S
-        </text>
-
-        <text
-          x="760"
-          y="505"
-          fontSize="365"
-          fontWeight="700"
-          fontFamily="Inter, Segoe UI, Arial, sans-serif"
-          fill={`url(#${markGradientB})`}
-          stroke="#ffe3ff"
-          strokeOpacity="0.7"
-          strokeWidth="2"
-          textAnchor="middle"
-        >
-          M
-        </text>
-      </g>
-
-      {/* Strong center beam */}
-      {renderTagline && (
-        <>
-          <line
-            x1="30"
-            y1="348"
-            x2="1170"
-            y2="348"
-            stroke={`url(#${lineGradient})`}
-            strokeWidth="3"
-            opacity="0.95"
-            filter={`url(#${glowFilter})`}
-          />
-          <circle
-            cx="210"
-            cy="348"
-            r="7"
-            fill="#8df7ff"
-            filter={`url(#${glowFilter})`}
-          />
-          <circle
-            cx="988"
-            cy="348"
-            r="7"
-            fill="#d68cff"
-            filter={`url(#${glowFilter})`}
-          />
-
-          <g filter={`url(#${glowFilter})`}>
-            <rect
-              x="225"
-              y="323"
-              width="750"
-              height="52"
-              rx="24"
-              fill={`url(#${barGradient})`}
-              stroke="url(#sami-line-${id})"
-              strokeOpacity="0.8"
+          <filter id={markGlow} x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="10" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="
+                1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 1 0
+              "
             />
-          </g>
+          </filter>
+
+          <filter id={beamGlow} x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="7" result="blur" />
+          </filter>
+
+          <filter id={textGlow} x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
+          </filter>
+
+          <filter id={softBlur} x="-100%" y="-100%" width="300%" height="300%">
+            <feGaussianBlur stdDeviation="12" result="blur" />
+          </filter>
+        </defs>
+
+        {/* subtle lower glow */}
+        <ellipse
+          cx="460"
+          cy="470"
+          rx="250"
+          ry="36"
+          fill="url(#floorFade)"
+          opacity="0.9"
+        />
+
+        {/* glowing SM mark */}
+        <g opacity="0.28" filter={`url(#${markGlow})`}>
+          <text
+            x="265"
+            y="325"
+            fontSize="320"
+            fontWeight="900"
+            fontStyle="italic"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            fill={`url(#${cyanBluePink})`}
+            letterSpacing="-18"
+          >
+            S
+          </text>
 
           <text
-            x="600"
-            y="354"
-            textAnchor="middle"
-            fontSize="28"
-            fontWeight="400"
-            letterSpacing="10"
-            fontFamily="Inter, Segoe UI, Arial, sans-serif"
-            fill="#f8fafc"
-            opacity="0.98"
+            x="470"
+            y="325"
+            fontSize="290"
+            fontWeight="900"
+            fontStyle="italic"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            fill={`url(#${cyanBluePink2})`}
+            letterSpacing="-22"
           >
-            AI-POWERED BUSINESS WORKSPACE
+            M
           </text>
-        </>
-      )}
+        </g>
 
-      {/* SaMi text below */}
-      {renderReflection && (
-        <>
-          <g filter={`url(#${softGlowFilter})`}>
+        <g>
+          <text
+            x="265"
+            y="325"
+            fontSize="320"
+            fontWeight="900"
+            fontStyle="italic"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            fill={`url(#${cyanBluePink})`}
+            stroke="rgba(255,255,255,0.55)"
+            strokeWidth="1.4"
+            letterSpacing="-18"
+          >
+            S
+          </text>
+
+          <text
+            x="470"
+            y="325"
+            fontSize="290"
+            fontWeight="900"
+            fontStyle="italic"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            fill={`url(#${cyanBluePink2})`}
+            stroke="rgba(255,255,255,0.48)"
+            strokeWidth="1.2"
+            letterSpacing="-22"
+          >
+            M
+          </text>
+        </g>
+
+        {/* center beam */}
+        {showTagline && (
+          <g>
+            <line
+              x1="70"
+              y1="270"
+              x2="850"
+              y2="270"
+              stroke="#3E86FF"
+              strokeWidth="4"
+              opacity="0.95"
+            />
+            <line
+              x1="70"
+              y1="270"
+              x2="850"
+              y2="270"
+              stroke="#5E5CFF"
+              strokeWidth="2"
+              opacity="0.8"
+              filter={`url(#${beamGlow})`}
+            />
+
+            <circle cx="148" cy="270" r="5.5" fill="#A9F8FF" />
+            <circle cx="772" cy="270" r="5.5" fill="#F08BFF" />
+
+            <rect
+              x="165"
+              y="236"
+              width="590"
+              height="68"
+              rx="22"
+              fill="rgba(7,18,43,0.48)"
+              stroke="rgba(79,137,255,0.7)"
+              strokeWidth="1.4"
+            />
+
+            <rect
+              x="165"
+              y="236"
+              width="590"
+              height="68"
+              rx="22"
+              fill="transparent"
+              stroke="rgba(92,186,255,0.45)"
+              strokeWidth="5"
+              filter={`url(#${beamGlow})`}
+            />
+
             <text
-              x="600"
-              y="675"
+              x="460"
+              y="280"
               textAnchor="middle"
-              fontSize="120"
-              fontWeight="700"
+              fontSize="22"
+              fontWeight="500"
+              letterSpacing="8"
               fontFamily="Inter, Segoe UI, Arial, sans-serif"
-              fill={`url(#${textGradient})`}
-              opacity="0.85"
+              fill="rgba(255,255,255,0.96)"
             >
-              SaMi
+              AI-POWERED BUSINESS WORKSPACE
             </text>
           </g>
+        )}
 
-          <g opacity="0.18" transform="translate(0, 720) scale(1, -0.25)">
-            <text
-              x="600"
-              y="0"
-              textAnchor="middle"
-              fontSize="120"
-              fontWeight="700"
-              fontFamily="Inter, Segoe UI, Arial, sans-serif"
-              fill={`url(#${textGradient})`}
-              filter={`url(#${blurFilter})`}
-            >
-              SaMi
-            </text>
-          </g>
-        </>
-      )}
-    </svg>
+        {/* SaMi wordmark / reflection below */}
+        <g>
+          <text
+            x="460"
+            y="485"
+            textAnchor="middle"
+            fontSize="112"
+            fontWeight="800"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            letterSpacing="-4"
+            fill={`url(#${wordmarkGrad})`}
+            opacity="0.38"
+          >
+            SaMi
+          </text>
+
+          <text
+            x="460"
+            y="485"
+            textAnchor="middle"
+            fontSize="112"
+            fontWeight="800"
+            fontFamily="Inter, Arial Black, Segoe UI, sans-serif"
+            letterSpacing="-4"
+            fill={`url(#${wordmarkGrad})`}
+            opacity="0.18"
+            filter={`url(#${softBlur})`}
+          >
+            SaMi
+          </text>
+        </g>
+      </svg>
+    </div>
   );
 }
