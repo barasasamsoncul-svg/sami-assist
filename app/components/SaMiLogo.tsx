@@ -1,179 +1,212 @@
 'use client';
 
-import React from 'react';
+import { useId } from 'react';
 
 type SaMiLogoProps = {
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'hero';
   className?: string;
 };
 
-const SIZE_MAP: Record<NonNullable<SaMiLogoProps['size']>, { width: number; height: number }> = {
-  sm: { width: 170, height: 72 },
-  md: { width: 220, height: 92 },
-  lg: { width: 290, height: 118 },
-  xl: { width: 360, height: 146 },
+const SIZE_MAP = {
+  xs: 110,
+  sm: 150,
+  md: 210,
+  lg: 290,
+  xl: 380,
+  hero: 520,
 };
 
 export default function SaMiLogo({
-  size = 'lg',
+  size = 'md',
   className = '',
 }: SaMiLogoProps) {
-  const { width, height } = SIZE_MAP[size];
+  const uid = useId().replace(/:/g, '');
+  const width = SIZE_MAP[size];
+
+  const mainGradient = `sami-main-${uid}`;
+  const edgeGradient = `sami-edge-${uid}`;
+  const glow = `sami-glow-${uid}`;
+  const beamGlow = `sami-beam-glow-${uid}`;
 
   return (
-    <div
+    <svg
+      viewBox="0 0 1000 360"
+      width={width}
+      height="auto"
       className={className}
-      aria-label="SaMi logo"
       role="img"
+      aria-label="SaMi — AI Powered Business Workspace"
+      xmlns="http://www.w3.org/2000/svg"
       style={{
-        width,
-        height,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        display: 'block',
+        overflow: 'visible',
       }}
     >
-      <svg
-        width={width}
-        height={height}
-        viewBox="0 0 620 240"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{
-          overflow: 'visible',
-          display: 'block',
-        }}
+      <defs>
+        {/* Main SaMi material */}
+        <linearGradient
+          id={mainGradient}
+          x1="180"
+          y1="40"
+          x2="820"
+          y2="300"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#8AF7FF" />
+          <stop offset="18%" stopColor="#35D7FF" />
+          <stop offset="40%" stopColor="#1789FF" />
+          <stop offset="62%" stopColor="#3653FF" />
+          <stop offset="82%" stopColor="#7740FF" />
+          <stop offset="100%" stopColor="#E95CFF" />
+        </linearGradient>
+
+        {/* Fine bright edge */}
+        <linearGradient
+          id={edgeGradient}
+          x1="160"
+          y1="60"
+          x2="840"
+          y2="280"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#E8FFFF" />
+          <stop offset="35%" stopColor="#6FE8FF" />
+          <stop offset="70%" stopColor="#6D8BFF" />
+          <stop offset="100%" stopColor="#FFB4FF" />
+        </linearGradient>
+
+        {/* SaMi glow */}
+        <filter
+          id={glow}
+          x="-40%"
+          y="-50%"
+          width="180%"
+          height="200%"
+        >
+          <feGaussianBlur
+            in="SourceGraphic"
+            stdDeviation="9"
+            result="blur"
+          />
+
+          <feColorMatrix
+            in="blur"
+            type="matrix"
+            values="
+              0 0 0 0 0.10
+              0 0 0 0 0.47
+              0 0 0 0 1
+              0 0 0 0.65 0
+            "
+            result="blueGlow"
+          />
+
+          <feMerge>
+            <feMergeNode in="blueGlow" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        {/* Horizontal beam glow */}
+        <filter
+          id={beamGlow}
+          x="-40%"
+          y="-500%"
+          width="180%"
+          height="1000%"
+        >
+          <feGaussianBlur stdDeviation="8" />
+        </filter>
+      </defs>
+
+      {/* =====================================================
+          ONLY IDENTITY:
+          LARGE ITALIC SaMi
+         ===================================================== */}
+
+      <g filter={`url(#${glow})`}>
+        <text
+          x="500"
+          y="270"
+          textAnchor="middle"
+          fill={`url(#${mainGradient})`}
+          stroke={`url(#${edgeGradient})`}
+          strokeWidth="2.3"
+          paintOrder="stroke fill"
+          fontFamily="Inter, Arial, Helvetica, sans-serif"
+          fontSize="280"
+          fontWeight="800"
+          fontStyle="italic"
+          letterSpacing="-20"
+        >
+          SaMi
+        </text>
+      </g>
+
+      {/* =====================================================
+          TAGLINE PASSES THROUGH CENTER
+          NO BOX
+          NO CAPSULE
+          NO FRAME
+         ===================================================== */}
+
+      {/* soft horizontal glow */}
+      <line
+        x1="55"
+        y1="190"
+        x2="945"
+        y2="190"
+        stroke="#3384FF"
+        strokeWidth="6"
+        opacity="0.40"
+        filter={`url(#${beamGlow})`}
+      />
+
+      {/* sharp horizontal line */}
+      <line
+        x1="60"
+        y1="190"
+        x2="940"
+        y2="190"
+        stroke="url(#sami-line)"
+        strokeWidth="1.5"
+        opacity="0.9"
+      />
+
+      <defs>
+        <linearGradient
+          id="sami-line"
+          x1="60"
+          y1="190"
+          x2="940"
+          y2="190"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#24CBFF" stopOpacity="0" />
+          <stop offset="16%" stopColor="#24CBFF" />
+          <stop offset="50%" stopColor="#5380FF" />
+          <stop offset="84%" stopColor="#B84EFF" />
+          <stop offset="100%" stopColor="#B84EFF" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      {/* center tagline */}
+      <text
+        x="500"
+        y="198"
+        textAnchor="middle"
+        fill="#F5FAFF"
+        fontFamily="Inter, Arial, Helvetica, sans-serif"
+        fontSize="24"
+        fontWeight="500"
+        letterSpacing="9"
+        paintOrder="stroke"
+        stroke="#07101F"
+        strokeWidth="6"
+        strokeOpacity="0.88"
       >
-        <defs>
-          <linearGradient id="samiMainGradient" x1="80" y1="40" x2="520" y2="170" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#e9f7ff" />
-            <stop offset="18%" stopColor="#8ae7ff" />
-            <stop offset="42%" stopColor="#3fb6ff" />
-            <stop offset="70%" stopColor="#6b7dff" />
-            <stop offset="100%" stopColor="#d7dcff" />
-          </linearGradient>
-
-          <linearGradient id="samiReflectionGradient" x1="120" y1="120" x2="520" y2="220" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#d8eeff" stopOpacity="0.24" />
-            <stop offset="50%" stopColor="#89cbff" stopOpacity="0.14" />
-            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.06" />
-          </linearGradient>
-
-          <linearGradient id="taglineGradient" x1="120" y1="0" x2="500" y2="0" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#dff8ff" />
-            <stop offset="50%" stopColor="#72d3ff" />
-            <stop offset="100%" stopColor="#dff8ff" />
-          </linearGradient>
-
-          <filter id="mainGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" result="blur1" />
-            <feColorMatrix
-              in="blur1"
-              type="matrix"
-              values="
-                1 0 0 0 0
-                0 1 0 0 0.72
-                0 0 1 0 1
-                0 0 0 0.55 0
-              "
-            />
-          </filter>
-
-          <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3.2" result="blur2" />
-          </filter>
-
-          <filter id="reflectionBlur" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="2.6" />
-          </filter>
-        </defs>
-
-        {/* Main SaMi glow */}
-        <text
-          x="310"
-          y="112"
-          textAnchor="middle"
-          fontSize="112"
-          fontWeight="700"
-          fontStyle="italic"
-          fontFamily="Inter, Segoe UI, Arial, sans-serif"
-          letterSpacing="-4"
-          fill="#79d8ff"
-          opacity="0.55"
-          filter="url(#mainGlow)"
-        >
-          SaMi
-        </text>
-
-        {/* Main SaMi */}
-        <text
-          x="310"
-          y="112"
-          textAnchor="middle"
-          fontSize="112"
-          fontWeight="700"
-          fontStyle="italic"
-          fontFamily="Inter, Segoe UI, Arial, sans-serif"
-          letterSpacing="-4"
-          fill="url(#samiMainGradient)"
-        >
-          SaMi
-        </text>
-
-        {/* Reflection / translucent echo */}
-        <text
-          x="312"
-          y="165"
-          textAnchor="middle"
-          fontSize="86"
-          fontWeight="700"
-          fontStyle="italic"
-          fontFamily="Inter, Segoe UI, Arial, sans-serif"
-          letterSpacing="-3"
-          fill="url(#samiReflectionGradient)"
-          opacity="0.55"
-          filter="url(#reflectionBlur)"
-        >
-          SaMi
-        </text>
-
-        {/* Tagline crossing the center */}
-        <g transform="translate(0,0)">
-          <line
-            x1="98"
-            y1="121"
-            x2="212"
-            y2="121"
-            stroke="url(#taglineGradient)"
-            strokeOpacity="0.65"
-            strokeWidth="1.2"
-          />
-          <line
-            x1="410"
-            y1="121"
-            x2="522"
-            y2="121"
-            stroke="url(#taglineGradient)"
-            strokeOpacity="0.65"
-            strokeWidth="1.2"
-          />
-
-          <text
-            x="310"
-            y="126"
-            textAnchor="middle"
-            fontSize="17"
-            fontWeight="700"
-            fontFamily="Inter, Segoe UI, Arial, sans-serif"
-            letterSpacing="4.4"
-            fill="#bfeeff"
-            opacity="0.92"
-            filter="url(#softGlow)"
-          >
-            AI POWERED BUSINESS WORKSPACE
-          </text>
-        </g>
-      </svg>
-    </div>
+        AI POWERED BUSINESS WORKSPACE
+      </text>
+    </svg>
   );
 }
