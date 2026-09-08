@@ -1,39 +1,49 @@
-
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bot,
+  Check,
+  CheckCircle2,
+  Crown,
+  CreditCard,
+  Loader2,
+  LockKeyhole,
+  Moon,
+  Package,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  LucideIcon,
+  Users,
+  Zap,
+} from 'lucide-react';
 import {
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  Sun,
-  Moon,
-  ArrowRight,
-  ArrowLeft,
-  Check,
-  X,
-  AlertTriangle,
-  Loader2,
-  Crown,
-  Sparkles,
-  ShieldCheck,
-} from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+import { SAMI_APPS } from '@/lib/sami-apps';
 
-/* -------------------------------------------------------------------------- */
-/* Constants                                                                  */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
 
 const ACCOUNT_STORAGE_KEY =
   'sami_account_form';
 
 const APPS_STORAGE_KEY =
   'sami_selected_apps';
+
+const PLAN_STORAGE_KEY =
+  'sami_selected_plan';
 
 const VERIFICATION_EMAIL_STORAGE_KEY =
   'sami_verification_email';
@@ -47,92 +57,203 @@ const REGISTER_ENDPOINT =
 const VERIFY_EMAIL_ROUTE =
   '/verify-email';
 
-/* -------------------------------------------------------------------------- */
-/* Types                                                                      */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   TYPES
+   ============================================================ */
 
 type PlanKey =
   | 'free'
   | 'standard'
   | 'custom';
 
-type OverlayType =
-  | 'error'
-  | 'success'
-  | 'payment';
-
 type OverlayState = {
-  type: OverlayType;
+  type:
+    | 'error'
+    | 'warning'
+    | 'success'
+    | 'info';
+
   title: string;
   message: string;
-  redirectUrl?: string;
+
+  primaryAction?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
+
+  secondaryAction?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
 };
 
 type PlanDefinition = {
   key: PlanKey;
+
   name: string;
+
   price: string;
+
   period: string;
+
   description: string;
+
+  icon: LucideIcon;
+
+  accent: string;
+
+  iconClass: string;
+
+  selectedClass: string;
+
+  badgeClass: string;
+
   features: string[];
+
+  highlighted?: boolean;
 };
 
-/* -------------------------------------------------------------------------- */
-/* Plans                                                                      */
-/* -------------------------------------------------------------------------- */
+type RegisterResponse = {
+  success?: boolean;
+
+  code?: string;
+
+  message?: string;
+
+  error?: string;
+
+  email?: string;
+
+  requiresPayment?: boolean;
+
+  verificationRequired?: boolean;
+
+  next?: string;
+
+  pesapalOrder?: {
+    redirectUrl?: string;
+    orderTrackingId?: string;
+  } | null;
+};
+
+/* ============================================================
+   PLAN DEFINITIONS
+   ============================================================ */
 
 const PLANS: PlanDefinition[] = [
   {
     key: 'free',
+
     name: 'Free',
+
     price: 'Free',
+
     period: 'forever',
+
     description:
-      'Perfect for getting started',
+      'Start small and experience the SaMi workspace.',
+
+    icon: Sparkles,
+
+    accent:
+      'from-slate-500 to-slate-700',
+
+    iconClass:
+      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+
+    selectedClass:
+      'border-slate-700 ring-slate-500/15 dark:border-slate-300',
+
+    badgeClass:
+      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+
     features: [
-      '1 app only',
-      'Unlimited users',
-      '100 AI queries/month',
+      '1 business app',
+      'Unlimited workspace users',
+      '100 SaMi AI queries / month',
+      'Core SaMi workspace',
       'Basic support',
     ],
   },
 
   {
     key: 'standard',
+
     name: 'Standard',
+
     price: 'KES 2,000',
-    period: '/month',
+
+    period: '/ month',
+
     description:
-      'For growing businesses',
+      'The complete SaMi workspace for growing businesses.',
+
+    icon: Crown,
+
+    accent:
+      'from-blue-600 to-indigo-600',
+
+    iconClass:
+      'bg-blue-50 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300',
+
+    selectedClass:
+      'border-blue-500 ring-blue-500/15 dark:border-blue-500',
+
+    badgeClass:
+      'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+
+    highlighted: true,
+
     features: [
-      'All apps included',
-      'Per-user pricing',
-      '1,000 AI queries/month',
-      '15-day free trial',
+      'All selected business apps',
+      'Unlimited workspace users',
+      '1,000 SaMi AI queries / month',
+      'Cross-app SaMi AI context',
       'Priority support',
     ],
   },
 
   {
     key: 'custom',
+
     name: 'Custom',
+
     price: 'KES 3,340',
-    period: '/month',
+
+    period: '/ month',
+
     description:
-      'For enterprises',
+      'Advanced capabilities for larger or specialized businesses.',
+
+    icon: Zap,
+
+    accent:
+      'from-violet-600 to-purple-700',
+
+    iconClass:
+      'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300',
+
+    selectedClass:
+      'border-violet-500 ring-violet-500/15 dark:border-violet-500',
+
+    badgeClass:
+      'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+
     features: [
-      'All apps + custom',
-      'Unlimited AI queries',
-      'Dedicated support',
+      'All business apps',
+      'Advanced SaMi AI usage',
       'Custom integrations',
-      'SLA',
+      'Dedicated support',
+      'Enterprise service options',
     ],
   },
 ];
 
-/* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   HELPERS
+   ============================================================ */
 
 function isPlanKey(
   value: unknown
@@ -161,14 +282,19 @@ function readSelectedApps(): string[] {
       return [];
     }
 
-    const parsed =
+    const parsed: unknown =
       JSON.parse(raw);
 
-    if (
-      !Array.isArray(parsed)
-    ) {
+    if (!Array.isArray(parsed)) {
       return [];
     }
+
+    const validAppKeys =
+      new Set(
+        SAMI_APPS.map(
+          (app) => app.key
+        )
+      );
 
     return [
       ...new Set(
@@ -177,9 +303,10 @@ function readSelectedApps(): string[] {
             value
           ): value is string =>
             typeof value ===
-            'string' &&
-            value.trim()
-              .length > 0
+              'string' &&
+            validAppKeys.has(
+              value
+            )
         )
       ),
     ];
@@ -188,10 +315,9 @@ function readSelectedApps(): string[] {
   }
 }
 
-function readAccountForm(): Record<
-  string,
-  unknown
-> | null {
+function readAccountForm():
+  | Record<string, unknown>
+  | null {
   if (
     typeof window === 'undefined'
   ) {
@@ -208,7 +334,7 @@ function readAccountForm(): Record<
       return null;
     }
 
-    const parsed =
+    const parsed: unknown =
       JSON.parse(raw);
 
     if (
@@ -229,9 +355,71 @@ function readAccountForm(): Record<
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Page                                                                       */
-/* -------------------------------------------------------------------------- */
+function readSavedPlan():
+  | PlanKey
+  | null {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return null;
+  }
+
+  try {
+    const value =
+      sessionStorage.getItem(
+        PLAN_STORAGE_KEY
+      );
+
+    return isPlanKey(value)
+      ? value
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function savePlan(
+  plan: PlanKey
+) {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(
+      PLAN_STORAGE_KEY,
+      plan
+    );
+  } catch {
+    // Plan selection can still
+    // continue without persistence.
+  }
+}
+
+function getAppNames(
+  keys: string[]
+) {
+  const keySet =
+    new Set(keys);
+
+  return SAMI_APPS.filter(
+    (app) =>
+      keySet.has(
+        app.key
+      )
+  ).map(
+    (app) => ({
+      key: app.key,
+      name: app.name,
+    })
+  );
+}
+
+/* ============================================================
+   PAGE
+   ============================================================ */
 
 export default function SelectPlanPage() {
   const router = useRouter();
@@ -249,9 +437,9 @@ export default function SelectPlanPage() {
   );
 
   const [
-    selectedAppCount,
-    setSelectedAppCount,
-  ] = useState(0);
+    selectedApps,
+    setSelectedApps,
+  ] = useState<string[]>([]);
 
   const [
     loading,
@@ -261,79 +449,42 @@ export default function SelectPlanPage() {
   const [
     overlay,
     setOverlay,
-  ] = useState<
-    OverlayState | null
-  >(null);
+  ] = useState<OverlayState | null>(
+    null
+  );
 
-  /* ------------------------------------------------------------------------ */
-  /* Theme                                                                    */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     THEME
+     ========================================================== */
 
   useEffect(() => {
     try {
-      const savedTheme =
+      const storedTheme =
         localStorage.getItem(
           THEME_STORAGE_KEY
         );
 
-      const prefersDark =
-        window.matchMedia(
+      const systemDark =
+        window.matchMedia?.(
           '(prefers-color-scheme: dark)'
-        ).matches;
+        ).matches ?? false;
 
-      const shouldUseDark =
-        savedTheme === 'dark' ||
-        (
-          savedTheme !== 'light' &&
-          prefersDark
-        );
+      const useDark =
+        storedTheme === 'dark' ||
+        (!storedTheme &&
+          systemDark);
 
-      setDarkMode(
-        shouldUseDark
-      );
+      setDarkMode(useDark);
 
       document.documentElement.classList.toggle(
         'dark',
-        shouldUseDark
+        useDark
       );
     } catch {
-      // Ignore theme storage errors.
+      // Theme remains usable even
+      // when local storage is blocked.
     }
   }, []);
-
-  /* ------------------------------------------------------------------------ */
-  /* Restore onboarding state                                                 */
-  /* ------------------------------------------------------------------------ */
-
-  useEffect(() => {
-    const apps =
-      readSelectedApps();
-
-    setSelectedAppCount(
-      apps.length
-    );
-
-    /*
-     * A free plan supports only one app.
-     *
-     * If the user previously had Free selected
-     * and now has multiple apps, move the UI to
-     * Standard.
-     *
-     * The server remains authoritative.
-     */
-    if (
-      apps.length > 1
-    ) {
-      setSelectedPlan(
-        'standard'
-      );
-    }
-  }, []);
-
-  /* ------------------------------------------------------------------------ */
-  /* Theme toggle                                                             */
-  /* ------------------------------------------------------------------------ */
 
   const toggleTheme =
     useCallback(() => {
@@ -355,7 +506,7 @@ export default function SelectPlanPage() {
                 : 'light'
             );
           } catch {
-            // Ignore storage errors.
+            // Ignore theme storage failure.
           }
 
           return next;
@@ -363,9 +514,52 @@ export default function SelectPlanPage() {
       );
     }, []);
 
-  /* ------------------------------------------------------------------------ */
-  /* Derived state                                                            */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     RESTORE ONBOARDING
+     ========================================================== */
+
+  useEffect(() => {
+    const apps =
+      readSelectedApps();
+
+    const savedPlan =
+      readSavedPlan();
+
+    setSelectedApps(apps);
+
+    /*
+     * Free may only be selected
+     * when exactly one app is used.
+     */
+    if (apps.length > 1) {
+      if (
+        savedPlan === 'custom'
+      ) {
+        setSelectedPlan(
+          'custom'
+        );
+      } else {
+        setSelectedPlan(
+          'standard'
+        );
+      }
+
+      return;
+    }
+
+    if (savedPlan) {
+      setSelectedPlan(
+        savedPlan
+      );
+    }
+  }, []);
+
+  /* ==========================================================
+     DERIVED DATA
+     ========================================================== */
+
+  const selectedAppCount =
+    selectedApps.length;
 
   const multipleApps =
     selectedAppCount > 1;
@@ -373,8 +567,14 @@ export default function SelectPlanPage() {
   const freeDisabled =
     multipleApps;
 
-  const effectivePlan =
-    multipleApps
+  /*
+   * Prevent stale Free state from
+   * ever reaching the registration API
+   * when multiple apps are selected.
+   */
+  const effectivePlan: PlanKey =
+    multipleApps &&
+    selectedPlan === 'free'
       ? 'standard'
       : selectedPlan;
 
@@ -385,14 +585,22 @@ export default function SelectPlanPage() {
           (plan) =>
             plan.key ===
             effectivePlan
-        ) ??
-        PLANS[0],
+        ) ?? PLANS[0],
       [effectivePlan]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* Plan selection                                                           */
-  /* ------------------------------------------------------------------------ */
+  const selectedAppDetails =
+    useMemo(
+      () =>
+        getAppNames(
+          selectedApps
+        ),
+      [selectedApps]
+    );
+
+  /* ==========================================================
+     SELECT PLAN
+     ========================================================== */
 
   const selectPlan =
     useCallback(
@@ -405,414 +613,64 @@ export default function SelectPlanPage() {
           plan === 'free' &&
           multipleApps
         ) {
+          setOverlay({
+            type: 'info',
+
+            title:
+              'Free supports one app',
+
+            message:
+              `You currently have ${selectedAppCount} apps selected. Choose Standard or Custom, or go back and keep one app to use Free.`,
+
+            primaryAction: {
+              label:
+                'Change apps',
+
+              onClick: () => {
+                setOverlay(null);
+
+                router.push(
+                  '/select-apps'
+                );
+              },
+            },
+
+            secondaryAction: {
+              label:
+                'Use Standard',
+
+              onClick: () => {
+                setOverlay(null);
+
+                setSelectedPlan(
+                  'standard'
+                );
+
+                savePlan(
+                  'standard'
+                );
+              },
+            },
+          });
+
           return;
         }
 
-        setSelectedPlan(
-          plan
-        );
+        setSelectedPlan(plan);
+
+        savePlan(plan);
       },
       [
         loading,
         multipleApps,
+        selectedAppCount,
+        router,
       ]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* Plan card styles                                                         */
-  /* ------------------------------------------------------------------------ */
-
-  const getPlanCardClass =
-    useCallback(
-      (
-        plan: PlanDefinition,
-        isSelected: boolean,
-        isDisabled: boolean
-      ) => {
-        if (isDisabled) {
-          return [
-            'relative p-5 rounded-xl border-2 text-left transition-all',
-            'border-gray-200 dark:border-gray-700',
-            'opacity-50 cursor-not-allowed',
-          ].join(' ');
-        }
-
-        if (isSelected) {
-          if (
-            plan.key ===
-            'standard'
-          ) {
-            return [
-              'relative p-5 rounded-xl border-2 text-left transition-all',
-              'border-blue-600 bg-blue-50 dark:bg-blue-900/20',
-              'shadow-lg shadow-blue-500/10 scale-[1.02]',
-            ].join(' ');
-          }
-
-          if (
-            plan.key ===
-            'custom'
-          ) {
-            return [
-              'relative p-5 rounded-xl border-2 text-left transition-all',
-              'border-purple-600 bg-purple-50 dark:bg-purple-900/20',
-              'shadow-lg shadow-purple-500/10 scale-[1.02]',
-            ].join(' ');
-          }
-
-          return [
-            'relative p-5 rounded-xl border-2 text-left transition-all',
-            'border-gray-600 bg-gray-50 dark:bg-gray-800/60',
-            'shadow-lg scale-[1.02]',
-          ].join(' ');
-        }
-
-        return [
-          'relative p-5 rounded-xl border-2 text-left transition-all',
-          'border-gray-200 dark:border-gray-700',
-          'hover:border-gray-300 dark:hover:border-gray-600',
-          'hover:bg-gray-50 dark:hover:bg-gray-800/50',
-          'hover:shadow-lg hover:-translate-y-0.5',
-          'cursor-pointer',
-        ].join(' ');
-      },
-      []
-    );
-
-  /* ------------------------------------------------------------------------ */
-  /* Plan icon                                                                */
-  /* ------------------------------------------------------------------------ */
-
-  const getPlanIcon =
-    useCallback(
-      (planKey: PlanKey) => {
-        if (
-          planKey ===
-          'free'
-        ) {
-          return (
-            <Sparkles
-              size={18}
-              className="text-gray-500 dark:text-gray-400"
-            />
-          );
-        }
-
-        if (
-          planKey ===
-          'standard'
-        ) {
-          return (
-            <Crown
-              size={18}
-              className="text-blue-600"
-            />
-          );
-        }
-
-        return (
-          <Crown
-            size={18}
-            className="text-purple-600"
-          />
-        );
-      },
-      []
-    );
-
-  /* ------------------------------------------------------------------------ */
-  /* Create account                                                           */
-  /* ------------------------------------------------------------------------ */
-
-  const handleCreateAccount =
-    useCallback(async () => {
-      if (loading) {
-        return;
-      }
-
-      setLoading(true);
-
-      try {
-        const accountForm =
-          readAccountForm();
-
-        const selectedApps =
-          readSelectedApps();
-
-        /* ------------------------------------------------------------------ */
-        /* Validate onboarding state                                          */
-        /* ------------------------------------------------------------------ */
-
-        if (
-          !accountForm
-        ) {
-          setOverlay({
-            type: 'error',
-            title:
-              'Registration information missing',
-            message:
-              'Your registration session has expired or is incomplete. Please return to registration and start again.',
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        const email =
-          typeof accountForm.email ===
-          'string'
-            ? accountForm.email
-                .trim()
-                .toLowerCase()
-            : '';
-
-        if (!email) {
-          setOverlay({
-            type: 'error',
-            title:
-              'Email address missing',
-            message:
-              'We could not find the email address from your registration. Please return to registration and try again.',
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        if (
-          selectedApps.length ===
-          0
-        ) {
-          setOverlay({
-            type: 'error',
-            title:
-              'No apps selected',
-            message:
-              'Please go back and select at least one app before creating your account.',
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Determine plan                                                     */
-        /* ------------------------------------------------------------------ */
-
-        /*
-         * This is only the client's intended plan.
-         *
-         * /api/auth/register MUST validate this again
-         * against the Control DB and the available
-         * module/plan configuration.
-         */
-        const finalPlan: PlanKey =
-          selectedApps.length >
-          1
-            ? 'standard'
-            : selectedPlan;
-
-        if (
-          !isPlanKey(
-            finalPlan
-          )
-        ) {
-          setOverlay({
-            type: 'error',
-            title:
-              'Invalid plan',
-            message:
-              'The selected plan is not valid. Please choose a plan and try again.',
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Build request                                                       */
-        /* ------------------------------------------------------------------ */
-
-        const payload = {
-          ...accountForm,
-          email,
-          plan: finalPlan,
-          selectedApps,
-        };
-
-        const response =
-          await fetch(
-            REGISTER_ENDPOINT,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type':
-                  'application/json',
-                Accept:
-                  'application/json',
-              },
-              body: JSON.stringify(
-                payload
-              ),
-              cache: 'no-store',
-            }
-          );
-
-        let data:
-          | Record<
-              string,
-              any
-            >
-          | null = null;
-
-        try {
-          data =
-            await response.json();
-        } catch {
-          data = null;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Server error                                                        */
-        /* ------------------------------------------------------------------ */
-
-        if (
-          !response.ok
-        ) {
-          setOverlay({
-            type: 'error',
-            title:
-              'Registration Failed',
-            message:
-              data?.error ??
-              data?.message ??
-              'We could not create your account. Please try again.',
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Payment required                                                    */
-        /* ------------------------------------------------------------------ */
-
-        if (
-          data?.requiresPayment &&
-          data?.pesapalOrder
-            ?.redirectUrl
-        ) {
-          try {
-            sessionStorage.setItem(
-              VERIFICATION_EMAIL_STORAGE_KEY,
-              email
-            );
-          } catch {
-            /*
-             * Payment redirect can still proceed.
-             * The server should retain the relevant
-             * registration/payment state.
-             */
-          }
-
-          setOverlay({
-            type: 'payment',
-            title:
-              'Complete Payment',
-            message:
-              data?.message ??
-              'Your workspace is ready. Complete payment to continue.',
-            redirectUrl:
-              data.pesapalOrder
-                .redirectUrl,
-          });
-
-          setLoading(false);
-          return;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Successful free registration                                       */
-        /* ------------------------------------------------------------------ */
-
-        if (
-          data?.success
-        ) {
-          try {
-            sessionStorage.setItem(
-              VERIFICATION_EMAIL_STORAGE_KEY,
-              email
-            );
-          } catch {
-            // Ignore storage errors.
-          }
-
-          setOverlay({
-            type: 'success',
-            title:
-              'Account created',
-            message:
-              data?.message ??
-              `We've sent a verification code to ${email}. Please check your inbox to activate your account.`,
-          });
-
-          setLoading(false);
-
-          /*
-           * Give the success state enough time
-           * to be visible before navigating.
-           */
-          window.setTimeout(
-            () => {
-              router.push(
-                VERIFY_EMAIL_ROUTE
-              );
-            },
-            1400
-          );
-
-          return;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Unexpected response                                                 */
-        /* ------------------------------------------------------------------ */
-
-        setOverlay({
-          type: 'error',
-          title:
-            'Registration incomplete',
-          message:
-            data?.message ??
-            'Your account could not be completed. Please try again.',
-        });
-
-        setLoading(false);
-      } catch (error) {
-        console.error(
-          'Create account error:',
-          error
-        );
-
-        setOverlay({
-          type: 'error',
-          title:
-            'Something went wrong',
-          message:
-            'We could not create your account right now. Please check your connection and try again.',
-        });
-
-        setLoading(false);
-      }
-    }, [
-      loading,
-      selectedPlan,
-      router,
-    ]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Back                                                                     */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     BACK
+     ========================================================== */
 
   const handleBack =
     useCallback(() => {
@@ -820,801 +678,1267 @@ export default function SelectPlanPage() {
         return;
       }
 
-      router.back();
+      savePlan(
+        effectivePlan
+      );
+
+      router.push(
+        '/select-apps'
+      );
     }, [
       loading,
+      effectivePlan,
       router,
     ]);
 
-  /* ------------------------------------------------------------------------ */
-  /* Overlay                                                                  */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     ACCOUNT CREATION
+     ========================================================== */
 
-  const closeOverlay =
-    useCallback(() => {
-      if (
-        overlay?.type ===
-        'payment'
-      ) {
+  const handleCreateAccount =
+    useCallback(async () => {
+      if (loading) {
         return;
       }
 
       setOverlay(null);
-    }, [overlay]);
 
-  const handleOverlayAction =
-    useCallback(() => {
-      if (
-        overlay?.type ===
-          'payment' &&
-        overlay.redirectUrl
-      ) {
-        window.location.assign(
-          overlay.redirectUrl
-        );
+      /* ------------------------------------------------------
+         Retrieve onboarding data
+         ------------------------------------------------------ */
+
+      const accountForm =
+        readAccountForm();
+
+      const apps =
+        readSelectedApps();
+
+      /* ------------------------------------------------------
+         Account state
+         ------------------------------------------------------ */
+
+      if (!accountForm) {
+        setOverlay({
+          type: 'error',
+
+          title:
+            'Registration information missing',
+
+          message:
+            'Your registration information is no longer available. Return to account creation to continue.',
+
+          primaryAction: {
+            label:
+              'Return to registration',
+
+            href: '/register',
+          },
+        });
 
         return;
       }
 
-      setOverlay(null);
-    }, [overlay]);
+      const email =
+        typeof accountForm.email ===
+          'string'
+          ? accountForm.email
+              .trim()
+              .toLowerCase()
+          : '';
 
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                   */
-  /* ------------------------------------------------------------------------ */
+      const firstName =
+        typeof accountForm.firstName ===
+          'string'
+          ? accountForm.firstName.trim()
+          : '';
+
+      const lastName =
+        typeof accountForm.lastName ===
+          'string'
+          ? accountForm.lastName.trim()
+          : '';
+
+      const businessName =
+        typeof accountForm.businessName ===
+          'string'
+          ? accountForm.businessName.trim()
+          : '';
+
+      if (
+        !email ||
+        !firstName ||
+        !lastName ||
+        !businessName
+      ) {
+        setOverlay({
+          type: 'error',
+
+          title:
+            'Account information incomplete',
+
+          message:
+            'Some required registration information is missing. Return to the account step and review your details.',
+
+          primaryAction: {
+            label:
+              'Review account',
+
+            href: '/register',
+          },
+        });
+
+        return;
+      }
+
+      /* ------------------------------------------------------
+         Apps
+         ------------------------------------------------------ */
+
+      if (apps.length === 0) {
+        setOverlay({
+          type: 'warning',
+
+          title:
+            'No apps selected',
+
+          message:
+            'Choose at least one business app before creating your SaMi workspace.',
+
+          primaryAction: {
+            label:
+              'Choose apps',
+
+            href: '/select-apps',
+          },
+        });
+
+        return;
+      }
+
+      /* ------------------------------------------------------
+         Final plan
+         ------------------------------------------------------ */
+
+      let finalPlan =
+        effectivePlan;
+
+      if (
+        apps.length > 1 &&
+        finalPlan === 'free'
+      ) {
+        finalPlan =
+          'standard';
+      }
+
+      if (
+        !isPlanKey(
+          finalPlan
+        )
+      ) {
+        setOverlay({
+          type: 'error',
+
+          title:
+            'Plan could not be verified',
+
+          message:
+            'Select a valid SaMi plan and try again.',
+        });
+
+        return;
+      }
+
+      savePlan(
+        finalPlan
+      );
+
+      setLoading(true);
+
+      /* ------------------------------------------------------
+         Request
+         ------------------------------------------------------ */
+
+      try {
+        const payload = {
+          ...accountForm,
+
+          email,
+
+          firstName,
+
+          lastName,
+
+          businessName,
+
+          plan:
+            finalPlan,
+
+          selectedApps:
+            apps,
+        };
+
+        const response =
+          await fetch(
+            REGISTER_ENDPOINT,
+            {
+              method: 'POST',
+
+              headers: {
+                'Content-Type':
+                  'application/json',
+
+                Accept:
+                  'application/json',
+              },
+
+              credentials:
+                'include',
+
+              cache:
+                'no-store',
+
+              body:
+                JSON.stringify(
+                  payload
+                ),
+            }
+          );
+
+        let data:
+          | RegisterResponse
+          | null = null;
+
+        try {
+          data =
+            (await response.json()) as RegisterResponse;
+        } catch {
+          data = null;
+        }
+
+        /* ----------------------------------------------------
+           Error response
+           ---------------------------------------------------- */
+
+        if (!response.ok) {
+          const code =
+            data?.code;
+
+          if (
+            code ===
+              'EMAIL_ALREADY_EXISTS' ||
+            code ===
+              'ACCOUNT_EXISTS'
+          ) {
+            setOverlay({
+              type: 'warning',
+
+              title:
+                'Account already exists',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'A SaMi account already exists for this email address.',
+
+              primaryAction: {
+                label:
+                  'Sign in',
+
+                href:
+                  `/login?email=${encodeURIComponent(
+                    email
+                  )}`,
+              },
+
+              secondaryAction: {
+                label:
+                  'Use another email',
+
+                href:
+                  '/register',
+              },
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+            'INVALID_PLAN'
+          ) {
+            setOverlay({
+              type: 'error',
+
+              title:
+                'Plan unavailable',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'This plan is not currently available. Choose another plan and try again.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'RATE_LIMITED' ||
+            code ===
+              'REGISTRATION_RATE_LIMITED'
+          ) {
+            setOverlay({
+              type: 'warning',
+
+              title:
+                'Too many attempts',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'Too many registration attempts were made. Please wait a little and try again.',
+            });
+
+            return;
+          }
+
+          setOverlay({
+            type: 'error',
+
+            title:
+              'Account could not be created',
+
+            message:
+              data?.error ||
+              data?.message ||
+              'SaMi could not create your account. Please try again.',
+          });
+
+          return;
+        }
+
+        /* ----------------------------------------------------
+           Paid plan
+           ---------------------------------------------------- */
+
+        if (
+          data?.requiresPayment
+        ) {
+          const redirectUrl =
+            data.pesapalOrder
+              ?.redirectUrl;
+
+          if (!redirectUrl) {
+            setOverlay({
+              type: 'error',
+
+              title:
+                'Payment could not be started',
+
+              message:
+                'Your account registration reached the payment stage, but SaMi did not receive a payment link. Please try again.',
+            });
+
+            return;
+          }
+
+          try {
+            sessionStorage.setItem(
+              VERIFICATION_EMAIL_STORAGE_KEY,
+              email
+            );
+          } catch {
+            // Server retains authoritative state.
+          }
+
+          setOverlay({
+            type: 'info',
+
+            title:
+              'Continue to secure payment',
+
+            message:
+              data.message ||
+              `Your ${effectivePlanDefinition.name} workspace is ready for the payment step.`,
+
+            primaryAction: {
+              label:
+                'Continue to PesaPal',
+
+              onClick: () => {
+                window.location.assign(
+                  redirectUrl
+                );
+              },
+            },
+
+            secondaryAction: {
+              label:
+                'Not now',
+
+              onClick: () =>
+                setOverlay(null),
+            },
+          });
+
+          return;
+        }
+
+        /* ----------------------------------------------------
+           Successful registration
+           ---------------------------------------------------- */
+
+        if (data?.success) {
+          try {
+            sessionStorage.setItem(
+              VERIFICATION_EMAIL_STORAGE_KEY,
+              data.email ||
+                email
+            );
+
+            /*
+             * The password/account wizard data
+             * is no longer needed after the server
+             * has successfully accepted registration.
+             */
+            sessionStorage.removeItem(
+              ACCOUNT_STORAGE_KEY
+            );
+
+            sessionStorage.removeItem(
+              APPS_STORAGE_KEY
+            );
+
+            sessionStorage.removeItem(
+              PLAN_STORAGE_KEY
+            );
+          } catch {
+            // Verification can still proceed.
+          }
+
+          const verificationNeeded =
+            data.verificationRequired !==
+            false;
+
+          if (
+            verificationNeeded
+          ) {
+            setOverlay({
+              type: 'success',
+
+              title:
+                'Account created',
+
+              message:
+                data.message ||
+                `Your SaMi workspace has been created. Check ${email} for the verification code.`,
+
+              primaryAction: {
+                label:
+                  'Verify email',
+
+                onClick: () => {
+                  router.replace(
+                    VERIFY_EMAIL_ROUTE
+                  );
+                },
+              },
+            });
+
+            return;
+          }
+
+          /*
+           * Some authentication providers may
+           * already have verified the identity.
+           */
+          const nextRoute =
+            typeof data.next ===
+              'string' &&
+            data.next.startsWith('/') &&
+            !data.next.startsWith('//')
+              ? data.next
+              : '/dashboard';
+
+          setOverlay({
+            type: 'success',
+
+            title:
+              'Workspace created',
+
+            message:
+              data.message ||
+              'Your SaMi workspace is ready.',
+
+            primaryAction: {
+              label:
+                'Open workspace',
+
+              onClick: () => {
+                router.replace(
+                  nextRoute
+                );
+
+                router.refresh();
+              },
+            },
+          });
+
+          return;
+        }
+
+        /* ----------------------------------------------------
+           Unexpected successful HTTP response
+           ---------------------------------------------------- */
+
+        setOverlay({
+          type: 'error',
+
+          title:
+            'Registration incomplete',
+
+          message:
+            data?.message ||
+            'SaMi received an incomplete registration response. Please try again.',
+        });
+      } catch {
+        setOverlay({
+          type: 'error',
+
+          title:
+            'Could not reach SaMi',
+
+          message:
+            'Check your internet connection and try creating your workspace again.',
+        });
+      } finally {
+        setLoading(false);
+      }
+    }, [
+      loading,
+      effectivePlan,
+      effectivePlanDefinition.name,
+      router,
+    ]);
+
+  /* ==========================================================
+     CTA LABEL
+     ========================================================== */
+
+  const primaryActionLabel =
+    effectivePlan === 'free'
+      ? 'Create Workspace'
+      : 'Create & Continue';
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
 
   return (
-    <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-5 py-10 transition-colors duration-200">
-
-      {/* ================================================================== */}
-      {/* Theme toggle                                                       */}
-      {/* ================================================================== */}
-
-      <button
-        type="button"
-        onClick={toggleTheme}
-        aria-label={
-          darkMode
-            ? 'Switch to light mode'
-            : 'Switch to dark mode'
-        }
-        className="fixed top-5 right-5 z-20 h-10 w-10 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
-      >
-        {darkMode ? (
-          <Sun
-            size={18}
-          />
-        ) : (
-          <Moon
-            size={18}
-          />
-        )}
-      </button>
-
-      {/* ================================================================== */}
-      {/* Page container                                                      */}
-      {/* ================================================================== */}
-
-      <div className="w-full max-w-[920px] mx-auto">
-
-        {/* ================================================================= */}
-        {/* Main card                                                         */}
-        {/* ================================================================= */}
-
-        <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
-
-          <div className="px-7 py-8 sm:px-10 sm:py-9">
-
-            {/* ============================================================= */}
-            {/* Brand                                                         */}
-            {/* ============================================================= */}
-
-            <div className="mb-7">
-
-              <Link
-                href="/"
-                className="inline-flex flex-col items-start"
-              >
-                <SaMiLogo
-                  size="lg"
-                />
-
-                <span className="mt-2 text-[12px] text-gray-500 dark:text-gray-400 tracking-wide">
-                  AI-powered business
-                  workspace
-                </span>
-              </Link>
-
-            </div>
-
-            {/* ============================================================= */}
-            {/* Header                                                        */}
-            {/* ============================================================= */}
-
-            <div className="mb-7">
-
-              <div className="flex items-start justify-between gap-5">
-
-                <div>
-
-                  <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">
-                    Choose your plan
-                  </h1>
-
-                  <p className="mt-2 text-[14px] text-gray-500 dark:text-gray-400">
-                    Choose the plan that
-                    fits your business.
-                  </p>
-
-                </div>
-
-                <div className="hidden sm:flex h-9 px-3 rounded-full items-center justify-center bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 flex-shrink-0">
-
-                  <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                    Step 3 of 3
-                  </span>
-
-                </div>
-
-              </div>
-
-              {/* Mobile step */}
-
-              <div className="mt-4 sm:hidden">
-
-                <span className="inline-flex h-7 px-3 items-center rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                  Step 3 of 3
-                </span>
-
-              </div>
-
-            </div>
-
-            {/* ============================================================= */}
-            {/* Selected apps information                                     */}
-            {/* ============================================================= */}
-
-            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 px-4 py-3">
-
-              <div className="flex items-center justify-between gap-4">
-
-                <div>
-
-                  <p className="text-[12px] font-semibold text-gray-900 dark:text-white">
-                    Your workspace
-                  </p>
-
-                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                    {
-                      selectedAppCount
-                    }{' '}
-                    app
-                    {
-                      selectedAppCount !==
-                      1
-                        ? 's'
-                        : ''
-                    }{' '}
-                    selected
-                  </p>
-
-                </div>
-
-                <button
-                  type="button"
-                  onClick={
-                    handleBack
-                  }
-                  disabled={
-                    loading
-                  }
-                  className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition disabled:opacity-50"
-                >
-                  Change apps
-                </button>
-
-              </div>
-
-            </div>
-
-            {/* ============================================================= */}
-            {/* Multi-app notice                                               */}
-            {/* ============================================================= */}
-
-            {multipleApps && (
-              <div className="mb-6 flex items-start gap-3 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-950/20 px-4 py-3">
-
-                <div className="mt-0.5 flex-shrink-0">
-
-                  <ShieldCheck
-                    size={17}
-                    className="text-blue-600 dark:text-blue-400"
-                  />
-
-                </div>
-
-                <div>
-
-                  <p className="text-[12px] font-semibold text-blue-800 dark:text-blue-300">
-                    Standard plan required
-                  </p>
-
-                  <p className="mt-1 text-[11px] leading-relaxed text-blue-700 dark:text-blue-400">
-                    You selected{' '}
-                    {
-                      selectedAppCount
-                    }{' '}
-                    apps. The Free plan
-                    supports one app only,
-                    so Standard is required
-                    for this workspace.
-                  </p>
-
-                </div>
-
-              </div>
-            )}
-
-            {/* ============================================================= */}
-            {/* Plans                                                         */}
-            {/* ============================================================= */}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-
-              {PLANS.map(
-                (plan) => {
-                  const isDisabled =
-                    plan.key ===
-                      'free' &&
-                    freeDisabled;
-
-                  const isSelected =
-                    effectivePlan ===
-                    plan.key;
-
-                  return (
-                    <button
-                      key={
-                        plan.key
-                      }
-                      type="button"
-                      onClick={() =>
-                        selectPlan(
-                          plan.key
-                        )
-                      }
-                      disabled={
-                        isDisabled ||
-                        loading
-                      }
-                      aria-pressed={
-                        isSelected
-                      }
-                      aria-label={`${
-                        isSelected
-                          ? 'Selected'
-                          : 'Select'
-                      } ${plan.name} plan`}
-                      className={getPlanCardClass(
-                        plan,
-                        isSelected,
-                        isDisabled
-                      )}
-                    >
-
-                      {/* -------------------------------------------------- */}
-                      {/* Popular badge                                       */}
-                      {/* -------------------------------------------------- */}
-
-                      {plan.key ===
-                        'standard' && (
-                        <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[10px] font-bold px-3 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap shadow-md shadow-blue-500/30">
-                          Most Popular
-                        </div>
-                      )}
-
-                      {/* -------------------------------------------------- */}
-                      {/* Selected indicator                                  */}
-                      {/* -------------------------------------------------- */}
-
-                      {isSelected && (
-                        <div
-                          className={`absolute top-3 right-3 h-6 w-6 rounded-full flex items-center justify-center shadow-md ${
-                            plan.key ===
-                            'custom'
-                              ? 'bg-purple-600 shadow-purple-500/30'
-                              : 'bg-blue-600 shadow-blue-500/30'
-                          }`}
-                        >
-                          <Check
-                            size={
-                              14
-                            }
-                            strokeWidth={
-                              3
-                            }
-                            className="text-white"
-                          />
-                        </div>
-                      )}
-
-                      {/* -------------------------------------------------- */}
-                      {/* Plan heading                                        */}
-                      {/* -------------------------------------------------- */}
-
-                      <div className="flex items-center gap-2 mb-2">
-
-                        {getPlanIcon(
-                          plan.key
-                        )}
-
-                        <span className="font-semibold text-gray-900 dark:text-white">
-                          {
-                            plan.name
-                          }
-                        </span>
-
-                      </div>
-
-                      {/* -------------------------------------------------- */}
-                      {/* Price                                                */}
-                      {/* -------------------------------------------------- */}
-
-                      <div className="mb-2">
-
-                        <span className="text-2xl font-bold text-gray-900 dark:text-white">
-                          {
-                            plan.price
-                          }
-                        </span>
-
-                        <span className="ml-1 text-sm text-gray-500 dark:text-gray-400">
-                          {
-                            plan.period
-                          }
-                        </span>
-
-                      </div>
-
-                      {/* -------------------------------------------------- */}
-                      {/* Description                                          */}
-                      {/* -------------------------------------------------- */}
-
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-                        {
-                          plan.description
-                        }
-                      </p>
-
-                      {/* -------------------------------------------------- */}
-                      {/* Features                                             */}
-                      {/* -------------------------------------------------- */}
-
-                      <ul className="space-y-1.5">
-
-                        {plan.features.map(
-                          (
-                            feature,
-                            index
-                          ) => (
-                            <li
-                              key={`${plan.key}-${index}`}
-                              className="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400"
-                            >
-
-                              <Check
-                                size={
-                                  12
-                                }
-                                className={`mt-0.5 flex-shrink-0 ${
-                                  plan.key ===
-                                  'custom'
-                                    ? 'text-purple-600'
-                                    : 'text-blue-600'
-                                }`}
-                              />
-
-                              <span>
-                                {
-                                  feature
-                                }
-                              </span>
-
-                            </li>
-                          )
-                        )}
-
-                      </ul>
-
-                      {/* -------------------------------------------------- */}
-                      {/* Free disabled                                      */}
-                      {/* -------------------------------------------------- */}
-
-                      {isDisabled && (
-                        <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
-                          Free supports
-                          one app only.
-                        </p>
-                      )}
-
-                      {/* -------------------------------------------------- */}
-                      {/* Required plan                                      */}
-                      {/* -------------------------------------------------- */}
-
-                      {plan.key ===
-                        'standard' &&
-                        multipleApps && (
-                          <div className="mt-3 px-2 py-1.5 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-xs text-blue-700 dark:text-blue-300 text-center">
-                            Required for{' '}
-                            {
-                              selectedAppCount
-                            }{' '}
-                            apps
-                          </div>
-                        )}
-
-                    </button>
-                  );
-                }
-              )}
-
-            </div>
-
-            {/* ============================================================= */}
-            {/* Current selection summary                                     */}
-            {/* ============================================================= */}
-
-            <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-[#15191e] px-4 py-3">
-
-              <div className="flex items-center justify-between gap-4">
-
-                <div>
-
-                  <p className="text-[11px] uppercase tracking-wide font-semibold text-gray-400 dark:text-gray-500">
-                    Selected plan
-                  </p>
-
-                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                    {
-                      effectivePlanDefinition.name
-                    }
-
-                    <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-                      {
-                        effectivePlanDefinition.price
-                      }{' '}
-                      {
-                        effectivePlanDefinition.period
-                      }
-                    </span>
-                  </p>
-
-                </div>
-
-                <div className="text-right">
-
-                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                    Apps
-                  </p>
-
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                    {
-                      selectedAppCount
-                    }
-                  </p>
-
-                </div>
-
-              </div>
-
-            </div>
-
-            {/* ============================================================= */}
-            {/* Bottom actions                                                 */}
-            {/* ============================================================= */}
-
-            <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-
-              <div className="text-[11px] text-gray-400 dark:text-gray-500 max-w-md">
-
-                {multipleApps ? (
-                  <span>
-                    Standard plan is required
-                    for multiple apps.
-                  </span>
-                ) : effectivePlan ===
-                  'free' ? (
-                  <span>
-                    Free plan — no payment
-                    required.
-                  </span>
-                ) : (
-                  <span>
-                    Your selected plan
-                    includes a 15-day free
-                    trial.
-                  </span>
-                )}
-
-              </div>
-
-              <div className="flex gap-3 sm:flex-shrink-0">
-
-                {/* Back */}
-
-                <button
-                  type="button"
-                  onClick={
-                    handleBack
-                  }
-                  disabled={
-                    loading
-                  }
-                  className="h-[44px] px-5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <ArrowLeft
-                    size={
-                      15
-                    }
-                  />
-
-                  Back
-                </button>
-
-                {/* Continue */}
-
-                <button
-                  type="button"
-                  onClick={
-                    handleCreateAccount
-                  }
-                  disabled={
-                    loading ||
-                    selectedAppCount ===
-                      0
-                  }
-                  className="h-[44px] min-w-[180px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-
-                  {loading ? (
-                    <>
-                      <Loader2
-                        size={
-                          15
-                        }
-                        className="animate-spin"
-                      />
-
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      {effectivePlan ===
-                        'free'
-                        ? 'Create Account'
-                        : 'Start Free Trial'}
-
-                      <ArrowRight
-                        size={
-                          15
-                        }
-                      />
-                    </>
-                  )}
-
-                </button>
-
-              </div>
-
-            </div>
-
-          </div>
-
-        </section>
-
-        {/* ================================================================= */}
-        {/* Footer                                                            */}
-        {/* ================================================================= */}
-
-        <div className="mt-4 flex flex-wrap justify-end items-center gap-x-5 gap-y-2 px-1">
-
-          <Link
-            href="/login"
-            className="text-[12px] text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition"
-          >
-            Sign In
-          </Link>
-
-          <Link
-            href="/help"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Help
-          </Link>
-
-          <Link
-            href="/auth/terms"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Terms
-          </Link>
-
-          <Link
-            href="/auth/privacy"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Privacy
-          </Link>
-
-        </div>
-
-      </div>
-
-      {/* ================================================================== */}
-      {/* Overlay                                                             */}
-      {/* ================================================================== */}
-
+    <>
       {overlay && (
-        <div
-          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-5"
-          onClick={
-            overlay.type ===
-            'payment'
-              ? undefined
-              : closeOverlay
+        <SaMiOverlay
+          open
+          type={overlay.type}
+          title={
+            overlay.title
           }
-        >
-
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="registration-overlay-title"
-            aria-describedby="registration-overlay-message"
-            className="w-full max-w-[400px] bg-white dark:bg-[#15191e] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-7 relative"
-            onClick={(
-              event
-            ) =>
-              event.stopPropagation()
-            }
-          >
-
-            {/* ------------------------------------------------------------ */}
-            {/* Close                                                         */}
-            {/* ------------------------------------------------------------ */}
-
-            {overlay.type !==
-              'payment' && (
-              <button
-                type="button"
-                onClick={
-                  closeOverlay
-                }
-                aria-label="Close"
-                className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-              >
-                <X
-                  size={
-                    17
-                  }
-                />
-              </button>
-            )}
-
-            {/* ------------------------------------------------------------ */}
-            {/* Icon                                                          */}
-            {/* ------------------------------------------------------------ */}
-
-            <div
-              className={`h-12 w-12 rounded-xl flex items-center justify-center ${
-                overlay.type ===
-                'error'
-                  ? 'bg-red-100 dark:bg-red-950/40'
-                  : overlay.type ===
-                      'payment'
-                    ? 'bg-yellow-100 dark:bg-yellow-950/40'
-                    : 'bg-green-100 dark:bg-green-950/40'
-              }`}
-            >
-
-              {overlay.type ===
-              'payment' ? (
-                <AlertTriangle
-                  size={
-                    25
-                  }
-                  className="text-yellow-600 dark:text-yellow-400"
-                />
-              ) : overlay.type ===
-                'error' ? (
-                <AlertTriangle
-                  size={
-                    25
-                  }
-                  className="text-red-600 dark:text-red-400"
-                />
-              ) : (
-                <Check
-                  size={
-                    25
-                  }
-                  className="text-green-600 dark:text-green-400"
-                />
-              )}
-
-            </div>
-
-            {/* ------------------------------------------------------------ */}
-            {/* Title                                                         */}
-            {/* ------------------------------------------------------------ */}
-
-            <h2
-              id="registration-overlay-title"
-              className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white"
-            >
-              {
-                overlay.title
-              }
-            </h2>
-
-            {/* ------------------------------------------------------------ */}
-            {/* Message                                                       */}
-            {/* ------------------------------------------------------------ */}
-
-            <p
-              id="registration-overlay-message"
-              className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400"
-            >
-              {
-                overlay.message
-              }
-            </p>
-
-            {/* ------------------------------------------------------------ */}
-            {/* Payment action                                                */}
-            {/* ------------------------------------------------------------ */}
-
-            {overlay.type ===
-              'payment' &&
-              overlay.redirectUrl && (
-                <button
-                  type="button"
-                  onClick={
-                    handleOverlayAction
-                  }
-                  className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition flex items-center justify-center gap-2"
-                >
-                  Go to PesaPal
-
-                  <ArrowRight
-                    size={
-                      15
-                    }
-                  />
-                </button>
-              )}
-
-            {/* ------------------------------------------------------------ */}
-            {/* Normal action                                                 */}
-            {/* ------------------------------------------------------------ */}
-
-            {overlay.type !==
-              'payment' && (
-              <button
-                type="button"
-                onClick={
-                  handleOverlayAction
-                }
-                className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition"
-              >
-                Continue
-              </button>
-            )}
-
-          </div>
-
-        </div>
+          message={
+            overlay.message
+          }
+          primaryAction={
+            overlay.primaryAction
+          }
+          secondaryAction={
+            overlay.secondaryAction
+          }
+          onClose={() =>
+            setOverlay(null)
+          }
+        />
       )}
 
-    </main>
+      <main className="relative min-h-screen overflow-x-hidden bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
+
+        {/* ====================================================
+            BACKGROUND
+           ==================================================== */}
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+        >
+          <div className="absolute -left-48 -top-48 h-[600px] w-[600px] rounded-full bg-blue-500/[0.06] blur-[120px] dark:bg-blue-500/[0.09]" />
+
+          <div className="absolute -bottom-56 right-[-170px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.06] blur-[120px] dark:bg-violet-500/[0.08]" />
+        </div>
+
+        {/* ====================================================
+            THEME
+           ==================================================== */}
+
+        <button
+          type="button"
+          onClick={
+            toggleTheme
+          }
+          aria-label={
+            darkMode
+              ? 'Switch to light theme'
+              : 'Switch to dark theme'
+          }
+          className="fixed right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/85 text-slate-500 shadow-sm backdrop-blur transition hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/85 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white sm:right-6 sm:top-6"
+        >
+          {darkMode ? (
+            <Sun className="h-[18px] w-[18px]" />
+          ) : (
+            <Moon className="h-[18px] w-[18px]" />
+          )}
+        </button>
+
+        {/* ====================================================
+            CONTENT
+
+            Bottom padding allows for permanent
+            action dock.
+           ==================================================== */}
+
+        <div className="relative mx-auto w-full max-w-[1280px] px-4 pb-36 pt-7 sm:px-6 lg:px-8">
+
+          {/* ==================================================
+              LOGO
+             ================================================== */}
+
+          <header className="pr-12">
+            <Link
+              href="/"
+              aria-label="SaMi home"
+              className="inline-block max-w-full"
+            >
+              {/* FULL APPROVED LOGO */}
+              <SaMiLogo
+                size="lg"
+                className="max-w-full"
+              />
+            </Link>
+          </header>
+
+          {/* ==================================================
+              PROGRESS
+             ================================================== */}
+
+          <div className="mt-7 flex items-center gap-3">
+            <OnboardingStep
+              number="1"
+              label="Account"
+              completed
+            />
+
+            <div className="h-px flex-1 bg-emerald-300 dark:bg-emerald-900" />
+
+            <OnboardingStep
+              number="2"
+              label="Apps"
+              completed
+            />
+
+            <div className="h-px flex-1 bg-blue-300 dark:bg-blue-900" />
+
+            <OnboardingStep
+              number="3"
+              label="Plan"
+              active
+            />
+          </div>
+
+          {/* ==================================================
+              HEADING
+             ================================================== */}
+
+          <section className="mt-8">
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
+              Step 3 of 3
+            </p>
+
+            <h1 className="mt-2 text-[30px] font-black tracking-[-0.035em] sm:text-[36px]">
+              Choose your SaMi plan
+            </h1>
+
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Select the plan that fits
+              your workspace. SaMi will
+              validate your apps, plan and
+              account before creating the
+              workspace.
+            </p>
+          </section>
+
+          {/* ==================================================
+              SELECTED APPS
+             ================================================== */}
+
+          <section className="mt-7 rounded-[24px] border border-slate-200 bg-white/90 px-5 py-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+
+                  <h2 className="text-sm font-black">
+                    Your apps
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {selectedAppCount}{' '}
+                  {selectedAppCount === 1
+                    ? 'business app'
+                    : 'business apps'}{' '}
+                  selected
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  handleBack
+                }
+                disabled={
+                  loading
+                }
+                className="self-start text-xs font-bold text-blue-600 transition hover:text-blue-700 disabled:opacity-50 dark:text-blue-400 dark:hover:text-blue-300 sm:self-auto"
+              >
+                Change apps
+              </button>
+            </div>
+
+            {selectedAppDetails.length >
+              0 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedAppDetails
+                  .slice(0, 8)
+                  .map(
+                    (app) => (
+                      <span
+                        key={
+                          app.key
+                        }
+                        className="rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      >
+                        {
+                          app.name
+                        }
+                      </span>
+                    )
+                  )}
+
+                {selectedAppDetails.length >
+                  8 && (
+                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    +
+                    {selectedAppDetails.length -
+                      8}{' '}
+                    more
+                  </span>
+                )}
+              </div>
+            )}
+          </section>
+
+          {/* ==================================================
+              MULTI APP NOTICE
+             ================================================== */}
+
+          {multipleApps && (
+            <section className="mt-4 flex items-start gap-3 rounded-[20px] border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-900/60 dark:bg-blue-950/30">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+
+              <div>
+                <p className="text-xs font-black text-blue-800 dark:text-blue-300">
+                  Standard or Custom required
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-blue-700 dark:text-blue-400">
+                  You selected{' '}
+                  {selectedAppCount}{' '}
+                  apps. Free supports one
+                  business app, so SaMi has
+                  selected Standard unless
+                  you choose Custom.
+                </p>
+              </div>
+            </section>
+          )}
+
+          {/* ==================================================
+              PLANS
+             ================================================== */}
+
+          <section className="mt-7 grid gap-5 md:grid-cols-3">
+            {PLANS.map(
+              (plan) => {
+                const Icon =
+                  plan.icon;
+
+                const disabled =
+                  plan.key ===
+                    'free' &&
+                  freeDisabled;
+
+                const selected =
+                  effectivePlan ===
+                  plan.key;
+
+                return (
+                  <button
+                    key={
+                      plan.key
+                    }
+                    type="button"
+                    disabled={
+                      loading
+                    }
+                    onClick={() =>
+                      selectPlan(
+                        plan.key
+                      )
+                    }
+                    aria-pressed={
+                      selected
+                    }
+                    aria-disabled={
+                      disabled
+                    }
+                    className={`
+                      group relative
+                      flex min-h-[430px]
+                      flex-col
+                      overflow-hidden
+                      rounded-[28px]
+                      border
+                      bg-white
+                      p-6
+                      text-left
+                      shadow-[0_10px_35px_rgba(15,23,42,0.05)]
+                      transition
+                      duration-200
+                      focus:outline-none
+                      focus:ring-4
+                      focus:ring-blue-500/10
+                      disabled:cursor-wait
+                      dark:bg-slate-900
+                      ${
+                        selected
+                          ? `${plan.selectedClass} ring-2 shadow-[0_18px_45px_rgba(15,23,42,0.10)]`
+                          : 'border-slate-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_45px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:hover:border-slate-700'
+                      }
+                      ${
+                        disabled
+                          ? 'opacity-65'
+                          : ''
+                      }
+                    `}
+                  >
+                    {/* Top gradient */}
+
+                    <div
+                      aria-hidden="true"
+                      className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${plan.accent}`}
+                    />
+
+                    {/* Popular */}
+
+                    {plan.highlighted && (
+                      <div className="absolute right-4 top-4 rounded-full bg-blue-600 px-3 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-sm">
+                        Recommended
+                      </div>
+                    )}
+
+                    {/* Selected */}
+
+                    {selected && (
+                      <div className="absolute right-4 top-14 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+                        <Check
+                          className="h-4 w-4"
+                          strokeWidth={
+                            3
+                          }
+                        />
+                      </div>
+                    )}
+
+                    {/* Icon */}
+
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${plan.iconClass}`}
+                    >
+                      <Icon className="h-5 w-5" />
+                    </div>
+
+                    {/* Name */}
+
+                    <h2 className="mt-5 text-lg font-black tracking-tight">
+                      {
+                        plan.name
+                      }
+                    </h2>
+
+                    <p className="mt-2 min-h-[44px] text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      {
+                        plan.description
+                      }
+                    </p>
+
+                    {/* Price */}
+
+                    <div className="mt-6">
+                      <span className="text-[28px] font-black tracking-[-0.035em]">
+                        {
+                          plan.price
+                        }
+                      </span>
+
+                      <span className="ml-1 text-xs font-medium text-slate-400">
+                        {
+                          plan.period
+                        }
+                      </span>
+                    </div>
+
+                    {/* Features */}
+
+                    <ul className="mt-6 space-y-3">
+                      {plan.features.map(
+                        (
+                          feature
+                        ) => (
+                          <li
+                            key={
+                              feature
+                            }
+                            className="flex items-start gap-2.5 text-xs leading-5 text-slate-600 dark:text-slate-300"
+                          >
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
+                              <Check className="h-3 w-3" />
+                            </span>
+
+                            <span>
+                              {
+                                feature
+                              }
+                            </span>
+                          </li>
+                        )
+                      )}
+                    </ul>
+
+                    {/* Card bottom */}
+
+                    <div className="mt-auto pt-6">
+                      {disabled ? (
+                        <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-center text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                          Reduce selection to
+                          one app to use Free
+                        </div>
+                      ) : selected ? (
+                        <div
+                          className={`rounded-xl px-3 py-2.5 text-center text-[10px] font-black ${plan.badgeClass}`}
+                        >
+                          Selected plan
+                        </div>
+                      ) : (
+                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 transition group-hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-slate-800/70">
+                          Select{' '}
+                          {plan.name}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              }
+            )}
+          </section>
+
+          {/* ==================================================
+              SAMI CORE
+             ================================================== */}
+
+          <section className="relative mt-7 overflow-hidden rounded-[24px] border border-indigo-200/80 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-5 dark:border-indigo-900/60 dark:from-blue-950/30 dark:via-indigo-950/25 dark:to-violet-950/30">
+            <div
+              aria-hidden="true"
+              className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl"
+            />
+
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-500/20">
+                <Bot className="h-5 w-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-black">
+                    SaMi AI is part of the platform
+                  </h2>
+
+                  <span className="rounded-full bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-indigo-700 dark:bg-white/10 dark:text-indigo-300">
+                    Core
+                  </span>
+                </div>
+
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  Your plan determines AI
+                  usage and available
+                  capabilities. Installed
+                  business apps can extend
+                  SaMi AI with additional
+                  tools and workspace
+                  context.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* ==================================================
+              SECURITY / BILLING NOTE
+             ================================================== */}
+
+          <section className="mt-5 grid gap-3 sm:grid-cols-3">
+            <InfoCard
+              icon={
+                ShieldCheck
+              }
+              title="Secure setup"
+              description="Account and workspace configuration are validated by SaMi before activation."
+            />
+
+            <InfoCard
+              icon={
+                CreditCard
+              }
+              title="Payment"
+              description="If payment is required, SaMi securely redirects you to PesaPal."
+            />
+
+            <InfoCard
+              icon={
+                LockKeyhole
+              }
+              title="Private workspace"
+              description="Your business workspace and access remain separated from other SaMi tenants."
+            />
+          </section>
+
+          {/* ==================================================
+              FOOTER
+             ================================================== */}
+
+          <footer className="mt-6 flex flex-wrap justify-end gap-x-5 gap-y-2 pb-4 text-[11px] text-slate-400">
+            <Link
+              href="/help"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Help
+            </Link>
+
+            <Link
+              href="/terms"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Terms
+            </Link>
+
+            <Link
+              href="/privacy"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Privacy
+            </Link>
+          </footer>
+        </div>
+
+        {/* ====================================================
+            ALWAYS-VISIBLE FINAL ACTION DOCK
+           ==================================================== */}
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/92 px-4 py-3 shadow-[0_-15px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-[#0b0f18]/94">
+          <div className="mx-auto flex w-full max-w-[1280px] items-center gap-3">
+
+            {/* Back */}
+
+            <button
+              type="button"
+              onClick={
+                handleBack
+              }
+              disabled={
+                loading
+              }
+              aria-label="Back to app selection"
+              className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <ArrowLeft className="h-4 w-4" />
+
+              <span className="hidden sm:inline">
+                Back
+              </span>
+            </button>
+
+            {/* Selected plan */}
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/20">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black">
+                    {
+                      effectivePlanDefinition.name
+                    }{' '}
+                    plan
+                  </p>
+
+                  <p className="hidden truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block">
+                    {
+                      effectivePlanDefinition.price
+                    }{' '}
+                    {
+                      effectivePlanDefinition.period
+                    }{' '}
+                    ·{' '}
+                    {
+                      selectedAppCount
+                    }{' '}
+                    {selectedAppCount ===
+                    1
+                      ? 'app'
+                      : 'apps'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Create */}
+
+            <button
+              type="button"
+              onClick={
+                handleCreateAccount
+              }
+              disabled={
+                loading ||
+                selectedAppCount ===
+                  0
+              }
+              className="flex h-12 min-w-[148px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[205px]"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+
+                  <span className="hidden sm:inline">
+                    Creating workspace...
+                  </span>
+
+                  <span className="sm:hidden">
+                    Creating...
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden sm:inline">
+                    {
+                      primaryActionLabel
+                    }
+                  </span>
+
+                  <span className="sm:hidden">
+                    Continue
+                  </span>
+
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </main>
+    </>
+  );
+}
+
+/* ============================================================
+   ONBOARDING STEP
+   ============================================================ */
+
+function OnboardingStep({
+  number,
+  label,
+  active = false,
+  completed = false,
+}: {
+  number: string;
+  label: string;
+  active?: boolean;
+  completed?: boolean;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+          completed
+            ? 'bg-emerald-500 text-white'
+            : active
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+        }`}
+      >
+        {completed ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          number
+        )}
+      </span>
+
+      <span
+        className={`hidden text-xs font-bold sm:block ${
+          active
+            ? 'text-slate-950 dark:text-white'
+            : completed
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-400'
+        }`}
+      >
+        {label}
+      </span>
+    </div>
+  );
+}
+
+/* ============================================================
+   INFO CARD
+   ============================================================ */
+
+function InfoCard({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-[20px] border border-slate-200 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+      <Icon className="h-4 w-4 text-slate-400" />
+
+      <p className="mt-3 text-xs font-black">
+        {title}
+      </p>
+
+      <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
+    </div>
   );
 }
