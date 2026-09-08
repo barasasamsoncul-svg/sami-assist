@@ -17,9 +17,9 @@ import {
   ShieldCheck,
   Sparkles,
   Sun,
-  LucideIcon,
   Users,
   Zap,
+  type LucideIcon,
 } from 'lucide-react';
 import {
   useCallback,
@@ -96,9 +96,13 @@ type PlanDefinition = {
 
   price: string;
 
-  period: string;
+  billingLabel: string;
 
   description: string;
+
+  aiAllowance: string;
+
+  appAccess: string;
 
   icon: LucideIcon;
 
@@ -107,10 +111,6 @@ type PlanDefinition = {
   iconClass: string;
 
   selectedClass: string;
-
-  badgeClass: string;
-
-  features: string[];
 
   highlighted?: boolean;
 };
@@ -139,7 +139,10 @@ type RegisterResponse = {
 };
 
 /* ============================================================
-   PLAN DEFINITIONS
+   PLANS
+
+   IMPORTANT:
+   Pricing and AI allowances are PER USER.
    ============================================================ */
 
 const PLANS: PlanDefinition[] = [
@@ -148,12 +151,19 @@ const PLANS: PlanDefinition[] = [
 
     name: 'Free',
 
-    price: 'Free',
+    price: 'KES 0',
 
-    period: 'forever',
+    billingLabel:
+      'per user / month',
 
     description:
-      'Start small and experience the SaMi workspace.',
+      'A simple way to start using SaMi.',
+
+    aiAllowance:
+      '100 AI queries / user / month',
+
+    appAccess:
+      '1 business app',
 
     icon: Sparkles,
 
@@ -165,17 +175,6 @@ const PLANS: PlanDefinition[] = [
 
     selectedClass:
       'border-slate-700 ring-slate-500/15 dark:border-slate-300',
-
-    badgeClass:
-      'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
-
-    features: [
-      '1 business app',
-      'Unlimited workspace users',
-      '100 SaMi AI queries / month',
-      'Core SaMi workspace',
-      'Basic support',
-    ],
   },
 
   {
@@ -185,10 +184,17 @@ const PLANS: PlanDefinition[] = [
 
     price: 'KES 2,000',
 
-    period: '/ month',
+    billingLabel:
+      'per user / month',
 
     description:
-      'The complete SaMi workspace for growing businesses.',
+      'The complete workspace for growing businesses.',
+
+    aiAllowance:
+      '1,000 AI queries / user / month',
+
+    appAccess:
+      'All selected business apps',
 
     icon: Crown,
 
@@ -201,18 +207,7 @@ const PLANS: PlanDefinition[] = [
     selectedClass:
       'border-blue-500 ring-blue-500/15 dark:border-blue-500',
 
-    badgeClass:
-      'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
-
     highlighted: true,
-
-    features: [
-      'All selected business apps',
-      'Unlimited workspace users',
-      '1,000 SaMi AI queries / month',
-      'Cross-app SaMi AI context',
-      'Priority support',
-    ],
   },
 
   {
@@ -222,10 +217,17 @@ const PLANS: PlanDefinition[] = [
 
     price: 'KES 3,340',
 
-    period: '/ month',
+    billingLabel:
+      'per user / month',
 
     description:
-      'Advanced capabilities for larger or specialized businesses.',
+      'Advanced capabilities for demanding teams.',
+
+    aiAllowance:
+      'Advanced AI allowance / user',
+
+    appAccess:
+      'All business apps',
 
     icon: Zap,
 
@@ -237,17 +239,6 @@ const PLANS: PlanDefinition[] = [
 
     selectedClass:
       'border-violet-500 ring-violet-500/15 dark:border-violet-500',
-
-    badgeClass:
-      'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
-
-    features: [
-      'All business apps',
-      'Advanced SaMi AI usage',
-      'Custom integrations',
-      'Dedicated support',
-      'Enterprise service options',
-    ],
   },
 ];
 
@@ -289,7 +280,7 @@ function readSelectedApps(): string[] {
       return [];
     }
 
-    const validAppKeys =
+    const validKeys =
       new Set(
         SAMI_APPS.map(
           (app) => app.key
@@ -300,13 +291,11 @@ function readSelectedApps(): string[] {
       ...new Set(
         parsed.filter(
           (
-            value
-          ): value is string =>
-            typeof value ===
+            item
+          ): item is string =>
+            typeof item ===
               'string' &&
-            validAppKeys.has(
-              value
-            )
+            validKeys.has(item)
         )
       ),
     ];
@@ -379,42 +368,47 @@ function readSavedPlan():
 }
 
 function savePlan(
-  plan: PlanKey
+  value: PlanKey
 ) {
-  if (
-    typeof window === 'undefined'
-  ) {
-    return;
-  }
-
   try {
     sessionStorage.setItem(
       PLAN_STORAGE_KEY,
-      plan
+      value
     );
   } catch {
-    // Plan selection can still
-    // continue without persistence.
+    // The server remains authoritative.
   }
 }
 
-function getAppNames(
+function getSelectedAppNames(
   keys: string[]
 ) {
-  const keySet =
+  const selected =
     new Set(keys);
 
   return SAMI_APPS.filter(
     (app) =>
-      keySet.has(
-        app.key
-      )
+      selected.has(app.key)
   ).map(
     (app) => ({
       key: app.key,
       name: app.name,
     })
   );
+}
+
+function safeNextPath(
+  value?: string
+) {
+  if (
+    !value ||
+    !value.startsWith('/') ||
+    value.startsWith('//')
+  ) {
+    return '/dashboard';
+  }
+
+  return value;
 }
 
 /* ============================================================
@@ -459,20 +453,20 @@ export default function SelectPlanPage() {
 
   useEffect(() => {
     try {
-      const storedTheme =
+      const stored =
         localStorage.getItem(
           THEME_STORAGE_KEY
         );
 
-      const systemDark =
+      const prefersDark =
         window.matchMedia?.(
           '(prefers-color-scheme: dark)'
         ).matches ?? false;
 
       const useDark =
-        storedTheme === 'dark' ||
-        (!storedTheme &&
-          systemDark);
+        stored === 'dark' ||
+        (!stored &&
+          prefersDark);
 
       setDarkMode(useDark);
 
@@ -481,8 +475,7 @@ export default function SelectPlanPage() {
         useDark
       );
     } catch {
-      // Theme remains usable even
-      // when local storage is blocked.
+      // Theme still works without persistence.
     }
   }, []);
 
@@ -506,7 +499,7 @@ export default function SelectPlanPage() {
                 : 'light'
             );
           } catch {
-            // Ignore theme storage failure.
+            // Ignore storage errors.
           }
 
           return next;
@@ -528,8 +521,9 @@ export default function SelectPlanPage() {
     setSelectedApps(apps);
 
     /*
-     * Free may only be selected
-     * when exactly one app is used.
+     * Free supports one business app.
+     * Multiple apps therefore default
+     * to Standard.
      */
     if (apps.length > 1) {
       if (
@@ -538,11 +532,17 @@ export default function SelectPlanPage() {
         setSelectedPlan(
           'custom'
         );
-      } else {
-        setSelectedPlan(
-          'standard'
-        );
+
+        return;
       }
+
+      setSelectedPlan(
+        'standard'
+      );
+
+      savePlan(
+        'standard'
+      );
 
       return;
     }
@@ -555,7 +555,7 @@ export default function SelectPlanPage() {
   }, []);
 
   /* ==========================================================
-     DERIVED DATA
+     DERIVED
      ========================================================== */
 
   const selectedAppCount =
@@ -564,21 +564,13 @@ export default function SelectPlanPage() {
   const multipleApps =
     selectedAppCount > 1;
 
-  const freeDisabled =
-    multipleApps;
-
-  /*
-   * Prevent stale Free state from
-   * ever reaching the registration API
-   * when multiple apps are selected.
-   */
   const effectivePlan: PlanKey =
     multipleApps &&
     selectedPlan === 'free'
       ? 'standard'
       : selectedPlan;
 
-  const effectivePlanDefinition =
+  const currentPlan =
     useMemo(
       () =>
         PLANS.find(
@@ -592,14 +584,14 @@ export default function SelectPlanPage() {
   const selectedAppDetails =
     useMemo(
       () =>
-        getAppNames(
+        getSelectedAppNames(
           selectedApps
         ),
       [selectedApps]
     );
 
   /* ==========================================================
-     SELECT PLAN
+     PLAN SELECTION
      ========================================================== */
 
   const selectPlan =
@@ -620,7 +612,7 @@ export default function SelectPlanPage() {
               'Free supports one app',
 
             message:
-              `You currently have ${selectedAppCount} apps selected. Choose Standard or Custom, or go back and keep one app to use Free.`,
+              `You selected ${selectedAppCount} apps. Keep one app to use Free, or continue with Standard or Custom.`,
 
             primaryAction: {
               label:
@@ -672,27 +664,22 @@ export default function SelectPlanPage() {
      BACK
      ========================================================== */
 
-  const handleBack =
-    useCallback(() => {
-      if (loading) {
-        return;
-      }
+  function handleBack() {
+    if (loading) {
+      return;
+    }
 
-      savePlan(
-        effectivePlan
-      );
+    savePlan(
+      effectivePlan
+    );
 
-      router.push(
-        '/select-apps'
-      );
-    }, [
-      loading,
-      effectivePlan,
-      router,
-    ]);
+    router.push(
+      '/select-apps'
+    );
+  }
 
   /* ==========================================================
-     ACCOUNT CREATION
+     REGISTER
      ========================================================== */
 
   const handleCreateAccount =
@@ -703,21 +690,17 @@ export default function SelectPlanPage() {
 
       setOverlay(null);
 
-      /* ------------------------------------------------------
-         Retrieve onboarding data
-         ------------------------------------------------------ */
-
-      const accountForm =
+      const account =
         readAccountForm();
 
       const apps =
         readSelectedApps();
 
       /* ------------------------------------------------------
-         Account state
+         Missing account
          ------------------------------------------------------ */
 
-      if (!accountForm) {
+      if (!account) {
         setOverlay({
           type: 'error',
 
@@ -725,7 +708,7 @@ export default function SelectPlanPage() {
             'Registration information missing',
 
           message:
-            'Your registration information is no longer available. Return to account creation to continue.',
+            'Your account information is no longer available. Return to registration and continue again.',
 
           primaryAction: {
             label:
@@ -738,46 +721,50 @@ export default function SelectPlanPage() {
         return;
       }
 
-      const email =
-        typeof accountForm.email ===
+      /* ------------------------------------------------------
+         Normalize registration fields
+         ------------------------------------------------------ */
+
+      const firstName =
+        typeof account.firstName ===
           'string'
-          ? accountForm.email
+          ? account.firstName.trim()
+          : '';
+
+      const lastName =
+        typeof account.lastName ===
+          'string'
+          ? account.lastName.trim()
+          : '';
+
+      const email =
+        typeof account.email ===
+          'string'
+          ? account.email
               .trim()
               .toLowerCase()
           : '';
 
-      const firstName =
-        typeof accountForm.firstName ===
-          'string'
-          ? accountForm.firstName.trim()
-          : '';
-
-      const lastName =
-        typeof accountForm.lastName ===
-          'string'
-          ? accountForm.lastName.trim()
-          : '';
-
       const businessName =
-        typeof accountForm.businessName ===
+        typeof account.businessName ===
           'string'
-          ? accountForm.businessName.trim()
+          ? account.businessName.trim()
           : '';
 
       if (
-        !email ||
         !firstName ||
         !lastName ||
+        !email ||
         !businessName
       ) {
         setOverlay({
           type: 'error',
 
           title:
-            'Account information incomplete',
+            'Account details incomplete',
 
           message:
-            'Some required registration information is missing. Return to the account step and review your details.',
+            'Some required account information is missing. Return to Step 1 and review your details.',
 
           primaryAction: {
             label:
@@ -816,7 +803,7 @@ export default function SelectPlanPage() {
       }
 
       /* ------------------------------------------------------
-         Final plan
+         Plan
          ------------------------------------------------------ */
 
       let finalPlan =
@@ -830,43 +817,38 @@ export default function SelectPlanPage() {
           'standard';
       }
 
-      if (
-        !isPlanKey(
-          finalPlan
-        )
-      ) {
-        setOverlay({
-          type: 'error',
-
-          title:
-            'Plan could not be verified',
-
-          message:
-            'Select a valid SaMi plan and try again.',
-        });
-
-        return;
-      }
-
       savePlan(
         finalPlan
       );
 
       setLoading(true);
 
-      /* ------------------------------------------------------
-         Request
-         ------------------------------------------------------ */
-
       try {
+        /*
+         * IMPORTANT:
+         *
+         * Do NOT trust prices, user counts,
+         * seat counts or AI quotas from
+         * the browser.
+         *
+         * Client sends the selected plan.
+         *
+         * Backend determines:
+         * - price per user
+         * - billable users
+         * - subscription total
+         * - AI allowance per user
+         * - entitlements
+         * - payment required
+         */
         const payload = {
-          ...accountForm,
-
-          email,
+          ...account,
 
           firstName,
 
           lastName,
+
+          email,
 
           businessName,
 
@@ -916,7 +898,7 @@ export default function SelectPlanPage() {
         }
 
         /* ----------------------------------------------------
-           Error response
+           Registration error
            ---------------------------------------------------- */
 
         if (!response.ok) {
@@ -938,7 +920,7 @@ export default function SelectPlanPage() {
               message:
                 data?.message ||
                 data?.error ||
-                'A SaMi account already exists for this email address.',
+                'A SaMi account already exists for this email.',
 
               primaryAction: {
                 label:
@@ -952,10 +934,9 @@ export default function SelectPlanPage() {
 
               secondaryAction: {
                 label:
-                  'Use another email',
+                  'Change email',
 
-                href:
-                  '/register',
+                href: '/register',
               },
             });
 
@@ -975,7 +956,7 @@ export default function SelectPlanPage() {
               message:
                 data?.message ||
                 data?.error ||
-                'This plan is not currently available. Choose another plan and try again.',
+                'This SaMi plan is not currently available.',
             });
 
             return;
@@ -996,7 +977,7 @@ export default function SelectPlanPage() {
               message:
                 data?.message ||
                 data?.error ||
-                'Too many registration attempts were made. Please wait a little and try again.',
+                'Please wait before trying to create the account again.',
             });
 
             return;
@@ -1006,19 +987,19 @@ export default function SelectPlanPage() {
             type: 'error',
 
             title:
-              'Account could not be created',
+              'Workspace could not be created',
 
             message:
               data?.error ||
               data?.message ||
-              'SaMi could not create your account. Please try again.',
+              'SaMi could not create your workspace. Please try again.',
           });
 
           return;
         }
 
         /* ----------------------------------------------------
-           Paid plan
+           PAYMENT
            ---------------------------------------------------- */
 
         if (
@@ -1033,10 +1014,10 @@ export default function SelectPlanPage() {
               type: 'error',
 
               title:
-                'Payment could not be started',
+                'Payment could not start',
 
               message:
-                'Your account registration reached the payment stage, but SaMi did not receive a payment link. Please try again.',
+                'SaMi reached the payment step but did not receive a secure PesaPal payment link.',
             });
 
             return;
@@ -1048,18 +1029,18 @@ export default function SelectPlanPage() {
               email
             );
           } catch {
-            // Server retains authoritative state.
+            // Server state remains authoritative.
           }
 
           setOverlay({
             type: 'info',
 
             title:
-              'Continue to secure payment',
+              'Continue to payment',
 
             message:
               data.message ||
-              `Your ${effectivePlanDefinition.name} workspace is ready for the payment step.`,
+              `Your ${currentPlan.name} subscription is billed per user. Continue to PesaPal to complete setup.`,
 
             primaryAction: {
               label:
@@ -1085,7 +1066,7 @@ export default function SelectPlanPage() {
         }
 
         /* ----------------------------------------------------
-           Successful registration
+           SUCCESS
            ---------------------------------------------------- */
 
         if (data?.success) {
@@ -1096,11 +1077,6 @@ export default function SelectPlanPage() {
                 email
             );
 
-            /*
-             * The password/account wizard data
-             * is no longer needed after the server
-             * has successfully accepted registration.
-             */
             sessionStorage.removeItem(
               ACCOUNT_STORAGE_KEY
             );
@@ -1113,25 +1089,22 @@ export default function SelectPlanPage() {
               PLAN_STORAGE_KEY
             );
           } catch {
-            // Verification can still proceed.
+            // Verification can still continue.
           }
 
-          const verificationNeeded =
-            data.verificationRequired !==
-            false;
-
           if (
-            verificationNeeded
+            data.verificationRequired !==
+            false
           ) {
             setOverlay({
               type: 'success',
 
               title:
-                'Account created',
+                'Workspace created',
 
               message:
                 data.message ||
-                `Your SaMi workspace has been created. Check ${email} for the verification code.`,
+                `Your SaMi workspace has been created. Check ${email} to verify your email address.`,
 
               primaryAction: {
                 label:
@@ -1148,23 +1121,16 @@ export default function SelectPlanPage() {
             return;
           }
 
-          /*
-           * Some authentication providers may
-           * already have verified the identity.
-           */
-          const nextRoute =
-            typeof data.next ===
-              'string' &&
-            data.next.startsWith('/') &&
-            !data.next.startsWith('//')
-              ? data.next
-              : '/dashboard';
+          const destination =
+            safeNextPath(
+              data.next
+            );
 
           setOverlay({
             type: 'success',
 
             title:
-              'Workspace created',
+              'Workspace ready',
 
             message:
               data.message ||
@@ -1176,7 +1142,7 @@ export default function SelectPlanPage() {
 
               onClick: () => {
                 router.replace(
-                  nextRoute
+                  destination
                 );
 
                 router.refresh();
@@ -1186,10 +1152,6 @@ export default function SelectPlanPage() {
 
           return;
         }
-
-        /* ----------------------------------------------------
-           Unexpected successful HTTP response
-           ---------------------------------------------------- */
 
         setOverlay({
           type: 'error',
@@ -1209,7 +1171,7 @@ export default function SelectPlanPage() {
             'Could not reach SaMi',
 
           message:
-            'Check your internet connection and try creating your workspace again.',
+            'Check your internet connection and try again.',
         });
       } finally {
         setLoading(false);
@@ -1217,18 +1179,9 @@ export default function SelectPlanPage() {
     }, [
       loading,
       effectivePlan,
-      effectivePlanDefinition.name,
+      currentPlan.name,
       router,
     ]);
-
-  /* ==========================================================
-     CTA LABEL
-     ========================================================== */
-
-  const primaryActionLabel =
-    effectivePlan === 'free'
-      ? 'Create Workspace'
-      : 'Create & Continue';
 
   /* ==========================================================
      RENDER
@@ -1258,20 +1211,7 @@ export default function SelectPlanPage() {
         />
       )}
 
-      <main className="relative min-h-screen overflow-x-hidden bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
-
-        {/* ====================================================
-            BACKGROUND
-           ==================================================== */}
-
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-        >
-          <div className="absolute -left-48 -top-48 h-[600px] w-[600px] rounded-full bg-blue-500/[0.06] blur-[120px] dark:bg-blue-500/[0.09]" />
-
-          <div className="absolute -bottom-56 right-[-170px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.06] blur-[120px] dark:bg-violet-500/[0.08]" />
-        </div>
+      <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white lg:h-screen lg:overflow-hidden">
 
         {/* ====================================================
             THEME
@@ -1287,7 +1227,7 @@ export default function SelectPlanPage() {
               ? 'Switch to light theme'
               : 'Switch to dark theme'
           }
-          className="fixed right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/85 text-slate-500 shadow-sm backdrop-blur transition hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/85 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white sm:right-6 sm:top-6"
+          className="fixed right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/90 text-slate-500 shadow-sm backdrop-blur transition hover:text-slate-950 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-400 dark:hover:text-white"
         >
           {darkMode ? (
             <Sun className="h-[18px] w-[18px]" />
@@ -1297,37 +1237,40 @@ export default function SelectPlanPage() {
         </button>
 
         {/* ====================================================
-            CONTENT
-
-            Bottom padding allows for permanent
-            action dock.
+            PAGE
            ==================================================== */}
 
-        <div className="relative mx-auto w-full max-w-[1280px] px-4 pb-36 pt-7 sm:px-6 lg:px-8">
+        <div className="mx-auto flex min-h-screen w-full max-w-[1450px] flex-col px-4 pb-24 pt-4 sm:px-6 lg:h-screen lg:min-h-0 lg:px-8 lg:pb-4">
 
           {/* ==================================================
-              LOGO
+              TOP
              ================================================== */}
 
-          <header className="pr-12">
+          <div className="flex shrink-0 items-center justify-between pr-12">
             <Link
               href="/"
               aria-label="SaMi home"
-              className="inline-block max-w-full"
+              className="inline-block"
             >
               {/* FULL APPROVED LOGO */}
               <SaMiLogo
-                size="lg"
+                size="md"
                 className="max-w-full"
               />
             </Link>
-          </header>
+
+            <div className="hidden items-center gap-2 text-[11px] font-bold text-slate-400 sm:flex">
+              <ShieldCheck className="h-4 w-4" />
+
+              Secure workspace setup
+            </div>
+          </div>
 
           {/* ==================================================
               PROGRESS
              ================================================== */}
 
-          <div className="mt-7 flex items-center gap-3">
+          <div className="mt-3 flex shrink-0 items-center gap-3">
             <OnboardingStep
               number="1"
               label="Account"
@@ -1352,417 +1295,368 @@ export default function SelectPlanPage() {
           </div>
 
           {/* ==================================================
-              HEADING
+              MAIN
              ================================================== */}
 
-          <section className="mt-8">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
-              Step 3 of 3
-            </p>
+          <div className="mt-4 grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_310px]">
 
-            <h1 className="mt-2 text-[30px] font-black tracking-[-0.035em] sm:text-[36px]">
-              Choose your SaMi plan
-            </h1>
+            {/* =================================================
+                LEFT
+               ================================================= */}
 
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-              Select the plan that fits
-              your workspace. SaMi will
-              validate your apps, plan and
-              account before creating the
-              workspace.
-            </p>
-          </section>
+            <section className="flex min-h-0 flex-col">
 
-          {/* ==================================================
-              SELECTED APPS
-             ================================================== */}
+              {/* Heading */}
 
-          <section className="mt-7 rounded-[24px] border border-slate-200 bg-white/90 px-5 py-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-900/80">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <div className="shrink-0">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
+                      Step 3 of 3
+                    </p>
 
-                  <h2 className="text-sm font-black">
-                    Your apps
-                  </h2>
+                    <h1 className="mt-1 text-[27px] font-black tracking-[-0.035em] sm:text-[32px]">
+                      Choose your plan
+                    </h1>
+
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      Pricing and SaMi AI
+                      allowances are calculated
+                      per workspace user.
+                    </p>
+                  </div>
+
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-bold text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                    <Users className="h-3.5 w-3.5" />
+
+                    Per-user billing
+                  </div>
                 </div>
-
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {selectedAppCount}{' '}
-                  {selectedAppCount === 1
-                    ? 'business app'
-                    : 'business apps'}{' '}
-                  selected
-                </p>
               </div>
 
-              <button
-                type="button"
-                onClick={
-                  handleBack
-                }
-                disabled={
-                  loading
-                }
-                className="self-start text-xs font-bold text-blue-600 transition hover:text-blue-700 disabled:opacity-50 dark:text-blue-400 dark:hover:text-blue-300 sm:self-auto"
-              >
-                Change apps
-              </button>
-            </div>
+              {/* ===============================================
+                  PLAN CARDS
+                 =============================================== */}
 
-            {selectedAppDetails.length >
-              0 && (
-              <div className="mt-4 flex flex-wrap gap-2">
-                {selectedAppDetails
-                  .slice(0, 8)
-                  .map(
-                    (app) => (
-                      <span
+              <div className="mt-4 grid gap-3 md:grid-cols-3 lg:min-h-0 lg:flex-1">
+
+                {PLANS.map(
+                  (plan) => {
+                    const Icon =
+                      plan.icon;
+
+                    const disabled =
+                      plan.key ===
+                        'free' &&
+                      multipleApps;
+
+                    const selected =
+                      effectivePlan ===
+                      plan.key;
+
+                    return (
+                      <button
                         key={
-                          app.key
+                          plan.key
                         }
-                        className="rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                        type="button"
+                        onClick={() =>
+                          selectPlan(
+                            plan.key
+                          )
+                        }
+                        disabled={
+                          loading
+                        }
+                        aria-pressed={
+                          selected
+                        }
+                        aria-disabled={
+                          disabled
+                        }
+                        className={`
+                          group relative
+                          flex min-h-[250px]
+                          flex-col
+                          overflow-hidden
+                          rounded-[22px]
+                          border
+                          bg-white
+                          p-5
+                          text-left
+                          shadow-sm
+                          transition
+                          duration-200
+                          hover:-translate-y-0.5
+                          focus:outline-none
+                          focus:ring-4
+                          focus:ring-blue-500/10
+                          disabled:cursor-wait
+                          dark:bg-slate-900
+                          ${
+                            selected
+                              ? `${plan.selectedClass} ring-2 shadow-[0_12px_32px_rgba(15,23,42,0.08)]`
+                              : 'border-slate-200 hover:border-slate-300 dark:border-slate-800 dark:hover:border-slate-700'
+                          }
+                          ${
+                            disabled
+                              ? 'opacity-65'
+                              : ''
+                          }
+                        `}
                       >
-                        {
-                          app.name
-                        }
-                      </span>
-                    )
-                  )}
+                        {/* Accent */}
 
-                {selectedAppDetails.length >
-                  8 && (
-                  <span className="rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                    +
-                    {selectedAppDetails.length -
-                      8}{' '}
-                    more
-                  </span>
+                        <div
+                          className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${plan.accent}`}
+                        />
+
+                        {/* Recommended */}
+
+                        {plan.highlighted && (
+                          <span className="absolute right-3 top-3 rounded-full bg-blue-600 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-white">
+                            Recommended
+                          </span>
+                        )}
+
+                        {/* Icon */}
+
+                        <div
+                          className={`flex h-10 w-10 items-center justify-center rounded-xl ${plan.iconClass}`}
+                        >
+                          <Icon className="h-[18px] w-[18px]" />
+                        </div>
+
+                        {/* Plan */}
+
+                        <div className="mt-4 flex items-center gap-2">
+                          <h2 className="text-base font-black">
+                            {
+                              plan.name
+                            }
+                          </h2>
+
+                          {selected && (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                          )}
+                        </div>
+
+                        <p className="mt-1 line-clamp-2 min-h-[32px] text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                          {
+                            plan.description
+                          }
+                        </p>
+
+                        {/* Price */}
+
+                        <div className="mt-4">
+                          <div className="text-[23px] font-black tracking-[-0.035em]">
+                            {
+                              plan.price
+                            }
+                          </div>
+
+                          <div className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                            {
+                              plan.billingLabel
+                            }
+                          </div>
+                        </div>
+
+                        {/* Compact features */}
+
+                        <div className="mt-4 space-y-2">
+                          <PlanFeature
+                            text={
+                              plan.appAccess
+                            }
+                          />
+
+                          <PlanFeature
+                            text={
+                              plan.aiAllowance
+                            }
+                            ai
+                          />
+                        </div>
+
+                        <div className="mt-auto pt-4">
+                          {disabled ? (
+                            <div className="rounded-lg bg-amber-50 px-3 py-2 text-center text-[9px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                              Free supports one
+                              app
+                            </div>
+                          ) : selected ? (
+                            <div className="rounded-lg bg-emerald-50 px-3 py-2 text-center text-[9px] font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                              Selected
+                            </div>
+                          ) : (
+                            <div className="rounded-lg bg-slate-50 px-3 py-2 text-center text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                              Select{' '}
+                              {plan.name}
+                            </div>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  }
                 )}
               </div>
-            )}
-          </section>
-
-          {/* ==================================================
-              MULTI APP NOTICE
-             ================================================== */}
-
-          {multipleApps && (
-            <section className="mt-4 flex items-start gap-3 rounded-[20px] border border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-900/60 dark:bg-blue-950/30">
-              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
-
-              <div>
-                <p className="text-xs font-black text-blue-800 dark:text-blue-300">
-                  Standard or Custom required
-                </p>
-
-                <p className="mt-1 text-[11px] leading-5 text-blue-700 dark:text-blue-400">
-                  You selected{' '}
-                  {selectedAppCount}{' '}
-                  apps. Free supports one
-                  business app, so SaMi has
-                  selected Standard unless
-                  you choose Custom.
-                </p>
-              </div>
             </section>
-          )}
 
-          {/* ==================================================
-              PLANS
-             ================================================== */}
+            {/* =================================================
+                RIGHT SUMMARY
+               ================================================= */}
 
-          <section className="mt-7 grid gap-5 md:grid-cols-3">
-            {PLANS.map(
-              (plan) => {
-                const Icon =
-                  plan.icon;
+            <aside className="flex min-h-0 flex-col gap-3">
 
-                const disabled =
-                  plan.key ===
-                    'free' &&
-                  freeDisabled;
+              {/* Workspace */}
 
-                const selected =
-                  effectivePlan ===
-                  plan.key;
+              <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
 
-                return (
+                    <h2 className="text-xs font-black">
+                      Workspace
+                    </h2>
+                  </div>
+
                   <button
-                    key={
-                      plan.key
-                    }
                     type="button"
+                    onClick={
+                      handleBack
+                    }
                     disabled={
                       loading
                     }
-                    onClick={() =>
-                      selectPlan(
-                        plan.key
-                      )
-                    }
-                    aria-pressed={
-                      selected
-                    }
-                    aria-disabled={
-                      disabled
-                    }
-                    className={`
-                      group relative
-                      flex min-h-[430px]
-                      flex-col
-                      overflow-hidden
-                      rounded-[28px]
-                      border
-                      bg-white
-                      p-6
-                      text-left
-                      shadow-[0_10px_35px_rgba(15,23,42,0.05)]
-                      transition
-                      duration-200
-                      focus:outline-none
-                      focus:ring-4
-                      focus:ring-blue-500/10
-                      disabled:cursor-wait
-                      dark:bg-slate-900
-                      ${
-                        selected
-                          ? `${plan.selectedClass} ring-2 shadow-[0_18px_45px_rgba(15,23,42,0.10)]`
-                          : 'border-slate-200 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_18px_45px_rgba(15,23,42,0.09)] dark:border-slate-800 dark:hover:border-slate-700'
-                      }
-                      ${
-                        disabled
-                          ? 'opacity-65'
-                          : ''
-                      }
-                    `}
+                    className="text-[10px] font-bold text-blue-600 dark:text-blue-400"
                   >
-                    {/* Top gradient */}
-
-                    <div
-                      aria-hidden="true"
-                      className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${plan.accent}`}
-                    />
-
-                    {/* Popular */}
-
-                    {plan.highlighted && (
-                      <div className="absolute right-4 top-4 rounded-full bg-blue-600 px-3 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-sm">
-                        Recommended
-                      </div>
-                    )}
-
-                    {/* Selected */}
-
-                    {selected && (
-                      <div className="absolute right-4 top-14 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
-                        <Check
-                          className="h-4 w-4"
-                          strokeWidth={
-                            3
-                          }
-                        />
-                      </div>
-                    )}
-
-                    {/* Icon */}
-
-                    <div
-                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${plan.iconClass}`}
-                    >
-                      <Icon className="h-5 w-5" />
-                    </div>
-
-                    {/* Name */}
-
-                    <h2 className="mt-5 text-lg font-black tracking-tight">
-                      {
-                        plan.name
-                      }
-                    </h2>
-
-                    <p className="mt-2 min-h-[44px] text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      {
-                        plan.description
-                      }
-                    </p>
-
-                    {/* Price */}
-
-                    <div className="mt-6">
-                      <span className="text-[28px] font-black tracking-[-0.035em]">
-                        {
-                          plan.price
-                        }
-                      </span>
-
-                      <span className="ml-1 text-xs font-medium text-slate-400">
-                        {
-                          plan.period
-                        }
-                      </span>
-                    </div>
-
-                    {/* Features */}
-
-                    <ul className="mt-6 space-y-3">
-                      {plan.features.map(
-                        (
-                          feature
-                        ) => (
-                          <li
-                            key={
-                              feature
-                            }
-                            className="flex items-start gap-2.5 text-xs leading-5 text-slate-600 dark:text-slate-300"
-                          >
-                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400">
-                              <Check className="h-3 w-3" />
-                            </span>
-
-                            <span>
-                              {
-                                feature
-                              }
-                            </span>
-                          </li>
-                        )
-                      )}
-                    </ul>
-
-                    {/* Card bottom */}
-
-                    <div className="mt-auto pt-6">
-                      {disabled ? (
-                        <div className="rounded-xl bg-amber-50 px-3 py-2.5 text-center text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
-                          Reduce selection to
-                          one app to use Free
-                        </div>
-                      ) : selected ? (
-                        <div
-                          className={`rounded-xl px-3 py-2.5 text-center text-[10px] font-black ${plan.badgeClass}`}
-                        >
-                          Selected plan
-                        </div>
-                      ) : (
-                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 transition group-hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-400 dark:group-hover:bg-slate-800/70">
-                          Select{' '}
-                          {plan.name}
-                        </div>
-                      )}
-                    </div>
+                    Change
                   </button>
-                );
-              }
-            )}
-          </section>
-
-          {/* ==================================================
-              SAMI CORE
-             ================================================== */}
-
-          <section className="relative mt-7 overflow-hidden rounded-[24px] border border-indigo-200/80 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-5 dark:border-indigo-900/60 dark:from-blue-950/30 dark:via-indigo-950/25 dark:to-violet-950/30">
-            <div
-              aria-hidden="true"
-              className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-violet-500/20 blur-3xl"
-            />
-
-            <div className="relative flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-500/20">
-                <Bot className="h-5 w-5" />
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-sm font-black">
-                    SaMi AI is part of the platform
-                  </h2>
-
-                  <span className="rounded-full bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-indigo-700 dark:bg-white/10 dark:text-indigo-300">
-                    Core
-                  </span>
                 </div>
 
-                <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-                  Your plan determines AI
-                  usage and available
-                  capabilities. Installed
-                  business apps can extend
-                  SaMi AI with additional
-                  tools and workspace
-                  context.
+                <p className="mt-3 text-[11px] text-slate-500 dark:text-slate-400">
+                  <strong className="text-slate-950 dark:text-white">
+                    {
+                      selectedAppCount
+                    }
+                  </strong>{' '}
+                  {selectedAppCount ===
+                  1
+                    ? 'app'
+                    : 'apps'}{' '}
+                  selected
                 </p>
+
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {selectedAppDetails
+                    .slice(0, 6)
+                    .map(
+                      (app) => (
+                        <span
+                          key={
+                            app.key
+                          }
+                          className="max-w-full truncate rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                        >
+                          {
+                            app.name
+                          }
+                        </span>
+                      )
+                    )}
+
+                  {selectedAppDetails.length >
+                    6 && (
+                    <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                      +
+                      {selectedAppDetails.length -
+                        6}
+                    </span>
+                  )}
+                </div>
+              </section>
+
+              {/* Per user billing */}
+
+              <section className="rounded-[22px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/25">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                    <Users className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-xs font-black text-blue-900 dark:text-blue-200">
+                      Billing per user
+                    </h2>
+
+                    <p className="mt-1 text-[10px] leading-4 text-blue-700 dark:text-blue-300">
+                      The subscription is
+                      calculated from the
+                      number of billable users
+                      in the workspace.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl bg-white/70 px-3 py-2.5 dark:bg-white/[0.05]">
+                  <p className="text-[10px] text-blue-700 dark:text-blue-300">
+                    <strong>
+                      {
+                        currentPlan.price
+                      }
+                    </strong>{' '}
+                    per user / month
+                  </p>
+                </div>
+              </section>
+
+              {/* AI */}
+
+              <section className="rounded-[22px] border border-violet-200 bg-gradient-to-br from-indigo-50 to-violet-50 p-4 dark:border-violet-900/60 dark:from-indigo-950/25 dark:to-violet-950/25">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-violet-600 text-white">
+                    <Bot className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-xs font-black">
+                        SaMi AI
+                      </h2>
+
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[8px] font-black uppercase text-violet-700 dark:bg-white/10 dark:text-violet-300">
+                        Per user
+                      </span>
+                    </div>
+
+                    <p className="mt-1 text-[10px] leading-4 text-slate-600 dark:text-slate-300">
+                      {
+                        currentPlan.aiAllowance
+                      }
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              {/* Security */}
+
+              <div className="mt-auto hidden items-center gap-2 rounded-xl px-2 py-1 text-[9px] text-slate-400 lg:flex">
+                <LockKeyhole className="h-3.5 w-3.5" />
+
+                Billing totals and AI limits
+                are enforced by SaMi on the
+                server.
               </div>
-            </div>
-          </section>
+            </aside>
+          </div>
 
           {/* ==================================================
-              SECURITY / BILLING NOTE
+              DESKTOP ACTION BAR
              ================================================== */}
 
-          <section className="mt-5 grid gap-3 sm:grid-cols-3">
-            <InfoCard
-              icon={
-                ShieldCheck
-              }
-              title="Secure setup"
-              description="Account and workspace configuration are validated by SaMi before activation."
-            />
-
-            <InfoCard
-              icon={
-                CreditCard
-              }
-              title="Payment"
-              description="If payment is required, SaMi securely redirects you to PesaPal."
-            />
-
-            <InfoCard
-              icon={
-                LockKeyhole
-              }
-              title="Private workspace"
-              description="Your business workspace and access remain separated from other SaMi tenants."
-            />
-          </section>
-
-          {/* ==================================================
-              FOOTER
-             ================================================== */}
-
-          <footer className="mt-6 flex flex-wrap justify-end gap-x-5 gap-y-2 pb-4 text-[11px] text-slate-400">
-            <Link
-              href="/help"
-              className="transition hover:text-slate-700 dark:hover:text-slate-200"
-            >
-              Help
-            </Link>
-
-            <Link
-              href="/terms"
-              className="transition hover:text-slate-700 dark:hover:text-slate-200"
-            >
-              Terms
-            </Link>
-
-            <Link
-              href="/privacy"
-              className="transition hover:text-slate-700 dark:hover:text-slate-200"
-            >
-              Privacy
-            </Link>
-          </footer>
-        </div>
-
-        {/* ====================================================
-            ALWAYS-VISIBLE FINAL ACTION DOCK
-           ==================================================== */}
-
-        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/92 px-4 py-3 shadow-[0_-15px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-[#0b0f18]/94">
-          <div className="mx-auto flex w-full max-w-[1280px] items-center gap-3">
-
-            {/* Back */}
+          <div className="mt-4 hidden shrink-0 items-center gap-3 rounded-[18px] border border-slate-200 bg-white px-4 py-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:flex">
 
             <button
               type="button"
@@ -1772,53 +1666,30 @@ export default function SelectPlanPage() {
               disabled={
                 loading
               }
-              aria-label="Back to app selection"
-              className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               <ArrowLeft className="h-4 w-4" />
 
-              <span className="hidden sm:inline">
-                Back
-              </span>
+              Back
             </button>
 
-            {/* Selected plan */}
-
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm shadow-emerald-500/20">
-                  <CheckCircle2 className="h-4 w-4" />
-                </div>
+              <p className="truncate text-xs font-black">
+                {
+                  currentPlan.name
+                }{' '}
+                ·{' '}
+                {
+                  currentPlan.price
+                }{' '}
+                per user / month
+              </p>
 
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black">
-                    {
-                      effectivePlanDefinition.name
-                    }{' '}
-                    plan
-                  </p>
-
-                  <p className="hidden truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block">
-                    {
-                      effectivePlanDefinition.price
-                    }{' '}
-                    {
-                      effectivePlanDefinition.period
-                    }{' '}
-                    ·{' '}
-                    {
-                      selectedAppCount
-                    }{' '}
-                    {selectedAppCount ===
-                    1
-                      ? 'app'
-                      : 'apps'}
-                  </p>
-                </div>
-              </div>
+              <p className="mt-0.5 truncate text-[9px] text-slate-400">
+                Subscription and AI usage
+                scale with workspace users.
+              </p>
             </div>
-
-            {/* Create */}
 
             <button
               type="button"
@@ -1830,31 +1701,111 @@ export default function SelectPlanPage() {
                 selectedAppCount ===
                   0
               }
-              className="flex h-12 min-w-[148px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[205px]"
+              className="flex h-10 min-w-[190px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
 
-                  <span className="hidden sm:inline">
-                    Creating workspace...
-                  </span>
-
-                  <span className="sm:hidden">
-                    Creating...
-                  </span>
+                  Creating...
                 </>
               ) : (
                 <>
-                  <span className="hidden sm:inline">
-                    {
-                      primaryActionLabel
-                    }
-                  </span>
+                  {effectivePlan ===
+                  'free'
+                    ? 'Create Workspace'
+                    : 'Create & Continue'}
 
-                  <span className="sm:hidden">
-                    Continue
-                  </span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Small footer */}
+
+          <div className="mt-2 hidden shrink-0 justify-end gap-4 text-[9px] text-slate-400 lg:flex">
+            <Link
+              href="/help"
+              className="hover:text-slate-700 dark:hover:text-white"
+            >
+              Help
+            </Link>
+
+            <Link
+              href="/terms"
+              className="hover:text-slate-700 dark:hover:text-white"
+            >
+              Terms
+            </Link>
+
+            <Link
+              href="/privacy"
+              className="hover:text-slate-700 dark:hover:text-white"
+            >
+              Privacy
+            </Link>
+          </div>
+        </div>
+
+        {/* ====================================================
+            MOBILE / TABLET FIXED ACTION BAR
+           ==================================================== */}
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-12px_35px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-[#0b0f18]/95 lg:hidden">
+          <div className="mx-auto flex max-w-[1450px] items-center gap-3">
+
+            <button
+              type="button"
+              onClick={
+                handleBack
+              }
+              disabled={
+                loading
+              }
+              aria-label="Back to app selection"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-black">
+                {
+                  currentPlan.name
+                }{' '}
+                ·{' '}
+                {
+                  currentPlan.price
+                }
+              </p>
+
+              <p className="truncate text-[9px] text-slate-400">
+                per user / month
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={
+                handleCreateAccount
+              }
+              disabled={
+                loading ||
+                selectedAppCount ===
+                  0
+              }
+              className="flex h-11 min-w-[135px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white shadow-lg shadow-blue-500/20 disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+
+                  Creating
+                </>
+              ) : (
+                <>
+                  Continue
 
                   <ArrowRight className="h-4 w-4" />
                 </>
@@ -1864,6 +1815,38 @@ export default function SelectPlanPage() {
         </div>
       </main>
     </>
+  );
+}
+
+/* ============================================================
+   PLAN FEATURE
+   ============================================================ */
+
+function PlanFeature({
+  text,
+  ai = false,
+}: {
+  text: string;
+  ai?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2 text-[10px] leading-4 text-slate-600 dark:text-slate-300">
+      <span
+        className={`mt-[1px] flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
+          ai
+            ? 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300'
+            : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300'
+        }`}
+      >
+        {ai ? (
+          <Bot className="h-2.5 w-2.5" />
+        ) : (
+          <Check className="h-2.5 w-2.5" />
+        )}
+      </span>
+
+      {text}
+    </div>
   );
 }
 
@@ -1885,23 +1868,23 @@ function OnboardingStep({
   return (
     <div className="flex shrink-0 items-center gap-2">
       <span
-        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+        className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-black ${
           completed
             ? 'bg-emerald-500 text-white'
             : active
-              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
               : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
         }`}
       >
         {completed ? (
-          <Check className="h-4 w-4" />
+          <Check className="h-3.5 w-3.5" />
         ) : (
           number
         )}
       </span>
 
       <span
-        className={`hidden text-xs font-bold sm:block ${
+        className={`hidden text-[10px] font-bold sm:block ${
           active
             ? 'text-slate-950 dark:text-white'
             : completed
@@ -1911,34 +1894,6 @@ function OnboardingStep({
       >
         {label}
       </span>
-    </div>
-  );
-}
-
-/* ============================================================
-   INFO CARD
-   ============================================================ */
-
-function InfoCard({
-  icon: Icon,
-  title,
-  description,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-[20px] border border-slate-200 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-      <Icon className="h-4 w-4 text-slate-400" />
-
-      <p className="mt-3 text-xs font-black">
-        {title}
-      </p>
-
-      <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-        {description}
-      </p>
     </div>
   );
 }
