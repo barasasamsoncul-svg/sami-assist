@@ -2,9 +2,7 @@ import { isIP } from 'node:net';
 
 import { NextRequest } from 'next/server';
 
-import {
-  queryControl,
-} from '@/lib/db/control';
+import { queryControl } from '@/lib/db/control';
 
 /* ============================================================
    TYPES
@@ -12,73 +10,39 @@ import {
 
 export type AuthEventInput = {
   request: NextRequest;
-
   userId?: string | null;
-
   tenantId?: string | null;
-
   eventType: string;
-
   entityType?: string;
-
   entityId?: string | null;
-
-  metadata?: Record<
-    string,
-    unknown
-  >;
+  metadata?: Record<string, unknown>;
 };
 
 export type LoginHistoryInput = {
   request: NextRequest;
-
   userId?: string | null;
-
   sessionId?: string | null;
-
   successful: boolean;
-
   failureReason?: string | null;
-
-  metadata?: Record<
-    string,
-    unknown
-  >;
+  metadata?: Record<string, unknown>;
 };
 
 /* ============================================================
    LIMITS
    ============================================================ */
 
-const MAX_IP_LENGTH =
-  255;
+const MAX_IP_LENGTH = 255;
+const MAX_USER_AGENT_LENGTH = 1000;
 
-const MAX_USER_AGENT_LENGTH =
-  1000;
+const MAX_EVENT_TYPE_LENGTH = 120;
+const MAX_ENTITY_TYPE_LENGTH = 120;
+const MAX_ENTITY_ID_LENGTH = 255;
+const MAX_FAILURE_REASON_LENGTH = 255;
 
-const MAX_EVENT_TYPE_LENGTH =
-  120;
-
-const MAX_ENTITY_TYPE_LENGTH =
-  120;
-
-const MAX_ENTITY_ID_LENGTH =
-  255;
-
-const MAX_FAILURE_REASON_LENGTH =
-  255;
-
-const MAX_METADATA_STRING_LENGTH =
-  2000;
-
-const MAX_METADATA_DEPTH =
-  6;
-
-const MAX_METADATA_OBJECT_KEYS =
-  60;
-
-const MAX_METADATA_ARRAY_ITEMS =
-  60;
+const MAX_METADATA_STRING_LENGTH = 2000;
+const MAX_METADATA_DEPTH = 6;
+const MAX_METADATA_OBJECT_KEYS = 60;
+const MAX_METADATA_ARRAY_ITEMS = 60;
 
 /* ============================================================
    TEXT
@@ -88,123 +52,74 @@ function cleanText(
   value: unknown,
   maxLength: number
 ): string | null {
-  if (
-    typeof value !==
-    'string'
-  ) {
+  if (typeof value !== 'string') {
     return null;
   }
 
-  const normalized =
-    value
-      .replace(
-        /[\r\n]+/g,
-        ' '
-      )
-      .trim();
+  const normalized = value
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
 
   if (!normalized) {
     return null;
   }
 
-  return normalized.slice(
-    0,
-    maxLength
-  );
+  return normalized.slice(0, maxLength);
 }
 
 /* ============================================================
    IP ADDRESS
    ============================================================ */
 
-/**
- * Validates an individual IP candidate.
- *
- * Supports:
- *
- *   192.168.1.10
- *   2001:db8::1
- *   ::ffff:192.168.1.10
- *
- * Also tolerates:
- *
- *   192.168.1.10:12345
- *
- * which can occasionally appear in proxy headers.
- */
 function normalizeIpCandidate(
-  value:
-    | string
-    | null
-    | undefined
+  value: string | null | undefined
 ): string | null {
-  const raw =
-    cleanText(
-      value,
-      MAX_IP_LENGTH
-    );
+  const raw = cleanText(
+    value,
+    MAX_IP_LENGTH
+  );
 
   if (!raw) {
     return null;
   }
 
-  let candidate =
-    raw;
+  /*
+   * Normal IPv4 / IPv6
+   */
+  if (isIP(raw) > 0) {
+    return raw;
+  }
 
   /*
    * [IPv6]:port
    */
-  if (
-    candidate.startsWith(
-      '['
-    )
-  ) {
+  if (raw.startsWith('[')) {
     const closingBracket =
-      candidate.indexOf(
-        ']'
+      raw.indexOf(']');
+
+    if (closingBracket > 1) {
+      const ipv6 = raw.slice(
+        1,
+        closingBracket
       );
 
-    if (
-      closingBracket >
-      1
-    ) {
-      const ipv6 =
-        candidate.slice(
-          1,
-          closingBracket
-        );
-
-      if (
-        isIP(ipv6) > 0
-      ) {
+      if (isIP(ipv6) > 0) {
         return ipv6;
       }
     }
   }
 
   /*
-   * Normal IPv4 / IPv6.
-   */
-  if (
-    isIP(candidate) >
-    0
-  ) {
-    return candidate;
-  }
-
-  /*
    * IPv4:port
    */
   const ipv4WithPort =
-    candidate.match(
+    raw.match(
       /^(.+):(\d{1,5})$/
     );
 
   if (
     ipv4WithPort &&
-    isIP(
-      ipv4WithPort[1]
-    ) === 4
+    isIP(ipv4WithPort[1]) === 4
   ) {
     return ipv4WithPort[1];
   }
@@ -212,23 +127,10 @@ function normalizeIpCandidate(
   return null;
 }
 
-/**
- * Resolve the client IP from the proxy headers already used by
- * SaMi.
- *
- * x-forwarded-for can contain:
- *
- *   client, proxy1, proxy2
- *
- * so only the first value is used.
- *
- * IMPORTANT:
- *
- * Production must run behind the trusted hosting/reverse-proxy
- * layer that controls these headers. Application code cannot
- * independently prove that a forwarded header was created by
- * a trusted proxy.
- */
+/* ============================================================
+   REQUEST METADATA
+   ============================================================ */
+
 export function getClientIp(
   request: NextRequest
 ): string | null {
@@ -237,23 +139,19 @@ export function getClientIp(
       'x-forwarded-for'
     );
 
-  if (
-    forwardedFor
-  ) {
-    const firstCandidate =
+  if (forwardedFor) {
+    const firstIp =
       forwardedFor
         .split(',')[0]
         ?.trim();
 
-    const forwardedIp =
+    const normalized =
       normalizeIpCandidate(
-        firstCandidate
+        firstIp
       );
 
-    if (
-      forwardedIp
-    ) {
-      return forwardedIp;
+    if (normalized) {
+      return normalized;
     }
   }
 
@@ -264,18 +162,12 @@ export function getClientIp(
       )
     );
 
-  if (
-    realIp
-  ) {
+  if (realIp) {
     return realIp;
   }
 
   return null;
 }
-
-/* ============================================================
-   USER AGENT
-   ============================================================ */
 
 export function getClientUserAgent(
   request: NextRequest
@@ -289,83 +181,41 @@ export function getClientUserAgent(
 }
 
 /* ============================================================
-   METADATA SECURITY
+   SENSITIVE METADATA
    ============================================================ */
 
-/**
- * Audit metadata must never accidentally become another place
- * where authentication credentials are stored.
- */
 function isSensitiveMetadataKey(
   key: string
 ): boolean {
-  const normalized =
-    key
-      .replace(
-        /([a-z0-9])([A-Z])/g,
-        '$1_$2'
-      )
-      .replace(
-        /[^a-zA-Z0-9]+/g,
-        '_'
-      )
-      .toLowerCase();
+  const normalized = key
+    .replace(
+      /([a-z0-9])([A-Z])/g,
+      '$1_$2'
+    )
+    .replace(
+      /[^a-zA-Z0-9]+/g,
+      '_'
+    )
+    .toLowerCase();
 
   return (
-    normalized ===
-      'password' ||
-
-    normalized.includes(
-      'password'
-    ) ||
-
-    normalized.includes(
-      'passphrase'
-    ) ||
-
-    normalized.includes(
-      'secret'
-    ) ||
-
-    normalized.includes(
-      'token'
-    ) ||
-
-    normalized.includes(
-      'authorization'
-    ) ||
-
-    normalized.includes(
-      'cookie'
-    ) ||
-
-    normalized ===
-      'otp' ||
-
-    normalized.includes(
-      'totp'
-    ) ||
-
-    normalized.includes(
-      'recovery_code'
-    ) ||
-
-    normalized.includes(
-      'verification_code'
-    ) ||
-
-    normalized.includes(
-      'two_factor_code'
-    ) ||
-
-    normalized.includes(
-      'mfa_code'
-    )
+    normalized.includes('password') ||
+    normalized.includes('passphrase') ||
+    normalized.includes('secret') ||
+    normalized.includes('token') ||
+    normalized.includes('authorization') ||
+    normalized.includes('cookie') ||
+    normalized === 'otp' ||
+    normalized.includes('totp') ||
+    normalized.includes('recovery_code') ||
+    normalized.includes('verification_code') ||
+    normalized.includes('two_factor_code') ||
+    normalized.includes('mfa_code')
   );
 }
 
 /* ============================================================
-   SAFE METADATA SERIALIZATION
+   METADATA SANITIZATION
    ============================================================ */
 
 function sanitizeMetadataValue(
@@ -381,8 +231,7 @@ function sanitizeMetadataValue(
   }
 
   if (
-    typeof value ===
-    'string'
+    typeof value === 'string'
   ) {
     return value.slice(
       0,
@@ -391,42 +240,33 @@ function sanitizeMetadataValue(
   }
 
   if (
-    typeof value ===
-    'boolean'
+    typeof value === 'boolean'
   ) {
     return value;
   }
 
   if (
-    typeof value ===
-    'number'
+    typeof value === 'number'
   ) {
-    return Number.isFinite(
-      value
-    )
+    return Number.isFinite(value)
       ? value
       : String(value);
   }
 
   if (
-    typeof value ===
-    'bigint'
+    typeof value === 'bigint'
   ) {
     return value.toString();
   }
 
   if (
-    typeof value ===
-      'function' ||
-    typeof value ===
-      'symbol'
+    typeof value === 'function' ||
+    typeof value === 'symbol'
   ) {
     return null;
   }
 
-  if (
-    value instanceof Date
-  ) {
+  if (value instanceof Date) {
     return Number.isNaN(
       value.getTime()
     )
@@ -434,18 +274,13 @@ function sanitizeMetadataValue(
       : value.toISOString();
   }
 
-  if (
-    value instanceof Error
-  ) {
+  if (value instanceof Error) {
     return {
-      name:
-        value.name,
-
-      message:
-        value.message.slice(
-          0,
-          MAX_METADATA_STRING_LENGTH
-        ),
+      name: value.name,
+      message: value.message.slice(
+        0,
+        MAX_METADATA_STRING_LENGTH
+      ),
     };
   }
 
@@ -457,35 +292,27 @@ function sanitizeMetadataValue(
   }
 
   if (
-    typeof value ===
-    'object'
+    typeof value === 'object'
   ) {
-    if (
-      seen.has(value)
-    ) {
+    if (seen.has(value)) {
       return '[Circular]';
     }
 
     seen.add(value);
 
     try {
-      if (
-        Array.isArray(
-          value
-        )
-      ) {
+      if (Array.isArray(value)) {
         return value
           .slice(
             0,
             MAX_METADATA_ARRAY_ITEMS
           )
-          .map(
-            (item) =>
-              sanitizeMetadataValue(
-                item,
-                depth + 1,
-                seen
-              )
+          .map((item) =>
+            sanitizeMetadataValue(
+              item,
+              depth + 1,
+              seen
+            )
           );
       }
 
@@ -502,12 +329,11 @@ function sanitizeMetadataValue(
         > = {};
 
       const entries =
-        Object.entries(
-          source
-        ).slice(
-          0,
-          MAX_METADATA_OBJECT_KEYS
-        );
+        Object.entries(source)
+          .slice(
+            0,
+            MAX_METADATA_OBJECT_KEYS
+          );
 
       for (
         const [
@@ -540,28 +366,21 @@ function sanitizeMetadataValue(
     }
   }
 
-  return String(
-    value
-  ).slice(
+  return String(value).slice(
     0,
     MAX_METADATA_STRING_LENGTH
   );
 }
 
 function sanitizeMetadata(
-  metadata?:
-    Record<
-      string,
-      unknown
-    >
-): Record<
-  string,
-  unknown
-> {
+  metadata?: Record<
+    string,
+    unknown
+  >
+): Record<string, unknown> {
   if (
     !metadata ||
-    typeof metadata !==
-      'object' ||
+    typeof metadata !== 'object' ||
     Array.isArray(metadata)
   ) {
     return {};
@@ -576,8 +395,7 @@ function sanitizeMetadata(
 
   if (
     !value ||
-    typeof value !==
-      'object' ||
+    typeof value !== 'object' ||
     Array.isArray(value)
   ) {
     return {};
@@ -590,11 +408,10 @@ function sanitizeMetadata(
 }
 
 function serializeMetadata(
-  metadata?:
-    Record<
-      string,
-      unknown
-    >
+  metadata?: Record<
+    string,
+    unknown
+  >
 ): string {
   try {
     return JSON.stringify(
@@ -603,10 +420,6 @@ function serializeMetadata(
       )
     );
   } catch {
-    /*
-     * Audit logging must never break authentication merely
-     * because optional metadata was malformed.
-     */
     return '{}';
   }
 }
@@ -615,19 +428,6 @@ function serializeMetadata(
    AUTH EVENT
    ============================================================ */
 
-/**
- * Authentication events are best-effort security/audit records.
- *
- * Failure to write an audit record must NOT:
- *
- * - fail login
- * - fail logout
- * - fail registration
- * - fail 2FA
- * - fail password recovery
- *
- * The server error is still logged for operational visibility.
- */
 export async function recordAuthEvent(
   input: AuthEventInput
 ): Promise<void> {
@@ -638,9 +438,7 @@ export async function recordAuthEvent(
         MAX_EVENT_TYPE_LENGTH
       );
 
-    if (
-      !eventType
-    ) {
+    if (!eventType) {
       console.warn(
         '[SaMi Auth] Audit event skipped because eventType was empty.'
       );
@@ -652,8 +450,7 @@ export async function recordAuthEvent(
       cleanText(
         input.entityType,
         MAX_ENTITY_TYPE_LENGTH
-      ) ||
-      'auth';
+      ) || 'auth';
 
     const userId =
       cleanText(
@@ -673,11 +470,28 @@ export async function recordAuthEvent(
         MAX_ENTITY_ID_LENGTH
       );
 
+    /*
+     * audit_logs has both:
+     *
+     * action
+     * event_type
+     *
+     * action is NOT NULL in the existing SaMi schema.
+     *
+     * For authentication events both values intentionally use
+     * the canonical authentication event name.
+     *
+     * Example:
+     *
+     * action     = EMAIL_VERIFIED
+     * event_type = EMAIL_VERIFIED
+     */
     await queryControl(
       `
         INSERT INTO audit_logs (
           tenant_id,
           user_id,
+          action,
           event_type,
           entity_type,
           entity_id,
@@ -690,6 +504,7 @@ export async function recordAuthEvent(
           $1,
           $2,
           $3,
+          $3,
           $4,
           $5,
           $6,
@@ -699,13 +514,15 @@ export async function recordAuthEvent(
       `,
       [
         tenantId,
-
         userId,
 
+        /*
+         * $3:
+         * action + event_type
+         */
         eventType,
 
         entityType,
-
         entityId,
 
         getClientIp(
@@ -722,6 +539,10 @@ export async function recordAuthEvent(
       ]
     );
   } catch (error) {
+    /*
+     * Audit failure must never destroy the authentication
+     * operation that triggered it.
+     */
     console.error(
       '[SaMi Auth] Failed to record authentication event:',
       error
@@ -734,8 +555,7 @@ export async function recordAuthEvent(
    ============================================================ */
 
 export async function recordLoginHistory(
-  input:
-    LoginHistoryInput
+  input: LoginHistoryInput
 ): Promise<void> {
   try {
     const userId =
@@ -750,10 +570,6 @@ export async function recordLoginHistory(
         MAX_ENTITY_ID_LENGTH
       );
 
-    /*
-     * A successful login should never be stored with a failure
-     * reason even if a caller accidentally passes one.
-     */
     const failureReason =
       input.successful
         ? null
@@ -786,7 +602,6 @@ export async function recordLoginHistory(
       `,
       [
         userId,
-
         sessionId,
 
         getClientIp(
@@ -797,8 +612,7 @@ export async function recordLoginHistory(
           input.request
         ),
 
-        input.successful ===
-          true,
+        input.successful === true,
 
         failureReason,
 
