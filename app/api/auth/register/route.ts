@@ -1,85 +1,88 @@
 import { NextRequest, NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 
-import { queryControl } from '@/lib/db/control';
-import { sendVerificationEmail } from '@/lib/services/email';
-import { provisionTenant } from '@/lib/services/tenant-provisioning';
-import { createPesaPalOrder } from '@/lib/services/pesapal';
+import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
+  hashPassword,
+} from '@/lib/auth/password';
+
+import {
+  sendVerificationEmail,
+} from '@/lib/services/email';
+
+import {
+  sendSubscriptionConfirmationEmail,
+  type SaMiRegistrationPlan,
+} from '@/lib/services/subscription-email';
+
+import {
+  provisionTenant,
+} from '@/lib/services/tenant-provisioning';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-/**
- * SaMi Registration API
- *
- * Flow
- * ----
- *
- * Email registration
- *
- *   Register
- *      ↓
- *   Select Apps
- *      ↓
- *   Select Plan
- *      ↓
- *   POST /api/auth/register
- *      ↓
- *   Validate account + apps + plan
- *      ↓
- *   Create user
- *      ↓
- *   Create tenant
- *      ↓
- *   Create owner membership
- *      ↓
- *   Assign admin role
- *      ↓
- *   Create subscription
- *      ↓
- *   Reserve selected modules
- *      ↓
- *   ┌─────────────────────────────┐
- *   │                             │
- *   │ FREE                        │ PAID
- *   │                             │
- *   ▼                             ▼
- *   Provision tenant              Create PesaPal order
- *   Activate tenant               Keep tenant pending_payment
- *   Activate subscription         Keep subscription pending_payment
- *   Generate verification code    Return payment redirect
- *   Send verification email
- *   │
- *   ▼
- *   /auth/verify-email
- *
- * Important:
- *
- * The frontend is NOT trusted for subscription enforcement.
- *
- * Current MVP business rule:
- *
- *   1 selected app  → requested plan
- *   >1 selected app → standard plan + payment
- *
- * The backend enforces this independently of Select Plan.
- */
+/* ============================================================
+   SAMI REGISTRATION POLICY
+
+   FREE
+   ------------------------------------------------------------
+   - KES 0
+   - No PesaPal
+   - No trial
+   - Workspace provisioned immediately
+   - Subscription becomes active after provisioning
+
+   STANDARD / CUSTOM
+   ------------------------------------------------------------
+   - First calendar month free
+   - KES 0 due today
+   - NO PesaPal transaction during signup
+   - Workspace provisioned immediately
+   - Subscription starts as trialing immediately
+   - Full paid-plan entitlements during trial
+   - First payment becomes due after one calendar month
+   - First successful PesaPal payment creates recurring
+     enrollment
+   - Later monthly payments can run automatically through
+     PesaPal recurring billing
+   ============================================================ */
 
 const VERIFICATION_EXPIRY_MINUTES = 15;
-const TRIAL_DAYS = 15;
-const BCRYPT_ROUNDS = 12;
+
+const PAID_TRIAL_MONTHS = 1;
+
+const BILLING_CURRENCY = 'KES';
 
 const MAX_SELECTED_APPS = 50;
+
 const MAX_NAME_LENGTH = 120;
+
 const MAX_PHONE_LENGTH = 40;
 
-const ALLOWED_PLANS = new Set([
-  'free',
-  'standard',
-  'custom',
-]);
+const MAX_EMAIL_LENGTH = 254;
 
-type RegistrationBody = Record<string, unknown>;
+const MAX_PASSWORD_LENGTH = 128;
+
+const GOOGLE_SIGNUP_COOKIE =
+  'sami_google_signup_state';
+
+const ALLOWED_PLANS =
+  new Set([
+    'free',
+    'standard',
+    'custom',
+  ]);
+
+/* ============================================================
+   TYPES
+   ============================================================ */
+
+type RegistrationBody =
+  Record<string, unknown>;
 
 type RegistrationContext = {
   userId: string | null;
@@ -102,95 +105,459 @@ type PlanRow = {
   included_apps?: unknown;
 };
 
-/* -------------------------------------------------------------------------- */
-/* Normalization                                                              */
-/* -------------------------------------------------------------------------- */
+type GoogleSignupRow = {
+  state_hash: string;
+  google_subject: string;
+  email: string;
+  first_name: string | null;
+  last_name: string | null;
+  avatar_url: string | null;
+  expires_at: Date | string;
+};
 
-function normalizeEmail(value: unknown): string {
-  if (typeof value !== 'string') {
+type SubscriptionResponseRow = {
+  id: string;
+  status: string;
+  started_at: Date | string | null;
+  trial_ends_at: Date | string | null;
+  current_period_start: Date | string | null;
+  current_period_end: Date | string | null;
+  plan_key: string;
+  plan_name: string;
+};
+
+/* ============================================================
+   NORMALIZATION
+   ============================================================ */
+
+function normalizeEmail(
+  value: unknown
+): string {
+  if (
+    typeof value !==
+    'string'
+  ) {
     return '';
   }
 
-  return value.trim().toLowerCase();
+  return value
+    .trim()
+    .toLowerCase();
 }
 
-function normalizeName(value: unknown): string {
-  if (typeof value !== 'string') {
+function normalizeName(
+  value: unknown
+): string {
+  if (
+    typeof value !==
+    'string'
+  ) {
     return '';
   }
 
-  return value.trim().replace(/\s+/g, ' ');
+  return value
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
-function normalizePhone(value: unknown): string | null {
-  if (typeof value !== 'string') {
+function normalizePhone(
+  value: unknown
+): string | null {
+  if (
+    typeof value !==
+    'string'
+  ) {
     return null;
   }
 
-  const phone = value.trim();
+  const phone =
+    value.trim();
 
   if (!phone) {
     return null;
   }
 
-  return phone.slice(0, MAX_PHONE_LENGTH);
-}
-
-function normalizePlan(value: unknown): string {
-  if (typeof value !== 'string') {
-    return 'free';
-  }
-
-  return value.trim().toLowerCase();
-}
-
-function normalizeSelectedApps(value: unknown): string[] | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-
-  const normalized = value
-    .filter(
-      (app): app is string =>
-        typeof app === 'string'
-    )
-    .map((app) => app.trim().toLowerCase())
-    .filter(Boolean);
-
-  return [...new Set(normalized)];
-}
-
-/* -------------------------------------------------------------------------- */
-/* Validation                                                                 */
-/* -------------------------------------------------------------------------- */
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function isValidPassword(password: string): boolean {
-  return (
-    password.length >= 8 &&
-    password.length <= 128
+  return phone.slice(
+    0,
+    MAX_PHONE_LENGTH
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Utilities                                                                  */
-/* -------------------------------------------------------------------------- */
+function normalizePlan(
+  value: unknown
+): string {
+  if (
+    typeof value !==
+    'string'
+  ) {
+    return 'free';
+  }
 
-function createSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeSelectedApps(
+  value: unknown
+): string[] | null {
+  if (
+    !Array.isArray(value)
+  ) {
+    return null;
+  }
+
+  const apps =
+    value
+      .filter(
+        (
+          app
+        ): app is string =>
+          typeof app === 'string'
+      )
+      .map(
+        (app) =>
+          app
+            .trim()
+            .toLowerCase()
+      )
+      .filter(Boolean);
+
+  return [
+    ...new Set(apps),
+  ];
+}
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+
+function isValidEmail(
+  email: string
+): boolean {
+  return (
+    email.length > 0 &&
+    email.length <=
+      MAX_EMAIL_LENGTH &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email
+    )
+  );
+}
+
+function isValidPassword(
+  password: string
+): boolean {
+  return (
+    password.length >= 8 &&
+    password.length <=
+      MAX_PASSWORD_LENGTH
+  );
+}
+
+/* ============================================================
+   RESPONSE HELPERS
+   ============================================================ */
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200
+) {
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        'Cache-Control':
+          'no-store, no-cache, must-revalidate',
+
+        Pragma:
+          'no-cache',
+      },
+    }
+  );
+}
+
+function errorResponse(
+  status: number,
+  code: string,
+  error: string,
+  extra: Record<
+    string,
+    unknown
+  > = {}
+) {
+  return jsonResponse(
+    {
+      success: false,
+      code,
+      error,
+      ...extra,
+    },
+    status
+  );
+}
+
+/* ============================================================
+   DATE
+   ============================================================ */
+
+function toIsoString(
+  value:
+    | Date
+    | string
+    | null
+    | undefined
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+/* ============================================================
+   TENANT SLUG
+   ============================================================ */
+
+function createSlug(
+  value: string
+): string {
   return value
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
+    .replace(
+      /[^a-z0-9]+/g,
+      '-'
+    )
+    .replace(
+      /^-+|-+$/g,
+      ''
+    )
+    .slice(
+      0,
+      80
+    );
 }
 
-function generateVerificationCode(): string {
+async function createUniqueTenantSlug(
+  businessName: string
+): Promise<string> {
+  const baseSlug =
+    createSlug(
+      businessName
+    ) ||
+    `workspace-${crypto
+      .randomBytes(4)
+      .toString('hex')}`;
+
+  let slug =
+    baseSlug;
+
+  for (
+    let counter = 1;
+    counter <= 100;
+    counter++
+  ) {
+    const result =
+      await queryControl(
+        `
+          SELECT id
+          FROM tenants
+          WHERE slug = $1
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          slug,
+        ]
+      );
+
+    if (
+      result.rows.length ===
+      0
+    ) {
+      return slug;
+    }
+
+    slug =
+      `${baseSlug}-${counter}`;
+  }
+
+  return `${baseSlug}-${crypto
+    .randomBytes(4)
+    .toString('hex')}`;
+}
+
+/* ============================================================
+   DATABASE ID
+   ============================================================ */
+
+function requireDatabaseId(
+  value: unknown,
+  entityName: string
+): string {
+  if (
+    typeof value !==
+      'string' ||
+    !value.trim()
+  ) {
+    throw new Error(
+      `Invalid ${entityName} ID returned from database.`
+    );
+  }
+
+  return value;
+}
+
+/* ============================================================
+   GOOGLE REGISTRATION
+   ============================================================ */
+
+function hashOpaqueToken(
+  value: string
+): string {
   return crypto
-    .randomInt(100000, 1000000)
+    .createHash('sha256')
+    .update(
+      value,
+      'utf8'
+    )
+    .digest('hex');
+}
+
+function isGoogleRegistration(
+  body: RegistrationBody
+): boolean {
+  return (
+    body.googleAuth ===
+      true ||
+    body.authProvider ===
+      'google'
+  );
+}
+
+async function getGoogleSignupState(
+  request: NextRequest
+): Promise<
+  GoogleSignupRow | null
+> {
+  const rawState =
+    request.cookies.get(
+      GOOGLE_SIGNUP_COOKIE
+    )?.value;
+
+  if (!rawState) {
+    return null;
+  }
+
+  const stateHash =
+    hashOpaqueToken(
+      rawState
+    );
+
+  const result =
+    await queryControl(
+      `
+        SELECT
+          state_hash,
+          google_subject,
+          email,
+          first_name,
+          last_name,
+          avatar_url,
+          expires_at
+
+        FROM google_signup_states
+
+        WHERE state_hash = $1
+          AND expires_at > NOW()
+
+        LIMIT 1
+      `,
+      [
+        stateHash,
+      ]
+    );
+
+  if (
+    result.rows.length ===
+    0
+  ) {
+    return null;
+  }
+
+  return result
+    .rows[0] as GoogleSignupRow;
+}
+
+async function consumeGoogleSignupState(
+  stateHash: string
+) {
+  await queryControl(
+    `
+      DELETE FROM google_signup_states
+      WHERE state_hash = $1
+    `,
+    [
+      stateHash,
+    ]
+  );
+}
+
+function clearGoogleSignupCookie(
+  response: NextResponse
+) {
+  response.cookies.set(
+    GOOGLE_SIGNUP_COOKIE,
+    '',
+    {
+      httpOnly: true,
+
+      secure:
+        process.env.NODE_ENV ===
+        'production',
+
+      sameSite:
+        'lax',
+
+      path: '/',
+
+      maxAge: 0,
+
+      expires:
+        new Date(0),
+    }
+  );
+
+  return response;
+}
+
+/* ============================================================
+   EMAIL VERIFICATION
+   ============================================================ */
+
+function generateVerificationCode():
+  string {
+  return crypto
+    .randomInt(
+      100000,
+      1000000
+    )
     .toString();
 }
 
@@ -203,84 +570,145 @@ function hashVerificationCode(
     .digest('hex');
 }
 
-function requireDatabaseId(
-  value: unknown,
-  entityName: string
-): string {
-  if (
-    typeof value !== 'string' ||
-    value.trim().length === 0
-  ) {
-    throw new Error(
-      `Invalid ${entityName} ID returned from database.`
-    );
-  }
+async function createVerification({
+  email,
+  firstName,
+}: {
+  email: string;
+  firstName: string;
+}): Promise<boolean> {
+  try {
+    const code =
+      generateVerificationCode();
 
-  return value;
-}
+    const codeHash =
+      hashVerificationCode(
+        code
+      );
 
-/* -------------------------------------------------------------------------- */
-/* Tenant slug                                                                */
-/* -------------------------------------------------------------------------- */
+    const expiresAt =
+      new Date(
+        Date.now() +
+          VERIFICATION_EXPIRY_MINUTES *
+            60 *
+            1000
+      );
 
-async function createUniqueTenantSlug(
-  businessName: string
-): Promise<string> {
-  const baseSlug =
-    createSlug(businessName) ||
-    `workspace-${crypto
-      .randomBytes(4)
-      .toString('hex')}`;
-
-  let slug = baseSlug;
-
-  for (let counter = 1; counter <= 100; counter++) {
-    const existingTenant = await queryControl(
+    /*
+     * Invalidate previous unused verification codes.
+     *
+     * We keep their records rather than physically deleting
+     * them.
+     */
+    await queryControl(
       `
-        SELECT id
-        FROM tenants
-        WHERE slug = $1
+        UPDATE email_verifications
+
+        SET
+          used_at = NOW()
+
+        WHERE LOWER(email) = $1
+          AND used_at IS NULL
           AND deleted_at IS NULL
-        LIMIT 1
       `,
-      [slug]
+      [
+        email,
+      ]
     );
 
-    if (existingTenant.rows.length === 0) {
-      return slug;
-    }
+    await queryControl(
+      `
+        INSERT INTO email_verifications (
+          email,
+          code_hash,
+          expires_at,
+          created_at
+        )
 
-    slug = `${baseSlug}-${counter}`;
+        VALUES (
+          $1,
+          $2,
+          $3,
+          NOW()
+        )
+      `,
+      [
+        email,
+        codeHash,
+        expiresAt,
+      ]
+    );
+
+    /*
+     * Email branding remains owned by lib/services/email.ts.
+     */
+    await sendVerificationEmail(
+      email,
+      code,
+      firstName,
+      {
+        expiresInMinutes:
+          VERIFICATION_EXPIRY_MINUTES,
+      }
+    );
+
+    return true;
+  } catch (error) {
+    /*
+     * Registration itself should not be destroyed merely
+     * because email delivery temporarily fails.
+     *
+     * /api/auth/resend-verification can issue another code.
+     */
+    console.error(
+      '[SaMi] Failed to create/send verification email:',
+      error
+    );
+
+    return false;
   }
-
-  return `${baseSlug}-${crypto
-    .randomBytes(4)
-    .toString('hex')}`;
 }
 
-/* -------------------------------------------------------------------------- */
-/* Cleanup                                                                    */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   CLEANUP
+   ============================================================ */
 
 async function cleanupRegistration(
   context: RegistrationContext
 ): Promise<void> {
-  /**
-   * Delete the tenant first because tenant-related rows normally
-   * reference it.
-   *
-   * We explicitly clean dependent records instead of assuming
-   * every Control DB foreign key uses ON DELETE CASCADE.
-   */
+  if (
+    context.tenantId
+  ) {
+    try {
+      await queryControl(
+        `
+          DELETE FROM payment_transactions
+          WHERE tenant_id = $1
+        `,
+        [
+          context.tenantId,
+        ]
+      );
+    } catch (error) {
+      console.error(
+        '[SaMi] Payment cleanup failed:',
+        error
+      );
+    }
+  }
 
-  if (context.subscriptionId) {
+  if (
+    context.subscriptionId
+  ) {
     try {
       await queryControl(
         `
           DELETE FROM subscriptions
           WHERE id = $1
         `,
-        [context.subscriptionId]
+        [
+          context.subscriptionId,
+        ]
       );
     } catch (error) {
       console.error(
@@ -290,80 +718,65 @@ async function cleanupRegistration(
     }
   }
 
-  if (context.tenantId) {
-    try {
-      await queryControl(
-        `
-          DELETE FROM tenant_modules
-          WHERE tenant_id = $1
-        `,
-        [context.tenantId]
-      );
-    } catch (error) {
-      console.error(
-        '[SaMi] Tenant module cleanup failed:',
-        error
-      );
-    }
+  if (
+    context.tenantId
+  ) {
+    const cleanupQueries = [
+      `
+        DELETE FROM tenant_modules
+        WHERE tenant_id = $1
+      `,
+      `
+        DELETE FROM user_roles
+        WHERE tenant_id = $1
+      `,
+      `
+        DELETE FROM tenant_users
+        WHERE tenant_id = $1
+      `,
+      `
+        DELETE FROM tenants
+        WHERE id = $1
+      `,
+    ];
 
-    try {
-      await queryControl(
-        `
-          DELETE FROM user_roles
-          WHERE tenant_id = $1
-        `,
-        [context.tenantId]
-      );
-    } catch (error) {
-      console.error(
-        '[SaMi] User role cleanup failed:',
-        error
-      );
-    }
-
-    try {
-      await queryControl(
-        `
-          DELETE FROM tenant_users
-          WHERE tenant_id = $1
-        `,
-        [context.tenantId]
-      );
-    } catch (error) {
-      console.error(
-        '[SaMi] Tenant membership cleanup failed:',
-        error
-      );
-    }
-
-    try {
-      await queryControl(
-        `
-          DELETE FROM tenants
-          WHERE id = $1
-        `,
-        [context.tenantId]
-      );
-    } catch (error) {
-      console.error(
-        '[SaMi] Tenant cleanup failed:',
-        error
-      );
+    for (
+      const query of
+      cleanupQueries
+    ) {
+      try {
+        await queryControl(
+          query,
+          [
+            context.tenantId,
+          ]
+        );
+      } catch (error) {
+        console.error(
+          '[SaMi] Tenant cleanup failed:',
+          error
+        );
+      }
     }
   }
 
-  if (context.userId) {
+  if (
+    context.userId
+  ) {
     try {
       await queryControl(
         `
           DELETE FROM email_verifications
+
           WHERE email = (
             SELECT email
             FROM users
             WHERE id = $1
           )
         `,
-        [context.userId]
+        [
+          context.userId,
+        ]
       );
     } catch (error) {
       console.error(
@@ -378,7 +791,9 @@ async function cleanupRegistration(
           DELETE FROM users
           WHERE id = $1
         `,
-        [context.userId]
+        [
+          context.userId,
+        ]
       );
     } catch (error) {
       console.error(
@@ -389,174 +804,370 @@ async function cleanupRegistration(
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* POST                                                                       */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   PLAN PRICE
+
+   SaMi billing is per-user.
+   ============================================================ */
+
+function getPerUserMonthlyPrice(
+  plan: string
+): number {
+  if (
+    plan === 'standard'
+  ) {
+    return Number(
+      process.env
+        .PESAPAL_PRICE_STANDARD_MONTHLY ||
+        2000
+    );
+  }
+
+  if (
+    plan === 'custom'
+  ) {
+    return Number(
+      process.env
+        .PESAPAL_PRICE_CUSTOM_MONTHLY ||
+        3340
+    );
+  }
+
+  return 0;
+}
+
+/* ============================================================
+   BILLABLE USERS
+   ============================================================ */
+
+async function getBillableUserCount(
+  tenantId: string
+): Promise<number> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          COUNT(*)::int AS count
+
+        FROM tenant_users
+
+        WHERE tenant_id = $1
+          AND status = 'active'
+      `,
+      [
+        tenantId,
+      ]
+    );
+
+  const count =
+    Number(
+      result.rows[0]?.count
+    );
+
+  if (
+    !Number.isFinite(count) ||
+    count < 1
+  ) {
+    return 1;
+  }
+
+  return count;
+}
+
+/* ============================================================
+   LOAD FINAL SUBSCRIPTION
+   ============================================================ */
+
+async function getSubscriptionForResponse(
+  subscriptionId: string
+): Promise<
+  SubscriptionResponseRow | null
+> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          s.id,
+          s.status,
+          s.started_at,
+          s.trial_ends_at,
+          s.current_period_start,
+          s.current_period_end,
+
+          p.key AS plan_key,
+          p.name AS plan_name
+
+        FROM subscriptions s
+
+        INNER JOIN plans p
+          ON p.id = s.plan_id
+
+        WHERE s.id = $1
+          AND s.deleted_at IS NULL
+          AND p.deleted_at IS NULL
+
+        LIMIT 1
+      `,
+      [
+        subscriptionId,
+      ]
+    );
+
+  return (
+    result.rows[0] ||
+    null
+  );
+}
+
+/* ============================================================
+   POST /api/auth/register
+   ============================================================ */
 
 export async function POST(
   request: NextRequest
 ) {
-  const context: RegistrationContext = {
-    userId: null,
-    tenantId: null,
-    subscriptionId: null,
-  };
+  const context:
+    RegistrationContext = {
+      userId: null,
+      tenantId: null,
+      subscriptionId: null,
+    };
 
   try {
-    /* ---------------------------------------------------------------------- */
-    /* Parse request                                                          */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       1. REQUEST
+       ======================================================== */
 
-    let body: RegistrationBody;
+    let body:
+      RegistrationBody;
 
     try {
-      const parsed = await request.json();
+      const parsed:
+        unknown =
+        await request.json();
 
       if (
         !parsed ||
-        typeof parsed !== 'object' ||
+        typeof parsed !==
+          'object' ||
         Array.isArray(parsed)
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Invalid request body.',
-          },
-          { status: 400 }
+        return errorResponse(
+          400,
+          'INVALID_REQUEST',
+          'Invalid request body.'
         );
       }
 
-      body = parsed as RegistrationBody;
+      body =
+        parsed as RegistrationBody;
     } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid request body.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'INVALID_REQUEST',
+        'Invalid request body.'
       );
     }
 
-    /* ---------------------------------------------------------------------- */
-    /* Extract fields                                                         */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       2. AUTH PROVIDER
+       ======================================================== */
 
-    const firstName = normalizeName(
-      body.firstName
-    );
+    const googleRegistration =
+      isGoogleRegistration(
+        body
+      );
 
-    const lastName = normalizeName(
-      body.lastName
-    );
+    let googleSignup:
+      GoogleSignupRow | null =
+      null;
 
-    const email = normalizeEmail(
-      body.email
-    );
+    if (
+      googleRegistration
+    ) {
+      googleSignup =
+        await getGoogleSignupState(
+          request
+        );
 
-    const phone = normalizePhone(
-      body.phone
-    );
+      if (
+        !googleSignup
+      ) {
+        return errorResponse(
+          400,
+          'GOOGLE_SIGNUP_EXPIRED',
+          'Your Google registration has expired. Please start again.'
+        );
+      }
+
+      if (
+        !googleSignup.google_subject
+      ) {
+        return errorResponse(
+          400,
+          'GOOGLE_SIGNUP_INVALID',
+          'Google registration could not be verified.'
+        );
+      }
+    }
+
+    /* ========================================================
+       3. ACCOUNT DATA
+       ======================================================== */
+
+    let firstName =
+      normalizeName(
+        body.firstName
+      );
+
+    let lastName =
+      normalizeName(
+        body.lastName
+      );
+
+    let email =
+      normalizeEmail(
+        body.email
+      );
+
+    const phone =
+      normalizePhone(
+        body.phone
+      );
+
+    const businessName =
+      normalizeName(
+        body.businessName
+      );
 
     const password =
-      typeof body.password === 'string'
+      typeof body.password ===
+      'string'
         ? body.password
         : '';
 
-    const businessName = normalizeName(
-      body.businessName
-    );
+    if (
+      googleSignup
+    ) {
+      /*
+       * Google identity values come from the authenticated
+       * server-side OAuth state, never from sessionStorage.
+       */
+      email =
+        normalizeEmail(
+          googleSignup.email
+        );
 
-    const requestedPlan = normalizePlan(
-      body.plan
-    );
+      firstName =
+        normalizeName(
+          googleSignup.first_name
+        ) ||
+        firstName;
+
+      lastName =
+        normalizeName(
+          googleSignup.last_name
+        ) ||
+        lastName;
+    }
+
+    const requestedPlan =
+      normalizePlan(
+        body.plan
+      );
 
     const selectedApps =
       normalizeSelectedApps(
         body.selectedApps
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* Basic validation                                                       */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       4. VALIDATION
+       ======================================================== */
 
     if (
       !firstName ||
       !lastName ||
       !email ||
-      !password ||
       !businessName
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'First name, last name, email, password and business name are required.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'REQUIRED_FIELDS_MISSING',
+        'First name, last name, email and business name are required.'
       );
     }
 
     if (
-      firstName.length > MAX_NAME_LENGTH ||
-      lastName.length > MAX_NAME_LENGTH
+      !googleRegistration &&
+      !password
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Name fields are too long.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'PASSWORD_REQUIRED',
+        'Password is required.'
       );
     }
 
-    if (!isValidEmail(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Please enter a valid email address.',
-        },
-        { status: 400 }
+    if (
+      firstName.length >
+        MAX_NAME_LENGTH ||
+      lastName.length >
+        MAX_NAME_LENGTH
+    ) {
+      return errorResponse(
+        400,
+        'NAME_TOO_LONG',
+        'Name fields are too long.'
       );
     }
 
-    if (!isValidPassword(password)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Password must be between 8 and 128 characters.',
-        },
-        { status: 400 }
+    if (
+      !isValidEmail(
+        email
+      )
+    ) {
+      return errorResponse(
+        400,
+        'INVALID_EMAIL',
+        'Please enter a valid email address.'
+      );
+    }
+
+    if (
+      !googleRegistration &&
+      !isValidPassword(
+        password
+      )
+    ) {
+      return errorResponse(
+        400,
+        'PASSWORD_WEAK',
+        'Password must be between 8 and 128 characters.'
       );
     }
 
     if (
       businessName.length < 2 ||
-      businessName.length > MAX_NAME_LENGTH
+      businessName.length >
+        MAX_NAME_LENGTH
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Business name must be between 2 and 120 characters.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'INVALID_BUSINESS_NAME',
+        'Business name must be between 2 and 120 characters.'
       );
     }
 
     if (
       selectedApps === null ||
-      selectedApps.length === 0
+      selectedApps.length ===
+        0
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Please select at least one SaMi app.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'APPS_REQUIRED',
+        'Please select at least one SaMi app.'
       );
     }
 
@@ -564,232 +1175,376 @@ export async function POST(
       selectedApps.length >
       MAX_SELECTED_APPS
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Too many apps selected.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'TOO_MANY_APPS',
+        'Too many apps selected.'
       );
     }
 
     if (
-      !ALLOWED_PLANS.has(requestedPlan)
+      !ALLOWED_PLANS.has(
+        requestedPlan
+      )
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'Invalid subscription plan.',
-        },
-        { status: 400 }
+      return errorResponse(
+        400,
+        'INVALID_PLAN',
+        'Invalid subscription plan.'
       );
     }
 
-    /* ---------------------------------------------------------------------- */
-    /* Existing user check                                                    */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       5. EXISTING USER
+       ======================================================== */
 
-    const existingUser = await queryControl(
-      `
-        SELECT
-          id,
+    const existingUser =
+      await queryControl(
+        `
+          SELECT
+            id,
+            email,
+            status,
+            email_verified_at,
+            deleted_at
+
+          FROM users
+
+          WHERE LOWER(email) = $1
+
+          LIMIT 1
+        `,
+        [
           email,
-          status,
-          email_verified_at,
-          deleted_at
-        FROM users
-        WHERE LOWER(email) = $1
-        LIMIT 1
-      `,
-      [email]
-    );
+        ]
+      );
 
-    if (existingUser.rows.length > 0) {
+    if (
+      existingUser.rows
+        .length >
+      0
+    ) {
       const existing =
         existingUser.rows[0];
 
-      if (existing.deleted_at) {
-        return NextResponse.json(
-          {
-            success: false,
-            code:
-              'ACCOUNT_PREVIOUSLY_DELETED',
-            error:
-              'An account previously associated with this email exists. Please contact SaMi support.',
-          },
-          { status: 409 }
+      if (
+        existing.deleted_at
+      ) {
+        return errorResponse(
+          409,
+          'ACCOUNT_PREVIOUSLY_DELETED',
+          'An account previously associated with this email exists. Please contact SaMi support.'
         );
       }
 
       if (
-        !existing.email_verified_at &&
+        !existing
+          .email_verified_at &&
         (
           existing.status ===
             'pending_verification' ||
-          existing.status === 'pending'
+          existing.status ===
+            'pending'
         )
       ) {
-        return NextResponse.json(
-          {
-            success: false,
-            code:
-              'EMAIL_VERIFICATION_REQUIRED',
-            error:
-              'An account with this email already exists and is awaiting email verification.',
-          },
-          { status: 409 }
+        return errorResponse(
+          409,
+          'EMAIL_VERIFICATION_REQUIRED',
+          'An account with this email already exists and is awaiting email verification.'
         );
       }
 
-      return NextResponse.json(
-        {
-          success: false,
-          code:
-            'EMAIL_ALREADY_REGISTERED',
-          error:
-            'An account with this email already exists.',
-        },
-        { status: 409 }
+      return errorResponse(
+        409,
+        'EMAIL_ALREADY_REGISTERED',
+        'An account with this email already exists.'
       );
     }
 
-    /* ---------------------------------------------------------------------- */
-    /* Validate modules against Control DB                                    */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       6. VALIDATE APPS
+       ======================================================== */
 
-    const moduleResult = await queryControl(
-      `
-        SELECT
-          id,
-          key,
-          name,
-          version,
-          status
-        FROM modules
-        WHERE key = ANY($1::text[])
-          AND deleted_at IS NULL
-      `,
-      [selectedApps]
-    );
+    const moduleResult =
+      await queryControl(
+        `
+          SELECT
+            id,
+            key,
+            name,
+            version,
+            status
+
+          FROM modules
+
+          WHERE key =
+            ANY($1::text[])
+
+            AND deleted_at IS NULL
+            AND status = 'active'
+        `,
+        [
+          selectedApps,
+        ]
+      );
 
     const moduleRows =
-      moduleResult.rows as ModuleRow[];
-
-    const validApps = moduleRows
-      .map((row) => String(row.key))
-      .filter(Boolean);
+      moduleResult
+        .rows as ModuleRow[];
 
     const validAppSet =
-      new Set(validApps);
+      new Set(
+        moduleRows
+          .map(
+            (row) =>
+              String(row.key)
+          )
+          .filter(Boolean)
+      );
 
     const invalidApps =
       selectedApps.filter(
         (appKey) =>
-          !validAppSet.has(appKey)
+          !validAppSet.has(
+            appKey
+          )
       );
 
-    if (invalidApps.length > 0) {
-      return NextResponse.json(
+    if (
+      invalidApps.length >
+      0
+    ) {
+      return errorResponse(
+        400,
+        'INVALID_SELECTED_APPS',
+        'One or more selected SaMi apps are unavailable.',
         {
-          success: false,
-          code: 'INVALID_SELECTED_APPS',
-          error:
-            'One or more selected SaMi apps are unavailable.',
           invalidApps,
-        },
-        { status: 400 }
+        }
       );
     }
 
-    /* ---------------------------------------------------------------------- */
-    /* Determine final plan                                                   */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       7. FINAL PLAN
 
-    /**
-     * Server-side business rule.
-     *
-     * One app:
-     *   respect requested plan.
-     *
-     * Multiple apps:
-     *   Standard is required.
-     *
-     * This prevents a modified frontend request from bypassing
-     * the current pricing/application rule.
-     */
+       Free supports only one business app.
 
-    const requiresPayment =
-      selectedApps.length > 1;
+       Selecting multiple apps while Free is selected upgrades
+       the workspace to Standard.
 
-    const finalPlan = requiresPayment
-      ? 'standard'
-      : requestedPlan;
+       Explicit Custom is never downgraded.
+       ======================================================== */
 
-    /* ---------------------------------------------------------------------- */
-    /* Password hash                                                          */
-    /* ---------------------------------------------------------------------- */
+    const finalPlan =
+      requestedPlan ===
+        'free' &&
+      selectedApps.length >
+        1
+        ? 'standard'
+        : requestedPlan;
 
-    const passwordHash =
-      await bcrypt.hash(
-        password,
-        BCRYPT_ROUNDS
+    const isPaidPlan =
+      finalPlan !==
+      'free';
+
+    /* ========================================================
+       8. LOAD PLAN
+       ======================================================== */
+
+    const planResult =
+      await queryControl(
+        `
+          SELECT
+            id,
+            key,
+            name,
+            included_apps
+
+          FROM plans
+
+          WHERE key = $1
+            AND deleted_at IS NULL
+
+          LIMIT 1
+        `,
+        [
+          finalPlan,
+        ]
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* Unique tenant slug                                                     */
-    /* ---------------------------------------------------------------------- */
+    if (
+      planResult.rows
+        .length ===
+      0
+    ) {
+      throw new Error(
+        `Subscription plan "${finalPlan}" is not configured.`
+      );
+    }
+
+    const plan =
+      planResult
+        .rows[0] as PlanRow;
+
+    const planId =
+      requireDatabaseId(
+        plan.id,
+        'subscription plan'
+      );
+
+    /* ========================================================
+       9. PLAN APP LIMIT
+       ======================================================== */
+
+    if (
+      plan.included_apps !==
+        null &&
+      plan.included_apps !==
+        undefined
+    ) {
+      const includedApps =
+        Number(
+          plan.included_apps
+        );
+
+      if (
+        !Number.isFinite(
+          includedApps
+        )
+      ) {
+        throw new Error(
+          `Plan "${finalPlan}" has invalid included_apps configuration.`
+        );
+      }
+
+      /*
+       * -1 = unlimited.
+       */
+      if (
+        includedApps >= 0 &&
+        selectedApps.length >
+          includedApps
+      ) {
+        return errorResponse(
+          400,
+          'PLAN_APP_LIMIT_EXCEEDED',
+          'The selected apps exceed this plan’s allowance.',
+          {
+            plan:
+              finalPlan,
+
+            includedApps,
+
+            selectedApps:
+              selectedApps.length,
+          }
+        );
+      }
+    }
+
+    /* ========================================================
+       10. PASSWORD HASH
+       ======================================================== */
+
+    const passwordSecret =
+      googleRegistration
+        ? crypto
+            .randomBytes(64)
+            .toString(
+              'base64url'
+            )
+        : password;
+
+    const passwordHash =
+      await hashPassword(
+        passwordSecret
+      );
+
+    /* ========================================================
+       11. WORKSPACE SLUG
+       ======================================================== */
 
     const slug =
       await createUniqueTenantSlug(
         businessName
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* CREATE USER                                                             */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       12. CREATE USER
+       ======================================================== */
 
-    const userResult = await queryControl(
-      `
-        INSERT INTO users (
+    const emailAlreadyVerified =
+      googleRegistration;
+
+    const userStatus =
+      googleRegistration
+        ? 'active'
+        : 'pending_verification';
+
+    const userResult =
+      await queryControl(
+        `
+          INSERT INTO users (
+            email,
+            password_hash,
+            first_name,
+            last_name,
+            full_name,
+            phone,
+            status,
+            email_verified,
+            email_verified_at,
+            created_at,
+            updated_at
+          )
+
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+
+            CASE
+              WHEN $8::boolean
+              THEN NOW()
+              ELSE NULL
+            END,
+
+            NOW(),
+            NOW()
+          )
+
+          RETURNING
+            id,
+            email
+        `,
+        [
           email,
-          password_hash,
-          first_name,
-          last_name,
-          full_name,
+
+          passwordHash,
+
+          firstName,
+
+          lastName,
+
+          `${firstName} ${lastName}`,
+
           phone,
-          status,
-          email_verified_at,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          'pending_verification',
-          NULL,
-          NOW(),
-          NOW()
-        )
-        RETURNING id, email
-      `,
-      [
-        email,
-        passwordHash,
-        firstName,
-        lastName,
-        `${firstName} ${lastName}`,
-        phone,
-      ]
-    );
+
+          userStatus,
+
+          emailAlreadyVerified,
+        ]
+      );
 
     if (
-      userResult.rows.length === 0
+      userResult.rows
+        .length ===
+      0
     ) {
       throw new Error(
         'User was not created by the database.'
@@ -798,18 +1553,19 @@ export async function POST(
 
     context.userId =
       requireDatabaseId(
-        userResult.rows[0].id,
+        userResult
+          .rows[0].id,
         'user'
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* CREATE TENANT                                                           */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       13. CREATE WORKSPACE
 
-    const tenantStatus =
-      requiresPayment
-        ? 'pending_payment'
-        : 'provisioning';
+       Paid workspaces are NOT pending_payment anymore.
+
+       They are provisioned immediately because the first
+       month is genuinely free.
+       ======================================================== */
 
     const tenantResult =
       await queryControl(
@@ -821,24 +1577,27 @@ export async function POST(
             created_at,
             updated_at
           )
+
           VALUES (
             $1,
             $2,
-            $3,
+            'provisioning',
             NOW(),
             NOW()
           )
+
           RETURNING id
         `,
         [
           businessName,
           slug,
-          tenantStatus,
         ]
       );
 
     if (
-      tenantResult.rows.length === 0
+      tenantResult.rows
+        .length ===
+      0
     ) {
       throw new Error(
         'Tenant was not created by the database.'
@@ -847,13 +1606,14 @@ export async function POST(
 
     context.tenantId =
       requireDatabaseId(
-        tenantResult.rows[0].id,
+        tenantResult
+          .rows[0].id,
         'tenant'
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* OWNER MEMBERSHIP                                                       */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       14. OWNER MEMBERSHIP
+       ======================================================== */
 
     await queryControl(
       `
@@ -864,11 +1624,12 @@ export async function POST(
           is_owner,
           created_at
         )
+
         VALUES (
           $1,
           $2,
           'active',
-          true,
+          TRUE,
           NOW()
         )
       `,
@@ -878,23 +1639,42 @@ export async function POST(
       ]
     );
 
-    /* ---------------------------------------------------------------------- */
-    /* ADMIN ROLE                                                             */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       15. ADMIN ROLE
+       ======================================================== */
 
     const roleResult =
       await queryControl(
         `
           SELECT id
+
           FROM roles
-          WHERE name = 'admin'
-            AND is_system = true
+
+          WHERE is_system = TRUE
+            AND deleted_at IS NULL
+
+            AND (
+              LOWER(
+                COALESCE(
+                  key,
+                  ''
+                )
+              ) = 'admin'
+
+              OR
+
+              LOWER(name) =
+                'admin'
+            )
+
           LIMIT 1
         `
       );
 
     if (
-      roleResult.rows.length === 0
+      roleResult.rows
+        .length ===
+      0
     ) {
       throw new Error(
         'System administrator role is not configured.'
@@ -903,7 +1683,8 @@ export async function POST(
 
     const roleId =
       requireDatabaseId(
-        roleResult.rows[0].id,
+        roleResult
+          .rows[0].id,
         'admin role'
       );
 
@@ -915,6 +1696,7 @@ export async function POST(
           role_id,
           created_at
         )
+
         VALUES (
           $1,
           $2,
@@ -929,63 +1711,22 @@ export async function POST(
       ]
     );
 
-    /* ---------------------------------------------------------------------- */
-    /* LOAD PLAN                                                               */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       16. CREATE SUBSCRIPTION
 
-    const planResult =
-      await queryControl(
-        `
-          SELECT
-            id,
-            key,
-            name,
-            included_apps
-          FROM plans
-          WHERE key = $1
-            AND deleted_at IS NULL
-          LIMIT 1
-        `,
-        [finalPlan]
-      );
+       PAID:
+         trialing immediately
+         trial = one calendar month
 
-    if (
-      planResult.rows.length === 0
-    ) {
-      throw new Error(
-        `Subscription plan "${finalPlan}" is not configured.`
-      );
-    }
+       FREE:
+         pending while workspace provisions
+         active immediately after provisioning
+       ======================================================== */
 
-    const plan =
-      planResult.rows[0] as PlanRow;
-
-    const planId =
-      requireDatabaseId(
-        plan.id,
-        'subscription plan'
-      );
-
-    /* ---------------------------------------------------------------------- */
-    /* CREATE SUBSCRIPTION                                                    */
-    /* ---------------------------------------------------------------------- */
-
-    const subscriptionStatus =
-      requiresPayment
-        ? 'pending_payment'
+    const initialSubscriptionStatus =
+      isPaidPlan
+        ? 'trialing'
         : 'pending';
-
-    const trialEndsAt =
-      requiresPayment
-        ? null
-        : new Date(
-            Date.now() +
-              TRIAL_DAYS *
-                24 *
-                60 *
-                60 *
-                1000
-          );
 
     const subscriptionResult =
       await queryControl(
@@ -997,31 +1738,58 @@ export async function POST(
             started_at,
             trial_ends_at,
             current_period_start,
+            current_period_end,
             created_at,
             updated_at
           )
+
           VALUES (
             $1,
             $2,
             $3,
+
             NOW(),
-            $4,
+
+            CASE
+              WHEN $4::boolean
+              THEN NOW() + INTERVAL '1 month'
+              ELSE NULL
+            END,
+
             NOW(),
+
+            CASE
+              WHEN $4::boolean
+              THEN NOW() + INTERVAL '1 month'
+              ELSE NULL
+            END,
+
             NOW(),
             NOW()
           )
-          RETURNING id
+
+          RETURNING
+            id,
+            status,
+            started_at,
+            trial_ends_at,
+            current_period_start,
+            current_period_end
         `,
         [
           context.tenantId,
+
           planId,
-          subscriptionStatus,
-          trialEndsAt,
+
+          initialSubscriptionStatus,
+
+          isPaidPlan,
         ]
       );
 
     if (
-      subscriptionResult.rows.length ===
+      subscriptionResult.rows
+        .length ===
       0
     ) {
       throw new Error(
@@ -1031,15 +1799,19 @@ export async function POST(
 
     context.subscriptionId =
       requireDatabaseId(
-        subscriptionResult.rows[0].id,
+        subscriptionResult
+          .rows[0].id,
         'subscription'
       );
 
-    /* ---------------------------------------------------------------------- */
-    /* RESERVE SELECTED MODULES                                               */
-    /* ---------------------------------------------------------------------- */
+    /* ========================================================
+       17. RESERVE APPS
+       ======================================================== */
 
-    for (const row of moduleRows) {
+    for (
+      const row of
+      moduleRows
+    ) {
       const moduleId =
         requireDatabaseId(
           row.id,
@@ -1061,6 +1833,7 @@ export async function POST(
             status,
             installed_at
           )
+
           VALUES (
             $1,
             $2,
@@ -1068,6 +1841,7 @@ export async function POST(
             'pending',
             NULL
           )
+
           ON CONFLICT DO NOTHING
         `,
         [
@@ -1078,195 +1852,410 @@ export async function POST(
       );
     }
 
-    /* ====================================================================== */
-    /* FREE PLAN                                                              */
-    /* ====================================================================== */
+    /* ========================================================
+       18. CONSUME GOOGLE SIGNUP STATE
 
-    if (!requiresPayment) {
-      let provisioningSucceeded =
-        false;
+       Core registration now exists.
 
-      try {
+       Consume the OAuth signup state before starting physical
+       workspace provisioning so the state cannot be replayed.
+       ======================================================== */
+
+    if (
+      googleSignup
+    ) {
+      await consumeGoogleSignupState(
+        googleSignup.state_hash
+      );
+    }
+
+    /* ========================================================
+       19. PROVISION WORKSPACE IMMEDIATELY
+
+       This applies equally to:
+       - Free
+       - Standard trial
+       - Custom trial
+
+       Paid customers do NOT wait for PesaPal anymore.
+       ======================================================== */
+
+    let provisioningSucceeded =
+      false;
+
+    try {
+      const result =
         await provisionTenant(
           context.tenantId,
           selectedApps
         );
 
-        provisioningSucceeded = true;
-
-        console.log(
-          `[SaMi] Tenant ${context.tenantId} provisioned successfully.`
-        );
-      } catch (provisionError) {
-        /**
-         * Important:
-         *
-         * Do NOT pretend the tenant is active when provisioning
-         * failed.
-         *
-         * The account can still exist so that an administrator or
-         * recovery worker can provision it later.
-         */
-
-        console.error(
-          '[SaMi] Tenant provisioning failed:',
-          provisionError
-        );
-
-        await queryControl(
-          `
-            UPDATE tenants
-            SET
-              status = 'provisioning_failed',
-              updated_at = NOW()
-            WHERE id = $1
-          `,
-          [context.tenantId]
-        );
-      }
-
-      if (provisioningSucceeded) {
-        await queryControl(
-          `
-            UPDATE tenants
-            SET
-              status = 'active',
-              updated_at = NOW()
-            WHERE id = $1
-          `,
-          [context.tenantId]
-        );
-
-        await queryControl(
-          `
-            UPDATE tenant_modules
-            SET
-              status = 'installed',
-              installed_at = NOW()
-            WHERE tenant_id = $1
-              AND status = 'pending'
-          `,
-          [context.tenantId]
-        );
-
-        if (context.subscriptionId) {
-          await queryControl(
-            `
-              UPDATE subscriptions
-              SET
-                status = 'active',
-                updated_at = NOW()
-              WHERE id = $1
-                AND status = 'pending'
-            `,
-            [context.subscriptionId]
-          );
-        }
-      }
-
-      /* -------------------------------------------------------------------- */
-      /* Generate email verification code                                     */
-      /* -------------------------------------------------------------------- */
-
-      const verificationCode =
-        generateVerificationCode();
-
-      const verificationHash =
-        hashVerificationCode(
-          verificationCode
-        );
-
-      const verificationExpiresAt =
-        new Date(
-          Date.now() +
-            VERIFICATION_EXPIRY_MINUTES *
-              60 *
-              1000
-        );
-
-      /* -------------------------------------------------------------------- */
-      /* Remove previous verification codes                                   */
-      /* -------------------------------------------------------------------- */
-
-      await queryControl(
-        `
-          DELETE FROM email_verifications
-          WHERE email = $1
-        `,
-        [email]
+      provisioningSucceeded =
+        Boolean(
+          result.success
+        ) &&
+        result.appsFailed
+          .length ===
+          0 &&
+        result.appsInstalled
+          .length ===
+          selectedApps.length;
+    } catch (error) {
+      console.error(
+        '[SaMi] Workspace provisioning failed:',
+        error
       );
 
-      /* -------------------------------------------------------------------- */
-      /* Store verification code                                              */
-      /* -------------------------------------------------------------------- */
+      provisioningSucceeded =
+        false;
+    }
 
+    /* ========================================================
+       20. FINAL WORKSPACE / SUBSCRIPTION STATE
+       ======================================================== */
+
+    if (
+      provisioningSucceeded
+    ) {
       await queryControl(
         `
-          INSERT INTO email_verifications (
-            email,
-            code_hash,
-            expires_at,
-            created_at
-          )
-          VALUES (
-            $1,
-            $2,
-            $3,
-            NOW()
-          )
+          UPDATE tenants
+
+          SET
+            status = 'active',
+            updated_at = NOW()
+
+          WHERE id = $1
+            AND deleted_at IS NULL
         `,
         [
-          email,
-          verificationHash,
-          verificationExpiresAt,
+          context.tenantId,
         ]
       );
 
-      /* -------------------------------------------------------------------- */
-      /* Send verification email                                              */
-      /* -------------------------------------------------------------------- */
+      await queryControl(
+        `
+          UPDATE tenant_modules
 
-      let verificationEmailSent =
-        false;
+          SET
+            status = 'installed',
+            installed_at =
+              COALESCE(
+                installed_at,
+                NOW()
+              )
 
-      try {
-        await sendVerificationEmail(
-          email,
-          verificationCode,
-          firstName
+          WHERE tenant_id = $1
+            AND status = 'pending'
+        `,
+        [
+          context.tenantId,
+        ]
+      );
+
+      if (
+        isPaidPlan
+      ) {
+        /*
+         * Paid subscription remains TRIALING.
+         *
+         * Do NOT:
+         * - activate it
+         * - remove trial_ends_at
+         * - call PesaPal
+         * - create payment_transactions
+         */
+        await queryControl(
+          `
+            UPDATE subscriptions
+
+            SET
+              status = 'trialing',
+              updated_at = NOW()
+
+            WHERE id = $1
+              AND deleted_at IS NULL
+          `,
+          [
+            context.subscriptionId,
+          ]
         );
+      } else {
+        await queryControl(
+          `
+            UPDATE subscriptions
 
-        verificationEmailSent = true;
+            SET
+              status = 'active',
+              trial_ends_at = NULL,
+              current_period_end = NULL,
+              updated_at = NOW()
 
-        console.log(
-          `[SaMi] Verification email sent to ${email}.`
-        );
-      } catch (emailError) {
-        console.error(
-          '[SaMi] Failed to send verification email:',
-          emailError
+            WHERE id = $1
+              AND deleted_at IS NULL
+          `,
+          [
+            context.subscriptionId,
+          ]
         );
       }
+    } else {
+      await queryControl(
+        `
+          UPDATE tenants
 
-      /* -------------------------------------------------------------------- */
-      /* FREE RESPONSE                                                        */
-      /* -------------------------------------------------------------------- */
+          SET
+            status =
+              'provisioning_failed',
 
-      return NextResponse.json(
+            updated_at =
+              NOW()
+
+          WHERE id = $1
+            AND deleted_at IS NULL
+        `,
+        [
+          context.tenantId,
+        ]
+      );
+
+      await queryControl(
+        `
+          UPDATE subscriptions
+
+          SET
+            status =
+              'provisioning_failed',
+
+            updated_at =
+              NOW()
+
+          WHERE id = $1
+            AND deleted_at IS NULL
+        `,
+        [
+          context.subscriptionId,
+        ]
+      );
+    }
+
+    /* ========================================================
+       21. EMAIL VERIFICATION
+
+       Google identity is already verified.
+
+       Email/password registrations receive their verification
+       code immediately.
+
+       There is no PesaPal gate before verification anymore.
+       ======================================================== */
+
+    let verificationEmailSent =
+      false;
+
+    if (
+      !googleRegistration
+    ) {
+      verificationEmailSent =
+        await createVerification({
+          email,
+          firstName,
+        });
+    }
+
+    /* ========================================================
+       22. BILLABLE USERS / PRICE
+
+       Backend remains authoritative.
+
+       At initial signup this will normally be 1, but we count
+       actual active tenant memberships rather than trusting
+       the browser.
+       ======================================================== */
+
+    const billableUsers =
+      await getBillableUserCount(
+        context.tenantId
+      );
+
+    const perUserMonthlyPrice =
+      getPerUserMonthlyPrice(
+        finalPlan
+      );
+
+    if (
+      isPaidPlan &&
+      (
+        !Number.isFinite(
+          perUserMonthlyPrice
+        ) ||
+        perUserMonthlyPrice <=
+          0
+      )
+    ) {
+      throw new Error(
+        `Invalid per-user monthly price configured for "${finalPlan}".`
+      );
+    }
+
+    const monthlyAmount =
+      isPaidPlan
+        ? perUserMonthlyPrice *
+          billableUsers
+        : 0;
+
+    /* ========================================================
+       23. AUTHORITATIVE FINAL SUBSCRIPTION
+       ======================================================== */
+
+    const subscription =
+      await getSubscriptionForResponse(
+        context.subscriptionId
+      );
+
+    if (!subscription) {
+      throw new Error(
+        'Created subscription could not be loaded.'
+      );
+    }
+
+    const trialEndsAt =
+      toIsoString(
+        subscription.trial_ends_at
+      );
+
+    const currentPeriodStart =
+      toIsoString(
+        subscription
+          .current_period_start
+      );
+
+    const currentPeriodEnd =
+      toIsoString(
+        subscription
+          .current_period_end
+      );
+
+    /* ========================================================
+       24. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
+
+       This is intentionally separate from email verification.
+
+       EMAIL/PASSWORD:
+       - verification email
+       - subscription/plan confirmation email
+
+       GOOGLE:
+       - Google identity is already verified
+       - subscription/plan confirmation email only
+
+       IMPORTANT:
+       Email delivery must never roll back an otherwise
+       successful registration.
+       ======================================================== */
+
+    try {
+      await sendSubscriptionConfirmationEmail({
+        email,
+
+        firstName,
+
+        businessName,
+
+        plan:
+          finalPlan as SaMiRegistrationPlan,
+
+        pricePerUserMonthly:
+          perUserMonthlyPrice,
+
+        billableUsers,
+
+        amountDueToday:
+          0,
+
+        currency:
+          BILLING_CURRENCY,
+
+        firstBillingAt:
+          isPaidPlan
+            ? trialEndsAt
+            : null,
+
+        workspaceReady:
+          provisioningSucceeded,
+      });
+    } catch (error) {
+      console.error(
+        '[SaMi] Subscription confirmation email failed:',
+        error
+      );
+    }
+
+    /* ========================================================
+       25. RESPONSE
+       ======================================================== */
+
+    const response =
+      jsonResponse(
         {
           success: true,
-          requiresPayment: false,
+
+          code:
+            provisioningSucceeded
+              ? 'REGISTRATION_SUCCESS'
+              : 'REGISTRATION_PROVISIONING_FAILED',
+
+          /*
+           * There is no payment during signup.
+           *
+           * Existing UI can use this field to avoid redirecting
+           * to PesaPal.
+           */
+          requiresPayment:
+            false,
+
+          paymentRequiredNow:
+            false,
+
+          billingSetupRequired:
+            false,
+
+          billingSetupRequiredNow:
+            false,
+
+          billingSetupRequiredAtTrialEnd:
+            isPaidPlan,
+
+          firstMonthFree:
+            isPaidPlan,
+
+          amountDueToday:
+            0,
 
           user: {
-            id: context.userId,
+            id:
+              context.userId,
+
             email,
-            emailVerified: false,
+
+            emailVerified:
+              googleRegistration,
+
+            authProvider:
+              googleRegistration
+                ? 'google'
+                : 'email',
           },
 
           tenant: {
-            id: context.tenantId,
-            name: businessName,
+            id:
+              context.tenantId,
+
+            name:
+              businessName,
+
             slug,
+
             status:
               provisioningSucceeded
                 ? 'active'
@@ -1274,180 +2263,142 @@ export async function POST(
           },
 
           subscription: {
-            id: context.subscriptionId,
-            plan: finalPlan,
+            id:
+              context.subscriptionId,
+
+            plan:
+              finalPlan,
+
+            planName:
+              subscription.plan_name,
+
             status:
-              provisioningSucceeded
-                ? 'active'
-                : 'pending',
-            trialDays: TRIAL_DAYS,
+              subscription.status,
+
+            billingCycle:
+              isPaidPlan
+                ? 'monthly'
+                : null,
+
+            firstMonthFree:
+              isPaidPlan,
+
+            trialMonths:
+              isPaidPlan
+                ? PAID_TRIAL_MONTHS
+                : 0,
+
+            startedAt:
+              toIsoString(
+                subscription
+                  .started_at
+              ),
+
+            trialEndsAt,
+
+            currentPeriodStart,
+
+            currentPeriodEnd,
+
+            /*
+             * This is when the first paid billing cycle becomes
+             * due.
+             *
+             * It is NOT a PesaPal payment created today.
+             */
+            firstBillingAt:
+              isPaidPlan
+                ? trialEndsAt
+                : null,
+
+            amountDueToday:
+              0,
+
+            perUserMonthlyPrice,
+
+            billableUsers,
+
+            monthlyAmount,
+
+            currency:
+              BILLING_CURRENCY,
+
+            paymentMethodOnFile:
+              false,
+
+            recurringBillingEnrolled:
+              false,
           },
 
           selectedApps,
 
           verification: {
-            required: true,
+            required:
+              !googleRegistration,
+
             email,
+
             expiresInMinutes:
-              VERIFICATION_EXPIRY_MINUTES,
+              googleRegistration
+                ? null
+                : VERIFICATION_EXPIRY_MINUTES,
+
             emailSent:
-              verificationEmailSent,
+              googleRegistration
+                ? false
+                : verificationEmailSent,
           },
 
+          next:
+            googleRegistration
+              ? (
+                  provisioningSucceeded
+                    ? '/login?google=registered'
+                    : '/login?workspace=preparing'
+                )
+              : `/verify-email?email=${encodeURIComponent(
+                  email
+                )}`,
+
           message:
-            provisioningSucceeded
-              ? 'Account created. We sent a verification code to your email. Please verify your email to login.'
-              : 'Account created. Your workspace is being prepared. We sent a verification code to your email. Please verify your email to continue.',
+            isPaidPlan
+              ? (
+                  provisioningSucceeded
+                    ? `Your SaMi workspace is ready. Your first month is free and KES 0 is due today. Billing begins after the free month at KES ${monthlyAmount.toLocaleString()} per month for ${billableUsers} user${billableUsers === 1 ? '' : 's'}.`
+                    : 'Your account has been created and your first month remains free, but your workspace could not be fully prepared.'
+                )
+              : (
+                  provisioningSucceeded
+                    ? 'Your SaMi workspace has been created successfully.'
+                    : 'Your account has been created, but your workspace could not be fully prepared.'
+                ),
         },
-        { status: 201 }
+        201
+      );
+
+    if (
+      googleRegistration
+    ) {
+      clearGoogleSignupCookie(
+        response
       );
     }
 
-    /* ====================================================================== */
-    /* PAID PLAN                                                              */
-    /* ====================================================================== */
-
-    if (requiresPayment) {
-      const standardPriceRaw =
-        process.env
-          .PESAPAL_PRICE_STANDARD_MONTHLY ||
-        '2000';
-
-      const customPriceRaw =
-        process.env
-          .PESAPAL_PRICE_CUSTOM_MONTHLY ||
-        '3340';
-
-      const standardPrice =
-        Number.parseInt(
-          standardPriceRaw,
-          10
-        );
-
-      const customPrice =
-        Number.parseInt(
-          customPriceRaw,
-          10
-        );
-
-      const amount =
-        finalPlan === 'standard'
-          ? standardPrice
-          : customPrice;
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-        throw new Error(
-          'Invalid PesaPal subscription amount configured.'
-        );
-      }
-
-      /**
-       * At this point:
-       *
-       * tenantId       → validated
-       * subscriptionId → validated
-       */
-
-      const pesapalOrder =
-        await createPesaPalOrder({
-          tenantId:
-            context.tenantId,
-          subscriptionId:
-            context.subscriptionId,
-          amount,
-          email,
-          firstName,
-          lastName,
-          businessName,
-          plan: finalPlan,
-          selectedApps,
-
-          /**
-           * Use the origin of the request.
-           *
-           * This prevents registration from depending on
-           * NEXT_PUBLIC_APP_URL.
-           */
-          origin:
-            request.nextUrl.origin,
-        });
-
-      return NextResponse.json(
-        {
-          success: true,
-          requiresPayment: true,
-
-          pesapalOrder,
-
-          user: {
-            id: context.userId,
-            email,
-            emailVerified: false,
-          },
-
-          tenant: {
-            id: context.tenantId,
-            name: businessName,
-            slug,
-            status: 'pending_payment',
-          },
-
-          subscription: {
-            id: context.subscriptionId,
-            plan: finalPlan,
-            status: 'pending_payment',
-            trialDays: 0,
-          },
-
-          selectedApps,
-
-          verification: {
-            required: true,
-            email,
-          },
-
-          message:
-            'Account created. Please complete payment to activate your workspace.',
-        },
-        { status: 201 }
-      );
-    }
-
-    /* ====================================================================== */
-    /* SAFETY FALLBACK                                                        */
-    /* ====================================================================== */
-
-    throw new Error(
-      'Registration reached an invalid subscription state.'
-    );
+    return response;
   } catch (error) {
     console.error(
       '[SaMi] Registration failed:',
       error
     );
 
-    /* ---------------------------------------------------------------------- */
-    /* Cleanup                                                                */
-    /* ---------------------------------------------------------------------- */
-
     await cleanupRegistration(
       context
     );
 
-    /* ---------------------------------------------------------------------- */
-    /* Generic client response                                                */
-    /* ---------------------------------------------------------------------- */
-
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          'Registration could not be completed. Please try again.',
-      },
-      { status: 500 }
+    return errorResponse(
+      500,
+      'REGISTRATION_ERROR',
+      'Registration could not be completed. Please try again.'
     );
   }
 }

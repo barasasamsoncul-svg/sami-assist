@@ -1,5 +1,9 @@
 import { queryControl } from '@/lib/db/control';
 
+/* ============================================================
+   TYPES
+   ============================================================ */
+
 type RateLimitInput = {
   identifier: string;
   action: string;
@@ -17,69 +21,237 @@ type RateLimitResult = {
   retryAfterSeconds: number | null;
 };
 
-function normalizeIdentifier(value: string): string {
-  return value.trim().toLowerCase();
+/* ============================================================
+   NORMALIZATION
+   ============================================================ */
+
+function normalizeIdentifier(
+  value: string
+): string {
+  return value
+    .trim()
+    .toLowerCase();
 }
 
-function secondsUntil(value: Date | null): number | null {
+function normalizeAction(
+  value: string
+): string {
+  return value
+    .trim()
+    .toLowerCase();
+}
+
+/* ============================================================
+   VALIDATION
+   ============================================================ */
+
+function requirePositiveInteger(
+  value: number,
+  name: string
+): number {
+  if (
+    !Number.isSafeInteger(value) ||
+    value <= 0
+  ) {
+    throw new Error(
+      `${name} must be a positive integer.`
+    );
+  }
+
+  return value;
+}
+
+function validateRateLimitInput(
+  input: RateLimitInput
+): {
+  identifier: string;
+  action: string;
+  maxAttempts: number;
+  windowMs: number;
+  blockMs: number;
+} {
+  const identifier =
+    normalizeIdentifier(
+      input.identifier
+    );
+
+  const action =
+    normalizeAction(
+      input.action
+    );
+
+  if (!identifier) {
+    throw new Error(
+      'Rate-limit identifier is required.'
+    );
+  }
+
+  if (!action) {
+    throw new Error(
+      'Rate-limit action is required.'
+    );
+  }
+
+  return {
+    identifier,
+
+    action,
+
+    maxAttempts:
+      requirePositiveInteger(
+        input.maxAttempts,
+        'maxAttempts'
+      ),
+
+    windowMs:
+      requirePositiveInteger(
+        input.windowMs,
+        'windowMs'
+      ),
+
+    blockMs:
+      requirePositiveInteger(
+        input.blockMs,
+        'blockMs'
+      ),
+  };
+}
+
+/* ============================================================
+   DATE
+   ============================================================ */
+
+function normalizeDatabaseDate(
+  value: unknown
+): Date | null {
   if (!value) {
     return null;
   }
 
-  const ms = value.getTime() - Date.now();
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(
+          String(value)
+        );
 
-  return Math.max(1, Math.ceil(ms / 1000));
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date;
 }
+
+function secondsUntil(
+  value: Date | null
+): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const milliseconds =
+    value.getTime() -
+    Date.now();
+
+  return Math.max(
+    1,
+    Math.ceil(
+      milliseconds /
+      1000
+    )
+  );
+}
+
+/* ============================================================
+   CHECK RATE LIMIT
+
+   Fixed-window rate limiter with temporary blocking.
+
+   IMPORTANT:
+
+   The entire counter mutation happens inside ONE PostgreSQL
+   UPSERT.
+
+   This avoids the race condition caused by:
+
+     SELECT attempts
+       ↓
+     calculate in JavaScript
+       ↓
+     UPDATE attempts
+
+   Two concurrent login requests can therefore no longer
+   overwrite each other's counter increments.
+   ============================================================ */
 
 export async function checkRateLimit(
   input: RateLimitInput
 ): Promise<RateLimitResult> {
-  const identifier = normalizeIdentifier(input.identifier);
-  const action = input.action.trim().toLowerCase();
+  const {
+    identifier,
+    action,
+    maxAttempts,
+    windowMs,
+    blockMs,
+  } =
+    validateRateLimitInput(
+      input
+    );
 
-  const now = new Date();
-  const windowStartLimit = new Date(now.getTime() - input.windowMs);
+  const now =
+    new Date();
 
-  const existingResult = await queryControl(
-    `
-      SELECT
-        id,
-        attempts,
-        window_start,
-        blocked_until
-      FROM auth_rate_limits
-      WHERE identifier = $1
-        AND action = $2
-      LIMIT 1
-    `,
-    [identifier, action]
-  );
+  const windowStartLimit =
+    new Date(
+      now.getTime() -
+      windowMs
+    );
 
-  const existing = existingResult.rows[0];
-
-  if (existing?.blocked_until) {
-    const blockedUntil = new Date(existing.blocked_until);
-
-    if (blockedUntil.getTime() > now.getTime()) {
-      return {
-        allowed: false,
-        blocked: true,
-        attempts: Number(existing.attempts || 0),
-        remaining: 0,
-        blockedUntil,
-        retryAfterSeconds: secondsUntil(blockedUntil),
-      };
-    }
-  }
+  const newBlockedUntil =
+    new Date(
+      now.getTime() +
+      blockMs
+    );
 
   if (
-    !existing ||
-    new Date(existing.window_start).getTime() <
+    Number.isNaN(
       windowStartLimit.getTime()
+    ) ||
+    Number.isNaN(
+      newBlockedUntil.getTime()
+    )
   ) {
+    throw new Error(
+      'Invalid rate-limit time configuration.'
+    );
+  }
+
+  /*
+   * Semantics:
+   *
+   * maxAttempts = 8
+   *
+   * attempts 1..8:
+   *   allowed
+   *
+   * attempt 9:
+   *   blocked
+   *
+   * Requests made while actively blocked do NOT continue
+   * increasing the counter or extend blocked_until.
+   *
+   * Once the fixed window expires, the next request begins a
+   * fresh window with attempts = 1.
+   */
+
+  const result =
     await queryControl(
       `
-        INSERT INTO auth_rate_limits (
+        INSERT INTO auth_rate_limits AS rate_limit (
           identifier,
           action,
           attempts,
@@ -87,96 +259,287 @@ export async function checkRateLimit(
           blocked_until,
           updated_at
         )
-        VALUES ($1, $2, 1, NOW(), NULL, NOW())
-        ON CONFLICT (identifier, action)
+
+        VALUES (
+          $1,
+          $2,
+          1,
+          $3,
+          NULL,
+          $3
+        )
+
+        ON CONFLICT (
+          identifier,
+          action
+        )
+
         DO UPDATE SET
-          attempts = 1,
-          window_start = NOW(),
-          blocked_until = NULL,
-          updated_at = NOW()
+
+          attempts =
+            CASE
+
+              /*
+               * Already blocked.
+               *
+               * Do not increase attempts while the block is
+               * still active.
+               */
+              WHEN
+                rate_limit.blocked_until IS NOT NULL
+                AND rate_limit.blocked_until > $3
+              THEN
+                COALESCE(
+                  rate_limit.attempts,
+                  0
+                )
+
+              /*
+               * Previous rate-limit window expired.
+               *
+               * This request becomes attempt #1 of a fresh
+               * window.
+               */
+              WHEN
+                rate_limit.window_start IS NULL
+                OR rate_limit.window_start < $4
+              THEN
+                1
+
+              /*
+               * Active window.
+               */
+              ELSE
+                COALESCE(
+                  rate_limit.attempts,
+                  0
+                ) + 1
+
+            END,
+
+          window_start =
+            CASE
+
+              /*
+               * Preserve the original window while actively
+               * blocked.
+               */
+              WHEN
+                rate_limit.blocked_until IS NOT NULL
+                AND rate_limit.blocked_until > $3
+              THEN
+                rate_limit.window_start
+
+              /*
+               * Start a fresh fixed window.
+               */
+              WHEN
+                rate_limit.window_start IS NULL
+                OR rate_limit.window_start < $4
+              THEN
+                $3
+
+              ELSE
+                rate_limit.window_start
+
+            END,
+
+          blocked_until =
+            CASE
+
+              /*
+               * Existing block remains authoritative.
+               *
+               * Repeated blocked requests must not extend it.
+               */
+              WHEN
+                rate_limit.blocked_until IS NOT NULL
+                AND rate_limit.blocked_until > $3
+              THEN
+                rate_limit.blocked_until
+
+              /*
+               * New window starts unlocked.
+               */
+              WHEN
+                rate_limit.window_start IS NULL
+                OR rate_limit.window_start < $4
+              THEN
+                NULL
+
+              /*
+               * Block only AFTER maxAttempts allowed attempts
+               * have been consumed.
+               */
+              WHEN
+                COALESCE(
+                  rate_limit.attempts,
+                  0
+                ) + 1 > $5
+              THEN
+                $6
+
+              ELSE
+                NULL
+
+            END,
+
+          updated_at =
+            CASE
+
+              /*
+               * Do not make blocked traffic look like successful
+               * rate-limit activity.
+               */
+              WHEN
+                rate_limit.blocked_until IS NOT NULL
+                AND rate_limit.blocked_until > $3
+              THEN
+                rate_limit.updated_at
+
+              ELSE
+                $3
+
+            END
+
+        RETURNING
+          attempts,
+          window_start,
+          blocked_until
       `,
-      [identifier, action]
+      [
+        identifier,
+        action,
+        now,
+        windowStartLimit,
+        maxAttempts,
+        newBlockedUntil,
+      ]
     );
 
-    return {
-      allowed: true,
-      blocked: false,
-      attempts: 1,
-      remaining: Math.max(input.maxAttempts - 1, 0),
-      blockedUntil: null,
-      retryAfterSeconds: null,
-    };
+  if (
+    result.rows.length ===
+    0
+  ) {
+    throw new Error(
+      'Rate-limit state could not be updated.'
+    );
   }
 
-  const nextAttempts = Number(existing.attempts || 0) + 1;
+  const row =
+    result.rows[0];
 
-  if (nextAttempts > input.maxAttempts) {
-    const blockedUntil = new Date(now.getTime() + input.blockMs);
-
-    await queryControl(
-      `
-        UPDATE auth_rate_limits
-        SET
-          attempts = $3,
-          blocked_until = $4,
-          updated_at = NOW()
-        WHERE identifier = $1
-          AND action = $2
-      `,
-      [identifier, action, nextAttempts, blockedUntil]
+  const attempts =
+    Number(
+      row.attempts ??
+      0
     );
 
-    return {
-      allowed: false,
-      blocked: true,
-      attempts: nextAttempts,
-      remaining: 0,
-      blockedUntil,
-      retryAfterSeconds: secondsUntil(blockedUntil),
-    };
+  if (
+    !Number.isFinite(
+      attempts
+    ) ||
+    attempts < 0
+  ) {
+    throw new Error(
+      'Invalid rate-limit attempt count returned from database.'
+    );
   }
 
-  await queryControl(
-    `
-      UPDATE auth_rate_limits
-      SET
-        attempts = $3,
-        blocked_until = NULL,
-        updated_at = NOW()
-      WHERE identifier = $1
-        AND action = $2
-    `,
-    [identifier, action, nextAttempts]
-  );
+  const blockedUntil =
+    normalizeDatabaseDate(
+      row.blocked_until
+    );
+
+  const blocked =
+    Boolean(
+      blockedUntil &&
+      blockedUntil.getTime() >
+        Date.now()
+    );
 
   return {
-    allowed: true,
-    blocked: false,
-    attempts: nextAttempts,
-    remaining: Math.max(input.maxAttempts - nextAttempts, 0),
-    blockedUntil: null,
-    retryAfterSeconds: null,
+    allowed:
+      !blocked,
+
+    blocked,
+
+    attempts,
+
+    remaining:
+      blocked
+        ? 0
+        : Math.max(
+            maxAttempts -
+              attempts,
+            0
+          ),
+
+    blockedUntil:
+      blocked
+        ? blockedUntil
+        : null,
+
+    retryAfterSeconds:
+      blocked
+        ? secondsUntil(
+            blockedUntil
+          )
+        : null,
   };
 }
 
+/* ============================================================
+   RESET RATE LIMIT
+   ============================================================ */
+
+/**
+ * Used after a successful authentication flow.
+ *
+ * We preserve the existing row rather than deleting it.
+ */
 export async function resetRateLimit(
   identifier: string,
   action: string
 ): Promise<void> {
+  const normalizedIdentifier =
+    normalizeIdentifier(
+      identifier
+    );
+
+  const normalizedAction =
+    normalizeAction(
+      action
+    );
+
+  if (!normalizedIdentifier) {
+    throw new Error(
+      'Rate-limit identifier is required.'
+    );
+  }
+
+  if (!normalizedAction) {
+    throw new Error(
+      'Rate-limit action is required.'
+    );
+  }
+
   await queryControl(
     `
       UPDATE auth_rate_limits
+
       SET
         attempts = 0,
         blocked_until = NULL,
         window_start = NOW(),
         updated_at = NOW()
+
       WHERE identifier = $1
         AND action = $2
     `,
     [
-      normalizeIdentifier(identifier),
-      action.trim().toLowerCase(),
+      normalizedIdentifier,
+      normalizedAction,
     ]
   );
 }

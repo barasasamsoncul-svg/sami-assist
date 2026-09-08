@@ -1,5 +1,9 @@
 import { queryControl } from '@/lib/db/control';
 
+/* ============================================================
+   TYPES
+   ============================================================ */
+
 export interface AuthUserRecord {
   id: string;
   email: string;
@@ -9,6 +13,7 @@ export interface AuthUserRecord {
   lastName: string;
   avatarFileId: string | null;
   status: string;
+  emailVerified: boolean;
 }
 
 export interface TenantContext {
@@ -31,6 +36,7 @@ export interface TenantOwnerContext {
 export interface MembershipContext {
   userId: string;
   tenantId: string;
+  status: string;
   accessLevel: 'owner' | 'admin' | 'member';
   isOwner: boolean;
   isAdmin: boolean;
@@ -41,6 +47,9 @@ export interface SubscriptionContext {
   id: string;
   status: string;
   billingCycle: string | null;
+  startedAt: string | null;
+  trialEndsAt: string | null;
+  currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
   planKey: string | null;
   planName: string | null;
@@ -85,13 +94,77 @@ export interface LoginValidationResult {
   next?: string;
 }
 
-// ============================================================
-// USER LOOKUP
-// ============================================================
+type PrimaryTenantSelection = {
+  tenant: TenantContext;
+  membershipStatus: string;
+  membershipIsOwner: boolean;
+};
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
+function normalizeStatus(value: unknown): string {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase()
+    : '';
+}
+
+function toIsoString(value: unknown): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(String(value));
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+function toNullablePort(value: unknown): number | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const port = Number(value);
+
+  if (
+    !Number.isInteger(port) ||
+    port < 1 ||
+    port > 65535
+  ) {
+    return null;
+  }
+
+  return port;
+}
+
+/* ============================================================
+   USER LOOKUP
+   ============================================================ */
 
 export async function findUserForLogin(
   email: string
 ): Promise<AuthUserRecord | null> {
+  const normalizedEmail =
+    email
+      .trim()
+      .toLowerCase();
+
+  if (!normalizedEmail) {
+    return null;
+  }
+
   const result = await queryControl(
     `
       SELECT
@@ -102,13 +175,15 @@ export async function findUserForLogin(
         first_name,
         last_name,
         avatar_file_id,
-        status
+        status,
+        email_verified,
+        email_verified_at
       FROM users
-      WHERE LOWER(email) = LOWER($1)
+      WHERE LOWER(email) = $1
         AND deleted_at IS NULL
       LIMIT 1
     `,
-    [email]
+    [normalizedEmail]
   );
 
   if (result.rows.length === 0) {
@@ -120,25 +195,37 @@ export async function findUserForLogin(
   return {
     id: row.id,
     email: row.email,
-    passwordHash: row.password_hash || null,
-    fullName: row.full_name || '',
-    firstName: row.first_name || '',
-    lastName: row.last_name || '',
-    avatarFileId: row.avatar_file_id || null,
-    status: row.status || 'unknown',
+    passwordHash:
+      row.password_hash || null,
+    fullName:
+      row.full_name || '',
+    firstName:
+      row.first_name || '',
+    lastName:
+      row.last_name || '',
+    avatarFileId:
+      row.avatar_file_id || null,
+    status:
+      row.status || 'unknown',
+    emailVerified:
+      row.email_verified === true ||
+      Boolean(row.email_verified_at),
   };
 }
 
-// ============================================================
-// MAIN ACCOUNT CONTEXT
-// ============================================================
+/* ============================================================
+   MAIN ACCOUNT CONTEXT
+   ============================================================ */
 
 export async function getAccountContextForUser(
   userId: string
 ): Promise<AccountContext> {
-  const tenant = await getPrimaryTenant(userId);
+  const primary =
+    await getPrimaryTenant(
+      userId
+    );
 
-  if (!tenant) {
+  if (!primary) {
     return {
       tenant: null,
       owner: null,
@@ -150,6 +237,19 @@ export async function getAccountContextForUser(
     };
   }
 
+  const tenant =
+    primary.tenant;
+
+  /*
+   * These records are all part of the login/account context.
+   *
+   * We intentionally let database/query failures propagate to
+   * the caller rather than silently converting an authorization
+   * failure into "member", "no subscription" or "no modules".
+   *
+   * The login route already catches unexpected failures and
+   * returns a generic authentication error.
+   */
   const [
     subscription,
     role,
@@ -157,19 +257,38 @@ export async function getAccountContextForUser(
     database,
     owner,
   ] = await Promise.all([
-    getTenantSubscription(tenant.id),
-    getUserRole(userId, tenant.id),
-    getTenantModules(tenant.id),
-    getTenantDatabase(tenant.id),
-    getTenantOwner(tenant.id),
+    getTenantSubscription(
+      tenant.id
+    ),
+
+    getUserRole(
+      userId,
+      tenant.id
+    ),
+
+    getTenantModules(
+      tenant.id
+    ),
+
+    getTenantDatabase(
+      tenant.id
+    ),
+
+    getTenantOwner(
+      tenant.id
+    ),
   ]);
 
-  const membership = buildMembershipContext({
-    userId,
-    tenant,
-    role,
-    owner,
-  });
+  const membership =
+    buildMembershipContext({
+      userId,
+      tenant,
+      role,
+      membershipStatus:
+        primary.membershipStatus,
+      membershipIsOwner:
+        primary.membershipIsOwner,
+    });
 
   return {
     tenant,
@@ -182,20 +301,39 @@ export async function getAccountContextForUser(
   };
 }
 
-// ============================================================
-// TENANT
-// ============================================================
+/* ============================================================
+   PRIMARY TENANT / MEMBERSHIP
+   ============================================================ */
 
+/**
+ * SaMi will support users belonging to multiple workspaces.
+ *
+ * Until a dedicated workspace-selection context is introduced,
+ * this function deterministically chooses the most appropriate
+ * membership:
+ *
+ * 1. active membership
+ * 2. owner membership
+ * 3. admin membership
+ * 4. earliest membership
+ *
+ * Ownership comes from tenant_users.is_owner, not from a role
+ * name.
+ */
 async function getPrimaryTenant(
   userId: string
-): Promise<TenantContext | null> {
+): Promise<PrimaryTenantSelection | null> {
   const result = await queryControl(
     `
       SELECT
         t.id,
         t.name,
         t.slug,
-        t.status
+        t.status,
+
+        tu.status AS membership_status,
+        tu.is_owner AS membership_is_owner
+
       FROM tenant_users tu
 
       INNER JOIN tenants t
@@ -216,6 +354,330 @@ async function getPrimaryTenant(
 
       ORDER BY
         CASE
+          WHEN LOWER(COALESCE(tu.status, '')) = 'active'
+          THEN 0
+          ELSE 1
+        END ASC,
+
+        CASE
+          WHEN tu.is_owner = TRUE
+          THEN 0
+
+          WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
+          THEN 1
+
+          ELSE 2
+        END ASC,
+
+        tu.created_at ASC
+
+      LIMIT 1
+    `,
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row =
+    result.rows[0];
+
+  return {
+    tenant: {
+      id: row.id,
+      name:
+        row.name || '',
+      slug:
+        row.slug || '',
+      status:
+        row.status ||
+        'unknown',
+    },
+
+    membershipStatus:
+      row.membership_status ||
+      'unknown',
+
+    membershipIsOwner:
+      row.membership_is_owner ===
+      true,
+  };
+}
+
+/* ============================================================
+   OWNER
+   ============================================================ */
+
+/**
+ * Workspace ownership is authoritative from:
+ *
+ *   tenant_users.is_owner = TRUE
+ *
+ * Do not infer the owner from:
+ *
+ * - role names
+ * - first admin
+ * - earliest user
+ *
+ * Registration currently creates the owner membership with
+ * is_owner = TRUE even though the initial role may be "admin".
+ */
+async function getTenantOwner(
+  tenantId: string
+): Promise<TenantOwnerContext | null> {
+  const result = await queryControl(
+    `
+      SELECT
+        u.id,
+        u.email,
+        u.full_name,
+        u.first_name,
+        u.last_name,
+
+        r.key AS role_key,
+        r.name AS role_name
+
+      FROM tenant_users tu
+
+      INNER JOIN users u
+        ON u.id = tu.user_id
+
+      LEFT JOIN user_roles ur
+        ON ur.user_id = tu.user_id
+       AND ur.tenant_id = tu.tenant_id
+       AND ur.deleted_at IS NULL
+
+      LEFT JOIN roles r
+        ON r.id = ur.role_id
+       AND r.deleted_at IS NULL
+
+      WHERE tu.tenant_id = $1
+        AND tu.is_owner = TRUE
+        AND tu.deleted_at IS NULL
+        AND u.deleted_at IS NULL
+
+      ORDER BY
+        CASE
+          WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
+          THEN 0
+          ELSE 1
+        END ASC,
+
+        tu.created_at ASC
+
+      LIMIT 1
+    `,
+    [tenantId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row =
+    result.rows[0];
+
+  return {
+    id: row.id,
+    email: row.email,
+    fullName:
+      row.full_name || '',
+    firstName:
+      row.first_name || '',
+    lastName:
+      row.last_name || '',
+    roleKey:
+      row.role_key || null,
+    roleName:
+      row.role_name || null,
+  };
+}
+
+/* ============================================================
+   MEMBERSHIP / ACCESS LEVEL
+   ============================================================ */
+
+function buildMembershipContext(params: {
+  userId: string;
+  tenant: TenantContext;
+  role: RoleContext | null;
+  membershipStatus: string;
+  membershipIsOwner: boolean;
+}): MembershipContext {
+  const roleText = [
+    params.role?.key || '',
+    params.role?.name || '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  const isOwner =
+    params.membershipIsOwner ===
+    true;
+
+  const roleSaysAdmin =
+    roleText.includes(
+      'admin'
+    );
+
+  const isAdmin =
+    isOwner ||
+    roleSaysAdmin;
+
+  const accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member' =
+    isOwner
+      ? 'owner'
+      : isAdmin
+        ? 'admin'
+        : 'member';
+
+  const label =
+    accessLevel ===
+      'owner'
+      ? 'Workspace Owner'
+      : accessLevel ===
+          'admin'
+        ? 'Workspace Admin'
+        : 'Workspace Member';
+
+  return {
+    userId:
+      params.userId,
+
+    tenantId:
+      params.tenant.id,
+
+    status:
+      params.membershipStatus ||
+      'unknown',
+
+    accessLevel,
+
+    isOwner,
+
+    isAdmin,
+
+    label,
+  };
+}
+
+/* ============================================================
+   SUBSCRIPTION
+   ============================================================ */
+
+async function getTenantSubscription(
+  tenantId: string
+): Promise<SubscriptionContext | null> {
+  const result = await queryControl(
+    `
+      SELECT
+        s.id,
+        s.status,
+        s.billing_cycle,
+        s.started_at,
+        s.trial_ends_at,
+        s.current_period_start,
+        s.current_period_end,
+
+        p.key AS plan_key,
+        p.name AS plan_name
+
+      FROM subscriptions s
+
+      LEFT JOIN plans p
+        ON p.id = s.plan_id
+       AND p.deleted_at IS NULL
+
+      WHERE s.tenant_id = $1
+        AND s.deleted_at IS NULL
+
+      ORDER BY
+        s.created_at DESC
+
+      LIMIT 1
+    `,
+    [tenantId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row =
+    result.rows[0];
+
+  return {
+    id: row.id,
+
+    status:
+      row.status ||
+      'unknown',
+
+    billingCycle:
+      row.billing_cycle ||
+      null,
+
+    startedAt:
+      toIsoString(
+        row.started_at
+      ),
+
+    trialEndsAt:
+      toIsoString(
+        row.trial_ends_at
+      ),
+
+    currentPeriodStart:
+      toIsoString(
+        row.current_period_start
+      ),
+
+    currentPeriodEnd:
+      toIsoString(
+        row.current_period_end
+      ),
+
+    planKey:
+      row.plan_key ||
+      null,
+
+    planName:
+      row.plan_name ||
+      null,
+  };
+}
+
+/* ============================================================
+   ROLE
+   ============================================================ */
+
+async function getUserRole(
+  userId: string,
+  tenantId: string
+): Promise<RoleContext | null> {
+  const result = await queryControl(
+    `
+      SELECT
+        r.id,
+        r.key,
+        r.name
+
+      FROM user_roles ur
+
+      INNER JOIN roles r
+        ON r.id = ur.role_id
+
+      WHERE ur.user_id = $1
+        AND ur.tenant_id = $2
+        AND ur.deleted_at IS NULL
+        AND r.deleted_at IS NULL
+
+      ORDER BY
+        CASE
           WHEN LOWER(COALESCE(r.key, r.name, '')) IN (
             'owner',
             'business_owner',
@@ -228,516 +690,517 @@ async function getPrimaryTenant(
 
           ELSE 2
         END ASC,
-        tu.created_at ASC
+
+        ur.created_at ASC
 
       LIMIT 1
     `,
-    [userId]
+    [
+      userId,
+      tenantId,
+    ]
   );
 
   if (result.rows.length === 0) {
     return null;
   }
 
-  const row = result.rows[0];
+  const row =
+    result.rows[0];
 
   return {
     id: row.id,
-    name: row.name || '',
-    slug: row.slug || '',
-    status: row.status || 'unknown',
+    key:
+      row.key || null,
+    name:
+      row.name || '',
   };
 }
 
-// ============================================================
-// OWNER
-// ============================================================
-
-async function getTenantOwner(
-  tenantId: string
-): Promise<TenantOwnerContext | null> {
-  try {
-    const result = await queryControl(
-      `
-        SELECT
-          u.id,
-          u.email,
-          u.full_name,
-          u.first_name,
-          u.last_name,
-          r.key AS role_key,
-          r.name AS role_name
-        FROM tenant_users tu
-
-        INNER JOIN users u
-          ON u.id = tu.user_id
-
-        LEFT JOIN user_roles ur
-          ON ur.user_id = tu.user_id
-         AND ur.tenant_id = tu.tenant_id
-         AND ur.deleted_at IS NULL
-
-        LEFT JOIN roles r
-          ON r.id = ur.role_id
-         AND r.deleted_at IS NULL
-
-        WHERE tu.tenant_id = $1
-          AND tu.deleted_at IS NULL
-          AND u.deleted_at IS NULL
-
-        ORDER BY
-          CASE
-            WHEN LOWER(COALESCE(r.key, r.name, '')) IN (
-              'owner',
-              'business_owner',
-              'workspace_owner',
-              'founder'
-            ) THEN 0
-
-            WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
-            THEN 1
-
-            ELSE 2
-          END ASC,
-          tu.created_at ASC
-
-        LIMIT 1
-      `,
-      [tenantId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row = result.rows[0];
-
-    return {
-      id: row.id,
-      email: row.email,
-      fullName: row.full_name || '',
-      firstName: row.first_name || '',
-      lastName: row.last_name || '',
-      roleKey: row.role_key || null,
-      roleName: row.role_name || null,
-    };
-  } catch (error) {
-    console.error(
-      '[Auth] Failed to load tenant owner:',
-      error
-    );
-
-    return null;
-  }
-}
-
-// ============================================================
-// MEMBERSHIP / ACCESS LEVEL
-// ============================================================
-
-function buildMembershipContext(params: {
-  userId: string;
-  tenant: TenantContext;
-  role: RoleContext | null;
-  owner: TenantOwnerContext | null;
-}): MembershipContext {
-  const roleText = [
-    params.role?.key || '',
-    params.role?.name || '',
-  ]
-    .join(' ')
-    .toLowerCase();
-
-  const roleSaysOwner =
-    roleText.includes('owner') ||
-    roleText.includes('founder');
-
-  const roleSaysAdmin =
-    roleText.includes('admin');
-
-  const userIsDetectedOwner =
-    params.owner?.id === params.userId;
-
-  const isOwner =
-    roleSaysOwner || userIsDetectedOwner;
-
-  const isAdmin =
-    isOwner || roleSaysAdmin;
-
-  const accessLevel: 'owner' | 'admin' | 'member' =
-    isOwner
-      ? 'owner'
-      : isAdmin
-        ? 'admin'
-        : 'member';
-
-  const label =
-    accessLevel === 'owner'
-      ? 'Workspace Owner'
-      : accessLevel === 'admin'
-        ? 'Workspace Admin'
-        : 'Workspace Member';
-
-  return {
-    userId: params.userId,
-    tenantId: params.tenant.id,
-    accessLevel,
-    isOwner,
-    isAdmin,
-    label,
-  };
-}
-
-// ============================================================
-// SUBSCRIPTION
-// ============================================================
-
-async function getTenantSubscription(
-  tenantId: string
-): Promise<SubscriptionContext | null> {
-  try {
-    const result = await queryControl(
-      `
-        SELECT
-          s.id,
-          s.status,
-          s.billing_cycle,
-          s.current_period_end,
-          p.key AS plan_key,
-          p.name AS plan_name
-        FROM subscriptions s
-
-        LEFT JOIN plans p
-          ON p.id = s.plan_id
-
-        WHERE s.tenant_id = $1
-          AND s.deleted_at IS NULL
-
-        ORDER BY s.created_at DESC
-
-        LIMIT 1
-      `,
-      [tenantId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row = result.rows[0];
-
-    return {
-      id: row.id,
-      status: row.status || 'unknown',
-      billingCycle: row.billing_cycle || null,
-      currentPeriodEnd: row.current_period_end
-        ? new Date(row.current_period_end).toISOString()
-        : null,
-      planKey: row.plan_key || null,
-      planName: row.plan_name || null,
-    };
-  } catch (error) {
-    console.error(
-      '[Auth] Failed to load subscription context:',
-      error
-    );
-
-    return null;
-  }
-}
-
-// ============================================================
-// ROLE
-// ============================================================
-
-async function getUserRole(
-  userId: string,
-  tenantId: string
-): Promise<RoleContext | null> {
-  try {
-    const result = await queryControl(
-      `
-        SELECT
-          r.id,
-          r.key,
-          r.name
-        FROM user_roles ur
-
-        INNER JOIN roles r
-          ON r.id = ur.role_id
-
-        WHERE ur.user_id = $1
-          AND ur.tenant_id = $2
-          AND ur.deleted_at IS NULL
-          AND r.deleted_at IS NULL
-
-        ORDER BY
-          CASE
-            WHEN LOWER(COALESCE(r.key, r.name, '')) IN (
-              'owner',
-              'business_owner',
-              'workspace_owner',
-              'founder'
-            ) THEN 0
-
-            WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
-            THEN 1
-
-            ELSE 2
-          END ASC,
-          ur.created_at ASC
-
-        LIMIT 1
-      `,
-      [userId, tenantId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row = result.rows[0];
-
-    return {
-      id: row.id,
-      key: row.key || null,
-      name: row.name || '',
-    };
-  } catch (error) {
-    console.error(
-      '[Auth] Failed to load role context:',
-      error
-    );
-
-    return null;
-  }
-}
-
-// ============================================================
-// MODULES
-// ============================================================
+/* ============================================================
+   MODULES
+   ============================================================ */
 
 async function getTenantModules(
   tenantId: string
 ): Promise<ModuleContext[]> {
-  try {
-    const result = await queryControl(
-      `
-        SELECT
-          m.key,
-          m.name,
-          tm.status
-        FROM tenant_modules tm
+  const result = await queryControl(
+    `
+      SELECT
+        m.key,
+        m.name,
+        tm.status
 
-        INNER JOIN modules m
-          ON m.id = tm.module_id
+      FROM tenant_modules tm
 
-        WHERE tm.tenant_id = $1
-          AND tm.deleted_at IS NULL
-          AND m.deleted_at IS NULL
+      INNER JOIN modules m
+        ON m.id = tm.module_id
 
-        ORDER BY m.name ASC
-      `,
-      [tenantId]
-    );
+      WHERE tm.tenant_id = $1
+        AND tm.deleted_at IS NULL
+        AND m.deleted_at IS NULL
 
-    return result.rows.map((row: any) => ({
-      key: row.key,
-      name: row.name || row.key,
-      status: row.status || 'unknown',
-    }));
-  } catch (error) {
-    console.error(
-      '[Auth] Failed to load tenant modules:',
-      error
-    );
+      ORDER BY
+        m.name ASC
+    `,
+    [tenantId]
+  );
 
-    return [];
-  }
+  return result.rows.map(
+    (row: Record<string, unknown>) => ({
+      key:
+        typeof row.key ===
+          'string'
+          ? row.key
+          : '',
+
+      name:
+        typeof row.name ===
+          'string' &&
+        row.name
+          ? row.name
+          : typeof row.key ===
+              'string'
+            ? row.key
+            : '',
+
+      status:
+        typeof row.status ===
+          'string'
+          ? row.status
+          : 'unknown',
+    })
+  );
 }
 
-// ============================================================
-// DATABASE
-// ============================================================
+/* ============================================================
+   DATABASE
+   ============================================================ */
 
 async function getTenantDatabase(
   tenantId: string
 ): Promise<TenantDatabaseContext | null> {
-  try {
-    const result = await queryControl(
-      `
-        SELECT
-          id,
-          database_name,
-          database_host,
-          database_port,
-          status,
-          provisioned_at
-        FROM tenant_databases
-        WHERE tenant_id = $1
-        ORDER BY created_at DESC
-        LIMIT 1
-      `,
-      [tenantId]
-    );
+  const result = await queryControl(
+    `
+      SELECT
+        id,
+        database_name,
+        database_host,
+        database_port,
+        status,
+        provisioned_at
 
-    if (result.rows.length === 0) {
-      return null;
-    }
+      FROM tenant_databases
 
-    const row = result.rows[0];
+      WHERE tenant_id = $1
 
-    return {
-      id: row.id,
-      databaseName: row.database_name || '',
-      databaseHost: row.database_host || null,
-      databasePort: row.database_port
-        ? Number(row.database_port)
-        : null,
-      status: row.status || 'unknown',
-      provisionedAt: row.provisioned_at
-        ? new Date(row.provisioned_at).toISOString()
-        : null,
-    };
-  } catch (error) {
-    console.error(
-      '[Auth] Failed to load tenant database context:',
-      error
-    );
+      ORDER BY
+        created_at DESC
 
+      LIMIT 1
+    `,
+    [tenantId]
+  );
+
+  if (result.rows.length === 0) {
     return null;
   }
+
+  const row =
+    result.rows[0];
+
+  return {
+    id: row.id,
+
+    databaseName:
+      row.database_name ||
+      '',
+
+    databaseHost:
+      row.database_host ||
+      null,
+
+    databasePort:
+      toNullablePort(
+        row.database_port
+      ),
+
+    status:
+      row.status ||
+      'unknown',
+
+    provisionedAt:
+      toIsoString(
+        row.provisioned_at
+      ),
+  };
 }
 
-// ============================================================
-// LOGIN VALIDATION
-// ============================================================
+/* ============================================================
+   LOGIN VALIDATION
+   ============================================================ */
 
+/**
+ * This validation determines whether login may proceed into the
+ * normal SaMi workspace.
+ *
+ * Billing policy:
+ *
+ * - Free plan:
+ *     active subscription
+ *
+ * - Standard / Custom:
+ *     trialing during the first free calendar month
+ *
+ * - KES 0 is due at signup
+ *
+ * - No PesaPal transaction is required during signup
+ *
+ * - past_due may still be allowed during billing grace handling
+ *
+ * Billing/entitlement enforcement remains authoritative in the
+ * billing and entitlement layers. Login must not reintroduce the
+ * old "pay before workspace access" signup model.
+ */
 export function validateAccountCanLogin(
   user: AuthUserRecord,
   context: AccountContext
 ): LoginValidationResult {
-  const userStatus = user.status.toLowerCase();
+  const userStatus =
+    normalizeStatus(
+      user.status
+    );
 
-  if (userStatus === 'pending_verification') {
+  /* ----------------------------------------------------------
+     Email verification
+     ---------------------------------------------------------- */
+
+  if (
+    userStatus ===
+      'pending_verification' ||
+    !user.emailVerified
+  ) {
     return {
       allowed: false,
       httpStatus: 403,
-      code: 'EMAIL_NOT_VERIFIED',
+      code:
+        'EMAIL_NOT_VERIFIED',
       message:
         'Please verify your email address before signing in.',
-      next: 'verify-email',
+      next:
+        'verify-email',
     };
   }
 
-  if (userStatus === 'suspended') {
-    return {
-      allowed: false,
-      httpStatus: 403,
-      code: 'ACCOUNT_SUSPENDED',
-      message:
-        'This account has been suspended. Please contact support.',
-    };
-  }
+  /* ----------------------------------------------------------
+     User status
+     ---------------------------------------------------------- */
 
-  if (userStatus === 'locked') {
+  if (
+    userStatus ===
+    'locked'
+  ) {
     return {
       allowed: false,
       httpStatus: 403,
-      code: 'ACCOUNT_LOCKED',
+      code:
+        'ACCOUNT_LOCKED',
       message:
         'This account is locked. Please reset your password or contact support.',
     };
   }
 
-  if (userStatus !== 'active') {
+  if (
+    [
+      'suspended',
+      'disabled',
+      'deleted',
+      'cancelled',
+      'banned',
+    ].includes(
+      userStatus
+    )
+  ) {
     return {
       allowed: false,
       httpStatus: 403,
-      code: 'ACCOUNT_NOT_ACTIVE',
-      message: 'Your account is not active yet.',
+      code:
+        'ACCOUNT_UNAVAILABLE',
+      message:
+        'This account is not currently available for sign in.',
     };
   }
+
+  if (
+    userStatus !==
+    'active'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 403,
+      code:
+        'ACCOUNT_NOT_ACTIVE',
+      message:
+        'Your account is not active yet.',
+    };
+  }
+
+  /* ----------------------------------------------------------
+     Tenant
+     ---------------------------------------------------------- */
 
   if (!context.tenant) {
     return {
       allowed: false,
       httpStatus: 409,
-      code: 'TENANT_NOT_FOUND',
+      code:
+        'TENANT_NOT_FOUND',
       message:
         'Your account is not linked to a business workspace yet.',
     };
   }
 
-  const tenantStatus =
-    context.tenant.status.toLowerCase();
+  /* ----------------------------------------------------------
+     Membership
+     ---------------------------------------------------------- */
 
-  if (tenantStatus === 'pending_payment') {
+  if (!context.membership) {
     return {
       allowed: false,
-      httpStatus: 402,
-      code: 'PAYMENT_REQUIRED',
+      httpStatus: 403,
+      code:
+        'MEMBERSHIP_NOT_FOUND',
       message:
-        'Payment is required before this workspace can be accessed.',
-      next: 'payment',
+        'Your account does not have access to this workspace.',
     };
   }
 
-  if (tenantStatus === 'provisioning') {
+  const membershipStatus =
+    normalizeStatus(
+      context.membership
+        .status
+    );
+
+  if (
+    membershipStatus !==
+    'active'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 403,
+      code:
+        'MEMBERSHIP_NOT_ACTIVE',
+      message:
+        'Your workspace access is not currently active.',
+    };
+  }
+
+  /* ----------------------------------------------------------
+     Tenant lifecycle
+     ---------------------------------------------------------- */
+
+  const tenantStatus =
+    normalizeStatus(
+      context.tenant.status
+    );
+
+  if (
+    tenantStatus ===
+    'provisioning'
+  ) {
     return {
       allowed: false,
       httpStatus: 409,
-      code: 'TENANT_PROVISIONING',
+      code:
+        'TENANT_PROVISIONING',
       message:
         'Your workspace is still being prepared. Please try again shortly.',
     };
   }
 
-  if (tenantStatus === 'provisioning_failed') {
+  if (
+    tenantStatus ===
+    'provisioning_failed'
+  ) {
     return {
       allowed: false,
       httpStatus: 409,
-      code: 'TENANT_PROVISIONING_FAILED',
+      code:
+        'TENANT_PROVISIONING_FAILED',
       message:
-        'Your workspace setup failed. Please contact support.',
+        'Your workspace setup could not be completed. Please contact support.',
     };
   }
 
-  if (tenantStatus !== 'active') {
+  /*
+   * pending_payment belongs to the old registration flow.
+   *
+   * New paid SaMi registrations are trialing immediately and do
+   * not require payment before workspace access.
+   *
+   * A legacy tenant still carrying this status is therefore
+   * treated as an unavailable/incomplete workspace rather than
+   * redirecting the user into a fake signup-payment route.
+   */
+  if (
+    tenantStatus ===
+    'pending_payment'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 409,
+      code:
+        'TENANT_NOT_ACTIVE',
+      message:
+        'This workspace is not ready for access yet.',
+    };
+  }
+
+  if (
+    tenantStatus !==
+    'active'
+  ) {
     return {
       allowed: false,
       httpStatus: 403,
-      code: 'TENANT_NOT_ACTIVE',
-      message: 'This workspace is not active.',
+      code:
+        'TENANT_NOT_ACTIVE',
+      message:
+        'This workspace is not active.',
+    };
+  }
+
+  /* ----------------------------------------------------------
+     Physical workspace database
+     ---------------------------------------------------------- */
+
+  if (
+    !context.database ||
+    normalizeStatus(
+      context.database.status
+    ) !== 'active'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 409,
+      code:
+        'WORKSPACE_NOT_READY',
+      message:
+        'Your workspace is not ready yet. Please try again shortly.',
+    };
+  }
+
+  /* ----------------------------------------------------------
+     Subscription
+     ---------------------------------------------------------- */
+
+  if (
+    !context.subscription
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 409,
+      code:
+        'SUBSCRIPTION_NOT_FOUND',
+      message:
+        'Your workspace subscription is not configured yet.',
     };
   }
 
   const subscriptionStatus =
-    context.subscription?.status?.toLowerCase();
+    normalizeStatus(
+      context.subscription
+        .status
+    );
+
+  /*
+   * trialing:
+   *   Standard / Custom first calendar month free.
+   *
+   * active:
+   *   Free plan or successfully paid subscription.
+   *
+   * past_due:
+   *   Login remains possible so the billing/grace layer can
+   *   handle recovery without immediately locking the user out
+   *   of the entire SaMi account.
+   */
+  if (
+    [
+      'trialing',
+      'active',
+      'past_due',
+    ].includes(
+      subscriptionStatus
+    )
+  ) {
+    return {
+      allowed: true,
+      httpStatus: 200,
+      code: 'OK',
+      message:
+        'Login allowed.',
+    };
+  }
 
   if (
-    subscriptionStatus &&
+    subscriptionStatus ===
+    'pending'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 409,
+      code:
+        'SUBSCRIPTION_PENDING',
+      message:
+        'Your workspace subscription is still being prepared.',
+    };
+  }
+
+  if (
+    subscriptionStatus ===
+    'provisioning_failed'
+  ) {
+    return {
+      allowed: false,
+      httpStatus: 409,
+      code:
+        'SUBSCRIPTION_SETUP_FAILED',
+      message:
+        'Your workspace subscription setup could not be completed.',
+    };
+  }
+
+  if (
     [
       'pending_payment',
       'cancelled',
       'expired',
       'failed',
       'unpaid',
-    ].includes(subscriptionStatus)
+    ].includes(
+      subscriptionStatus
+    )
   ) {
     return {
       allowed: false,
       httpStatus: 402,
-      code: 'SUBSCRIPTION_NOT_ACTIVE',
-      message: 'Your subscription is not active.',
-      next: 'billing',
+      code:
+        'SUBSCRIPTION_NOT_ACTIVE',
+      message:
+        'Your workspace subscription is not currently active.',
     };
   }
 
+  /*
+   * Unknown subscription states fail closed.
+   */
   return {
-    allowed: true,
-    httpStatus: 200,
-    code: 'OK',
-    message: 'Login allowed.',
+    allowed: false,
+    httpStatus: 403,
+    code:
+      'SUBSCRIPTION_NOT_ACTIVE',
+    message:
+      'Your workspace subscription is not currently active.',
   };
 }

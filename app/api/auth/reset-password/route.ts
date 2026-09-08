@@ -1,180 +1,446 @@
-import { NextRequest, NextResponse } from 'next/server';
+// app/api/auth/reset-password/route.ts
+
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server';
+
 import crypto from 'crypto';
-import { queryControl } from '@/lib/db/control';
-import { hashPassword } from '@/lib/auth/password';
-import { revokeAllSessions } from '@/lib/auth/session';
+
+import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
+  hashPassword,
+} from '@/lib/auth/password';
+
+import {
+  clearSessionCookie,
+} from '@/lib/auth/session';
+
+import {
+  recordAuthEvent,
+} from '@/lib/auth/auth-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 128;
+
+const MIN_RESET_TOKEN_LENGTH = 40;
+const MAX_RESET_TOKEN_LENGTH = 512;
+
+/* ============================================================
+   TYPES
+   ============================================================ */
 
 type ResetPasswordBody = {
   token?: unknown;
   password?: unknown;
 };
 
-function normalizeToken(value: unknown): string {
-  if (typeof value !== 'string') {
+type ResetUserRow = {
+  id: string;
+  email: string;
+  status: string;
+};
+
+/* ============================================================
+   NORMALIZATION
+   ============================================================ */
+
+function normalizeToken(
+  value: unknown
+): string {
+  if (
+    typeof value !== 'string'
+  ) {
     return '';
   }
 
   return value.trim();
 }
 
-function normalizePassword(value: unknown): string {
-  if (typeof value !== 'string') {
+function normalizePassword(
+  value: unknown
+): string {
+  if (
+    typeof value !== 'string'
+  ) {
     return '';
   }
 
+  /*
+   * Do not trim passwords.
+   *
+   * Spaces may intentionally be part of the password.
+   */
   return value;
 }
 
-function hashToken(token: string): string {
+/* ============================================================
+   TOKEN HASH
+   ============================================================ */
+
+function hashToken(
+  token: string
+): string {
   return crypto
     .createHash('sha256')
-    .update(token, 'utf8')
+    .update(
+      token,
+      'utf8'
+    )
     .digest('hex');
+}
+
+/* ============================================================
+   RESPONSE HELPERS
+   ============================================================ */
+
+function jsonResponse(
+  body: Record<
+    string,
+    unknown
+  >,
+  status = 200
+) {
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        'Cache-Control':
+          'no-store, no-cache, must-revalidate',
+
+        Pragma:
+          'no-cache',
+      },
+    }
+  );
 }
 
 function jsonError(
   status: number,
   code: string,
-  message: string
+  error: string
 ) {
-  return NextResponse.json(
+  return jsonResponse(
     {
       success: false,
       code,
-      message,
+      error,
     },
-    { status }
+    status
   );
 }
 
-async function recordPasswordResetCompleted(
-  userId: string
-): Promise<void> {
+/* ============================================================
+   AUDIT
+   ============================================================ */
+
+async function safeRecordAuthEvent(
+  input: Parameters<
+    typeof recordAuthEvent
+  >[0]
+) {
   try {
-    await queryControl(
-      `
-        INSERT INTO audit_logs (
-          tenant_id,
-          user_id,
-          event_type,
-          entity_type,
-          entity_id,
-          metadata,
-          created_at
-        )
-        VALUES (
-          NULL,
-          $1,
-          'PASSWORD_RESET_COMPLETED',
-          'auth',
-          $1,
-          '{}'::jsonb,
-          NOW()
-        )
-      `,
-      [userId]
+    await recordAuthEvent(
+      input
     );
   } catch (error) {
+    /*
+     * Audit failure must not undo a successfully completed
+     * password reset.
+     */
     console.error(
-      '[Auth] Failed to record password reset completion:',
+      '[Auth] Failed to record password reset event:',
       error
     );
   }
 }
 
-export async function POST(request: NextRequest) {
-  let body: ResetPasswordBody;
+/* ============================================================
+   CLEAR LOCAL COOKIE
+   ============================================================ */
+
+async function safelyClearSessionCookie() {
+  try {
+    /*
+     * Every server-side session has already been revoked by
+     * the atomic password-reset query below.
+     *
+     * This removes a stale SaMi cookie from the browser that
+     * performed the password reset.
+     */
+    await clearSessionCookie();
+  } catch (error) {
+    console.error(
+      '[Auth] Failed to clear session cookie after password reset:',
+      error
+    );
+  }
+}
+
+/* ============================================================
+   POST /api/auth/reset-password
+   ============================================================ */
+
+export async function POST(
+  request: NextRequest
+) {
+  /* ==========================================================
+     1. PARSE REQUEST
+     ========================================================== */
+
+  let body:
+    ResetPasswordBody;
 
   try {
-    body = await request.json();
+    const parsed:
+      unknown =
+      await request.json();
+
+    if (
+      !parsed ||
+      typeof parsed !==
+        'object' ||
+      Array.isArray(
+        parsed
+      )
+    ) {
+      return jsonError(
+        400,
+        'INVALID_REQUEST',
+        'Invalid request body.'
+      );
+    }
+
+    body =
+      parsed as ResetPasswordBody;
   } catch {
     return jsonError(
       400,
-      'INVALID_JSON',
+      'INVALID_REQUEST',
       'Invalid request body.'
     );
   }
 
-  const token = normalizeToken(body.token);
+  /* ==========================================================
+     2. NORMALIZE
+     ========================================================== */
+
+  const token =
+    normalizeToken(
+      body.token
+    );
 
   const password =
-    normalizePassword(body.password);
+    normalizePassword(
+      body.password
+    );
 
-  if (!token || token.length < 40) {
+  /* ==========================================================
+     3. TOKEN VALIDATION
+     ========================================================== */
+
+  if (
+    !token ||
+    token.length <
+      MIN_RESET_TOKEN_LENGTH ||
+    token.length >
+      MAX_RESET_TOKEN_LENGTH
+  ) {
     return jsonError(
       400,
-      'INVALID_TOKEN',
-      'The reset link is invalid.'
+      'INVALID_OR_EXPIRED_TOKEN',
+      'This reset link is invalid or has expired.'
     );
   }
 
-  if (password.length < 8) {
+  /* ==========================================================
+     4. PASSWORD VALIDATION
+     ========================================================== */
+
+  if (!password) {
+    return jsonError(
+      400,
+      'PASSWORD_REQUIRED',
+      'Enter your new password.'
+    );
+  }
+
+  if (
+    password.length <
+      MIN_PASSWORD_LENGTH ||
+    password.length >
+      MAX_PASSWORD_LENGTH
+  ) {
     return jsonError(
       400,
       'WEAK_PASSWORD',
-      'Password must be at least 8 characters.'
+      'Password must be between 8 and 128 characters.'
     );
   }
 
   try {
-    const tokenHash = hashToken(token);
+    /* ========================================================
+       5. HASH VALUES
+       ======================================================== */
+
+    const tokenHash =
+      hashToken(
+        token
+      );
 
     const newPasswordHash =
-      await hashPassword(password);
+      await hashPassword(
+        password
+      );
 
-    const result = await queryControl(
-      `
-        WITH used_token AS (
-          UPDATE password_reset_tokens prt
-          SET used_at = NOW()
-          FROM users u
-          WHERE prt.user_id = u.id
-            AND prt.token_hash = $1
-            AND prt.used_at IS NULL
-            AND prt.deleted_at IS NULL
-            AND prt.expires_at > NOW()
-            AND u.deleted_at IS NULL
-            AND LOWER(u.status) IN (
-              'active',
-              'locked',
-              'pending_verification'
+    /* ========================================================
+       6. ATOMIC PASSWORD RESET
+
+       One database statement performs all security-sensitive
+       mutations:
+
+       - consume the reset token
+       - replace password
+       - clear account login lock
+       - reset failed login attempts
+       - revoke every session
+       - invalidate every other reset token
+
+       If the reset token has already been consumed by another
+       request, no user update occurs.
+       ======================================================== */
+
+    const result =
+      await queryControl(
+        `
+          WITH consumed_token AS (
+            UPDATE password_reset_tokens prt
+
+            SET
+              used_at = NOW()
+
+            FROM users u
+
+            WHERE prt.user_id = u.id
+              AND prt.token_hash = $1
+              AND prt.used_at IS NULL
+              AND prt.deleted_at IS NULL
+              AND prt.expires_at > NOW()
+              AND u.deleted_at IS NULL
+              AND LOWER(u.status) IN (
+                'active',
+                'locked',
+                'pending_verification'
+              )
+
+            RETURNING
+              prt.user_id
+          ),
+
+          updated_user AS (
+            UPDATE users u
+
+            SET
+              password_hash = $2,
+
+              failed_login_attempts = 0,
+
+              locked_until = NULL,
+
+              status =
+                CASE
+                  WHEN LOWER(u.status) = 'locked'
+                  THEN 'active'
+                  ELSE u.status
+                END,
+
+              updated_at = NOW()
+
+            FROM consumed_token ct
+
+            WHERE u.id = ct.user_id
+              AND u.deleted_at IS NULL
+
+            RETURNING
+              u.id,
+              u.email,
+              u.status
+          ),
+
+          revoked_sessions AS (
+            UPDATE sessions s
+
+            SET
+              is_current = FALSE,
+
+              revoked_at =
+                COALESCE(
+                  s.revoked_at,
+                  NOW()
+                )
+
+            WHERE s.user_id IN (
+              SELECT id
+              FROM updated_user
             )
-          RETURNING
-            prt.user_id
-        ),
-        updated_user AS (
-          UPDATE users u
-          SET
-            password_hash = $2,
-            status = CASE
-              WHEN LOWER(u.status) = 'locked'
-              THEN 'active'
-              ELSE u.status
-            END,
-            updated_at = NOW()
-          FROM used_token ut
-          WHERE u.id = ut.user_id
-          RETURNING
-            u.id,
-            u.email,
-            u.status
-        )
-        SELECT
-          id,
-          email,
-          status
-        FROM updated_user
-      `,
-      [
-        tokenHash,
-        newPasswordHash,
-      ]
-    );
 
-    if (result.rows.length === 0) {
+              AND s.revoked_at IS NULL
+
+            RETURNING
+              s.id
+          ),
+
+          invalidated_tokens AS (
+            UPDATE password_reset_tokens prt
+
+            SET
+              deleted_at = NOW()
+
+            WHERE prt.user_id IN (
+              SELECT id
+              FROM updated_user
+            )
+
+              AND prt.used_at IS NULL
+              AND prt.deleted_at IS NULL
+
+            RETURNING
+              prt.user_id
+          )
+
+          SELECT
+            id,
+            email,
+            status
+
+          FROM updated_user
+        `,
+        [
+          tokenHash,
+          newPasswordHash,
+        ]
+      );
+
+    /* ========================================================
+       7. INVALID / USED / EXPIRED TOKEN
+       ======================================================== */
+
+    if (
+      result.rows.length ===
+      0
+    ) {
       return jsonError(
         400,
         'INVALID_OR_EXPIRED_TOKEN',
@@ -182,31 +448,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = result.rows[0];
+    const user =
+      result.rows[0] as ResetUserRow;
 
-    await queryControl(
-      `
-        UPDATE password_reset_tokens
-        SET deleted_at = NOW()
-        WHERE user_id = $1
-          AND used_at IS NULL
-          AND deleted_at IS NULL
-      `,
-      [user.id]
-    );
+    /* ========================================================
+       8. REMOVE CURRENT BROWSER SESSION COOKIE
+       ======================================================== */
 
-    await revokeAllSessions(user.id);
+    await safelyClearSessionCookie();
 
-    await recordPasswordResetCompleted(user.id);
+    /* ========================================================
+       9. AUDIT
+       ======================================================== */
 
-    return NextResponse.json(
+    await safeRecordAuthEvent({
+      request,
+
+      userId:
+        user.id,
+
+      eventType:
+        'PASSWORD_RESET_COMPLETED',
+
+      entityType:
+        'user',
+
+      entityId:
+        user.id,
+
+      metadata: {
+        /*
+         * Never log:
+         * - password
+         * - password hash
+         * - reset token
+         * - reset token hash
+         */
+        sessionsRevoked:
+          true,
+      },
+    });
+
+    /* ========================================================
+       10. SUCCESS
+       ======================================================== */
+
+    return jsonResponse(
       {
         success: true,
+
+        code:
+          'PASSWORD_RESET_SUCCESS',
+
         message:
           'Password reset successfully. Please sign in with your new password.',
-        next: '/login?reason=password_reset',
+
+        next:
+          '/login?reason=password_reset',
       },
-      { status: 200 }
+      200
     );
   } catch (error) {
     console.error(

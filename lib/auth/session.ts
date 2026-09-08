@@ -697,6 +697,17 @@ export async function listActiveSessions(
     return [];
   }
 
+  /*
+   * Do not use sessions.is_current to decide which row belongs
+   * to THIS browser. When multiple active sessions are enabled,
+   * every usable session can legitimately have is_current=true.
+   *
+   * The browser's current session is identified by the hash of
+   * the HttpOnly cookie currently attached to this request.
+   */
+  const currentTokenHash =
+    await getSessionTokenHashFromCookie();
+
   const result = await queryControl(
     `
       SELECT
@@ -706,17 +717,30 @@ export async function listActiveSessions(
         device_type,
         browser,
         operating_system,
-        is_current,
         last_active_at,
         expires_at,
-        created_at
+        created_at,
+
+        COALESCE(
+          session_token_hash = $2::text,
+          FALSE
+        ) AS is_current_browser
+
       FROM sessions
+
       WHERE user_id = $1
+        AND is_current = true
         AND revoked_at IS NULL
         AND expires_at > NOW()
-      ORDER BY last_active_at DESC NULLS LAST, created_at DESC
+
+      ORDER BY
+        last_active_at DESC NULLS LAST,
+        created_at DESC
     `,
-    [userId]
+    [
+      userId,
+      currentTokenHash,
+    ]
   );
 
   return result.rows.map((row: any) => ({
@@ -727,7 +751,8 @@ export async function listActiveSessions(
     browser: row.browser || 'Unknown',
     operatingSystem:
       row.operating_system || 'Unknown',
-    isCurrent: row.is_current === true,
+    isCurrent:
+      row.is_current_browser === true,
     lastActiveAt: row.last_active_at
       ? new Date(row.last_active_at)
       : null,
@@ -737,6 +762,7 @@ export async function listActiveSessions(
       : null,
   }));
 }
+
 
 // ============================================================
 // REVOKE ONE SESSION

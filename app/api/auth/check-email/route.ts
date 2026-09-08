@@ -1,64 +1,181 @@
-import { NextRequest, NextResponse } from 'next/server';
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server';
+
 import { queryControl } from '@/lib/db/control';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  try {
-    const email = request.nextUrl.searchParams
-      .get('email')
-      ?.trim()
-      .toLowerCase();
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
 
-    if (!email) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Email is required.',
-        },
-        { status: 400 }
-      );
-    }
+const MAX_EMAIL_LENGTH = 254;
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* ============================================================
+   HELPERS
+   ============================================================ */
 
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Please enter a valid email address.',
-        },
-        { status: 400 }
-      );
-    }
+function normalizeEmail(
+  value: string
+) {
+  return value
+    .trim()
+    .toLowerCase();
+}
 
-    const result = await queryControl(
-      `
-        SELECT id
-        FROM users
-        WHERE email = $1
-          AND deleted_at IS NULL
-        LIMIT 1
-      `,
-      [email]
-    );
+function isValidEmail(
+  value: string
+) {
+  if (
+    !value ||
+    value.length >
+      MAX_EMAIL_LENGTH
+  ) {
+    return false;
+  }
 
-    return NextResponse.json(
-      {
-        success: true,
-        exists: result.rows.length > 0,
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
+}
+
+function json(
+  body: Record<
+    string,
+    unknown
+  >,
+  status = 200
+) {
+  return NextResponse.json(
+    body,
+    {
+      status,
+
+      headers: {
+        'Cache-Control':
+          'no-store, no-cache, must-revalidate',
+        Pragma:
+          'no-cache',
       },
-      { status: 200 }
-    );
-  } catch (error) {
-    console.error('Check email error:', error);
+    }
+  );
+}
 
-    return NextResponse.json(
+/* ============================================================
+   GET
+   ============================================================ */
+
+export async function GET(
+  request: NextRequest
+) {
+  try {
+    /* ========================================================
+       INPUT
+       ======================================================== */
+
+    const rawEmail =
+      request.nextUrl.searchParams.get(
+        'email'
+      );
+
+    if (!rawEmail) {
+      return json(
+        {
+          success: false,
+
+          code:
+            'INVALID_EMAIL',
+
+          error:
+            'Email is required.',
+        },
+        400
+      );
+    }
+
+    const email =
+      normalizeEmail(
+        rawEmail
+      );
+
+    /* ========================================================
+       VALIDATION
+       ======================================================== */
+
+    if (
+      !isValidEmail(
+        email
+      )
+    ) {
+      return json(
+        {
+          success: false,
+
+          code:
+            'INVALID_EMAIL',
+
+          error:
+            'Please enter a valid email address.',
+        },
+        400
+      );
+    }
+
+    /* ========================================================
+       ACCOUNT LOOKUP
+       ======================================================== */
+
+    const result =
+      await queryControl(
+        `
+          SELECT id
+          FROM users
+          WHERE email = $1
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [email]
+      );
+
+    const exists =
+      result.rows.length > 0;
+
+    /* ========================================================
+       RESPONSE
+
+       Keep `exists` because the current Register client
+       depends on it.
+       ======================================================== */
+
+    return json({
+      success: true,
+
+      code: exists
+        ? 'EMAIL_ALREADY_EXISTS'
+        : 'EMAIL_AVAILABLE',
+
+      exists,
+    });
+  } catch (error) {
+    console.error(
+      '[Auth] Check email failed:',
+      error
+    );
+
+    return json(
       {
         success: false,
-        error: 'Failed to check email.',
+
+        code:
+          'CHECK_EMAIL_ERROR',
+
+        error:
+          'Could not check this email address.',
       },
-      { status: 500 }
+      500
     );
   }
 }

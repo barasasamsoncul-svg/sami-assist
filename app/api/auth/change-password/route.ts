@@ -1,136 +1,308 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { queryControl } from '@/lib/db/control';
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server';
+
 import { requireSession } from '@/lib/auth/session';
-import { hashPassword, verifyPassword } from '@/lib/auth/password';
+import {
+  hashPassword,
+  verifyPassword,
+} from '@/lib/auth/password';
+import { queryControl } from '@/lib/db/control';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function validatePassword(password: string): string | null {
-  if (!password || password.length < 8) {
-    return 'Password must be at least 8 characters.';
+/* ============================================================
+   TYPES
+   ============================================================ */
+
+type ChangePasswordBody = {
+  currentPassword?: unknown;
+  newPassword?: unknown;
+  confirmPassword?: unknown;
+};
+
+/* ============================================================
+   PASSWORD VALIDATION
+   ============================================================ */
+
+function validatePassword(
+  password: string
+):
+  | {
+      code: 'PASSWORD_WEAK';
+      message: string;
+    }
+  | null {
+  if (
+    !password ||
+    password.length < 8
+  ) {
+    return {
+      code: 'PASSWORD_WEAK',
+      message:
+        'Password must be at least 8 characters.',
+    };
   }
 
-  if (!/[A-Z]/.test(password)) {
-    return 'Password must include at least one uppercase letter.';
+  if (
+    password.length > 128
+  ) {
+    return {
+      code: 'PASSWORD_WEAK',
+      message:
+        'Password must not exceed 128 characters.',
+    };
   }
 
-  if (!/[a-z]/.test(password)) {
-    return 'Password must include at least one lowercase letter.';
+  if (
+    !/[A-Z]/.test(
+      password
+    )
+  ) {
+    return {
+      code: 'PASSWORD_WEAK',
+      message:
+        'Password must include at least one uppercase letter.',
+    };
   }
 
-  if (!/[0-9]/.test(password)) {
-    return 'Password must include at least one number.';
+  if (
+    !/[a-z]/.test(
+      password
+    )
+  ) {
+    return {
+      code: 'PASSWORD_WEAK',
+      message:
+        'Password must include at least one lowercase letter.',
+    };
+  }
+
+  if (
+    !/[0-9]/.test(
+      password
+    )
+  ) {
+    return {
+      code: 'PASSWORD_WEAK',
+      message:
+        'Password must include at least one number.',
+    };
   }
 
   return null;
 }
 
-function getClientIp(request: NextRequest): string | null {
+/* ============================================================
+   REQUEST HELPERS
+   ============================================================ */
+
+function getClientIp(
+  request: NextRequest
+): string | null {
+  const forwarded =
+    request.headers.get(
+      'x-forwarded-for'
+    );
+
+  if (forwarded) {
+    const first =
+      forwarded
+        .split(',')[0]
+        ?.trim();
+
+    if (first) {
+      return first;
+    }
+  }
+
   return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('x-real-ip') ||
-    null
+    request.headers.get(
+      'x-real-ip'
+    ) || null
   );
 }
 
-export async function POST(request: NextRequest) {
+function getUserAgent(
+  request: NextRequest
+) {
+  return (
+    request.headers.get(
+      'user-agent'
+    ) || null
+  );
+}
+
+/* ============================================================
+   RESPONSE HELPERS
+   ============================================================ */
+
+function errorResponse(
+  code: string,
+  error: string,
+  status: number
+) {
+  return NextResponse.json(
+    {
+      success: false,
+      code,
+      error,
+    },
+    {
+      status,
+    }
+  );
+}
+
+/* ============================================================
+   POST
+   ============================================================ */
+
+export async function POST(
+  request: NextRequest
+) {
   try {
-    const session = await requireSession();
+    /* ========================================================
+       AUTHENTICATION
+       ======================================================== */
 
-    const body = await request.json().catch(() => ({}));
+    const session =
+      await requireSession();
 
-    const currentPassword = String(body.currentPassword || '');
-    const newPassword = String(body.newPassword || '');
-    const confirmPassword = String(body.confirmPassword || '');
+    /* ========================================================
+       BODY
+       ======================================================== */
+
+    const body =
+      (await request
+        .json()
+        .catch(
+          () => ({})
+        )) as ChangePasswordBody;
+
+    const currentPassword =
+      typeof body.currentPassword ===
+      'string'
+        ? body.currentPassword
+        : '';
+
+    const newPassword =
+      typeof body.newPassword ===
+      'string'
+        ? body.newPassword
+        : '';
+
+    const confirmPassword =
+      typeof body.confirmPassword ===
+      'string'
+        ? body.confirmPassword
+        : '';
+
+    /* ========================================================
+       VALIDATION
+       ======================================================== */
 
     if (!currentPassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Current password is required.',
-        },
-        { status: 400 }
+      return errorResponse(
+        'CURRENT_PASSWORD_REQUIRED',
+        'Current password is required.',
+        400
       );
     }
 
-    const passwordError = validatePassword(newPassword);
+    const passwordIssue =
+      validatePassword(
+        newPassword
+      );
 
-    if (passwordError) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: passwordError,
-        },
-        { status: 400 }
+    if (passwordIssue) {
+      return errorResponse(
+        passwordIssue.code,
+        passwordIssue.message,
+        400
       );
     }
 
-    if (newPassword !== confirmPassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'New passwords do not match.',
-        },
-        { status: 400 }
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
+      return errorResponse(
+        'PASSWORDS_DO_NOT_MATCH',
+        'New passwords do not match.',
+        400
       );
     }
 
-    if (currentPassword === newPassword) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'New password must be different from your current password.',
-        },
-        { status: 400 }
+    /* ========================================================
+       USER
+       ======================================================== */
+
+    const userResult =
+      await queryControl(
+        `
+          SELECT
+            id,
+            email,
+            password_hash,
+            status
+          FROM users
+          WHERE id = $1
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          session.user.id,
+        ]
+      );
+
+    if (
+      userResult.rows.length ===
+      0
+    ) {
+      return errorResponse(
+        'ACCOUNT_NOT_FOUND',
+        'Account not found.',
+        404
       );
     }
 
-    const userResult = await queryControl(
-      `
-        SELECT
-          id,
-          email,
-          password_hash,
-          status
-        FROM users
-        WHERE id = $1
-          AND deleted_at IS NULL
-        LIMIT 1
-      `,
-      [session.user.id]
-    );
+    const user =
+      userResult.rows[0];
 
-    if (userResult.rows.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Account not found.',
-        },
-        { status: 404 }
+    /* ========================================================
+       PASSWORD-BASED ACCOUNT
+       ======================================================== */
+
+    if (
+      !user.password_hash
+    ) {
+      return errorResponse(
+        'PASSWORD_NOT_SET',
+        'This account does not have a password yet. Use password recovery to create one.',
+        400
       );
     }
 
-    const user = userResult.rows[0];
+    /* ========================================================
+       VERIFY CURRENT PASSWORD
+       ======================================================== */
 
-    if (!user.password_hash) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            'This account does not have a password yet. Use reset password to create one.',
-        },
-        { status: 400 }
+    const currentPasswordMatches =
+      await verifyPassword(
+        currentPassword,
+        user.password_hash
       );
-    }
 
-    const passwordMatches = await verifyPassword(
-      currentPassword,
-      user.password_hash
-    );
+    if (
+      !currentPasswordMatches
+    ) {
+      /* ------------------------------------------------------
+         Audit failure
+         ------------------------------------------------------ */
 
-    if (!passwordMatches) {
       await queryControl(
         `
           INSERT INTO audit_logs (
@@ -142,47 +314,103 @@ export async function POST(request: NextRequest) {
             user_agent,
             metadata
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7
+          )
         `,
         [
           user.id,
           'PASSWORD_CHANGE_FAILED',
           'user',
           user.id,
-          getClientIp(request),
-          request.headers.get('user-agent') || null,
+          getClientIp(
+            request
+          ),
+          getUserAgent(
+            request
+          ),
           JSON.stringify({
-            reason: 'invalid_current_password',
+            reason:
+              'invalid_current_password',
           }),
         ]
-      ).catch((error) => {
-        console.error(
-          '[Auth] Failed to write password change failure audit log:',
-          error
-        );
-      });
+      ).catch(
+        (error) => {
+          console.error(
+            '[Auth] Failed to write password change failure audit log:',
+            error
+          );
+        }
+      );
 
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Current password is incorrect.',
-        },
-        { status: 400 }
+      return errorResponse(
+        'CURRENT_PASSWORD_INCORRECT',
+        'Current password is incorrect.',
+        400
       );
     }
 
-    const newPasswordHash = await hashPassword(newPassword);
+    /* ========================================================
+       PREVENT CURRENT PASSWORD REUSE
+       ======================================================== */
+
+    const newPasswordMatchesCurrent =
+      await verifyPassword(
+        newPassword,
+        user.password_hash
+      );
+
+    if (
+      newPasswordMatchesCurrent
+    ) {
+      return errorResponse(
+        'PASSWORD_REUSED',
+        'New password must be different from your current password.',
+        400
+      );
+    }
+
+    /* ========================================================
+       HASH NEW PASSWORD
+       ======================================================== */
+
+    const newPasswordHash =
+      await hashPassword(
+        newPassword
+      );
+
+    /* ========================================================
+       UPDATE USER PASSWORD
+       ======================================================== */
 
     await queryControl(
       `
         UPDATE users
         SET
           password_hash = $2,
+          password_changed_at = NOW(),
           updated_at = NOW()
         WHERE id = $1
+          AND deleted_at IS NULL
       `,
-      [user.id, newPasswordHash]
+      [
+        user.id,
+        newPasswordHash,
+      ]
     );
+
+    /* ========================================================
+       REVOKE OTHER SESSIONS
+
+       Keep the current session alive so the user is not
+       unexpectedly logged out from the Settings page.
+       ======================================================== */
 
     await queryControl(
       `
@@ -196,13 +424,22 @@ export async function POST(request: NextRequest) {
           AND revoked_at IS NULL
           AND deleted_at IS NULL
       `,
-      [user.id, session.sessionId]
-    ).catch((error) => {
-      console.error(
-        '[Auth] Failed to revoke other sessions after password change:',
-        error
-      );
-    });
+      [
+        user.id,
+        session.sessionId,
+      ]
+    ).catch(
+      (error) => {
+        console.error(
+          '[Auth] Failed to revoke other sessions after password change:',
+          error
+        );
+      }
+    );
+
+    /* ========================================================
+       AUDIT SUCCESS
+       ======================================================== */
 
     await queryControl(
       `
@@ -215,39 +452,74 @@ export async function POST(request: NextRequest) {
           user_agent,
           metadata
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7
+        )
       `,
       [
         user.id,
         'PASSWORD_CHANGED',
         'user',
         user.id,
-        getClientIp(request),
-        request.headers.get('user-agent') || null,
+        getClientIp(
+          request
+        ),
+        getUserAgent(
+          request
+        ),
         JSON.stringify({
-          revokedOtherSessions: true,
+          revokedOtherSessions:
+            true,
         }),
       ]
-    ).catch((error) => {
-      console.error(
-        '[Auth] Failed to write password changed audit log:',
-        error
-      );
-    });
+    ).catch(
+      (error) => {
+        console.error(
+          '[Auth] Failed to write password changed audit log:',
+          error
+        );
+      }
+    );
 
-    return NextResponse.json({
-      success: true,
-      message: 'Password changed successfully.',
-    });
+    /* ========================================================
+       SUCCESS
+       ======================================================== */
+
+    return NextResponse.json(
+      {
+        success: true,
+        code:
+          'PASSWORD_CHANGED',
+        message:
+          'Password changed successfully.',
+      },
+      {
+        status: 200,
+      }
+    );
   } catch (error) {
-    console.error('[Auth] Change password failed:', error);
+    console.error(
+      '[Auth] Change password failed:',
+      error
+    );
 
     return NextResponse.json(
       {
         success: false,
-        error: 'Could not change password.',
+        code:
+          'CHANGE_PASSWORD_ERROR',
+        error:
+          'Could not change password.',
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
