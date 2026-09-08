@@ -13,31 +13,9 @@ export type SaMiLogoSize =
 export type SaMiLogoProps = {
   size?: SaMiLogoSize;
   className?: string;
-
-  /**
-   * Displays:
-   * AI POWERED BUSINESS WORKSPACE
-   * through the horizontal center of the SaMi wordmark.
-   */
   showTagline?: boolean;
-
-  /**
-   * Compatibility prop.
-   * In the current identity, SaMi itself is the mark.
-   * markOnly=true simply removes the tagline.
-   */
   markOnly?: boolean;
-
-  /**
-   * Retained so older SaMi pages do not break.
-   * The approved identity deliberately has no reflection.
-   */
   showReflection?: boolean;
-
-  /**
-   * Retained so older SaMi pages do not break.
-   * The logo itself always remains transparent.
-   */
   showBackground?: boolean;
 };
 
@@ -59,27 +37,27 @@ export default function SaMiLogo({
   className = '',
   showTagline = true,
   markOnly = false,
-
-  // Intentionally retained for backwards compatibility.
-  // The approved SaMi identity does not render either.
   showReflection: _showReflection,
   showBackground: _showBackground,
 }: SaMiLogoProps) {
   const reactId = safeSvgId(useId());
 
   const width = SIZE_MAP[size];
+  const taglineVisible = showTagline && !markOnly;
 
-  const taglineVisible =
-    showTagline && !markOnly;
-
+  // Premium gradients
   const mainGradient = `sami-main-${reactId}`;
   const rimGradient = `sami-rim-${reactId}`;
   const highlightGradient = `sami-highlight-${reactId}`;
   const beamGradient = `sami-beam-${reactId}`;
+  const accentGradient = `sami-accent-${reactId}`;
+  const shadowGradient = `sami-shadow-${reactId}`;
+  const glowGradient = `sami-glow-${reactId}`;
 
   const logoGlow = `sami-logo-glow-${reactId}`;
   const beamGlow = `sami-beam-glow-${reactId}`;
   const shineGlow = `sami-shine-${reactId}`;
+  const softGlow = `sami-soft-glow-${reactId}`;
 
   const titleId = `sami-title-${reactId}`;
 
@@ -108,233 +86,178 @@ export default function SaMiLogo({
 
       <defs>
         {/* =====================================================
-            MAIN SaMi GRADIENT
+            PREMIUM GRADIENTS
            ===================================================== */}
 
+        {/* Main gradient - vibrant, energetic */}
         <linearGradient
           id={mainGradient}
-          x1="170"
-          y1="55"
-          x2="840"
-          y2="255"
+          x1="150"
+          y1="40"
+          x2="850"
+          y2="270"
           gradientUnits="userSpaceOnUse"
         >
-          <stop
-            offset="0%"
-            stopColor="#DFFFFF"
-          />
-
-          <stop
-            offset="7%"
-            stopColor="#8BFAFF"
-          />
-
-          <stop
-            offset="23%"
-            stopColor="#36DDFF"
-          />
-
-          <stop
-            offset="42%"
-            stopColor="#188BFF"
-          />
-
-          <stop
-            offset="61%"
-            stopColor="#3157FF"
-          />
-
-          <stop
-            offset="78%"
-            stopColor="#7144FF"
-          />
-
-          <stop
-            offset="91%"
-            stopColor="#B54CFF"
-          />
-
-          <stop
-            offset="100%"
-            stopColor="#F06FFF"
-          />
+          <stop offset="0%" stopColor="#E0FFFF" />
+          <stop offset="8%" stopColor="#7DF5FF" />
+          <stop offset="22%" stopColor="#2BC8FF" />
+          <stop offset="40%" stopColor="#0077FF" />
+          <stop offset="58%" stopColor="#4A3AFF" />
+          <stop offset="75%" stopColor="#8B44FF" />
+          <stop offset="90%" stopColor="#D454FF" />
+          <stop offset="100%" stopColor="#FF66FF" />
         </linearGradient>
 
-        {/* Fine luminous outside rim */}
+        {/* Luminous rim gradient */}
         <linearGradient
           id={rimGradient}
           x1="160"
-          y1="40"
-          x2="850"
-          y2="250"
+          y1="35"
+          x2="860"
+          y2="265"
           gradientUnits="userSpaceOnUse"
         >
-          <stop
-            offset="0%"
-            stopColor="#FFFFFF"
-          />
-
-          <stop
-            offset="18%"
-            stopColor="#D6FFFF"
-          />
-
-          <stop
-            offset="46%"
-            stopColor="#70C7FF"
-          />
-
-          <stop
-            offset="73%"
-            stopColor="#837EFF"
-          />
-
-          <stop
-            offset="100%"
-            stopColor="#FFD0FF"
-          />
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="15%" stopColor="#B8FFFF" />
+          <stop offset="35%" stopColor="#60D0FF" />
+          <stop offset="55%" stopColor="#6A7AFF" />
+          <stop offset="75%" stopColor="#A85AFF" />
+          <stop offset="100%" stopColor="#FFCCFF" />
         </linearGradient>
 
-        {/* Narrow inner glass highlight */}
+        {/* Inner glass highlight */}
         <linearGradient
           id={highlightGradient}
-          x1="220"
-          y1="62"
-          x2="820"
-          y2="225"
+          x1="200"
+          y1="55"
+          x2="800"
+          y2="230"
           gradientUnits="userSpaceOnUse"
         >
-          <stop
-            offset="0%"
-            stopColor="#FFFFFF"
-            stopOpacity="0.96"
-          />
-
-          <stop
-            offset="22%"
-            stopColor="#D9FFFF"
-            stopOpacity="0.7"
-          />
-
-          <stop
-            offset="48%"
-            stopColor="#97D8FF"
-            stopOpacity="0.36"
-          />
-
-          <stop
-            offset="70%"
-            stopColor="#ACAAFF"
-            stopOpacity="0.42"
-          />
-
-          <stop
-            offset="100%"
-            stopColor="#FFE1FF"
-            stopOpacity="0.85"
-          />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
+          <stop offset="20%" stopColor="#D2FFFF" stopOpacity="0.65" />
+          <stop offset="45%" stopColor="#8AC8FF" stopOpacity="0.35" />
+          <stop offset="70%" stopColor="#9A94FF" stopOpacity="0.40" />
+          <stop offset="100%" stopColor="#FFD0FF" stopOpacity="0.75" />
         </linearGradient>
 
-        {/* =====================================================
-            TAGLINE / CENTER BEAM
-           ===================================================== */}
+        {/* Subtle shadow gradient */}
+        <linearGradient
+          id={shadowGradient}
+          x1="300"
+          y1="250"
+          x2="700"
+          y2="80"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#1A1A2E" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="#1A1A2E" stopOpacity="0" />
+        </linearGradient>
 
+        {/* Tagline beam */}
         <linearGradient
           id={beamGradient}
-          x1="45"
+          x1="40"
           y1="0"
-          x2="955"
+          x2="960"
           y2="0"
           gradientUnits="userSpaceOnUse"
         >
-          <stop
-            offset="0%"
-            stopColor="#16CFFF"
-            stopOpacity="0"
-          />
+          <stop offset="0%" stopColor="#00BFFF" stopOpacity="0" />
+          <stop offset="8%" stopColor="#1AD4FF" stopOpacity="0.9" />
+          <stop offset="28%" stopColor="#33BBFF" />
+          <stop offset="50%" stopColor="#4A7AFF" />
+          <stop offset="72%" stopColor="#8A4AFF" />
+          <stop offset="92%" stopColor="#E050FF" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#FF6AFF" stopOpacity="0" />
+        </linearGradient>
 
-          <stop
-            offset="10%"
-            stopColor="#27DFFF"
-            stopOpacity="0.9"
-          />
-
-          <stop
-            offset="30%"
-            stopColor="#3FB8FF"
-          />
-
-          <stop
-            offset="52%"
-            stopColor="#5386FF"
-          />
-
-          <stop
-            offset="73%"
-            stopColor="#755DFF"
-          />
-
-          <stop
-            offset="90%"
-            stopColor="#D45AFF"
-            stopOpacity="0.9"
-          />
-
-          <stop
-            offset="100%"
-            stopColor="#ED6AFF"
-            stopOpacity="0"
-          />
+        {/* Accent glow gradient */}
+        <linearGradient
+          id={accentGradient}
+          x1="0"
+          y1="0"
+          x2="1000"
+          y2="0"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.6" />
+          <stop offset="30%" stopColor="#0066FF" stopOpacity="0.4" />
+          <stop offset="70%" stopColor="#6633FF" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#CC44FF" stopOpacity="0.6" />
         </linearGradient>
 
         {/* =====================================================
-            GLOW
+            GLOW FILTERS
            ===================================================== */}
 
+        {/* Soft ambient glow */}
         <filter
-          id={logoGlow}
-          x="-35%"
-          y="-65%"
-          width="170%"
-          height="230%"
+          id={softGlow}
+          x="-40%"
+          y="-80%"
+          width="180%"
+          height="260%"
           colorInterpolationFilters="sRGB"
         >
-          <feGaussianBlur
-            stdDeviation="14"
-            result="blur"
-          />
-
+          <feGaussianBlur stdDeviation="18" result="blur" />
           <feColorMatrix
             in="blur"
             type="matrix"
             values="
-              0 0 0 0 0.07
-              0 0 0 0 0.45
-              0 0 0 0 1
-              0 0 0 0.52 0
+              0 0 0 0 0.05
+              0 0 0 0 0.35
+              0 0 0 0 0.85
+              0 0 0 0.40 0
             "
             result="coloredGlow"
           />
-
           <feMerge>
             <feMergeNode in="coloredGlow" />
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
 
+        {/* Main logo glow */}
+        <filter
+          id={logoGlow}
+          x="-30%"
+          y="-60%"
+          width="160%"
+          height="220%"
+          colorInterpolationFilters="sRGB"
+        >
+          <feGaussianBlur stdDeviation="12" result="blur" />
+          <feColorMatrix
+            in="blur"
+            type="matrix"
+            values="
+              0 0 0 0 0.08
+              0 0 0 0 0.50
+              0 0 0 0 1
+              0 0 0 0.55 0
+            "
+            result="coloredGlow"
+          />
+          <feMerge>
+            <feMergeNode in="coloredGlow" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+
+        {/* Beam glow */}
         <filter
           id={beamGlow}
           x="-30%"
-          y="-1200%"
+          y="-1500%"
           width="160%"
-          height="2500%"
+          height="3200%"
           colorInterpolationFilters="sRGB"
         >
-          <feGaussianBlur
-            stdDeviation="9"
-          />
+          <feGaussianBlur stdDeviation="10" />
         </filter>
 
+        {/* Shine glow */}
         <filter
           id={shineGlow}
           x="-100%"
@@ -343,143 +266,196 @@ export default function SaMiLogo({
           height="300%"
           colorInterpolationFilters="sRGB"
         >
-          <feGaussianBlur
-            stdDeviation="5"
-          />
+          <feGaussianBlur stdDeviation="4" />
         </filter>
+
+        {/* =====================================================
+            GRADIENTS FOR DECORATIVE ELEMENTS
+           ===================================================== */}
+
+        <linearGradient
+          id={glowGradient}
+          x1="200"
+          y1="50"
+          x2="800"
+          y2="250"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#4A9AFF" stopOpacity="0.3" />
+          <stop offset="50%" stopColor="#7A4AFF" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#D44AFF" stopOpacity="0.3" />
+        </linearGradient>
       </defs>
 
-      {/* ======================================================
-          SaMi CUSTOM WORDMARK
-          
-          This is no longer font-dependent.
-          The letterforms are drawn as custom paths.
+      {/* ====================================================== 
+          AMBIENT BACKGROUND GLOW
          ====================================================== */}
 
-      {/* broad atmospheric glow */}
+      <ellipse
+        cx="500"
+        cy="155"
+        rx="420"
+        ry="120"
+        fill={`url(#${glowGradient})`}
+        filter={`url(#${softGlow})`}
+        opacity="0.5"
+      />
+
+      {/* ====================================================== 
+          SUBTLE SHADOW
+         ====================================================== */}
+
+      <g opacity="0.15">
+        <path
+          d="
+            M 320 100
+            C 290 78, 230 80, 195 100
+            C 165 118, 162 148, 188 160
+            C 216 172, 278 166, 302 180
+            C 330 196, 320 230, 288 246
+            C 252 264, 192 258, 162 236
+          "
+          fill="none"
+          stroke={`url(#${shadowGradient})`}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
+
+      {/* ====================================================== 
+          SaMi WORDMARK - GLOW LAYER
+         ====================================================== */}
+
       <g
         fill="none"
         stroke={`url(#${mainGradient})`}
-        strokeWidth="66"
+        strokeWidth="68"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.28"
+        opacity="0.25"
         filter={`url(#${logoGlow})`}
       >
         {/* S */}
         <path
           d="
-            M 326 76
-            C 294 52, 231 52, 195 73
-            C 163 92, 160 122, 188 135
-            C 216 148, 279 142, 304 157
-            C 334 174, 323 210, 289 227
-            C 251 246, 189 239, 158 215
+            M 326 78
+            C 294 54, 231 54, 195 75
+            C 163 94, 160 124, 188 137
+            C 216 150, 279 144, 304 159
+            C 334 176, 323 212, 289 229
+            C 251 248, 189 241, 158 217
           "
         />
 
         {/* a */}
         <path
           d="
-            M 419 145
-            C 391 124, 352 132, 338 164
-            C 324 196, 341 226, 371 226
-            C 402 226, 420 199, 425 166
-            M 425 148
-            L 410 224
+            M 419 147
+            C 391 126, 352 134, 338 166
+            C 324 198, 341 228, 371 228
+            C 402 228, 420 201, 425 168
+            M 425 150
+            L 410 226
           "
         />
 
         {/* M */}
         <path
           d="
-            M 489 226
-            L 521 76
-            L 582 190
-            L 674 75
-            L 643 226
+            M 489 228
+            L 521 78
+            L 582 192
+            L 674 77
+            L 643 228
           "
         />
 
         {/* i */}
         <path
           d="
-            M 713 144
-            L 696 225
+            M 713 146
+            L 696 227
           "
         />
 
         <circle
           cx="727"
-          cy="91"
+          cy="93"
           r="13"
           fill={`url(#${mainGradient})`}
           stroke="none"
         />
       </g>
 
-      {/* bright outer rim */}
+      {/* ====================================================== 
+          BRIGHT OUTER RIM
+         ====================================================== */}
+
       <g
         fill="none"
         stroke={`url(#${rimGradient})`}
         strokeWidth="62"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.78"
+        opacity="0.82"
       >
         {/* S */}
         <path
           d="
-            M 326 76
-            C 294 52, 231 52, 195 73
-            C 163 92, 160 122, 188 135
-            C 216 148, 279 142, 304 157
-            C 334 174, 323 210, 289 227
-            C 251 246, 189 239, 158 215
+            M 326 78
+            C 294 54, 231 54, 195 75
+            C 163 94, 160 124, 188 137
+            C 216 150, 279 144, 304 159
+            C 334 176, 323 212, 289 229
+            C 251 248, 189 241, 158 217
           "
         />
 
         {/* a */}
         <path
           d="
-            M 419 145
-            C 391 124, 352 132, 338 164
-            C 324 196, 341 226, 371 226
-            C 402 226, 420 199, 425 166
-            M 425 148
-            L 410 224
+            M 419 147
+            C 391 126, 352 134, 338 166
+            C 324 198, 341 228, 371 228
+            C 402 228, 420 201, 425 168
+            M 425 150
+            L 410 226
           "
         />
 
         {/* M */}
         <path
           d="
-            M 489 226
-            L 521 76
-            L 582 190
-            L 674 75
-            L 643 226
+            M 489 228
+            L 521 78
+            L 582 192
+            L 674 77
+            L 643 228
           "
         />
 
         {/* i */}
         <path
           d="
-            M 713 144
-            L 696 225
+            M 713 146
+            L 696 227
           "
         />
 
         <circle
           cx="727"
-          cy="91"
+          cy="93"
           r="15"
           fill={`url(#${rimGradient})`}
           stroke="none"
         />
       </g>
 
-      {/* main body */}
+      {/* ====================================================== 
+          MAIN WORDMARK BODY
+         ====================================================== */}
+
       <g
         fill="none"
         stroke={`url(#${mainGradient})`}
@@ -490,135 +466,169 @@ export default function SaMiLogo({
         {/* S */}
         <path
           d="
-            M 326 76
-            C 294 52, 231 52, 195 73
-            C 163 92, 160 122, 188 135
-            C 216 148, 279 142, 304 157
-            C 334 174, 323 210, 289 227
-            C 251 246, 189 239, 158 215
+            M 326 78
+            C 294 54, 231 54, 195 75
+            C 163 94, 160 124, 188 137
+            C 216 150, 279 144, 304 159
+            C 334 176, 323 212, 289 229
+            C 251 248, 189 241, 158 217
           "
         />
 
         {/* a */}
         <path
           d="
-            M 419 145
-            C 391 124, 352 132, 338 164
-            C 324 196, 341 226, 371 226
-            C 402 226, 420 199, 425 166
-            M 425 148
-            L 410 224
+            M 419 147
+            C 391 126, 352 134, 338 166
+            C 324 198, 341 228, 371 228
+            C 402 228, 420 201, 425 168
+            M 425 150
+            L 410 226
           "
         />
 
         {/* M */}
         <path
           d="
-            M 489 226
-            L 521 76
-            L 582 190
-            L 674 75
-            L 643 226
+            M 489 228
+            L 521 78
+            L 582 192
+            L 674 77
+            L 643 228
           "
         />
 
         {/* i */}
         <path
           d="
-            M 713 144
-            L 696 225
+            M 713 146
+            L 696 227
           "
         />
 
         <circle
           cx="727"
-          cy="91"
+          cy="93"
           r="12"
           fill={`url(#${mainGradient})`}
           stroke="none"
         />
       </g>
 
-      {/* slim glass highlight over the wordmark */}
+      {/* ====================================================== 
+          GLASS HIGHLIGHT
+         ====================================================== */}
+
       <g
         fill="none"
         stroke={`url(#${highlightGradient})`}
         strokeWidth="5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.72"
+        opacity="0.75"
       >
         <path
           d="
-            M 319 72
-            C 284 54, 229 58, 200 77
+            M 319 74
+            C 284 56, 229 60, 200 79
           "
         />
 
         <path
           d="
-            M 353 151
-            C 369 136, 396 137, 412 150
+            M 353 153
+            C 369 138, 396 139, 412 152
           "
         />
 
         <path
           d="
-            M 525 82
-            L 579 181
+            M 525 84
+            L 579 183
           "
         />
 
         <path
           d="
-            M 671 82
-            L 647 196
+            M 671 84
+            L 647 198
           "
         />
 
         <path
           d="
-            M 718 151
-            L 704 216
+            M 718 153
+            L 704 218
           "
         />
       </g>
 
-      {/* ======================================================
-          CENTER TAGLINE
-          
-          No pill.
-          No box.
-          No frame.
-          It passes directly through SaMi.
+      {/* ====================================================== 
+          DECORATIVE SPARKLE / ACCENT DOTS
+         ====================================================== */}
+
+      <circle
+        cx="170"
+        cy="70"
+        r="2.5"
+        fill="#7DF5FF"
+        opacity="0.6"
+      />
+
+      <circle
+        cx="850"
+        cy="240"
+        r="2.5"
+        fill="#D454FF"
+        opacity="0.6"
+      />
+
+      <circle
+        cx="870"
+        cy="80"
+        r="1.8"
+        fill="#2BC8FF"
+        opacity="0.4"
+      />
+
+      <circle
+        cx="150"
+        cy="230"
+        r="1.8"
+        fill="#8B44FF"
+        opacity="0.4"
+      />
+
+      {/* ====================================================== 
+          TAGLINE BEAM - AI POWERED BUSINESS WORKSPACE
          ====================================================== */}
 
       {taglineVisible && (
         <g>
-          {/* wide glow */}
+          {/* Wide glow */}
           <line
             x1="68"
             y1="163"
             x2="932"
             y2="163"
             stroke={`url(#${beamGradient})`}
-            strokeWidth="11"
-            opacity="0.32"
+            strokeWidth="12"
+            opacity="0.30"
             filter={`url(#${beamGlow})`}
           />
 
-          {/* secondary glow */}
+          {/* Secondary glow */}
           <line
             x1="68"
             y1="163"
             x2="932"
             y2="163"
             stroke={`url(#${beamGradient})`}
-            strokeWidth="4"
-            opacity="0.55"
+            strokeWidth="5"
+            opacity="0.50"
           />
 
-          {/* crisp beam */}
+          {/* Crisp beam */}
           <line
             x1="68"
             y1="163"
@@ -629,41 +639,41 @@ export default function SaMiLogo({
             opacity="1"
           />
 
-          {/* left flare */}
+          {/* Left flare */}
           <circle
             cx="135"
             cy="163"
-            r="4.2"
+            r="4.5"
             fill="#DFFFFF"
           />
 
           <circle
             cx="135"
             cy="163"
-            r="12"
+            r="14"
             fill="#42DEFF"
-            opacity="0.34"
+            opacity="0.30"
             filter={`url(#${shineGlow})`}
           />
 
-          {/* right flare */}
+          {/* Right flare */}
           <circle
             cx="865"
             cy="163"
-            r="4.2"
+            r="4.5"
             fill="#FFE6FF"
           />
 
           <circle
             cx="865"
             cy="163"
-            r="12"
+            r="14"
             fill="#C95DFF"
-            opacity="0.34"
+            opacity="0.30"
             filter={`url(#${shineGlow})`}
           />
 
-          {/* dark micro-stroke lets tagline cross any theme */}
+          {/* Dark micro-stroke for contrast */}
           <text
             x="500"
             y="171"
@@ -675,6 +685,7 @@ export default function SaMiLogo({
               -apple-system,
               BlinkMacSystemFont,
               'Segoe UI',
+              Roboto,
               Arial,
               sans-serif
             "
@@ -691,6 +702,24 @@ export default function SaMiLogo({
           </text>
         </g>
       )}
+
+      {/* ====================================================== 
+          FINE DETAIL - GLASS SHINE OVERLAY
+         ====================================================== */}
+
+      <g opacity="0.08">
+        <path
+          d="
+            M 180 120
+            Q 350 100, 500 115
+            Q 650 130, 820 110
+          "
+          fill="none"
+          stroke="white"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </g>
     </svg>
   );
 }
