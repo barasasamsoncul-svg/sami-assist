@@ -379,13 +379,13 @@ export default function DashboardClient({
     useState(false);
 
   const capabilities = {
-    aiEnabled: platform?.aiEnabled ?? false,
-    filesEnabled: platform?.filesEnabled ?? false,
-    notificationsEnabled:
-      platform?.notificationsEnabled ?? false,
-    activityEnabled:
-      platform?.activityEnabled ?? false,
-  };
+  aiEnabled: platform?.aiEnabled ?? true,
+  filesEnabled: platform?.filesEnabled ?? false,
+  notificationsEnabled:
+    platform?.notificationsEnabled ?? false,
+  activityEnabled:
+    platform?.activityEnabled ?? false,
+};
 
   const installedApps = useMemo(() => {
     return modules.filter((module) => {
