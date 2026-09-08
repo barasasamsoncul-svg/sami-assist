@@ -1,4 +1,3 @@
-// app/api/auth/reset-password/route.ts
 
 import {
   NextRequest,
@@ -42,7 +41,8 @@ const MAX_RESET_TOKEN_LENGTH = 512;
 
 type ResetPasswordBody = {
   token?: unknown;
-  password?: unknown;
+  newPassword?: unknown;
+  confirmPassword?: unknown;
 };
 
 type ResetUserRow = {
@@ -242,9 +242,14 @@ export async function POST(
       body.token
     );
 
-  const password =
+  const newPassword =
     normalizePassword(
-      body.password
+      body.newPassword
+    );
+
+  const confirmPassword =
+    normalizePassword(
+      body.confirmPassword
     );
 
   /* ==========================================================
@@ -260,7 +265,7 @@ export async function POST(
   ) {
     return jsonError(
       400,
-      'INVALID_OR_EXPIRED_TOKEN',
+      'RESET_TOKEN_INVALID',
       'This reset link is invalid or has expired.'
     );
   }
@@ -269,7 +274,7 @@ export async function POST(
      4. PASSWORD VALIDATION
      ========================================================== */
 
-  if (!password) {
+  if (!newPassword) {
     return jsonError(
       400,
       'PASSWORD_REQUIRED',
@@ -277,16 +282,38 @@ export async function POST(
     );
   }
 
+  if (!confirmPassword) {
+    return jsonError(
+      400,
+      'PASSWORDS_DO_NOT_MATCH',
+      'Confirm your new password.'
+    );
+  }
+
   if (
-    password.length <
-      MIN_PASSWORD_LENGTH ||
-    password.length >
-      MAX_PASSWORD_LENGTH
+    newPassword !==
+    confirmPassword
   ) {
     return jsonError(
       400,
-      'WEAK_PASSWORD',
-      'Password must be between 8 and 128 characters.'
+      'PASSWORDS_DO_NOT_MATCH',
+      'New password and confirmation password must match.'
+    );
+  }
+
+  if (
+    newPassword.length <
+      MIN_PASSWORD_LENGTH ||
+    newPassword.length >
+      MAX_PASSWORD_LENGTH ||
+    !/[A-Z]/.test(newPassword) ||
+    !/[a-z]/.test(newPassword) ||
+    !/[0-9]/.test(newPassword)
+  ) {
+    return jsonError(
+      400,
+      'PASSWORD_WEAK',
+      'Use at least 8 characters with uppercase, lowercase and a number.'
     );
   }
 
@@ -302,7 +329,7 @@ export async function POST(
 
     const newPasswordHash =
       await hashPassword(
-        password
+        newPassword
       );
 
     /* ========================================================
@@ -443,7 +470,7 @@ export async function POST(
     ) {
       return jsonError(
         400,
-        'INVALID_OR_EXPIRED_TOKEN',
+        'RESET_TOKEN_INVALID',
         'This reset link is invalid or has expired.'
       );
     }
@@ -516,7 +543,7 @@ export async function POST(
 
     return jsonError(
       500,
-      'RESET_PASSWORD_FAILED',
+      'PASSWORD_RESET_ERROR',
       'Something went wrong while resetting your password.'
     );
   }
