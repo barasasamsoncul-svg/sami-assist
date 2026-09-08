@@ -1,70 +1,73 @@
 'use client';
 
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowLeft,
+  ArrowRight,
+  BarChart,
+  Bot,
+  Boxes,
+  Briefcase,
+  Calculator,
+  Calendar,
+  CalendarClock,
+  CalendarDays,
+  Car,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
+  Factory,
+  FileText,
+  Folder,
+  Headphones,
+  Home,
+  Loader2,
+  Mail,
+  MapPin,
+  Megaphone,
+  MessageSquare,
+  Moon,
+  Package,
+  PenTool,
+  Receipt,
+  Repeat,
+  Search,
+  ShieldCheck,
+  ShoppingBag,
+  ShoppingCart,
+  Sparkles,
+  Store,
+  Sun,
+  UserPlus,
+  UserRound,
+  Users,
+  UserSearch,
+  Utensils,
+  Workflow,
+  Wrench,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import {
-  Sun,
-  Moon,
-  ArrowRight,
-  ArrowLeft,
-  Check,
-  X,
-  AlertTriangle,
-  Calculator,
-  Receipt,
-  FileText,
-  BarChart,
-  Folder,
-  PenTool,
-  Users,
-  ShoppingCart,
-  Repeat,
-  Home,
-  Store,
-  Utensils,
-  Package,
-  Factory,
-  Boxes,
-  ShoppingBag,
-  Wrench,
-  ShieldCheck,
-  UserRound,
-  Car,
-  UserPlus,
-  ClipboardCheck,
-  CalendarOff,
-  UserSearch,
-  Megaphone,
-  Mail,
-  MessageSquare,
-  CalendarDays,
-  Workflow,
-  ClipboardList,
-  Briefcase,
-  Clock,
-  MapPin,
-  Headphones,
-  CalendarClock,
-  Calendar,
-  type LucideIcon,
-} from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
-  SAMI_APPS,
   APP_CATEGORIES,
+  SAMI_APPS,
 } from '@/lib/sami-apps';
 
-/* -------------------------------------------------------------------------- */
-/* Constants                                                                  */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
 
 const SELECTED_APPS_STORAGE_KEY =
   'sami_selected_apps';
@@ -75,11 +78,14 @@ const THEME_STORAGE_KEY =
 const NEXT_ROUTE =
   '/select-plan';
 
-/* -------------------------------------------------------------------------- */
-/* Icon mapping                                                               */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   ICONS
+   ============================================================ */
 
-const iconMap: Record<string, LucideIcon> = {
+const iconMap: Record<
+  string,
+  LucideIcon
+> = {
   calculator: Calculator,
   receipt: Receipt,
   'file-text': FileText,
@@ -101,20 +107,25 @@ const iconMap: Record<string, LucideIcon> = {
   'user-round': UserRound,
   car: Car,
   'user-plus': UserPlus,
-  'clipboard-check': ClipboardCheck,
-  'calendar-off': CalendarOff,
+  'clipboard-check':
+    ClipboardCheck,
+  'calendar-off': Calendar,
   'user-search': UserSearch,
   megaphone: Megaphone,
   mail: Mail,
-  'message-square': MessageSquare,
-  'calendar-days': CalendarDays,
+  'message-square':
+    MessageSquare,
+  'calendar-days':
+    CalendarDays,
   workflow: Workflow,
-  'clipboard-list': ClipboardList,
+  'clipboard-list':
+    ClipboardList,
   briefcase: Briefcase,
   clock: Clock,
   'map-pin': MapPin,
   headphones: Headphones,
-  'calendar-clock': CalendarClock,
+  'calendar-clock':
+    CalendarClock,
   calendar: Calendar,
 };
 
@@ -131,26 +142,348 @@ function getIconComponent(
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Types                                                                      */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   ODOO-LIKE APP COLOR IDENTITIES
+   ============================================================ */
+
+type AppPalette = {
+  tile: string;
+  tileSelected: string;
+  icon: string;
+  glow: string;
+  badge: string;
+  border: string;
+};
+
+/**
+ * These are intentionally saturated.
+ *
+ * SaMi apps should be visually recognizable
+ * from their icon color, just like mature ERP
+ * launchers such as Odoo.
+ */
+const APP_PALETTES: AppPalette[] = [
+  {
+    tile:
+      'from-[#8b5cf6] to-[#6d28d9]',
+    tileSelected:
+      'from-[#7c3aed] to-[#5b21b6]',
+    icon: 'text-white',
+    glow: 'shadow-violet-500/25',
+    badge:
+      'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
+    border:
+      'hover:border-violet-300 dark:hover:border-violet-700',
+  },
+
+  {
+    tile:
+      'from-[#06b6d4] to-[#0284c7]',
+    tileSelected:
+      'from-[#0891b2] to-[#0369a1]',
+    icon: 'text-white',
+    glow: 'shadow-cyan-500/25',
+    badge:
+      'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300',
+    border:
+      'hover:border-cyan-300 dark:hover:border-cyan-700',
+  },
+
+  {
+    tile:
+      'from-[#10b981] to-[#047857]',
+    tileSelected:
+      'from-[#059669] to-[#065f46]',
+    icon: 'text-white',
+    glow:
+      'shadow-emerald-500/25',
+    badge:
+      'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300',
+    border:
+      'hover:border-emerald-300 dark:hover:border-emerald-700',
+  },
+
+  {
+    tile:
+      'from-[#f97316] to-[#ea580c]',
+    tileSelected:
+      'from-[#ea580c] to-[#c2410c]',
+    icon: 'text-white',
+    glow:
+      'shadow-orange-500/25',
+    badge:
+      'bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-300',
+    border:
+      'hover:border-orange-300 dark:hover:border-orange-700',
+  },
+
+  {
+    tile:
+      'from-[#ec4899] to-[#be185d]',
+    tileSelected:
+      'from-[#db2777] to-[#9d174d]',
+    icon: 'text-white',
+    glow:
+      'shadow-pink-500/25',
+    badge:
+      'bg-pink-50 text-pink-700 dark:bg-pink-950/50 dark:text-pink-300',
+    border:
+      'hover:border-pink-300 dark:hover:border-pink-700',
+  },
+
+  {
+    tile:
+      'from-[#3b82f6] to-[#1d4ed8]',
+    tileSelected:
+      'from-[#2563eb] to-[#1e40af]',
+    icon: 'text-white',
+    glow:
+      'shadow-blue-500/25',
+    badge:
+      'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300',
+    border:
+      'hover:border-blue-300 dark:hover:border-blue-700',
+  },
+
+  {
+    tile:
+      'from-[#eab308] to-[#ca8a04]',
+    tileSelected:
+      'from-[#d4a106] to-[#a16207]',
+    icon: 'text-white',
+    glow:
+      'shadow-yellow-500/25',
+    badge:
+      'bg-yellow-50 text-yellow-700 dark:bg-yellow-950/50 dark:text-yellow-300',
+    border:
+      'hover:border-yellow-300 dark:hover:border-yellow-700',
+  },
+
+  {
+    tile:
+      'from-[#ef4444] to-[#b91c1c]',
+    tileSelected:
+      'from-[#dc2626] to-[#991b1b]',
+    icon: 'text-white',
+    glow:
+      'shadow-red-500/25',
+    badge:
+      'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300',
+    border:
+      'hover:border-red-300 dark:hover:border-red-700',
+  },
+
+  {
+    tile:
+      'from-[#14b8a6] to-[#0f766e]',
+    tileSelected:
+      'from-[#0d9488] to-[#115e59]',
+    icon: 'text-white',
+    glow:
+      'shadow-teal-500/25',
+    badge:
+      'bg-teal-50 text-teal-700 dark:bg-teal-950/50 dark:text-teal-300',
+    border:
+      'hover:border-teal-300 dark:hover:border-teal-700',
+  },
+
+  {
+    tile:
+      'from-[#6366f1] to-[#4338ca]',
+    tileSelected:
+      'from-[#4f46e5] to-[#3730a3]',
+    icon: 'text-white',
+    glow:
+      'shadow-indigo-500/25',
+    badge:
+      'bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300',
+    border:
+      'hover:border-indigo-300 dark:hover:border-indigo-700',
+  },
+
+  {
+    tile:
+      'from-[#a855f7] to-[#7e22ce]',
+    tileSelected:
+      'from-[#9333ea] to-[#6b21a8]',
+    icon: 'text-white',
+    glow:
+      'shadow-purple-500/25',
+    badge:
+      'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300',
+    border:
+      'hover:border-purple-300 dark:hover:border-purple-700',
+  },
+
+  {
+    tile:
+      'from-[#f43f5e] to-[#be123c]',
+    tileSelected:
+      'from-[#e11d48] to-[#9f1239]',
+    icon: 'text-white',
+    glow:
+      'shadow-rose-500/25',
+    badge:
+      'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300',
+    border:
+      'hover:border-rose-300 dark:hover:border-rose-700',
+  },
+];
+
+/**
+ * Known business apps keep a deliberate,
+ * stable identity instead of changing when
+ * app ordering changes.
+ */
+const APP_PALETTE_OVERRIDES: Record<
+  string,
+  number
+> = {
+  accounting: 2,
+  finance: 2,
+
+  invoicing: 5,
+  invoice: 5,
+  invoices: 5,
+
+  crm: 0,
+
+  sales: 1,
+  sale: 1,
+
+  pos: 11,
+  'point-of-sale': 11,
+  point_of_sale: 11,
+
+  inventory: 3,
+  stock: 3,
+
+  purchases: 6,
+  purchase: 6,
+
+  ecommerce: 4,
+  'e-commerce': 4,
+  e_commerce: 4,
+
+  projects: 9,
+  project: 9,
+
+  hr: 10,
+  employees: 10,
+
+  marketing: 7,
+
+  manufacturing: 8,
+  mrp: 8,
+};
+
+function normalizeKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-');
+}
+
+function hashString(value: string) {
+  let hash = 0;
+
+  for (
+    let index = 0;
+    index < value.length;
+    index += 1
+  ) {
+    hash =
+      (hash * 31 +
+        value.charCodeAt(index)) >>>
+      0;
+  }
+
+  return hash;
+}
+
+function getAppPalette(
+  key: string,
+  category: string
+): AppPalette {
+  const normalized =
+    normalizeKey(key);
+
+  const override =
+    APP_PALETTE_OVERRIDES[
+      normalized
+    ];
+
+  if (override !== undefined) {
+    return APP_PALETTES[
+      override %
+        APP_PALETTES.length
+    ];
+  }
+
+  const index =
+    hashString(
+      `${category}:${normalized}`
+    ) % APP_PALETTES.length;
+
+  return APP_PALETTES[index];
+}
+
+/* ============================================================
+   CATEGORY COLORS
+   ============================================================ */
+
+const CATEGORY_COLORS: Record<
+  string,
+  string
+> = {
+  finance:
+    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+
+  documents:
+    'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+
+  sales:
+    'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+
+  commerce:
+    'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900',
+
+  supply_chain:
+    'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900',
+
+  operations:
+    'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900',
+
+  people:
+    'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-900',
+
+  marketing:
+    'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900',
+
+  work:
+    'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900',
+};
+
+/* ============================================================
+   TYPES
+   ============================================================ */
 
 type OverlayState = {
-  type: 'error';
+  type:
+    | 'error'
+    | 'warning'
+    | 'success'
+    | 'info';
+
   title: string;
   message: string;
 };
 
-type CategoryColorMap = Record<
-  string,
-  string
->;
+/* ============================================================
+   STORAGE
+   ============================================================ */
 
-/* -------------------------------------------------------------------------- */
-/* Storage helpers                                                            */
-/* -------------------------------------------------------------------------- */
-
-function getValidAppKeys(): Set<string> {
+function getValidAppKeys() {
   return new Set(
     SAMI_APPS.map(
       (app) => app.key
@@ -158,7 +491,32 @@ function getValidAppKeys(): Set<string> {
   );
 }
 
-function readSelectedApps(): string[] {
+function sanitizeSelectedApps(
+  value: unknown
+): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const valid =
+    getValidAppKeys();
+
+  const output: string[] = [];
+
+  for (const item of value) {
+    if (
+      typeof item === 'string' &&
+      valid.has(item) &&
+      !output.includes(item)
+    ) {
+      output.push(item);
+    }
+  }
+
+  return output;
+}
+
+function readSelectedApps() {
   if (
     typeof window === 'undefined'
   ) {
@@ -166,49 +524,18 @@ function readSelectedApps(): string[] {
   }
 
   try {
-    const stored =
+    const raw =
       sessionStorage.getItem(
         SELECTED_APPS_STORAGE_KEY
       );
 
-    if (!stored) {
+    if (!raw) {
       return [];
     }
 
-    const parsed =
-      JSON.parse(stored);
-
-    if (
-      !Array.isArray(parsed)
-    ) {
-      return [];
-    }
-
-    const validKeys =
-      getValidAppKeys();
-
-    /*
-     * Validate everything coming from sessionStorage.
-     *
-     * This prevents stale/invalid app keys from being
-     * carried into the next onboarding step.
-     */
-    const validSelectedApps =
-      parsed.filter(
-        (key): key is string =>
-          typeof key === 'string' &&
-          validKeys.has(key)
-      );
-
-    /*
-     * Remove duplicates while preserving
-     * the original selection order.
-     */
-    return [
-      ...new Set(
-        validSelectedApps
-      ),
-    ];
+    return sanitizeSelectedApps(
+      JSON.parse(raw)
+    );
   } catch {
     return [];
   }
@@ -216,7 +543,7 @@ function readSelectedApps(): string[] {
 
 function saveSelectedApps(
   apps: string[]
-): boolean {
+) {
   if (
     typeof window === 'undefined'
   ) {
@@ -226,7 +553,11 @@ function saveSelectedApps(
   try {
     sessionStorage.setItem(
       SELECTED_APPS_STORAGE_KEY,
-      JSON.stringify(apps)
+      JSON.stringify(
+        sanitizeSelectedApps(
+          apps
+        )
+      )
     );
 
     return true;
@@ -235,9 +566,9 @@ function saveSelectedApps(
   }
 }
 
-/* -------------------------------------------------------------------------- */
-/* Page                                                                       */
-/* -------------------------------------------------------------------------- */
+/* ============================================================
+   PAGE
+   ============================================================ */
 
 export default function SelectAppsPage() {
   const router = useRouter();
@@ -255,133 +586,55 @@ export default function SelectAppsPage() {
     setActiveCategory,
   ] = useState('all');
 
-  const [
-    overlay,
-    setOverlay,
-  ] = useState<OverlayState | null>(
-    null
-  );
+  const [search, setSearch] =
+    useState('');
 
   const [
     navigating,
     setNavigating,
   ] = useState(false);
 
-  const mountedRef =
-    useRef(false);
+  const [overlay, setOverlay] =
+    useState<OverlayState | null>(
+      null
+    );
 
-  /* ------------------------------------------------------------------------ */
-  /* Theme                                                                    */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     THEME
+     ========================================================== */
 
   useEffect(() => {
-    mountedRef.current = true;
-
     try {
-      const savedTheme =
+      const stored =
         localStorage.getItem(
           THEME_STORAGE_KEY
         );
 
-      const prefersDark =
-        window.matchMedia(
+      const systemDark =
+        window.matchMedia?.(
           '(prefers-color-scheme: dark)'
-        ).matches;
+        ).matches ?? false;
 
-      const shouldUseDark =
-        savedTheme === 'dark' ||
-        (
-          savedTheme !== 'light' &&
-          prefersDark
-        );
+      const useDark =
+        stored === 'dark' ||
+        (!stored && systemDark);
 
-      setDarkMode(
-        shouldUseDark
-      );
+      setDarkMode(useDark);
 
       document.documentElement.classList.toggle(
         'dark',
-        shouldUseDark
+        useDark
       );
     } catch {
-      /*
-       * Theme storage is optional.
-       * The page continues normally if
-       * localStorage is unavailable.
-       */
-    }
-
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  /* ------------------------------------------------------------------------ */
-  /* Restore selected apps                                                    */
-  /* ------------------------------------------------------------------------ */
-
-  useEffect(() => {
-    const restoredApps =
-      readSelectedApps();
-
-    setSelectedApps(
-      restoredApps
-    );
-
-    /*
-     * If old/stale values were present,
-     * normalize storage immediately.
-     */
-    if (
-      restoredApps.length > 0
-    ) {
-      saveSelectedApps(
-        restoredApps
-      );
+      // Theme persistence is optional.
     }
   }, []);
-
-  /* ------------------------------------------------------------------------ */
-  /* Escape key                                                               */
-  /* ------------------------------------------------------------------------ */
-
-  useEffect(() => {
-    if (!overlay) {
-      return;
-    }
-
-    const handleKeyDown =
-      (event: KeyboardEvent) => {
-        if (
-          event.key === 'Escape'
-        ) {
-          setOverlay(null);
-        }
-      };
-
-    window.addEventListener(
-      'keydown',
-      handleKeyDown
-    );
-
-    return () => {
-      window.removeEventListener(
-        'keydown',
-        handleKeyDown
-      );
-    };
-  }, [overlay]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Theme toggle                                                             */
-  /* ------------------------------------------------------------------------ */
 
   const toggleTheme =
     useCallback(() => {
       setDarkMode(
         (current) => {
-          const next =
-            !current;
+          const next = !current;
 
           document.documentElement.classList.toggle(
             'dark',
@@ -396,7 +649,7 @@ export default function SelectAppsPage() {
                 : 'light'
             );
           } catch {
-            // Ignore storage errors.
+            // Ignore storage failures.
           }
 
           return next;
@@ -404,9 +657,144 @@ export default function SelectAppsPage() {
       );
     }, []);
 
-  /* ------------------------------------------------------------------------ */
-  /* App selection                                                             */
-  /* ------------------------------------------------------------------------ */
+  /* ==========================================================
+     RESTORE SELECTION
+     ========================================================== */
+
+  useEffect(() => {
+    const restored =
+      readSelectedApps();
+
+    setSelectedApps(restored);
+
+    saveSelectedApps(restored);
+  }, []);
+
+  /* ==========================================================
+     DERIVED DATA
+     ========================================================== */
+
+  const selectedSet =
+    useMemo(
+      () =>
+        new Set(selectedApps),
+      [selectedApps]
+    );
+
+  const recommendedKeys =
+    useMemo(
+      () =>
+        SAMI_APPS.filter(
+          (app) =>
+            Boolean(
+              app.recommended
+            )
+        ).map(
+          (app) => app.key
+        ),
+      []
+    );
+
+  const categoryCounts =
+    useMemo(() => {
+      const map =
+        new Map<
+          string,
+          number
+        >();
+
+      for (const app of SAMI_APPS) {
+        map.set(
+          app.category,
+          (map.get(
+            app.category
+          ) ?? 0) + 1
+        );
+      }
+
+      return map;
+    }, []);
+
+  const filteredApps =
+    useMemo(() => {
+      const query =
+        search
+          .trim()
+          .toLowerCase();
+
+      return SAMI_APPS.filter(
+        (app) => {
+          if (
+            activeCategory !==
+              'all' &&
+            app.category !==
+              activeCategory
+          ) {
+            return false;
+          }
+
+          if (!query) {
+            return true;
+          }
+
+          const category =
+            APP_CATEGORIES.find(
+              (item) =>
+                item.key ===
+                app.category
+            )?.name ?? '';
+
+          return [
+            app.name,
+            app.description,
+            app.key,
+            category,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(query);
+        }
+      );
+    }, [
+      activeCategory,
+      search,
+    ]);
+
+  /* ==========================================================
+     SELECTION
+     ========================================================== */
+
+  const updateSelection =
+    useCallback(
+      (
+        next: string[]
+      ) => {
+        const sanitized =
+          sanitizeSelectedApps(
+            next
+          );
+
+        setSelectedApps(
+          sanitized
+        );
+
+        if (
+          !saveSelectedApps(
+            sanitized
+          )
+        ) {
+          setOverlay({
+            type: 'error',
+            title:
+              'Selection could not be saved',
+            message:
+              'Your browser could not save the selected apps. Check browser storage settings and try again.',
+          });
+        }
+      },
+      []
+    );
 
   const toggleApp =
     useCallback(
@@ -415,15 +803,8 @@ export default function SelectAppsPage() {
           return;
         }
 
-        const validKeys =
-          getValidAppKeys();
-
-        /*
-         * Never allow arbitrary values to enter
-         * onboarding state.
-         */
         if (
-          !validKeys.has(
+          !getValidAppKeys().has(
             appKey
           )
         ) {
@@ -446,11 +827,6 @@ export default function SelectAppsPage() {
                     appKey,
                   ];
 
-            /*
-             * Persist immediately so Back/Next
-             * and browser navigation do not lose
-             * the selection.
-             */
             saveSelectedApps(
               next
             );
@@ -462,321 +838,341 @@ export default function SelectAppsPage() {
       [navigating]
     );
 
-  /* ------------------------------------------------------------------------ */
-  /* Filtering                                                                */
-  /* ------------------------------------------------------------------------ */
+  function selectRecommended() {
+    if (
+      recommendedKeys.length === 0
+    ) {
+      return;
+    }
 
-  const filteredApps =
-    useMemo(() => {
-      if (
-        activeCategory ===
-        'all'
-      ) {
-        return SAMI_APPS;
-      }
-
-      return SAMI_APPS.filter(
-        (app) =>
-          app.category ===
-          activeCategory
-      );
-    }, [activeCategory]);
-
-  /* ------------------------------------------------------------------------ */
-  /* Category colors                                                           */
-  /* ------------------------------------------------------------------------ */
-
-  const categoryColors: CategoryColorMap =
-    useMemo(
-      () => ({
-        finance:
-          'from-emerald-500/20 to-emerald-600/10 border-emerald-200 dark:border-emerald-800/30',
-
-        documents:
-          'from-amber-500/20 to-amber-600/10 border-amber-200 dark:border-amber-800/30',
-
-        sales:
-          'from-blue-500/20 to-blue-600/10 border-blue-200 dark:border-blue-800/30',
-
-        commerce:
-          'from-purple-500/20 to-purple-600/10 border-purple-200 dark:border-purple-800/30',
-
-        supply_chain:
-          'from-orange-500/20 to-orange-600/10 border-orange-200 dark:border-orange-800/30',
-
-        operations:
-          'from-cyan-500/20 to-cyan-600/10 border-cyan-200 dark:border-cyan-800/30',
-
-        people:
-          'from-pink-500/20 to-pink-600/10 border-pink-200 dark:border-pink-800/30',
-
-        marketing:
-          'from-rose-500/20 to-rose-600/10 border-rose-200 dark:border-rose-800/30',
-
-        work:
-          'from-indigo-500/20 to-indigo-600/10 border-indigo-200 dark:border-indigo-800/30',
-      }),
-      []
-    );
-
-  const categoryBadgeColors: CategoryColorMap =
-    useMemo(
-      () => ({
-        finance:
-          'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-
-        documents:
-          'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-
-        sales:
-          'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-
-        commerce:
-          'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-
-        supply_chain:
-          'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300',
-
-        operations:
-          'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300',
-
-        people:
-          'bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300',
-
-        marketing:
-          'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300',
-
-        work:
-          'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
-      }),
-      []
-    );
-
-  /* ------------------------------------------------------------------------ */
-  /* Category helpers                                                         */
-  /* ------------------------------------------------------------------------ */
-
-  const getCategoryColor =
-    useCallback(
-      (category: string) =>
-        categoryColors[
-          category
-        ] ??
-        'from-gray-500/20 to-gray-600/10 border-gray-200 dark:border-gray-800/30',
-      [categoryColors]
-    );
-
-  const getCategoryBadgeColor =
-    useCallback(
-      (category: string) =>
-        categoryBadgeColors[
-          category
-        ] ??
-        'bg-gray-100 text-gray-700 dark:bg-gray-800/40 dark:text-gray-300',
-      [categoryBadgeColors]
-    );
-
-  /* ------------------------------------------------------------------------ */
-  /* Continue                                                                 */
-  /* ------------------------------------------------------------------------ */
-
-  const handleNext =
-    useCallback(() => {
-      if (navigating) {
-        return;
-      }
-
-      if (
-        selectedApps.length ===
-        0
-      ) {
-        setOverlay({
-          type: 'error',
-          title:
-            'No Apps Selected',
-          message:
-            'Select at least one app to continue. You can always add more apps later.',
-        });
-
-        return;
-      }
-
-      const saved =
-        saveSelectedApps(
-          selectedApps
-        );
-
-      if (!saved) {
-        setOverlay({
-          type: 'error',
-          title:
-            'Unable to save selection',
-          message:
-            'Your browser could not save the selected apps. Please check your browser storage settings and try again.',
-        });
-
-        return;
-      }
-
-      setNavigating(
-        true
-      );
-
-      router.push(
-        NEXT_ROUTE
-      );
-    }, [
-      navigating,
-      selectedApps,
-      router,
+    updateSelection([
+      ...new Set([
+        ...selectedApps,
+        ...recommendedKeys,
+      ]),
     ]);
+  }
 
-  /* ------------------------------------------------------------------------ */
-  /* Back                                                                     */
-  /* ------------------------------------------------------------------------ */
+  function clearSelection() {
+    updateSelection([]);
+  }
 
-  const handleBack =
-    useCallback(() => {
-      if (navigating) {
-        return;
-      }
+  /* ==========================================================
+     NAVIGATION
+     ========================================================== */
 
-      /*
-       * Back navigation should preserve
-       * the current onboarding state.
-       */
-      saveSelectedApps(
+  function handleBack() {
+    if (navigating) {
+      return;
+    }
+
+    saveSelectedApps(
+      selectedApps
+    );
+
+    router.back();
+  }
+
+  function handleNext() {
+    if (navigating) {
+      return;
+    }
+
+    if (
+      selectedApps.length === 0
+    ) {
+      setOverlay({
+        type: 'warning',
+        title:
+          'Choose at least one app',
+        message:
+          'Select at least one business app to create your SaMi workspace. You can install or remove apps later.',
+      });
+
+      return;
+    }
+
+    if (
+      !saveSelectedApps(
         selectedApps
-      );
+      )
+    ) {
+      setOverlay({
+        type: 'error',
+        title:
+          'Selection could not be saved',
+        message:
+          'SaMi could not save your app selection. Check your browser storage settings and try again.',
+      });
 
-      router.back();
-    }, [
-      navigating,
-      selectedApps,
-      router,
-    ]);
+      return;
+    }
 
-  /* ------------------------------------------------------------------------ */
-  /* Render                                                                   */
-  /* ------------------------------------------------------------------------ */
+    setNavigating(true);
+
+    router.push(NEXT_ROUTE);
+  }
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
 
   return (
-    <main className="min-h-screen bg-[#f8f9fa] dark:bg-[#0b0d10] flex flex-col justify-center px-4 py-8 sm:px-6 sm:py-10 transition-colors duration-200">
+    <>
+      {overlay && (
+        <SaMiOverlay
+          open
+          type={overlay.type}
+          title={overlay.title}
+          message={
+            overlay.message
+          }
+          primaryAction={{
+            label: 'Continue',
+            onClick: () =>
+              setOverlay(null),
+          }}
+          onClose={() =>
+            setOverlay(null)
+          }
+        />
+      )}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Theme button                                                       */}
-      {/* ------------------------------------------------------------------ */}
+      <main className="relative min-h-screen overflow-x-hidden bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
 
-      <button
-        type="button"
-        onClick={toggleTheme}
-        aria-label={
-          darkMode
-            ? 'Switch to light mode'
-            : 'Switch to dark mode'
-        }
-        className="fixed top-5 right-5 z-20 h-10 w-10 rounded-full flex items-center justify-center border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition shadow-sm"
-      >
-        {darkMode ? (
-          <Sun
-            size={18}
-          />
-        ) : (
-          <Moon
-            size={18}
-          />
-        )}
-      </button>
+        {/* Ambient background */}
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Container                                                          */}
-      {/* ------------------------------------------------------------------ */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+        >
+          <div className="absolute -left-52 -top-52 h-[620px] w-[620px] rounded-full bg-blue-500/[0.06] blur-[120px] dark:bg-blue-500/[0.09]" />
 
-      <div className="w-full max-w-7xl mx-auto">
+          <div className="absolute -bottom-52 right-[-180px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.06] blur-[120px] dark:bg-violet-500/[0.08]" />
+        </div>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Main card                                                        */}
-        {/* ---------------------------------------------------------------- */}
+        {/* Theme */}
 
-        <section className="bg-white dark:bg-[#111418] border border-gray-200 dark:border-gray-800 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_30px_rgba(0,0,0,0.25)] overflow-hidden">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          aria-label={
+            darkMode
+              ? 'Switch to light theme'
+              : 'Switch to dark theme'
+          }
+          className="fixed right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white/85 text-slate-500 shadow-sm backdrop-blur transition hover:bg-white hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900/85 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white sm:right-6 sm:top-6"
+        >
+          {darkMode ? (
+            <Sun className="h-[18px] w-[18px]" />
+          ) : (
+            <Moon className="h-[18px] w-[18px]" />
+          )}
+        </button>
 
-          <div className="px-6 py-7 sm:px-10 sm:py-9">
+        <div className="relative mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-8">
 
-            {/* ------------------------------------------------------------ */}
-            {/* Brand                                                        */}
-            {/* ------------------------------------------------------------ */}
+          {/* ==================================================
+              TOP / LOGO
+             ================================================== */}
 
-            <div className="mb-7">
-              <Link
-                href="/"
-                className="inline-flex flex-col items-start"
-              >
-                <SaMiLogo
-                  size="lg"
-                />
+          <header className="pr-12">
+            <Link
+              href="/"
+              aria-label="SaMi home"
+              className="inline-block max-w-full"
+            >
+              {/* FULL APPROVED LOGO */}
+              <SaMiLogo
+                size="lg"
+                className="max-w-full"
+              />
+            </Link>
+          </header>
 
-                <span className="mt-2 text-[12px] text-gray-500 dark:text-gray-400 tracking-wide">
-                  AI-powered business
-                  workspace
-                </span>
-              </Link>
+          {/* ==================================================
+              ONBOARDING PROGRESS
+             ================================================== */}
+
+          <div className="mt-7 flex items-center gap-3">
+            <OnboardingStep
+              number="1"
+              label="Account"
+              completed
+            />
+
+            <div className="h-px flex-1 bg-blue-300 dark:bg-blue-900" />
+
+            <OnboardingStep
+              number="2"
+              label="Apps"
+              active
+            />
+
+            <div className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+
+            <OnboardingStep
+              number="3"
+              label="Plan"
+            />
+          </div>
+
+          {/* ==================================================
+              HEADING
+             ================================================== */}
+
+          <section className="mt-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">
+                Step 2 of 3
+              </p>
+
+              <h1 className="mt-2 text-[30px] font-black tracking-[-0.035em] sm:text-[36px]">
+                Choose your business apps
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                Build your SaMi workspace
+                with the apps your business
+                needs. You can change them
+                later.
+              </p>
             </div>
 
-            {/* ------------------------------------------------------------ */}
-            {/* Header                                                       */}
-            {/* ------------------------------------------------------------ */}
+            <div className="flex flex-wrap gap-2">
+              {recommendedKeys.length >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    selectRecommended
+                  }
+                  disabled={navigating}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/70"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  Select recommended
+                </button>
+              )}
 
-            <div className="mb-7">
+              {selectedApps.length >
+                0 && (
+                <button
+                  type="button"
+                  onClick={
+                    clearSelection
+                  }
+                  disabled={navigating}
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                >
+                  <X className="h-4 w-4" />
+                  Clear
+                </button>
+              )}
+            </div>
+          </section>
 
-              <div className="flex items-center justify-between gap-4">
+          {/* ==================================================
+              SAMI AI — CORE
+             ================================================== */}
 
-                <div>
-                  <h1 className="text-[26px] leading-tight font-semibold tracking-[-0.02em] text-gray-900 dark:text-white">
-                    Select your apps
-                  </h1>
+          <section className="relative mt-7 overflow-hidden rounded-[24px] border border-blue-200/70 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-4 dark:border-blue-900/60 dark:from-blue-950/30 dark:via-indigo-950/25 dark:to-violet-950/30">
+            <div
+              aria-hidden="true"
+              className="absolute -right-12 -top-14 h-40 w-40 rounded-full bg-violet-400/20 blur-3xl"
+            />
 
-                  <p className="mt-2 text-[14px] text-gray-500 dark:text-gray-400">
-                    Choose the apps your
-                    business needs.
-                  </p>
-                </div>
+            <div className="relative flex items-start gap-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-500/20">
+                <Bot className="h-5 w-5" />
+              </div>
 
-                <div className="hidden sm:flex h-9 px-3 rounded-full items-center justify-center bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40">
-                  <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                    Step 2 of 3
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-black">
+                    SaMi AI
+                  </h2>
+
+                  <span className="rounded-full bg-white/70 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-blue-700 dark:bg-white/10 dark:text-blue-300">
+                    Core platform
                   </span>
                 </div>
 
+                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  SaMi AI is already part of
+                  your workspace. You do not
+                  need to select it here.
+                  Installed business apps can
+                  provide additional tools and
+                  context to SaMi AI.
+                </p>
               </div>
-
-              {/* Mobile step indicator */}
-
-              <div className="mt-4 sm:hidden">
-                <span className="inline-flex h-7 px-3 items-center rounded-full bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/40 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                  Step 2 of 3
-                </span>
-              </div>
-
             </div>
+          </section>
 
-            {/* ------------------------------------------------------------ */}
-            {/* Category tabs                                                 */}
-            {/* ------------------------------------------------------------ */}
+          {/* ==================================================
+              APP WORKSPACE
+             ================================================== */}
 
-            <div className="mb-6">
+          <section className="mt-7 overflow-hidden rounded-[30px] border border-slate-200/80 bg-white/95 shadow-[0_20px_70px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-[#0d111a]/95 dark:shadow-[0_20px_70px_rgba(0,0,0,0.25)]">
 
-              <div
-                className="flex flex-wrap gap-1.5"
-                role="tablist"
-                aria-label="App categories"
-              >
+            {/* Search + selection */}
 
-                {/* All */}
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
+                <div className="relative w-full max-w-xl">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) =>
+                      setSearch(
+                        event.target
+                          .value
+                      )
+                    }
+                    placeholder="Search apps"
+                    aria-label="Search SaMi apps"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-10 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:focus:border-blue-500 dark:focus:bg-slate-950"
+                  />
+
+                  {search && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSearch('')
+                      }
+                      aria-label="Clear search"
+                      className="absolute right-2.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+
+                    <strong className="text-slate-950 dark:text-white">
+                      {
+                        selectedApps.length
+                      }
+                    </strong>
+
+                    selected
+                  </div>
+                </div>
+              </div>
+
+              {/* Categories */}
+
+              <div className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
                   type="button"
-                  role="tab"
-                  aria-selected={
+                  aria-pressed={
                     activeCategory ===
                     'all'
                   }
@@ -785,32 +1181,28 @@ export default function SelectAppsPage() {
                       'all'
                     )
                   }
-                  className={`px-4 py-2 rounded-full text-xs font-medium transition ${
+                  className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition ${
                     activeCategory ===
                     'all'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      ? 'border-slate-950 bg-slate-950 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-950'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800'
                   }`}
                 >
-                  All (
-                  {
-                    SAMI_APPS.length
-                  }
-                  )
+                  All ·{' '}
+                  {SAMI_APPS.length}
                 </button>
 
-                {/* Categories */}
-
                 {APP_CATEGORIES.map(
-                  (
-                    category
-                  ) => {
-                    const categoryCount =
-                      SAMI_APPS.filter(
-                        (app) =>
-                          app.category ===
-                          category.key
-                      ).length;
+                  (category) => {
+                    const active =
+                      activeCategory ===
+                      category.key;
+
+                    const color =
+                      CATEGORY_COLORS[
+                        category.key
+                      ] ??
+                      'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700';
 
                     return (
                       <button
@@ -818,484 +1210,426 @@ export default function SelectAppsPage() {
                           category.key
                         }
                         type="button"
-                        role="tab"
-                        aria-selected={
-                          activeCategory ===
-                          category.key
+                        aria-pressed={
+                          active
                         }
                         onClick={() =>
                           setActiveCategory(
                             category.key
                           )
                         }
-                        className={`px-4 py-2 rounded-full text-xs font-medium transition ${
-                          activeCategory ===
-                          category.key
-                            ? 'bg-blue-600 text-white shadow-sm'
-                            : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        className={`shrink-0 rounded-full border px-4 py-2 text-xs font-bold transition ${
+                          active
+                            ? color
+                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800'
                         }`}
                       >
                         {
                           category.name
                         }{' '}
-                        (
-                        {
-                          categoryCount
-                        }
-                        )
+                        ·{' '}
+                        {categoryCounts.get(
+                          category.key
+                        ) ?? 0}
                       </button>
                     );
                   }
                 )}
-
               </div>
-
             </div>
 
-            {/* ------------------------------------------------------------ */}
-            {/* Selection summary                                             */}
-            {/* ------------------------------------------------------------ */}
+            {/* ==================================================
+                APPS
+               ================================================== */}
 
-            <div className="mb-5 flex items-center justify-between gap-4">
-
-              <p className="text-[12px] text-gray-500 dark:text-gray-400">
-                {
-                  filteredApps.length
-                }{' '}
-                {
-                  filteredApps.length ===
+            <div className="p-5 sm:p-7">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Showing{' '}
+                  <strong className="text-slate-800 dark:text-slate-200">
+                    {
+                      filteredApps.length
+                    }
+                  </strong>{' '}
+                  {filteredApps.length ===
                   1
                     ? 'app'
-                    : 'apps'
-                }{' '}
-                available
-              </p>
+                    : 'apps'}
+                </p>
 
-              <p className="text-[12px] text-gray-600 dark:text-gray-400">
-                <span className="font-semibold text-gray-900 dark:text-white">
-                  {
-                    selectedApps.length
-                  }
-                </span>{' '}
-                selected
-              </p>
+                {activeCategory !==
+                  'all' && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveCategory(
+                        'all'
+                      )
+                    }
+                    className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                  >
+                    Show all
+                  </button>
+                )}
+              </div>
 
-            </div>
+              {filteredApps.length >
+              0 ? (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                  {filteredApps.map(
+                    (app) => {
+                      const Icon =
+                        getIconComponent(
+                          app.icon
+                        );
 
-            {/* ------------------------------------------------------------ */}
-            {/* Apps grid                                                     */}
-            {/* ------------------------------------------------------------ */}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-h-[480px] overflow-y-auto pr-1 mb-6">
-
-              {filteredApps.map(
-                (app) => {
-                  const IconComponent =
-                    getIconComponent(
-                      app.icon
-                    );
-
-                  const isSelected =
-                    selectedApps.includes(
-                      app.key
-                    );
-
-                  const isRecommended =
-                    Boolean(
-                      app.recommended
-                    );
-
-                  const categoryColor =
-                    getCategoryColor(
-                      app.category
-                    );
-
-                  const categoryBadgeColor =
-                    getCategoryBadgeColor(
-                      app.category
-                    );
-
-                  const categoryName =
-                    APP_CATEGORIES.find(
-                      (category) =>
-                        category.key ===
-                        app.category
-                    )?.name ??
-                    app.category;
-
-                  return (
-                    <button
-                      key={
-                        app.key
-                      }
-                      type="button"
-                      onClick={() =>
-                        toggleApp(
+                      const selected =
+                        selectedSet.has(
                           app.key
-                        )
-                      }
-                      disabled={
-                        navigating
-                      }
-                      aria-pressed={
-                        isSelected
-                      }
-                      aria-label={`${
-                        isSelected
-                          ? 'Remove'
-                          : 'Select'
-                      } ${app.name}`}
-                      className={`group relative p-5 rounded-2xl border-2 text-left transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:cursor-not-allowed disabled:opacity-70 ${
-                        isSelected
-                          ? `border-blue-600 bg-gradient-to-br ${categoryColor} shadow-lg shadow-blue-500/15 dark:shadow-blue-500/10 scale-[1.02]`
-                          : 'border-gray-200 dark:border-gray-700 bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/80 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-xl hover:shadow-gray-200/50 dark:hover:shadow-gray-800/30 hover:-translate-y-1'
-                      }`}
-                    >
+                        );
 
-                      {/* Recommended badge */}
+                      const palette =
+                        getAppPalette(
+                          app.key,
+                          app.category
+                        );
 
-                      {isRecommended && (
-                        <div className="absolute -top-2 right-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-[8px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider shadow-md shadow-blue-500/30">
-                          Recommended
-                        </div>
-                      )}
+                      const categoryName =
+                        APP_CATEGORIES.find(
+                          (
+                            category
+                          ) =>
+                            category.key ===
+                            app.category
+                        )?.name ??
+                        app.category;
 
-                      {/* Selected checkmark */}
-
-                      {isSelected && (
-                        <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-blue-600 flex items-center justify-center shadow-md shadow-blue-500/30">
-                          <Check
-                            size={
-                              14
-                            }
-                            strokeWidth={
-                              3
-                            }
-                            className="text-white"
-                          />
-                        </div>
-                      )}
-
-                      {/* Card */}
-
-                      <div className="flex flex-col items-center text-center">
-
-                        {/* Icon */}
-
-                        <div
-                          className={`h-14 w-14 rounded-2xl flex items-center justify-center mb-3 transition-all duration-300 ${
-                            isSelected
-                              ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/40 scale-110'
-                              : 'bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-700 group-hover:from-blue-50 group-hover:to-blue-100 dark:group-hover:from-blue-950/30 dark:group-hover:to-blue-900/20 group-hover:scale-105'
-                          }`}
-                        >
-                          <IconComponent
-                            size={
-                              24
-                            }
-                            className={
-                              isSelected
-                                ? 'text-white drop-shadow-sm'
-                                : 'text-gray-600 dark:text-gray-300 group-hover:text-blue-600 dark:group-hover:text-blue-400'
-                            }
-                            strokeWidth={
-                              1.5
-                            }
-                          />
-                        </div>
-
-                        {/* Name */}
-
-                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                          {
-                            app.name
-                          }
-                        </span>
-
-                        {/* Description */}
-
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 leading-relaxed line-clamp-2">
-                          {
+                      return (
+                        <AppTile
+                          key={app.key}
+                          name={app.name}
+                          description={
                             app.description
                           }
-                        </p>
-
-                        {/* Category */}
-
-                        <span
-                          className={`mt-2 inline-block px-2.5 py-0.5 rounded-full text-[9px] font-medium ${categoryBadgeColor}`}
-                        >
-                          {
+                          category={
                             categoryName
                           }
-                        </span>
-
-                      </div>
-                    </button>
-                  );
-                }
-              )}
-
-              {/* ---------------------------------------------------------- */}
-              {/* Empty state                                                 */}
-              {/* ---------------------------------------------------------- */}
-
-              {filteredApps.length ===
-                0 && (
-                <div className="col-span-full py-16 text-center">
-
-                  <div className="mx-auto h-16 w-16 rounded-2xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                    <Package
-                      size={
-                        28
-                      }
-                      className="text-gray-400"
-                    />
+                          recommended={Boolean(
+                            app.recommended
+                          )}
+                          selected={
+                            selected
+                          }
+                          disabled={
+                            navigating
+                          }
+                          icon={Icon}
+                          palette={
+                            palette
+                          }
+                          onClick={() =>
+                            toggleApp(
+                              app.key
+                            )
+                          }
+                        />
+                      );
+                    }
+                  )}
+                </div>
+              ) : (
+                <div className="flex min-h-[320px] flex-col items-center justify-center text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
+                    <Search className="h-6 w-6" />
                   </div>
 
-                  <p className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
-                    No apps in this
-                    category
-                  </p>
+                  <h3 className="mt-4 text-sm font-black">
+                    No apps found
+                  </h3>
 
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Try another
+                  <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Try another search or
+                    choose a different app
                     category.
                   </p>
 
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      setActiveCategory(
+                        'all'
+                      );
+                    }}
+                    className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400"
+                  >
+                    Reset filters
+                  </button>
                 </div>
               )}
-
             </div>
 
-            {/* ------------------------------------------------------------ */}
-            {/* Bottom actions                                                */}
-            {/* ------------------------------------------------------------ */}
+            {/* ==================================================
+                ACTIONS
+               ================================================== */}
 
-            <div className="pt-6 border-t border-gray-100 dark:border-gray-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-xl sm:px-7 dark:border-slate-800 dark:bg-[#0d111a]/95">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 
-              <div>
-
-                <p className="text-[13px] text-gray-600 dark:text-gray-400">
-
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {
-                      selectedApps.length
-                    }
-                  </span>{' '}
-
-                  app
-                  {
-                    selectedApps.length !==
+                <div>
+                  <p className="text-sm font-bold">
+                    {selectedApps.length}{' '}
+                    {selectedApps.length ===
                     1
-                      ? 's'
-                      : ''
-                  }{' '}
-                  selected
+                      ? 'app'
+                      : 'apps'}{' '}
+                    selected
+                  </p>
 
-                </p>
+                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    You can add or remove
+                    business apps later from
+                    workspace settings.
+                  </p>
+                </div>
 
-                <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                  You can change your
-                  apps later.
-                </p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBack}
+                    disabled={navigating}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back
+                  </button>
 
-              </div>
-
-              <div className="flex gap-3">
-
-                {/* Back */}
-
-                <button
-                  type="button"
-                  onClick={
-                    handleBack
-                  }
-                  disabled={
-                    navigating
-                  }
-                  className="h-[44px] px-5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-[13px] font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 transition disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  <ArrowLeft
-                    size={
-                      15
-                    }
-                  />
-                  Back
-                </button>
-
-                {/* Next */}
-
-                <button
-                  type="button"
-                  onClick={
-                    handleNext
-                  }
-                  disabled={
-                    navigating
-                  }
-                  className="h-[44px] min-w-[130px] px-6 rounded-lg bg-gradient-to-r from-blue-600 to-blue-500 hover:from-blue-700 hover:to-blue-600 text-white text-[13px] font-semibold flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/25 disabled:opacity-70 disabled:cursor-not-allowed"
-                >
-                  {navigating ? (
-                    <>
-                      <span
-                        className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin"
-                        aria-hidden="true"
-                      />
-
-                      <span>
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={navigating}
+                    className="inline-flex h-11 min-w-[150px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.997] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {navigating ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
                         Loading...
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span>
+                      </>
+                    ) : (
+                      <>
                         Next: Plan
-                      </span>
-
-                      <ArrowRight
-                        size={
-                          15
-                        }
-                      />
-                    </>
-                  )}
-                </button>
-
+                        <ArrowRight className="h-4 w-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
-
             </div>
+          </section>
 
-          </div>
+          {/* ==================================================
+              FOOTER
+             ================================================== */}
 
-        </section>
+          <footer className="mt-5 flex flex-wrap items-center justify-end gap-x-5 gap-y-2 pb-4 text-[11px] text-slate-400">
+            <Link
+              href="/help"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Help
+            </Link>
 
-        {/* ---------------------------------------------------------------- */}
-        {/* Footer                                                           */}
-        {/* ---------------------------------------------------------------- */}
+            <Link
+              href="/terms"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Terms
+            </Link>
 
-        <div className="mt-4 flex flex-wrap justify-end items-center gap-x-5 gap-y-2 px-1">
-
-          <Link
-            href="/login"
-            className="text-[12px] text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition"
-          >
-            Sign In
-          </Link>
-
-          <Link
-            href="/help"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Help
-          </Link>
-
-          <Link
-            href="/auth/terms"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Terms
-          </Link>
-
-          <Link
-            href="/auth/privacy"
-            className="text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition"
-          >
-            Privacy
-          </Link>
-
+            <Link
+              href="/privacy"
+              className="transition hover:text-slate-700 dark:hover:text-slate-200"
+            >
+              Privacy
+            </Link>
+          </footer>
         </div>
+      </main>
+    </>
+  );
+}
 
-      </div>
+/* ============================================================
+   APP TILE
+   ============================================================ */
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Error overlay                                                      */}
-      {/* ------------------------------------------------------------------ */}
+function AppTile({
+  name,
+  description,
+  category,
+  recommended,
+  selected,
+  disabled,
+  icon: Icon,
+  palette,
+  onClick,
+}: {
+  name: string;
+  description?: string | null;
+  category: string;
+  recommended: boolean;
+  selected: boolean;
+  disabled: boolean;
+  icon: LucideIcon;
+  palette: AppPalette;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={selected}
+      aria-label={`${
+        selected
+          ? 'Remove'
+          : 'Select'
+      } ${name}`}
+      className={`
+        group relative
+        flex min-h-[220px]
+        flex-col items-center
+        rounded-[24px]
+        border
+        bg-white
+        px-4 py-5
+        text-center
+        transition
+        duration-200
+        focus:outline-none
+        focus:ring-4
+        focus:ring-blue-500/10
+        disabled:cursor-not-allowed
+        disabled:opacity-60
+        dark:bg-slate-900
+        ${
+          selected
+            ? 'border-blue-500 shadow-[0_14px_35px_rgba(37,99,235,0.13)] ring-2 ring-blue-500/15 dark:border-blue-500'
+            : `border-slate-200 hover:-translate-y-1 hover:shadow-[0_16px_35px_rgba(15,23,42,0.10)] dark:border-slate-800 ${palette.border}`
+        }
+      `}
+    >
+      {/* Selected */}
 
-      {overlay && (
-        <div
-          className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-5"
-          onClick={() =>
-            setOverlay(null)
-          }
-        >
-
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="apps-error-title"
-            aria-describedby="apps-error-message"
-            className="w-full max-w-[390px] bg-white dark:bg-[#15191e] rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-7 relative"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-          >
-
-            {/* Close */}
-
-            <button
-              type="button"
-              onClick={() =>
-                setOverlay(null)
-              }
-              aria-label="Close"
-              className="absolute top-4 right-4 h-8 w-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition"
-            >
-              <X
-                size={
-                  17
-                }
-              />
-            </button>
-
-            {/* Icon */}
-
-            <div className="h-12 w-12 rounded-xl bg-red-100 dark:bg-red-950/40 flex items-center justify-center">
-              <AlertTriangle
-                size={
-                  25
-                }
-                className="text-red-600 dark:text-red-400"
-              />
-            </div>
-
-            {/* Message */}
-
-            <h2
-              id="apps-error-title"
-              className="mt-4 text-[19px] font-semibold text-gray-900 dark:text-white"
-            >
-              {
-                overlay.title
-              }
-            </h2>
-
-            <p
-              id="apps-error-message"
-              className="mt-2 text-[13px] leading-relaxed text-gray-500 dark:text-gray-400"
-            >
-              {
-                overlay.message
-              }
-            </p>
-
-            {/* Action */}
-
-            <button
-              type="button"
-              onClick={() =>
-                setOverlay(null)
-              }
-              className="mt-6 w-full h-[42px] rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition"
-            >
-              Continue
-            </button>
-
-          </div>
-
-        </div>
+      {selected && (
+        <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
+          <Check
+            className="h-3.5 w-3.5"
+            strokeWidth={3}
+          />
+        </span>
       )}
 
-    </main>
+      {/* Recommended */}
+
+      {recommended && (
+        <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+          <Sparkles className="h-2.5 w-2.5" />
+          Recommended
+        </span>
+      )}
+
+      {/* Odoo-like icon */}
+
+      <div
+        className={`
+          mt-5
+          flex h-[68px] w-[68px]
+          items-center justify-center
+          rounded-[20px]
+          bg-gradient-to-br
+          ${
+            selected
+              ? palette.tileSelected
+              : palette.tile
+          }
+          ${palette.icon}
+          shadow-lg
+          ${palette.glow}
+          transition
+          duration-200
+          group-hover:scale-[1.06]
+          group-hover:-rotate-1
+        `}
+      >
+        <Icon
+          className="h-8 w-8"
+          strokeWidth={1.7}
+        />
+      </div>
+
+      <h3 className="mt-4 w-full truncate text-[13px] font-black text-slate-900 dark:text-white">
+        {name}
+      </h3>
+
+      <p className="mt-1.5 line-clamp-2 text-[10px] leading-[16px] text-slate-500 dark:text-slate-400">
+        {description ||
+          `Open ${name} in your SaMi workspace.`}
+      </p>
+
+      <span
+        className={`mt-auto inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold ${palette.badge}`}
+      >
+        {category}
+      </span>
+    </button>
+  );
+}
+
+/* ============================================================
+   ONBOARDING PROGRESS
+   ============================================================ */
+
+function OnboardingStep({
+  number,
+  label,
+  active = false,
+  completed = false,
+}: {
+  number: string;
+  label: string;
+  active?: boolean;
+  completed?: boolean;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-2">
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-black ${
+          completed
+            ? 'bg-emerald-500 text-white'
+            : active
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+              : 'bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+        }`}
+      >
+        {completed ? (
+          <Check className="h-4 w-4" />
+        ) : (
+          number
+        )}
+      </span>
+
+      <span
+        className={`hidden text-xs font-bold sm:block ${
+          active
+            ? 'text-slate-950 dark:text-white'
+            : completed
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-400'
+        }`}
+      >
+        {label}
+      </span>
+    </div>
   );
 }
