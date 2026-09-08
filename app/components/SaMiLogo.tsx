@@ -45,7 +45,7 @@ export default function SaMiLogo({
   const width = SIZE_MAP[size];
   const taglineVisible = showTagline && !markOnly;
 
-  // Premium gradients
+  // Dark Blue premium gradients
   const mainGradient = `sami-main-${reactId}`;
   const rimGradient = `sami-rim-${reactId}`;
   const highlightGradient = `sami-highlight-${reactId}`;
@@ -53,6 +53,7 @@ export default function SaMiLogo({
   const accentGradient = `sami-accent-${reactId}`;
   const shadowGradient = `sami-shadow-${reactId}`;
   const glowGradient = `sami-glow-${reactId}`;
+  const darkGlowGradient = `sami-dark-glow-${reactId}`;
 
   const logoGlow = `sami-logo-glow-${reactId}`;
   const beamGlow = `sami-beam-glow-${reactId}`;
@@ -86,10 +87,10 @@ export default function SaMiLogo({
 
       <defs>
         {/* =====================================================
-            PREMIUM GRADIENTS
+            DARK BLUE PREMIUM GRADIENTS
            ===================================================== */}
 
-        {/* Main gradient - vibrant, energetic */}
+        {/* Main gradient - deep navy to royal blue */}
         <linearGradient
           id={mainGradient}
           x1="150"
@@ -98,17 +99,14 @@ export default function SaMiLogo({
           y2="270"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#E0FFFF" />
-          <stop offset="8%" stopColor="#7DF5FF" />
-          <stop offset="22%" stopColor="#2BC8FF" />
-          <stop offset="40%" stopColor="#0077FF" />
-          <stop offset="58%" stopColor="#4A3AFF" />
-          <stop offset="75%" stopColor="#8B44FF" />
-          <stop offset="90%" stopColor="#D454FF" />
-          <stop offset="100%" stopColor="#FF66FF" />
+          <stop offset="0%" stopColor="#4A7AFF" />
+          <stop offset="25%" stopColor="#2B5CFF" />
+          <stop offset="50%" stopColor="#1A3E8C" />
+          <stop offset="75%" stopColor="#0F2B66" />
+          <stop offset="100%" stopColor="#0A1A40" />
         </linearGradient>
 
-        {/* Luminous rim gradient */}
+        {/* Luminous rim gradient - lighter blue */}
         <linearGradient
           id={rimGradient}
           x1="160"
@@ -117,15 +115,14 @@ export default function SaMiLogo({
           y2="265"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="15%" stopColor="#B8FFFF" />
-          <stop offset="35%" stopColor="#60D0FF" />
-          <stop offset="55%" stopColor="#6A7AFF" />
-          <stop offset="75%" stopColor="#A85AFF" />
-          <stop offset="100%" stopColor="#FFCCFF" />
+          <stop offset="0%" stopColor="#6A9AFF" />
+          <stop offset="25%" stopColor="#4A7AFF" />
+          <stop offset="50%" stopColor="#2B5CFF" />
+          <stop offset="75%" stopColor="#1A3E8C" />
+          <stop offset="100%" stopColor="#0F2B66" />
         </linearGradient>
 
-        {/* Inner glass highlight */}
+        {/* Inner glass highlight - subtle white */}
         <linearGradient
           id={highlightGradient}
           x1="200"
@@ -134,11 +131,10 @@ export default function SaMiLogo({
           y2="230"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.95" />
-          <stop offset="20%" stopColor="#D2FFFF" stopOpacity="0.65" />
-          <stop offset="45%" stopColor="#8AC8FF" stopOpacity="0.35" />
-          <stop offset="70%" stopColor="#9A94FF" stopOpacity="0.40" />
-          <stop offset="100%" stopColor="#FFD0FF" stopOpacity="0.75" />
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.40" />
+          <stop offset="30%" stopColor="#B8D4FF" stopOpacity="0.25" />
+          <stop offset="60%" stopColor="#80ACFF" stopOpacity="0.15" />
+          <stop offset="100%" stopColor="#4A7AFF" stopOpacity="0.05" />
         </linearGradient>
 
         {/* Subtle shadow gradient */}
@@ -150,11 +146,11 @@ export default function SaMiLogo({
           y2="80"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#1A1A2E" stopOpacity="0.12" />
-          <stop offset="100%" stopColor="#1A1A2E" stopOpacity="0" />
+          <stop offset="0%" stopColor="#000814" stopOpacity="0.30" />
+          <stop offset="100%" stopColor="#000814" stopOpacity="0" />
         </linearGradient>
 
-        {/* Tagline beam */}
+        {/* Tagline beam - dark blue variant */}
         <linearGradient
           id={beamGradient}
           x1="40"
@@ -163,28 +159,12 @@ export default function SaMiLogo({
           y2="0"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#00BFFF" stopOpacity="0" />
-          <stop offset="8%" stopColor="#1AD4FF" stopOpacity="0.9" />
-          <stop offset="28%" stopColor="#33BBFF" />
-          <stop offset="50%" stopColor="#4A7AFF" />
-          <stop offset="72%" stopColor="#8A4AFF" />
-          <stop offset="92%" stopColor="#E050FF" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#FF6AFF" stopOpacity="0" />
-        </linearGradient>
-
-        {/* Accent glow gradient */}
-        <linearGradient
-          id={accentGradient}
-          x1="0"
-          y1="0"
-          x2="1000"
-          y2="0"
-          gradientUnits="userSpaceOnUse"
-        >
-          <stop offset="0%" stopColor="#00D4FF" stopOpacity="0.6" />
-          <stop offset="30%" stopColor="#0066FF" stopOpacity="0.4" />
-          <stop offset="70%" stopColor="#6633FF" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#CC44FF" stopOpacity="0.6" />
+          <stop offset="0%" stopColor="#1A3E8C" stopOpacity="0" />
+          <stop offset="10%" stopColor="#2B5CFF" stopOpacity="0.6" />
+          <stop offset="40%" stopColor="#4A7AFF" stopOpacity="0.8" />
+          <stop offset="60%" stopColor="#2B5CFF" stopOpacity="0.8" />
+          <stop offset="90%" stopColor="#1A3E8C" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#0F2B66" stopOpacity="0" />
         </linearGradient>
 
         {/* =====================================================
@@ -206,9 +186,9 @@ export default function SaMiLogo({
             type="matrix"
             values="
               0 0 0 0 0.05
-              0 0 0 0 0.35
-              0 0 0 0 0.85
-              0 0 0 0.40 0
+              0 0 0 0 0.15
+              0 0 0 0 0.40
+              0 0 0 0.30 0
             "
             result="coloredGlow"
           />
@@ -232,10 +212,10 @@ export default function SaMiLogo({
             in="blur"
             type="matrix"
             values="
-              0 0 0 0 0.08
-              0 0 0 0 0.50
-              0 0 0 0 1
-              0 0 0 0.55 0
+              0 0 0 0 0.10
+              0 0 0 0 0.25
+              0 0 0 0 0.60
+              0 0 0 0.50 0
             "
             result="coloredGlow"
           />
@@ -269,10 +249,7 @@ export default function SaMiLogo({
           <feGaussianBlur stdDeviation="4" />
         </filter>
 
-        {/* =====================================================
-            GRADIENTS FOR DECORATIVE ELEMENTS
-           ===================================================== */}
-
+        {/* Background glow gradient */}
         <linearGradient
           id={glowGradient}
           x1="200"
@@ -281,9 +258,22 @@ export default function SaMiLogo({
           y2="250"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="#4A9AFF" stopOpacity="0.3" />
-          <stop offset="50%" stopColor="#7A4AFF" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="#D44AFF" stopOpacity="0.3" />
+          <stop offset="0%" stopColor="#2B5CFF" stopOpacity="0.15" />
+          <stop offset="50%" stopColor="#1A3E8C" stopOpacity="0.10" />
+          <stop offset="100%" stopColor="#0F2B66" stopOpacity="0.15" />
+        </linearGradient>
+
+        <linearGradient
+          id={darkGlowGradient}
+          x1="0"
+          y1="0"
+          x2="1000"
+          y2="0"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop offset="0%" stopColor="#1A3E8C" stopOpacity="0.4" />
+          <stop offset="50%" stopColor="#2B5CFF" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="#0F2B66" stopOpacity="0.4" />
         </linearGradient>
       </defs>
 
@@ -298,14 +288,14 @@ export default function SaMiLogo({
         ry="120"
         fill={`url(#${glowGradient})`}
         filter={`url(#${softGlow})`}
-        opacity="0.5"
+        opacity="0.6"
       />
 
       {/* ====================================================== 
           SUBTLE SHADOW
          ====================================================== */}
 
-      <g opacity="0.15">
+      <g opacity="0.20">
         <path
           d="
             M 320 100
@@ -333,7 +323,7 @@ export default function SaMiLogo({
         strokeWidth="68"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.25"
+        opacity="0.30"
         filter={`url(#${logoGlow})`}
       >
         {/* S */}
@@ -398,7 +388,7 @@ export default function SaMiLogo({
         strokeWidth="62"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.82"
+        opacity="0.85"
       >
         {/* S */}
         <path
@@ -453,7 +443,7 @@ export default function SaMiLogo({
       </g>
 
       {/* ====================================================== 
-          MAIN WORDMARK BODY
+          MAIN WORDMARK BODY - DARK BLUE
          ====================================================== */}
 
       <g
@@ -522,10 +512,10 @@ export default function SaMiLogo({
       <g
         fill="none"
         stroke={`url(#${highlightGradient})`}
-        strokeWidth="5"
+        strokeWidth="4"
         strokeLinecap="round"
         strokeLinejoin="round"
-        opacity="0.75"
+        opacity="0.60"
       >
         <path
           d="
@@ -571,36 +561,36 @@ export default function SaMiLogo({
         cx="170"
         cy="70"
         r="2.5"
-        fill="#7DF5FF"
-        opacity="0.6"
+        fill="#4A7AFF"
+        opacity="0.5"
       />
 
       <circle
         cx="850"
         cy="240"
         r="2.5"
-        fill="#D454FF"
-        opacity="0.6"
+        fill="#1A3E8C"
+        opacity="0.5"
       />
 
       <circle
         cx="870"
         cy="80"
         r="1.8"
-        fill="#2BC8FF"
-        opacity="0.4"
+        fill="#2B5CFF"
+        opacity="0.3"
       />
 
       <circle
         cx="150"
         cy="230"
         r="1.8"
-        fill="#8B44FF"
-        opacity="0.4"
+        fill="#0F2B66"
+        opacity="0.3"
       />
 
       {/* ====================================================== 
-          TAGLINE BEAM - AI POWERED BUSINESS WORKSPACE
+          TAGLINE BEAM - DARK BLUE VARIANT
          ====================================================== */}
 
       {taglineVisible && (
@@ -613,7 +603,7 @@ export default function SaMiLogo({
             y2="163"
             stroke={`url(#${beamGradient})`}
             strokeWidth="12"
-            opacity="0.30"
+            opacity="0.25"
             filter={`url(#${beamGlow})`}
           />
 
@@ -625,7 +615,7 @@ export default function SaMiLogo({
             y2="163"
             stroke={`url(#${beamGradient})`}
             strokeWidth="5"
-            opacity="0.50"
+            opacity="0.40"
           />
 
           {/* Crisp beam */}
@@ -644,15 +634,15 @@ export default function SaMiLogo({
             cx="135"
             cy="163"
             r="4.5"
-            fill="#DFFFFF"
+            fill="#6A9AFF"
           />
 
           <circle
             cx="135"
             cy="163"
             r="14"
-            fill="#42DEFF"
-            opacity="0.30"
+            fill="#2B5CFF"
+            opacity="0.25"
             filter={`url(#${shineGlow})`}
           />
 
@@ -661,15 +651,15 @@ export default function SaMiLogo({
             cx="865"
             cy="163"
             r="4.5"
-            fill="#FFE6FF"
+            fill="#1A3E8C"
           />
 
           <circle
             cx="865"
             cy="163"
             r="14"
-            fill="#C95DFF"
-            opacity="0.30"
+            fill="#0F2B66"
+            opacity="0.25"
             filter={`url(#${shineGlow})`}
           />
 
@@ -693,9 +683,9 @@ export default function SaMiLogo({
             fontWeight="600"
             letterSpacing="8.1"
             fill="#F9FCFF"
-            stroke="#07101E"
-            strokeWidth="7"
-            strokeOpacity="0.84"
+            stroke="#020814"
+            strokeWidth="6"
+            strokeOpacity="0.80"
             paintOrder="stroke fill"
           >
             AI POWERED BUSINESS WORKSPACE
@@ -707,7 +697,7 @@ export default function SaMiLogo({
           FINE DETAIL - GLASS SHINE OVERLAY
          ====================================================== */}
 
-      <g opacity="0.08">
+      <g opacity="0.06">
         <path
           d="
             M 180 120
