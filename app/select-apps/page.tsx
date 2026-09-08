@@ -79,13 +79,10 @@ const NEXT_ROUTE =
   '/select-plan';
 
 /* ============================================================
-   ICONS
+   ICON REGISTRY
    ============================================================ */
 
-const iconMap: Record<
-  string,
-  LucideIcon
-> = {
+const iconMap: Record<string, LucideIcon> = {
   calculator: Calculator,
   receipt: Receipt,
   'file-text': FileText,
@@ -107,25 +104,20 @@ const iconMap: Record<
   'user-round': UserRound,
   car: Car,
   'user-plus': UserPlus,
-  'clipboard-check':
-    ClipboardCheck,
+  'clipboard-check': ClipboardCheck,
   'calendar-off': Calendar,
   'user-search': UserSearch,
   megaphone: Megaphone,
   mail: Mail,
-  'message-square':
-    MessageSquare,
-  'calendar-days':
-    CalendarDays,
+  'message-square': MessageSquare,
+  'calendar-days': CalendarDays,
   workflow: Workflow,
-  'clipboard-list':
-    ClipboardList,
+  'clipboard-list': ClipboardList,
   briefcase: Briefcase,
   clock: Clock,
   'map-pin': MapPin,
   headphones: Headphones,
-  'calendar-clock':
-    CalendarClock,
+  'calendar-clock': CalendarClock,
   calendar: Calendar,
 };
 
@@ -136,65 +128,51 @@ function getIconComponent(
     return Package;
   }
 
-  return (
-    iconMap[iconName] ??
-    Package
-  );
+  return iconMap[iconName] ?? Package;
 }
 
 /* ============================================================
-   ODOO-LIKE APP COLOR IDENTITIES
+   APP COLOR SYSTEM
    ============================================================ */
 
 type AppPalette = {
   tile: string;
   tileSelected: string;
-  icon: string;
   glow: string;
   badge: string;
   border: string;
 };
 
-/**
- * These are intentionally saturated.
- *
- * SaMi apps should be visually recognizable
- * from their icon color, just like mature ERP
- * launchers such as Odoo.
- */
 const APP_PALETTES: AppPalette[] = [
   {
     tile:
       'from-[#8b5cf6] to-[#6d28d9]',
     tileSelected:
       'from-[#7c3aed] to-[#5b21b6]',
-    icon: 'text-white',
-    glow: 'shadow-violet-500/25',
+    glow:
+      'shadow-violet-500/25',
     badge:
       'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300',
     border:
       'hover:border-violet-300 dark:hover:border-violet-700',
   },
-
   {
     tile:
       'from-[#06b6d4] to-[#0284c7]',
     tileSelected:
       'from-[#0891b2] to-[#0369a1]',
-    icon: 'text-white',
-    glow: 'shadow-cyan-500/25',
+    glow:
+      'shadow-cyan-500/25',
     badge:
       'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-300',
     border:
       'hover:border-cyan-300 dark:hover:border-cyan-700',
   },
-
   {
     tile:
       'from-[#10b981] to-[#047857]',
     tileSelected:
       'from-[#059669] to-[#065f46]',
-    icon: 'text-white',
     glow:
       'shadow-emerald-500/25',
     badge:
@@ -202,13 +180,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-emerald-300 dark:hover:border-emerald-700',
   },
-
   {
     tile:
       'from-[#f97316] to-[#ea580c]',
     tileSelected:
       'from-[#ea580c] to-[#c2410c]',
-    icon: 'text-white',
     glow:
       'shadow-orange-500/25',
     badge:
@@ -216,13 +192,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-orange-300 dark:hover:border-orange-700',
   },
-
   {
     tile:
       'from-[#ec4899] to-[#be185d]',
     tileSelected:
       'from-[#db2777] to-[#9d174d]',
-    icon: 'text-white',
     glow:
       'shadow-pink-500/25',
     badge:
@@ -230,13 +204,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-pink-300 dark:hover:border-pink-700',
   },
-
   {
     tile:
       'from-[#3b82f6] to-[#1d4ed8]',
     tileSelected:
       'from-[#2563eb] to-[#1e40af]',
-    icon: 'text-white',
     glow:
       'shadow-blue-500/25',
     badge:
@@ -244,13 +216,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-blue-300 dark:hover:border-blue-700',
   },
-
   {
     tile:
       'from-[#eab308] to-[#ca8a04]',
     tileSelected:
       'from-[#d4a106] to-[#a16207]',
-    icon: 'text-white',
     glow:
       'shadow-yellow-500/25',
     badge:
@@ -258,13 +228,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-yellow-300 dark:hover:border-yellow-700',
   },
-
   {
     tile:
       'from-[#ef4444] to-[#b91c1c]',
     tileSelected:
       'from-[#dc2626] to-[#991b1b]',
-    icon: 'text-white',
     glow:
       'shadow-red-500/25',
     badge:
@@ -272,13 +240,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-red-300 dark:hover:border-red-700',
   },
-
   {
     tile:
       'from-[#14b8a6] to-[#0f766e]',
     tileSelected:
       'from-[#0d9488] to-[#115e59]',
-    icon: 'text-white',
     glow:
       'shadow-teal-500/25',
     badge:
@@ -286,13 +252,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-teal-300 dark:hover:border-teal-700',
   },
-
   {
     tile:
       'from-[#6366f1] to-[#4338ca]',
     tileSelected:
       'from-[#4f46e5] to-[#3730a3]',
-    icon: 'text-white',
     glow:
       'shadow-indigo-500/25',
     badge:
@@ -300,13 +264,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-indigo-300 dark:hover:border-indigo-700',
   },
-
   {
     tile:
       'from-[#a855f7] to-[#7e22ce]',
     tileSelected:
       'from-[#9333ea] to-[#6b21a8]',
-    icon: 'text-white',
     glow:
       'shadow-purple-500/25',
     badge:
@@ -314,13 +276,11 @@ const APP_PALETTES: AppPalette[] = [
     border:
       'hover:border-purple-300 dark:hover:border-purple-700',
   },
-
   {
     tile:
       'from-[#f43f5e] to-[#be123c]',
     tileSelected:
       'from-[#e11d48] to-[#9f1239]',
-    icon: 'text-white',
     glow:
       'shadow-rose-500/25',
     badge:
@@ -330,10 +290,9 @@ const APP_PALETTES: AppPalette[] = [
   },
 ];
 
-/**
- * Known business apps keep a deliberate,
- * stable identity instead of changing when
- * app ordering changes.
+/*
+ * Important SaMi apps keep consistent
+ * recognizable colors.
  */
 const APP_PALETTE_OVERRIDES: Record<
   string,
@@ -342,14 +301,14 @@ const APP_PALETTE_OVERRIDES: Record<
   accounting: 2,
   finance: 2,
 
-  invoicing: 5,
   invoice: 5,
   invoices: 5,
+  invoicing: 5,
 
   crm: 0,
 
-  sales: 1,
   sale: 1,
+  sales: 1,
 
   pos: 11,
   'point-of-sale': 11,
@@ -358,15 +317,15 @@ const APP_PALETTE_OVERRIDES: Record<
   inventory: 3,
   stock: 3,
 
-  purchases: 6,
   purchase: 6,
+  purchases: 6,
 
   ecommerce: 4,
   'e-commerce': 4,
   e_commerce: 4,
 
-  projects: 9,
   project: 9,
+  projects: 9,
 
   hr: 10,
   employees: 10,
@@ -437,31 +396,31 @@ const CATEGORY_COLORS: Record<
   string
 > = {
   finance:
-    'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-900',
+    'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300',
 
   documents:
-    'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900',
+    'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300',
 
   sales:
-    'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-900',
+    'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300',
 
   commerce:
-    'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-900',
+    'border-purple-200 bg-purple-50 text-purple-700 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-300',
 
   supply_chain:
-    'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/40 dark:text-orange-300 dark:border-orange-900',
+    'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/40 dark:text-orange-300',
 
   operations:
-    'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/40 dark:text-cyan-300 dark:border-cyan-900',
+    'border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-300',
 
   people:
-    'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/40 dark:text-pink-300 dark:border-pink-900',
+    'border-pink-200 bg-pink-50 text-pink-700 dark:border-pink-900 dark:bg-pink-950/40 dark:text-pink-300',
 
   marketing:
-    'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900',
+    'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300',
 
   work:
-    'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900',
+    'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-300',
 };
 
 /* ============================================================
@@ -498,7 +457,7 @@ function sanitizeSelectedApps(
     return [];
   }
 
-  const valid =
+  const validKeys =
     getValidAppKeys();
 
   const output: string[] = [];
@@ -506,7 +465,7 @@ function sanitizeSelectedApps(
   for (const item of value) {
     if (
       typeof item === 'string' &&
-      valid.has(item) &&
+      validKeys.has(item) &&
       !output.includes(item)
     ) {
       output.push(item);
@@ -605,7 +564,7 @@ export default function SelectAppsPage() {
 
   useEffect(() => {
     try {
-      const stored =
+      const storedTheme =
         localStorage.getItem(
           THEME_STORAGE_KEY
         );
@@ -615,18 +574,21 @@ export default function SelectAppsPage() {
           '(prefers-color-scheme: dark)'
         ).matches ?? false;
 
-      const useDark =
-        stored === 'dark' ||
-        (!stored && systemDark);
+      const shouldUseDark =
+        storedTheme === 'dark' ||
+        (!storedTheme &&
+          systemDark);
 
-      setDarkMode(useDark);
+      setDarkMode(
+        shouldUseDark
+      );
 
       document.documentElement.classList.toggle(
         'dark',
-        useDark
+        shouldUseDark
       );
     } catch {
-      // Theme persistence is optional.
+      // Theme still works without storage.
     }
   }, []);
 
@@ -634,7 +596,8 @@ export default function SelectAppsPage() {
     useCallback(() => {
       setDarkMode(
         (current) => {
-          const next = !current;
+          const next =
+            !current;
 
           document.documentElement.classList.toggle(
             'dark',
@@ -649,7 +612,7 @@ export default function SelectAppsPage() {
                 : 'light'
             );
           } catch {
-            // Ignore storage failures.
+            // Ignore storage errors.
           }
 
           return next;
@@ -658,7 +621,7 @@ export default function SelectAppsPage() {
     }, []);
 
   /* ==========================================================
-     RESTORE SELECTION
+     RESTORE APP SELECTION
      ========================================================== */
 
   useEffect(() => {
@@ -667,6 +630,10 @@ export default function SelectAppsPage() {
 
     setSelectedApps(restored);
 
+    /*
+     * Re-save so stale or duplicate
+     * app keys are normalized.
+     */
     saveSelectedApps(restored);
   }, []);
 
@@ -677,42 +644,42 @@ export default function SelectAppsPage() {
   const selectedSet =
     useMemo(
       () =>
-        new Set(selectedApps),
+        new Set(
+          selectedApps
+        ),
       [selectedApps]
     );
 
   const recommendedKeys =
-    useMemo(
-      () =>
-        SAMI_APPS.filter(
-          (app) =>
-            Boolean(
-              app.recommended
-            )
-        ).map(
-          (app) => app.key
-        ),
-      []
-    );
+    useMemo(() => {
+      return SAMI_APPS.filter(
+        (app) =>
+          Boolean(
+            app.recommended
+          )
+      ).map(
+        (app) => app.key
+      );
+    }, []);
 
   const categoryCounts =
     useMemo(() => {
-      const map =
+      const counts =
         new Map<
           string,
           number
         >();
 
       for (const app of SAMI_APPS) {
-        map.set(
+        counts.set(
           app.category,
-          (map.get(
+          (counts.get(
             app.category
           ) ?? 0) + 1
         );
       }
 
-      return map;
+      return counts;
     }, []);
 
   const filteredApps =
@@ -737,10 +704,10 @@ export default function SelectAppsPage() {
             return true;
           }
 
-          const category =
+          const categoryName =
             APP_CATEGORIES.find(
-              (item) =>
-                item.key ===
+              (category) =>
+                category.key ===
                 app.category
             )?.name ?? '';
 
@@ -748,7 +715,7 @@ export default function SelectAppsPage() {
             app.name,
             app.description,
             app.key,
-            category,
+            categoryName,
           ]
             .filter(Boolean)
             .join(' ')
@@ -765,31 +732,30 @@ export default function SelectAppsPage() {
      SELECTION
      ========================================================== */
 
-  const updateSelection =
+  const persistSelection =
     useCallback(
-      (
-        next: string[]
-      ) => {
+      (apps: string[]) => {
         const sanitized =
           sanitizeSelectedApps(
-            next
+            apps
           );
 
         setSelectedApps(
           sanitized
         );
 
-        if (
-          !saveSelectedApps(
+        const saved =
+          saveSelectedApps(
             sanitized
-          )
-        ) {
+          );
+
+        if (!saved) {
           setOverlay({
             type: 'error',
             title:
               'Selection could not be saved',
             message:
-              'Your browser could not save the selected apps. Check browser storage settings and try again.',
+              'SaMi could not save your app selection in this browser. Check browser storage settings and try again.',
           });
         }
       },
@@ -803,8 +769,11 @@ export default function SelectAppsPage() {
           return;
         }
 
+        const validKeys =
+          getValidAppKeys();
+
         if (
-          !getValidAppKeys().has(
+          !validKeys.has(
             appKey
           )
         ) {
@@ -840,12 +809,13 @@ export default function SelectAppsPage() {
 
   function selectRecommended() {
     if (
-      recommendedKeys.length === 0
+      recommendedKeys.length ===
+      0
     ) {
       return;
     }
 
-    updateSelection([
+    persistSelection([
       ...new Set([
         ...selectedApps,
         ...recommendedKeys,
@@ -854,7 +824,7 @@ export default function SelectAppsPage() {
   }
 
   function clearSelection() {
-    updateSelection([]);
+    persistSelection([]);
   }
 
   /* ==========================================================
@@ -879,30 +849,32 @@ export default function SelectAppsPage() {
     }
 
     if (
-      selectedApps.length === 0
+      selectedApps.length ===
+      0
     ) {
       setOverlay({
         type: 'warning',
         title:
           'Choose at least one app',
         message:
-          'Select at least one business app to create your SaMi workspace. You can install or remove apps later.',
+          'Select at least one business app to continue. You can install or remove apps later from your SaMi workspace.',
       });
 
       return;
     }
 
-    if (
-      !saveSelectedApps(
+    const saved =
+      saveSelectedApps(
         selectedApps
-      )
-    ) {
+      );
+
+    if (!saved) {
       setOverlay({
         type: 'error',
         title:
           'Selection could not be saved',
         message:
-          'SaMi could not save your app selection. Check your browser storage settings and try again.',
+          'SaMi could not save your app selection. Check browser storage settings and try again.',
       });
 
       return;
@@ -910,7 +882,9 @@ export default function SelectAppsPage() {
 
     setNavigating(true);
 
-    router.push(NEXT_ROUTE);
+    router.push(
+      NEXT_ROUTE
+    );
   }
 
   /* ==========================================================
@@ -940,7 +914,9 @@ export default function SelectAppsPage() {
 
       <main className="relative min-h-screen overflow-x-hidden bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
 
-        {/* Ambient background */}
+        {/* ====================================================
+            BACKGROUND
+           ==================================================== */}
 
         <div
           aria-hidden="true"
@@ -951,7 +927,9 @@ export default function SelectAppsPage() {
           <div className="absolute -bottom-52 right-[-180px] h-[620px] w-[620px] rounded-full bg-violet-500/[0.06] blur-[120px] dark:bg-violet-500/[0.08]" />
         </div>
 
-        {/* Theme */}
+        {/* ====================================================
+            THEME
+           ==================================================== */}
 
         <button
           type="button"
@@ -970,10 +948,17 @@ export default function SelectAppsPage() {
           )}
         </button>
 
-        <div className="relative mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-8">
+        {/* ====================================================
+            PAGE CONTENT
+
+            Extra pb space ensures the fixed action dock
+            never covers app content.
+           ==================================================== */}
+
+        <div className="relative mx-auto w-full max-w-[1500px] px-4 pb-36 pt-7 sm:px-6 lg:px-8">
 
           {/* ==================================================
-              TOP / LOGO
+              LOGO
              ================================================== */}
 
           <header className="pr-12">
@@ -991,7 +976,7 @@ export default function SelectAppsPage() {
           </header>
 
           {/* ==================================================
-              ONBOARDING PROGRESS
+              PROGRESS
              ================================================== */}
 
           <div className="mt-7 flex items-center gap-3">
@@ -1001,7 +986,7 @@ export default function SelectAppsPage() {
               completed
             />
 
-            <div className="h-px flex-1 bg-blue-300 dark:bg-blue-900" />
+            <div className="h-px flex-1 bg-emerald-300 dark:bg-emerald-900" />
 
             <OnboardingStep
               number="2"
@@ -1034,8 +1019,8 @@ export default function SelectAppsPage() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
                 Build your SaMi workspace
                 with the apps your business
-                needs. You can change them
-                later.
+                needs. You can add or remove
+                apps later.
               </p>
             </div>
 
@@ -1048,9 +1033,10 @@ export default function SelectAppsPage() {
                     selectRecommended
                   }
                   disabled={navigating}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-bold text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/70"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-xs font-bold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/70"
                 >
                   <Sparkles className="h-4 w-4" />
+
                   Select recommended
                 </button>
               )}
@@ -1063,9 +1049,10 @@ export default function SelectAppsPage() {
                     clearSelection
                   }
                   disabled={navigating}
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                 >
                   <X className="h-4 w-4" />
+
                   Clear
                 </button>
               )}
@@ -1073,7 +1060,7 @@ export default function SelectAppsPage() {
           </section>
 
           {/* ==================================================
-              SAMI AI — CORE
+              SaMi AI
              ================================================== */}
 
           <section className="relative mt-7 overflow-hidden rounded-[24px] border border-blue-200/70 bg-gradient-to-r from-blue-50 via-indigo-50 to-violet-50 px-5 py-4 dark:border-blue-900/60 dark:from-blue-950/30 dark:via-indigo-950/25 dark:to-violet-950/30">
@@ -1098,28 +1085,32 @@ export default function SelectAppsPage() {
                   </span>
                 </div>
 
-                <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                  SaMi AI is already part of
-                  your workspace. You do not
-                  need to select it here.
-                  Installed business apps can
-                  provide additional tools and
-                  context to SaMi AI.
+                <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-600 dark:text-slate-300">
+                  SaMi AI is already included
+                  in your workspace. Business
+                  apps can provide additional
+                  tools, data and context to
+                  SaMi AI, so you do not need
+                  to select AI as an app.
                 </p>
               </div>
             </div>
           </section>
 
           {/* ==================================================
-              APP WORKSPACE
+              APPS WORKSPACE
              ================================================== */}
 
           <section className="mt-7 overflow-hidden rounded-[30px] border border-slate-200/80 bg-white/95 shadow-[0_20px_70px_rgba(15,23,42,0.07)] backdrop-blur dark:border-slate-800 dark:bg-[#0d111a]/95 dark:shadow-[0_20px_70px_rgba(0,0,0,0.25)]">
 
-            {/* Search + selection */}
+            {/* ================================================
+                SEARCH + FILTERS
+               ================================================ */}
 
             <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+
+                {/* Search */}
 
                 <div className="relative w-full max-w-xl">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1129,8 +1120,7 @@ export default function SelectAppsPage() {
                     value={search}
                     onChange={(event) =>
                       setSearch(
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Search apps"
@@ -1152,6 +1142,8 @@ export default function SelectAppsPage() {
                   )}
                 </div>
 
+                {/* Selected count */}
+
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 items-center gap-2 rounded-xl bg-slate-100 px-4 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                     <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -1167,9 +1159,12 @@ export default function SelectAppsPage() {
                 </div>
               </div>
 
-              {/* Categories */}
+              {/* Category filters */}
 
               <div className="mt-5 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
+                {/* All */}
+
                 <button
                   type="button"
                   aria-pressed={
@@ -1202,7 +1197,7 @@ export default function SelectAppsPage() {
                       CATEGORY_COLORS[
                         category.key
                       ] ??
-                      'bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-700';
+                      'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300';
 
                     return (
                       <button
@@ -1238,9 +1233,9 @@ export default function SelectAppsPage() {
               </div>
             </div>
 
-            {/* ==================================================
-                APPS
-               ================================================== */}
+            {/* ================================================
+                APP GRID
+               ================================================ */}
 
             <div className="p-5 sm:p-7">
               <div className="mb-5 flex items-center justify-between gap-4">
@@ -1266,7 +1261,7 @@ export default function SelectAppsPage() {
                         'all'
                       )
                     }
-                    className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400"
+                    className="text-xs font-bold text-blue-600 transition hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300"
                   >
                     Show all
                   </button>
@@ -1349,7 +1344,7 @@ export default function SelectAppsPage() {
 
                   <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">
                     Try another search or
-                    choose a different app
+                    select a different app
                     category.
                   </p>
 
@@ -1357,73 +1352,17 @@ export default function SelectAppsPage() {
                     type="button"
                     onClick={() => {
                       setSearch('');
+
                       setActiveCategory(
                         'all'
                       );
                     }}
-                    className="mt-4 text-xs font-bold text-blue-600 dark:text-blue-400"
+                    className="mt-4 text-xs font-bold text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
                   >
                     Reset filters
                   </button>
                 </div>
               )}
-            </div>
-
-            {/* ==================================================
-                ACTIONS
-               ================================================== */}
-
-            <div className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur-xl sm:px-7 dark:border-slate-800 dark:bg-[#0d111a]/95">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                <div>
-                  <p className="text-sm font-bold">
-                    {selectedApps.length}{' '}
-                    {selectedApps.length ===
-                    1
-                      ? 'app'
-                      : 'apps'}{' '}
-                    selected
-                  </p>
-
-                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                    You can add or remove
-                    business apps later from
-                    workspace settings.
-                  </p>
-                </div>
-
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    disabled={navigating}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Back
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={navigating}
-                    className="inline-flex h-11 min-w-[150px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.997] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {navigating ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Loading...
-                      </>
-                    ) : (
-                      <>
-                        Next: Plan
-                        <ArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
           </section>
 
@@ -1453,6 +1392,112 @@ export default function SelectAppsPage() {
               Privacy
             </Link>
           </footer>
+        </div>
+
+        {/* ====================================================
+            FIXED ONBOARDING ACTION DOCK
+
+            User never needs to scroll down to find Next.
+           ==================================================== */}
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/80 bg-white/92 px-4 py-3 shadow-[0_-15px_45px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-[#0b0f18]/94">
+          <div className="mx-auto flex w-full max-w-[1500px] items-center gap-3">
+
+            {/* Back */}
+
+            <button
+              type="button"
+              onClick={handleBack}
+              disabled={navigating}
+              aria-label="Go back"
+              className="flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <ArrowLeft className="h-4 w-4" />
+
+              <span className="hidden sm:inline">
+                Back
+              </span>
+            </button>
+
+            {/* Selection status */}
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5">
+
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-black transition ${
+                    selectedApps.length >
+                    0
+                      ? 'bg-emerald-500 text-white shadow-sm shadow-emerald-500/20'
+                      : 'bg-slate-100 text-slate-400 dark:bg-slate-800'
+                  }`}
+                >
+                  {selectedApps.length >
+                  0 ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    '0'
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+                    {selectedApps.length ===
+                    0
+                      ? 'Choose at least one app'
+                      : `${selectedApps.length} ${
+                          selectedApps.length ===
+                          1
+                            ? 'app'
+                            : 'apps'
+                        } selected`}
+                  </p>
+
+                  <p className="hidden truncate text-[11px] text-slate-500 dark:text-slate-400 sm:block">
+                    {selectedApps.length ===
+                    0
+                      ? 'Select the apps you want in your SaMi workspace.'
+                      : 'You can change installed apps later from workspace settings.'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Next */}
+
+            <button
+              type="button"
+              onClick={handleNext}
+              disabled={navigating}
+              className="flex h-12 min-w-[138px] shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-500/20 transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[190px]"
+            >
+              {navigating ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+
+                  <span className="hidden sm:inline">
+                    Opening plan...
+                  </span>
+
+                  <span className="sm:hidden">
+                    Loading
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="hidden sm:inline">
+                    Continue to Plan
+                  </span>
+
+                  <span className="sm:hidden">
+                    Next
+                  </span>
+
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </main>
     </>
@@ -1519,7 +1564,8 @@ function AppTile({
         }
       `}
     >
-      {/* Selected */}
+
+      {/* Selected check */}
 
       {selected && (
         <span className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
@@ -1530,16 +1576,17 @@ function AppTile({
         </span>
       )}
 
-      {/* Recommended */}
+      {/* Recommended badge */}
 
       {recommended && (
         <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
           <Sparkles className="h-2.5 w-2.5" />
+
           Recommended
         </span>
       )}
 
-      {/* Odoo-like icon */}
+      {/* Colored app icon */}
 
       <div
         className={`
@@ -1553,13 +1600,13 @@ function AppTile({
               ? palette.tileSelected
               : palette.tile
           }
-          ${palette.icon}
+          text-white
           shadow-lg
           ${palette.glow}
           transition
           duration-200
-          group-hover:scale-[1.06]
           group-hover:-rotate-1
+          group-hover:scale-[1.06]
         `}
       >
         <Icon
@@ -1568,14 +1615,20 @@ function AppTile({
         />
       </div>
 
+      {/* App name */}
+
       <h3 className="mt-4 w-full truncate text-[13px] font-black text-slate-900 dark:text-white">
         {name}
       </h3>
+
+      {/* Description */}
 
       <p className="mt-1.5 line-clamp-2 text-[10px] leading-[16px] text-slate-500 dark:text-slate-400">
         {description ||
           `Open ${name} in your SaMi workspace.`}
       </p>
+
+      {/* Category */}
 
       <span
         className={`mt-auto inline-flex rounded-full px-2.5 py-1 text-[9px] font-bold ${palette.badge}`}
@@ -1587,7 +1640,7 @@ function AppTile({
 }
 
 /* ============================================================
-   ONBOARDING PROGRESS
+   ONBOARDING STEP
    ============================================================ */
 
 function OnboardingStep({
