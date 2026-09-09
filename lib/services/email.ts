@@ -4,12 +4,6 @@ import type {
   Transporter,
 } from 'nodemailer';
 
-import path from 'path';
-
-import {
-  readFile,
-} from 'fs/promises';
-
 /* ============================================================
    TYPES
    ============================================================ */
@@ -41,17 +35,6 @@ const MAX_EMAIL_LENGTH =
 const MAX_NAME_LENGTH =
   120;
 
-const SAMI_EMAIL_LOGO_CID =
-  'sami-email-logo';
-
-const SAMI_EMAIL_LOGO_PATH =
-  path.join(
-    process.cwd(),
-    'public',
-    'brand',
-    'sami-email-logo.png'
-  );
-
 /* ============================================================
    TRANSPORTER
    ============================================================ */
@@ -59,18 +42,6 @@ const SAMI_EMAIL_LOGO_PATH =
 let transporter:
   Transporter | null =
   null;
-
-/*
- * Cache the logo after the first filesystem read.
- *
- * That avoids reading the PNG from disk for every email.
- */
-let cachedLogo:
-  Buffer | null =
-  null;
-
-let logoLoadAttempted =
-  false;
 
 /* ============================================================
    HTML
@@ -181,133 +152,132 @@ function normalizeExpiryMinutes(
 }
 
 /* ============================================================
+   APP URL
+
+   .env.local / Vercel:
+
+   APP_URL=https://your-domain.com
+
+   Public email logo:
+
+   ${APP_URL}/brand/sami-email-logo.png
+
+   No CID image.
+   No PNG attachment.
+   ============================================================ */
+
+function getAppUrl():
+  string {
+  const raw =
+    process.env.APP_URL
+      ?.trim();
+
+  if (!raw) {
+    throw new Error(
+      'APP_URL is required.'
+    );
+  }
+
+  let url:
+    URL;
+
+  try {
+    url =
+      new URL(raw);
+  } catch {
+    throw new Error(
+      'APP_URL must be a valid URL.'
+    );
+  }
+
+  if (
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
+  ) {
+    throw new Error(
+      'APP_URL must use HTTP or HTTPS.'
+    );
+  }
+
+  return url
+    .toString()
+    .replace(
+      /\/+$/,
+      ''
+    );
+}
+
+function getPublicUrl(
+  pathname: string
+): string {
+  return new URL(
+    pathname,
+    `${getAppUrl()}/`
+  ).toString();
+}
+
+function getEmailLogoUrl():
+  string {
+  return getPublicUrl(
+    '/brand/sami-email-logo.png'
+  );
+}
+
+/* ============================================================
    URL
    ============================================================ */
 
-function normalizeHttpUrl(
+function normalizeVerifyUrl(
   value:
     | string
     | null
-    | undefined
+    | undefined,
+  appUrl: string
 ): string | null {
   if (!value) {
     return null;
   }
 
+  let url:
+    URL;
+
   try {
-    const url =
+    url =
       new URL(
         value.trim()
       );
-
-    if (
-      url.protocol !==
-        'https:' &&
-      url.protocol !==
-        'http:'
-    ) {
-      return null;
-    }
-
-    return url.toString();
   } catch {
     return null;
   }
-}
-
-/* ============================================================
-   LOGO
-   ============================================================ */
-
-async function getEmailLogo():
-  Promise<Buffer | null> {
-  if (
-    cachedLogo
-  ) {
-    return cachedLogo;
-  }
 
   if (
-    logoLoadAttempted
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
   ) {
     return null;
-  }
-
-  logoLoadAttempted =
-    true;
-
-  try {
-    cachedLogo =
-      await readFile(
-        SAMI_EMAIL_LOGO_PATH
-      );
-
-    return cachedLogo;
-  } catch (error) {
-    console.error(
-      '[SaMi] Email logo could not be loaded:',
-      error
-    );
-
-    return null;
-  }
-}
-
-function buildBrandHeader(
-  hasLogo: boolean
-): string {
-  if (
-    hasLogo
-  ) {
-    return `
-      <img
-        src="cid:${SAMI_EMAIL_LOGO_CID}"
-        width="240"
-        alt="SaMi — AI Powered Business Workspace"
-        style="
-          display:block;
-          width:240px;
-          max-width:100%;
-          height:auto;
-          margin:0 auto;
-          border:0;
-          outline:none;
-          text-decoration:none;
-        "
-      >
-    `.trim();
   }
 
   /*
-   * Safe fallback if the PNG cannot be loaded.
+   * Verification links must point back to the configured
+   * SaMi application origin.
    */
-  return `
-    <div
-      style="
-        font-size:30px;
-        line-height:36px;
-        font-weight:800;
-        letter-spacing:-1px;
-        color:#163d8f;
-      "
-    >
-      SaMi
-    </div>
+  const configuredAppUrl =
+    new URL(
+      appUrl
+    );
 
-    <div
-      style="
-        margin-top:5px;
-        font-size:12px;
-        line-height:18px;
-        font-weight:600;
-        letter-spacing:1.7px;
-        text-transform:uppercase;
-        color:#64748b;
-      "
-    >
-      AI Powered Business Workspace
-    </div>
-  `.trim();
+  if (
+    url.origin !==
+    configuredAppUrl.origin
+  ) {
+    return null;
+  }
+
+  return url.toString();
 }
 
 /* ============================================================
@@ -522,10 +492,16 @@ export async function sendVerificationEmail(
         .expiresInMinutes
     );
 
+  const appUrl =
+    getAppUrl();
+
+  const logoUrl =
+    getEmailLogoUrl();
+
   const verifyUrl =
-    normalizeHttpUrl(
-      options
-        .verifyUrl
+    normalizeVerifyUrl(
+      options.verifyUrl,
+      appUrl
     );
 
   /* ==========================================================
@@ -578,19 +554,7 @@ export async function sendVerificationEmail(
   }
 
   /* ==========================================================
-     4. LOAD SAMI LOGO
-     ========================================================== */
-
-  const logo =
-    await getEmailLogo();
-
-  const hasLogo =
-    Boolean(
-      logo
-    );
-
-  /* ==========================================================
-     5. SAFE VALUES
+     4. SAFE VALUES
      ========================================================== */
 
   const safeName =
@@ -601,6 +565,16 @@ export async function sendVerificationEmail(
   const safeCode =
     escapeHtml(
       cleanCode
+    );
+
+  const safeAppUrl =
+    escapeHtml(
+      appUrl
+    );
+
+  const safeLogoUrl =
+    escapeHtml(
+      logoUrl
     );
 
   const safeVerifyUrl =
@@ -615,14 +589,14 @@ export async function sendVerificationEmail(
       .getFullYear();
 
   /* ==========================================================
-     6. SUBJECT
+     5. SUBJECT
      ========================================================== */
 
   const subject =
     'Verify your email address — SaMi';
 
   /* ==========================================================
-     7. TEXT EMAIL
+     6. TEXT EMAIL
      ========================================================== */
 
   const textParts = [
@@ -658,12 +632,18 @@ export async function sendVerificationEmail(
   ) {
     textParts.push(
       '',
+
       'Open SaMi to verify your email:',
+
       verifyUrl
     );
   }
 
   textParts.push(
+    '',
+
+    `Open SaMi: ${appUrl}`,
+
     '',
 
     'If you did not create a SaMi account, you can safely ignore this email.',
@@ -681,7 +661,7 @@ export async function sendVerificationEmail(
     );
 
   /* ==========================================================
-     8. OPTIONAL BUTTON
+     7. OPTIONAL VERIFY BUTTON
      ========================================================== */
 
   const verifyButton =
@@ -692,51 +672,44 @@ export async function sendVerificationEmail(
           cellpadding="0"
           cellspacing="0"
           border="0"
-          align="center"
           style="
-            margin:28px auto 0;
+            margin:24px 0 0;
           "
         >
-
           <tr>
-
             <td
               align="center"
-              bgcolor="#163d8f"
+              bgcolor="#164a9f"
               style="
                 border-radius:10px;
-                background:#163d8f;
               "
             >
-
               <a
                 href="${safeVerifyUrl}"
                 target="_blank"
                 rel="noopener noreferrer"
                 style="
                   display:inline-block;
-                  padding:13px 24px;
+                  padding:14px 24px;
                   border-radius:10px;
-                  font-size:14px;
-                  line-height:20px;
-                  font-weight:700;
+                  background:#164a9f;
+                  font-size:13px;
+                  line-height:19px;
+                  font-weight:800;
                   color:#ffffff;
                   text-decoration:none;
                 "
               >
-                Verify email in SaMi
+                Verify email
               </a>
-
             </td>
-
           </tr>
-
         </table>
       `
       : '';
 
   /* ==========================================================
-     9. HTML EMAIL
+     8. HTML EMAIL
      ========================================================== */
 
   const html = `
@@ -773,18 +746,23 @@ export async function sendVerificationEmail(
   style="
     margin:0;
     padding:0;
-    background:#f3f6fb;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    width:100%;
+    background:#f5f6f8;
+    font-family:Arial,Helvetica,sans-serif;
     -webkit-text-size-adjust:100%;
   "
 >
 
+  <!-- PREHEADER -->
+
   <div
     style="
       display:none;
-      max-height:0;
-      overflow:hidden;
+      visibility:hidden;
       opacity:0;
+      overflow:hidden;
+      max-height:0;
+      max-width:0;
       color:transparent;
     "
   >
@@ -799,7 +777,7 @@ export async function sendVerificationEmail(
     border="0"
     style="
       width:100%;
-      background:#f3f6fb;
+      background:#f5f6f8;
     "
   >
 
@@ -808,7 +786,7 @@ export async function sendVerificationEmail(
       <td
         align="center"
         style="
-          padding:40px 16px;
+          padding:26px 12px 40px;
         "
       >
 
@@ -820,86 +798,21 @@ export async function sendVerificationEmail(
           border="0"
           style="
             width:100%;
-            max-width:600px;
-            background:#ffffff;
-            border:1px solid #e5eaf2;
-            border-radius:18px;
-            overflow:hidden;
+            max-width:620px;
           "
         >
 
-          <!-- BRAND -->
-
-          <tr>
-
-            <td
-              align="center"
-              style="
-                padding:24px 32px 20px;
-                border-bottom:1px solid #edf1f6;
-                background:#ffffff;
-              "
-            >
-
-              ${buildBrandHeader(
-                hasLogo
-              )}
-
-            </td>
-
-          </tr>
-
-          <!-- CONTENT -->
+          <!-- ================================================
+               TOP BRAND
+               ================================================ -->
 
           <tr>
 
             <td
               style="
-                padding:36px 32px 32px;
+                padding:0 4px 18px;
               "
             >
-
-              <div
-                style="
-                  margin:0 0 8px;
-                  font-size:12px;
-                  line-height:18px;
-                  font-weight:700;
-                  letter-spacing:1.3px;
-                  color:#315fb5;
-                  text-transform:uppercase;
-                "
-              >
-                Email verification
-              </div>
-
-              <h1
-                style="
-                  margin:0;
-                  font-size:25px;
-                  line-height:34px;
-                  font-weight:700;
-                  letter-spacing:-0.4px;
-                  color:#0f172a;
-                "
-              >
-                Welcome to SaMi, ${safeName}
-              </h1>
-
-              <p
-                style="
-                  margin:14px 0 0;
-                  font-size:15px;
-                  line-height:25px;
-                  color:#475569;
-                "
-              >
-                Verify your email address to finish securing
-                your SaMi account. Enter the code below on the
-                verification screen.
-              </p>
-
-              <!-- CODE -->
 
               <table
                 role="presentation"
@@ -907,53 +820,65 @@ export async function sendVerificationEmail(
                 cellpadding="0"
                 cellspacing="0"
                 border="0"
-                style="
-                  margin-top:28px;
-                "
               >
 
                 <tr>
 
                   <td
-                    align="center"
+                    align="left"
+                    valign="middle"
+                  >
+
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style="
+                        display:inline-block;
+                        text-decoration:none;
+                      "
+                    >
+
+                      <img
+                        src="${safeLogoUrl}"
+                        width="182"
+                        alt="SaMi"
+                        style="
+                          display:block;
+                          width:182px;
+                          max-width:100%;
+                          height:auto;
+                          border:0;
+                          outline:none;
+                          text-decoration:none;
+                        "
+                      >
+
+                    </a>
+
+                  </td>
+
+                  <td
+                    align="right"
+                    valign="middle"
                     style="
-                      padding:26px 16px;
-                      background:#f6f9fe;
-                      border:1px solid #dbe5f5;
-                      border-radius:14px;
+                      font-size:12px;
+                      line-height:18px;
                     "
                   >
 
-                    <div
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       style="
-                        margin-bottom:10px;
-                        font-size:11px;
-                        line-height:18px;
+                        color:#475569;
+                        text-decoration:none;
                         font-weight:700;
-                        letter-spacing:1.7px;
-                        color:#64748b;
                       "
                     >
-                      VERIFICATION CODE
-                    </div>
-
-                    <div
-                      style="
-                        display:inline-block;
-                        padding:12px 16px 12px 22px;
-                        background:#ffffff;
-                        border:1px solid #dbe3ef;
-                        border-radius:10px;
-                        font-family:'Courier New',Courier,monospace;
-                        font-size:32px;
-                        line-height:40px;
-                        font-weight:700;
-                        letter-spacing:8px;
-                        color:#0f172a;
-                      "
-                    >
-                      ${safeCode}
-                    </div>
+                      Open SaMi
+                    </a>
 
                   </td>
 
@@ -961,9 +886,17 @@ export async function sendVerificationEmail(
 
               </table>
 
-              ${verifyButton}
+            </td>
 
-              <!-- SECURITY -->
+          </tr>
+
+          <!-- ================================================
+               MAIN CARD
+               ================================================ -->
+
+          <tr>
+
+            <td>
 
               <table
                 role="presentation"
@@ -972,47 +905,400 @@ export async function sendVerificationEmail(
                 cellspacing="0"
                 border="0"
                 style="
-                  margin-top:26px;
+                  width:100%;
+                  background:#ffffff;
+                  border:1px solid #e6e9ee;
+                  border-radius:20px;
+                  overflow:hidden;
                 "
               >
+
+                <!-- BRAND STRIP -->
 
                 <tr>
 
                   <td
                     style="
-                      padding:14px 16px;
-                      background:#f8fafc;
-                      border-left:3px solid #315fb5;
-                      border-radius:6px;
+                      height:5px;
+                      background:#164a9f;
+                      font-size:0;
+                      line-height:0;
+                    "
+                  >
+                    &nbsp;
+                  </td>
+
+                </tr>
+
+                <!-- HEADER -->
+
+                <tr>
+
+                  <td
+                    style="
+                      padding:34px 34px 12px;
+                    "
+                  >
+
+                    <div
+                      style="
+                        font-size:11px;
+                        line-height:16px;
+                        font-weight:800;
+                        letter-spacing:1.4px;
+                        color:#2563c9;
+                        text-transform:uppercase;
+                      "
+                    >
+                      Email verification
+                    </div>
+
+                    <h1
+                      style="
+                        margin:9px 0 0;
+                        padding:0;
+                        font-size:28px;
+                        line-height:35px;
+                        font-weight:800;
+                        letter-spacing:-0.7px;
+                        color:#111827;
+                      "
+                    >
+                      Welcome to SaMi, ${safeName}
+                    </h1>
+
+                  </td>
+
+                </tr>
+
+                <!-- CONTENT -->
+
+                <tr>
+
+                  <td
+                    style="
+                      padding:8px 34px 32px;
                     "
                   >
 
                     <p
                       style="
                         margin:0;
-                        font-size:13px;
-                        line-height:21px;
+                        font-size:14px;
+                        line-height:23px;
                         color:#475569;
                       "
                     >
+                      Verify your email address to finish securing
+                      your SaMi account. Enter the six-digit code
+                      below on the verification screen.
+                    </p>
 
-                      <strong
-                        style="
-                          color:#0f172a;
-                        "
-                      >
-                        This code expires in
-                        ${expiresInMinutes}
-                        minute${
-                          expiresInMinutes === 1
-                            ? ''
-                            : 's'
-                        }.
-                      </strong>
+                    <!-- VERIFICATION CODE -->
 
-                      For your security, never share this
-                      verification code with anyone.
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        margin-top:24px;
+                        background:#f3f6fb;
+                        border:1px solid #e2e8f2;
+                        border-radius:16px;
+                      "
+                    >
 
+                      <tr>
+
+                        <td
+                          align="center"
+                          style="
+                            padding:24px 16px;
+                          "
+                        >
+
+                          <div
+                            style="
+                              margin-bottom:9px;
+                              font-size:10px;
+                              line-height:16px;
+                              font-weight:800;
+                              letter-spacing:1.6px;
+                              color:#64748b;
+                            "
+                          >
+                            VERIFICATION CODE
+                          </div>
+
+                          <div
+                            style="
+                              display:inline-block;
+                              padding:11px 15px 11px 21px;
+                              background:#ffffff;
+                              border:1px solid #dbe3ef;
+                              border-radius:10px;
+                              font-family:'Courier New',Courier,monospace;
+                              font-size:31px;
+                              line-height:39px;
+                              font-weight:800;
+                              letter-spacing:8px;
+                              color:#111827;
+                            "
+                          >
+                            ${safeCode}
+                          </div>
+
+                          <div
+                            style="
+                              margin-top:11px;
+                              font-size:11px;
+                              line-height:18px;
+                              color:#64748b;
+                            "
+                          >
+                            Expires in ${expiresInMinutes}
+                            minute${
+                              expiresInMinutes === 1
+                                ? ''
+                                : 's'
+                            }.
+                          </div>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                    ${verifyButton}
+
+                    <!-- SECURITY -->
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        margin-top:24px;
+                        background:#f8fafc;
+                        border:1px solid #e5e9ef;
+                        border-radius:13px;
+                      "
+                    >
+
+                      <tr>
+
+                        <td
+                          style="
+                            padding:15px 16px;
+                          "
+                        >
+
+                          <div
+                            style="
+                              font-size:12px;
+                              line-height:18px;
+                              font-weight:800;
+                              color:#334155;
+                            "
+                          >
+                            Keep your account secure
+                          </div>
+
+                          <div
+                            style="
+                              margin-top:4px;
+                              font-size:12px;
+                              line-height:20px;
+                              color:#64748b;
+                            "
+                          >
+                            Never share this code with anyone.
+                            SaMi will never ask you to send your
+                            verification code by email or message.
+                          </div>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+                <!-- ============================================
+                     INSTALL APP / ACCESS SECTION
+                     ============================================ -->
+
+                <tr>
+
+                  <td
+                    style="
+                      padding:0 34px 32px;
+                    "
+                  >
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        background:#f3f6fb;
+                        border:1px solid #e4eaf3;
+                        border-radius:16px;
+                      "
+                    >
+
+                      <tr>
+
+                        <td
+                          style="
+                            padding:18px 16px;
+                          "
+                        >
+
+                          <table
+                            role="presentation"
+                            width="100%"
+                            cellpadding="0"
+                            cellspacing="0"
+                            border="0"
+                          >
+
+                            <tr>
+
+                              <td
+                                valign="middle"
+                                style="
+                                  width:52px;
+                                  padding-right:14px;
+                                "
+                              >
+
+                                <div
+                                  style="
+                                    width:48px;
+                                    height:48px;
+                                    border-radius:13px;
+                                    background:#164a9f;
+                                    color:#ffffff;
+                                    text-align:center;
+                                    line-height:48px;
+                                    font-size:16px;
+                                    font-weight:900;
+                                  "
+                                >
+                                  SM
+                                </div>
+
+                              </td>
+
+                              <td
+                                valign="middle"
+                              >
+
+                                <div
+                                  style="
+                                    font-size:13px;
+                                    line-height:19px;
+                                    font-weight:800;
+                                    color:#111827;
+                                  "
+                                >
+                                  SaMi on the go
+                                </div>
+
+                                <div
+                                  style="
+                                    margin-top:3px;
+                                    font-size:11px;
+                                    line-height:17px;
+                                    color:#64748b;
+                                  "
+                                >
+                                  Access your business workspace
+                                  wherever you are.
+                                </div>
+
+                              </td>
+
+                              <td
+                                align="right"
+                                valign="middle"
+                                style="
+                                  padding-left:12px;
+                                "
+                              >
+
+                                <a
+                                  href="${safeAppUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:10px 15px;
+                                    border-radius:9px;
+                                    background:#111827;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    font-size:11px;
+                                    line-height:16px;
+                                    font-weight:800;
+                                    white-space:nowrap;
+                                  "
+                                >
+                                  Install app
+                                </a>
+
+                              </td>
+
+                            </tr>
+
+                          </table>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
+
+                <!-- BOTTOM SECURITY MESSAGE -->
+
+                <tr>
+
+                  <td
+                    style="
+                      padding:22px 34px 26px;
+                      border-top:1px solid #edf0f4;
+                      background:#fbfcfd;
+                    "
+                  >
+
+                    <p
+                      style="
+                        margin:0;
+                        font-size:12px;
+                        line-height:20px;
+                        color:#64748b;
+                      "
+                    >
+                      If you didn't create a SaMi account, you can
+                      safely ignore this email.
                     </p>
 
                   </td>
@@ -1025,40 +1311,73 @@ export async function sendVerificationEmail(
 
           </tr>
 
-          <!-- FOOTER -->
+          <!-- ================================================
+               FOOTER
+               ================================================ -->
 
           <tr>
 
             <td
               align="center"
               style="
-                padding:24px 32px 28px;
-                background:#fafbfd;
-                border-top:1px solid #edf1f6;
+                padding:24px 16px 0;
               "
             >
 
               <p
                 style="
                   margin:0;
-                  font-size:13px;
-                  line-height:20px;
+                  font-size:11px;
+                  line-height:18px;
                   color:#64748b;
                 "
               >
-                If you didn't create a SaMi account, you can
-                safely ignore this email.
+
+                <a
+                  href="${safeAppUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  Open SaMi
+                </a>
+
               </p>
 
               <p
                 style="
-                  margin:12px 0 0;
-                  font-size:12px;
-                  line-height:18px;
+                  margin:11px 0 0;
+                  font-size:10px;
+                  line-height:17px;
                   color:#94a3b8;
                 "
               >
+                SaMi — AI Powered Business Workspace
+              </p>
+
+              <p
+                style="
+                  margin:3px 0 0;
+                  font-size:10px;
+                  line-height:17px;
+                  color:#a0a8b4;
+                "
+              >
                 © ${year} SaMi. All rights reserved.
+              </p>
+
+              <p
+                style="
+                  margin:9px 0 0;
+                  font-size:9px;
+                  line-height:15px;
+                  color:#b2bac5;
+                "
+              >
+                This is an automated account-verification email.
               </p>
 
             </td>
@@ -1079,7 +1398,7 @@ export async function sendVerificationEmail(
   `.trim();
 
   /* ==========================================================
-     10. SEND
+     9. SEND
      ========================================================== */
 
   const mailer =
@@ -1104,32 +1423,12 @@ export async function sendVerificationEmail(
         html,
 
         /*
-         * The logo is embedded directly into the email.
+         * Intentionally no attachments.
          *
-         * No public domain is required.
+         * The SaMi logo is loaded from:
+         *
+         * APP_URL/brand/sami-email-logo.png
          */
-        attachments:
-          logo
-            ? [
-                {
-                  filename:
-                    'sami-email-logo.png',
-
-                  content:
-                    logo,
-
-                  cid:
-                    SAMI_EMAIL_LOGO_CID,
-
-                  contentType:
-                    'image/png',
-
-                  contentDisposition:
-                    'inline',
-                },
-              ]
-            : undefined,
-
         headers: {
           'X-SaMi-Email-Type':
             'email-verification',

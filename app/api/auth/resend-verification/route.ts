@@ -1,4 +1,3 @@
-// app/api/auth/resend-verification/route.ts
 
 import {
   NextRequest,
@@ -17,7 +16,7 @@ import {
 
 import {
   sendVerificationEmail,
-} from '@/lib/services/email-verification-email';
+} from '@/lib/services/email';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +26,7 @@ export const dynamic = 'force-dynamic';
    ============================================================ */
 
 const CODE_EXPIRY_MINUTES =
-  10;
+  15;
 
 const RESEND_COOLDOWN_SECONDS =
   60;
@@ -58,9 +57,6 @@ type VerificationUserRow = {
     | Date
     | string
     | null;
-
-  verification_allowed:
-    boolean;
 };
 
 type VerificationRow = {
@@ -141,8 +137,7 @@ function getAppBaseUrl(
    * unsafe when proxy configuration is incorrect.
    */
   const configured =
-    process.env.APP_URL ||
-    process.env.NEXT_PUBLIC_APP_URL;
+    process.env.APP_URL;
 
   if (configured) {
     try {
@@ -161,7 +156,7 @@ function getAppBaseUrl(
       }
     } catch {
       console.error(
-        '[Auth] Invalid APP_URL/NEXT_PUBLIC_APP_URL.'
+        '[Auth] Invalid APP_URL.'
       );
     }
   }
@@ -203,7 +198,7 @@ function jsonResponse(
  *
  * - whether the email exists
  * - whether it is already verified
- * - whether its workspace is awaiting payment
+ * - whether its workspace is still provisioning
  * - whether a resend was rate limited
  */
 function successResponse() {
@@ -402,17 +397,11 @@ export async function POST(
       /* ======================================================
          4. ACCOUNT
 
-         verification_allowed prevents paid registrations
-         that are still pending PesaPal billing setup from
-         bypassing the intended onboarding sequence.
+         Email verification is independent of billing.
 
-         Allowed workspace states:
-           active
-           provisioning
-           provisioning_failed
-
-         Not allowed:
-           pending_payment
+         Free, Standard and Custom registrations may verify
+         immediately. Paid plans no longer wait for a PesaPal
+         setup step before email verification.
        ====================================================== */
 
       const userResult =
@@ -423,25 +412,7 @@ export async function POST(
               u.email,
               u.first_name,
               u.status,
-              u.email_verified_at,
-
-              EXISTS (
-                SELECT 1
-
-                FROM tenant_users tu
-
-                INNER JOIN tenants t
-                  ON t.id = tu.tenant_id
-
-                WHERE tu.user_id = u.id
-                  AND tu.status = 'active'
-                  AND t.deleted_at IS NULL
-                  AND t.status IN (
-                    'active',
-                    'provisioning',
-                    'provisioning_failed'
-                  )
-              ) AS verification_allowed
+              u.email_verified_at
 
             FROM users u
 
@@ -516,40 +487,7 @@ export async function POST(
       }
 
       /* ======================================================
-         7. BILLING / WORKSPACE GATE
-
-         Paid registration before PesaPal confirmation has:
-
-           tenant.status = pending_payment
-
-         Therefore resend is deliberately ignored until the
-         billing setup callback completes.
-
-         This keeps the flow:
-
-           register
-              ↓
-           PesaPal setup
-              ↓
-           tenant active
-              ↓
-           trialing
-              ↓
-           email verification
-       ====================================================== */
-
-      if (
-        !user.verification_allowed
-      ) {
-        await client.query(
-          'COMMIT'
-        );
-
-        return successResponse();
-      }
-
-      /* ======================================================
-         8. RESEND COOLDOWN
+         7. RESEND COOLDOWN
        ====================================================== */
 
       const recentResult =
@@ -596,7 +534,7 @@ export async function POST(
       }
 
       /* ======================================================
-         9. GENERATE NEW CODE
+         8. GENERATE NEW CODE
        ====================================================== */
 
       code =
@@ -616,7 +554,7 @@ export async function POST(
         );
 
       /* ======================================================
-         10. INVALIDATE PREVIOUS CODES
+         9. INVALIDATE PREVIOUS CODES
 
          We use used_at instead of deleting rows so verification
          history remains available for security/audit purposes.
@@ -639,7 +577,7 @@ export async function POST(
       );
 
       /* ======================================================
-         11. STORE NEW CODE
+         10. STORE NEW CODE
        ====================================================== */
 
       await client.query(
@@ -686,7 +624,7 @@ export async function POST(
     }
 
     /* ========================================================
-       12. EMAIL
+       11. EMAIL
        ======================================================== */
 
     if (
@@ -702,17 +640,27 @@ export async function POST(
         )}`;
 
       try {
-        await sendVerificationEmail({
-          email,
-
-          firstName:
+        const delivery =
+          await sendVerificationEmail(
+            email,
+            code,
             user.first_name ||
-            null,
+              '',
+            {
+              expiresInMinutes:
+                CODE_EXPIRY_MINUTES,
 
-          code,
+              verifyUrl,
+            }
+          );
 
-          verifyUrl,
-        });
+        if (
+          !delivery.success
+        ) {
+          throw new Error(
+            'Verification email delivery was unavailable.'
+          );
+        }
 
         await safeRecordAuthEvent({
           request,
@@ -769,7 +717,7 @@ export async function POST(
     }
 
     /* ========================================================
-       13. GENERIC SUCCESS
+       12. GENERIC SUCCESS
        ======================================================== */
 
     return successResponse();

@@ -4,12 +4,6 @@ import type {
   Transporter,
 } from 'nodemailer';
 
-import path from 'path';
-
-import {
-  readFile,
-} from 'fs/promises';
-
 /* ============================================================
    TYPES
    ============================================================ */
@@ -49,31 +43,13 @@ const MAX_EMAIL_LENGTH =
 const MAX_NAME_LENGTH =
   120;
 
-const SAMI_EMAIL_LOGO_CID =
-  'sami-email-logo';
-
-const SAMI_EMAIL_LOGO_PATH =
-  path.join(
-    process.cwd(),
-    'public',
-    'brand',
-    'sami-email-logo.png'
-  );
-
 /* ============================================================
-   CACHES
+   CACHE
    ============================================================ */
 
 let transporter:
   Transporter | null =
   null;
-
-let cachedLogo:
-  Buffer | null =
-  null;
-
-let logoLoadAttempted =
-  false;
 
 /* ============================================================
    HTML ESCAPING
@@ -194,6 +170,122 @@ function normalizeExpiryMinutes(
 }
 
 /* ============================================================
+   APPLICATION URL
+
+   The public SaMi URL belongs in .env.local / Vercel env:
+
+   APP_URL=https://your-domain.com
+
+   Email assets are then loaded from:
+   ${APP_URL}/brand/sami-email-logo.png
+
+   There are NO email image attachments.
+   ============================================================ */
+
+function getAppUrl():
+  string {
+  const raw =
+    process.env.APP_URL
+      ?.trim();
+
+  if (!raw) {
+    throw new Error(
+      'APP_URL is required.'
+    );
+  }
+
+  let url:
+    URL;
+
+  try {
+    url =
+      new URL(raw);
+  } catch {
+    throw new Error(
+      'APP_URL must be a valid URL.'
+    );
+  }
+
+  if (
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
+  ) {
+    throw new Error(
+      'APP_URL must use HTTP or HTTPS.'
+    );
+  }
+
+  return url
+    .toString()
+    .replace(
+      /\/+$/,
+      ''
+    );
+}
+
+function getPublicUrl(
+  pathname: string
+): string {
+  return new URL(
+    pathname,
+    `${getAppUrl()}/`
+  ).toString();
+}
+
+function getEmailLogoUrl():
+  string {
+  return getPublicUrl(
+    '/brand/sami-email-logo.png'
+  );
+}
+
+function getInstallAppUrl():
+  string {
+  const configured =
+    process.env
+      .SAMI_APP_INSTALL_URL
+      ?.trim();
+
+  if (!configured) {
+    /*
+     * Until SaMi has a dedicated app-store/download page,
+     * the Install app button opens the main SaMi experience.
+     *
+     * Later you can add:
+     *
+     * SAMI_APP_INSTALL_URL=https://...
+     *
+     * without changing this code.
+     */
+    return getAppUrl();
+  }
+
+  try {
+    const url =
+      new URL(
+        configured
+      );
+
+    if (
+      url.protocol !==
+        'https:' &&
+      url.protocol !==
+        'http:'
+    ) {
+      throw new Error();
+    }
+
+    return url.toString();
+  } catch {
+    throw new Error(
+      'SAMI_APP_INSTALL_URL must be a valid HTTP or HTTPS URL.'
+    );
+  }
+}
+
+/* ============================================================
    RESET URL
    ============================================================ */
 
@@ -223,9 +315,9 @@ function normalizeResetUrl(
 
   if (
     resetUrl.protocol !==
-      'http:' &&
+      'https:' &&
     resetUrl.protocol !==
-      'https:'
+      'http:'
   ) {
     throw new Error(
       'Password reset URL must use HTTP or HTTPS.'
@@ -233,39 +325,21 @@ function normalizeResetUrl(
   }
 
   /*
-   * When SaMi has an authoritative application URL configured,
-   * prevent password-reset links from pointing to another host.
+   * Password-reset links must point back to the same
+   * SaMi origin configured by APP_URL.
    */
-  const configuredAppUrl =
-    process.env.APP_URL ||
-    process.env
-      .NEXT_PUBLIC_APP_URL;
+  const appUrl =
+    new URL(
+      getAppUrl()
+    );
 
   if (
-    configuredAppUrl
+    resetUrl.origin !==
+    appUrl.origin
   ) {
-    let appUrl:
-      URL;
-
-    try {
-      appUrl =
-        new URL(
-          configuredAppUrl
-        );
-    } catch {
-      throw new Error(
-        'SaMi application URL is invalid.'
-      );
-    }
-
-    if (
-      resetUrl.origin !==
-      appUrl.origin
-    ) {
-      throw new Error(
-        'Password reset URL does not belong to SaMi.'
-      );
-    }
+    throw new Error(
+      'Password reset URL does not belong to SaMi.'
+    );
   }
 
   return resetUrl.toString();
@@ -444,101 +518,6 @@ function getReplyTo():
 }
 
 /* ============================================================
-   SAMI LOGO
-   ============================================================ */
-
-async function getEmailLogo():
-  Promise<Buffer | null> {
-  if (
-    cachedLogo
-  ) {
-    return cachedLogo;
-  }
-
-  if (
-    logoLoadAttempted
-  ) {
-    return null;
-  }
-
-  logoLoadAttempted =
-    true;
-
-  try {
-    cachedLogo =
-      await readFile(
-        SAMI_EMAIL_LOGO_PATH
-      );
-
-    return cachedLogo;
-  } catch (error) {
-    console.error(
-      '[SaMi] Password-reset email logo could not be loaded:',
-      error
-    );
-
-    return null;
-  }
-}
-
-function buildBrandHeader(
-  hasLogo: boolean
-): string {
-  if (
-    hasLogo
-  ) {
-    return `
-      <img
-        src="cid:${SAMI_EMAIL_LOGO_CID}"
-        width="240"
-        alt="SaMi — AI Powered Business Workspace"
-        style="
-          display:block;
-          width:240px;
-          max-width:100%;
-          height:auto;
-          margin:0 auto;
-          border:0;
-          outline:none;
-          text-decoration:none;
-        "
-      >
-    `.trim();
-  }
-
-  /*
-   * Fallback only if the image cannot be read.
-   */
-  return `
-    <div
-      style="
-        font-size:30px;
-        line-height:36px;
-        font-weight:800;
-        letter-spacing:-1px;
-        color:#163d8f;
-      "
-    >
-      SaMi
-    </div>
-
-    <div
-      style="
-        margin-top:5px;
-        font-size:12px;
-        line-height:18px;
-        font-weight:600;
-        letter-spacing:1.7px;
-        text-transform:uppercase;
-        color:#64748b;
-      "
-    >
-      AI Powered Business Workspace
-    </div>
-  `.trim();
-}
-
-/* ============================================================
    TEXT EMAIL
    ============================================================ */
 
@@ -546,6 +525,7 @@ function buildTextEmail({
   firstName,
   resetUrl,
   expiresInMinutes,
+  installAppUrl,
 }: {
   firstName: string;
 
@@ -553,6 +533,8 @@ function buildTextEmail({
 
   expiresInMinutes:
     number;
+
+  installAppUrl: string;
 }): string {
   return [
     `Hello ${firstName},`,
@@ -563,9 +545,7 @@ function buildTextEmail({
 
     '',
 
-    'Reset your password using this secure link:',
-
-    '',
+    'Reset your password:',
 
     resetUrl,
 
@@ -575,15 +555,17 @@ function buildTextEmail({
       expiresInMinutes === 1
         ? ''
         : 's'
-    }.`,
-
-    '',
-
-    'For your security, this reset link can only be used once.',
+    } and can only be used once.`,
 
     '',
 
     'If you did not request this password reset, you can safely ignore this email. Your password will remain unchanged.',
+
+    '',
+
+    'Get SaMi:',
+
+    installAppUrl,
 
     '',
 
@@ -601,7 +583,9 @@ function buildHtmlEmail({
   firstName,
   resetUrl,
   expiresInMinutes,
-  hasLogo,
+  logoUrl,
+  appUrl,
+  installAppUrl,
 }: {
   firstName: string;
 
@@ -610,7 +594,11 @@ function buildHtmlEmail({
   expiresInMinutes:
     number;
 
-  hasLogo: boolean;
+  logoUrl: string;
+
+  appUrl: string;
+
+  installAppUrl: string;
 }): string {
   const safeFirstName =
     escapeHtml(
@@ -622,17 +610,51 @@ function buildHtmlEmail({
       resetUrl
     );
 
+  const safeLogoUrl =
+    escapeHtml(
+      logoUrl
+    );
+
+  const safeAppUrl =
+    escapeHtml(
+      appUrl
+    );
+
+  const safeInstallAppUrl =
+    escapeHtml(
+      installAppUrl
+    );
+
+  const safeHelpUrl =
+    escapeHtml(
+      getPublicUrl(
+        '/help'
+      )
+    );
+
+  const safePrivacyUrl =
+    escapeHtml(
+      getPublicUrl(
+        '/privacy'
+      )
+    );
+
+  const safeTermsUrl =
+    escapeHtml(
+      getPublicUrl(
+        '/terms'
+      )
+    );
+
   const year =
     new Date()
       .getFullYear();
 
   return `
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
-
   <meta charset="UTF-8">
 
   <meta
@@ -653,15 +675,15 @@ function buildHtmlEmail({
   <title>
     Reset your SaMi password
   </title>
-
 </head>
 
 <body
   style="
     margin:0;
     padding:0;
-    background:#f3f6fb;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    width:100%;
+    background:#f5f6f8;
+    font-family:Arial,Helvetica,sans-serif;
     -webkit-text-size-adjust:100%;
   "
 >
@@ -671,13 +693,15 @@ function buildHtmlEmail({
   <div
     style="
       display:none;
-      max-height:0;
-      overflow:hidden;
+      visibility:hidden;
       opacity:0;
+      overflow:hidden;
+      max-height:0;
+      max-width:0;
       color:transparent;
     "
   >
-    Reset your SaMi password. This link expires in ${expiresInMinutes} minutes.
+    Reset your SaMi password securely. This link expires in ${expiresInMinutes} minutes.
   </div>
 
   <table
@@ -688,16 +712,14 @@ function buildHtmlEmail({
     border="0"
     style="
       width:100%;
-      background:#f3f6fb;
+      background:#f5f6f8;
     "
   >
-
     <tr>
-
       <td
         align="center"
         style="
-          padding:40px 16px;
+          padding:26px 12px 40px;
         "
       >
 
@@ -709,153 +731,20 @@ function buildHtmlEmail({
           border="0"
           style="
             width:100%;
-            max-width:600px;
-            background:#ffffff;
-            border:1px solid #e5eaf2;
-            border-radius:18px;
-            overflow:hidden;
+            max-width:620px;
           "
         >
 
           <!-- ================================================
-               SAMI BRAND
+               TOP BRAND
                ================================================ -->
 
           <tr>
-
-            <td
-              align="center"
-              style="
-                padding:24px 32px 20px;
-                border-bottom:1px solid #edf1f6;
-                background:#ffffff;
-              "
-            >
-
-              ${buildBrandHeader(
-                hasLogo
-              )}
-
-            </td>
-
-          </tr>
-
-          <!-- ================================================
-               CONTENT
-               ================================================ -->
-
-          <tr>
-
             <td
               style="
-                padding:36px 32px 32px;
+                padding:0 4px 18px;
               "
             >
-
-              <div
-                style="
-                  margin:0 0 8px;
-                  font-size:12px;
-                  line-height:18px;
-                  font-weight:700;
-                  letter-spacing:1.3px;
-                  text-transform:uppercase;
-                  color:#315fb5;
-                "
-              >
-                Account security
-              </div>
-
-              <h1
-                style="
-                  margin:0;
-                  font-size:25px;
-                  line-height:34px;
-                  font-weight:700;
-                  letter-spacing:-0.4px;
-                  color:#0f172a;
-                "
-              >
-                Reset your password
-              </h1>
-
-              <p
-                style="
-                  margin:14px 0 0;
-                  font-size:15px;
-                  line-height:25px;
-                  color:#475569;
-                "
-              >
-                Hello ${safeFirstName},
-              </p>
-
-              <p
-                style="
-                  margin:10px 0 0;
-                  font-size:15px;
-                  line-height:25px;
-                  color:#475569;
-                "
-              >
-                We received a request to reset the password for
-                your SaMi account. Use the button below to create
-                a new password.
-              </p>
-
-              <!-- =============================================
-                   RESET BUTTON
-                   ============================================= -->
-
-              <table
-                role="presentation"
-                cellpadding="0"
-                cellspacing="0"
-                border="0"
-                style="
-                  margin:28px 0;
-                "
-              >
-
-                <tr>
-
-                  <td
-                    align="center"
-                    bgcolor="#163d8f"
-                    style="
-                      border-radius:10px;
-                      background:#163d8f;
-                    "
-                  >
-
-                    <a
-                      href="${safeResetUrl}"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style="
-                        display:inline-block;
-                        padding:14px 24px;
-                        border-radius:10px;
-                        font-size:14px;
-                        line-height:20px;
-                        font-weight:700;
-                        color:#ffffff;
-                        text-decoration:none;
-                      "
-                    >
-                      Reset password
-                    </a>
-
-                  </td>
-
-                </tr>
-
-              </table>
-
-              <!-- =============================================
-                   SECURITY NOTICE
-                   ============================================= -->
-
               <table
                 role="presentation"
                 width="100%"
@@ -863,81 +752,445 @@ function buildHtmlEmail({
                 cellspacing="0"
                 border="0"
               >
-
                 <tr>
 
                   <td
+                    align="left"
+                    valign="middle"
+                  >
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style="
+                        display:inline-block;
+                        text-decoration:none;
+                      "
+                    >
+                      <img
+                        src="${safeLogoUrl}"
+                        width="182"
+                        alt="SaMi"
+                        style="
+                          display:block;
+                          width:182px;
+                          max-width:100%;
+                          height:auto;
+                          border:0;
+                          outline:none;
+                          text-decoration:none;
+                        "
+                      >
+                    </a>
+                  </td>
+
+                  <td
+                    align="right"
+                    valign="middle"
                     style="
-                      padding:14px 16px;
-                      background:#f8fafc;
-                      border-left:3px solid #315fb5;
-                      border-radius:6px;
+                      font-size:12px;
+                      line-height:18px;
+                    "
+                  >
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style="
+                        color:#475569;
+                        text-decoration:none;
+                        font-weight:700;
+                      "
+                    >
+                      Open SaMi
+                    </a>
+                  </td>
+
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- ================================================
+               MAIN CARD
+               ================================================ -->
+
+          <tr>
+            <td>
+              <table
+                role="presentation"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+                style="
+                  width:100%;
+                  background:#ffffff;
+                  border:1px solid #e6e9ee;
+                  border-radius:20px;
+                  overflow:hidden;
+                "
+              >
+
+                <tr>
+                  <td
+                    style="
+                      height:5px;
+                      background:#164a9f;
+                      font-size:0;
+                      line-height:0;
+                    "
+                  >
+                    &nbsp;
+                  </td>
+                </tr>
+
+                <tr>
+                  <td
+                    style="
+                      padding:34px 34px 14px;
+                    "
+                  >
+
+                    <div
+                      style="
+                        font-size:11px;
+                        line-height:16px;
+                        font-weight:800;
+                        letter-spacing:1.4px;
+                        text-transform:uppercase;
+                        color:#2563c9;
+                      "
+                    >
+                      Account security
+                    </div>
+
+                    <h1
+                      style="
+                        margin:9px 0 0;
+                        padding:0;
+                        font-size:28px;
+                        line-height:35px;
+                        font-weight:800;
+                        letter-spacing:-0.7px;
+                        color:#111827;
+                      "
+                    >
+                      Reset your password
+                    </h1>
+
+                  </td>
+                </tr>
+
+                <tr>
+                  <td
+                    style="
+                      padding:8px 34px 32px;
                     "
                   >
 
                     <p
                       style="
                         margin:0;
-                        font-size:13px;
-                        line-height:21px;
+                        font-size:15px;
+                        line-height:24px;
+                        font-weight:700;
+                        color:#111827;
+                      "
+                    >
+                      Hello ${safeFirstName},
+                    </p>
+
+                    <p
+                      style="
+                        margin:12px 0 0;
+                        font-size:14px;
+                        line-height:23px;
                         color:#475569;
                       "
                     >
+                      We received a request to reset the password for
+                      your SaMi account. Use the button below to create
+                      a new password.
+                    </p>
 
-                      <strong
-                        style="
-                          color:#0f172a;
-                        "
-                      >
-                        This link expires in ${expiresInMinutes}
-                        minute${
-                          expiresInMinutes === 1
-                            ? ''
-                            : 's'
-                        }.
-                      </strong>
+                    <!-- RESET BUTTON -->
 
-                      For your security, the reset link can only
-                      be used once.
+                    <table
+                      role="presentation"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        margin:26px 0 24px;
+                      "
+                    >
+                      <tr>
+                        <td
+                          align="center"
+                          bgcolor="#164a9f"
+                          style="
+                            border-radius:10px;
+                          "
+                        >
+                          <a
+                            href="${safeResetUrl}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style="
+                              display:inline-block;
+                              padding:14px 25px;
+                              border-radius:10px;
+                              background:#164a9f;
+                              color:#ffffff;
+                              text-decoration:none;
+                              font-size:14px;
+                              line-height:20px;
+                              font-weight:800;
+                            "
+                          >
+                            Reset password
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
 
+                    <!-- EXPIRY / SECURITY -->
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        background:#f8fafc;
+                        border:1px solid #e8edf3;
+                        border-radius:12px;
+                      "
+                    >
+                      <tr>
+                        <td
+                          style="
+                            padding:15px 16px;
+                          "
+                        >
+                          <div
+                            style="
+                              font-size:12px;
+                              line-height:18px;
+                              font-weight:800;
+                              color:#334155;
+                            "
+                          >
+                            Secure reset link
+                          </div>
+
+                          <div
+                            style="
+                              margin-top:4px;
+                              font-size:12px;
+                              line-height:20px;
+                              color:#64748b;
+                            "
+                          >
+                            This link expires in ${expiresInMinutes}
+                            minute${
+                              expiresInMinutes === 1
+                                ? ''
+                                : 's'
+                            } and can only be used once.
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- FALLBACK URL -->
+
+                    <p
+                      style="
+                        margin:22px 0 0;
+                        font-size:12px;
+                        line-height:19px;
+                        color:#64748b;
+                      "
+                    >
+                      If the button doesn't work, copy and paste this
+                      link into your browser:
+                    </p>
+
+                    <p
+                      style="
+                        margin:7px 0 0;
+                        font-size:11px;
+                        line-height:18px;
+                        color:#2563c9;
+                        word-break:break-all;
+                      "
+                    >
+                      ${safeResetUrl}
                     </p>
 
                   </td>
+                </tr>
 
+                <!-- ============================================
+                     APP / INSTALL SECTION
+                     ============================================ -->
+
+                <tr>
+                  <td
+                    style="
+                      padding:0 34px 32px;
+                    "
+                  >
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        background:#f3f6fb;
+                        border:1px solid #e4eaf3;
+                        border-radius:16px;
+                      "
+                    >
+                      <tr>
+
+                        <td
+                          valign="middle"
+                          style="
+                            padding:18px 16px;
+                          "
+                        >
+                          <table
+                            role="presentation"
+                            width="100%"
+                            cellpadding="0"
+                            cellspacing="0"
+                            border="0"
+                          >
+                            <tr>
+
+                              <td
+                                valign="middle"
+                                style="
+                                  width:52px;
+                                  padding-right:14px;
+                                "
+                              >
+                                <div
+                                  style="
+                                    width:48px;
+                                    height:48px;
+                                    border-radius:13px;
+                                    background:#164a9f;
+                                    color:#ffffff;
+                                    text-align:center;
+                                    line-height:48px;
+                                    font-size:16px;
+                                    font-weight:900;
+                                  "
+                                >
+                                  SM
+                                </div>
+                              </td>
+
+                              <td
+                                valign="middle"
+                              >
+                                <div
+                                  style="
+                                    font-size:13px;
+                                    line-height:19px;
+                                    font-weight:800;
+                                    color:#111827;
+                                  "
+                                >
+                                  SaMi on the go
+                                </div>
+
+                                <div
+                                  style="
+                                    margin-top:3px;
+                                    font-size:11px;
+                                    line-height:17px;
+                                    color:#64748b;
+                                  "
+                                >
+                                  Access your business workspace wherever you are.
+                                </div>
+                              </td>
+
+                              <td
+                                align="right"
+                                valign="middle"
+                                style="
+                                  padding-left:12px;
+                                "
+                              >
+                                <a
+                                  href="${safeInstallAppUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:10px 15px;
+                                    border-radius:9px;
+                                    background:#111827;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    font-size:11px;
+                                    line-height:16px;
+                                    font-weight:800;
+                                    white-space:nowrap;
+                                  "
+                                >
+                                  Install app
+                                </a>
+                              </td>
+
+                            </tr>
+                          </table>
+                        </td>
+
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- ============================================
+                     BOTTOM SECURITY MESSAGE
+                     ============================================ -->
+
+                <tr>
+                  <td
+                    style="
+                      padding:22px 34px 26px;
+                      border-top:1px solid #edf0f4;
+                      background:#fbfcfd;
+                    "
+                  >
+                    <p
+                      style="
+                        margin:0;
+                        font-size:12px;
+                        line-height:20px;
+                        color:#64748b;
+                      "
+                    >
+                      If you didn't request this password reset, you
+                      can safely ignore this email. Your password will
+                      remain unchanged.
+                    </p>
+                  </td>
                 </tr>
 
               </table>
-
-              <!-- =============================================
-                   FALLBACK LINK
-                   ============================================= -->
-
-              <p
-                style="
-                  margin:22px 0 0;
-                  font-size:13px;
-                  line-height:21px;
-                  color:#64748b;
-                "
-              >
-                If the button doesn't work, copy and paste this
-                address into your browser:
-              </p>
-
-              <p
-                style="
-                  margin:8px 0 0;
-                  font-size:12px;
-                  line-height:19px;
-                  color:#315fb5;
-                  word-break:break-all;
-                "
-              >
-                ${safeResetUrl}
-              </p>
-
             </td>
-
           </tr>
 
           <!-- ================================================
@@ -945,50 +1198,116 @@ function buildHtmlEmail({
                ================================================ -->
 
           <tr>
-
             <td
               align="center"
               style="
-                padding:24px 32px 28px;
-                background:#fafbfd;
-                border-top:1px solid #edf1f6;
+                padding:24px 16px 0;
               "
             >
 
               <p
                 style="
                   margin:0;
-                  font-size:13px;
-                  line-height:20px;
+                  font-size:11px;
+                  line-height:18px;
                   color:#64748b;
                 "
               >
-                If you didn't request this password reset, you
-                can safely ignore this email. Your password will
-                remain unchanged.
+                <a
+                  href="${safeHelpUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  Help
+                </a>
+
+                <span
+                  style="
+                    padding:0 8px;
+                    color:#cbd5e1;
+                  "
+                >
+                  •
+                </span>
+
+                <a
+                  href="${safePrivacyUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  Privacy
+                </a>
+
+                <span
+                  style="
+                    padding:0 8px;
+                    color:#cbd5e1;
+                  "
+                >
+                  •
+                </span>
+
+                <a
+                  href="${safeTermsUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  Terms
+                </a>
               </p>
 
               <p
                 style="
-                  margin:12px 0 0;
-                  font-size:12px;
-                  line-height:18px;
+                  margin:11px 0 0;
+                  font-size:10px;
+                  line-height:17px;
                   color:#94a3b8;
+                "
+              >
+                SaMi — AI Powered Business Workspace
+              </p>
+
+              <p
+                style="
+                  margin:3px 0 0;
+                  font-size:10px;
+                  line-height:17px;
+                  color:#a0a8b4;
                 "
               >
                 © ${year} SaMi. All rights reserved.
               </p>
 
-            </td>
+              <p
+                style="
+                  margin:9px 0 0;
+                  font-size:9px;
+                  line-height:15px;
+                  color:#b2bac5;
+                "
+              >
+                This is an automated account-security email.
+              </p>
 
+            </td>
           </tr>
 
         </table>
 
       </td>
-
     </tr>
-
   </table>
 
 </body>
@@ -1022,15 +1341,24 @@ export async function sendPasswordResetEmail(
         input.firstName
       );
 
+    const expiresInMinutes =
+      normalizeExpiryMinutes(
+        input.expiresInMinutes
+      );
+
+    const appUrl =
+      getAppUrl();
+
     const resetUrl =
       normalizeResetUrl(
         input.resetUrl
       );
 
-    const expiresInMinutes =
-      normalizeExpiryMinutes(
-        input.expiresInMinutes
-      );
+    const logoUrl =
+      getEmailLogoUrl();
+
+    const installAppUrl =
+      getInstallAppUrl();
 
     /* ========================================================
        2. VALIDATE EMAIL
@@ -1078,19 +1406,7 @@ export async function sendPasswordResetEmail(
     }
 
     /* ========================================================
-       4. LOAD EXACT SAMI EMAIL LOGO
-       ======================================================== */
-
-    const logo =
-      await getEmailLogo();
-
-    const hasLogo =
-      Boolean(
-        logo
-      );
-
-    /* ========================================================
-       5. BUILD EMAIL
+       4. BUILD EMAIL
        ======================================================== */
 
     const subject =
@@ -1103,6 +1419,8 @@ export async function sendPasswordResetEmail(
         resetUrl,
 
         expiresInMinutes,
+
+        installAppUrl,
       });
 
     const html =
@@ -1113,11 +1431,19 @@ export async function sendPasswordResetEmail(
 
         expiresInMinutes,
 
-        hasLogo,
+        logoUrl,
+
+        appUrl,
+
+        installAppUrl,
       });
 
     /* ========================================================
-       6. SEND
+       5. SEND
+
+       IMPORTANT:
+       There is intentionally NO attachments property here.
+       The logo is loaded from the public APP_URL.
        ======================================================== */
 
     const mailer =
@@ -1140,35 +1466,6 @@ export async function sendPasswordResetEmail(
 
         html,
 
-        /*
-         * Exact SaMi PNG embedded directly inside the email.
-         *
-         * No public URL.
-         * No domain.
-         * No EMAIL_LOGO_URL.
-         */
-        attachments:
-          logo
-            ? [
-                {
-                  filename:
-                    'sami-email-logo.png',
-
-                  content:
-                    logo,
-
-                  cid:
-                    SAMI_EMAIL_LOGO_CID,
-
-                  contentType:
-                    'image/png',
-
-                  contentDisposition:
-                    'inline',
-                },
-              ]
-            : undefined,
-
         headers: {
           'X-SaMi-Email-Type':
             'password-reset',
@@ -1188,6 +1485,7 @@ export async function sendPasswordResetEmail(
      * - reset URL
      * - reset token
      */
+
     console.log(
       '[SaMi] Password reset email delivered successfully.',
       {
@@ -1211,10 +1509,6 @@ export async function sendPasswordResetEmail(
       error
     );
 
-    /*
-     * Do not pass internal SMTP/provider/configuration errors
-     * towards the browser.
-     */
     return {
       success: false,
 

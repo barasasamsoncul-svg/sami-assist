@@ -4,12 +4,6 @@ import type {
   Transporter,
 } from 'nodemailer';
 
-import path from 'path';
-
-import {
-  readFile,
-} from 'fs/promises';
-
 /* ============================================================
    TYPES
    ============================================================ */
@@ -44,7 +38,7 @@ export interface SendSubscriptionConfirmationEmailInput {
   billableUsers: number;
 
   /*
-   * Registration must currently always send 0.
+   * Registration must always send 0.
    */
   amountDueToday: number;
 
@@ -91,17 +85,6 @@ const MAX_NAME_LENGTH =
 const MAX_BUSINESS_NAME_LENGTH =
   160;
 
-const SAMI_EMAIL_LOGO_CID =
-  'sami-email-logo';
-
-const SAMI_EMAIL_LOGO_PATH =
-  path.join(
-    process.cwd(),
-    'public',
-    'brand',
-    'sami-email-logo.png'
-  );
-
 /* ============================================================
    CACHE
    ============================================================ */
@@ -109,13 +92,6 @@ const SAMI_EMAIL_LOGO_PATH =
 let transporter:
   Transporter | null =
   null;
-
-let cachedLogo:
-  Buffer | null =
-  null;
-
-let logoLoadAttempted =
-  false;
 
 /* ============================================================
    HTML
@@ -433,6 +409,91 @@ function formatDate(
 }
 
 /* ============================================================
+   APP URL / EMAIL ASSETS
+
+   .env.local / Vercel:
+   APP_URL=https://your-domain.com
+
+   The logo is served publicly from:
+   ${APP_URL}/brand/sami-email-logo.png
+
+   No CID image and no email attachment are used.
+   ============================================================ */
+
+function getAppUrl():
+  string {
+  const raw =
+    process.env.APP_URL
+      ?.trim();
+
+  if (!raw) {
+    throw new Error(
+      'APP_URL is required.'
+    );
+  }
+
+  let url:
+    URL;
+
+  try {
+    url =
+      new URL(raw);
+  } catch {
+    throw new Error(
+      'APP_URL must be a valid URL.'
+    );
+  }
+
+  if (
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
+  ) {
+    throw new Error(
+      'APP_URL must use HTTP or HTTPS.'
+    );
+  }
+
+  return url
+    .toString()
+    .replace(
+      /\/+$/,
+      ''
+    );
+}
+
+function getPublicUrl(
+  pathname: string
+): string {
+  return new URL(
+    pathname,
+    `${getAppUrl()}/`
+  ).toString();
+}
+
+function getEmailLogoUrl():
+  string {
+  return getPublicUrl(
+    '/brand/sami-email-logo.png'
+  );
+}
+
+/*
+ * SaMi does not have a native-store download URL yet.
+ *
+ * The email still shows a professional "Install app" section,
+ * but until a real app-store/download destination exists,
+ * it opens the main SaMi URL from APP_URL.
+ *
+ * No fake route or hardcoded public URL is introduced.
+ */
+function getInstallAppUrl():
+  string {
+  return getAppUrl();
+}
+
+/* ============================================================
    SMTP
    ============================================================ */
 
@@ -604,98 +665,6 @@ function getReplyTo():
 }
 
 /* ============================================================
-   LOGO
-   ============================================================ */
-
-async function getEmailLogo():
-  Promise<Buffer | null> {
-  if (
-    cachedLogo
-  ) {
-    return cachedLogo;
-  }
-
-  if (
-    logoLoadAttempted
-  ) {
-    return null;
-  }
-
-  logoLoadAttempted =
-    true;
-
-  try {
-    cachedLogo =
-      await readFile(
-        SAMI_EMAIL_LOGO_PATH
-      );
-
-    return cachedLogo;
-  } catch (error) {
-    console.error(
-      '[SaMi] Subscription email logo could not be loaded:',
-      error
-    );
-
-    return null;
-  }
-}
-
-function buildBrandHeader(
-  hasLogo: boolean
-): string {
-  if (
-    hasLogo
-  ) {
-    return `
-      <img
-        src="cid:${SAMI_EMAIL_LOGO_CID}"
-        width="240"
-        alt="SaMi — AI Powered Business Workspace"
-        style="
-          display:block;
-          width:240px;
-          max-width:100%;
-          height:auto;
-          margin:0 auto;
-          border:0;
-          outline:none;
-          text-decoration:none;
-        "
-      >
-    `.trim();
-  }
-
-  return `
-    <div
-      style="
-        font-size:30px;
-        line-height:36px;
-        font-weight:800;
-        letter-spacing:-1px;
-        color:#163d8f;
-      "
-    >
-      SaMi
-    </div>
-
-    <div
-      style="
-        margin-top:5px;
-        font-size:12px;
-        line-height:18px;
-        font-weight:600;
-        letter-spacing:1.7px;
-        text-transform:uppercase;
-        color:#64748b;
-      "
-    >
-      AI Powered Business Workspace
-    </div>
-  `.trim();
-}
-
-/* ============================================================
    TEXT EMAIL
    ============================================================ */
 
@@ -711,6 +680,7 @@ function buildTextEmail({
   currency,
   firstBillingAt,
   workspaceReady,
+  appUrl,
 }: {
   firstName: string;
 
@@ -735,6 +705,8 @@ function buildTextEmail({
     | null;
 
   workspaceReady: boolean;
+
+  appUrl: string;
 }): string {
   const paid =
     isPaidPlan(
@@ -773,7 +745,7 @@ function buildTextEmail({
 
       'First month: FREE',
 
-      `Amount charged today: ${formatMoney(
+      `Amount due today: ${formatMoney(
         amountDueToday,
         currency
       )}`,
@@ -786,13 +758,15 @@ function buildTextEmail({
 
       '',
 
-      'No subscription payment was taken during registration.',
+      'No charge was made today.',
 
-      'When the first paid billing cycle becomes due, SaMi will ask you to complete the first genuine payment. Recurring billing can then continue after successful enrollment.',
+      'Your paid plan and workspace are available during the free month.',
+
+      'When the first paid billing cycle becomes due, you will complete the first genuine payment. Recurring billing can then continue after successful enrollment.',
 
       '',
 
-      'If you cancel before the first paid billing cycle begins, you will have been charged KES 0 for the free month.'
+      'If you cancel before the first paid billing cycle begins, you will have been charged KES 0.'
     );
   } else {
     lines.push(
@@ -816,7 +790,7 @@ function buildTextEmail({
 
     '',
 
-    'You can manage your plan and billing from SaMi Settings.',
+    `Open SaMi: ${appUrl}`,
 
     '',
 
@@ -826,12 +800,6 @@ function buildTextEmail({
   );
 
   return lines
-    .filter(
-      (line) =>
-        line !== ''
-          ? true
-          : true
-    )
     .join('\n');
 }
 
@@ -851,7 +819,9 @@ function buildHtmlEmail({
   currency,
   firstBillingAt,
   workspaceReady,
-  hasLogo,
+  appUrl,
+  logoUrl,
+  installAppUrl,
 }: {
   firstName: string;
 
@@ -877,7 +847,11 @@ function buildHtmlEmail({
 
   workspaceReady: boolean;
 
-  hasLogo: boolean;
+  appUrl: string;
+
+  logoUrl: string;
+
+  installAppUrl: string;
 }): string {
   const paid =
     isPaidPlan(
@@ -897,6 +871,28 @@ function buildHtmlEmail({
   const safePlanName =
     escapeHtml(
       planName
+    );
+
+  const safeAppUrl =
+    escapeHtml(
+      appUrl
+    );
+
+  const safeLogoUrl =
+    escapeHtml(
+      logoUrl
+    );
+
+  const safeInstallAppUrl =
+    escapeHtml(
+      installAppUrl
+    );
+
+  const safeHelpUrl =
+    escapeHtml(
+      getPublicUrl(
+        '/help'
+      )
     );
 
   const year =
@@ -948,7 +944,7 @@ function buildHtmlEmail({
 
         <tr>
           <td style="${labelStyle}">
-            Amount charged today
+            Amount due today
           </td>
 
           <td style="${valueStyle}">
@@ -1016,24 +1012,25 @@ function buildHtmlEmail({
           cellspacing="0"
           border="0"
           style="
-            margin-top:26px;
+            width:100%;
+            margin-top:24px;
+            background:#f1f6ff;
+            border:1px solid #d9e7ff;
+            border-radius:14px;
           "
         >
           <tr>
             <td
               style="
                 padding:18px;
-                background:#f0f7ff;
-                border:1px solid #cfe0ff;
-                border-radius:12px;
               "
             >
               <div
                 style="
-                  font-size:15px;
-                  line-height:22px;
+                  font-size:14px;
+                  line-height:21px;
                   font-weight:800;
-                  color:#163d8f;
+                  color:#164a9f;
                 "
               >
                 Your first month is free
@@ -1041,22 +1038,13 @@ function buildHtmlEmail({
 
               <p
                 style="
-                  margin:8px 0 0;
-                  font-size:13px;
-                  line-height:21px;
+                  margin:6px 0 0;
+                  font-size:12px;
+                  line-height:20px;
                   color:#475569;
                 "
               >
-                SaMi charged
-                <strong>
-                  ${escapeHtml(
-                    formatMoney(
-                      amountDueToday,
-                      currency
-                    )
-                  )}
-                </strong>
-                today.
+                No charge was made today.
                 ${
                   firstBillingAt
                     ? `Your first paid billing cycle becomes due on <strong>${escapeHtml(
@@ -1070,17 +1058,16 @@ function buildHtmlEmail({
 
               <p
                 style="
-                  margin:8px 0 0;
-                  font-size:13px;
-                  line-height:21px;
-                  color:#475569;
+                  margin:7px 0 0;
+                  font-size:12px;
+                  line-height:20px;
+                  color:#64748b;
                 "
               >
-                No payment was taken during registration.
-                When your first paid cycle becomes due, you will
-                complete the first genuine payment. Recurring
-                billing can then continue after successful
-                enrollment.
+                Your paid-plan access is available throughout the free month.
+                When the first paid cycle becomes due, you will complete the
+                first genuine payment. Recurring billing can then continue
+                after successful enrollment.
               </p>
             </td>
           </tr>
@@ -1094,24 +1081,25 @@ function buildHtmlEmail({
           cellspacing="0"
           border="0"
           style="
-            margin-top:26px;
+            width:100%;
+            margin-top:24px;
+            background:#f8fafc;
+            border:1px solid #e5e9ef;
+            border-radius:14px;
           "
         >
           <tr>
             <td
               style="
                 padding:18px;
-                background:#f8fafc;
-                border:1px solid #e2e8f0;
-                border-radius:12px;
               "
             >
               <div
                 style="
                   font-size:14px;
                   line-height:21px;
-                  font-weight:700;
-                  color:#0f172a;
+                  font-weight:800;
+                  color:#111827;
                 "
               >
                 No payment required
@@ -1120,8 +1108,8 @@ function buildHtmlEmail({
               <p
                 style="
                   margin:6px 0 0;
-                  font-size:13px;
-                  line-height:21px;
+                  font-size:12px;
+                  line-height:20px;
                   color:#64748b;
                 "
               >
@@ -1133,9 +1121,18 @@ function buildHtmlEmail({
         </table>
       `;
 
+  const workspaceTitle =
+    workspaceReady
+      ? 'Your workspace is ready'
+      : 'Your workspace is being prepared';
+
+  const workspaceMessage =
+    workspaceReady
+      ? 'Your SaMi workspace is available. Sign in to continue.'
+      : 'Your account and plan are confirmed while SaMi finishes preparing your workspace.';
+
   return `
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
@@ -1144,6 +1141,16 @@ function buildHtmlEmail({
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="color-scheme"
+    content="light"
+  >
+
+  <meta
+    name="supported-color-schemes"
+    content="light"
   >
 
   <title>
@@ -1155,17 +1162,24 @@ function buildHtmlEmail({
   style="
     margin:0;
     padding:0;
-    background:#f3f6fb;
-    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    width:100%;
+    background:#f5f6f8;
+    font-family:Arial,Helvetica,sans-serif;
+    -webkit-text-size-adjust:100%;
   "
 >
+
+  <!-- PREHEADER -->
 
   <div
     style="
       display:none;
-      max-height:0;
-      overflow:hidden;
+      visibility:hidden;
       opacity:0;
+      overflow:hidden;
+      max-height:0;
+      max-width:0;
+      color:transparent;
     "
   >
     Your SaMi ${safePlanName} plan has been confirmed.
@@ -1179,15 +1193,14 @@ function buildHtmlEmail({
     border="0"
     style="
       width:100%;
-      background:#f3f6fb;
+      background:#f5f6f8;
     "
   >
-
     <tr>
       <td
         align="center"
         style="
-          padding:40px 16px;
+          padding:26px 12px 40px;
         "
       >
 
@@ -1199,101 +1212,92 @@ function buildHtmlEmail({
           border="0"
           style="
             width:100%;
-            max-width:600px;
-            background:#ffffff;
-            border:1px solid #e5eaf2;
-            border-radius:18px;
-            overflow:hidden;
+            max-width:620px;
           "
         >
 
-          <!-- BRAND -->
+          <!-- ================================================
+               TOP BRAND
+               ================================================ -->
 
           <tr>
             <td
-              align="center"
               style="
-                padding:24px 32px 20px;
-                border-bottom:1px solid #edf1f6;
+                padding:0 4px 18px;
               "
             >
-              ${buildBrandHeader(
-                hasLogo
-              )}
+              <table
+                role="presentation"
+                width="100%"
+                cellpadding="0"
+                cellspacing="0"
+                border="0"
+              >
+                <tr>
+
+                  <td
+                    align="left"
+                    valign="middle"
+                  >
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style="
+                        display:inline-block;
+                        text-decoration:none;
+                      "
+                    >
+                      <img
+                        src="${safeLogoUrl}"
+                        width="182"
+                        alt="SaMi"
+                        style="
+                          display:block;
+                          width:182px;
+                          max-width:100%;
+                          height:auto;
+                          border:0;
+                          outline:none;
+                          text-decoration:none;
+                        "
+                      >
+                    </a>
+                  </td>
+
+                  <td
+                    align="right"
+                    valign="middle"
+                    style="
+                      font-size:12px;
+                      line-height:18px;
+                    "
+                  >
+                    <a
+                      href="${safeAppUrl}"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style="
+                        color:#475569;
+                        text-decoration:none;
+                        font-weight:700;
+                      "
+                    >
+                      Open SaMi
+                    </a>
+                  </td>
+
+                </tr>
+              </table>
             </td>
           </tr>
 
-          <!-- CONTENT -->
+          <!-- ================================================
+               MAIN CARD
+               ================================================ -->
 
           <tr>
-            <td
-              style="
-                padding:36px 32px 32px;
-              "
-            >
-
-              <div
-                style="
-                  margin-bottom:8px;
-                  font-size:12px;
-                  line-height:18px;
-                  font-weight:700;
-                  letter-spacing:1.3px;
-                  text-transform:uppercase;
-                  color:#315fb5;
-                "
-              >
-                Plan confirmation
-              </div>
-
-              <h1
-                style="
-                  margin:0;
-                  font-size:25px;
-                  line-height:34px;
-                  color:#0f172a;
-                "
-              >
-                Your ${safePlanName} plan is confirmed
-              </h1>
-
-              <p
-                style="
-                  margin:14px 0 0;
-                  font-size:15px;
-                  line-height:25px;
-                  color:#475569;
-                "
-              >
-                Hello ${safeFirstName}, your SaMi plan for
-                <strong>${safeBusinessName}</strong>
-                has been created successfully.
-              </p>
-
-              ${
-                paid
-                  ? `
-                    <div
-                      style="
-                        display:inline-block;
-                        margin-top:20px;
-                        padding:7px 12px;
-                        border-radius:999px;
-                        background:#eaf2ff;
-                        color:#163d8f;
-                        font-size:12px;
-                        line-height:18px;
-                        font-weight:800;
-                      "
-                    >
-                      FIRST MONTH FREE
-                    </div>
-                  `
-                  : ''
-              }
-
-              <!-- PLAN SUMMARY -->
-
+            <td>
               <table
                 role="presentation"
                 width="100%"
@@ -1302,132 +1306,481 @@ function buildHtmlEmail({
                 border="0"
                 style="
                   width:100%;
-                  margin-top:24px;
-                  border-collapse:collapse;
+                  background:#ffffff;
+                  border:1px solid #e6e9ee;
+                  border-radius:20px;
+                  overflow:hidden;
                 "
               >
 
-                <tr>
-                  <td style="${labelStyle}">
-                    Plan
-                  </td>
-
-                  <td style="${valueStyle}">
-                    ${safePlanName}
-                  </td>
-                </tr>
-
-                ${billingDetails}
-
-              </table>
-
-              ${paidNotice}
-
-              <!-- WORKSPACE -->
-
-              <table
-                role="presentation"
-                width="100%"
-                cellpadding="0"
-                cellspacing="0"
-                border="0"
-                style="
-                  margin-top:26px;
-                "
-              >
                 <tr>
                   <td
                     style="
-                      padding:16px;
-                      border-left:3px solid ${
-                        workspaceReady
-                          ? '#16a34a'
-                          : '#315fb5'
-                      };
-                      background:#f8fafc;
-                      border-radius:6px;
-                      font-size:13px;
-                      line-height:21px;
-                      color:#475569;
+                      height:5px;
+                      background:#164a9f;
+                      font-size:0;
+                      line-height:0;
                     "
                   >
-                    <strong
-                      style="
-                        color:#0f172a;
-                      "
-                    >
-                      ${
-                        workspaceReady
-                          ? 'Your workspace is ready.'
-                          : 'Your workspace is being prepared.'
-                      }
-                    </strong>
-
-                    ${
-                      workspaceReady
-                        ? ' You can use your SaMi workspace after completing the required sign-in and verification steps.'
-                        : ' Your account and plan are safe while SaMi finishes preparing the workspace.'
-                    }
+                    &nbsp;
                   </td>
                 </tr>
-              </table>
 
-              ${
-                paid
-                  ? `
-                    <p
+                <!-- HEADER -->
+
+                <tr>
+                  <td
+                    style="
+                      padding:34px 34px 12px;
+                    "
+                  >
+
+                    <div
                       style="
-                        margin:22px 0 0;
-                        font-size:13px;
-                        line-height:21px;
-                        color:#64748b;
+                        font-size:11px;
+                        line-height:16px;
+                        font-weight:800;
+                        letter-spacing:1.4px;
+                        text-transform:uppercase;
+                        color:#2563c9;
                       "
                     >
-                      If the subscription is cancelled before
-                      the first paid billing cycle begins,
-                      KES 0 will have been charged for the free
-                      month.
-                    </p>
-                  `
-                  : ''
-              }
+                      Plan confirmation
+                    </div>
 
+                    <h1
+                      style="
+                        margin:9px 0 0;
+                        padding:0;
+                        font-size:28px;
+                        line-height:35px;
+                        font-weight:800;
+                        letter-spacing:-0.7px;
+                        color:#111827;
+                      "
+                    >
+                      Your ${safePlanName} plan is confirmed
+                    </h1>
+
+                  </td>
+                </tr>
+
+                <!-- MAIN CONTENT -->
+
+                <tr>
+                  <td
+                    style="
+                      padding:8px 34px 32px;
+                    "
+                  >
+
+                    <p
+                      style="
+                        margin:0;
+                        font-size:15px;
+                        line-height:24px;
+                        font-weight:700;
+                        color:#111827;
+                      "
+                    >
+                      Hello ${safeFirstName},
+                    </p>
+
+                    <p
+                      style="
+                        margin:10px 0 0;
+                        font-size:14px;
+                        line-height:23px;
+                        color:#475569;
+                      "
+                    >
+                      Your SaMi ${safePlanName} plan for
+                      <strong>${safeBusinessName}</strong>
+                      has been created successfully.
+                    </p>
+
+                    ${
+                      paid
+                        ? `
+                          <div
+                            style="
+                              display:inline-block;
+                              margin-top:18px;
+                              padding:7px 11px;
+                              border-radius:999px;
+                              background:#eaf2ff;
+                              color:#164a9f;
+                              font-size:11px;
+                              line-height:17px;
+                              font-weight:900;
+                              letter-spacing:0.5px;
+                            "
+                          >
+                            FIRST MONTH FREE
+                          </div>
+                        `
+                        : ''
+                    }
+
+                    <!-- PLAN SUMMARY -->
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        margin-top:22px;
+                        border-collapse:collapse;
+                      "
+                    >
+
+                      <tr>
+                        <td style="${labelStyle}">
+                          Plan
+                        </td>
+
+                        <td style="${valueStyle}">
+                          ${safePlanName}
+                        </td>
+                      </tr>
+
+                      ${billingDetails}
+
+                    </table>
+
+                    ${paidNotice}
+
+                    <!-- WORKSPACE -->
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        margin-top:24px;
+                        background:#f8fafc;
+                        border:1px solid #e5e9ef;
+                        border-radius:14px;
+                      "
+                    >
+                      <tr>
+                        <td
+                          style="
+                            padding:17px;
+                          "
+                        >
+                          <div
+                            style="
+                              font-size:13px;
+                              line-height:20px;
+                              font-weight:800;
+                              color:#111827;
+                            "
+                          >
+                            ${workspaceTitle}
+                          </div>
+
+                          <div
+                            style="
+                              margin-top:4px;
+                              font-size:12px;
+                              line-height:20px;
+                              color:#64748b;
+                            "
+                          >
+                            ${workspaceMessage}
+                          </div>
+
+                          ${
+                            workspaceReady
+                              ? `
+                                <table
+                                  role="presentation"
+                                  cellpadding="0"
+                                  cellspacing="0"
+                                  border="0"
+                                  style="
+                                    margin-top:14px;
+                                  "
+                                >
+                                  <tr>
+                                    <td
+                                      bgcolor="#164a9f"
+                                      style="
+                                        border-radius:9px;
+                                      "
+                                    >
+                                      <a
+                                        href="${safeAppUrl}"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        style="
+                                          display:inline-block;
+                                          padding:11px 17px;
+                                          border-radius:9px;
+                                          background:#164a9f;
+                                          color:#ffffff;
+                                          text-decoration:none;
+                                          font-size:12px;
+                                          line-height:17px;
+                                          font-weight:800;
+                                        "
+                                      >
+                                        Open workspace
+                                      </a>
+                                    </td>
+                                  </tr>
+                                </table>
+                              `
+                              : ''
+                          }
+                        </td>
+                      </tr>
+                    </table>
+
+                    ${
+                      paid
+                        ? `
+                          <p
+                            style="
+                              margin:20px 0 0;
+                              font-size:12px;
+                              line-height:20px;
+                              color:#64748b;
+                            "
+                          >
+                            Cancel before the first paid billing cycle
+                            begins and your total charge for the free
+                            month remains KES 0.
+                          </p>
+                        `
+                        : ''
+                    }
+
+                  </td>
+                </tr>
+
+                <!-- ============================================
+                     APP PROMOTION
+                     ============================================ -->
+
+                <tr>
+                  <td
+                    style="
+                      padding:0 34px 32px;
+                    "
+                  >
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        background:#f3f6fb;
+                        border:1px solid #e4eaf3;
+                        border-radius:16px;
+                      "
+                    >
+                      <tr>
+                        <td
+                          style="
+                            padding:18px 16px;
+                          "
+                        >
+                          <table
+                            role="presentation"
+                            width="100%"
+                            cellpadding="0"
+                            cellspacing="0"
+                            border="0"
+                          >
+                            <tr>
+
+                              <td
+                                valign="middle"
+                                style="
+                                  width:52px;
+                                  padding-right:14px;
+                                "
+                              >
+                                <div
+                                  style="
+                                    width:48px;
+                                    height:48px;
+                                    border-radius:13px;
+                                    background:#164a9f;
+                                    color:#ffffff;
+                                    text-align:center;
+                                    line-height:48px;
+                                    font-size:16px;
+                                    font-weight:900;
+                                  "
+                                >
+                                  SM
+                                </div>
+                              </td>
+
+                              <td
+                                valign="middle"
+                              >
+                                <div
+                                  style="
+                                    font-size:13px;
+                                    line-height:19px;
+                                    font-weight:800;
+                                    color:#111827;
+                                  "
+                                >
+                                  SaMi on the go
+                                </div>
+
+                                <div
+                                  style="
+                                    margin-top:3px;
+                                    font-size:11px;
+                                    line-height:17px;
+                                    color:#64748b;
+                                  "
+                                >
+                                  Access your business workspace wherever you are.
+                                </div>
+                              </td>
+
+                              <td
+                                align="right"
+                                valign="middle"
+                                style="
+                                  padding-left:12px;
+                                "
+                              >
+                                <a
+                                  href="${safeInstallAppUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:10px 15px;
+                                    border-radius:9px;
+                                    background:#111827;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    font-size:11px;
+                                    line-height:16px;
+                                    font-weight:800;
+                                    white-space:nowrap;
+                                  "
+                                >
+                                  Install app
+                                </a>
+                              </td>
+
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+              </table>
             </td>
           </tr>
 
-          <!-- FOOTER -->
+          <!-- ================================================
+               FOOTER
+               ================================================ -->
 
           <tr>
             <td
               align="center"
               style="
-                padding:24px 32px 28px;
-                background:#fafbfd;
-                border-top:1px solid #edf1f6;
+                padding:24px 16px 0;
               "
             >
+
               <p
                 style="
                   margin:0;
-                  font-size:13px;
-                  line-height:20px;
+                  font-size:11px;
+                  line-height:18px;
                   color:#64748b;
                 "
               >
-                You can manage your subscription from
-                SaMi Settings → Billing.
+                <a
+                  href="${safeHelpUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  Help
+                </a>
+
+                <span
+                  style="
+                    padding:0 8px;
+                    color:#cbd5e1;
+                  "
+                >
+                  •
+                </span>
+
+                <a
+                  href="${safeAppUrl}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="
+                    color:#64748b;
+                    text-decoration:none;
+                  "
+                >
+                  SaMi
+                </a>
               </p>
 
               <p
                 style="
-                  margin:12px 0 0;
-                  font-size:12px;
-                  line-height:18px;
+                  margin:11px 0 0;
+                  font-size:10px;
+                  line-height:17px;
                   color:#94a3b8;
+                "
+              >
+                SaMi — AI Powered Business Workspace
+              </p>
+
+              <p
+                style="
+                  margin:3px 0 0;
+                  font-size:10px;
+                  line-height:17px;
+                  color:#a0a8b4;
                 "
               >
                 © ${year} SaMi. All rights reserved.
               </p>
+
+              <p
+                style="
+                  margin:9px 0 0;
+                  font-size:9px;
+                  line-height:15px;
+                  color:#b2bac5;
+                "
+              >
+                This is an automated subscription email.
+              </p>
+
             </td>
           </tr>
 
@@ -1435,7 +1788,6 @@ function buildHtmlEmail({
 
       </td>
     </tr>
-
   </table>
 
 </body>
@@ -1451,8 +1803,8 @@ function buildHtmlEmail({
 const labelStyle = `
   padding:12px 8px 12px 0;
   border-bottom:1px solid #edf1f6;
-  font-size:13px;
-  line-height:20px;
+  font-size:12px;
+  line-height:19px;
   color:#64748b;
   vertical-align:top;
 `.replace(
@@ -1463,10 +1815,10 @@ const labelStyle = `
 const valueStyle = `
   padding:12px 0 12px 8px;
   border-bottom:1px solid #edf1f6;
-  font-size:13px;
-  line-height:20px;
-  font-weight:700;
-  color:#0f172a;
+  font-size:12px;
+  line-height:19px;
+  font-weight:800;
+  color:#111827;
   text-align:right;
   vertical-align:top;
 `.replace(
@@ -1612,6 +1964,15 @@ export async function sendSubscriptionConfirmationEmail(
         ).toFixed(2)
       );
 
+    const appUrl =
+      getAppUrl();
+
+    const logoUrl =
+      getEmailLogoUrl();
+
+    const installAppUrl =
+      getInstallAppUrl();
+
     /* ========================================================
        SMTP
        ======================================================== */
@@ -1642,18 +2003,6 @@ export async function sendSubscriptionConfirmationEmail(
           'Email delivery is unavailable.',
       };
     }
-
-    /* ========================================================
-       LOGO
-       ======================================================== */
-
-    const logo =
-      await getEmailLogo();
-
-    const hasLogo =
-      Boolean(
-        logo
-      );
 
     /* ========================================================
        CONTENT
@@ -1688,6 +2037,8 @@ export async function sendSubscriptionConfirmationEmail(
 
         workspaceReady:
           input.workspaceReady,
+
+        appUrl,
       });
 
     const html =
@@ -1715,11 +2066,19 @@ export async function sendSubscriptionConfirmationEmail(
         workspaceReady:
           input.workspaceReady,
 
-        hasLogo,
+        appUrl,
+
+        logoUrl,
+
+        installAppUrl,
       });
 
     /* ========================================================
        SEND
+
+       IMPORTANT:
+       No attachments are sent.
+       The SaMi logo is loaded from APP_URL.
        ======================================================== */
 
     const mailer =
@@ -1741,36 +2100,6 @@ export async function sendSubscriptionConfirmationEmail(
         text,
 
         html,
-
-        /*
-         * Same SaMi PNG already installed in:
-         *
-         * public/brand/sami-email-logo.png
-         *
-         * The image travels inside the email.
-         * No domain is required.
-         */
-        attachments:
-          logo
-            ? [
-                {
-                  filename:
-                    'sami-email-logo.png',
-
-                  content:
-                    logo,
-
-                  cid:
-                    SAMI_EMAIL_LOGO_CID,
-
-                  contentType:
-                    'image/png',
-
-                  contentDisposition:
-                    'inline',
-                },
-              ]
-            : undefined,
 
         headers: {
           'X-SaMi-Email-Type':
@@ -1808,8 +2137,6 @@ export async function sendSubscriptionConfirmationEmail(
     );
 
     /*
-     * IMPORTANT:
-     *
      * Subscription email delivery must never undo or invalidate
      * an otherwise successful registration.
      */
