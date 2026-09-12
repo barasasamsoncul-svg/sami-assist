@@ -20,7 +20,6 @@ import {
 } from 'lucide-react';
 import {
   type FormEvent,
-  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -62,10 +61,14 @@ type VerifyResponse = {
    HELPERS
    ============================================================ */
 
-function cleanCode(value: string) {
-  return value
-    .replace(/\D/g, '')
-    .slice(0, 6);
+function normalizeCode(value: string) {
+  return value.trim();
+}
+
+function validCode(value: string) {
+  return /^\d{6}$/.test(
+    normalizeCode(value)
+  );
 }
 
 function validEmail(value: string) {
@@ -80,7 +83,8 @@ function safeNextPath(
   if (
     !value ||
     !value.startsWith('/') ||
-    value.startsWith('//')
+    value.startsWith('//') ||
+    value.startsWith('/api/')
   ) {
     return '/login?verified=1';
   }
@@ -171,6 +175,11 @@ function VerifyEmailContent() {
   const [
     resendSeconds,
     setResendSeconds,
+  ] = useState(0);
+
+  const [
+    verifyRetrySeconds,
+    setVerifyRetrySeconds,
   ] = useState(0);
 
   const [
@@ -351,6 +360,34 @@ function VerifyEmailContent() {
     };
   }, [resendSeconds]);
 
+  useEffect(() => {
+    if (
+      verifyRetrySeconds <= 0
+    ) {
+      return;
+    }
+
+    const timer =
+      window.setInterval(
+        () => {
+          setVerifyRetrySeconds(
+            (current) =>
+              Math.max(
+                0,
+                current - 1
+              )
+          );
+        },
+        1000
+      );
+
+    return () => {
+      window.clearInterval(
+        timer
+      );
+    };
+  }, [verifyRetrySeconds]);
+
   /* ==========================================================
      FIELD HANDLING
      ========================================================== */
@@ -359,6 +396,12 @@ function VerifyEmailContent() {
     value: string
   ) {
     setEmail(value);
+
+    if (
+      verifyRetrySeconds > 0
+    ) {
+      setVerifyRetrySeconds(0);
+    }
 
     if (emailError) {
       setEmailError(
@@ -370,9 +413,15 @@ function VerifyEmailContent() {
   function handleCodeChange(
     value: string
   ) {
-    setCode(
-      cleanCode(value)
-    );
+    if (
+      !/^\d{0,6}$/.test(
+        value
+      )
+    ) {
+      return;
+    }
+
+    setCode(value);
 
     if (codeError) {
       setCodeError(
@@ -392,7 +441,8 @@ function VerifyEmailContent() {
 
     if (
       verifying ||
-      resending
+      resending ||
+      verifyRetrySeconds > 0
     ) {
       return;
     }
@@ -403,7 +453,7 @@ function VerifyEmailContent() {
         .toLowerCase();
 
     const cleanVerificationCode =
-      cleanCode(code);
+      normalizeCode(code);
 
     let invalid =
       false;
@@ -421,8 +471,9 @@ function VerifyEmailContent() {
     }
 
     if (
-      cleanVerificationCode.length !==
-      6
+      !validCode(
+        cleanVerificationCode
+      )
     ) {
       setCodeError(
         'Enter the 6-digit verification code.'
@@ -501,6 +552,20 @@ function VerifyEmailContent() {
         !response.ok ||
         !data.success
       ) {
+        if (
+          data.code ===
+            'VERIFICATION_RATE_LIMITED' &&
+          data.retryAfterSeconds &&
+          data.retryAfterSeconds >
+            0
+        ) {
+          setVerifyRetrySeconds(
+            Math.ceil(
+              data.retryAfterSeconds
+            )
+          );
+        }
+
         setOverlay(
           getAuthOverlayMessage(
             data.code ||
@@ -523,6 +588,8 @@ function VerifyEmailContent() {
         return;
       }
 
+      setVerifyRetrySeconds(0);
+
       try {
         sessionStorage.removeItem(
           VERIFICATION_EMAIL_STORAGE_KEY
@@ -533,7 +600,13 @@ function VerifyEmailContent() {
 
       setOverlay(
         getAuthOverlayMessage(
-          'EMAIL_VERIFIED'
+          data.code ||
+            'EMAIL_VERIFIED',
+          {
+            fallback:
+              data.message ||
+              'Your email has been verified successfully.',
+          }
         )
       );
 
@@ -959,6 +1032,11 @@ function VerifyEmailContent() {
                           )
                         }
                         placeholder="you@example.com"
+                        aria-invalid={
+                          Boolean(
+                            emailError
+                          )
+                        }
                         className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
                       />
                     </div>
@@ -1021,8 +1099,8 @@ function VerifyEmailContent() {
                       <ShieldCheck className="h-3.5 w-3.5" />
 
                       Verification codes are
-                      single-use and expire
-                      automatically.
+                      single-use and expire after
+                      15 minutes.
                     </div>
                   )}
 
@@ -1032,7 +1110,9 @@ function VerifyEmailContent() {
                     type="submit"
                     disabled={
                       verifying ||
-                      resending
+                      resending ||
+                      verifyRetrySeconds >
+                        0
                     }
                     aria-busy={
                       verifying
@@ -1044,6 +1124,14 @@ function VerifyEmailContent() {
                         <Loader2 className="h-5 w-5 animate-spin" />
 
                         Verifying...
+                      </>
+                    ) : verifyRetrySeconds >
+                      0 ? (
+                      <>
+                        <Clock3 className="h-5 w-5" />
+
+                        Try again in{' '}
+                        {verifyRetrySeconds}s
                       </>
                     ) : (
                       <>
@@ -1123,48 +1211,5 @@ function VerifyEmailContent() {
    ============================================================ */
 
 export default function VerifyEmailClient() {
-  return (
-    <Suspense
-      fallback={
-        <VerifyEmailLoading />
-      }
-    >
-      <VerifyEmailContent />
-    </Suspense>
-  );
-}
-
-/* ============================================================
-   LOADING
-   ============================================================ */
-
-function VerifyEmailLoading() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] px-4 dark:bg-[#070a10]">
-      <div className="w-full max-w-[520px]">
-
-        {/* FULL APPROVED LOGO */}
-        <SaMiLogo
-          size="lg"
-          className="mb-7 max-w-full"
-        />
-
-        <div className="rounded-[30px] border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-            <MailCheck className="h-6 w-6" />
-          </div>
-
-          <div className="mt-5 h-8 w-56 animate-pulse rounded-xl bg-slate-200 dark:bg-slate-800" />
-
-          <div className="mt-3 h-4 w-72 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-
-          <div className="mt-7 h-12 w-full animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-
-          <div className="mt-5 h-[66px] w-full animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
-
-          <div className="mt-6 h-12 w-full animate-pulse rounded-xl bg-blue-600/70" />
-        </div>
-      </div>
-    </main>
-  );
+  return <VerifyEmailContent />;
 }

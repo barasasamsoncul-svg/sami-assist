@@ -3,7 +3,17 @@ import {
   NextResponse,
 } from 'next/server';
 
-import { queryControl } from '@/lib/db/control';
+import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
+  checkRateLimit,
+} from '@/lib/auth/rate-limit';
+
+import {
+  getClientIp,
+} from '@/lib/auth/auth-events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -14,13 +24,31 @@ export const dynamic = 'force-dynamic';
 
 const MAX_EMAIL_LENGTH = 254;
 
+/*
+ * This endpoint intentionally answers whether an email can be
+ * used for registration, so it must be protected from bulk
+ * account-enumeration attempts.
+ *
+ * Rate-limit by client IP, not by email. If the email were part
+ * of the key, an attacker could bypass the limit simply by
+ * changing the address on every request.
+ */
+const CHECK_EMAIL_RATE_LIMIT_MAX_ATTEMPTS =
+  30;
+
+const CHECK_EMAIL_RATE_LIMIT_WINDOW_MS =
+  15 * 60 * 1000;
+
+const CHECK_EMAIL_RATE_LIMIT_BLOCK_MS =
+  15 * 60 * 1000;
+
 /* ============================================================
    HELPERS
    ============================================================ */
 
 function normalizeEmail(
   value: string
-) {
+): string {
   return value
     .trim()
     .toLowerCase();
@@ -28,7 +56,7 @@ function normalizeEmail(
 
 function isValidEmail(
   value: string
-) {
+): boolean {
   if (
     !value ||
     value.length >
@@ -57,6 +85,7 @@ function json(
       headers: {
         'Cache-Control':
           'no-store, no-cache, must-revalidate',
+
         Pragma:
           'no-cache',
       },
@@ -64,8 +93,20 @@ function json(
   );
 }
 
+function getRateLimitIdentifier(
+  request: NextRequest
+): string {
+  const ip =
+    getClientIp(
+      request
+    ) ||
+    'unknown-ip';
+
+  return `check-email:${ip}`;
+}
+
 /* ============================================================
-   GET
+   GET /api/auth/check-email
    ============================================================ */
 
 export async function GET(
@@ -73,7 +114,7 @@ export async function GET(
 ) {
   try {
     /* ========================================================
-       INPUT
+       1. INPUT
        ======================================================== */
 
     const rawEmail =
@@ -102,7 +143,7 @@ export async function GET(
       );
 
     /* ========================================================
-       VALIDATION
+       2. VALIDATION
        ======================================================== */
 
     if (
@@ -125,37 +166,110 @@ export async function GET(
     }
 
     /* ========================================================
-       ACCOUNT LOOKUP
+       3. RATE LIMIT
+
+       The Register client needs an explicit availability result,
+       so this endpoint cannot be fully anti-enumerating.
+
+       Instead, protect it against bulk discovery by limiting the
+       number of checks from one client IP.
+       ======================================================== */
+
+    const rateLimit =
+      await checkRateLimit({
+        identifier:
+          getRateLimitIdentifier(
+            request
+          ),
+
+        action:
+          'check-email',
+
+        maxAttempts:
+          CHECK_EMAIL_RATE_LIMIT_MAX_ATTEMPTS,
+
+        windowMs:
+          CHECK_EMAIL_RATE_LIMIT_WINDOW_MS,
+
+        blockMs:
+          CHECK_EMAIL_RATE_LIMIT_BLOCK_MS,
+      });
+
+    if (
+      !rateLimit.allowed
+    ) {
+      return json(
+        {
+          success: false,
+
+          code:
+            'CHECK_EMAIL_RATE_LIMITED',
+
+          error:
+            'Too many email checks. Please wait before trying again.',
+
+          retryAfterSeconds:
+            rateLimit
+              .retryAfterSeconds,
+        },
+        429
+      );
+    }
+
+    /* ========================================================
+       4. ACCOUNT LOOKUP
+
+       IMPORTANT:
+       Do not filter deleted_at here.
+
+       The authoritative registration route rejects an email when
+       ANY previous users row exists, including a soft-deleted
+       account. Returning EMAIL_AVAILABLE for a deleted row would
+       let the Register UI continue only for registration to fail
+       later with ACCOUNT_PREVIOUSLY_DELETED.
+
+       We intentionally return only availability here. We do not
+       reveal whether the matching account is active, pending,
+       Google-created, suspended or deleted.
        ======================================================== */
 
     const result =
       await queryControl(
         `
           SELECT id
+
           FROM users
-          WHERE email = $1
-            AND deleted_at IS NULL
+
+          WHERE LOWER(email) = $1
+
           LIMIT 1
         `,
-        [email]
+        [
+          email,
+        ]
       );
 
     const exists =
-      result.rows.length > 0;
+      result.rows.length >
+      0;
 
     /* ========================================================
-       RESPONSE
+       5. RESPONSE
 
-       Keep `exists` because the current Register client
-       depends on it.
+       Keep `exists` because the current Register client depends
+       on it.
+
+       Detailed account state remains authoritative in the final
+       registration endpoint and is not exposed here.
        ======================================================== */
 
     return json({
       success: true,
 
-      code: exists
-        ? 'EMAIL_ALREADY_EXISTS'
-        : 'EMAIL_AVAILABLE',
+      code:
+        exists
+          ? 'EMAIL_ALREADY_EXISTS'
+          : 'EMAIL_AVAILABLE',
 
       exists,
     });

@@ -1,5 +1,3 @@
-// app/api/auth/verify-email/route.ts
-
 import {
   NextRequest,
   NextResponse,
@@ -12,6 +10,12 @@ import {
 } from '@/lib/db/control';
 
 import {
+  checkRateLimit,
+  resetRateLimit,
+} from '@/lib/auth/rate-limit';
+
+import {
+  getClientIp,
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
@@ -24,6 +28,12 @@ export const dynamic = 'force-dynamic';
 
 const CODE_LENGTH = 6;
 const MAX_EMAIL_LENGTH = 254;
+
+const VERIFY_RATE_LIMIT_MAX_ATTEMPTS = 8;
+const VERIFY_RATE_LIMIT_WINDOW_MS =
+  15 * 60 * 1000;
+const VERIFY_RATE_LIMIT_BLOCK_MS =
+  15 * 60 * 1000;
 
 /* ============================================================
    TYPES
@@ -55,7 +65,8 @@ function normalizeEmail(
   value: unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
@@ -69,20 +80,12 @@ function normalizeCode(
   value: unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
 
-  /*
-   * Do NOT silently remove invalid characters.
-   *
-   * Example:
-   *   12a3456
-   *
-   * must remain invalid rather than being transformed
-   * into 123456.
-   */
   return value.trim();
 }
 
@@ -119,12 +122,33 @@ function hashCode(
   code: string
 ): string {
   return crypto
-    .createHash('sha256')
+    .createHash(
+      'sha256'
+    )
     .update(
       code,
       'utf8'
     )
-    .digest('hex');
+    .digest(
+      'hex'
+    );
+}
+
+/* ============================================================
+   RATE LIMIT
+   ============================================================ */
+
+function getRateLimitIdentifier(
+  request: NextRequest,
+  email: string
+): string {
+  const ip =
+    getClientIp(
+      request
+    ) ||
+    'unknown-ip';
+
+  return `verify-email:${email}:${ip}`;
 }
 
 /* ============================================================
@@ -183,15 +207,131 @@ async function safeRecordAuthEvent(
       input
     );
   } catch (error) {
-    /*
-     * Audit failure must never undo a completed
-     * email verification.
-     */
     console.error(
       '[Auth] Failed to record email verification event:',
       error
     );
   }
+}
+
+/* ============================================================
+   SUCCESS RESPONSES
+   ============================================================ */
+
+function verifiedResponse(
+  user: UserRow
+) {
+  return jsonResponse({
+    success: true,
+
+    code:
+      'EMAIL_VERIFIED',
+
+    verified:
+      true,
+
+    alreadyVerified:
+      false,
+
+    user: {
+      id:
+        user.id,
+
+      email:
+        user.email,
+
+      firstName:
+        user.first_name ||
+        '',
+
+      lastName:
+        user.last_name ||
+        '',
+
+      fullName:
+        user.full_name ||
+        '',
+
+      emailVerified:
+        true,
+
+      emailVerifiedAt:
+        user.email_verified_at instanceof
+        Date
+          ? user
+              .email_verified_at
+              .toISOString()
+          : user
+              .email_verified_at,
+
+      status:
+        user.status,
+    },
+
+    message:
+      'Email verified successfully. You can now sign in.',
+
+    next:
+      '/login?verified=1',
+  });
+}
+
+function alreadyVerifiedResponse(
+  user: UserRow
+) {
+  return jsonResponse({
+    success: true,
+
+    code:
+      'EMAIL_ALREADY_VERIFIED',
+
+    verified:
+      true,
+
+    alreadyVerified:
+      true,
+
+    user: {
+      id:
+        user.id,
+
+      email:
+        user.email,
+
+      firstName:
+        user.first_name ||
+        '',
+
+      lastName:
+        user.last_name ||
+        '',
+
+      fullName:
+        user.full_name ||
+        '',
+
+      emailVerified:
+        true,
+
+      emailVerifiedAt:
+        user.email_verified_at instanceof
+        Date
+          ? user
+              .email_verified_at
+              .toISOString()
+          : user
+              .email_verified_at,
+
+      status:
+        user.status,
+    },
+
+    message:
+      'Your email address is already verified.',
+
+    next:
+      '/login?verified=1',
+  });
 }
 
 /* ============================================================
@@ -201,11 +341,14 @@ async function safeRecordAuthEvent(
 export async function POST(
   request: NextRequest
 ) {
-  try {
-    /* ========================================================
-       1. REQUEST
-       ======================================================== */
+  let email =
+    '';
 
+  let rateLimitKey:
+    string | null =
+    null;
+
+  try {
     let body:
       VerifyEmailBody;
 
@@ -239,11 +382,7 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       2. NORMALIZE
-       ======================================================== */
-
-    const email =
+    email =
       normalizeEmail(
         body.email
       );
@@ -252,10 +391,6 @@ export async function POST(
       normalizeCode(
         body.code
       );
-
-    /* ========================================================
-       3. INPUT VALIDATION
-       ======================================================== */
 
     if (
       !isValidEmail(
@@ -281,173 +416,126 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       4. FIND ACCOUNT
-       ======================================================== */
-
-    const userResult =
-      await queryControl(
-        `
-          SELECT
-            id,
-            email,
-            first_name,
-            last_name,
-            full_name,
-            status,
-            email_verified_at
-
-          FROM users
-
-          WHERE LOWER(email) = $1
-            AND deleted_at IS NULL
-
-          LIMIT 1
-        `,
-        [
-          email,
-        ]
+    rateLimitKey =
+      getRateLimitIdentifier(
+        request,
+        email
       );
 
-    /*
-     * Do not expose whether an arbitrary email address
-     * belongs to a SaMi account.
-     */
-    if (
-      userResult.rows.length ===
-      0
-    ) {
-      return errorResponse(
-        400,
-        'INVALID_OR_EXPIRED_CODE',
-        'The verification code is invalid or has expired.'
-      );
-    }
+    const rateLimit =
+      await checkRateLimit({
+        identifier:
+          rateLimitKey,
 
-    const user =
-      userResult
-        .rows[0] as UserRow;
+        action:
+          'verify-email',
 
-    /* ========================================================
-       5. ALREADY VERIFIED
+        maxAttempts:
+          VERIFY_RATE_LIMIT_MAX_ATTEMPTS,
 
-       Verification is idempotent.
-       ======================================================== */
+        windowMs:
+          VERIFY_RATE_LIMIT_WINDOW_MS,
 
-    if (
-      user.email_verified_at
-    ) {
-      return jsonResponse({
-        success: true,
-
-        code:
-          'EMAIL_ALREADY_VERIFIED',
-
-        verified:
-          true,
-
-        alreadyVerified:
-          true,
-
-        message:
-          'Your email address is already verified.',
-
-        next:
-          '/login?verified=1',
+        blockMs:
+          VERIFY_RATE_LIMIT_BLOCK_MS,
       });
-    }
-
-    /* ========================================================
-       6. ACCOUNT STATE
-
-       Email verification may activate only accounts that are
-       actually waiting for verification.
-
-       Never turn:
-         locked
-         suspended
-         disabled
-         banned
-         deleted
-         cancelled
-
-       into active accounts simply because a code was valid.
-       ======================================================== */
-
-    const status =
-      String(
-        user.status || ''
-      )
-        .trim()
-        .toLowerCase();
 
     if (
-      status !==
-        'pending_verification' &&
-      status !==
-        'pending'
+      !rateLimit.allowed
     ) {
-      /*
-       * Keep this generic so account status is not disclosed
-       * through the public verification endpoint.
-       */
-      return errorResponse(
-        400,
-        'INVALID_OR_EXPIRED_CODE',
-        'The verification code is invalid or has expired.'
+      await safeRecordAuthEvent({
+        request,
+
+        eventType:
+          'EMAIL_VERIFICATION_RATE_LIMITED',
+
+        metadata: {
+          email,
+
+          retryAfterSeconds:
+            rateLimit
+              .retryAfterSeconds,
+        },
+      });
+
+      return jsonResponse(
+        {
+          success: false,
+
+          code:
+            'VERIFICATION_RATE_LIMITED',
+
+          error:
+            'Too many verification attempts. Please wait before trying again.',
+
+          retryAfterSeconds:
+            rateLimit
+              .retryAfterSeconds,
+        },
+        429
       );
     }
-
-    /* ========================================================
-       7. HASH CODE
-       ======================================================== */
 
     const codeHash =
       hashCode(
         code
       );
 
-    /* ========================================================
-       8. ATOMIC VERIFICATION
-
-       This single PostgreSQL statement:
-
-       1. Finds one valid unused code.
-       2. Atomically consumes it.
-       3. Marks the user's email verified.
-       4. Changes only pending/pending_verification → active.
-       5. Invalidates every remaining unused email code.
-
-       Concurrent requests cannot successfully reuse the same
-       verification code.
-       ======================================================== */
-
     const verificationResult =
       await queryControl(
         `
-          WITH consumed_code AS (
+          WITH target_user AS (
+            SELECT
+              u.id
+
+            FROM users u
+
+            WHERE LOWER(u.email) = $1
+              AND u.deleted_at IS NULL
+              AND u.email_verified_at IS NULL
+              AND LOWER(u.status) IN (
+                'pending',
+                'pending_verification'
+              )
+
+            LIMIT 1
+
+            FOR UPDATE
+          ),
+
+          candidate_code AS (
+            SELECT
+              ev.id
+
+            FROM email_verifications ev
+
+            WHERE LOWER(ev.email) = $1
+              AND ev.code_hash = $2
+              AND ev.used_at IS NULL
+              AND ev.deleted_at IS NULL
+              AND ev.expires_at > NOW()
+              AND EXISTS (
+                SELECT 1
+                FROM target_user
+              )
+
+            ORDER BY
+              ev.created_at DESC
+
+            LIMIT 1
+
+            FOR UPDATE
+          ),
+
+          consumed_code AS (
             UPDATE email_verifications ev
 
             SET
               used_at = NOW()
 
             WHERE ev.id = (
-              SELECT candidate.id
-
-              FROM email_verifications candidate
-
-              WHERE LOWER(candidate.email) = $1
-                AND candidate.code_hash = $2
-                AND candidate.used_at IS NULL
-                AND candidate.deleted_at IS NULL
-                AND candidate.expires_at > NOW()
-
-              ORDER BY
-                candidate.created_at DESC
-
-              LIMIT 1
-
-              FOR UPDATE SKIP LOCKED
+              SELECT id
+              FROM candidate_code
             )
 
             RETURNING
@@ -467,25 +555,16 @@ export async function POST(
                 ),
 
               status =
-                CASE
-                  WHEN LOWER(u.status) IN (
-                    'pending',
-                    'pending_verification'
-                  )
-                  THEN 'active'
-                  ELSE u.status
-                END,
+                'active',
 
               updated_at =
                 NOW()
 
-            WHERE u.id = $3
-              AND u.deleted_at IS NULL
-              AND u.email_verified_at IS NULL
-              AND LOWER(u.status) IN (
-                'pending',
-                'pending_verification'
-              )
+            FROM target_user target
+
+            WHERE u.id =
+              target.id
+
               AND EXISTS (
                 SELECT 1
                 FROM consumed_code
@@ -505,7 +584,8 @@ export async function POST(
             UPDATE email_verifications ev
 
             SET
-              deleted_at = NOW()
+              deleted_at =
+                NOW()
 
             WHERE LOWER(ev.email) = $1
               AND ev.used_at IS NULL
@@ -533,123 +613,117 @@ export async function POST(
         [
           email,
           codeHash,
-          user.id,
         ]
       );
 
-    /* ========================================================
-       9. INVALID / EXPIRED / REPLAYED CODE
-       ======================================================== */
-
     if (
       verificationResult
-        .rows.length ===
+        .rows.length >
       0
     ) {
-      return errorResponse(
-        400,
-        'INVALID_OR_EXPIRED_CODE',
-        'The verification code is invalid or has expired.'
+      const verifiedUser =
+        verificationResult
+          .rows[0] as UserRow;
+
+      if (
+        rateLimitKey
+      ) {
+        await resetRateLimit(
+          rateLimitKey,
+          'verify-email'
+        );
+      }
+
+      await safeRecordAuthEvent({
+        request,
+
+        userId:
+          verifiedUser.id,
+
+        eventType:
+          'EMAIL_VERIFIED',
+
+        entityType:
+          'user',
+
+        entityId:
+          verifiedUser.id,
+
+        metadata: {
+          email:
+            verifiedUser.email,
+        },
+      });
+
+      return verifiedResponse(
+        verifiedUser
       );
     }
 
-    const verifiedUser =
-      verificationResult
-        .rows[0] as UserRow;
+    const alreadyVerifiedResult =
+      await queryControl(
+        `
+          SELECT
+            u.id,
+            u.email,
+            u.first_name,
+            u.last_name,
+            u.full_name,
+            u.status,
+            u.email_verified_at
 
-    /* ========================================================
-       10. AUDIT
-       ======================================================== */
+          FROM users u
 
-    await safeRecordAuthEvent({
-      request,
+          WHERE LOWER(u.email) = $1
+            AND u.deleted_at IS NULL
+            AND u.email_verified_at IS NOT NULL
 
-      userId:
-        verifiedUser.id,
+            AND EXISTS (
+              SELECT 1
 
-      eventType:
-        'EMAIL_VERIFIED',
+              FROM email_verifications ev
 
-      entityType:
-        'user',
+              WHERE LOWER(ev.email) = $1
+                AND ev.code_hash = $2
+                AND ev.used_at IS NOT NULL
+            )
 
-      entityId:
-        verifiedUser.id,
+          LIMIT 1
+        `,
+        [
+          email,
+          codeHash,
+        ]
+      );
 
-      metadata: {
-        email:
-          verifiedUser.email,
-      },
-    });
+    if (
+      alreadyVerifiedResult
+        .rows.length >
+      0
+    ) {
+      const alreadyVerifiedUser =
+        alreadyVerifiedResult
+          .rows[0] as UserRow;
 
-    /* ========================================================
-       11. SUCCESS
+      if (
+        rateLimitKey
+      ) {
+        await resetRateLimit(
+          rateLimitKey,
+          'verify-email'
+        );
+      }
 
-       Email verification does NOT:
+      return alreadyVerifiedResponse(
+        alreadyVerifiedUser
+      );
+    }
 
-       - create a login session
-       - provision a tenant
-       - modify a subscription
-       - change trial dates
-       - charge PesaPal
-
-       Those responsibilities remain in their own services.
-       ======================================================== */
-
-    return jsonResponse({
-      success: true,
-
-      code:
-        'EMAIL_VERIFIED',
-
-      verified:
-        true,
-
-      alreadyVerified:
-        false,
-
-      user: {
-        id:
-          verifiedUser.id,
-
-        email:
-          verifiedUser.email,
-
-        firstName:
-          verifiedUser.first_name ||
-          '',
-
-        lastName:
-          verifiedUser.last_name ||
-          '',
-
-        fullName:
-          verifiedUser.full_name ||
-          '',
-
-        emailVerified:
-          true,
-
-        emailVerifiedAt:
-          verifiedUser
-            .email_verified_at instanceof
-          Date
-            ? verifiedUser
-                .email_verified_at
-                .toISOString()
-            : verifiedUser
-                .email_verified_at,
-
-        status:
-          verifiedUser.status,
-      },
-
-      message:
-        'Email verified successfully. You can now sign in.',
-
-      next:
-        '/login?verified=1',
-    });
+    return errorResponse(
+      400,
+      'INVALID_OR_EXPIRED_CODE',
+      'The verification code is invalid or has expired.'
+    );
   } catch (error) {
     console.error(
       '[Auth] Email verification failed:',

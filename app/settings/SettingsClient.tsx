@@ -1,13 +1,13 @@
 ﻿'use client';
 
 import Link from 'next/link';
+
 import {
   AppWindow,
   ArrowLeft,
   Bot,
   Building2,
   Check,
-  CheckCircle2,
   ChevronRight,
   CreditCard,
   Eye,
@@ -24,6 +24,7 @@ import {
   Users,
   type LucideIcon,
 } from 'lucide-react';
+
 import {
   type FormEvent,
   useEffect,
@@ -33,7 +34,12 @@ import {
 
 import SaMiLogo from '@/app/components/SaMiLogo';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
-import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
+
+import MyAccountSettings from './components/MyAccountSettings';
+
+import {
+  getAuthOverlayMessage,
+} from '@/lib/auth/auth-ui-messages';
 
 /* ============================================================
    TYPES
@@ -129,61 +135,102 @@ const THEME_STORAGE_KEY =
 const NAV: NavItem[] = [
   {
     key: 'personal',
-    label: 'Personal',
+
+    label:
+      'My Account',
+
     description:
-      'Your account identity',
-    icon: User,
+      'Your personal SaMi account',
+
+    icon:
+      User,
   },
 
   {
     key: 'security',
-    label: 'Security',
+
+    label:
+      'Security',
+
     description:
       'Password and account protection',
-    icon: ShieldCheck,
+
+    icon:
+      ShieldCheck,
   },
 
   {
     key: 'sessions',
-    label: 'Sessions',
+
+    label:
+      'Sessions',
+
     description:
       'Your current signed-in device',
-    icon: LockKeyhole,
+
+    icon:
+      LockKeyhole,
   },
 
   {
     key: 'workspace',
-    label: 'Workspace',
+
+    label:
+      'Workspace',
+
     description:
       'Organization and access',
-    icon: Building2,
-    adminOnly: true,
+
+    icon:
+      Building2,
+
+    adminOnly:
+      true,
   },
 
   {
     key: 'apps',
-    label: 'Apps',
+
+    label:
+      'Apps',
+
     description:
       'Installed business apps',
-    icon: AppWindow,
-    adminOnly: true,
+
+    icon:
+      AppWindow,
+
+    adminOnly:
+      true,
   },
 
   {
     key: 'ai',
-    label: 'SaMi AI',
+
+    label:
+      'SaMi AI',
+
     description:
       'AI workspace configuration',
-    icon: Bot,
+
+    icon:
+      Bot,
   },
 
   {
     key: 'billing',
-    label: 'Billing',
+
+    label:
+      'Billing',
+
     description:
       'Plan and subscription',
-    icon: CreditCard,
-    ownerOnly: true,
+
+    icon:
+      CreditCard,
+
+    ownerOnly:
+      true,
   },
 ];
 
@@ -213,10 +260,15 @@ function formatDate(
     return new Intl.DateTimeFormat(
       'en-KE',
       {
-        dateStyle: 'medium',
-        timeStyle: 'short',
+        dateStyle:
+          'medium',
+
+        timeStyle:
+          'short',
       }
-    ).format(date);
+    ).format(
+      date
+    );
   } catch {
     return 'Not available';
   }
@@ -230,10 +282,15 @@ function formatLabel(
   }
 
   return value
-    .replace(/[_-]+/g, ' ')
+    .replace(
+      /[_-]+/g,
+      ' '
+    )
     .replace(
       /\b\w/g,
-      (character) =>
+      (
+        character
+      ) =>
         character.toUpperCase()
     );
 }
@@ -283,7 +340,8 @@ function getFullName(
   user: UserData
 ) {
   return (
-    user.fullName?.trim() ||
+    user.fullName
+      ?.trim() ||
     `${user.firstName || ''} ${
       user.lastName || ''
     }`.trim() ||
@@ -326,13 +384,19 @@ function passwordChecks(
       password.length >= 8,
 
     uppercase:
-      /[A-Z]/.test(password),
+      /[A-Z]/.test(
+        password
+      ),
 
     lowercase:
-      /[a-z]/.test(password),
+      /[a-z]/.test(
+        password
+      ),
 
     number:
-      /[0-9]/.test(password),
+      /[0-9]/.test(
+        password
+      ),
   };
 }
 
@@ -368,12 +432,17 @@ function getSectionFromUrl():
     );
 
   const tab =
-    params.get('tab');
+    params.get(
+      'tab'
+    );
 
   const match =
     NAV.find(
-      (item) =>
-        item.key === tab
+      (
+        item
+      ) =>
+        item.key ===
+        tab
     );
 
   return (
@@ -394,51 +463,75 @@ export default function SettingsClient({
   modules,
   session,
 }: Props) {
+  /* ==========================================================
+     ACTIVE SECTION
+     ========================================================== */
+
   const [
     active,
     setActive,
-  ] = useState<Section>(
-    'security'
-  );
+  ] =
+    useState<Section>(
+      'personal'
+    );
+
+  /* ==========================================================
+     THEME
+     ========================================================== */
 
   const [
     darkMode,
     setDarkMode,
-  ] = useState(false);
+  ] =
+    useState(false);
+
+  /* ==========================================================
+     PASSWORD
+     ========================================================== */
 
   const [
     currentPassword,
     setCurrentPassword,
-  ] = useState('');
+  ] =
+    useState('');
 
   const [
     newPassword,
     setNewPassword,
-  ] = useState('');
+  ] =
+    useState('');
 
   const [
     confirmPassword,
     setConfirmPassword,
-  ] = useState('');
+  ] =
+    useState('');
 
   const [
     showPasswords,
     setShowPasswords,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     submitting,
     setSubmitting,
-  ] = useState(false);
+  ] =
+    useState(false);
+
+  /* ==========================================================
+     OVERLAY
+     ========================================================== */
 
   const [
     overlay,
     setOverlay,
-  ] = useState<
-    ReturnType<
-      typeof getAuthOverlayMessage
-    > | null
-  >(null);
+  ] =
+    useState<
+      ReturnType<
+        typeof getAuthOverlayMessage
+      > | null
+    >(null);
 
   /* ==========================================================
      ACCESS
@@ -454,7 +547,9 @@ export default function SettingsClient({
     useMemo(
       () =>
         NAV.filter(
-          (item) => {
+          (
+            item
+          ) => {
             if (
               item.ownerOnly &&
               !membership?.isOwner
@@ -482,67 +577,91 @@ export default function SettingsClient({
      INITIAL SECTION
      ========================================================== */
 
-  useEffect(() => {
-    const requested =
-      getSectionFromUrl();
+  useEffect(
+    () => {
+      const requested =
+        getSectionFromUrl();
 
-    if (!requested) {
-      return;
-    }
+      if (!requested) {
+        return;
+      }
 
-    const permitted =
-      visibleNav.some(
-        (item) =>
-          item.key ===
-          requested
-      );
-
-    if (permitted) {
-      setActive(
-        requested
-      );
-    }
-  }, [visibleNav]);
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
+      const permitted =
+        visibleNav.some(
+          (
+            item
+          ) =>
+            item.key ===
+            requested
         );
 
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
+      if (permitted) {
+        setActive(
+          requested
+        );
+      }
+    },
+    [
+      visibleNav,
+    ]
+  );
 
-      const useDark =
-        stored === 'dark' ||
-        (!stored &&
-          systemDark);
+  /* ==========================================================
+     THEME INITIALIZATION
+     ========================================================== */
 
-      setDarkMode(
-        useDark
-      );
+  useEffect(
+    () => {
+      try {
+        const stored =
+          localStorage.getItem(
+            THEME_STORAGE_KEY
+          );
 
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Settings remain usable.
-    }
-  }, []);
+        const systemDark =
+          window.matchMedia?.(
+            '(prefers-color-scheme: dark)'
+          ).matches ??
+          false;
+
+        const useDark =
+          stored ===
+            'dark' ||
+          (
+            (
+              stored ===
+                'system' ||
+              !stored
+            ) &&
+            systemDark
+          );
+
+        setDarkMode(
+          useDark
+        );
+
+        document.documentElement.classList.toggle(
+          'dark',
+          useDark
+        );
+      } catch {
+        // Settings remain usable.
+      }
+    },
+    []
+  );
+
+  /* ==========================================================
+     THEME TOGGLE
+     ========================================================== */
 
   function toggleTheme() {
     const next =
       !darkMode;
 
-    setDarkMode(next);
+    setDarkMode(
+      next
+    );
 
     document.documentElement.classList.toggle(
       'dark',
@@ -568,7 +687,9 @@ export default function SettingsClient({
   function selectSection(
     section: Section
   ) {
-    setActive(section);
+    setActive(
+      section
+    );
 
     if (
       typeof window ===
@@ -599,13 +720,18 @@ export default function SettingsClient({
      ========================================================== */
 
   async function changePassword(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
     if (submitting) {
       return;
     }
+
+    /* ========================================================
+       CURRENT PASSWORD
+       ======================================================== */
 
     if (!currentPassword) {
       setOverlay(
@@ -616,6 +742,10 @@ export default function SettingsClient({
 
       return;
     }
+
+    /* ========================================================
+       PASSWORD POLICY
+       ======================================================== */
 
     if (
       !validPassword(
@@ -631,6 +761,10 @@ export default function SettingsClient({
       return;
     }
 
+    /* ========================================================
+       CONFIRMATION
+       ======================================================== */
+
     if (
       newPassword !==
       confirmPassword
@@ -644,16 +778,25 @@ export default function SettingsClient({
       return;
     }
 
-    setSubmitting(true);
+    /* ========================================================
+       REQUEST
+       ======================================================== */
 
-    setOverlay(null);
+    setSubmitting(
+      true
+    );
+
+    setOverlay(
+      null
+    );
 
     try {
       const response =
         await fetch(
           '/api/auth/change-password',
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
@@ -703,9 +846,21 @@ export default function SettingsClient({
         return;
       }
 
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      /* ======================================================
+         SUCCESS
+         ====================================================== */
+
+      setCurrentPassword(
+        ''
+      );
+
+      setNewPassword(
+        ''
+      );
+
+      setConfirmPassword(
+        ''
+      );
 
       setOverlay(
         getAuthOverlayMessage(
@@ -723,7 +878,9 @@ export default function SettingsClient({
         )
       );
     } finally {
-      setSubmitting(false);
+      setSubmitting(
+        false
+      );
     }
   }
 
@@ -733,9 +890,13 @@ export default function SettingsClient({
 
   const currentNav =
     visibleNav.find(
-      (item) =>
-        item.key === active
-    ) ?? visibleNav[0];
+      (
+        item
+      ) =>
+        item.key ===
+        active
+    ) ??
+    visibleNav[0];
 
   const currentPlan =
     subscription?.planName ||
@@ -744,20 +905,16 @@ export default function SettingsClient({
     ) ||
     'Free';
 
-  const activeModules =
-    modules.filter(
-      (module) =>
-        normalizeStatus(
-          module.status
-        ) === 'active'
-    );
-
   /* ==========================================================
      RENDER
      ========================================================== */
 
   return (
     <>
+      {/* ======================================================
+          OVERLAY
+          ====================================================== */}
+
       {overlay && (
         <SaMiOverlay
           open
@@ -777,7 +934,9 @@ export default function SettingsClient({
             overlay.secondaryAction
           }
           onClose={() =>
-            setOverlay(null)
+            setOverlay(
+              null
+            )
           }
         />
       )}
@@ -786,10 +945,12 @@ export default function SettingsClient({
 
         {/* ====================================================
             TOP BAR
-           ==================================================== */}
+            ==================================================== */}
 
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-[#090d15]/90">
           <div className="mx-auto flex h-[72px] max-w-[1500px] items-center gap-4 px-4 sm:px-6 lg:px-8">
+
+            {/* BACK */}
 
             <Link
               href="/dashboard"
@@ -799,11 +960,12 @@ export default function SettingsClient({
               <ArrowLeft className="h-4 w-4" />
             </Link>
 
+            {/* LOGO */}
+
             <Link
               href="/dashboard"
               className="min-w-0 shrink-0"
             >
-              {/* FULL APPROVED LOGO */}
               <SaMiLogo
                 size="sm"
                 className="max-w-full"
@@ -811,6 +973,8 @@ export default function SettingsClient({
             </Link>
 
             <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
+
+            {/* PAGE IDENTITY */}
 
             <div className="hidden min-w-0 sm:block">
               <p className="truncate text-sm font-black">
@@ -823,7 +987,11 @@ export default function SettingsClient({
               </p>
             </div>
 
+            {/* RIGHT */}
+
             <div className="ml-auto flex items-center gap-2">
+
+              {/* THEME */}
 
               <button
                 type="button"
@@ -843,6 +1011,8 @@ export default function SettingsClient({
                   <Moon className="h-[17px] w-[17px]" />
                 )}
               </button>
+
+              {/* USER */}
 
               <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white py-1.5 pl-2 pr-3 dark:border-slate-800 dark:bg-slate-900 md:flex">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-[10px] font-black text-white">
@@ -871,15 +1041,19 @@ export default function SettingsClient({
 
         {/* ====================================================
             BODY
-           ==================================================== */}
+            ==================================================== */}
 
         <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
 
-          {/* Mobile section tabs */}
+          {/* ==================================================
+              MOBILE NAV
+              ================================================== */}
 
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {visibleNav.map(
-              (item) => {
+              (
+                item
+              ) => {
                 const Icon =
                   item.icon;
 
@@ -917,7 +1091,7 @@ export default function SettingsClient({
 
             {/* =================================================
                 SIDEBAR
-               ================================================= */}
+                ================================================= */}
 
             <aside className="hidden h-fit rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] lg:block">
 
@@ -929,7 +1103,9 @@ export default function SettingsClient({
 
               <div className="space-y-1">
                 {visibleNav.map(
-                  (item) => {
+                  (
+                    item
+                  ) => {
                     const Icon =
                       item.icon;
 
@@ -966,15 +1142,11 @@ export default function SettingsClient({
 
                         <div className="min-w-0 flex-1">
                           <p className="text-[12px] font-black">
-                            {
-                              item.label
-                            }
+                            {item.label}
                           </p>
 
                           <p className="mt-0.5 truncate text-[9px] font-medium opacity-60">
-                            {
-                              item.description
-                            }
+                            {item.description}
                           </p>
                         </div>
 
@@ -994,11 +1166,11 @@ export default function SettingsClient({
 
             {/* =================================================
                 CONTENT
-               ================================================= */}
+                ================================================= */}
 
             <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
 
-              {/* Section heading */}
+              {/* SECTION HEADER */}
 
               <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
                 <div className="flex items-center gap-3">
@@ -1024,19 +1196,17 @@ export default function SettingsClient({
               <div className="p-5 sm:p-7">
 
                 {/* =============================================
-                    PERSONAL
-                   ============================================= */}
+                    MY ACCOUNT
+                    ============================================= */}
 
                 {active ===
                   'personal' && (
-                  <PersonalSection
-                    user={user}
-                  />
+                  <MyAccountSettings />
                 )}
 
                 {/* =============================================
                     SECURITY
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'security' && (
@@ -1076,7 +1246,7 @@ export default function SettingsClient({
 
                 {/* =============================================
                     SESSIONS
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'sessions' && (
@@ -1089,7 +1259,7 @@ export default function SettingsClient({
 
                 {/* =============================================
                     WORKSPACE
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'workspace' &&
@@ -1106,7 +1276,7 @@ export default function SettingsClient({
 
                 {/* =============================================
                     APPS
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'apps' &&
@@ -1120,7 +1290,7 @@ export default function SettingsClient({
 
                 {/* =============================================
                     SAMI AI
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'ai' && (
@@ -1133,7 +1303,7 @@ export default function SettingsClient({
 
                 {/* =============================================
                     BILLING
-                   ============================================= */}
+                    ============================================= */}
 
                 {active ===
                   'billing' &&
@@ -1153,82 +1323,6 @@ export default function SettingsClient({
         </div>
       </main>
     </>
-  );
-}
-
-/* ============================================================
-   PERSONAL
-   ============================================================ */
-
-function PersonalSection({
-  user,
-}: {
-  user: UserData;
-}) {
-  return (
-    <div className="max-w-4xl">
-
-      <div className="flex flex-col gap-4 rounded-[22px] border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center dark:border-slate-800 dark:bg-slate-950/50">
-
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-sm font-black text-white shadow-md shadow-blue-500/20">
-          {getInitials(user)}
-        </div>
-
-        <div className="min-w-0">
-          <h2 className="truncate text-lg font-black">
-            {getFullName(user)}
-          </h2>
-
-          <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-            {user.email}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <InfoCard
-          label="First name"
-          value={
-            user.firstName ||
-            'Not set'
-          }
-        />
-
-        <InfoCard
-          label="Last name"
-          value={
-            user.lastName ||
-            'Not set'
-          }
-        />
-
-        <InfoCard
-          label="Full name"
-          value={
-            getFullName(user)
-          }
-        />
-
-        <InfoCard
-          label="Email address"
-          value={
-            user.email
-          }
-        />
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-
-        <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          Your SaMi account identity is
-          separate from individual workspace
-          permissions. Workspace access is
-          controlled by your membership and
-          role.
-        </p>
-      </div>
-    </div>
   );
 }
 
@@ -1255,24 +1349,35 @@ function SecuritySection({
   submitting: boolean;
 
   setCurrentPassword:
-    (value: string) => void;
+    (
+      value: string
+    ) => void;
 
   setNewPassword:
-    (value: string) => void;
+    (
+      value: string
+    ) => void;
 
   setConfirmPassword:
-    (value: string) => void;
+    (
+      value: string
+    ) => void;
 
   setShowPasswords:
     (
       value:
         | boolean
-        | ((current: boolean) => boolean)
+        | (
+            (
+              current: boolean
+            ) => boolean
+          )
     ) => void;
 
   onSubmit:
     (
-      event: FormEvent<HTMLFormElement>
+      event:
+        FormEvent<HTMLFormElement>
     ) => void;
 }) {
   const checks =
@@ -1283,12 +1388,16 @@ function SecuritySection({
   const passwordsMatch =
     Boolean(
       confirmPassword &&
-        newPassword ===
-          confirmPassword
+      newPassword ===
+        confirmPassword
     );
 
   return (
     <div className="grid max-w-5xl gap-6 xl:grid-cols-[minmax(0,560px)_1fr]">
+
+      {/* ======================================================
+          PASSWORD FORM
+          ====================================================== */}
 
       <form
         onSubmit={
@@ -1341,11 +1450,15 @@ function SecuritySection({
           />
         </div>
 
+        {/* SHOW / HIDE */}
+
         <button
           type="button"
           onClick={() =>
             setShowPasswords(
-              (current) =>
+              (
+                current
+              ) =>
                 !current
             )
           }
@@ -1361,6 +1474,8 @@ function SecuritySection({
             ? 'Hide passwords'
             : 'Show passwords'}
         </button>
+
+        {/* SUBMIT */}
 
         <button
           type="submit"
@@ -1384,6 +1499,10 @@ function SecuritySection({
           )}
         </button>
       </form>
+
+      {/* ======================================================
+          PASSWORD RULES
+          ====================================================== */}
 
       <div className="space-y-4">
 
@@ -1430,6 +1549,8 @@ function SecuritySection({
           </div>
         </div>
 
+        {/* 2FA INFO */}
+
         <div className="rounded-[20px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/25">
           <div className="flex items-start gap-3">
             <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
@@ -1460,15 +1581,19 @@ function SecuritySection({
 function SessionsSection({
   session,
 }: {
-  session: SessionData;
+  session:
+    SessionData;
 }) {
   const DeviceIcon =
     getDeviceIcon(
-      session.device.deviceType
+      session.device
+        .deviceType
     );
 
   return (
     <div className="max-w-4xl">
+
+      {/* CURRENT SESSION */}
 
       <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
 
@@ -1479,6 +1604,7 @@ function SessionsSection({
           </div>
 
           <div className="min-w-0 flex-1">
+
             <div className="flex flex-wrap items-center gap-2">
 
               <h2 className="text-sm font-black">
@@ -1492,23 +1618,29 @@ function SessionsSection({
 
             <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
               {formatLabel(
-                session.device.deviceType
+                session.device
+                  .deviceType
               )}{' '}
               ·{' '}
               {
-                session.device.browser
+                session.device
+                  .browser
               }
             </p>
           </div>
         </div>
       </div>
 
+      {/* SESSION DETAILS */}
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
+
         <InfoCard
           label="Device"
           value={
             formatLabel(
-              session.device.deviceType
+              session.device
+                .deviceType
             )
           }
         />
@@ -1516,7 +1648,8 @@ function SessionsSection({
         <InfoCard
           label="Browser"
           value={
-            session.device.browser ||
+            session.device
+              .browser ||
             'Not available'
           }
         />
@@ -1524,7 +1657,8 @@ function SessionsSection({
         <InfoCard
           label="Operating system"
           value={
-            session.device.operatingSystem ||
+            session.device
+              .operatingSystem ||
             'Not available'
           }
         />
@@ -1533,7 +1667,8 @@ function SessionsSection({
           label="Last active"
           value={
             formatDate(
-              session.device.lastActiveAt
+              session.device
+                .lastActiveAt
             )
           }
         />
@@ -1552,11 +1687,12 @@ function SessionsSection({
         <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          This section only displays the
-          authenticated session supplied by
-          SaMi. Other device management should
-          only be exposed once backed by the
-          full sessions service.
+          This section displays the
+          authenticated session currently
+          supplied by SaMi. Complete device
+          management remains owned by the
+          Sessions & Devices platform
+          category.
         </p>
       </div>
     </div>
@@ -1571,13 +1707,18 @@ function WorkspaceSection({
   tenant,
   membership,
 }: {
-  tenant: TenantData;
-  membership: MembershipData;
+  tenant:
+    TenantData;
+
+  membership:
+    MembershipData;
 }) {
   if (!tenant) {
     return (
       <EmptyState
-        icon={Building2}
+        icon={
+          Building2
+        }
         title="No workspace available"
         description="SaMi could not find an active workspace for this account."
       />
@@ -1587,9 +1728,12 @@ function WorkspaceSection({
   return (
     <div className="max-w-4xl">
 
+      {/* WORKSPACE IDENTITY */}
+
       <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50">
 
         <div className="flex items-center gap-4">
+
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
             <Building2 className="h-5 w-5" />
           </div>
@@ -1601,14 +1745,18 @@ function WorkspaceSection({
 
             <p className="mt-1 text-[10px] capitalize text-slate-500 dark:text-slate-400">
               {formatLabel(
-                membership?.accessLevel
+                membership
+                  ?.accessLevel
               )}
             </p>
           </div>
         </div>
       </div>
 
+      {/* WORKSPACE DETAILS */}
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
+
         <InfoCard
           label="Workspace name"
           value={
@@ -1635,9 +1783,11 @@ function WorkspaceSection({
         <InfoCard
           label="Your access"
           value={
-            membership?.label ||
+            membership
+              ?.label ||
             formatLabel(
-              membership?.accessLevel
+              membership
+                ?.accessLevel
             )
           }
         />
@@ -1653,14 +1803,18 @@ function WorkspaceSection({
 function AppsSection({
   modules,
 }: {
-  modules: ModuleData[];
+  modules:
+    ModuleData[];
 }) {
   if (
-    modules.length === 0
+    modules.length ===
+    0
   ) {
     return (
       <EmptyState
-        icon={AppWindow}
+        icon={
+          AppWindow
+        }
         title="No business apps installed"
         description="There are currently no installed business apps available to this workspace."
       />
@@ -1669,6 +1823,9 @@ function AppsSection({
 
   return (
     <div>
+
+      {/* HEADER */}
+
       <div className="mb-4 flex items-center justify-between gap-3">
 
         <div>
@@ -1678,7 +1835,8 @@ function AppsSection({
 
           <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
             {modules.length}{' '}
-            {modules.length === 1
+            {modules.length ===
+            1
               ? 'business app'
               : 'business apps'}{' '}
             registered for this workspace.
@@ -1686,13 +1844,18 @@ function AppsSection({
         </div>
       </div>
 
+      {/* APP CARDS */}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {modules.map(
-          (module) => {
+          (
+            module
+          ) => {
             const active =
               normalizeStatus(
                 module.status
-              ) === 'active';
+              ) ===
+              'active';
 
             return (
               <div
@@ -1708,10 +1871,9 @@ function AppsSection({
                   </div>
 
                   <div className="min-w-0 flex-1">
+
                     <p className="truncate text-xs font-black">
-                      {
-                        module.name
-                      }
+                      {module.name}
                     </p>
 
                     <div className="mt-2">
@@ -1745,10 +1907,13 @@ function AppsSection({
 function AiSection({
   planName,
 }: {
-  planName: string;
+  planName:
+    string;
 }) {
   return (
     <div className="max-w-4xl">
+
+      {/* AI HERO */}
 
       <div className="relative overflow-hidden rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:via-indigo-950/20 dark:to-violet-950/25">
 
@@ -1765,6 +1930,7 @@ function AiSection({
 
           <div>
             <div className="flex flex-wrap items-center gap-2">
+
               <h2 className="text-base font-black">
                 SaMi AI
               </h2>
@@ -1785,6 +1951,8 @@ function AiSection({
           </div>
         </div>
       </div>
+
+      {/* AI DATA */}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
@@ -1825,15 +1993,21 @@ function BillingSection({
   subscription,
   currentPlan,
 }: {
-  subscription: SubscriptionData;
-  currentPlan: string;
+  subscription:
+    SubscriptionData;
+
+  currentPlan:
+    string;
 }) {
   return (
     <div className="max-w-4xl">
 
+      {/* PLAN */}
+
       <div className="rounded-[24px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
 
         <div className="flex items-start gap-4">
+
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
             <CreditCard className="h-5 w-5" />
           </div>
@@ -1856,6 +2030,8 @@ function BillingSection({
         </div>
       </div>
 
+      {/* BILLING DATA */}
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
         <InfoCard
@@ -1869,7 +2045,8 @@ function BillingSection({
           label="Subscription status"
           value={
             formatLabel(
-              subscription?.status
+              subscription
+                ?.status
             )
           }
         />
@@ -1878,7 +2055,8 @@ function BillingSection({
           label="Billing cycle"
           value={
             formatLabel(
-              subscription?.billingCycle
+              subscription
+                ?.billingCycle
             )
           }
         />
@@ -1887,7 +2065,8 @@ function BillingSection({
           label="Current period ends"
           value={
             formatDate(
-              subscription?.currentPeriodEnd ??
+              subscription
+                ?.currentPeriodEnd ??
                 null
             )
           }
@@ -1922,17 +2101,27 @@ function PasswordField({
   show,
   autoComplete,
 }: {
-  label: string;
-  value: string;
+  label:
+    string;
+
+  value:
+    string;
+
   onChange:
-    (value: string) => void;
-  show: boolean;
+    (
+      value: string
+    ) => void;
+
+  show:
+    boolean;
+
   autoComplete:
     | 'current-password'
     | 'new-password';
 }) {
   return (
     <div>
+
       <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
         {label}
       </label>
@@ -1947,13 +2136,20 @@ function PasswordField({
               ? 'text'
               : 'password'
           }
-          value={value}
-          onChange={(event) =>
+          value={
+            value
+          }
+          onChange={(
+            event
+          ) =>
             onChange(
-              event.target.value
+              event.target
+                .value
             )
           }
-          maxLength={128}
+          maxLength={
+            128
+          }
           autoComplete={
             autoComplete
           }
@@ -1972,8 +2168,11 @@ function PasswordRule({
   valid,
   label,
 }: {
-  valid: boolean;
-  label: string;
+  valid:
+    boolean;
+
+  label:
+    string;
 }) {
   return (
     <div
@@ -2008,11 +2207,15 @@ function InfoCard({
   label,
   value,
 }: {
-  label: string;
-  value: string;
+  label:
+    string;
+
+  value:
+    string;
 }) {
   return (
     <div className="rounded-[18px] border border-slate-200 p-4 dark:border-slate-800">
+
       <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
         {label}
       </p>
@@ -2029,13 +2232,21 @@ function InfoCard({
    ============================================================ */
 
 function EmptyState({
-  icon: Icon,
+  icon:
+    Icon,
+
   title,
+
   description,
 }: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
+  icon:
+    LucideIcon;
+
+  title:
+    string;
+
+  description:
+    string;
 }) {
   return (
     <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
