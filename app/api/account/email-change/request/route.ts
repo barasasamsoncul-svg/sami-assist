@@ -14,7 +14,7 @@ import {
 
 import {
   requestEmailChange,
-  cancelEmailChange,
+  cancelEmailChangeRequest,
   EmailChangeError,
 } from '@/lib/account/email-change';
 
@@ -26,8 +26,11 @@ import {
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
 
 /* ============================================================
    CONSTANTS
@@ -52,11 +55,14 @@ type EmailChangeRequestBody = {
    ============================================================ */
 
 function json(
-  body: Record<
-    string,
-    unknown
-  >,
-  status = 200
+  body:
+    Record<
+      string,
+      unknown
+    >,
+
+  status =
+    200
 ) {
   return NextResponse.json(
     body,
@@ -75,11 +81,12 @@ function json(
 }
 
 /* ============================================================
-   ERROR STATUS
+   EMAIL CHANGE ERROR STATUS
    ============================================================ */
 
 function getEmailChangeErrorStatus(
-  error: EmailChangeError
+  error:
+    EmailChangeError
 ): number {
   switch (
     error.code
@@ -110,31 +117,11 @@ function getEmailChangeErrorStatus(
 /* ============================================================
    POST
    /api/account/email-change/request
-
-   Starts an email-change request for the CURRENT signed-in user.
-
-   Flow:
-
-   session
-      ↓
-   validate new email
-      ↓
-   create hashed verification request
-      ↓
-   send raw 6-digit code to NEW email
-      ↓
-   browser receives only safe pending-state metadata
-
-   IMPORTANT:
-
-   The browser NEVER receives:
-   - raw verification code
-   - code hash
-   - internal request ID
    ============================================================ */
 
 export async function POST(
-  request: NextRequest
+  request:
+    NextRequest
 ) {
   /* ==========================================================
      1. SESSION
@@ -145,7 +132,9 @@ export async function POST(
   try {
     session =
       await getSession();
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Account] Email-change session lookup failed:',
       error
@@ -153,7 +142,8 @@ export async function POST(
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'EMAIL_CHANGE_REQUEST_ERROR',
@@ -165,10 +155,13 @@ export async function POST(
     );
   }
 
-  if (!session) {
+  if (
+    !session
+  ) {
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'UNAUTHENTICATED',
@@ -201,7 +194,8 @@ export async function POST(
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'INVALID_REQUEST',
@@ -218,7 +212,8 @@ export async function POST(
   } catch {
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'INVALID_REQUEST',
@@ -231,7 +226,7 @@ export async function POST(
   }
 
   /* ==========================================================
-     3. EMAIL TYPE
+     3. EMAIL
      ========================================================== */
 
   if (
@@ -240,7 +235,8 @@ export async function POST(
   ) {
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'INVALID_NEW_EMAIL',
@@ -261,11 +257,7 @@ export async function POST(
       .toLowerCase();
 
   /* ==========================================================
-     4. ACCOUNT
-
-     Load the signed-in user's global account.
-
-     This is NOT a tenant/team lookup.
+     4. GLOBAL ACCOUNT
      ========================================================== */
 
   let account;
@@ -275,14 +267,17 @@ export async function POST(
       await getUserAccount(
         session.user.id
       );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     if (
       error instanceof
       UserAccountNotFoundError
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'ACCOUNT_NOT_FOUND',
@@ -301,7 +296,8 @@ export async function POST(
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'EMAIL_CHANGE_REQUEST_ERROR',
@@ -315,16 +311,6 @@ export async function POST(
 
   /* ==========================================================
      5. CREATE EMAIL-CHANGE REQUEST
-
-     requestEmailChange():
-
-     - validates email
-     - checks current email
-     - checks email availability
-     - applies cooldown
-     - generates six-digit code
-     - stores SHA-256(code), not raw code
-     - expires after 15 minutes
      ========================================================== */
 
   let changeRequest;
@@ -335,14 +321,17 @@ export async function POST(
         session.user.id,
         requestedEmail
       );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     if (
       error instanceof
       UserAccountNotFoundError
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'ACCOUNT_NOT_FOUND',
@@ -377,7 +366,8 @@ export async function POST(
 
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             error.code,
@@ -407,7 +397,8 @@ export async function POST(
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'EMAIL_CHANGE_REQUEST_ERROR',
@@ -420,15 +411,11 @@ export async function POST(
   }
 
   /* ==========================================================
-     6. SEND CODE TO NEW EMAIL
+     6. DELIVER VERIFICATION CODE
 
-     The raw code exists here only long enough to pass it to the
-     server-side email service.
+     changeRequest.requestId stays server-side.
 
-     It is never:
-     - logged
-     - returned as JSON
-     - stored unhashed
+     If delivery fails we invalidate ONLY this exact request.
      ========================================================== */
 
   try {
@@ -436,28 +423,28 @@ export async function POST(
       await sendEmailChangeVerificationEmail(
         changeRequest.email,
         changeRequest.code,
+
         account.firstName ||
           account.fullName ||
           'there',
+
         {
           expiresInMinutes:
             EMAIL_CHANGE_EXPIRY_MINUTES,
         }
       );
 
-    /*
-     * Development may return success:false if SMTP is not
-     * configured.
-     *
-     * Do not leave an unusable pending request behind.
-     */
+    /* ========================================================
+       EMAIL SERVICE RETURNED success:false
+       ======================================================== */
 
     if (
       !delivery.success
     ) {
       try {
-        await cancelEmailChange(
-          session.user.id
+        await cancelEmailChangeRequest(
+          session.user.id,
+          changeRequest.requestId
         );
       } catch (
         cleanupError
@@ -485,7 +472,8 @@ export async function POST(
 
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'EMAIL_CHANGE_DELIVERY_UNAVAILABLE',
@@ -496,18 +484,19 @@ export async function POST(
         503
       );
     }
-  } catch (error) {
-    /*
-     * If email delivery fails, invalidate the newly created
-     * pending request.
+  } catch (
+    error
+  ) {
+    /* ========================================================
+       EMAIL SERVICE THREW
 
-     * Otherwise the user would be forced to wait for the
-     * cooldown despite never receiving a usable code.
-     */
+       Again, invalidate ONLY the request whose delivery failed.
+       ======================================================== */
 
     try {
-      await cancelEmailChange(
-        session.user.id
+      await cancelEmailChangeRequest(
+        session.user.id,
+        changeRequest.requestId
       );
     } catch (
       cleanupError
@@ -540,7 +529,8 @@ export async function POST(
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'EMAIL_CHANGE_DELIVERY_ERROR',
@@ -553,9 +543,7 @@ export async function POST(
   }
 
   /* ==========================================================
-     7. AUDIT
-
-     Security event only after a verification code was delivered.
+     7. AUDIT SUCCESSFUL DELIVERY
      ========================================================== */
 
   await recordAuthEvent({
@@ -582,13 +570,14 @@ export async function POST(
   /* ==========================================================
      8. SAFE RESPONSE
 
-     Never include:
-     changeRequest.code
-     changeRequest.requestId
+     NEVER expose:
+     - changeRequest.code
+     - changeRequest.requestId
      ========================================================== */
 
   return json({
-    success: true,
+    success:
+      true,
 
     code:
       'EMAIL_CHANGE_CODE_SENT',

@@ -14,21 +14,28 @@ import {
   UserAccountValidationError,
 } from '@/lib/account/user-account';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+/* ============================================================
+   CONFIG
+   ============================================================ */
+
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
 
 /* ============================================================
    TYPES
    ============================================================ */
 
-type UpdateProfileBody = {
+type ProfilePatchBody = {
   firstName?: unknown;
   lastName?: unknown;
   phone?: unknown;
 };
 
 /* ============================================================
-   RESPONSE HELPER
+   RESPONSE
    ============================================================ */
 
 function json(
@@ -55,18 +62,27 @@ function json(
 }
 
 /* ============================================================
+   HELPERS
+   ============================================================ */
+
+function isObject(
+  value: unknown
+): value is Record<
+  string,
+  unknown
+> {
+  return (
+    typeof value ===
+      'object' &&
+    value !== null &&
+    !Array.isArray(
+      value
+    )
+  );
+}
+
+/* ============================================================
    GET
-   /api/account/profile
-
-   Returns the signed-in user's own global SaMi account.
-
-   This applies to:
-   - workspace owner
-   - administrator
-   - invited team member
-   - any other authenticated SaMi user
-
-   It does NOT return workspace roles or permissions.
    ============================================================ */
 
 export async function GET() {
@@ -77,13 +93,14 @@ export async function GET() {
     if (!session) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
-            'UNAUTHENTICATED',
+            'UNAUTHORIZED',
 
           error:
-            'You must sign in to access your account.',
+            'You must be signed in to view your account.',
         },
         401
       );
@@ -95,21 +112,25 @@ export async function GET() {
       );
 
     return json({
-      success: true,
+      success:
+        true,
 
       code:
-        'ACCOUNT_PROFILE_LOADED',
+        'PROFILE_LOADED',
 
       account,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     if (
       error instanceof
       UserAccountNotFoundError
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'ACCOUNT_NOT_FOUND',
@@ -122,19 +143,20 @@ export async function GET() {
     }
 
     console.error(
-      '[Account] Load profile failed:',
+      '[Account Profile GET]',
       error
     );
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
-          'ACCOUNT_PROFILE_ERROR',
+          'PROFILE_LOAD_FAILED',
 
         error:
-          'SaMi could not load your account profile.',
+          'SaMi could not load your profile.',
       },
       500
     );
@@ -143,46 +165,31 @@ export async function GET() {
 
 /* ============================================================
    PATCH
-   /api/account/profile
-
-   Allows the signed-in user to update ONLY their own:
-
-   - first name
-   - last name
-   - phone
-
-   full_name is generated server-side.
-
-   This endpoint deliberately cannot modify:
-
-   - email
-   - password
-   - avatar
-   - account status
-   - 2FA
-   - login security
-   - workspace membership
-   - workspace roles
-   - workspace permissions
    ============================================================ */
 
 export async function PATCH(
-  request: NextRequest
+  request:
+    NextRequest
 ) {
   try {
+    /* ========================================================
+       SESSION
+       ======================================================== */
+
     const session =
       await getSession();
 
     if (!session) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
-            'UNAUTHENTICATED',
+            'UNAUTHORIZED',
 
           error:
-            'You must sign in to update your account.',
+            'You must be signed in to update your account.',
         },
         401
       );
@@ -193,121 +200,248 @@ export async function PATCH(
        ======================================================== */
 
     let body:
-      UpdateProfileBody;
+      ProfilePatchBody;
 
     try {
+      const parsed =
+        await request.json();
+
+      if (
+        !isObject(
+          parsed
+        )
+      ) {
+        return json(
+          {
+            success:
+              false,
+
+            code:
+              'INVALID_REQUEST_BODY',
+
+            error:
+              'The profile update request is invalid.',
+          },
+          400
+        );
+      }
+
       body =
-        (await request.json()) as UpdateProfileBody;
+        parsed;
     } catch {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
-            'INVALID_REQUEST',
+            'INVALID_JSON',
 
           error:
-            'Invalid request body.',
-        },
-        400
-      );
-    }
-
-    if (
-      !body ||
-      typeof body !==
-        'object' ||
-      Array.isArray(body)
-    ) {
-      return json(
-        {
-          success: false,
-
-          code:
-            'INVALID_REQUEST',
-
-          error:
-            'Invalid request body.',
+            'The profile update request contains invalid JSON.',
         },
         400
       );
     }
 
     /* ========================================================
-       FIRST NAME
+       SUPPORTED FIELDS ONLY
+
+       Category 02 profile fields:
+
+       - firstName
+       - lastName
+       - phone
+
+       NOT accepted here:
+       - email
+       - password
+       - avatar
+       - status
+       - roles
+       - permissions
+       - 2FA
+       - memberships
        ======================================================== */
 
+    const hasFirstName =
+      Object.prototype
+        .hasOwnProperty.call(
+          body,
+          'firstName'
+        );
+
+    const hasLastName =
+      Object.prototype
+        .hasOwnProperty.call(
+          body,
+          'lastName'
+        );
+
+    const hasPhone =
+      Object.prototype
+        .hasOwnProperty.call(
+          body,
+          'phone'
+        );
+
     if (
-      typeof body.firstName !==
-      'string'
+      !hasFirstName &&
+      !hasLastName &&
+      !hasPhone
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
-            'INVALID_FIRST_NAME',
+            'NO_PROFILE_CHANGES',
 
           error:
-            'Enter your first name.',
-
-          field:
-            'firstName',
+            'No supported profile changes were provided.',
         },
         400
       );
+    }
+
+    /* ========================================================
+       CURRENT ACCOUNT
+
+       PATCH means an omitted field must remain unchanged.
+
+       Example:
+
+       {
+         "firstName": "Samson"
+       }
+
+       must NOT erase:
+       - lastName
+       - phone
+       ======================================================== */
+
+    const current =
+      await getUserAccount(
+        session.user.id
+      );
+
+    /* ========================================================
+       FIRST NAME
+       ======================================================== */
+
+    let firstName =
+      current.firstName;
+
+    if (
+      hasFirstName
+    ) {
+      if (
+        typeof body.firstName !==
+        'string'
+      ) {
+        return json(
+          {
+            success:
+              false,
+
+            code:
+              'INVALID_FIRST_NAME',
+
+            error:
+              'First name must be text.',
+          },
+          400
+        );
+      }
+
+      firstName =
+        body.firstName;
     }
 
     /* ========================================================
        LAST NAME
        ======================================================== */
 
+    let lastName =
+      current.lastName;
+
     if (
-      typeof body.lastName !==
-      'string'
+      hasLastName
     ) {
-      return json(
-        {
-          success: false,
+      if (
+        typeof body.lastName !==
+        'string'
+      ) {
+        return json(
+          {
+            success:
+              false,
 
-          code:
-            'INVALID_LAST_NAME',
+            code:
+              'INVALID_LAST_NAME',
 
-          error:
-            'Enter your last name.',
+            error:
+              'Last name must be text.',
+          },
+          400
+        );
+      }
 
-          field:
-            'lastName',
-        },
-        400
-      );
+      lastName =
+        body.lastName;
     }
 
     /* ========================================================
        PHONE
+
+       Semantics:
+
+       omitted
+       → preserve current phone
+
+       null
+       → clear phone
+
+       ""
+       → service normalizes to null
+
+       string
+       → update phone
        ======================================================== */
 
+    let phone:
+      string | null =
+      current.phone;
+
     if (
-      body.phone !== undefined &&
-      body.phone !== null &&
-      typeof body.phone !==
-        'string'
+      hasPhone
     ) {
-      return json(
-        {
-          success: false,
+      if (
+        body.phone !==
+          null &&
+        typeof body.phone !==
+          'string'
+      ) {
+        return json(
+          {
+            success:
+              false,
 
-          code:
-            'INVALID_PHONE',
+            code:
+              'INVALID_PHONE',
 
-          error:
-            'Enter a valid phone number.',
+            error:
+              'Phone must be text or null.',
+          },
+          400
+        );
+      }
 
-          field:
-            'phone',
-        },
-        400
-      );
+      phone =
+        body.phone as
+          | string
+          | null;
     }
 
     /* ========================================================
@@ -318,59 +452,29 @@ export async function PATCH(
       await updateUserProfile(
         session.user.id,
         {
-          firstName:
-            body.firstName,
-
-          lastName:
-            body.lastName,
-
-          phone:
-            body.phone ===
-              undefined
-              ? null
-              : body.phone,
+          firstName,
+          lastName,
+          phone,
         }
       );
 
     return json({
-      success: true,
+      success:
+        true,
 
       code:
-        'ACCOUNT_PROFILE_UPDATED',
+        'PROFILE_UPDATED',
 
       message:
         'Your profile has been updated.',
 
       account,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     /* ========================================================
-       VALIDATION
-       ======================================================== */
-
-    if (
-      error instanceof
-      UserAccountValidationError
-    ) {
-      return json(
-        {
-          success: false,
-
-          code:
-            error.code,
-
-          error:
-            error.message,
-
-          field:
-            error.field,
-        },
-        400
-      );
-    }
-
-    /* ========================================================
-       ACCOUNT MISSING
+       ACCOUNT NOT FOUND
        ======================================================== */
 
     if (
@@ -379,7 +483,8 @@ export async function PATCH(
     ) {
       return json(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'ACCOUNT_NOT_FOUND',
@@ -392,20 +497,48 @@ export async function PATCH(
     }
 
     /* ========================================================
-       INTERNAL ERROR
+       DOMAIN VALIDATION
+       ======================================================== */
+
+    if (
+      error instanceof
+      UserAccountValidationError
+    ) {
+      return json(
+        {
+          success:
+            false,
+
+          code:
+            error.code,
+
+          error:
+            error.message,
+
+          field:
+            error.field ??
+            null,
+        },
+        400
+      );
+    }
+
+    /* ========================================================
+       INTERNAL FAILURE
        ======================================================== */
 
     console.error(
-      '[Account] Update profile failed:',
+      '[Account Profile PATCH]',
       error
     );
 
     return json(
       {
-        success: false,
+        success:
+          false,
 
         code:
-          'ACCOUNT_PROFILE_UPDATE_ERROR',
+          'PROFILE_UPDATE_FAILED',
 
         error:
           'SaMi could not update your profile.',

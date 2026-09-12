@@ -2,9 +2,7 @@ import 'server-only';
 
 import crypto from 'crypto';
 
-import {
-  queryControl,
-} from '@/lib/db/control';
+import { queryControl } from '@/lib/db/control';
 
 import {
   getUserAccount,
@@ -35,11 +33,12 @@ export type EmailChangeRequestResult = {
   /**
    * Raw verification code.
    *
-   * IMPORTANT:
-   * - returned only to the server caller
-   * - must only be sent by email
-   * - must never be logged
-   * - must never be returned to the browser
+   * SERVER ONLY.
+   *
+   * Never:
+   * - log it
+   * - return it to the browser
+   * - persist it unhashed
    */
   code: string;
 
@@ -57,6 +56,7 @@ type OpenRequestRow = {
   created_at:
     | Date
     | string;
+
   expires_at:
     | Date
     | string;
@@ -65,6 +65,7 @@ type OpenRequestRow = {
 type InsertedRequestRow = {
   id: string;
   new_email: string;
+
   expires_at:
     | Date
     | string;
@@ -73,13 +74,16 @@ type InsertedRequestRow = {
 type ExistingRequestRow = {
   id: string;
   new_email: string;
+
   expires_at:
     | Date
     | string;
+
   used_at:
     | Date
     | string
     | null;
+
   deleted_at:
     | Date
     | string
@@ -100,7 +104,7 @@ export type EmailChangeErrorCode =
   | 'EMAIL_CHANGE_FAILED';
 
 /* ============================================================
-   ERRORS
+   ERROR
    ============================================================ */
 
 export class EmailChangeError
@@ -112,12 +116,18 @@ export class EmailChangeError
     number | null;
 
   constructor(
-    code: EmailChangeErrorCode,
-    message: string,
+    code:
+      EmailChangeErrorCode,
+
+    message:
+      string,
+
     retryAfterSeconds:
       number | null = null
   ) {
-    super(message);
+    super(
+      message
+    );
 
     this.name =
       'EmailChangeError';
@@ -131,66 +141,60 @@ export class EmailChangeError
 }
 
 /* ============================================================
-   HELPERS
+   EMAIL
    ============================================================ */
 
 function normalizeEmail(
-  value: string
+  value:
+    string
 ): string {
   return value
     .trim()
     .toLowerCase();
 }
 
-/* ------------------------------------------------------------
-   EMAIL VALIDATION
-   ------------------------------------------------------------ */
-
 function isValidEmail(
-  value: string
+  value:
+    string
 ): boolean {
-  if (
-    !value ||
-    value.length >
-      MAX_EMAIL_LENGTH
-  ) {
-    return false;
-  }
-
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-    value
+  return (
+    Boolean(
+      value
+    ) &&
+    value.length <=
+      MAX_EMAIL_LENGTH &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      value
+    )
   );
 }
 
-/* ------------------------------------------------------------
-   USER ID
-   ------------------------------------------------------------ */
+/* ============================================================
+   USER
+   ============================================================ */
 
 function assertUserId(
-  userId: string
+  userId:
+    string
 ): string {
   const normalized =
     userId.trim();
 
-  if (!normalized) {
+  if (
+    !normalized
+  ) {
     throw new UserAccountNotFoundError();
   }
 
   return normalized;
 }
 
-/* ------------------------------------------------------------
-   CODE GENERATION
-   ------------------------------------------------------------ */
+/* ============================================================
+   VERIFICATION CODE
+   ============================================================ */
 
-function generateVerificationCode(): string {
-  /*
-   * crypto.randomInt upper bound is exclusive.
-   *
-   * Produces:
-   * 100000 → 999999
-   */
-
+function generateVerificationCode():
+  string {
   return crypto
     .randomInt(
       100000,
@@ -199,12 +203,9 @@ function generateVerificationCode(): string {
     .toString();
 }
 
-/* ------------------------------------------------------------
-   CODE HASHING
-   ------------------------------------------------------------ */
-
 function hashVerificationCode(
-  code: string
+  code:
+    string
 ): string {
   return crypto
     .createHash(
@@ -219,18 +220,16 @@ function hashVerificationCode(
     );
 }
 
-/* ------------------------------------------------------------
-   VERIFICATION CODE VALIDATION
-   ------------------------------------------------------------ */
-
 function normalizeVerificationCode(
-  value: string
+  value:
+    string
 ): string {
   return value.trim();
 }
 
 function isValidVerificationCode(
-  value: string
+  value:
+    string
 ): boolean {
   return new RegExp(
     `^\\d{${EMAIL_CHANGE_CODE_LENGTH}}$`
@@ -239,38 +238,40 @@ function isValidVerificationCode(
   );
 }
 
-/* ------------------------------------------------------------
+/* ============================================================
    DATE
-   ------------------------------------------------------------ */
+   ============================================================ */
 
 function toDate(
-  value: Date | string
+  value:
+    | Date
+    | string
 ): Date {
-  if (
-    value instanceof Date
-  ) {
-    return value;
-  }
-
-  return new Date(
-    value
-  );
+  return value instanceof
+    Date
+    ? value
+    : new Date(
+        value
+      );
 }
 
 function toIsoString(
-  value: Date | string
+  value:
+    | Date
+    | string
 ): string {
   return toDate(
     value
   ).toISOString();
 }
 
-/* ------------------------------------------------------------
-   POSTGRES ERROR
-   ------------------------------------------------------------ */
+/* ============================================================
+   POSTGRES
+   ============================================================ */
 
 function getPostgresErrorCode(
-  error: unknown
+  error:
+    unknown
 ): string | null {
   if (
     !error ||
@@ -292,12 +293,14 @@ function getPostgresErrorCode(
 }
 
 function isUniqueViolation(
-  error: unknown
+  error:
+    unknown
 ): boolean {
   return (
     getPostgresErrorCode(
       error
-    ) === '23505'
+    ) ===
+    '23505'
   );
 }
 
@@ -306,7 +309,8 @@ function isUniqueViolation(
    ============================================================ */
 
 async function getCurrentUser(
-  userId: string
+  userId:
+    string
 ): Promise<CurrentUserRow> {
   const result =
     await queryControl(
@@ -339,24 +343,22 @@ async function getCurrentUser(
 }
 
 /* ============================================================
-   EMAIL CONFLICT
+   EMAIL OWNERSHIP
    ============================================================ */
 
 /**
- * IMPORTANT:
+ * Deleted accounts deliberately remain part of this check.
  *
- * We deliberately do NOT filter deleted_at.
- *
- * Category 01 established that a previously deleted SaMi
- * account still owns/reserves its email address.
- *
- * The users_email_lower_unique index also applies across the
- * users table.
+ * SaMi currently reserves an email even when the account has
+ * been soft deleted.
  */
 
 async function emailBelongsToAnotherAccount(
-  userId: string,
-  email: string
+  userId:
+    string,
+
+  email:
+    string
 ): Promise<boolean> {
   const result =
     await queryControl(
@@ -388,7 +390,8 @@ async function emailBelongsToAnotherAccount(
    ============================================================ */
 
 async function getOpenRequest(
-  userId: string
+  userId:
+    string
 ): Promise<
   OpenRequestRow | null
 > {
@@ -437,13 +440,10 @@ function getCooldownRemainingSeconds(
     | Date
     | string
 ): number {
-  const created =
+  const availableAt =
     toDate(
       createdAt
-    ).getTime();
-
-  const availableAt =
-    created +
+    ).getTime() +
     EMAIL_CHANGE_COOLDOWN_SECONDS *
       1000;
 
@@ -452,7 +452,8 @@ function getCooldownRemainingSeconds(
     Date.now();
 
   if (
-    remainingMs <= 0
+    remainingMs <=
+    0
   ) {
     return 0;
   }
@@ -467,30 +468,12 @@ function getCooldownRemainingSeconds(
    REQUEST EMAIL CHANGE
    ============================================================ */
 
-/**
- * Starts an email-change verification request.
- *
- * This function does NOT send email itself.
- *
- * It:
- *
- * 1. validates the account
- * 2. validates the requested email
- * 3. prevents changing to the current email
- * 4. prevents use of another SaMi account's email
- * 5. applies resend/request cooldown
- * 6. generates a secure six-digit code
- * 7. stores only SHA-256(code)
- * 8. invalidates an older pending request
- * 9. creates a fresh 15-minute request
- *
- * The caller receives the raw code only so the server-side
- * email service can deliver it.
- */
-
 export async function requestEmailChange(
-  userId: string,
-  newEmail: string
+  userId:
+    string,
+
+  newEmail:
+    string
 ): Promise<EmailChangeRequestResult> {
   const id =
     assertUserId(
@@ -503,7 +486,7 @@ export async function requestEmailChange(
     );
 
   /* ==========================================================
-     VALIDATE EMAIL
+     EMAIL VALIDATION
      ========================================================== */
 
   if (
@@ -518,7 +501,7 @@ export async function requestEmailChange(
   }
 
   /* ==========================================================
-     CURRENT ACCOUNT
+     ACCOUNT
      ========================================================== */
 
   const currentUser =
@@ -546,7 +529,7 @@ export async function requestEmailChange(
   }
 
   /* ==========================================================
-     EMAIL OWNERSHIP
+     EMAIL AVAILABILITY
      ========================================================== */
 
   const unavailable =
@@ -578,7 +561,8 @@ export async function requestEmailChange(
   ) {
     const retryAfterSeconds =
       getCooldownRemainingSeconds(
-        openRequest.created_at
+        openRequest
+          .created_at
       );
 
     if (
@@ -594,7 +578,7 @@ export async function requestEmailChange(
   }
 
   /* ==========================================================
-     GENERATE CODE
+     CODE
      ========================================================== */
 
   const code =
@@ -607,16 +591,12 @@ export async function requestEmailChange(
 
   /* ==========================================================
      CREATE REQUEST
+
+     Old pending requests are invalidated and the new request is
+     inserted in the same SQL statement.
      ========================================================== */
 
   try {
-    /*
-     * One SQL statement keeps invalidation + insertion atomic.
-     *
-     * If insertion fails, PostgreSQL rolls back the CTE updates
-     * belonging to this statement as well.
-     */
-
     const result =
       await queryControl(
         `
@@ -631,7 +611,8 @@ export async function requestEmailChange(
               AND used_at IS NULL
               AND deleted_at IS NULL
 
-            RETURNING id
+            RETURNING
+              id
           ),
 
           inserted_request AS (
@@ -648,7 +629,7 @@ export async function requestEmailChange(
               $1,
               $2,
               $3,
-              NOW() + INTERVAL '15 minutes',
+              NOW() + INTERVAL '${EMAIL_CHANGE_EXPIRY_MINUTES} minutes',
               NOW(),
               NOW()
 
@@ -702,7 +683,9 @@ export async function requestEmailChange(
           request.expires_at
         ),
     };
-  } catch (error) {
+  } catch (
+    error
+  ) {
     if (
       error instanceof
       UserAccountNotFoundError
@@ -711,11 +694,8 @@ export async function requestEmailChange(
     }
 
     /*
-     * Concurrent requests can both pass the preliminary cooldown
-     * check before either insert finishes.
-     *
-     * The database's partial unique index ensures only one open
-     * request survives.
+     * Database uniqueness remains the final protection if two
+     * requests race after both pass the preliminary cooldown.
      */
 
     if (
@@ -738,27 +718,12 @@ export async function requestEmailChange(
    VERIFY EMAIL CHANGE
    ============================================================ */
 
-/**
- * Confirms a pending email change.
- *
- * Successful confirmation:
- *
- * - validates the six-digit code
- * - verifies it belongs to this signed-in user
- * - requires it to be unused and unexpired
- * - checks the destination email is still available
- * - updates users.email
- * - marks the new email verified
- * - updates email_verified_at
- * - consumes the request
- *
- * Updating the user and consuming the request happen inside one
- * PostgreSQL statement.
- */
-
 export async function verifyEmailChange(
-  userId: string,
-  verificationCode: string
+  userId:
+    string,
+
+  verificationCode:
+    string
 ): Promise<UserAccount> {
   const id =
     assertUserId(
@@ -771,7 +736,7 @@ export async function verifyEmailChange(
     );
 
   /* ==========================================================
-     CODE VALIDATION
+     CODE FORMAT
      ========================================================== */
 
   if (
@@ -791,7 +756,7 @@ export async function verifyEmailChange(
     );
 
   /* ==========================================================
-     ATOMIC VERIFICATION
+     ATOMIC VERIFY + UPDATE
      ========================================================== */
 
   try {
@@ -841,7 +806,8 @@ export async function verifyEmailChange(
               AND u.deleted_at IS NULL
 
               AND NOT EXISTS (
-                SELECT 1
+                SELECT
+                  1
 
                 FROM users conflict_user
 
@@ -878,7 +844,9 @@ export async function verifyEmailChange(
             )
 
               AND EXISTS (
-                SELECT 1
+                SELECT
+                  1
+
                 FROM updated_user
               )
 
@@ -892,7 +860,9 @@ export async function verifyEmailChange(
           FROM updated_user
 
           WHERE EXISTS (
-            SELECT 1
+            SELECT
+              1
+
             FROM consumed_request
           )
         `,
@@ -910,13 +880,12 @@ export async function verifyEmailChange(
         id
       );
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     /*
-     * Even with the conflict check above, a second account could
-     * claim the destination email concurrently.
-     *
-     * users_email_lower_unique remains the final database-level
-     * protection.
+     * The case-insensitive users email unique index remains the
+     * final race-condition protection.
      */
 
     if (
@@ -934,7 +903,7 @@ export async function verifyEmailChange(
   }
 
   /* ==========================================================
-     DETERMINE FAILURE STATE
+     FAILURE STATE
      ========================================================== */
 
   const currentUser =
@@ -969,7 +938,8 @@ export async function verifyEmailChange(
     );
 
   if (
-    requestResult.rows.length ===
+    requestResult
+      .rows.length ===
     0
   ) {
     throw new EmailChangeError(
@@ -985,10 +955,8 @@ export async function verifyEmailChange(
   /* ==========================================================
      IDEMPOTENT SUCCESS
 
-     If this exact code was already successfully consumed and
-     the account already has that destination email, return the
-     account instead of turning a successful operation into an
-     error on browser replay.
+     Browser replay after successful verification should still
+     resolve successfully.
      ========================================================== */
 
   if (
@@ -1024,7 +992,7 @@ export async function verifyEmailChange(
   }
 
   /* ==========================================================
-     DESTINATION BECAME UNAVAILABLE
+     DESTINATION EMAIL BECAME UNAVAILABLE
      ========================================================== */
 
   if (
@@ -1050,7 +1018,7 @@ export async function verifyEmailChange(
   }
 
   /* ==========================================================
-     GENERIC INVALID / OLD / REPLACED CODE
+     OLD / REPLACED / INVALID CODE
      ========================================================== */
 
   throw new EmailChangeError(
@@ -1060,27 +1028,106 @@ export async function verifyEmailChange(
 }
 
 /* ============================================================
-   CANCEL EMAIL CHANGE
+   TARGETED REQUEST CANCELLATION
    ============================================================ */
 
 /**
- * Cancels the current user's pending email-change request.
+ * Cancels ONE exact email-change request.
  *
- * It never changes users.email.
+ * This function is intentionally used by server-side email
+ * delivery cleanup.
+ *
+ * Example:
+ *
+ * Request A
+ *   ↓
+ * delivery delayed
+ *
+ * Request B becomes current
+ *   ↓
+ *
+ * delivery for A fails
+ *   ↓
+ *
+ * cancelEmailChangeRequest(userId, A)
+ *
+ * Only A is touched.
+ *
+ * Request B remains intact.
  */
 
-export async function cancelEmailChange(
-  userId: string
+export async function cancelEmailChangeRequest(
+  userId:
+    string,
+
+  requestId:
+    string
 ): Promise<void> {
   const id =
     assertUserId(
       userId
     );
 
+  const normalizedRequestId =
+    requestId.trim();
+
   /*
-   * Confirm that this is still a real active SaMi account before
-   * mutating account-owned records.
+   * Never fall back to broad user-wide cancellation when the
+   * request identifier is unavailable.
+   *
+   * A no-op is safer than deleting another valid request.
    */
+
+  if (
+    !normalizedRequestId
+  ) {
+    return;
+  }
+
+  await getCurrentUser(
+    id
+  );
+
+  await queryControl(
+    `
+      UPDATE user_email_change_requests
+
+      SET
+        deleted_at = NOW(),
+        updated_at = NOW()
+
+      WHERE user_id = $1
+        AND id = $2
+        AND used_at IS NULL
+        AND deleted_at IS NULL
+    `,
+    [
+      id,
+      normalizedRequestId,
+    ]
+  );
+}
+
+/* ============================================================
+   USER-WIDE CANCELLATION
+   ============================================================ */
+
+/**
+ * Cancels all currently pending email-change requests belonging
+ * to the user.
+ *
+ * This remains the correct operation for the explicit
+ * "Cancel email change" action in My Account.
+ */
+
+export async function cancelEmailChange(
+  userId:
+    string
+): Promise<void> {
+  const id =
+    assertUserId(
+      userId
+    );
 
   await getCurrentUser(
     id
@@ -1116,13 +1163,14 @@ export type PendingEmailChange = {
 };
 
 /**
- * Used by Account Settings to restore a pending verification UI.
+ * Restores My Account pending verification state.
  *
- * The verification code/hash is NEVER returned.
+ * Verification codes and hashes are never returned.
  */
 
 export async function getPendingEmailChange(
-  userId: string
+  userId:
+    string
 ): Promise<
   PendingEmailChange | null
 > {
@@ -1168,11 +1216,15 @@ export async function getPendingEmailChange(
   }
 
   const row =
-    result.rows[0] as {
-      new_email: string;
+    result
+      .rows[0] as {
+      new_email:
+        string;
+
       created_at:
         | Date
         | string;
+
       expires_at:
         | Date
         | string;
