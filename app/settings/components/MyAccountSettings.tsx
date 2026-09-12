@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Clock3,
   Globe2,
+  Info,
   Loader2,
   Mail,
   Pencil,
@@ -28,23 +29,21 @@ import {
   X,
 } from 'lucide-react';
 
+import {
+  DEFAULT_USER_DISPLAY_PREFERENCES,
+  formatUserDate,
+  formatUserDateTime,
+  formatUserTime,
+  getUserFormattingPreview,
+  type UserDateFormat,
+  type UserDisplayPreferences,
+  type UserTheme,
+  type UserTimeFormat,
+} from '@/lib/account/user-formatting';
+
 /* ============================================================
    TYPES
    ============================================================ */
-
-type UserTheme =
-  | 'system'
-  | 'light'
-  | 'dark';
-
-type UserTimeFormat =
-  | '12h'
-  | '24h';
-
-type UserDateFormat =
-  | 'DD/MM/YYYY'
-  | 'MM/DD/YYYY'
-  | 'YYYY-MM-DD';
 
 type UserAccount = {
   id: string;
@@ -60,15 +59,6 @@ type UserAccount = {
   emailVerifiedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-};
-
-type UserPreferences = {
-  theme: UserTheme;
-  locale: string;
-  timezone: string;
-  dateFormat: UserDateFormat;
-  timeFormat: UserTimeFormat;
-  firstDayOfWeek: number;
 };
 
 type PendingEmailChange = {
@@ -87,7 +77,7 @@ type AccountResponse = {
   account?: UserAccount;
 
   preferences?:
-    UserPreferences;
+    UserDisplayPreferences;
 
   emailChange?: {
     pending:
@@ -116,17 +106,6 @@ type NoticeState = {
 
 const THEME_STORAGE_KEY =
   'sami_theme';
-
-const DEFAULT_PREFERENCES:
-  UserPreferences = {
-  theme: 'system',
-  locale: 'en',
-  timezone: 'UTC',
-  dateFormat:
-    'DD/MM/YYYY',
-  timeFormat: '24h',
-  firstDayOfWeek: 1,
-};
 
 /* ============================================================
    HELPERS
@@ -162,7 +141,7 @@ function validCode(
   );
 }
 
-function formatDateTime(
+function formatFallbackDateTime(
   value:
     | string
     | null
@@ -224,24 +203,28 @@ function getSystemDarkMode() {
   return (
     window.matchMedia?.(
       '(prefers-color-scheme: dark)'
-    ).matches ?? false
+    ).matches ??
+    false
   );
 }
 
 function applyTheme(
-  theme: UserTheme
+  theme:
+    UserTheme
 ) {
   if (
     typeof document ===
-      'undefined'
+    'undefined'
   ) {
     return;
   }
 
   const dark =
-    theme === 'dark' ||
+    theme ===
+      'dark' ||
     (
-      theme === 'system' &&
+      theme ===
+        'system' &&
       getSystemDarkMode()
     );
 
@@ -259,12 +242,13 @@ function applyTheme(
       theme
     );
   } catch {
-    // Theme still works for the current page.
+    // Theme still applies for the current page.
   }
 }
 
 async function readJson(
-  response: Response
+  response:
+    Response
 ): Promise<AccountResponse> {
   try {
     return (
@@ -272,7 +256,8 @@ async function readJson(
     ) as AccountResponse;
   } catch {
     return {
-      success: false,
+      success:
+        false,
 
       code:
         'INVALID_SERVER_RESPONSE',
@@ -284,7 +269,8 @@ async function readJson(
 }
 
 function getTimezoneOptions(
-  currentTimezone: string
+  currentTimezone:
+    string
 ) {
   const fallback = [
     'UTC',
@@ -305,13 +291,15 @@ function getTimezoneOptions(
   ];
 
   let zones:
-    string[] = fallback;
+    string[] =
+    fallback;
 
   try {
     const intlWithZones =
       Intl as typeof Intl & {
         supportedValuesOf?: (
-          key: 'timeZone'
+          key:
+            'timeZone'
         ) => string[];
       };
 
@@ -327,7 +315,8 @@ function getTimezoneOptions(
           );
     }
   } catch {
-    zones = fallback;
+    zones =
+      fallback;
   }
 
   if (
@@ -342,7 +331,40 @@ function getTimezoneOptions(
     ];
   }
 
+  if (
+    !zones.includes(
+      'UTC'
+    )
+  ) {
+    zones = [
+      'UTC',
+      ...zones,
+    ];
+  }
+
   return zones;
+}
+
+function preferencesEqual(
+  left:
+    UserDisplayPreferences,
+  right:
+    UserDisplayPreferences
+) {
+  return (
+    left.theme ===
+      right.theme &&
+    left.locale ===
+      right.locale &&
+    left.timezone ===
+      right.timezone &&
+    left.dateFormat ===
+      right.dateFormat &&
+    left.timeFormat ===
+      right.timeFormat &&
+    left.firstDayOfWeek ===
+      right.firstDayOfWeek
+  );
 }
 
 /* ============================================================
@@ -366,8 +388,20 @@ export default function MyAccountSettings() {
     preferences,
     setPreferences,
   ] =
-    useState<UserPreferences>(
-      DEFAULT_PREFERENCES
+    useState<UserDisplayPreferences>(
+      {
+        ...DEFAULT_USER_DISPLAY_PREFERENCES,
+      }
+    );
+
+  const [
+    savedPreferences,
+    setSavedPreferences,
+  ] =
+    useState<UserDisplayPreferences>(
+      {
+        ...DEFAULT_USER_DISPLAY_PREFERENCES,
+      }
     );
 
   const [
@@ -377,6 +411,19 @@ export default function MyAccountSettings() {
     useState<
       PendingEmailChange | null
     >(null);
+
+  /* ==========================================================
+     LIVE PREFERENCE PREVIEW
+     ========================================================== */
+
+  const [
+    previewNow,
+    setPreviewNow,
+  ] =
+    useState(
+      () =>
+        new Date()
+    );
 
   /* ==========================================================
      PROFILE FORM
@@ -497,6 +544,19 @@ export default function MyAccountSettings() {
       ]
     );
 
+  const preferencePreview =
+    useMemo(
+      () =>
+        getUserFormattingPreview(
+          preferences,
+          previewNow
+        ),
+      [
+        preferences,
+        previewNow,
+      ]
+    );
+
   const profileChanged =
     Boolean(
       account &&
@@ -513,6 +573,12 @@ export default function MyAccountSettings() {
       )
     );
 
+  const preferencesChanged =
+    !preferencesEqual(
+      preferences,
+      savedPreferences
+    );
+
   const busy =
     loading ||
     profileSaving ||
@@ -522,15 +588,91 @@ export default function MyAccountSettings() {
     cancellingEmail;
 
   /* ==========================================================
+     LIVE CLOCK
+     ========================================================== */
+
+  useEffect(
+    () => {
+      const timer =
+        window.setInterval(
+          () => {
+            setPreviewNow(
+              new Date()
+            );
+          },
+          1000
+        );
+
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    },
+    []
+  );
+
+  /* ==========================================================
+     SYSTEM THEME LISTENER
+
+     When theme = system, SaMi should follow the operating
+     system automatically if the system theme changes.
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        preferences.theme !==
+        'system'
+      ) {
+        return;
+      }
+
+      const media =
+        window.matchMedia(
+          '(prefers-color-scheme: dark)'
+        );
+
+      const sync =
+        () => {
+          applyTheme(
+            'system'
+          );
+        };
+
+      sync();
+
+      media.addEventListener?.(
+        'change',
+        sync
+      );
+
+      return () => {
+        media.removeEventListener?.(
+          'change',
+          sync
+        );
+      };
+    },
+    [
+      preferences.theme,
+    ]
+  );
+
+  /* ==========================================================
      LOAD ACCOUNT
      ========================================================== */
 
   const loadAccount =
     useCallback(
       async () => {
-        setLoading(true);
+        setLoading(
+          true
+        );
 
-        setNotice(null);
+        setNotice(
+          null
+        );
 
         try {
           const response =
@@ -573,14 +715,19 @@ export default function MyAccountSettings() {
             data.account;
 
           const loadedPreferences =
-            data.preferences ||
-            DEFAULT_PREFERENCES;
+            data.preferences || {
+              ...DEFAULT_USER_DISPLAY_PREFERENCES,
+            };
 
           setAccount(
             loadedAccount
           );
 
           setPreferences(
+            loadedPreferences
+          );
+
+          setSavedPreferences(
             loadedPreferences
           );
 
@@ -618,11 +765,15 @@ export default function MyAccountSettings() {
           );
 
           applyTheme(
-            loadedPreferences.theme
+            loadedPreferences
+              .theme
           );
-        } catch (error) {
+        } catch (
+          error
+        ) {
           setNotice({
-            type: 'error',
+            type:
+              'error',
 
             message:
               error instanceof
@@ -631,79 +782,102 @@ export default function MyAccountSettings() {
                 : 'SaMi could not load your account.',
           });
         } finally {
-          setLoading(false);
+          setLoading(
+            false
+          );
         }
       },
       []
     );
 
-  useEffect(() => {
-    void loadAccount();
-  }, [loadAccount]);
+  useEffect(
+    () => {
+      void loadAccount();
+    },
+    [
+      loadAccount,
+    ]
+  );
 
   /* ==========================================================
      RESEND COUNTDOWN
      ========================================================== */
 
-  useEffect(() => {
-    if (
-      resendSeconds <= 0
-    ) {
-      return;
-    }
+  useEffect(
+    () => {
+      if (
+        resendSeconds <=
+        0
+      ) {
+        return;
+      }
 
-    const timer =
-      window.setInterval(
-        () => {
-          setResendSeconds(
-            (current) =>
-              Math.max(
-                0,
-                current - 1
-              )
-          );
-        },
-        1000
-      );
+      const timer =
+        window.setInterval(
+          () => {
+            setResendSeconds(
+              (
+                current
+              ) =>
+                Math.max(
+                  0,
+                  current - 1
+                )
+            );
+          },
+          1000
+        );
 
-    return () => {
-      window.clearInterval(
-        timer
-      );
-    };
-  }, [resendSeconds]);
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    },
+    [
+      resendSeconds,
+    ]
+  );
 
   /* ==========================================================
      VERIFY RATE-LIMIT COUNTDOWN
      ========================================================== */
 
-  useEffect(() => {
-    if (
-      verifyRetrySeconds <= 0
-    ) {
-      return;
-    }
+  useEffect(
+    () => {
+      if (
+        verifyRetrySeconds <=
+        0
+      ) {
+        return;
+      }
 
-    const timer =
-      window.setInterval(
-        () => {
-          setVerifyRetrySeconds(
-            (current) =>
-              Math.max(
-                0,
-                current - 1
-              )
-          );
-        },
-        1000
-      );
+      const timer =
+        window.setInterval(
+          () => {
+            setVerifyRetrySeconds(
+              (
+                current
+              ) =>
+                Math.max(
+                  0,
+                  current - 1
+                )
+            );
+          },
+          1000
+        );
 
-    return () => {
-      window.clearInterval(
-        timer
-      );
-    };
-  }, [verifyRetrySeconds]);
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    },
+    [
+      verifyRetrySeconds,
+    ]
+  );
 
   /* ==========================================================
      PROFILE SAVE
@@ -738,9 +912,13 @@ export default function MyAccountSettings() {
           ' '
         );
 
-    if (!cleanFirstName) {
+    if (
+      !cleanFirstName
+    ) {
       setNotice({
-        type: 'warning',
+        type:
+          'warning',
+
         message:
           'Enter your first name.',
       });
@@ -748,9 +926,13 @@ export default function MyAccountSettings() {
       return;
     }
 
-    if (!cleanLastName) {
+    if (
+      !cleanLastName
+    ) {
       setNotice({
-        type: 'warning',
+        type:
+          'warning',
+
         message:
           'Enter your last name.',
       });
@@ -758,8 +940,13 @@ export default function MyAccountSettings() {
       return;
     }
 
-    setProfileSaving(true);
-    setNotice(null);
+    setProfileSaving(
+      true
+    );
+
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -835,15 +1022,19 @@ export default function MyAccountSettings() {
       );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'Your profile has been updated.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -852,7 +1043,9 @@ export default function MyAccountSettings() {
               : 'SaMi could not update your profile.',
       });
     } finally {
-      setProfileSaving(false);
+      setProfileSaving(
+        false
+      );
     }
   }
 
@@ -862,7 +1055,8 @@ export default function MyAccountSettings() {
 
   async function savePreferences() {
     if (
-      preferencesSaving
+      preferencesSaving ||
+      !preferencesChanged
     ) {
       return;
     }
@@ -871,7 +1065,9 @@ export default function MyAccountSettings() {
       true
     );
 
-    setNotice(null);
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -922,21 +1118,29 @@ export default function MyAccountSettings() {
         data.preferences
       );
 
+      setSavedPreferences(
+        data.preferences
+      );
+
       applyTheme(
         data.preferences
           .theme
       );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'Your preferences have been updated.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -949,6 +1153,25 @@ export default function MyAccountSettings() {
         false
       );
     }
+  }
+
+  /* ==========================================================
+     DISCARD UNSAVED PREFERENCES
+     ========================================================== */
+
+  function discardPreferences() {
+    setPreferences(
+      savedPreferences
+    );
+
+    applyTheme(
+      savedPreferences
+        .theme
+    );
+
+    setNotice(
+      null
+    );
   }
 
   /* ==========================================================
@@ -974,7 +1197,8 @@ export default function MyAccountSettings() {
       )
     ) {
       setNotice({
-        type: 'warning',
+        type:
+          'warning',
 
         message:
           'Enter a valid new email address.',
@@ -990,7 +1214,8 @@ export default function MyAccountSettings() {
       )
     ) {
       setNotice({
-        type: 'warning',
+        type:
+          'warning',
 
         message:
           'This is already your current email address.',
@@ -1003,7 +1228,9 @@ export default function MyAccountSettings() {
       true
     );
 
-    setNotice(null);
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -1063,6 +1290,8 @@ export default function MyAccountSettings() {
 
       const pending =
         data.pending ||
+        data.emailChange
+          ?.pending ||
         null;
 
       setPendingEmailChange(
@@ -1075,22 +1304,28 @@ export default function MyAccountSettings() {
           60
       );
 
-      setEmailCode('');
+      setEmailCode(
+        ''
+      );
 
       setEmailEditing(
         false
       );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'A verification code has been sent to your new email address.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -1106,27 +1341,26 @@ export default function MyAccountSettings() {
   }
 
   /* ==========================================================
-     RESEND EMAIL CHANGE CODE
+     RESEND EMAIL CODE
      ========================================================== */
 
   async function resendEmailCode() {
     if (
       requestingEmail ||
-      resendSeconds > 0 ||
+      resendSeconds >
+        0 ||
       !pendingEmailChange
     ) {
       return;
     }
 
-    setNewEmail(
-      pendingEmailChange.email
-    );
-
     setRequestingEmail(
       true
     );
 
-    setNotice(null);
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -1188,6 +1422,8 @@ export default function MyAccountSettings() {
 
       const pending =
         data.pending ||
+        data.emailChange
+          ?.pending ||
         pendingEmailChange;
 
       setPendingEmailChange(
@@ -1200,18 +1436,24 @@ export default function MyAccountSettings() {
           60
       );
 
-      setEmailCode('');
+      setEmailCode(
+        ''
+      );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'A new verification code has been sent.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -1251,7 +1493,8 @@ export default function MyAccountSettings() {
       )
     ) {
       setNotice({
-        type: 'warning',
+        type:
+          'warning',
 
         message:
           'Enter the complete 6-digit verification code.',
@@ -1260,8 +1503,13 @@ export default function MyAccountSettings() {
       return;
     }
 
-    setVerifyingEmail(true);
-    setNotice(null);
+    setVerifyingEmail(
+      true
+    );
+
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -1330,22 +1578,40 @@ export default function MyAccountSettings() {
         null
       );
 
-      setNewEmail('');
-      setEmailCode('');
-      setResendSeconds(0);
-      setVerifyRetrySeconds(0);
-      setEmailEditing(false);
+      setNewEmail(
+        ''
+      );
+
+      setEmailCode(
+        ''
+      );
+
+      setResendSeconds(
+        0
+      );
+
+      setVerifyRetrySeconds(
+        0
+      );
+
+      setEmailEditing(
+        false
+      );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'Your email address has been updated successfully.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -1354,7 +1620,9 @@ export default function MyAccountSettings() {
               : 'SaMi could not verify your new email.',
       });
     } finally {
-      setVerifyingEmail(false);
+      setVerifyingEmail(
+        false
+      );
     }
   }
 
@@ -1373,7 +1641,9 @@ export default function MyAccountSettings() {
       true
     );
 
-    setNotice(null);
+    setNotice(
+      null
+    );
 
     try {
       const response =
@@ -1415,21 +1685,36 @@ export default function MyAccountSettings() {
         null
       );
 
-      setNewEmail('');
-      setEmailCode('');
-      setResendSeconds(0);
-      setVerifyRetrySeconds(0);
+      setNewEmail(
+        ''
+      );
+
+      setEmailCode(
+        ''
+      );
+
+      setResendSeconds(
+        0
+      );
+
+      setVerifyRetrySeconds(
+        0
+      );
 
       setNotice({
-        type: 'success',
+        type:
+          'success',
 
         message:
           data.message ||
           'Your pending email change has been cancelled.',
       });
-    } catch (error) {
+    } catch (
+      error
+    ) {
       setNotice({
-        type: 'error',
+        type:
+          'error',
 
         message:
           error instanceof
@@ -1448,22 +1733,31 @@ export default function MyAccountSettings() {
      LOADING
      ========================================================== */
 
-  if (loading) {
+  if (
+    loading
+  ) {
     return (
       <div className="space-y-6">
         <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+
           <div className="flex items-center gap-4">
+
             <div className="h-14 w-14 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
 
             <div className="flex-1">
+
               <div className="h-5 w-48 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+
               <div className="mt-2 h-4 w-64 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
             </div>
           </div>
 
           <div className="mt-7 grid gap-4 sm:grid-cols-2">
+
             <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+
             <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+
             <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800 sm:col-span-2" />
           </div>
         </div>
@@ -1475,13 +1769,18 @@ export default function MyAccountSettings() {
      ACCOUNT LOAD FAILED
      ========================================================== */
 
-  if (!account) {
+  if (
+    !account
+  ) {
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50 p-6 dark:border-red-900/50 dark:bg-red-950/20">
+
         <div className="flex items-start gap-3">
+
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
 
           <div>
+
             <h3 className="font-bold text-red-900 dark:text-red-200">
               Account unavailable
             </h3>
@@ -1499,6 +1798,7 @@ export default function MyAccountSettings() {
               className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold text-white transition hover:bg-red-700"
             >
               <RefreshCw className="h-4 w-4" />
+
               Try again
             </button>
           </div>
@@ -1513,6 +1813,7 @@ export default function MyAccountSettings() {
 
   return (
     <div className="space-y-6">
+
       {/* ======================================================
           NOTICE
           ====================================================== */}
@@ -1521,7 +1822,7 @@ export default function MyAccountSettings() {
         <div
           className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
             notice.type ===
-            'success'
+              'success'
               ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300'
               : notice.type ===
                   'warning'
@@ -1543,7 +1844,9 @@ export default function MyAccountSettings() {
           <button
             type="button"
             onClick={() =>
-              setNotice(null)
+              setNotice(
+                null
+              )
             }
             aria-label="Dismiss message"
             className="shrink-0 opacity-60 transition hover:opacity-100"
@@ -1558,8 +1861,11 @@ export default function MyAccountSettings() {
           ====================================================== */}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+
           <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-lg font-black text-white shadow-sm">
+
             {account.avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -1577,7 +1883,9 @@ export default function MyAccountSettings() {
           </div>
 
           <div className="min-w-0 flex-1">
+
             <div className="flex flex-wrap items-center gap-2">
+
               <h2 className="truncate text-xl font-black tracking-[-0.025em] text-slate-950 dark:text-white">
                 {account.fullName ||
                   account.email}
@@ -1585,7 +1893,9 @@ export default function MyAccountSettings() {
 
               {account.emailVerified && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+
                   <Check className="h-3 w-3" />
+
                   Verified
                 </span>
               )}
@@ -1607,12 +1917,15 @@ export default function MyAccountSettings() {
           ====================================================== */}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+
         <div className="flex items-start gap-3">
+
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
             <UserRound className="h-5 w-5" />
           </div>
 
           <div>
+
             <h3 className="text-base font-black text-slate-950 dark:text-white">
               Personal information
             </h3>
@@ -1630,7 +1943,9 @@ export default function MyAccountSettings() {
           className="mt-6"
         >
           <div className="grid gap-5 sm:grid-cols-2">
+
             <div>
+
               <label
                 htmlFor="account-first-name"
                 className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -1639,6 +1954,7 @@ export default function MyAccountSettings() {
               </label>
 
               <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+
                 <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
 
                 <input
@@ -1665,6 +1981,7 @@ export default function MyAccountSettings() {
             </div>
 
             <div>
+
               <label
                 htmlFor="account-last-name"
                 className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -1673,6 +1990,7 @@ export default function MyAccountSettings() {
               </label>
 
               <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+
                 <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
 
                 <input
@@ -1699,6 +2017,7 @@ export default function MyAccountSettings() {
             </div>
 
             <div className="sm:col-span-2">
+
               <label
                 htmlFor="account-phone"
                 className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -1707,6 +2026,7 @@ export default function MyAccountSettings() {
               </label>
 
               <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+
                 <Phone className="h-4 w-4 shrink-0 text-slate-400" />
 
                 <input
@@ -1736,6 +2056,7 @@ export default function MyAccountSettings() {
           </div>
 
           <div className="mt-6 flex justify-end">
+
             <button
               type="submit"
               disabled={
@@ -1759,16 +2080,19 @@ export default function MyAccountSettings() {
       </section>
 
       {/* ======================================================
-          EMAIL ADDRESS
+          EMAIL
           ====================================================== */}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+
         <div className="flex items-start gap-3">
+
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
             <AtSign className="h-5 w-5" />
           </div>
 
           <div className="min-w-0">
+
             <h3 className="text-base font-black text-slate-950 dark:text-white">
               Email address
             </h3>
@@ -1782,11 +2106,13 @@ export default function MyAccountSettings() {
         {!pendingEmailChange ? (
           <>
             <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
+
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
                 <Mail className="h-4 w-4" />
               </div>
 
               <div className="min-w-0 flex-1">
+
                 <p className="truncate text-sm font-black text-slate-900 dark:text-white">
                   {account.email}
                 </p>
@@ -1805,9 +2131,17 @@ export default function MyAccountSettings() {
                     true
                   );
 
-                  setNewEmail('');
-                  setEmailCode('');
-                  setNotice(null);
+                  setNewEmail(
+                    ''
+                  );
+
+                  setEmailCode(
+                    ''
+                  );
+
+                  setNotice(
+                    null
+                  );
                 }}
                 disabled={
                   busy
@@ -1815,12 +2149,14 @@ export default function MyAccountSettings() {
                 className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
               >
                 <Pencil className="h-3.5 w-3.5" />
+
                 Change email
               </button>
             </div>
 
             {emailEditing && (
               <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+
                 <label
                   htmlFor="new-account-email"
                   className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -1829,6 +2165,7 @@ export default function MyAccountSettings() {
                 </label>
 
                 <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+
                   <Mail className="h-4 w-4 shrink-0 text-slate-400" />
 
                   <input
@@ -1861,6 +2198,7 @@ export default function MyAccountSettings() {
                 </p>
 
                 <div className="mt-4 flex flex-wrap justify-end gap-2">
+
                   <button
                     type="button"
                     onClick={() => {
@@ -1868,7 +2206,9 @@ export default function MyAccountSettings() {
                         false
                       );
 
-                      setNewEmail('');
+                      setNewEmail(
+                        ''
+                      );
                     }}
                     disabled={
                       requestingEmail
@@ -1904,12 +2244,15 @@ export default function MyAccountSettings() {
           </>
         ) : (
           <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/70 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
+
             <div className="flex items-start gap-3">
+
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-300">
                 <ShieldCheck className="h-5 w-5" />
               </div>
 
               <div className="min-w-0 flex-1">
+
                 <p className="text-sm font-black text-slate-900 dark:text-white">
                   Verify your new email
                 </p>
@@ -1923,15 +2266,17 @@ export default function MyAccountSettings() {
 
                 <p className="mt-1 text-[10px] text-slate-400">
                   Expires{' '}
-                  {formatDateTime(
+                  {formatUserDateTime(
                     pendingEmailChange
-                      .expiresAt
+                      .expiresAt,
+                    preferences
                   )}
                 </p>
               </div>
             </div>
 
             <div className="mt-5">
+
               <label
                 htmlFor="account-email-code"
                 className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -1974,6 +2319,7 @@ export default function MyAccountSettings() {
             </div>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
               <button
                 type="button"
                 onClick={
@@ -2004,6 +2350,7 @@ export default function MyAccountSettings() {
               </button>
 
               <div className="flex flex-wrap gap-2">
+
                 <button
                   type="button"
                   onClick={
@@ -2062,26 +2409,171 @@ export default function MyAccountSettings() {
           ====================================================== */}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+
         <div className="flex items-start gap-3">
+
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
             <SunMoon className="h-5 w-5" />
           </div>
 
           <div>
+
             <h3 className="text-base font-black text-slate-950 dark:text-white">
               Personal preferences
             </h3>
 
             <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              These follow your SaMi account across workspaces.
+              These settings control how SaMi is displayed to you across the platform.
             </p>
           </div>
         </div>
 
+        {/* ====================================================
+            LIVE PREVIEW
+            ==================================================== */}
+
+        <div className="mt-6 overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-blue-900/50 dark:from-blue-950/25 dark:to-indigo-950/20">
+
+          <div className="border-b border-blue-100 px-5 py-4 dark:border-blue-900/40">
+
+            <div className="flex items-start gap-3">
+
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <Clock3 className="h-4 w-4" />
+              </div>
+
+              <div>
+
+                <p className="text-sm font-black text-slate-950 dark:text-white">
+                  Live preference preview
+                </p>
+
+                <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-400">
+                  Change the options below and you can immediately see how dates and times will appear to you in SaMi.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-px bg-blue-100 dark:bg-blue-900/30 sm:grid-cols-2 lg:grid-cols-4">
+
+            <PreferencePreviewCard
+              label="Your date"
+              value={
+                preferencePreview
+                  .date
+              }
+              icon={
+                CalendarDays
+              }
+            />
+
+            <PreferencePreviewCard
+              label="Your time"
+              value={
+                preferencePreview
+                  .time
+              }
+              icon={
+                Clock3
+              }
+            />
+
+            <PreferencePreviewCard
+              label="Date & time"
+              value={
+                preferencePreview
+                  .dateTime
+              }
+              icon={
+                CalendarDays
+              }
+            />
+
+            <PreferencePreviewCard
+              label="Active timezone"
+              value={
+                preferencePreview
+                  .timezone
+              }
+              icon={
+                Globe2
+              }
+            />
+          </div>
+
+          <div className="border-t border-blue-100 bg-white/60 px-5 py-4 dark:border-blue-900/40 dark:bg-slate-950/30">
+
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+              Your week
+            </p>
+
+            <div className="mt-3 grid grid-cols-7 gap-1.5">
+
+              {preferencePreview
+                .weekdays
+                .map(
+                  (
+                    weekday,
+                    index
+                  ) => (
+                    <div
+                      key={`${weekday}-${index}`}
+                      className={`rounded-lg px-1 py-2 text-center text-[9px] font-bold ${
+                        index === 0
+                          ? 'bg-blue-600 text-white'
+                          : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
+                      }`}
+                    >
+                      {weekday}
+                    </div>
+                  )
+                )}
+            </div>
+
+            <p className="mt-3 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+              The highlighted day is the first day of your week. This will later control SaMi calendars, schedules, timesheets and weekly reports.
+            </p>
+          </div>
+        </div>
+
+        {/* ====================================================
+            WHERE PREFERENCES APPLY
+            ==================================================== */}
+
+        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+
+          <div className="flex items-start gap-3">
+
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+
+            <div>
+
+              <p className="text-xs font-black text-slate-900 dark:text-white">
+                Where these settings apply
+              </p>
+
+              <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+                Your preferences will be used when SaMi displays dashboard activity, sessions, audit events, notifications, tasks, AI history and timestamps from business apps.
+              </p>
+
+              <p className="mt-2 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+                They do not change the actual timestamp stored in the database and do not override company settings on customer-facing documents such as invoices.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ====================================================
+            PREFERENCE FORM
+            ==================================================== */}
+
         <div className="mt-6 grid gap-5 sm:grid-cols-2">
+
           {/* THEME */}
 
           <div>
+
             <label
               htmlFor="account-theme"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2102,7 +2594,9 @@ export default function MyAccountSettings() {
                     .value as UserTheme;
 
                 setPreferences(
-                  (current) => ({
+                  (
+                    current
+                  ) => ({
                     ...current,
                     theme,
                   })
@@ -2118,7 +2612,7 @@ export default function MyAccountSettings() {
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
             >
               <option value="system">
-                System
+                Follow system
               </option>
 
               <option value="light">
@@ -2129,11 +2623,16 @@ export default function MyAccountSettings() {
                 Dark
               </option>
             </select>
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Controls the appearance of your SaMi interface.
+            </p>
           </div>
 
           {/* TIMEZONE */}
 
           <div>
+
             <label
               htmlFor="account-timezone"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2142,6 +2641,7 @@ export default function MyAccountSettings() {
             </label>
 
             <div className="relative mt-2">
+
               <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <select
@@ -2153,7 +2653,9 @@ export default function MyAccountSettings() {
                   event
                 ) =>
                   setPreferences(
-                    (current) => ({
+                    (
+                      current
+                    ) => ({
                       ...current,
 
                       timezone:
@@ -2168,7 +2670,9 @@ export default function MyAccountSettings() {
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
               >
                 {timezoneOptions.map(
-                  (timezone) => (
+                  (
+                    timezone
+                  ) => (
                     <option
                       key={
                         timezone
@@ -2183,11 +2687,16 @@ export default function MyAccountSettings() {
                 )}
               </select>
             </div>
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Converts stored timestamps into the time you should see.
+            </p>
           </div>
 
           {/* DATE FORMAT */}
 
           <div>
+
             <label
               htmlFor="account-date-format"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2196,6 +2705,7 @@ export default function MyAccountSettings() {
             </label>
 
             <div className="relative mt-2">
+
               <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <select
@@ -2207,7 +2717,9 @@ export default function MyAccountSettings() {
                   event
                 ) =>
                   setPreferences(
-                    (current) => ({
+                    (
+                      current
+                    ) => ({
                       ...current,
 
                       dateFormat:
@@ -2234,11 +2746,19 @@ export default function MyAccountSettings() {
                 </option>
               </select>
             </div>
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Example: {formatUserDate(
+                previewNow,
+                preferences
+              )}
+            </p>
           </div>
 
           {/* TIME FORMAT */}
 
           <div>
+
             <label
               htmlFor="account-time-format"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2247,6 +2767,7 @@ export default function MyAccountSettings() {
             </label>
 
             <div className="relative mt-2">
+
               <Clock3 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <select
@@ -2258,7 +2779,9 @@ export default function MyAccountSettings() {
                   event
                 ) =>
                   setPreferences(
-                    (current) => ({
+                    (
+                      current
+                    ) => ({
                       ...current,
 
                       timeFormat:
@@ -2281,11 +2804,19 @@ export default function MyAccountSettings() {
                 </option>
               </select>
             </div>
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Example: {formatUserTime(
+                previewNow,
+                preferences
+              )}
+            </p>
           </div>
 
           {/* FIRST DAY */}
 
           <div>
+
             <label
               htmlFor="account-first-day"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2302,7 +2833,9 @@ export default function MyAccountSettings() {
                 event
               ) =>
                 setPreferences(
-                  (current) => ({
+                  (
+                    current
+                  ) => ({
                     ...current,
 
                     firstDayOfWeek:
@@ -2330,11 +2863,16 @@ export default function MyAccountSettings() {
                 Saturday
               </option>
             </select>
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Used by calendars, schedules and weekly views.
+            </p>
           </div>
 
           {/* LOCALE */}
 
           <div>
+
             <label
               htmlFor="account-locale"
               className="text-xs font-bold text-slate-700 dark:text-slate-200"
@@ -2351,7 +2889,9 @@ export default function MyAccountSettings() {
                 event
               ) =>
                 setPreferences(
-                  (current) => ({
+                  (
+                    current
+                  ) => ({
                     ...current,
 
                     locale:
@@ -2367,30 +2907,71 @@ export default function MyAccountSettings() {
               placeholder="en"
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
             />
+
+            <p className="mt-2 text-[10px] leading-4 text-slate-400">
+              Controls locale-aware number and language formatting.
+            </p>
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            onClick={
-              savePreferences
-            }
-            disabled={
-              preferencesSaving
-            }
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {preferencesSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+        {/* ====================================================
+            SAVE / DISCARD
+            ==================================================== */}
+
+        <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+
+          <div>
+
+            {preferencesChanged ? (
+              <p className="text-xs font-bold text-amber-600 dark:text-amber-400">
+                You have unsaved preference changes.
+              </p>
             ) : (
-              <Save className="h-4 w-4" />
+              <p className="text-xs text-slate-400">
+                Your displayed preferences are saved.
+              </p>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+
+            {preferencesChanged && (
+              <button
+                type="button"
+                onClick={
+                  discardPreferences
+                }
+                disabled={
+                  preferencesSaving
+                }
+                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Discard
+              </button>
             )}
 
-            {preferencesSaving
-              ? 'Saving...'
-              : 'Save preferences'}
-          </button>
+            <button
+              type="button"
+              onClick={
+                savePreferences
+              }
+              disabled={
+                preferencesSaving ||
+                !preferencesChanged
+              }
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {preferencesSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+
+              {preferencesSaving
+                ? 'Saving...'
+                : 'Save preferences'}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -2399,12 +2980,15 @@ export default function MyAccountSettings() {
           ====================================================== */}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+
         <div className="flex items-start gap-3">
+
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <ShieldCheck className="h-5 w-5" />
           </div>
 
           <div>
+
             <h3 className="text-base font-black text-slate-950 dark:text-white">
               Account details
             </h3>
@@ -2416,7 +3000,9 @@ export default function MyAccountSettings() {
         </div>
 
         <dl className="mt-6 divide-y divide-slate-100 dark:divide-slate-800">
+
           <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+
             <dt className="text-xs font-bold text-slate-500">
               Account status
             </dt>
@@ -2430,6 +3016,7 @@ export default function MyAccountSettings() {
           </div>
 
           <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+
             <dt className="text-xs font-bold text-slate-500">
               Email verified
             </dt>
@@ -2442,18 +3029,73 @@ export default function MyAccountSettings() {
           </div>
 
           <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+
             <dt className="text-xs font-bold text-slate-500">
               Account created
             </dt>
 
             <dd className="text-sm font-bold text-slate-900 dark:text-white">
-              {formatDateTime(
-                account.createdAt
-              )}
+              {account.createdAt
+                ? formatUserDateTime(
+                    account.createdAt,
+                    preferences
+                  )
+                : formatFallbackDateTime(
+                    account.createdAt
+                  )}
+            </dd>
+          </div>
+
+          <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
+
+            <dt className="text-xs font-bold text-slate-500">
+              Current display timezone
+            </dt>
+
+            <dd className="text-sm font-bold text-slate-900 dark:text-white">
+              {preferencePreview.timezone}
             </dd>
           </div>
         </dl>
       </section>
+    </div>
+  );
+}
+
+/* ============================================================
+   PREFERENCE PREVIEW CARD
+   ============================================================ */
+
+function PreferencePreviewCard({
+  label,
+  value,
+  icon:
+    Icon,
+}: {
+  label:
+    string;
+
+  value:
+    string;
+
+  icon:
+    typeof Clock3;
+}) {
+  return (
+    <div className="bg-white/90 p-4 dark:bg-slate-900/80">
+
+      <div className="flex items-center gap-2 text-slate-400">
+
+        <Icon className="h-3.5 w-3.5" />
+
+        <span className="text-[9px] font-black uppercase tracking-[0.1em]">
+          {label}
+        </span>
+      </div>
+
+      <p className="mt-2 break-words text-sm font-black text-slate-950 dark:text-white">
+        {value}
+      </p>
     </div>
   );
 }

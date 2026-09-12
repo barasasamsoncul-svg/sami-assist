@@ -41,6 +41,15 @@ import {
   getAuthOverlayMessage,
 } from '@/lib/auth/auth-ui-messages';
 
+import {
+  DEFAULT_USER_DISPLAY_PREFERENCES,
+  formatUserDateTime,
+  getUserTimezoneLabel,
+  resolveUserTheme,
+  type UserDisplayPreferences,
+  type UserTheme,
+} from '@/lib/account/user-formatting';
+
 /* ============================================================
    TYPES
    ============================================================ */
@@ -125,6 +134,14 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
+type PreferencesResponse = {
+  success?: boolean;
+  code?: string;
+  error?: string;
+  message?: string;
+  preferences?: UserDisplayPreferences;
+};
+
 /* ============================================================
    CONSTANTS
    ============================================================ */
@@ -135,144 +152,67 @@ const THEME_STORAGE_KEY =
 const NAV: NavItem[] = [
   {
     key: 'personal',
-
-    label:
-      'My Account',
-
+    label: 'My Account',
     description:
       'Your personal SaMi account',
-
-    icon:
-      User,
+    icon: User,
   },
 
   {
     key: 'security',
-
-    label:
-      'Security',
-
+    label: 'Security',
     description:
       'Password and account protection',
-
-    icon:
-      ShieldCheck,
+    icon: ShieldCheck,
   },
 
   {
     key: 'sessions',
-
-    label:
-      'Sessions',
-
+    label: 'Sessions',
     description:
       'Your current signed-in device',
-
-    icon:
-      LockKeyhole,
+    icon: LockKeyhole,
   },
 
   {
     key: 'workspace',
-
-    label:
-      'Workspace',
-
+    label: 'Workspace',
     description:
       'Organization and access',
-
-    icon:
-      Building2,
-
-    adminOnly:
-      true,
+    icon: Building2,
+    adminOnly: true,
   },
 
   {
     key: 'apps',
-
-    label:
-      'Apps',
-
+    label: 'Apps',
     description:
       'Installed business apps',
-
-    icon:
-      AppWindow,
-
-    adminOnly:
-      true,
+    icon: AppWindow,
+    adminOnly: true,
   },
 
   {
     key: 'ai',
-
-    label:
-      'SaMi AI',
-
+    label: 'SaMi AI',
     description:
       'AI workspace configuration',
-
-    icon:
-      Bot,
+    icon: Bot,
   },
 
   {
     key: 'billing',
-
-    label:
-      'Billing',
-
+    label: 'Billing',
     description:
       'Plan and subscription',
-
-    icon:
-      CreditCard,
-
-    ownerOnly:
-      true,
+    icon: CreditCard,
+    ownerOnly: true,
   },
 ];
 
 /* ============================================================
    HELPERS
    ============================================================ */
-
-function formatDate(
-  value: string | null
-) {
-  if (!value) {
-    return 'Not available';
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return 'Not available';
-  }
-
-  try {
-    return new Intl.DateTimeFormat(
-      'en-KE',
-      {
-        dateStyle:
-          'medium',
-
-        timeStyle:
-          'short',
-      }
-    ).format(
-      date
-    );
-  } catch {
-    return 'Not available';
-  }
-}
 
 function formatLabel(
   value?: string | null
@@ -340,8 +280,7 @@ function getFullName(
   user: UserData
 ) {
   return (
-    user.fullName
-      ?.trim() ||
+    user.fullName?.trim() ||
     `${user.firstName || ''} ${
       user.lastName || ''
     }`.trim() ||
@@ -381,7 +320,8 @@ function passwordChecks(
 ) {
   return {
     length:
-      password.length >= 8,
+      password.length >=
+      8,
 
     uppercase:
       /[A-Z]/.test(
@@ -451,6 +391,81 @@ function getSectionFromUrl():
   );
 }
 
+function getSystemPrefersDark():
+  boolean {
+  if (
+    typeof window ===
+    'undefined'
+  ) {
+    return false;
+  }
+
+  return (
+    window.matchMedia?.(
+      '(prefers-color-scheme: dark)'
+    ).matches ??
+    false
+  );
+}
+
+function applyThemeToDocument(
+  theme:
+    UserTheme
+): boolean {
+  const resolved =
+    resolveUserTheme(
+      theme,
+      getSystemPrefersDark()
+    );
+
+  const dark =
+    resolved ===
+    'dark';
+
+  if (
+    typeof document !==
+    'undefined'
+  ) {
+    document
+      .documentElement
+      .classList
+      .toggle(
+        'dark',
+        dark
+      );
+  }
+
+  try {
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      theme
+    );
+  } catch {
+    // Local cache is optional.
+  }
+
+  return dark;
+}
+
+async function readPreferencesResponse(
+  response:
+    Response
+): Promise<PreferencesResponse> {
+  try {
+    return (
+      await response.json()
+    ) as PreferencesResponse;
+  } catch {
+    return {
+      success: false,
+      code:
+        'INVALID_SERVER_RESPONSE',
+      error:
+        'SaMi returned an invalid response.',
+    };
+  }
+}
+
 /* ============================================================
    SETTINGS
    ============================================================ */
@@ -476,12 +491,36 @@ export default function SettingsClient({
     );
 
   /* ==========================================================
+     USER DISPLAY PREFERENCES
+     ========================================================== */
+
+  const [
+    displayPreferences,
+    setDisplayPreferences,
+  ] =
+    useState<UserDisplayPreferences>({
+      ...DEFAULT_USER_DISPLAY_PREFERENCES,
+    });
+
+  const [
+    preferencesLoading,
+    setPreferencesLoading,
+  ] =
+    useState(true);
+
+  /* ==========================================================
      THEME
      ========================================================== */
 
   const [
     darkMode,
     setDarkMode,
+  ] =
+    useState(false);
+
+  const [
+    themeSaving,
+    setThemeSaving,
   ] =
     useState(false);
 
@@ -552,7 +591,8 @@ export default function SettingsClient({
           ) => {
             if (
               item.ownerOnly &&
-              !membership?.isOwner
+              !membership
+                ?.isOwner
             ) {
               return false;
             }
@@ -595,7 +635,9 @@ export default function SettingsClient({
             requested
         );
 
-      if (permitted) {
+      if (
+        permitted
+      ) {
         setActive(
           requested
         );
@@ -607,7 +649,13 @@ export default function SettingsClient({
   );
 
   /* ==========================================================
-     THEME INITIALIZATION
+     INITIAL LOCAL THEME
+
+     This gives immediate appearance before the preferences API
+     finishes loading.
+
+     The saved server preference becomes authoritative once
+     loaded below.
      ========================================================== */
 
   useEffect(
@@ -618,65 +666,338 @@ export default function SettingsClient({
             THEME_STORAGE_KEY
           );
 
-        const systemDark =
-          window.matchMedia?.(
-            '(prefers-color-scheme: dark)'
-          ).matches ??
-          false;
-
-        const useDark =
+        const theme:
+          UserTheme =
           stored ===
             'dark' ||
-          (
-            (
-              stored ===
-                'system' ||
-              !stored
-            ) &&
-            systemDark
+          stored ===
+            'light' ||
+          stored ===
+            'system'
+            ? stored
+            : 'system';
+
+        const dark =
+          applyThemeToDocument(
+            theme
           );
 
         setDarkMode(
-          useDark
+          dark
+        );
+      } catch {
+        const dark =
+          getSystemPrefersDark();
+
+        setDarkMode(
+          dark
         );
 
         document.documentElement.classList.toggle(
           'dark',
-          useDark
+          dark
         );
-      } catch {
-        // Settings remain usable.
       }
     },
     []
   );
 
   /* ==========================================================
-     THEME TOGGLE
+     LOAD SAVED USER PREFERENCES
+
+     This makes the database preference authoritative.
+
+     Therefore:
+     - a different browser/device receives the user's theme
+     - session timestamps use their timezone
+     - billing dates use their date/time format
      ========================================================== */
 
-  function toggleTheme() {
-    const next =
-      !darkMode;
+  useEffect(
+    () => {
+      let cancelled =
+        false;
 
-    setDarkMode(
-      next
+      async function loadPreferences() {
+        setPreferencesLoading(
+          true
+        );
+
+        try {
+          const response =
+            await fetch(
+              '/api/account/preferences',
+              {
+                method:
+                  'GET',
+
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+
+                credentials:
+                  'same-origin',
+
+                cache:
+                  'no-store',
+              }
+            );
+
+          const data =
+            await readPreferencesResponse(
+              response
+            );
+
+          if (
+            !response.ok ||
+            !data.success ||
+            !data.preferences
+          ) {
+            return;
+          }
+
+          if (
+            cancelled
+          ) {
+            return;
+          }
+
+          setDisplayPreferences(
+            data.preferences
+          );
+
+          const dark =
+            applyThemeToDocument(
+              data.preferences
+                .theme
+            );
+
+          setDarkMode(
+            dark
+          );
+        } catch {
+          /*
+           * Settings remain usable with the safe defaults.
+           *
+           * The user can still open My Account, where a proper
+           * account-loading error is displayed if needed.
+           */
+        } finally {
+          if (
+            !cancelled
+          ) {
+            setPreferencesLoading(
+              false
+            );
+          }
+        }
+      }
+
+      void loadPreferences();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    []
+  );
+
+  /* ==========================================================
+     SYSTEM THEME CHANGES
+
+     If theme is "system", SaMi follows the operating system
+     while the user is signed in.
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        displayPreferences
+          .theme !==
+        'system'
+      ) {
+        return;
+      }
+
+      const media =
+        window.matchMedia(
+          '(prefers-color-scheme: dark)'
+        );
+
+      const syncTheme =
+        () => {
+          const dark =
+            applyThemeToDocument(
+              'system'
+            );
+
+          setDarkMode(
+            dark
+          );
+        };
+
+      syncTheme();
+
+      media.addEventListener?.(
+        'change',
+        syncTheme
+      );
+
+      return () => {
+        media.removeEventListener?.(
+          'change',
+          syncTheme
+        );
+      };
+    },
+    [
+      displayPreferences
+        .theme,
+    ]
+  );
+
+  /* ==========================================================
+     TOP BAR THEME TOGGLE
+
+     This is now a REAL account preference.
+
+     Previously the button only changed localStorage.
+
+     It now:
+     1. changes the UI immediately
+     2. updates local preference state
+     3. persists the change to user_preferences
+     4. rolls back if persistence fails
+     ========================================================== */
+
+  async function toggleTheme() {
+    if (
+      themeSaving
+    ) {
+      return;
+    }
+
+    const previousPreferences =
+      displayPreferences;
+
+    const previousDark =
+      darkMode;
+
+    const nextTheme:
+      UserTheme =
+      darkMode
+        ? 'light'
+        : 'dark';
+
+    const optimisticPreferences:
+      UserDisplayPreferences = {
+      ...displayPreferences,
+      theme:
+        nextTheme,
+    };
+
+    setThemeSaving(
+      true
     );
 
-    document.documentElement.classList.toggle(
-      'dark',
-      next
+    setDisplayPreferences(
+      optimisticPreferences
+    );
+
+    const nextDark =
+      applyThemeToDocument(
+        nextTheme
+      );
+
+    setDarkMode(
+      nextDark
     );
 
     try {
-      localStorage.setItem(
-        THEME_STORAGE_KEY,
-        next
-          ? 'dark'
-          : 'light'
+      const response =
+        await fetch(
+          '/api/account/preferences',
+          {
+            method:
+              'PATCH',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Accept:
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            body:
+              JSON.stringify({
+                theme:
+                  nextTheme,
+              }),
+          }
+        );
+
+      const data =
+        await readPreferencesResponse(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.preferences
+      ) {
+        throw new Error(
+          data.error ||
+            'Theme preference could not be saved.'
+        );
+      }
+
+      setDisplayPreferences(
+        data.preferences
       );
-    } catch {
-      // Ignore persistence failure.
+
+      const savedDark =
+        applyThemeToDocument(
+          data.preferences
+            .theme
+        );
+
+      setDarkMode(
+        savedDark
+      );
+    } catch (
+      error
+    ) {
+      setDisplayPreferences(
+        previousPreferences
+      );
+
+      applyThemeToDocument(
+        previousPreferences
+          .theme
+      );
+
+      setDarkMode(
+        previousDark
+      );
+
+      console.error(
+        '[Settings] Failed to save theme preference:',
+        error
+      );
+    } finally {
+      setThemeSaving(
+        false
+      );
     }
   }
 
@@ -685,7 +1006,8 @@ export default function SettingsClient({
      ========================================================== */
 
   function selectSection(
-    section: Section
+    section:
+      Section
   ) {
     setActive(
       section
@@ -725,7 +1047,9 @@ export default function SettingsClient({
   ) {
     event.preventDefault();
 
-    if (submitting) {
+    if (
+      submitting
+    ) {
       return;
     }
 
@@ -733,7 +1057,9 @@ export default function SettingsClient({
        CURRENT PASSWORD
        ======================================================== */
 
-    if (!currentPassword) {
+    if (
+      !currentPassword
+    ) {
       setOverlay(
         getAuthOverlayMessage(
           'CURRENT_PASSWORD_REQUIRED'
@@ -846,10 +1172,6 @@ export default function SettingsClient({
         return;
       }
 
-      /* ======================================================
-         SUCCESS
-         ====================================================== */
-
       setCurrentPassword(
         ''
       );
@@ -900,10 +1222,13 @@ export default function SettingsClient({
 
   const currentPlan =
     subscription?.planName ||
-    formatLabel(
+    (
       subscription?.planKey
-    ) ||
-    'Free';
+        ? formatLabel(
+            subscription.planKey
+          )
+        : 'Free'
+    );
 
   /* ==========================================================
      RENDER
@@ -948,6 +1273,7 @@ export default function SettingsClient({
             ==================================================== */}
 
         <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-[#090d15]/90">
+
           <div className="mx-auto flex h-[72px] max-w-[1500px] items-center gap-4 px-4 sm:px-6 lg:px-8">
 
             {/* BACK */}
@@ -977,6 +1303,7 @@ export default function SettingsClient({
             {/* PAGE IDENTITY */}
 
             <div className="hidden min-w-0 sm:block">
+
               <p className="truncate text-sm font-black">
                 Settings
               </p>
@@ -995,17 +1322,29 @@ export default function SettingsClient({
 
               <button
                 type="button"
-                onClick={
-                  toggleTheme
+                onClick={() =>
+                  void toggleTheme()
+                }
+                disabled={
+                  themeSaving
                 }
                 aria-label={
                   darkMode
                     ? 'Switch to light theme'
                     : 'Switch to dark theme'
                 }
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                title={
+                  displayPreferences
+                    .theme ===
+                  'system'
+                    ? 'Theme currently follows your system'
+                    : `Theme: ${displayPreferences.theme}`
+                }
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
               >
-                {darkMode ? (
+                {themeSaving ? (
+                  <Loader2 className="h-[17px] w-[17px] animate-spin" />
+                ) : darkMode ? (
                   <Sun className="h-[17px] w-[17px]" />
                 ) : (
                   <Moon className="h-[17px] w-[17px]" />
@@ -1015,6 +1354,7 @@ export default function SettingsClient({
               {/* USER */}
 
               <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white py-1.5 pl-2 pr-3 dark:border-slate-800 dark:bg-slate-900 md:flex">
+
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-[10px] font-black text-white">
                   {getInitials(
                     user
@@ -1022,6 +1362,7 @@ export default function SettingsClient({
                 </div>
 
                 <div className="min-w-0">
+
                   <p className="max-w-[160px] truncate text-[11px] font-black">
                     {getFullName(
                       user
@@ -1030,7 +1371,8 @@ export default function SettingsClient({
 
                   <p className="text-[9px] capitalize text-slate-400">
                     {membership?.label ||
-                      membership?.accessLevel ||
+                      membership
+                        ?.accessLevel ||
                       'Member'}
                   </p>
                 </div>
@@ -1050,6 +1392,7 @@ export default function SettingsClient({
               ================================================== */}
 
           <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
             {visibleNav.map(
               (
                 item
@@ -1096,12 +1439,14 @@ export default function SettingsClient({
             <aside className="hidden h-fit rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] lg:block">
 
               <div className="px-3 pb-3 pt-2">
+
                 <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
                   Settings
                 </p>
               </div>
 
               <div className="space-y-1">
+
                 {visibleNav.map(
                   (
                     item
@@ -1130,6 +1475,7 @@ export default function SettingsClient({
                             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
                         }`}
                       >
+
                         <div
                           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                             selected
@@ -1141,6 +1487,7 @@ export default function SettingsClient({
                         </div>
 
                         <div className="min-w-0 flex-1">
+
                           <p className="text-[12px] font-black">
                             {item.label}
                           </p>
@@ -1173,7 +1520,9 @@ export default function SettingsClient({
               {/* SECTION HEADER */}
 
               <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
+
                 <div className="flex items-center gap-3">
+
                   {currentNav && (
                     <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
                       <currentNav.icon className="h-[18px] w-[18px]" />
@@ -1181,13 +1530,16 @@ export default function SettingsClient({
                   )}
 
                   <div>
+
                     <h1 className="text-lg font-black">
-                      {currentNav?.label ||
+                      {currentNav
+                        ?.label ||
                         'Settings'}
                     </h1>
 
                     <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                      {currentNav?.description}
+                      {currentNav
+                        ?.description}
                     </p>
                   </div>
                 </div>
@@ -1254,6 +1606,12 @@ export default function SettingsClient({
                     session={
                       session
                     }
+                    preferences={
+                      displayPreferences
+                    }
+                    preferencesLoading={
+                      preferencesLoading
+                    }
                   />
                 )}
 
@@ -1307,13 +1665,17 @@ export default function SettingsClient({
 
                 {active ===
                   'billing' &&
-                  membership?.isOwner && (
+                  membership
+                    ?.isOwner && (
                     <BillingSection
                       subscription={
                         subscription
                       }
                       currentPlan={
                         currentPlan
+                      }
+                      preferences={
+                        displayPreferences
                       }
                     />
                   )}
@@ -1369,8 +1731,10 @@ function SecuritySection({
         | boolean
         | (
             (
-              current: boolean
-            ) => boolean
+              current:
+                boolean
+            ) =>
+              boolean
           )
     ) => void;
 
@@ -1395,9 +1759,7 @@ function SecuritySection({
   return (
     <div className="grid max-w-5xl gap-6 xl:grid-cols-[minmax(0,560px)_1fr]">
 
-      {/* ======================================================
-          PASSWORD FORM
-          ====================================================== */}
+      {/* PASSWORD FORM */}
 
       <form
         onSubmit={
@@ -1450,8 +1812,6 @@ function SecuritySection({
           />
         </div>
 
-        {/* SHOW / HIDE */}
-
         <button
           type="button"
           onClick={() =>
@@ -1474,8 +1834,6 @@ function SecuritySection({
             ? 'Hide passwords'
             : 'Show passwords'}
         </button>
-
-        {/* SUBMIT */}
 
         <button
           type="submit"
@@ -1500,18 +1858,18 @@ function SecuritySection({
         </button>
       </form>
 
-      {/* ======================================================
-          PASSWORD RULES
-          ====================================================== */}
+      {/* PASSWORD RULES */}
 
       <div className="space-y-4">
 
         <div className="rounded-[20px] border border-slate-200 p-4 dark:border-slate-800">
+
           <p className="text-xs font-black">
             Password requirements
           </p>
 
           <div className="mt-4 grid gap-2">
+
             <PasswordRule
               valid={
                 checks.length
@@ -1549,13 +1907,14 @@ function SecuritySection({
           </div>
         </div>
 
-        {/* 2FA INFO */}
-
         <div className="rounded-[20px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/25">
+
           <div className="flex items-start gap-3">
+
             <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
 
             <div>
+
               <p className="text-xs font-black text-blue-900 dark:text-blue-200">
                 Two-factor authentication
               </p>
@@ -1580,9 +1939,17 @@ function SecuritySection({
 
 function SessionsSection({
   session,
+  preferences,
+  preferencesLoading,
 }: {
   session:
     SessionData;
+
+  preferences:
+    UserDisplayPreferences;
+
+  preferencesLoading:
+    boolean;
 }) {
   const DeviceIcon =
     getDeviceIcon(
@@ -1590,10 +1957,17 @@ function SessionsSection({
         .deviceType
     );
 
+  const timezoneLabel =
+    getUserTimezoneLabel(
+      preferences
+    );
+
   return (
     <div className="max-w-4xl">
 
-      {/* CURRENT SESSION */}
+      {/* ======================================================
+          CURRENT SESSION
+          ====================================================== */}
 
       <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
 
@@ -1631,7 +2005,40 @@ function SessionsSection({
         </div>
       </div>
 
-      {/* SESSION DETAILS */}
+      {/* ======================================================
+          DISPLAY TIMEZONE
+          ====================================================== */}
+
+      <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
+
+        <div className="flex items-start gap-3">
+
+          <ClockTimezoneIcon />
+
+          <div>
+
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-blue-700 dark:text-blue-300">
+              Times displayed in
+            </p>
+
+            <p className="mt-1 text-xs font-bold text-slate-900 dark:text-white">
+              {preferencesLoading
+                ? 'Loading your timezone...'
+                : timezoneLabel}
+            </p>
+
+            <p className="mt-1 text-[9px] leading-4 text-slate-500 dark:text-slate-400">
+              The session timestamps below are converted from
+              the stored timestamp into your personal SaMi
+              timezone.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================
+          SESSION DETAILS
+          ====================================================== */}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
@@ -1666,35 +2073,54 @@ function SessionsSection({
         <InfoCard
           label="Last active"
           value={
-            formatDate(
-              session.device
-                .lastActiveAt
-            )
+            session.device
+              .lastActiveAt
+              ? formatUserDateTime(
+                  session.device
+                    .lastActiveAt,
+                  preferences
+                )
+              : 'Not available'
           }
         />
 
         <InfoCard
           label="Session expires"
           value={
-            formatDate(
-              session.expiresAt
+            formatUserDateTime(
+              session.expiresAt,
+              preferences
             )
           }
         />
       </div>
 
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+
         <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          This section displays the
-          authenticated session currently
-          supplied by SaMi. Complete device
-          management remains owned by the
-          Sessions & Devices platform
-          category.
+          Session timestamps now follow your personal date,
+          time and timezone preferences. Complete device
+          management, session revocation and session history
+          belong to the Sessions & Devices platform category.
         </p>
       </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   SMALL TIMEZONE ICON
+
+   Kept local so this file does not require another dependency
+   or component solely for the settings timezone notice.
+   ============================================================ */
+
+function ClockTimezoneIcon() {
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-300">
+      <LockKeyhole className="h-3.5 w-3.5" />
     </div>
   );
 }
@@ -1713,7 +2139,9 @@ function WorkspaceSection({
   membership:
     MembershipData;
 }) {
-  if (!tenant) {
+  if (
+    !tenant
+  ) {
     return (
       <EmptyState
         icon={
@@ -1728,8 +2156,6 @@ function WorkspaceSection({
   return (
     <div className="max-w-4xl">
 
-      {/* WORKSPACE IDENTITY */}
-
       <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50">
 
         <div className="flex items-center gap-4">
@@ -1739,6 +2165,7 @@ function WorkspaceSection({
           </div>
 
           <div className="min-w-0">
+
             <h2 className="truncate text-lg font-black">
               {tenant.name}
             </h2>
@@ -1752,8 +2179,6 @@ function WorkspaceSection({
           </div>
         </div>
       </div>
-
-      {/* WORKSPACE DETAILS */}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
@@ -1783,8 +2208,7 @@ function WorkspaceSection({
         <InfoCard
           label="Your access"
           value={
-            membership
-              ?.label ||
+            membership?.label ||
             formatLabel(
               membership
                 ?.accessLevel
@@ -1824,11 +2248,10 @@ function AppsSection({
   return (
     <div>
 
-      {/* HEADER */}
-
       <div className="mb-4 flex items-center justify-between gap-3">
 
         <div>
+
           <h2 className="text-sm font-black">
             Installed apps
           </h2>
@@ -1844,9 +2267,8 @@ function AppsSection({
         </div>
       </div>
 
-      {/* APP CARDS */}
-
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
         {modules.map(
           (
             module
@@ -1864,6 +2286,7 @@ function AppsSection({
                 }
                 className="rounded-[18px] border border-slate-200 p-4 transition dark:border-slate-800"
               >
+
                 <div className="flex items-start gap-3">
 
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
@@ -1877,6 +2300,7 @@ function AppsSection({
                     </p>
 
                     <div className="mt-2">
+
                       <span
                         className={`inline-flex rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${
                           active
@@ -1913,8 +2337,6 @@ function AiSection({
   return (
     <div className="max-w-4xl">
 
-      {/* AI HERO */}
-
       <div className="relative overflow-hidden rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:via-indigo-950/20 dark:to-violet-950/25">
 
         <div
@@ -1929,6 +2351,7 @@ function AiSection({
           </div>
 
           <div>
+
             <div className="flex flex-wrap items-center gap-2">
 
               <h2 className="text-base font-black">
@@ -1952,8 +2375,6 @@ function AiSection({
         </div>
       </div>
 
-      {/* AI DATA */}
-
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
         <InfoCard
@@ -1970,6 +2391,7 @@ function AiSection({
       </div>
 
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+
         <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
@@ -1992,17 +2414,19 @@ function AiSection({
 function BillingSection({
   subscription,
   currentPlan,
+  preferences,
 }: {
   subscription:
     SubscriptionData;
 
   currentPlan:
     string;
+
+  preferences:
+    UserDisplayPreferences;
 }) {
   return (
     <div className="max-w-4xl">
-
-      {/* PLAN */}
 
       <div className="rounded-[24px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
 
@@ -2013,6 +2437,7 @@ function BillingSection({
           </div>
 
           <div>
+
             <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
               Current subscription
             </p>
@@ -2029,8 +2454,6 @@ function BillingSection({
           </div>
         </div>
       </div>
-
-      {/* BILLING DATA */}
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
 
@@ -2064,13 +2487,26 @@ function BillingSection({
         <InfoCard
           label="Current period ends"
           value={
-            formatDate(
-              subscription
-                ?.currentPeriodEnd ??
-                null
-            )
+            subscription
+              ?.currentPeriodEnd
+              ? formatUserDateTime(
+                  subscription
+                    .currentPeriodEnd,
+                  preferences
+                )
+              : 'Not available'
           }
         />
+      </div>
+
+      <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
+
+        <p className="text-[10px] leading-5 text-blue-700 dark:text-blue-300">
+          Subscription dates are displayed using your personal
+          timezone and date/time format. The billing period
+          itself remains an authoritative server-side
+          subscription value.
+        </p>
       </div>
 
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
@@ -2109,7 +2545,8 @@ function PasswordField({
 
   onChange:
     (
-      value: string
+      value:
+        string
     ) => void;
 
   show:
@@ -2234,9 +2671,7 @@ function InfoCard({
 function EmptyState({
   icon:
     Icon,
-
   title,
-
   description,
 }: {
   icon:
