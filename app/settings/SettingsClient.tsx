@@ -13,12 +13,10 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  Laptop,
   Loader2,
   LockKeyhole,
   Moon,
   ShieldCheck,
-  Smartphone,
   Sun,
   User,
   Users,
@@ -36,6 +34,7 @@ import SaMiLogo from '@/app/components/SaMiLogo';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 import MyAccountSettings from './components/MyAccountSettings';
+import SessionsSettings from './components/SessionsSettings';
 
 import {
   getAuthOverlayMessage,
@@ -44,7 +43,6 @@ import {
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
-  getUserTimezoneLabel,
   resolveUserTheme,
   type UserDisplayPreferences,
   type UserTheme,
@@ -168,9 +166,9 @@ const NAV: NavItem[] = [
 
   {
     key: 'sessions',
-    label: 'Sessions',
+    label: 'Sessions & Devices',
     description:
-      'Your current signed-in device',
+      'Manage signed-in devices',
     icon: LockKeyhole,
   },
 
@@ -286,33 +284,6 @@ function getFullName(
     }`.trim() ||
     user.email
   );
-}
-
-function getDeviceIcon(
-  deviceType: string
-): LucideIcon {
-  const normalized =
-    deviceType
-      .toLowerCase();
-
-  if (
-    normalized.includes(
-      'mobile'
-    ) ||
-    normalized.includes(
-      'phone'
-    ) ||
-    normalized.includes(
-      'android'
-    ) ||
-    normalized.includes(
-      'ios'
-    )
-  ) {
-    return Smartphone;
-  }
-
-  return Laptop;
 }
 
 function passwordChecks(
@@ -476,7 +447,6 @@ export default function SettingsClient({
   membership,
   subscription,
   modules,
-  session,
 }: Props) {
   /* ==========================================================
      ACTIVE SECTION
@@ -501,12 +471,6 @@ export default function SettingsClient({
     useState<UserDisplayPreferences>({
       ...DEFAULT_USER_DISPLAY_PREFERENCES,
     });
-
-  const [
-    preferencesLoading,
-    setPreferencesLoading,
-  ] =
-    useState(true);
 
   /* ==========================================================
      THEME
@@ -719,10 +683,6 @@ export default function SettingsClient({
         false;
 
       async function loadPreferences() {
-        setPreferencesLoading(
-          true
-        );
-
         try {
           const response =
             await fetch(
@@ -783,14 +743,6 @@ export default function SettingsClient({
            * The user can still open My Account, where a proper
            * account-loading error is displayed if needed.
            */
-        } finally {
-          if (
-            !cancelled
-          ) {
-            setPreferencesLoading(
-              false
-            );
-          }
         }
       }
 
@@ -1602,17 +1554,7 @@ export default function SettingsClient({
 
                 {active ===
                   'sessions' && (
-                  <SessionsSection
-                    session={
-                      session
-                    }
-                    preferences={
-                      displayPreferences
-                    }
-                    preferencesLoading={
-                      preferencesLoading
-                    }
-                  />
+                  <SessionsSettings />
                 )}
 
                 {/* =============================================
@@ -1929,198 +1871,6 @@ function SecuritySection({
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   SESSIONS
-   ============================================================ */
-
-function SessionsSection({
-  session,
-  preferences,
-  preferencesLoading,
-}: {
-  session:
-    SessionData;
-
-  preferences:
-    UserDisplayPreferences;
-
-  preferencesLoading:
-    boolean;
-}) {
-  const DeviceIcon =
-    getDeviceIcon(
-      session.device
-        .deviceType
-    );
-
-  const timezoneLabel =
-    getUserTimezoneLabel(
-      preferences
-    );
-
-  return (
-    <div className="max-w-4xl">
-
-      {/* ======================================================
-          CURRENT SESSION
-          ====================================================== */}
-
-      <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/60 p-5 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-
-        <div className="flex items-start gap-4">
-
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500 text-white">
-            <DeviceIcon className="h-5 w-5" />
-          </div>
-
-          <div className="min-w-0 flex-1">
-
-            <div className="flex flex-wrap items-center gap-2">
-
-              <h2 className="text-sm font-black">
-                Current session
-              </h2>
-
-              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                Active
-              </span>
-            </div>
-
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              {formatLabel(
-                session.device
-                  .deviceType
-              )}{' '}
-              ·{' '}
-              {
-                session.device
-                  .browser
-              }
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ======================================================
-          DISPLAY TIMEZONE
-          ====================================================== */}
-
-      <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
-
-        <div className="flex items-start gap-3">
-
-          <ClockTimezoneIcon />
-
-          <div>
-
-            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-blue-700 dark:text-blue-300">
-              Times displayed in
-            </p>
-
-            <p className="mt-1 text-xs font-bold text-slate-900 dark:text-white">
-              {preferencesLoading
-                ? 'Loading your timezone...'
-                : timezoneLabel}
-            </p>
-
-            <p className="mt-1 text-[9px] leading-4 text-slate-500 dark:text-slate-400">
-              The session timestamps below are converted from
-              the stored timestamp into your personal SaMi
-              timezone.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ======================================================
-          SESSION DETAILS
-          ====================================================== */}
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
-        <InfoCard
-          label="Device"
-          value={
-            formatLabel(
-              session.device
-                .deviceType
-            )
-          }
-        />
-
-        <InfoCard
-          label="Browser"
-          value={
-            session.device
-              .browser ||
-            'Not available'
-          }
-        />
-
-        <InfoCard
-          label="Operating system"
-          value={
-            session.device
-              .operatingSystem ||
-            'Not available'
-          }
-        />
-
-        <InfoCard
-          label="Last active"
-          value={
-            session.device
-              .lastActiveAt
-              ? formatUserDateTime(
-                  session.device
-                    .lastActiveAt,
-                  preferences
-                )
-              : 'Not available'
-          }
-        />
-
-        <InfoCard
-          label="Session expires"
-          value={
-            formatUserDateTime(
-              session.expiresAt,
-              preferences
-            )
-          }
-        />
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-
-        <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-
-        <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          Session timestamps now follow your personal date,
-          time and timezone preferences. Complete device
-          management, session revocation and session history
-          belong to the Sessions & Devices platform category.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   SMALL TIMEZONE ICON
-
-   Kept local so this file does not require another dependency
-   or component solely for the settings timezone notice.
-   ============================================================ */
-
-function ClockTimezoneIcon() {
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-300">
-      <LockKeyhole className="h-3.5 w-3.5" />
     </div>
   );
 }
