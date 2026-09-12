@@ -1,4 +1,13 @@
-import { queryControl } from '@/lib/db/control';
+import 'server-only';
+
+import type {
+  PoolClient,
+} from 'pg';
+
+import {
+  getControlPool,
+  queryControl,
+} from '@/lib/db/control';
 
 import {
   createOtpAuthUrl,
@@ -12,6 +21,7 @@ import {
   consumeRecoveryCode,
   countActiveRecoveryCodes,
   createRecoveryCodes,
+  createRecoveryCodesWithClient,
 } from '@/lib/auth/recovery-codes';
 
 /* ============================================================
@@ -36,56 +46,108 @@ export type TwoFactorConfirmationResult = {
 };
 
 /* ============================================================
+   USER ID
+   ============================================================ */
+
+function requireUserId(
+  value: string
+): string {
+  const userId =
+    value.trim();
+
+  if (!userId) {
+    throw new Error(
+      'User ID is required.'
+    );
+  }
+
+  return userId;
+}
+
+/* ============================================================
+   TRANSACTION ROLLBACK
+   ============================================================ */
+
+async function rollbackTransaction(
+  client:
+    PoolClient
+) {
+  try {
+    await client.query(
+      'ROLLBACK'
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi] Failed to rollback 2FA transaction:',
+      error
+    );
+  }
+}
+
+/* ============================================================
    STATUS
    ============================================================ */
 
 export async function getTwoFactorStatus(
   userId: string
 ): Promise<TwoFactorStatus> {
+  const normalizedUserId =
+    requireUserId(
+      userId
+    );
+
   const [
     userResult,
     factorResult,
     recoveryCodeCount,
-  ] = await Promise.all([
-    queryControl(
-      `
-        SELECT
-          two_factor_enabled
+  ] =
+    await Promise.all([
+      queryControl(
+        `
+          SELECT
+            two_factor_enabled
 
-        FROM users
+          FROM users
 
-        WHERE id = $1
-          AND deleted_at IS NULL
+          WHERE id = $1
+            AND deleted_at IS NULL
 
-        LIMIT 1
-      `,
-      [userId]
-    ),
+          LIMIT 1
+        `,
+        [
+          normalizedUserId,
+        ]
+      ),
 
-    queryControl(
-      `
-        SELECT
-          COUNT(*)::int AS count
+      queryControl(
+        `
+          SELECT
+            COUNT(*)::int AS count
 
-        FROM user_authenticators
+          FROM user_authenticators
 
-        WHERE user_id = $1
-          AND type = 'totp'
-          AND status = 'active'
-          AND revoked_at IS NULL
-          AND deleted_at IS NULL
-      `,
-      [userId]
-    ),
+          WHERE user_id = $1
+            AND type = 'totp'
+            AND status = 'active'
+            AND revoked_at IS NULL
+            AND deleted_at IS NULL
+        `,
+        [
+          normalizedUserId,
+        ]
+      ),
 
-    countActiveRecoveryCodes(
-      userId
-    ),
-  ]);
+      countActiveRecoveryCodes(
+        normalizedUserId
+      ),
+    ]);
 
   const authenticatorCount =
     Number(
-      factorResult.rows[0]?.count ||
+      factorResult.rows[0]
+        ?.count ||
         0
     );
 
@@ -118,8 +180,10 @@ export async function getTwoFactorStatus(
    Only one unfinished/pending setup should exist for a user.
 
    Existing ACTIVE authenticators are intentionally preserved.
-   This allows SaMi to support multiple authenticators later
-   without destroying an already working 2FA configuration.
+
+   This allows SaMi to support another authenticator later
+   without breaking the authenticator already protecting the
+   account.
    ============================================================ */
 
 export async function createTwoFactorSetup(
@@ -128,16 +192,15 @@ export async function createTwoFactorSetup(
     email: string;
   }
 ): Promise<TwoFactorSetupResult> {
+  const userId =
+    requireUserId(
+      input.userId
+    );
+
   const email =
     input.email
       .trim()
       .toLowerCase();
-
-  if (!input.userId.trim()) {
-    throw new Error(
-      'User ID is required.'
-    );
-  }
 
   if (!email) {
     throw new Error(
@@ -148,14 +211,22 @@ export async function createTwoFactorSetup(
   const secret =
     generateTotpSecret();
 
+  /*
+   * Encrypt before modifying the database.
+   *
+   * If encryption/configuration fails, no pending authenticator
+   * is created.
+   */
   const secretCiphertext =
     encryptSecret(
       secret
     );
 
   /*
-   * Revoke an unfinished setup and create the new pending
-   * authenticator in one database statement.
+   * Revoke the previous unfinished setup and create the new
+   * pending authenticator in one PostgreSQL statement.
+   *
+   * Existing ACTIVE authenticators are not touched.
    */
   const result =
     await queryControl(
@@ -197,10 +268,13 @@ export async function createTwoFactorSetup(
         RETURNING id
       `,
       [
-        input.userId,
+        userId,
         secretCiphertext,
+
         JSON.stringify({
-          issuer: 'SaMi',
+          issuer:
+            'SaMi',
+
           email,
         }),
       ]
@@ -226,7 +300,8 @@ export async function createTwoFactorSetup(
 
     otpAuthUrl:
       createOtpAuthUrl({
-        issuer: 'SaMi',
+        issuer:
+          'SaMi',
 
         accountName:
           email,
@@ -238,6 +313,26 @@ export async function createTwoFactorSetup(
 
 /* ============================================================
    CONFIRM TOTP SETUP
+
+   SECURITY GUARANTEE
+
+   These operations now occur inside ONE transaction:
+
+   1. lock pending authenticator
+   2. verify TOTP
+   3. activate authenticator
+   4. enable users.two_factor_enabled
+   5. replace recovery-code set
+   6. commit
+
+   If recovery-code generation fails, authenticator activation
+   is rolled back.
+
+   If authenticator activation fails, recovery-code changes are
+   rolled back.
+
+   The user cannot be left with newly-enabled 2FA but without
+   the recovery codes that should have been presented to them.
    ============================================================ */
 
 export async function confirmTwoFactorSetup(
@@ -247,119 +342,66 @@ export async function confirmTwoFactorSetup(
     code: string;
   }
 ): Promise<TwoFactorConfirmationResult> {
+  const userId =
+    requireUserId(
+      input.userId
+    );
+
+  const authenticatorId =
+    input.authenticatorId
+      .trim();
+
   const cleanCode =
-    input.code.trim();
+    input.code
+      .trim();
 
   if (
+    !authenticatorId ||
     !/^\d{6}$/.test(
       cleanCode
     )
   ) {
     return {
-      success: false,
-      recoveryCodes: [],
+      success:
+        false,
+
+      recoveryCodes:
+        [],
     };
   }
 
-  /* ==========================================================
-     1. LOAD PENDING AUTHENTICATOR
-     ========================================================== */
+  const pool =
+    getControlPool();
 
-  const result =
-    await queryControl(
-      `
-        SELECT
-          id,
-          secret_ciphertext
+  const client =
+    await pool.connect();
 
-        FROM user_authenticators
-
-        WHERE id = $1
-          AND user_id = $2
-          AND type = 'totp'
-          AND status = 'pending'
-          AND revoked_at IS NULL
-          AND deleted_at IS NULL
-
-        LIMIT 1
-      `,
-      [
-        input.authenticatorId,
-        input.userId,
-      ]
-    );
-
-  const authenticator =
-    result.rows[0];
-
-  if (
-    !authenticator
-      ?.secret_ciphertext
-  ) {
-    return {
-      success: false,
-      recoveryCodes: [],
-    };
-  }
-
-  /* ==========================================================
-     2. VERIFY TOTP
-     ========================================================== */
-
-  let secret:
-    string;
+  let transactionOpen =
+    false;
 
   try {
-    secret =
-      decryptSecret(
-        authenticator
-          .secret_ciphertext
-      );
-  } catch (error) {
-    console.error(
-      '[SaMi] Unable to decrypt pending TOTP authenticator:',
-      error
+    await client.query(
+      'BEGIN'
     );
 
-    return {
-      success: false,
-      recoveryCodes: [],
-    };
-  }
+    transactionOpen =
+      true;
 
-  const valid =
-    verifyTotpCode(
-      secret,
-      cleanCode
-    );
+    /* ========================================================
+       1. LOCK PENDING AUTHENTICATOR
 
-  if (!valid) {
-    return {
-      success: false,
-      recoveryCodes: [],
-    };
-  }
+       FOR UPDATE ensures two concurrent confirmation requests
+       cannot both confirm the same pending factor.
+       ======================================================== */
 
-  /* ==========================================================
-     3. ACTIVATE
+    const result =
+      await client.query(
+        `
+          SELECT
+            id,
+            secret_ciphertext
 
-     The authenticator and users.two_factor_enabled flag are
-     changed in the SAME SQL statement.
-
-     status='pending' in the UPDATE also prevents two concurrent
-     confirmation requests from both succeeding.
-     ========================================================== */
-
-  const activationResult =
-    await queryControl(
-      `
-        WITH activated AS (
-          UPDATE user_authenticators
-
-          SET
-            status = 'active',
-            confirmed_at = NOW(),
-            updated_at = NOW()
+          FROM user_authenticators
 
           WHERE id = $1
             AND user_id = $2
@@ -368,77 +410,260 @@ export async function confirmTwoFactorSetup(
             AND revoked_at IS NULL
             AND deleted_at IS NULL
 
-          RETURNING user_id
-        )
+          LIMIT 1
 
-        UPDATE users
+          FOR UPDATE
+        `,
+        [
+          authenticatorId,
+          userId,
+        ]
+      );
 
-        SET
-          two_factor_enabled = TRUE,
-          two_factor_enabled_at =
-            COALESCE(
-              two_factor_enabled_at,
-              NOW()
-            ),
-          failed_two_factor_attempts = 0,
-          updated_at = NOW()
+    const authenticator =
+      result.rows[0];
 
-        WHERE id = $2
-          AND deleted_at IS NULL
-          AND EXISTS (
-            SELECT 1
-            FROM activated
+    if (
+      !authenticator
+        ?.secret_ciphertext
+    ) {
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      return {
+        success:
+          false,
+
+        recoveryCodes:
+          [],
+      };
+    }
+
+    /* ========================================================
+       2. DECRYPT TOTP SECRET
+       ======================================================== */
+
+    let secret:
+      string;
+
+    try {
+      secret =
+        decryptSecret(
+          authenticator
+            .secret_ciphertext
+        );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi] Unable to decrypt pending TOTP authenticator:',
+        error
+      );
+
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      return {
+        success:
+          false,
+
+        recoveryCodes:
+          [],
+      };
+    }
+
+    /* ========================================================
+       3. VERIFY TOTP CODE
+       ======================================================== */
+
+    const valid =
+      verifyTotpCode(
+        secret,
+        cleanCode
+      );
+
+    if (!valid) {
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      return {
+        success:
+          false,
+
+        recoveryCodes:
+          [],
+      };
+    }
+
+    /* ========================================================
+       4. ACTIVATE AUTHENTICATOR + USER 2FA STATE
+
+       The pending-state condition remains part of the UPDATE
+       even though the row is already locked.
+
+       This provides additional defensive protection against an
+       unexpected state change.
+       ======================================================== */
+
+    const activationResult =
+      await client.query(
+        `
+          WITH activated AS (
+            UPDATE user_authenticators
+
+            SET
+              status = 'active',
+              confirmed_at = NOW(),
+              updated_at = NOW()
+
+            WHERE id = $1
+              AND user_id = $2
+              AND type = 'totp'
+              AND status = 'pending'
+              AND revoked_at IS NULL
+              AND deleted_at IS NULL
+
+            RETURNING user_id
           )
 
-        RETURNING id
-      `,
-      [
-        input.authenticatorId,
-        input.userId,
-      ]
+          UPDATE users
+
+          SET
+            two_factor_enabled = TRUE,
+
+            two_factor_enabled_at =
+              COALESCE(
+                two_factor_enabled_at,
+                NOW()
+              ),
+
+            failed_two_factor_attempts = 0,
+
+            updated_at = NOW()
+
+          WHERE id = $2
+            AND deleted_at IS NULL
+
+            AND EXISTS (
+              SELECT 1
+              FROM activated
+            )
+
+          RETURNING id
+        `,
+        [
+          authenticatorId,
+          userId,
+        ]
+      );
+
+    if (
+      activationResult
+        .rows.length ===
+      0
+    ) {
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      return {
+        success:
+          false,
+
+        recoveryCodes:
+          [],
+      };
+    }
+
+    /* ========================================================
+       5. CREATE FRESH RECOVERY CODES
+
+       IMPORTANT:
+
+       This uses the SAME PoolClient and therefore the SAME
+       PostgreSQL transaction.
+
+       Existing unused recovery codes are replaced.
+
+       This applies both when:
+       - enabling 2FA for the first time
+       - adding another authenticator later
+       ======================================================== */
+
+    const recoveryCodes =
+      await createRecoveryCodesWithClient(
+        client,
+        userId
+      );
+
+    /* ========================================================
+       6. COMMIT
+       ======================================================== */
+
+    await client.query(
+      'COMMIT'
     );
 
-  if (
-    activationResult.rows
-      .length === 0
-  ) {
+    transactionOpen =
+      false;
+
     /*
-     * Usually means another request already consumed/confirmed
-     * this pending authenticator.
+     * Plaintext recovery codes leave the server only through the
+     * caller that explicitly handles successful setup.
+     *
+     * They are never persisted as plaintext.
      */
     return {
-      success: false,
-      recoveryCodes: [],
+      success:
+        true,
+
+      recoveryCodes,
     };
+  } catch (
+    error
+  ) {
+    if (
+      transactionOpen
+    ) {
+      await rollbackTransaction(
+        client
+      );
+
+      transactionOpen =
+        false;
+    }
+
+    throw error;
+  } finally {
+    client.release();
   }
-
-  /* ==========================================================
-     4. RECOVERY CODES
-
-     Recovery codes are shown once to the user after successful
-     authenticator confirmation.
-     ========================================================== */
-
-  const recoveryCodes =
-    await createRecoveryCodes(
-      input.userId
-    );
-
-  return {
-    success: true,
-    recoveryCodes,
-  };
 }
 
 /* ============================================================
    VERIFY USER 2FA CODE
 
    Supports:
+
    - 6-digit TOTP
    - SaMi recovery code
 
-   Existing return contract remains boolean so current login
-   routes are not broken.
+   Existing boolean return contract is intentionally preserved
+   so the current login/2FA route remains compatible.
    ============================================================ */
 
 export async function verifyUserTwoFactorCode(
@@ -447,8 +672,14 @@ export async function verifyUserTwoFactorCode(
     code: string;
   }
 ): Promise<boolean> {
+  const userId =
+    requireUserId(
+      input.userId
+    );
+
   const cleanCode =
-    input.code.trim();
+    input.code
+      .trim();
 
   if (!cleanCode) {
     return false;
@@ -460,8 +691,10 @@ export async function verifyUserTwoFactorCode(
      TOTP input must be exactly six digits.
 
      Do not treat strings such as:
+
        12-34-56
        abc123456
+
      as authenticator codes.
      ========================================================== */
 
@@ -490,7 +723,7 @@ export async function verifyUserTwoFactorCode(
             NULLS LAST
         `,
         [
-          input.userId,
+          userId,
         ]
       );
 
@@ -512,10 +745,13 @@ export async function verifyUserTwoFactorCode(
           decryptSecret(
             row.secret_ciphertext
           );
-      } catch (error) {
+      } catch (
+        error
+      ) {
         /*
          * One damaged authenticator must not prevent another
-         * valid authenticator or recovery code from working.
+         * working authenticator or recovery code from being
+         * accepted.
          */
         console.error(
           '[SaMi] Unable to decrypt an active TOTP authenticator:',
@@ -565,6 +801,7 @@ export async function verifyUserTwoFactorCode(
 
           WHERE id = $2
             AND deleted_at IS NULL
+
             AND EXISTS (
               SELECT 1
               FROM used_authenticator
@@ -572,7 +809,7 @@ export async function verifyUserTwoFactorCode(
         `,
         [
           row.id,
-          input.userId,
+          userId,
         ]
       );
 
@@ -583,13 +820,13 @@ export async function verifyUserTwoFactorCode(
   /* ==========================================================
      2. RECOVERY CODE
 
-     Recovery-code normalization/hashing/one-time consumption
-     remains owned by lib/auth/recovery-codes.
+     Recovery-code normalization, hashing and one-time
+     consumption remain owned by recovery-codes.ts.
      ========================================================== */
 
   const recoveryValid =
     await consumeRecoveryCode(
-      input.userId,
+      userId,
       cleanCode
     );
 
@@ -608,7 +845,7 @@ export async function verifyUserTwoFactorCode(
           AND deleted_at IS NULL
       `,
       [
-        input.userId,
+        userId,
       ]
     );
 
@@ -618,9 +855,10 @@ export async function verifyUserTwoFactorCode(
   /* ==========================================================
      3. FAILED ATTEMPT
 
-     COALESCE prevents a legacy/null counter from remaining NULL.
-     The login/2FA route remains responsible for enforcing the
-     actual challenge lock/rate-limit policy.
+     The login/2FA route remains responsible for enforcement of
+     challenge-level rate limiting and blocking.
+
+     This counter records the user-level failure state.
      ========================================================== */
 
   await queryControl(
@@ -640,11 +878,179 @@ export async function verifyUserTwoFactorCode(
         AND deleted_at IS NULL
     `,
     [
-      input.userId,
+      userId,
     ]
   );
 
   return false;
+}
+
+/* ============================================================
+   REGENERATE RECOVERY CODES
+
+   Used by the authenticated Security settings flow.
+
+   Requirements:
+
+   - user must exist
+   - 2FA must currently be enabled
+   - at least one active TOTP authenticator must exist
+
+   A fresh set invalidates all still-unused previous codes.
+   ============================================================ */
+
+export async function regenerateTwoFactorRecoveryCodes(
+  userId: string
+): Promise<string[]> {
+  const normalizedUserId =
+    requireUserId(
+      userId
+    );
+
+  const pool =
+    getControlPool();
+
+  const client =
+    await pool.connect();
+
+  let transactionOpen =
+    false;
+
+  try {
+    await client.query(
+      'BEGIN'
+    );
+
+    transactionOpen =
+      true;
+
+    /* ========================================================
+       LOCK USER SECURITY STATE
+       ======================================================== */
+
+    const userResult =
+      await client.query(
+        `
+          SELECT
+            id,
+            two_factor_enabled
+
+          FROM users
+
+          WHERE id = $1
+            AND deleted_at IS NULL
+
+          LIMIT 1
+
+          FOR UPDATE
+        `,
+        [
+          normalizedUserId,
+        ]
+      );
+
+    const user =
+      userResult.rows[0];
+
+    if (
+      !user ||
+      user.two_factor_enabled !==
+        true
+    ) {
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      throw new Error(
+        'Two-factor authentication is not enabled.'
+      );
+    }
+
+    /* ========================================================
+       REQUIRE ACTIVE AUTHENTICATOR
+       ======================================================== */
+
+    const authenticatorResult =
+      await client.query(
+        `
+          SELECT
+            id
+
+          FROM user_authenticators
+
+          WHERE user_id = $1
+            AND type = 'totp'
+            AND status = 'active'
+            AND revoked_at IS NULL
+            AND deleted_at IS NULL
+
+          ORDER BY
+            confirmed_at DESC
+            NULLS LAST
+
+          LIMIT 1
+        `,
+        [
+          normalizedUserId,
+        ]
+      );
+
+    if (
+      authenticatorResult
+        .rows.length ===
+      0
+    ) {
+      await client.query(
+        'ROLLBACK'
+      );
+
+      transactionOpen =
+        false;
+
+      throw new Error(
+        'No active authenticator is available.'
+      );
+    }
+
+    /* ========================================================
+       REPLACE RECOVERY CODES
+       ======================================================== */
+
+    const recoveryCodes =
+      await createRecoveryCodesWithClient(
+        client,
+        normalizedUserId
+      );
+
+    await client.query(
+      'COMMIT'
+    );
+
+    transactionOpen =
+      false;
+
+    return recoveryCodes;
+  } catch (
+    error
+  ) {
+    if (
+      transactionOpen
+    ) {
+      await rollbackTransaction(
+        client
+      );
+
+      transactionOpen =
+        false;
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 /* ============================================================
@@ -654,15 +1060,20 @@ export async function verifyUserTwoFactorCode(
 export async function disableTwoFactor(
   userId: string
 ): Promise<void> {
+  const normalizedUserId =
+    requireUserId(
+      userId
+    );
+
   /*
    * TOTP authenticators, recovery codes and the user-level 2FA
-   * state are updated together in one database statement.
+   * state are changed by ONE PostgreSQL statement.
    *
    * We intentionally restrict authenticators to type='totp'.
-   * A future SaMi authenticator type must not accidentally be
-   * revoked merely because TOTP 2FA was disabled.
+   *
+   * Future authenticator types must not accidentally be revoked
+   * merely because TOTP 2FA was disabled.
    */
-
   await queryControl(
     `
       WITH revoked_authenticators AS (
@@ -670,11 +1081,13 @@ export async function disableTwoFactor(
 
         SET
           status = 'revoked',
+
           revoked_at =
             COALESCE(
               revoked_at,
               NOW()
             ),
+
           updated_at = NOW()
 
         WHERE user_id = $1
@@ -710,7 +1123,7 @@ export async function disableTwoFactor(
         AND deleted_at IS NULL
     `,
     [
-      userId,
+      normalizedUserId,
     ]
   );
 }

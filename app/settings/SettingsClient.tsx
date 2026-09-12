@@ -12,7 +12,6 @@ import {
   CreditCard,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
   LockKeyhole,
   Moon,
@@ -35,6 +34,7 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 import MyAccountSettings from './components/MyAccountSettings';
 import SessionsSettings from './components/SessionsSettings';
+import TwoFactorSettings from './components/TwoFactorSettings';
 
 import {
   getAuthOverlayMessage,
@@ -111,6 +111,14 @@ type Props = {
   membership: MembershipData;
   subscription: SubscriptionData;
   modules: ModuleData[];
+
+  /*
+   * Kept for compatibility with the current settings page
+   * server contract.
+   *
+   * SessionsSettings now obtains active sessions from its
+   * dedicated live API rather than this one page-load value.
+   */
   session: SessionData;
 };
 
@@ -412,7 +420,11 @@ function applyThemeToDocument(
       theme
     );
   } catch {
-    // Local cache is optional.
+    /*
+     * Local theme cache is optional.
+     *
+     * The database preference remains authoritative.
+     */
   }
 
   return dark;
@@ -428,9 +440,12 @@ async function readPreferencesResponse(
     ) as PreferencesResponse;
   } catch {
     return {
-      success: false,
+      success:
+        false,
+
       code:
         'INVALID_SERVER_RESPONSE',
+
       error:
         'SaMi returned an invalid response.',
     };
@@ -614,12 +629,6 @@ export default function SettingsClient({
 
   /* ==========================================================
      INITIAL LOCAL THEME
-
-     This gives immediate appearance before the preferences API
-     finishes loading.
-
-     The saved server preference becomes authoritative once
-     loaded below.
      ========================================================== */
 
   useEffect(
@@ -668,13 +677,6 @@ export default function SettingsClient({
 
   /* ==========================================================
      LOAD SAVED USER PREFERENCES
-
-     This makes the database preference authoritative.
-
-     Therefore:
-     - a different browser/device receives the user's theme
-     - session timestamps use their timezone
-     - billing dates use their date/time format
      ========================================================== */
 
   useEffect(
@@ -738,10 +740,9 @@ export default function SettingsClient({
           );
         } catch {
           /*
-           * Settings remain usable with the safe defaults.
+           * Settings remain usable with safe formatting defaults.
            *
-           * The user can still open My Account, where a proper
-           * account-loading error is displayed if needed.
+           * My Account handles its own account-loading errors.
            */
         }
       }
@@ -758,9 +759,6 @@ export default function SettingsClient({
 
   /* ==========================================================
      SYSTEM THEME CHANGES
-
-     If theme is "system", SaMi follows the operating system
-     while the user is signed in.
      ========================================================== */
 
   useEffect(
@@ -812,16 +810,6 @@ export default function SettingsClient({
 
   /* ==========================================================
      TOP BAR THEME TOGGLE
-
-     This is now a REAL account preference.
-
-     Previously the button only changed localStorage.
-
-     It now:
-     1. changes the UI immediately
-     2. updates local preference state
-     3. persists the change to user_preferences
-     4. rolls back if persistence fails
      ========================================================== */
 
   async function toggleTheme() {
@@ -846,6 +834,7 @@ export default function SettingsClient({
     const optimisticPreferences:
       UserDisplayPreferences = {
       ...displayPreferences,
+
       theme:
         nextTheme,
     };
@@ -1549,7 +1538,7 @@ export default function SettingsClient({
                 )}
 
                 {/* =============================================
-                    SESSIONS
+                    SESSIONS & DEVICES
                     ============================================= */}
 
                 {active ===
@@ -1699,178 +1688,226 @@ function SecuritySection({
     );
 
   return (
-    <div className="grid max-w-5xl gap-6 xl:grid-cols-[minmax(0,560px)_1fr]">
+    <div className="max-w-5xl space-y-8">
 
-      {/* PASSWORD FORM */}
+      {/* ======================================================
+          PASSWORD
+          ====================================================== */}
 
-      <form
-        onSubmit={
-          onSubmit
-        }
-        className="min-w-0"
-      >
-        <div className="space-y-4">
+      <section>
 
-          <PasswordField
-            label="Current password"
-            value={
-              currentPassword
-            }
-            onChange={
-              setCurrentPassword
-            }
-            show={
-              showPasswords
-            }
-            autoComplete="current-password"
-          />
+        <div className="mb-5">
 
-          <PasswordField
-            label="New password"
-            value={
-              newPassword
-            }
-            onChange={
-              setNewPassword
-            }
-            show={
-              showPasswords
-            }
-            autoComplete="new-password"
-          />
+          <div className="flex items-center gap-2">
 
-          <PasswordField
-            label="Confirm new password"
-            value={
-              confirmPassword
-            }
-            onChange={
-              setConfirmPassword
-            }
-            show={
-              showPasswords
-            }
-            autoComplete="new-password"
-          />
-        </div>
+            <LockKeyhole className="h-4 w-4 text-blue-600 dark:text-blue-400" />
 
-        <button
-          type="button"
-          onClick={() =>
-            setShowPasswords(
-              (
-                current
-              ) =>
-                !current
-            )
-          }
-          className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-        >
-          {showPasswords ? (
-            <EyeOff className="h-4 w-4" />
-          ) : (
-            <Eye className="h-4 w-4" />
-          )}
-
-          {showPasswords
-            ? 'Hide passwords'
-            : 'Show passwords'}
-        </button>
-
-        <button
-          type="submit"
-          disabled={
-            submitting
-          }
-          className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-
-              Changing password...
-            </>
-          ) : (
-            <>
-              <ShieldCheck className="h-4 w-4" />
-
-              Change password
-            </>
-          )}
-        </button>
-      </form>
-
-      {/* PASSWORD RULES */}
-
-      <div className="space-y-4">
-
-        <div className="rounded-[20px] border border-slate-200 p-4 dark:border-slate-800">
-
-          <p className="text-xs font-black">
-            Password requirements
-          </p>
-
-          <div className="mt-4 grid gap-2">
-
-            <PasswordRule
-              valid={
-                checks.length
-              }
-              label="At least 8 characters"
-            />
-
-            <PasswordRule
-              valid={
-                checks.uppercase
-              }
-              label="Uppercase letter"
-            />
-
-            <PasswordRule
-              valid={
-                checks.lowercase
-              }
-              label="Lowercase letter"
-            />
-
-            <PasswordRule
-              valid={
-                checks.number
-              }
-              label="Number"
-            />
-
-            <PasswordRule
-              valid={
-                passwordsMatch
-              }
-              label="Passwords match"
-            />
+            <h2 className="text-sm font-black text-slate-950 dark:text-white">
+              Password
+            </h2>
           </div>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            Change the password used to sign in to your SaMi account.
+          </p>
         </div>
 
-        <div className="rounded-[20px] border border-blue-200 bg-blue-50/70 p-4 dark:border-blue-900/60 dark:bg-blue-950/25">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,560px)_1fr]">
 
-          <div className="flex items-start gap-3">
+          {/* PASSWORD FORM */}
 
-            <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+          <form
+            onSubmit={
+              onSubmit
+            }
+            className="min-w-0"
+          >
+            <div className="space-y-4">
 
-            <div>
+              <PasswordField
+                label="Current password"
+                value={
+                  currentPassword
+                }
+                onChange={
+                  setCurrentPassword
+                }
+                show={
+                  showPasswords
+                }
+                autoComplete="current-password"
+              />
 
-              <p className="text-xs font-black text-blue-900 dark:text-blue-200">
-                Two-factor authentication
+              <PasswordField
+                label="New password"
+                value={
+                  newPassword
+                }
+                onChange={
+                  setNewPassword
+                }
+                show={
+                  showPasswords
+                }
+                autoComplete="new-password"
+              />
+
+              <PasswordField
+                label="Confirm new password"
+                value={
+                  confirmPassword
+                }
+                onChange={
+                  setConfirmPassword
+                }
+                show={
+                  showPasswords
+                }
+                autoComplete="new-password"
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                setShowPasswords(
+                  (
+                    current
+                  ) =>
+                    !current
+                )
+              }
+              className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
+            >
+              {showPasswords ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+
+              {showPasswords
+                ? 'Hide passwords'
+                : 'Show passwords'}
+            </button>
+
+            <button
+              type="submit"
+              disabled={
+                submitting
+              }
+              className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+
+                  Changing password...
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="h-4 w-4" />
+
+                  Change password
+                </>
+              )}
+            </button>
+          </form>
+
+          {/* PASSWORD REQUIREMENTS */}
+
+          <div>
+
+            <div className="rounded-[20px] border border-slate-200 p-4 dark:border-slate-800">
+
+              <p className="text-xs font-black">
+                Password requirements
               </p>
 
-              <p className="mt-1 text-[10px] leading-4 text-blue-700 dark:text-blue-300">
-                SaMi supports two-factor
-                verification during sign-in,
-                including authenticator codes
-                and recovery codes.
+              <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                Your new password must satisfy all of these requirements.
+              </p>
+
+              <div className="mt-4 grid gap-2">
+
+                <PasswordRule
+                  valid={
+                    checks.length
+                  }
+                  label="At least 8 characters"
+                />
+
+                <PasswordRule
+                  valid={
+                    checks.uppercase
+                  }
+                  label="Uppercase letter"
+                />
+
+                <PasswordRule
+                  valid={
+                    checks.lowercase
+                  }
+                  label="Lowercase letter"
+                />
+
+                <PasswordRule
+                  valid={
+                    checks.number
+                  }
+                  label="Number"
+                />
+
+                <PasswordRule
+                  valid={
+                    passwordsMatch
+                  }
+                  label="Passwords match"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-start gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+
+              <p className="text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+                SaMi verifies your current password before allowing a password change. Password-reset and other security-sensitive flows can independently revoke sessions when required.
               </p>
             </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* ======================================================
+          DIVIDER
+          ====================================================== */}
+
+      <div className="border-t border-slate-200 dark:border-slate-800" />
+
+      {/* ======================================================
+          TWO-FACTOR AUTHENTICATION
+          ====================================================== */}
+
+      <section>
+
+        <div className="mb-5">
+
+          <div className="flex items-center gap-2">
+
+            <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+
+            <h2 className="text-sm font-black text-slate-950 dark:text-white">
+              Account verification
+            </h2>
+          </div>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            Add a second verification step to protect your account even if your password is compromised.
+          </p>
+        </div>
+
+        <TwoFactorSettings />
+      </section>
     </div>
   );
 }

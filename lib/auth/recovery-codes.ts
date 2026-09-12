@@ -1,4 +1,10 @@
+import 'server-only';
+
 import crypto from 'crypto';
+
+import type {
+  PoolClient,
+} from 'pg';
 
 import {
   queryControl,
@@ -32,6 +38,25 @@ const RECOVERY_CODE_NORMALIZED_LENGTH =
 
 const MIN_PEPPER_LENGTH =
   32;
+
+/* ============================================================
+   TYPES
+   ============================================================ */
+
+type RecoveryCodeQueryResult = {
+  rows: Array<
+    Record<
+      string,
+      unknown
+    >
+  >;
+};
+
+type RecoveryCodeQueryExecutor =
+  (
+    text: string,
+    values?: unknown[]
+  ) => Promise<RecoveryCodeQueryResult>;
 
 /* ============================================================
    CONFIGURATION
@@ -91,6 +116,29 @@ function requireUserId(
   }
 
   return userId;
+}
+
+/* ============================================================
+   COUNT
+   ============================================================ */
+
+function requireRecoveryCodeCount(
+  value: number
+): number {
+  if (
+    !Number.isInteger(
+      value
+    ) ||
+    value < 1 ||
+    value >
+      MAX_RECOVERY_CODE_COUNT
+  ) {
+    throw new Error(
+      `Recovery code count must be between 1 and ${MAX_RECOVERY_CODE_COUNT}.`
+    );
+  }
+
+  return value;
 }
 
 /* ============================================================
@@ -183,10 +231,6 @@ function hashRecoveryCode(
  * )
  *
  * New recovery codes are NOT created using this format.
- *
- * This allows an existing recovery code created with the same
- * AUTH_RECOVERY_CODE_PEPPER to remain usable while SaMi moves
- * to HMAC-SHA256.
  */
 function hashLegacyRecoveryCode(
   code: string
@@ -247,52 +291,14 @@ function createPlainRecoveryCode():
 }
 
 /* ============================================================
-   CREATE / REGENERATE RECOVERY CODES
+   CREATE RECOVERY-CODE MATERIAL
    ============================================================ */
 
-/**
- * Creates a fresh recovery-code set.
- *
- * IMPORTANT:
- *
- * Existing unused codes are revoked before the new set becomes
- * active.
- *
- * Revocation + insertion happen in ONE PostgreSQL statement so
- * SaMi does not end up with:
- *
- *   old codes revoked
- *   +
- *   new codes missing
- *
- * if the insert fails.
- */
-export async function createRecoveryCodes(
-  userId: string,
-  count =
-    DEFAULT_RECOVERY_CODE_COUNT
-): Promise<string[]> {
-  const normalizedUserId =
-    requireUserId(
-      userId
-    );
-
-  if (
-    !Number.isInteger(
-      count
-    ) ||
-    count < 1 ||
-    count >
-      MAX_RECOVERY_CODE_COUNT
-  ) {
-    throw new Error(
-      `Recovery code count must be between 1 and ${MAX_RECOVERY_CODE_COUNT}.`
-    );
-  }
-
+function generateRecoveryCodeSet(
+  count: number
+) {
   /*
-   * Fail before changing the database if the security
-   * configuration is incomplete.
+   * Validate the pepper before generating or modifying anything.
    */
   getRecoveryCodePepper();
 
@@ -308,14 +314,65 @@ export async function createRecoveryCodes(
 
   const codeHashes =
     codes.map(
-      (code) =>
+      (
+        code
+      ) =>
         hashRecoveryCode(
           code
         )
     );
 
+  return {
+    codes,
+    codeHashes,
+  };
+}
+
+/* ============================================================
+   INSERT / REPLACE USING EXECUTOR
+   ============================================================ */
+
+/**
+ * Internal implementation shared by:
+ *
+ * - the normal standalone recovery-code generator
+ * - an existing PostgreSQL transaction
+ *
+ * The SQL statement itself remains atomic:
+ *
+ * old unused codes are revoked and the complete new set is
+ * inserted by one statement.
+ */
+async function createRecoveryCodesUsing(
+  execute:
+    RecoveryCodeQueryExecutor,
+
+  userId:
+    string,
+
+  count:
+    number
+): Promise<string[]> {
+  const normalizedUserId =
+    requireUserId(
+      userId
+    );
+
+  const normalizedCount =
+    requireRecoveryCodeCount(
+      count
+    );
+
+  const {
+    codes,
+    codeHashes,
+  } =
+    generateRecoveryCodeSet(
+      normalizedCount
+    );
+
   const result =
-    await queryControl(
+    await execute(
       `
         WITH revoked_codes AS (
           UPDATE user_recovery_codes
@@ -355,7 +412,7 @@ export async function createRecoveryCodes(
 
   if (
     result.rows.length !==
-    count
+    normalizedCount
   ) {
     throw new Error(
       'Recovery codes were not created completely.'
@@ -363,12 +420,109 @@ export async function createRecoveryCodes(
   }
 
   /*
-   * These plaintext codes are intentionally returned exactly
-   * once so the UI can ask the user to save them.
+   * Plaintext recovery codes are returned exactly once.
    *
-   * SaMi stores only their hashes.
+   * Only hashes are persisted.
    */
   return codes;
+}
+
+/* ============================================================
+   CREATE / REGENERATE RECOVERY CODES
+   ============================================================ */
+
+/**
+ * Standalone recovery-code generation.
+ *
+ * Existing unused codes are replaced atomically by the new
+ * recovery-code set.
+ */
+export async function createRecoveryCodes(
+  userId: string,
+  count =
+    DEFAULT_RECOVERY_CODE_COUNT
+): Promise<string[]> {
+  return createRecoveryCodesUsing(
+    async (
+      text,
+      values
+    ) => {
+      const result =
+        await queryControl(
+          text,
+          values
+        );
+
+      return {
+        rows:
+          result.rows,
+      };
+    },
+
+    userId,
+    count
+  );
+}
+
+/* ============================================================
+   CREATE WITH EXISTING DATABASE TRANSACTION
+   ============================================================ */
+
+/**
+ * Creates/replaces recovery codes using an existing PostgreSQL
+ * PoolClient.
+ *
+ * IMPORTANT:
+ *
+ * This function DOES NOT:
+ *
+ * - BEGIN
+ * - COMMIT
+ * - ROLLBACK
+ * - release the client
+ *
+ * The caller owns the surrounding transaction.
+ *
+ * This is used by the 2FA confirmation flow so:
+ *
+ * authenticator activation
+ * +
+ * users.two_factor_enabled
+ * +
+ * recovery-code creation
+ *
+ * succeed or fail together.
+ */
+export async function createRecoveryCodesWithClient(
+  client:
+    PoolClient,
+
+  userId:
+    string,
+
+  count =
+    DEFAULT_RECOVERY_CODE_COUNT
+): Promise<string[]> {
+  return createRecoveryCodesUsing(
+    async (
+      text,
+      values
+    ) => {
+      const result =
+        await client.query(
+          text,
+          values
+        );
+
+      return {
+        rows:
+          result.rows,
+      };
+    },
+
+    userId,
+    count
+  );
 }
 
 /* ============================================================
