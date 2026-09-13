@@ -1,33 +1,127 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+
+import {
+  useRouter,
+} from 'next/navigation';
+
 import {
   ArrowLeft,
   ArrowRight,
-  CheckCircle2,
   KeyRound,
   Loader2,
   LockKeyhole,
+  Mail,
   Moon,
+  RefreshCw,
   ShieldCheck,
   Smartphone,
   Sun,
 } from 'lucide-react';
+
 import {
   type FormEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+
 import SaMiOverlay from '@/app/components/SaMiOverlay';
-import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
+
+import {
+  getAuthOverlayMessage,
+} from '@/lib/auth/auth-ui-messages';
 
 /* ============================================================
-   CONSTANTS
+   TYPES
+   ============================================================ */
+
+type PrimaryMethod =
+  | 'authenticator'
+  | 'email';
+
+type VerificationMode =
+  | PrimaryMethod
+  | 'recovery';
+
+type VerificationState = {
+  methods:
+    PrimaryMethod[];
+
+  preferredMethod:
+    PrimaryMethod | null;
+
+  maskedEmail:
+    string | null;
+
+  recoveryAvailable:
+    boolean;
+};
+
+type ApiResponse = {
+  success?:
+    boolean;
+
+  code?:
+    string;
+
+  error?:
+    string;
+
+  message?:
+    string;
+
+  next?:
+    string;
+
+  retryAfterSeconds?:
+    number | null;
+
+  lockedUntil?:
+    string | null;
+
+  attemptsRemaining?:
+    number | null;
+
+  verification?:
+    Partial<
+      VerificationState
+    >;
+
+  maskedEmail?:
+    string | null;
+
+  expiresAt?:
+    string | null;
+
+  expiresInSeconds?:
+    number | null;
+
+  resendCooldownSeconds?:
+    number | null;
+
+  emailVerification?: {
+    maskedEmail?:
+      string | null;
+
+    expiresAt?:
+      string | null;
+
+    expiresInSeconds?:
+      number | null;
+
+    resendCooldownSeconds?:
+      number | null;
+  };
+};
+
+/* ============================================================
+   STORAGE
    ============================================================ */
 
 const TWO_FACTOR_EMAIL_KEY =
@@ -42,59 +136,98 @@ const TWO_FACTOR_REMEMBER_KEY =
 const TWO_FACTOR_NEXT_KEY =
   'sami_2fa_next';
 
+const TWO_FACTOR_VERIFICATION_KEY =
+  'sami_2fa_verification';
+
 const THEME_STORAGE_KEY =
   'sami_theme';
+
+/* ============================================================
+   ENDPOINTS
+   ============================================================ */
 
 const TWO_FACTOR_ENDPOINT =
   '/api/auth/login/2fa';
 
-/* ============================================================
-   TYPES
-   ============================================================ */
-
-type VerificationMode =
-  | 'authenticator'
-  | 'recovery';
-
-type ResponseData = {
-  success?: boolean;
-  code?: string;
-  error?: string;
-  message?: string;
-  next?: string;
-
-  retryAfterSeconds?: number | null;
-  lockedUntil?: string | null;
-};
+const EMAIL_SEND_ENDPOINT =
+  '/api/auth/login/2fa/email/send';
 
 /* ============================================================
-   HELPERS
+   DEFAULT VERIFICATION
+
+   This keeps compatibility with an older login client that may
+   not yet store the complete verification object.
    ============================================================ */
 
-function cleanAuthenticatorCode(
-  value: string
+const DEFAULT_VERIFICATION:
+  VerificationState = {
+    methods: [
+      'authenticator',
+    ],
+
+    preferredMethod:
+      'authenticator',
+
+    maskedEmail:
+      null,
+
+    recoveryAvailable:
+      true,
+  };
+
+/* ============================================================
+   CODE NORMALIZATION
+   ============================================================ */
+
+function cleanSixDigitCode(
+  value:
+    string
 ) {
   return value
-    .replace(/\D/g, '')
-    .slice(0, 6);
+    .replace(
+      /\D/g,
+      ''
+    )
+    .slice(
+      0,
+      6
+    );
 }
 
 function cleanRecoveryCode(
-  value: string
+  value:
+    string
 ) {
   return value
-    .replace(/[\r\n\t]/g, '')
-    .slice(0, 32);
+    .replace(
+      /[\r\n\t]/g,
+      ''
+    )
+    .slice(
+      0,
+      64
+    );
 }
 
+/* ============================================================
+   SAFE REDIRECT
+   ============================================================ */
+
 function safeNextPath(
-  value?: string | null
+  value?:
+    string | null
 ) {
   if (
     !value ||
-    !value.startsWith('/') ||
-    value.startsWith('//') ||
-    value.startsWith('/api/')
+    !value.startsWith(
+      '/'
+    ) ||
+    value.startsWith(
+      '//'
+    ) ||
+    value.startsWith(
+      '/api/'
+    )
   ) {
     return '/dashboard';
   }
@@ -110,38 +243,114 @@ function safeNextPath(
   return value;
 }
 
-function maskEmail(
-  value: string
-) {
-  const clean =
-    value.trim();
+/* ============================================================
+   VERIFICATION STATE
+   ============================================================ */
 
-  const at =
-    clean.indexOf('@');
-
-  if (at <= 1) {
-    return clean;
+function parseVerificationState(
+  value:
+    string | null
+): VerificationState {
+  if (
+    !value
+  ) {
+    return (
+      DEFAULT_VERIFICATION
+    );
   }
 
-  const local =
-    clean.slice(0, at);
+  try {
+    const parsed =
+      JSON.parse(
+        value
+      ) as Partial<
+        VerificationState
+      >;
 
-  const domain =
-    clean.slice(at);
-
-  return `${local.slice(
-    0,
-    Math.min(2, local.length)
-  )}${'•'.repeat(
-    Math.max(
-      2,
-      Math.min(
-        local.length - 2,
-        6
+    const methods =
+      Array.isArray(
+        parsed.methods
       )
-    )
-  )}${domain}`;
+        ? parsed.methods.filter(
+            (
+              method
+            ): method is
+              PrimaryMethod =>
+              method ===
+                'authenticator' ||
+              method ===
+                'email'
+          )
+        : [];
+
+    const preferredMethod =
+      parsed.preferredMethod ===
+        'authenticator' ||
+      parsed.preferredMethod ===
+        'email'
+        ? parsed.preferredMethod
+        : null;
+
+    return {
+      methods,
+
+      preferredMethod,
+
+      maskedEmail:
+        typeof parsed.maskedEmail ===
+        'string'
+          ? parsed.maskedEmail
+          : null,
+
+      recoveryAvailable:
+        parsed.recoveryAvailable ===
+        true,
+    };
+  } catch {
+    return (
+      DEFAULT_VERIFICATION
+    );
+  }
 }
+
+function chooseInitialMode(
+  verification:
+    VerificationState
+): VerificationMode {
+  if (
+    verification.preferredMethod &&
+    verification.methods.includes(
+      verification.preferredMethod
+    )
+  ) {
+    return (
+      verification
+        .preferredMethod
+    );
+  }
+
+  if (
+    verification.methods.includes(
+      'authenticator'
+    )
+  ) {
+    return 'authenticator';
+  }
+
+  if (
+    verification.methods.includes(
+      'email'
+    )
+  ) {
+    return 'email';
+  }
+
+  return 'recovery';
+}
+
+/* ============================================================
+   STORAGE CLEANUP
+   ============================================================ */
 
 function clearChallengeStorage() {
   try {
@@ -160,9 +369,46 @@ function clearChallengeStorage() {
     sessionStorage.removeItem(
       TWO_FACTOR_NEXT_KEY
     );
+
+    sessionStorage.removeItem(
+      TWO_FACTOR_VERIFICATION_KEY
+    );
   } catch {
-    // Temporary auth state may already be unavailable.
+    // Temporary authentication storage may be unavailable.
   }
+}
+
+/* ============================================================
+   TIME
+   ============================================================ */
+
+function formatSeconds(
+  seconds:
+    number
+) {
+  const minutes =
+    Math.floor(
+      seconds /
+        60
+    );
+
+  const remainingSeconds =
+    seconds %
+    60;
+
+  if (
+    minutes >
+    0
+  ) {
+    return `${minutes}:${String(
+      remainingSeconds
+    ).padStart(
+      2,
+      '0'
+    )}`;
+  }
+
+  return `${remainingSeconds}s`;
 }
 
 /* ============================================================
@@ -173,20 +419,31 @@ export default function TwoFactorLoginClient() {
   const router =
     useRouter();
 
+  const automaticEmailStarted =
+    useRef(
+      false
+    );
+
   const [
     email,
     setEmail,
-  ] = useState('');
+  ] = useState(
+    ''
+  );
 
   const [
     challengeToken,
     setChallengeToken,
-  ] = useState('');
+  ] = useState(
+    ''
+  );
 
   const [
     rememberMe,
     setRememberMe,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
   const [
     intendedNext,
@@ -196,38 +453,80 @@ export default function TwoFactorLoginClient() {
   );
 
   const [
+    verification,
+    setVerification,
+  ] = useState<
+    VerificationState
+  >(
+    DEFAULT_VERIFICATION
+  );
+
+  const [
     mode,
     setMode,
-  ] = useState<VerificationMode>(
+  ] = useState<
+    VerificationMode
+  >(
     'authenticator'
   );
 
   const [
     code,
     setCode,
-  ] = useState('');
+  ] = useState(
+    ''
+  );
 
   const [
     codeError,
     setCodeError,
   ] = useState<
     string | null
-  >(null);
+  >(
+    null
+  );
 
   const [
     submitting,
     setSubmitting,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
+
+  const [
+    sendingEmail,
+    setSendingEmail,
+  ] = useState(
+    false
+  );
+
+  const [
+    emailCodeSent,
+    setEmailCodeSent,
+  ] = useState(
+    false
+  );
+
+  const [
+    resendSeconds,
+    setResendSeconds,
+  ] = useState(
+    0
+  );
 
   const [
     darkMode,
     setDarkMode,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
   const [
     ready,
     setReady,
-  ] = useState(false);
+  ] = useState(
+    false
+  );
 
   const [
     overlay,
@@ -236,182 +535,705 @@ export default function TwoFactorLoginClient() {
     ReturnType<
       typeof getAuthOverlayMessage
     > | null
-  >(null);
+  >(
+    null
+  );
 
   /* ==========================================================
      THEME
      ========================================================== */
 
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        stored === 'dark' ||
-        (!stored &&
-          systemDark);
-
-      setDarkMode(
-        useDark
-      );
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Page remains usable.
-    }
-  }, []);
-
-  const toggleTheme =
-    useCallback(() => {
-      setDarkMode(
-        (current) => {
-          const next =
-            !current;
-
-          document.documentElement.classList.toggle(
-            'dark',
-            next
+  useEffect(
+    () => {
+      try {
+        const stored =
+          localStorage.getItem(
+            THEME_STORAGE_KEY
           );
 
-          try {
-            localStorage.setItem(
-              THEME_STORAGE_KEY,
-              next
-                ? 'dark'
-                : 'light'
-            );
-          } catch {
-            // Ignore theme persistence failure.
-          }
+        const systemDark =
+          window.matchMedia?.(
+            '(prefers-color-scheme: dark)'
+          ).matches ??
+          false;
 
-          return next;
-        }
-      );
-    }, []);
+        const useDark =
+          stored ===
+            'dark' ||
+          (
+            !stored &&
+            systemDark
+          );
+
+        setDarkMode(
+          useDark
+        );
+
+        document.documentElement.classList.toggle(
+          'dark',
+          useDark
+        );
+      } catch {
+        // The page remains usable without stored theme data.
+      }
+    },
+    []
+  );
+
+  const toggleTheme =
+    useCallback(
+      () => {
+        setDarkMode(
+          (
+            current
+          ) => {
+            const next =
+              !current;
+
+            document.documentElement.classList.toggle(
+              'dark',
+              next
+            );
+
+            try {
+              localStorage.setItem(
+                THEME_STORAGE_KEY,
+                next
+                  ? 'dark'
+                  : 'light'
+              );
+            } catch {
+              // Ignore theme persistence failure.
+            }
+
+            return next;
+          }
+        );
+      },
+      []
+    );
 
   /* ==========================================================
      RESTORE LOGIN CHALLENGE
      ========================================================== */
 
-  useEffect(() => {
-    try {
-      const storedEmail =
-        sessionStorage.getItem(
-          TWO_FACTOR_EMAIL_KEY
-        ) || '';
-
-      const storedChallenge =
-        sessionStorage.getItem(
-          TWO_FACTOR_CHALLENGE_KEY
-        ) || '';
-
-      const storedRemember =
-        sessionStorage.getItem(
-          TWO_FACTOR_REMEMBER_KEY
-        ) === 'true';
-
-      const storedNext =
-        safeNextPath(
+  useEffect(
+    () => {
+      try {
+        const storedEmail =
           sessionStorage.getItem(
-            TWO_FACTOR_NEXT_KEY
+            TWO_FACTOR_EMAIL_KEY
+          ) ||
+          '';
+
+        const storedChallenge =
+          sessionStorage.getItem(
+            TWO_FACTOR_CHALLENGE_KEY
+          ) ||
+          '';
+
+        const storedRemember =
+          sessionStorage.getItem(
+            TWO_FACTOR_REMEMBER_KEY
+          ) ===
+          'true';
+
+        const storedNext =
+          safeNextPath(
+            sessionStorage.getItem(
+              TWO_FACTOR_NEXT_KEY
+            )
+          );
+
+        const storedVerification =
+          parseVerificationState(
+            sessionStorage.getItem(
+              TWO_FACTOR_VERIFICATION_KEY
+            )
+          );
+
+        setEmail(
+          storedEmail
+        );
+
+        setChallengeToken(
+          storedChallenge
+        );
+
+        setRememberMe(
+          storedRemember
+        );
+
+        setIntendedNext(
+          storedNext
+        );
+
+        setVerification(
+          storedVerification
+        );
+
+        setMode(
+          chooseInitialMode(
+            storedVerification
           )
         );
 
-      setEmail(
-        storedEmail
-      );
-
-      setChallengeToken(
-        storedChallenge
-      );
-
-      setRememberMe(
-        storedRemember
-      );
-
-      setIntendedNext(
-        storedNext
-      );
-
-      if (
-        !storedEmail ||
-        !storedChallenge
-      ) {
+        if (
+          !storedEmail ||
+          !storedChallenge
+        ) {
+          setOverlay(
+            getAuthOverlayMessage(
+              'LOGIN_CHALLENGE_EXPIRED'
+            )
+          );
+        }
+      } catch {
         setOverlay(
           getAuthOverlayMessage(
             'LOGIN_CHALLENGE_EXPIRED'
           )
         );
+      } finally {
+        setReady(
+          true
+        );
       }
-    } catch {
-      setOverlay(
-        getAuthOverlayMessage(
-          'LOGIN_CHALLENGE_EXPIRED'
-        )
-      );
-    } finally {
-      setReady(true);
-    }
-  }, []);
+    },
+    []
+  );
+
+  /* ==========================================================
+     RESEND COUNTDOWN
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        resendSeconds <=
+        0
+      ) {
+        return;
+      }
+
+      const timer =
+        window.setInterval(
+          () => {
+            setResendSeconds(
+              (
+                current
+              ) =>
+                Math.max(
+                  0,
+                  current -
+                    1
+                )
+            );
+          },
+          1000
+        );
+
+      return () => {
+        window.clearInterval(
+          timer
+        );
+      };
+    },
+    [
+      resendSeconds,
+    ]
+  );
+
+  /* ==========================================================
+     AVAILABLE METHODS
+     ========================================================== */
+
+  const availableModes =
+    useMemo<
+      VerificationMode[]
+    >(
+      () => {
+        const methods:
+          VerificationMode[] = [
+            ...verification.methods,
+          ];
+
+        if (
+          verification
+            .recoveryAvailable
+        ) {
+          methods.push(
+            'recovery'
+          );
+        }
+
+        return methods;
+      },
+      [
+        verification,
+      ]
+    );
+
+  /* ==========================================================
+     CODE DISPLAY
+     ========================================================== */
+
+  const displayCode =
+    useMemo(
+      () => {
+        if (
+          mode ===
+          'recovery'
+        ) {
+          return cleanRecoveryCode(
+            code
+          );
+        }
+
+        return cleanSixDigitCode(
+          code
+        );
+      },
+      [
+        code,
+        mode,
+      ]
+    );
+
+  /* ==========================================================
+     UPDATE VERIFICATION STATE
+     ========================================================== */
+
+  const applyVerificationState =
+    useCallback(
+      (
+        next?:
+          Partial<
+            VerificationState
+          >
+      ) => {
+        if (
+          !next
+        ) {
+          return;
+        }
+
+        setVerification(
+          (
+            current
+          ) => {
+            const merged:
+              VerificationState = {
+                methods:
+                  Array.isArray(
+                    next.methods
+                  )
+                    ? next.methods
+                    : current.methods,
+
+                preferredMethod:
+                  next.preferredMethod ===
+                  undefined
+                    ? current.preferredMethod
+                    : next.preferredMethod,
+
+                maskedEmail:
+                  next.maskedEmail ===
+                  undefined
+                    ? current.maskedEmail
+                    : next.maskedEmail,
+
+                recoveryAvailable:
+                  next.recoveryAvailable ===
+                  undefined
+                    ? current.recoveryAvailable
+                    : next.recoveryAvailable,
+              };
+
+            try {
+              sessionStorage.setItem(
+                TWO_FACTOR_VERIFICATION_KEY,
+                JSON.stringify(
+                  merged
+                )
+              );
+            } catch {
+              // Keep the server state in memory.
+            }
+
+            return merged;
+          }
+        );
+      },
+      []
+    );
 
   /* ==========================================================
      INPUT
      ========================================================== */
 
-  const displayCode =
-    useMemo(() => {
-      return mode ===
-        'authenticator'
-        ? cleanAuthenticatorCode(
-            code
-          )
-        : cleanRecoveryCode(
-            code
-          );
-    }, [
-      mode,
-      code,
-    ]);
-
   function updateCode(
-    value: string
+    value:
+      string
   ) {
-    const next =
+    const nextCode =
       mode ===
-      'authenticator'
-        ? cleanAuthenticatorCode(
+      'recovery'
+        ? cleanRecoveryCode(
             value
           )
-        : cleanRecoveryCode(
+        : cleanSixDigitCode(
             value
           );
 
-    setCode(next);
+    setCode(
+      nextCode
+    );
 
-    if (codeError) {
+    if (
+      codeError
+    ) {
       setCodeError(
         null
       );
     }
   }
 
+  /* ==========================================================
+     SEND EMAIL CODE
+     ========================================================== */
+
+  const sendEmailCode =
+    useCallback(
+      async (
+        automatic =
+          false
+      ) => {
+        if (
+          !email ||
+          !challengeToken ||
+          sendingEmail ||
+          resendSeconds >
+            0
+        ) {
+          return;
+        }
+
+        setSendingEmail(
+          true
+        );
+
+        setCodeError(
+          null
+        );
+
+        if (
+          !automatic
+        ) {
+          setOverlay(
+            null
+          );
+        }
+
+        try {
+          const response =
+            await fetch(
+              EMAIL_SEND_ENDPOINT,
+              {
+                method:
+                  'POST',
+
+                headers: {
+                  'Content-Type':
+                    'application/json',
+
+                  Accept:
+                    'application/json',
+                },
+
+                credentials:
+                  'include',
+
+                cache:
+                  'no-store',
+
+                body:
+                  JSON.stringify({
+                    email,
+
+                    challengeToken,
+                  }),
+              }
+            );
+
+          let data:
+            ApiResponse;
+
+          try {
+            data =
+              (
+                await response.json()
+              ) as ApiResponse;
+          } catch {
+            data = {
+              success:
+                false,
+
+              code:
+                'EMAIL_TWO_FACTOR_SEND_ERROR',
+
+              error:
+                'SaMi could not process the email-code response.',
+            };
+          }
+
+          if (
+            !response.ok ||
+            !data.success
+          ) {
+            const retryAfterSeconds =
+              Math.max(
+                0,
+                Number(
+                  data.retryAfterSeconds ||
+                  0
+                )
+              );
+
+            if (
+              retryAfterSeconds >
+              0
+            ) {
+              setResendSeconds(
+                retryAfterSeconds
+              );
+            }
+
+            if (
+              data.code ===
+              'LOGIN_CHALLENGE_EXPIRED'
+            ) {
+              clearChallengeStorage();
+            }
+
+            if (
+              data.code ===
+                'EMAIL_TWO_FACTOR_NOT_AVAILABLE' ||
+              data.code ===
+                'TWO_FACTOR_METHOD_NOT_AVAILABLE'
+            ) {
+              setVerification(
+                (
+                  current
+                ) => {
+                  const methods =
+                    current.methods.filter(
+                      (
+                        method
+                      ) =>
+                        method !==
+                        'email'
+                    );
+
+                  const next:
+                    VerificationState = {
+                      ...current,
+
+                      methods,
+
+                      preferredMethod:
+                        current.preferredMethod ===
+                        'email'
+                          ? (
+                              methods[0] ||
+                              null
+                            )
+                          : current.preferredMethod,
+                    };
+
+                  try {
+                    sessionStorage.setItem(
+                      TWO_FACTOR_VERIFICATION_KEY,
+                      JSON.stringify(
+                        next
+                      )
+                    );
+                  } catch {
+                    // Keep the updated state in memory.
+                  }
+
+                  return next;
+                }
+              );
+
+              if (
+                verification.methods.includes(
+                  'authenticator'
+                )
+              ) {
+                setMode(
+                  'authenticator'
+                );
+              } else if (
+                verification
+                  .recoveryAvailable
+              ) {
+                setMode(
+                  'recovery'
+                );
+              }
+            }
+
+            setOverlay(
+              getAuthOverlayMessage(
+                data.code ||
+                  'EMAIL_TWO_FACTOR_SEND_ERROR',
+                {
+                  fallback:
+                    data.error ||
+                    data.message ||
+                    'SaMi could not send the login verification code.',
+
+                  retryAfterSeconds:
+                    data.retryAfterSeconds,
+
+                  lockedUntil:
+                    data.lockedUntil,
+
+                  email,
+                }
+              )
+            );
+
+            return;
+          }
+
+          const emailVerification =
+            data.emailVerification;
+
+          const maskedEmail =
+            emailVerification
+              ?.maskedEmail ||
+            data.maskedEmail ||
+            verification
+              .maskedEmail ||
+            null;
+
+          if (
+            maskedEmail
+          ) {
+            applyVerificationState({
+              maskedEmail,
+            });
+          }
+
+          const cooldown =
+            Math.max(
+              0,
+              Number(
+                emailVerification
+                  ?.resendCooldownSeconds ||
+                data.resendCooldownSeconds ||
+                60
+              )
+            );
+
+          setEmailCodeSent(
+            true
+          );
+
+          setResendSeconds(
+            cooldown
+          );
+        } catch {
+          setOverlay(
+            getAuthOverlayMessage(
+              'EMAIL_TWO_FACTOR_SEND_ERROR',
+              {
+                fallback:
+                  'SaMi could not connect to the server. Check your connection and try again.',
+              }
+            )
+          );
+        } finally {
+          setSendingEmail(
+            false
+          );
+        }
+      },
+      [
+        applyVerificationState,
+        challengeToken,
+        email,
+        resendSeconds,
+        sendingEmail,
+        verification,
+      ]
+    );
+
+  /* ==========================================================
+     AUTOMATIC EMAIL DELIVERY
+
+     Email is automatically sent only when it is the selected
+     initial method.
+
+     The ref prevents React development-mode effects from
+     sending twice.
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        !ready ||
+        mode !==
+          'email' ||
+        !verification.methods.includes(
+          'email'
+        ) ||
+        emailCodeSent ||
+        automaticEmailStarted
+          .current ||
+        !email ||
+        !challengeToken
+      ) {
+        return;
+      }
+
+      automaticEmailStarted
+        .current =
+        true;
+
+      void sendEmailCode(
+        true
+      );
+    },
+    [
+      challengeToken,
+      email,
+      emailCodeSent,
+      mode,
+      ready,
+      sendEmailCode,
+      verification.methods,
+    ]
+  );
+
+  /* ==========================================================
+     CHANGE METHOD
+     ========================================================== */
+
   function changeMode(
-    nextMode: VerificationMode
+    nextMode:
+      VerificationMode
   ) {
     if (
       submitting ||
-      nextMode === mode
+      sendingEmail ||
+      nextMode ===
+        mode ||
+      !availableModes.includes(
+        nextMode
+      )
     ) {
       return;
     }
@@ -420,13 +1242,17 @@ export default function TwoFactorLoginClient() {
       nextMode
     );
 
-    setCode('');
+    setCode(
+      ''
+    );
 
     setCodeError(
       null
     );
 
-    setOverlay(null);
+    setOverlay(
+      null
+    );
   }
 
   /* ==========================================================
@@ -434,7 +1260,10 @@ export default function TwoFactorLoginClient() {
      ========================================================== */
 
   function handleCancel() {
-    if (submitting) {
+    if (
+      submitting ||
+      sendingEmail
+    ) {
       return;
     }
 
@@ -446,16 +1275,20 @@ export default function TwoFactorLoginClient() {
   }
 
   /* ==========================================================
-     SUBMIT
+     VERIFY
      ========================================================== */
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<
+        HTMLFormElement
+      >
   ) {
     event.preventDefault();
 
     if (
       submitting ||
+      sendingEmail ||
       !email ||
       !challengeToken
     ) {
@@ -464,62 +1297,58 @@ export default function TwoFactorLoginClient() {
 
     const normalizedCode =
       mode ===
-      'authenticator'
-        ? cleanAuthenticatorCode(
+      'recovery'
+        ? cleanRecoveryCode(
             code
-          )
-        : cleanRecoveryCode(
+          ).trim()
+        : cleanSixDigitCode(
             code
-          ).trim();
+          );
 
     if (
-      mode ===
-        'authenticator' &&
+      mode !==
+        'recovery' &&
       normalizedCode.length !==
         6
     ) {
       setCodeError(
-        'Enter the complete 6-digit authenticator code.'
-      );
-
-      setOverlay(
-        getAuthOverlayMessage(
-          'TWO_FACTOR_REQUIRED'
-        )
+        'Enter the complete 6-digit verification code.'
       );
 
       return;
     }
 
     if (
-      mode === 'recovery' &&
+      mode ===
+        'recovery' &&
       !normalizedCode
     ) {
       setCodeError(
         'Enter one of your unused recovery codes.'
       );
 
-      setOverlay(
-        getAuthOverlayMessage(
-          'TWO_FACTOR_REQUIRED'
-        )
-      );
-
       return;
     }
 
-    setSubmitting(true);
+    setSubmitting(
+      true
+    );
 
-    setOverlay(null);
+    setOverlay(
+      null
+    );
 
-    setCodeError(null);
+    setCodeError(
+      null
+    );
 
     try {
       const response =
         await fetch(
           TWO_FACTOR_ENDPOINT,
           {
-            method: 'POST',
+            method:
+              'POST',
 
             headers: {
               'Content-Type':
@@ -541,6 +1370,9 @@ export default function TwoFactorLoginClient() {
 
                 challengeToken,
 
+                method:
+                  mode,
+
                 code:
                   normalizedCode,
 
@@ -550,14 +1382,17 @@ export default function TwoFactorLoginClient() {
         );
 
       let data:
-        ResponseData;
+        ApiResponse;
 
       try {
         data =
-          (await response.json()) as ResponseData;
+          (
+            await response.json()
+          ) as ApiResponse;
       } catch {
         data = {
-          success: false,
+          success:
+            false,
 
           code:
             'TWO_FACTOR_LOGIN_ERROR',
@@ -566,10 +1401,6 @@ export default function TwoFactorLoginClient() {
             'SaMi could not process the verification response.',
         };
       }
-
-      /* ------------------------------------------------------
-         FAILED VERIFICATION
-         ------------------------------------------------------ */
 
       if (
         !response.ok ||
@@ -580,6 +1411,14 @@ export default function TwoFactorLoginClient() {
           'LOGIN_CHALLENGE_EXPIRED'
         ) {
           clearChallengeStorage();
+        }
+
+        if (
+          data.verification
+        ) {
+          applyVerificationState(
+            data.verification
+          );
         }
 
         setOverlay(
@@ -606,18 +1445,16 @@ export default function TwoFactorLoginClient() {
         return;
       }
 
-      /* ------------------------------------------------------
-         SUCCESS
-         ------------------------------------------------------ */
-
       clearChallengeStorage();
 
-      setCode('');
+      setCode(
+        ''
+      );
 
       const destination =
         safeNextPath(
           data.next ||
-            intendedNext
+          intendedNext
         );
 
       router.replace(
@@ -636,9 +1473,85 @@ export default function TwoFactorLoginClient() {
         )
       );
     } finally {
-      setSubmitting(false);
+      setSubmitting(
+        false
+      );
     }
   }
+
+  /* ==========================================================
+     METHOD CONTENT
+     ========================================================== */
+
+  const methodContent = {
+    authenticator: {
+      icon:
+        Smartphone,
+
+      label:
+        'Authenticator',
+
+      fieldLabel:
+        '6-digit authenticator code',
+
+      help:
+        'Open your authenticator app and enter the current code for SaMi.',
+
+      placeholder:
+        '000000',
+    },
+
+    email: {
+      icon:
+        Mail,
+
+      label:
+        'Email',
+
+      fieldLabel:
+        '6-digit email code',
+
+      help:
+        `Enter the code sent to ${
+          verification.maskedEmail ||
+          'your verified email'
+        }.`,
+
+      placeholder:
+        '000000',
+    },
+
+    recovery: {
+      icon:
+        KeyRound,
+
+      label:
+        'Recovery',
+
+      fieldLabel:
+        'Recovery code',
+
+      help:
+        'Use one unused recovery code saved when two-factor authentication was enabled.',
+
+      placeholder:
+        'Enter recovery code',
+    },
+  } as const;
+
+  const selectedContent =
+    methodContent[
+      mode
+    ];
+
+  const methodGridClass =
+    availableModes.length ===
+      3
+      ? 'grid-cols-3'
+      : availableModes.length ===
+          2
+        ? 'grid-cols-2'
+        : 'grid-cols-1';
 
   /* ==========================================================
      RENDER
@@ -665,7 +1578,9 @@ export default function TwoFactorLoginClient() {
             overlay.secondaryAction
           }
           onClose={() =>
-            setOverlay(null)
+            setOverlay(
+              null
+            )
           }
         />
       )}
@@ -717,7 +1632,7 @@ export default function TwoFactorLoginClient() {
           <div className="grid w-full max-w-[930px] items-center gap-8 lg:grid-cols-[0.9fr_1.1fr]">
 
             {/* =================================================
-                BRAND PANEL
+                BRAND
                ================================================= */}
 
             <section className="hidden lg:block">
@@ -727,7 +1642,6 @@ export default function TwoFactorLoginClient() {
                 aria-label="SaMi home"
                 className="inline-block max-w-full"
               >
-                {/* FULL APPROVED LOGO */}
                 <SaMiLogo
                   size="xl"
                   className="max-w-full"
@@ -747,10 +1661,9 @@ export default function TwoFactorLoginClient() {
                 </h1>
 
                 <p className="mt-4 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                  Two-factor authentication
-                  protects your SaMi account
-                  even if somebody knows your
-                  password.
+                  Complete your preferred
+                  verification method to
+                  securely continue to SaMi.
                 </p>
 
                 <div className="mt-6 flex items-center gap-2 text-xs font-semibold text-slate-400">
@@ -762,20 +1675,18 @@ export default function TwoFactorLoginClient() {
             </section>
 
             {/* =================================================
-                TWO FACTOR CARD
+                VERIFICATION CARD
                ================================================= */}
 
             <section className="w-full">
 
-              {/* Mobile logo */}
-
               <div className="mb-7 lg:hidden">
+
                 <Link
                   href="/"
                   aria-label="SaMi home"
                   className="inline-block max-w-full"
                 >
-                  {/* FULL APPROVED LOGO */}
                   <SaMiLogo
                     size="lg"
                     className="max-w-full"
@@ -805,8 +1716,8 @@ export default function TwoFactorLoginClient() {
                     </h2>
 
                     <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Verify your identity to
-                      continue to SaMi.
+                      Choose an available
+                      verification method.
                     </p>
                   </div>
                 </div>
@@ -828,9 +1739,7 @@ export default function TwoFactorLoginClient() {
                       </p>
 
                       <p className="truncate text-xs font-bold">
-                        {maskEmail(
-                          email
-                        )}
+                        {email}
                       </p>
                     </div>
 
@@ -840,7 +1749,8 @@ export default function TwoFactorLoginClient() {
                         handleCancel
                       }
                       disabled={
-                        submitting
+                        submitting ||
+                        sendingEmail
                       }
                       className="text-[10px] font-bold text-blue-600 transition hover:text-blue-700 disabled:opacity-50 dark:text-blue-400"
                     >
@@ -850,55 +1760,113 @@ export default function TwoFactorLoginClient() {
                 )}
 
                 {/* =============================================
-                    MODE SWITCH
+                    METHOD SWITCH
                    ============================================= */}
 
-                <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-950">
+                <div
+                  className={`mt-5 grid gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-950 ${methodGridClass}`}
+                >
+                  {availableModes.map(
+                    (
+                      availableMode
+                    ) => {
+                      const content =
+                        methodContent[
+                          availableMode
+                        ];
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      changeMode(
-                        'authenticator'
-                      )
-                    }
-                    disabled={
-                      submitting
-                    }
-                    className={`flex h-10 items-center justify-center gap-2 rounded-lg text-[10px] font-black transition ${
-                      mode ===
-                      'authenticator'
-                        ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white'
-                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'
-                    }`}
-                  >
-                    <Smartphone className="h-3.5 w-3.5" />
+                      const MethodIcon =
+                        content.icon;
 
-                    Authenticator
-                  </button>
+                      return (
+                        <button
+                          key={
+                            availableMode
+                          }
+                          type="button"
+                          onClick={() =>
+                            changeMode(
+                              availableMode
+                            )
+                          }
+                          disabled={
+                            submitting ||
+                            sendingEmail
+                          }
+                          className={`flex h-10 items-center justify-center gap-2 rounded-lg px-2 text-[10px] font-black transition ${
+                            mode ===
+                            availableMode
+                              ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white'
+                              : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'
+                          }`}
+                        >
+                          <MethodIcon className="h-3.5 w-3.5" />
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      changeMode(
-                        'recovery'
-                      )
+                          {content.label}
+                        </button>
+                      );
                     }
-                    disabled={
-                      submitting
-                    }
-                    className={`flex h-10 items-center justify-center gap-2 rounded-lg text-[10px] font-black transition ${
-                      mode ===
-                      'recovery'
-                        ? 'bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white'
-                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'
-                    }`}
-                  >
-                    <KeyRound className="h-3.5 w-3.5" />
-
-                    Recovery code
-                  </button>
+                  )}
                 </div>
+
+                {/* =============================================
+                    EMAIL DELIVERY
+                   ============================================= */}
+
+                {mode ===
+                  'email' && (
+                  <div className="mt-4 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 dark:border-blue-900/50 dark:bg-blue-950/20">
+
+                    <div className="min-w-0">
+
+                      <p className="text-[10px] font-black text-blue-700 dark:text-blue-300">
+                        {sendingEmail
+                          ? 'Sending code...'
+                          : emailCodeSent
+                            ? 'Code sent'
+                            : 'Email verification'}
+                      </p>
+
+                      <p className="mt-0.5 truncate text-[10px] text-slate-500 dark:text-slate-400">
+                        {verification.maskedEmail ||
+                          'Your verified account email'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void sendEmailCode(
+                          false
+                        )
+                      }
+                      disabled={
+                        sendingEmail ||
+                        submitting ||
+                        resendSeconds >
+                          0
+                      }
+                      className="ml-3 inline-flex items-center gap-1.5 text-[10px] font-black text-blue-600 transition hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-blue-400"
+                    >
+                      <RefreshCw
+                        className={`h-3.5 w-3.5 ${
+                          sendingEmail
+                            ? 'animate-spin'
+                            : ''
+                        }`}
+                      />
+
+                      {resendSeconds >
+                      0
+                        ? `Resend in ${formatSeconds(
+                            resendSeconds
+                          )}`
+                        : emailCodeSent
+                          ? 'Resend code'
+                          : 'Send code'}
+                    </button>
+                  </div>
+                )}
 
                 {/* =============================================
                     FORM
@@ -916,10 +1884,10 @@ export default function TwoFactorLoginClient() {
                     htmlFor="two-factor-code"
                     className="text-[12px] font-bold text-slate-700 dark:text-slate-200"
                   >
-                    {mode ===
-                    'authenticator'
-                      ? '6-digit authenticator code'
-                      : 'Recovery code'}
+                    {
+                      selectedContent
+                        .fieldLabel
+                    }
                   </label>
 
                   <input
@@ -927,44 +1895,49 @@ export default function TwoFactorLoginClient() {
                     type="text"
                     inputMode={
                       mode ===
-                      'authenticator'
-                        ? 'numeric'
-                        : 'text'
+                      'recovery'
+                        ? 'text'
+                        : 'numeric'
                     }
                     autoComplete={
                       mode ===
-                      'authenticator'
-                        ? 'one-time-code'
-                        : 'off'
+                      'recovery'
+                        ? 'off'
+                        : 'one-time-code'
                     }
                     autoCapitalize="none"
-                    spellCheck={false}
+                    spellCheck={
+                      false
+                    }
                     maxLength={
                       mode ===
-                      'authenticator'
-                        ? 6
-                        : 32
+                      'recovery'
+                        ? 64
+                        : 6
                     }
                     value={
                       displayCode
                     }
-                    onChange={(event) =>
+                    onChange={(
+                      event
+                    ) =>
                       updateCode(
-                        event.target.value
+                        event
+                          .target
+                          .value
                       )
                     }
                     autoFocus
                     disabled={
                       submitting ||
+                      sendingEmail ||
                       !ready ||
                       !email ||
                       !challengeToken
                     }
                     placeholder={
-                      mode ===
-                      'authenticator'
-                        ? '000000'
-                        : 'Enter recovery code'
+                      selectedContent
+                        .placeholder
                     }
                     aria-invalid={
                       Boolean(
@@ -978,9 +1951,9 @@ export default function TwoFactorLoginClient() {
                     }
                     className={`mt-2 w-full rounded-2xl border bg-white px-4 outline-none transition focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950 ${
                       mode ===
-                      'authenticator'
-                        ? 'h-[66px] text-center text-[28px] font-black tracking-[0.35em]'
-                        : 'h-12 text-sm font-bold tracking-wide'
+                      'recovery'
+                        ? 'h-12 text-sm font-bold tracking-wide'
+                        : 'h-[66px] text-center text-[28px] font-black tracking-[0.35em]'
                     } ${
                       codeError
                         ? 'border-red-400 focus:border-red-500 focus:ring-red-500/10 dark:border-red-500'
@@ -1001,10 +1974,10 @@ export default function TwoFactorLoginClient() {
                       id="two-factor-code-help"
                       className="mt-2 text-[10px] leading-4 text-slate-500 dark:text-slate-400"
                     >
-                      {mode ===
-                      'authenticator'
-                        ? 'Open your authenticator app and enter the current code for SaMi.'
-                        : 'Use one unused recovery code saved when two-factor authentication was enabled.'}
+                      {
+                        selectedContent
+                          .help
+                      }
                     </p>
                   )}
 
@@ -1016,6 +1989,7 @@ export default function TwoFactorLoginClient() {
                     type="submit"
                     disabled={
                       submitting ||
+                      sendingEmail ||
                       !ready ||
                       !email ||
                       !challengeToken
@@ -1046,12 +2020,14 @@ export default function TwoFactorLoginClient() {
                    ============================================= */}
 
                 <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
                   <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
                     SaMi will never ask you
                     to share your authenticator
-                    secret or unused recovery
+                    secret, email verification
+                    code, or unused recovery
                     codes outside this secure
                     sign-in flow.
                   </p>
@@ -1062,13 +2038,15 @@ export default function TwoFactorLoginClient() {
                    ============================================= */}
 
                 <div className="mt-5 border-t border-slate-100 pt-5 dark:border-slate-800">
+
                   <button
                     type="button"
                     onClick={
                       handleCancel
                     }
                     disabled={
-                      submitting
+                      submitting ||
+                      sendingEmail
                     }
                     className="inline-flex items-center gap-2 text-xs font-bold text-slate-500 transition hover:text-slate-950 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white"
                   >
@@ -1079,9 +2057,12 @@ export default function TwoFactorLoginClient() {
                 </div>
               </div>
 
-              {/* Footer */}
+              {/* ===============================================
+                  FOOTER
+                 =============================================== */}
 
               <div className="mt-4 flex justify-center gap-4 text-[10px] text-slate-400">
+
                 <Link
                   href="/help"
                   className="transition hover:text-slate-700 dark:hover:text-white"

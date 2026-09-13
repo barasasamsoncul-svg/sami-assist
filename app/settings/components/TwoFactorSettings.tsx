@@ -1,9 +1,7 @@
 'use client';
 
 import {
-  AlertTriangle,
   Check,
-  CheckCircle2,
   Copy,
   Download,
   ExternalLink,
@@ -30,6 +28,8 @@ import {
 import {
   useRouter,
 } from 'next/navigation';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 /* ============================================================
    TYPES
@@ -71,21 +71,34 @@ type ApiResponse = {
     string[];
 };
 
-type NoticeState = {
-  type:
-    | 'success'
-    | 'error'
-    | 'warning';
-
-  message:
-    string;
-};
-
 type SecurityAction =
   | 'add-authenticator'
   | 'regenerate-recovery'
   | 'disable-two-factor'
   | null;
+
+type OverlayState = {
+  type:
+    | 'error'
+    | 'warning'
+    | 'success'
+    | 'info';
+
+  title: string;
+  message: string;
+
+  primaryAction?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
+
+  secondaryAction?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
+};
 
 /* ============================================================
    CONSTANTS
@@ -108,8 +121,7 @@ const RECOVERY_ENDPOINT =
    ============================================================ */
 
 async function readApiResponse(
-  response:
-    Response
+  response: Response
 ): Promise<ApiResponse> {
   try {
     return (
@@ -117,8 +129,7 @@ async function readApiResponse(
     ) as ApiResponse;
   } catch {
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'INVALID_SERVER_RESPONSE',
@@ -130,8 +141,7 @@ async function readApiResponse(
 }
 
 function formatRetryMessage(
-  seconds:
-    number
+  seconds: number
 ) {
   if (
     seconds <=
@@ -146,16 +156,14 @@ function formatRetryMessage(
     );
 
   return `${minutes} ${
-    minutes ===
-    1
+    minutes === 1
       ? 'minute'
       : 'minutes'
   }`;
 }
 
 function cleanAuthenticatorCode(
-  value:
-    string
+  value: string
 ) {
   return value
     .replace(
@@ -205,7 +213,7 @@ export default function TwoFactorSettings() {
     );
 
   /* ==========================================================
-     SECURITY ACTION
+     ACTION
      ========================================================== */
 
   const [
@@ -237,7 +245,7 @@ export default function TwoFactorSettings() {
     );
 
   /* ==========================================================
-     SETUP
+     AUTHENTICATOR SETUP
      ========================================================== */
 
   const [
@@ -266,16 +274,8 @@ export default function TwoFactorSettings() {
       []
     );
 
-  const [
-    codesCopied,
-    setCodesCopied,
-  ] =
-    useState(
-      false
-    );
-
   /* ==========================================================
-     REQUEST STATE
+     REQUEST
      ========================================================== */
 
   const [
@@ -286,11 +286,15 @@ export default function TwoFactorSettings() {
       false
     );
 
+  /* ==========================================================
+     OVERLAY
+     ========================================================== */
+
   const [
-    notice,
-    setNotice,
+    overlay,
+    setOverlay,
   ] =
-    useState<NoticeState | null>(
+    useState<OverlayState | null>(
       null
     );
 
@@ -323,7 +327,65 @@ export default function TwoFactorSettings() {
     );
 
   /* ==========================================================
-     SESSION FAILURE
+     OVERLAY HELPERS
+     ========================================================== */
+
+  const showError =
+    useCallback(
+      (
+        title: string,
+        message: string
+      ) => {
+        setOverlay({
+          type:
+            'error',
+
+          title,
+
+          message,
+        });
+      },
+      []
+    );
+
+  const showWarning =
+    useCallback(
+      (
+        title: string,
+        message: string
+      ) => {
+        setOverlay({
+          type:
+            'warning',
+
+          title,
+
+          message,
+        });
+      },
+      []
+    );
+
+  const showSuccess =
+    useCallback(
+      (
+        title: string,
+        message: string
+      ) => {
+        setOverlay({
+          type:
+            'success',
+
+          title,
+
+          message,
+        });
+      },
+      []
+    );
+
+  /* ==========================================================
+     UNAUTHENTICATED
      ========================================================== */
 
   const handleUnauthenticated =
@@ -339,11 +401,34 @@ export default function TwoFactorSettings() {
           return false;
         }
 
-        router.replace(
-          '/login?reason=session_expired'
-        );
+        setOverlay({
+          type:
+            'warning',
 
-        router.refresh();
+          title:
+            'Session expired',
+
+          message:
+            'Your SaMi session has expired. Sign in again to continue.',
+
+          primaryAction: {
+            label:
+              'Sign in',
+
+            onClick:
+              () => {
+                setOverlay(
+                  null
+                );
+
+                router.replace(
+                  '/login?reason=session_expired'
+                );
+
+                router.refresh();
+              },
+          },
+        });
 
         return true;
       },
@@ -353,7 +438,7 @@ export default function TwoFactorSettings() {
     );
 
   /* ==========================================================
-     ERROR
+     API ERROR
      ========================================================== */
 
   const showApiError =
@@ -385,14 +470,14 @@ export default function TwoFactorSettings() {
             )}.`;
         }
 
-        setNotice({
-          type:
-            'error',
-
-          message,
-        });
+        showError(
+          'Security action failed',
+          message
+        );
       },
-      []
+      [
+        showError,
+      ]
     );
 
   /* ==========================================================
@@ -456,10 +541,12 @@ export default function TwoFactorSettings() {
             !data.success ||
             !data.twoFactor
           ) {
-            throw new Error(
-              data.error ||
-                'SaMi could not load two-factor authentication settings.'
+            showApiError(
+              data,
+              'SaMi could not load your authenticator settings.'
             );
+
+            return;
           }
 
           setStatus(
@@ -469,27 +556,16 @@ export default function TwoFactorSettings() {
           if (
             manual
           ) {
-            setNotice({
-              type:
-                'success',
-
-              message:
-                'Security status refreshed.',
-            });
+            showSuccess(
+              'Security status refreshed',
+              'Your authenticator and recovery-code status is up to date.'
+            );
           }
-        } catch (
-          error
-        ) {
-          setNotice({
-            type:
-              'error',
-
-            message:
-              error instanceof
-              Error
-                ? error.message
-                : 'SaMi could not load two-factor authentication settings.',
-          });
+        } catch {
+          showError(
+            'Could not load security settings',
+            'SaMi could not connect to the server. Check your connection and try again.'
+          );
         } finally {
           setLoading(
             false
@@ -502,6 +578,9 @@ export default function TwoFactorSettings() {
       },
       [
         handleUnauthenticated,
+        showApiError,
+        showError,
+        showSuccess,
       ]
     );
 
@@ -515,7 +594,7 @@ export default function TwoFactorSettings() {
   );
 
   /* ==========================================================
-     RESET SENSITIVE FORM VALUES
+     CLEAR FORM
      ========================================================== */
 
   function clearVerificationFields() {
@@ -553,12 +632,6 @@ export default function TwoFactorSettings() {
       return;
     }
 
-    /*
-     * The pending server-side authenticator is harmless.
-     *
-     * Starting another setup later automatically revokes the
-     * unfinished pending setup.
-     */
     setSetup(
       null
     );
@@ -571,7 +644,109 @@ export default function TwoFactorSettings() {
   }
 
   /* ==========================================================
-     START AUTHENTICATOR SETUP
+     OPEN ACTIONS
+     ========================================================== */
+
+  function openAddAuthenticator() {
+    setOverlay(
+      null
+    );
+
+    setAction(
+      'add-authenticator'
+    );
+
+    clearVerificationFields();
+  }
+
+  function requestRecoveryRegeneration() {
+    setOverlay({
+      type:
+        'warning',
+
+      title:
+        'Generate new recovery codes?',
+
+      message:
+        'Generating a new set will immediately invalidate every unused recovery code from your current set.',
+
+      primaryAction: {
+        label:
+          'Continue',
+
+        onClick:
+          () => {
+            setOverlay(
+              null
+            );
+
+            setAction(
+              'regenerate-recovery'
+            );
+
+            clearVerificationFields();
+          },
+      },
+
+      secondaryAction: {
+        label:
+          'Cancel',
+
+        onClick:
+          () => {
+            setOverlay(
+              null
+            );
+          },
+      },
+    });
+  }
+
+  function requestDisableTwoFactor() {
+    setOverlay({
+      type:
+        'warning',
+
+      title:
+        'Disable authenticator protection?',
+
+      message:
+        'Authenticator verification will stop protecting your account, unused recovery codes will be revoked, and your other active SaMi sessions will be signed out.',
+
+      primaryAction: {
+        label:
+          'Continue',
+
+        onClick:
+          () => {
+            setOverlay(
+              null
+            );
+
+            setAction(
+              'disable-two-factor'
+            );
+
+            clearVerificationFields();
+          },
+      },
+
+      secondaryAction: {
+        label:
+          'Cancel',
+
+        onClick:
+          () => {
+            setOverlay(
+              null
+            );
+          },
+      },
+    });
+  }
+
+  /* ==========================================================
+     START SETUP
      ========================================================== */
 
   async function startSetup() {
@@ -584,13 +759,10 @@ export default function TwoFactorSettings() {
     if (
       !currentPassword
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current password.',
-      });
+      showWarning(
+        'Current password required',
+        'Enter your current password before starting authenticator setup.'
+      );
 
       return;
     }
@@ -599,23 +771,16 @@ export default function TwoFactorSettings() {
       requiresExistingTwoFactor &&
       !existingTwoFactorCode
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current authenticator or recovery code.',
-      });
+      showWarning(
+        'Verification code required',
+        'Enter your current authenticator code or an unused recovery code before adding another authenticator.'
+      );
 
       return;
     }
 
     setSubmitting(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -678,10 +843,6 @@ export default function TwoFactorSettings() {
         return;
       }
 
-      /*
-       * Do not keep the user's password or old 2FA code in
-       * component state after step-up succeeds.
-       */
       clearVerificationFields();
 
       setAction(
@@ -696,21 +857,15 @@ export default function TwoFactorSettings() {
         ''
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          'Authenticator setup started. Add SaMi to your authenticator app, then verify the 6-digit code.',
-      });
+      showSuccess(
+        'Authenticator setup started',
+        'Add SaMi to your authenticator app using the displayed setup details, then enter the current 6-digit code.'
+      );
     } catch {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'SaMi could not connect to the server.',
-      });
+      showError(
+        'Could not start authenticator setup',
+        'SaMi could not connect to the server. Check your connection and try again.'
+      );
     } finally {
       setSubmitting(
         false
@@ -735,23 +890,16 @@ export default function TwoFactorSettings() {
         setupCode
       )
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter the 6-digit code shown by your authenticator app.',
-      });
+      showWarning(
+        'Enter the authenticator code',
+        'Enter the current 6-digit code generated by your authenticator app.'
+      );
 
       return;
     }
 
     setSubmitting(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -838,26 +986,24 @@ export default function TwoFactorSettings() {
           : []
       );
 
-      setCodesCopied(
-        false
+      showSuccess(
+        setup.addingAdditionalAuthenticator
+          ? 'Authenticator added'
+          : 'Two-factor authentication enabled',
+
+        Array.isArray(
+          data.recoveryCodes
+        ) &&
+        data.recoveryCodes.length >
+          0
+          ? 'Your authenticator is active. Save the recovery codes shown on this screen before leaving.'
+          : 'Your authenticator is now active.'
       );
-
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Two-factor authentication is now configured.',
-      });
     } catch {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'SaMi could not connect to the server.',
-      });
+      showError(
+        'Could not confirm authenticator',
+        'SaMi could not connect to the server. Check your connection and try again.'
+      );
     } finally {
       setSubmitting(
         false
@@ -879,13 +1025,10 @@ export default function TwoFactorSettings() {
     if (
       !currentPassword
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current password.',
-      });
+      showWarning(
+        'Current password required',
+        'Enter your current password before generating new recovery codes.'
+      );
 
       return;
     }
@@ -893,23 +1036,16 @@ export default function TwoFactorSettings() {
     if (
       !existingTwoFactorCode
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current authenticator or recovery code.',
-      });
+      showWarning(
+        'Verification code required',
+        'Enter your current authenticator code or an unused recovery code.'
+      );
 
       return;
     }
 
     setSubmitting(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -985,32 +1121,21 @@ export default function TwoFactorSettings() {
           : []
       );
 
-      setCodesCopied(
-        false
-      );
-
       setAction(
         null
       );
 
       clearVerificationFields();
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'New recovery codes have been generated.',
-      });
+      showSuccess(
+        'Recovery codes regenerated',
+        'Your previous unused recovery codes no longer work. Save the new recovery codes shown on this screen.'
+      );
     } catch {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'SaMi could not connect to the server.',
-      });
+      showError(
+        'Could not generate recovery codes',
+        'SaMi could not connect to the server. Check your connection and try again.'
+      );
     } finally {
       setSubmitting(
         false
@@ -1019,7 +1144,7 @@ export default function TwoFactorSettings() {
   }
 
   /* ==========================================================
-     DISABLE 2FA
+     DISABLE AUTHENTICATOR 2FA
      ========================================================== */
 
   async function disableTwoFactor() {
@@ -1032,13 +1157,10 @@ export default function TwoFactorSettings() {
     if (
       !currentPassword
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current password.',
-      });
+      showWarning(
+        'Current password required',
+        'Enter your current password before disabling authenticator protection.'
+      );
 
       return;
     }
@@ -1046,23 +1168,16 @@ export default function TwoFactorSettings() {
     if (
       !existingTwoFactorCode
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Enter your current authenticator or recovery code.',
-      });
+      showWarning(
+        'Verification code required',
+        'Enter your current authenticator code or an unused recovery code.'
+      );
 
       return;
     }
 
     setSubmitting(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1116,7 +1231,7 @@ export default function TwoFactorSettings() {
       ) {
         showApiError(
           data,
-          'SaMi could not disable two-factor authentication.'
+          'SaMi could not disable authenticator protection.'
         );
 
         return;
@@ -1150,25 +1265,47 @@ export default function TwoFactorSettings() {
 
       clearVerificationFields();
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Two-factor authentication has been disabled.',
-      });
+      showSuccess(
+        'Authenticator protection disabled',
+        data.message ||
+          'Authenticator-based two-factor verification has been disabled. Your other active sessions were signed out.'
+      );
     } catch {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'SaMi could not connect to the server.',
-      });
+      showError(
+        'Could not disable authenticator protection',
+        'SaMi could not connect to the server. Check your connection and try again.'
+      );
     } finally {
       setSubmitting(
         false
+      );
+    }
+  }
+
+  /* ==========================================================
+     COPY SETUP SECRET
+     ========================================================== */
+
+  async function copySetupSecret() {
+    if (
+      !setup
+    ) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        setup.secret
+      );
+
+      showSuccess(
+        'Authenticator secret copied',
+        'The manual authenticator setup secret has been copied to your clipboard.'
+      );
+    } catch {
+      showError(
+        'Could not copy secret',
+        'Your browser could not copy the authenticator secret automatically.'
       );
     }
   }
@@ -1190,29 +1327,15 @@ export default function TwoFactorSettings() {
         recoveryCodesText
       );
 
-      setCodesCopied(
-        true
+      showSuccess(
+        'Recovery codes copied',
+        'Store the copied recovery codes somewhere private and secure.'
       );
-
-      setNotice({
-        type:
-          'success',
-
-        message:
-          'Recovery codes copied. Store them somewhere private and secure.',
-      });
     } catch {
-      setCodesCopied(
-        false
+      showError(
+        'Could not copy recovery codes',
+        'Your browser could not copy the recovery codes automatically.'
       );
-
-      setNotice({
-        type:
-          'error',
-
-        message:
-          'Your browser could not copy the recovery codes automatically.',
-      });
     }
   }
 
@@ -1228,56 +1351,83 @@ export default function TwoFactorSettings() {
       return;
     }
 
-    const content = [
-      'SaMi Recovery Codes',
-      '',
-      'Keep these codes private.',
-      'Each code can be used only once.',
-      'Generating a new set invalidates unused codes from this set.',
-      '',
-      ...recoveryCodes,
-      '',
-    ].join(
-      '\n'
+    try {
+      const content = [
+        'SaMi Recovery Codes',
+        '',
+        'Keep these codes private.',
+        'Each code can be used only once.',
+        'Generating a new set invalidates unused codes from this set.',
+        '',
+        ...recoveryCodes,
+        '',
+      ].join(
+        '\n'
+      );
+
+      const blob =
+        new Blob(
+          [
+            content,
+          ],
+          {
+            type:
+              'text/plain;charset=utf-8',
+          }
+        );
+
+      const url =
+        URL.createObjectURL(
+          blob
+        );
+
+      const anchor =
+        document.createElement(
+          'a'
+        );
+
+      anchor.href =
+        url;
+
+      anchor.download =
+        'sami-recovery-codes.txt';
+
+      document.body.appendChild(
+        anchor
+      );
+
+      anchor.click();
+
+      anchor.remove();
+
+      URL.revokeObjectURL(
+        url
+      );
+
+      showSuccess(
+        'Recovery codes saved',
+        'A text file containing your recovery codes has been created. Store it somewhere private and secure.'
+      );
+    } catch {
+      showError(
+        'Could not save recovery codes',
+        'SaMi could not create the recovery-code text file.'
+      );
+    }
+  }
+
+  /* ==========================================================
+     RECOVERY CODES DONE
+     ========================================================== */
+
+  function hideRecoveryCodes() {
+    setRecoveryCodes(
+      []
     );
 
-    const blob =
-      new Blob(
-        [
-          content,
-        ],
-        {
-          type:
-            'text/plain;charset=utf-8',
-        }
-      );
-
-    const url =
-      URL.createObjectURL(
-        blob
-      );
-
-    const anchor =
-      document.createElement(
-        'a'
-      );
-
-    anchor.href =
-      url;
-
-    anchor.download =
-      'sami-recovery-codes.txt';
-
-    document.body.appendChild(
-      anchor
-    );
-
-    anchor.click();
-
-    anchor.remove();
-
-    URL.revokeObjectURL(
-      url
+    showSuccess(
+      'Recovery codes hidden',
+      'SaMi will not display that plaintext recovery-code set again.'
     );
   }
 
@@ -1289,409 +1439,414 @@ export default function TwoFactorSettings() {
     loading
   ) {
     return (
-      <div className="flex min-h-[220px] items-center justify-center rounded-[22px] border border-slate-200 dark:border-slate-800">
+      <>
+        {overlay && (
+          <SaMiOverlay
+            open
+            type={
+              overlay.type
+            }
+            title={
+              overlay.title
+            }
+            message={
+              overlay.message
+            }
+            primaryAction={
+              overlay.primaryAction
+            }
+            secondaryAction={
+              overlay.secondaryAction
+            }
+            onClose={() =>
+              setOverlay(
+                null
+              )
+            }
+          />
+        )}
 
-        <div className="text-center">
+        <div className="flex min-h-[220px] items-center justify-center rounded-[22px] border border-slate-200 dark:border-slate-800">
 
-          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+          <div className="text-center">
 
-          <p className="mt-3 text-xs font-black text-slate-700 dark:text-slate-200">
-            Loading two-factor authentication
-          </p>
+            <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+
+            <p className="mt-3 text-xs font-black text-slate-700 dark:text-slate-200">
+              Loading authenticator settings
+            </p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   /* ==========================================================
-     UI
+     RENDER
      ========================================================== */
 
   return (
-    <div className="space-y-5">
-
+    <>
       {/* ======================================================
-          HEADER
+          GLOBAL FEEDBACK OVERLAY
           ====================================================== */}
 
-      <div className="flex flex-col gap-4 rounded-[22px] border border-slate-200 p-5 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
-
-        <div className="flex items-start gap-4">
-
-          <div
-            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
-              enabled
-                ? 'bg-emerald-500 text-white'
-                : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
-            }`}
-          >
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-
-          <div>
-
-            <div className="flex flex-wrap items-center gap-2">
-
-              <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                Two-factor authentication
-              </h3>
-
-              <span
-                className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${
-                  enabled
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
-                    : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                }`}
-              >
-                {enabled
-                  ? 'Enabled'
-                  : 'Disabled'}
-              </span>
-            </div>
-
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Require an authenticator code or one-time recovery code after your password when signing in.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() =>
-            void loadStatus(
-              true
-            )
+      {overlay && (
+        <SaMiOverlay
+          open
+          type={
+            overlay.type
           }
-          disabled={
-            refreshing ||
-            submitting
+          title={
+            overlay.title
           }
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-[10px] font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-        >
-          <RefreshCw
-            className={`h-3.5 w-3.5 ${
-              refreshing
-                ? 'animate-spin'
-                : ''
-            }`}
-          />
-
-          Refresh
-        </button>
-      </div>
-
-      {/* ======================================================
-          NOTICE
-          ====================================================== */}
-
-      {notice && (
-        <Notice
-          notice={
-            notice
+          message={
+            overlay.message
           }
-          onDismiss={() =>
-            setNotice(
+          primaryAction={
+            overlay.primaryAction
+          }
+          secondaryAction={
+            overlay.secondaryAction
+          }
+          onClose={() =>
+            setOverlay(
               null
             )
           }
         />
       )}
 
-      {/* ======================================================
-          RECOVERY CODES — SHOW ONCE
-          ====================================================== */}
+      <div className="space-y-5">
 
-      {recoveryCodes.length >
-        0 && (
-        <RecoveryCodesPanel
-          codes={
-            recoveryCodes
-          }
-          copied={
-            codesCopied
-          }
-          onCopy={() =>
-            void copyRecoveryCodes()
-          }
-          onDownload={
-            downloadRecoveryCodes
-          }
-          onDone={() => {
-            setRecoveryCodes(
-              []
-            );
+        {/* ====================================================
+            STATUS HEADER
+            ==================================================== */}
 
-            setCodesCopied(
-              false
-            );
+        <div className="flex flex-col gap-4 rounded-[22px] border border-slate-200 p-5 dark:border-slate-800 sm:flex-row sm:items-start sm:justify-between">
 
-            setNotice({
-              type:
-                'success',
+          <div className="flex items-start gap-4">
 
-              message:
-                'Recovery codes hidden. SaMi will not display this plaintext set again.',
-            });
-          }}
-        />
-      )}
-
-      {/* ======================================================
-          ACTIVE SETUP
-          ====================================================== */}
-
-      {setup && (
-        <AuthenticatorSetupPanel
-          setup={
-            setup
-          }
-          code={
-            setupCode
-          }
-          submitting={
-            submitting
-          }
-          onCodeChange={
-            setSetupCode
-          }
-          onConfirm={() =>
-            void confirmSetup()
-          }
-          onCancel={
-            cancelSetup
-          }
-        />
-      )}
-
-      {/* ======================================================
-          STATUS CARDS
-          ====================================================== */}
-
-      {!setup && (
-        <>
-          {enabled ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-
-              <SecurityInfoCard
-                icon={
-                  Smartphone
-                }
-                label="Authenticators"
-                value={
-                  String(
-                    status
-                      ?.authenticatorCount ??
-                      0
-                  )
-                }
-                description="Active authenticator apps protecting this account."
-              />
-
-              <SecurityInfoCard
-                icon={
-                  KeyRound
-                }
-                label="Recovery codes"
-                value={
-                  String(
-                    status
-                      ?.recoveryCodeCount ??
-                      0
-                  )
-                }
-                description="Unused one-time recovery codes remaining."
-              />
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                enabled
+                  ? 'bg-emerald-500 text-white'
+                  : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300'
+              }`}
+            >
+              <ShieldCheck className="h-5 w-5" />
             </div>
-          ) : (
-            <div className="rounded-[22px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
 
-              <div className="flex items-start gap-3">
+            <div>
 
-                <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+              <div className="flex flex-wrap items-center gap-2">
 
-                <div className="flex-1">
+                <h3 className="text-sm font-black text-slate-950 dark:text-white">
+                  Authenticator app
+                </h3>
 
-                  <p className="text-sm font-black text-blue-950 dark:text-blue-200">
-                    Add another layer of protection
-                  </p>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.08em] ${
+                    enabled
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                      : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                  }`}
+                >
+                  {enabled
+                    ? 'Enabled'
+                    : 'Disabled'}
+                </span>
+              </div>
 
-                  <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">
-                    After 2FA is enabled, signing in requires your password and a code from your authenticator app or one of your recovery codes.
-                  </p>
+              <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Use a TOTP-compatible authenticator app as a second verification step during sign-in.
+              </p>
+            </div>
+          </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAction(
-                        'add-authenticator'
-                      );
+          <button
+            type="button"
+            onClick={() =>
+              void loadStatus(
+                true
+              )
+            }
+            disabled={
+              refreshing ||
+              submitting
+            }
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-[10px] font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${
+                refreshing
+                  ? 'animate-spin'
+                  : ''
+              }`}
+            />
 
-                      setNotice(
-                        null
-                      );
-                    }}
-                    className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700"
-                  >
-                    <ShieldCheck className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
 
-                    Enable two-factor authentication
-                  </button>
+        {/* ====================================================
+            RECOVERY CODES
+            ==================================================== */}
+
+        {recoveryCodes.length >
+          0 && (
+          <RecoveryCodesPanel
+            codes={
+              recoveryCodes
+            }
+            onCopy={() =>
+              void copyRecoveryCodes()
+            }
+            onDownload={
+              downloadRecoveryCodes
+            }
+            onDone={
+              hideRecoveryCodes
+            }
+          />
+        )}
+
+        {/* ====================================================
+            ACTIVE SETUP
+            ==================================================== */}
+
+        {setup && (
+          <AuthenticatorSetupPanel
+            setup={
+              setup
+            }
+            code={
+              setupCode
+            }
+            submitting={
+              submitting
+            }
+            onCodeChange={
+              setSetupCode
+            }
+            onCopySecret={() =>
+              void copySetupSecret()
+            }
+            onConfirm={() =>
+              void confirmSetup()
+            }
+            onCancel={
+              cancelSetup
+            }
+          />
+        )}
+
+        {/* ====================================================
+            CURRENT STATUS
+            ==================================================== */}
+
+        {!setup && (
+          <>
+            {enabled ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+
+                <SecurityInfoCard
+                  icon={
+                    Smartphone
+                  }
+                  label="Authenticators"
+                  value={
+                    String(
+                      status
+                        ?.authenticatorCount ??
+                        0
+                    )
+                  }
+                  description="Active authenticator apps currently protecting this account."
+                />
+
+                <SecurityInfoCard
+                  icon={
+                    KeyRound
+                  }
+                  label="Recovery codes"
+                  value={
+                    String(
+                      status
+                        ?.recoveryCodeCount ??
+                        0
+                    )
+                  }
+                  description="Unused one-time recovery codes currently available."
+                />
+              </div>
+            ) : (
+              <div className="rounded-[22px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
+
+                <div className="flex items-start gap-3">
+
+                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+
+                  <div className="flex-1">
+
+                    <p className="text-sm font-black text-blue-950 dark:text-blue-200">
+                      Authenticator protection is off
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">
+                      Enable an authenticator app to require a rotating verification code after your password during sign-in.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={
+                        openAddAuthenticator
+                      }
+                      className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700"
+                    >
+                      <ShieldCheck className="h-4 w-4" />
+
+                      Enable authenticator
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </>
-      )}
+            )}
+          </>
+        )}
 
-      {/* ======================================================
-          ENABLED ACTIONS
-          ====================================================== */}
+        {/* ====================================================
+            ENABLED ACTIONS
+            ==================================================== */}
 
-      {enabled &&
-        !setup && (
-        <div className="grid gap-3">
+        {enabled &&
+          !setup && (
+          <div className="grid gap-3">
 
-          <ActionCard
-            icon={
-              Plus
+            <ActionCard
+              icon={
+                Plus
+              }
+              title="Add authenticator"
+              description="Connect another authenticator app to this SaMi account."
+              actionLabel="Add authenticator"
+              onAction={
+                openAddAuthenticator
+              }
+            />
+
+            <ActionCard
+              icon={
+                KeyRound
+              }
+              title="Generate new recovery codes"
+              description="Create a fresh recovery-code set. Existing unused recovery codes will stop working."
+              actionLabel="Generate codes"
+              onAction={
+                requestRecoveryRegeneration
+              }
+            />
+
+            <ActionCard
+              icon={
+                Trash2
+              }
+              title="Disable authenticator"
+              description="Remove authenticator-based two-factor protection from this account."
+              actionLabel="Disable"
+              danger
+              onAction={
+                requestDisableTwoFactor
+              }
+            />
+          </div>
+        )}
+
+        {/* ====================================================
+            REAUTHENTICATION
+            ==================================================== */}
+
+        {action &&
+          !setup && (
+          <SecurityActionPanel
+            action={
+              action
             }
-            title="Add authenticator"
-            description="Connect another authenticator app. Confirming it will generate a fresh recovery-code set."
-            actionLabel="Add authenticator"
-            onAction={() => {
-              setAction(
+            currentPassword={
+              currentPassword
+            }
+            twoFactorCode={
+              existingTwoFactorCode
+            }
+            showPassword={
+              showPassword
+            }
+            requireTwoFactor={
+              requiresExistingTwoFactor
+            }
+            submitting={
+              submitting
+            }
+            onPasswordChange={
+              setCurrentPassword
+            }
+            onTwoFactorCodeChange={
+              setExistingTwoFactorCode
+            }
+            onTogglePassword={() =>
+              setShowPassword(
+                (
+                  current
+                ) =>
+                  !current
+              )
+            }
+            onCancel={
+              closeAction
+            }
+            onSubmit={() => {
+              if (
+                action ===
                 'add-authenticator'
-              );
+              ) {
+                void startSetup();
 
-              setNotice(
-                null
-              );
-            }}
-          />
+                return;
+              }
 
-          <ActionCard
-            icon={
-              KeyRound
-            }
-            title="Generate new recovery codes"
-            description="Replace every unused recovery code with a new set. Previous unused codes will immediately stop working."
-            actionLabel="Generate new codes"
-            onAction={() => {
-              setAction(
+              if (
+                action ===
                 'regenerate-recovery'
-              );
+              ) {
+                void regenerateRecoveryCodes();
 
-              setNotice(
-                null
-              );
-            }}
-          />
+                return;
+              }
 
-          <ActionCard
-            icon={
-              Trash2
-            }
-            title="Disable two-factor authentication"
-            description="Remove authenticator protection and revoke your unused recovery codes. Other signed-in devices will also be signed out."
-            actionLabel="Disable 2FA"
-            danger
-            onAction={() => {
-              setAction(
+              if (
+                action ===
                 'disable-two-factor'
-              );
-
-              setNotice(
-                null
-              );
+              ) {
+                void disableTwoFactor();
+              }
             }}
           />
+        )}
+
+        {/* ====================================================
+            STATIC SECURITY GUIDANCE
+            ==================================================== */}
+
+        <div className="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+
+          <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+
+          <p className="text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+            Authenticator secrets are encrypted before storage. Recovery codes are stored as cryptographic hashes and plaintext recovery codes are displayed only when a new set is created.
+          </p>
         </div>
-      )}
-
-      {/* ======================================================
-          STEP-UP ACTION FORM
-          ====================================================== */}
-
-      {action &&
-        !setup && (
-        <SecurityActionPanel
-          action={
-            action
-          }
-          currentPassword={
-            currentPassword
-          }
-          twoFactorCode={
-            existingTwoFactorCode
-          }
-          showPassword={
-            showPassword
-          }
-          requireTwoFactor={
-            requiresExistingTwoFactor
-          }
-          submitting={
-            submitting
-          }
-          onPasswordChange={
-            setCurrentPassword
-          }
-          onTwoFactorCodeChange={
-            setExistingTwoFactorCode
-          }
-          onTogglePassword={() =>
-            setShowPassword(
-              (
-                current
-              ) =>
-                !current
-            )
-          }
-          onCancel={
-            closeAction
-          }
-          onSubmit={() => {
-            if (
-              action ===
-              'add-authenticator'
-            ) {
-              void startSetup();
-
-              return;
-            }
-
-            if (
-              action ===
-              'regenerate-recovery'
-            ) {
-              void regenerateRecoveryCodes();
-
-              return;
-            }
-
-            if (
-              action ===
-              'disable-two-factor'
-            ) {
-              void disableTwoFactor();
-            }
-          }}
-        />
-      )}
-
-      {/* ======================================================
-          SECURITY NOTE
-          ====================================================== */}
-
-      <div className="flex items-start gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-
-        <p className="text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-          SaMi stores authenticator secrets encrypted and stores recovery codes only as cryptographic hashes. Plain recovery codes are displayed only when a new set is created.
-        </p>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1796,17 +1951,6 @@ function SecurityActionPanel({
         </button>
       </div>
 
-      {configuration.danger && (
-        <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-200 bg-white/70 px-3 py-3 text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
-
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-
-          <p className="text-[10px] font-semibold leading-4">
-            Disabling 2FA lowers account protection and signs out your other active devices.
-          </p>
-        </div>
-      )}
-
       <div className="mt-5 grid gap-4">
 
         {/* CURRENT PASSWORD */}
@@ -1871,7 +2015,7 @@ function SecurityActionPanel({
           </div>
         </div>
 
-        {/* CURRENT 2FA */}
+        {/* CURRENT SECOND FACTOR */}
 
         {requireTwoFactor && (
           <div>
@@ -1909,7 +2053,7 @@ function SecurityActionPanel({
             </div>
 
             <p className="mt-1.5 text-[9px] leading-4 text-slate-400">
-              You can use your current 6-digit authenticator code or an unused SaMi recovery code.
+              Use the current 6-digit authenticator code or one unused SaMi recovery code.
             </p>
           </div>
         )}
@@ -1970,6 +2114,7 @@ function AuthenticatorSetupPanel({
   code,
   submitting,
   onCodeChange,
+  onCopySecret,
   onConfirm,
   onCancel,
 }: {
@@ -1988,36 +2133,15 @@ function AuthenticatorSetupPanel({
         string
     ) => void;
 
+  onCopySecret:
+    () => void;
+
   onConfirm:
     () => void;
 
   onCancel:
     () => void;
 }) {
-  const [
-    copied,
-    setCopied,
-  ] =
-    useState(
-      false
-    );
-
-  async function copySecret() {
-    try {
-      await navigator.clipboard.writeText(
-        setup.secret
-      );
-
-      setCopied(
-        true
-      );
-    } catch {
-      setCopied(
-        false
-      );
-    }
-  }
-
   return (
     <div className="rounded-[24px] border border-blue-200 bg-blue-50/50 p-5 dark:border-blue-900/60 dark:bg-blue-950/15">
 
@@ -2038,7 +2162,7 @@ function AuthenticatorSetupPanel({
             </h4>
 
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Add SaMi to Google Authenticator, Microsoft Authenticator, Authy or another TOTP-compatible authenticator.
+              Add SaMi to a TOTP-compatible authenticator, then verify the current code.
             </p>
           </div>
         </div>
@@ -2071,7 +2195,7 @@ function AuthenticatorSetupPanel({
         </p>
 
         <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-          On mobile, you can try opening the authenticator link directly. Otherwise choose manual setup in your authenticator app and enter the secret below.
+          Open the authenticator link where supported or choose manual setup and enter the secret below.
         </p>
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
@@ -2089,20 +2213,14 @@ function AuthenticatorSetupPanel({
 
           <button
             type="button"
-            onClick={() =>
-              void copySecret()
+            onClick={
+              onCopySecret
             }
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
           >
-            {copied ? (
-              <Check className="h-4 w-4 text-emerald-500" />
-            ) : (
-              <Copy className="h-4 w-4" />
-            )}
+            <Copy className="h-4 w-4" />
 
-            {copied
-              ? 'Secret copied'
-              : 'Copy secret'}
+            Copy secret
           </button>
         </div>
 
@@ -2117,8 +2235,8 @@ function AuthenticatorSetupPanel({
           </p>
         </div>
 
-        <p className="mt-3 text-[9px] leading-4 text-amber-600 dark:text-amber-400">
-          Do not share this secret. Anyone who has it can generate your authenticator codes.
+        <p className="mt-3 text-[9px] leading-4 text-slate-500 dark:text-slate-400">
+          Keep this setup secret private. Anyone who obtains it can generate valid authenticator codes.
         </p>
       </div>
 
@@ -2138,34 +2256,31 @@ function AuthenticatorSetupPanel({
           Enter the current 6-digit code generated for SaMi.
         </p>
 
-        <div className="mt-4">
-
-          <input
-            type="text"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={
-              code
-            }
-            onChange={(
-              event
-            ) =>
-              onCodeChange(
-                cleanAuthenticatorCode(
-                  event.target.value
-                )
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={
+            code
+          }
+          onChange={(
+            event
+          ) =>
+            onCodeChange(
+              cleanAuthenticatorCode(
+                event.target.value
               )
-            }
-            maxLength={
-              6
-            }
-            disabled={
-              submitting
-            }
-            placeholder="000000"
-            className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-center font-mono text-lg font-black tracking-[0.35em] outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950"
-          />
-        </div>
+            )
+          }
+          maxLength={
+            6
+          }
+          disabled={
+            submitting
+          }
+          placeholder="000000"
+          className="mt-4 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-center font-mono text-lg font-black tracking-[0.35em] outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950"
+        />
 
         <button
           type="button"
@@ -2189,7 +2304,7 @@ function AuthenticatorSetupPanel({
             ? 'Verifying authenticator...'
             : setup.addingAdditionalAuthenticator
               ? 'Verify and add authenticator'
-              : 'Verify and enable 2FA'}
+              : 'Verify and enable authenticator'}
         </button>
       </div>
     </div>
@@ -2197,21 +2312,17 @@ function AuthenticatorSetupPanel({
 }
 
 /* ============================================================
-   RECOVERY CODES
+   RECOVERY CODES PANEL
    ============================================================ */
 
 function RecoveryCodesPanel({
   codes,
-  copied,
   onCopy,
   onDownload,
   onDone,
 }: {
   codes:
     string[];
-
-  copied:
-    boolean;
 
   onCopy:
     () => void;
@@ -2223,22 +2334,17 @@ function RecoveryCodesPanel({
     () => void;
 }) {
   return (
-    <div className="rounded-[24px] border border-amber-300 bg-amber-50 p-5 dark:border-amber-900/70 dark:bg-amber-950/20">
+    <div className="rounded-[24px] border border-slate-200 bg-slate-50/60 p-5 dark:border-slate-800 dark:bg-slate-950/40">
 
-      <div className="flex items-start gap-3">
+      <div>
 
-        <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm font-black text-slate-950 dark:text-white">
+          Recovery codes
+        </p>
 
-        <div>
-
-          <h4 className="text-sm font-black text-amber-950 dark:text-amber-200">
-            Save your recovery codes now
-          </h4>
-
-          <p className="mt-1 max-w-2xl text-xs leading-5 text-amber-700 dark:text-amber-300">
-            These codes are shown only for this newly generated set. Each code works once and can be used if you cannot access your authenticator.
-          </p>
-        </div>
+        <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+          Store these codes securely. Each code works once and can be used when your authenticator is unavailable.
+        </p>
       </div>
 
       <div className="mt-5 grid gap-2 sm:grid-cols-2">
@@ -2250,7 +2356,7 @@ function RecoveryCodesPanel({
           ) => (
             <div
               key={`${code}-${index}`}
-              className="rounded-xl border border-amber-200 bg-white px-4 py-3 font-mono text-xs font-black tracking-[0.08em] text-slate-900 dark:border-amber-900/50 dark:bg-slate-950 dark:text-white"
+              className="rounded-xl border border-slate-200 bg-white px-4 py-3 font-mono text-xs font-black tracking-[0.08em] text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
             >
               {code}
             </div>
@@ -2265,17 +2371,11 @@ function RecoveryCodesPanel({
           onClick={
             onCopy
           }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 dark:border-amber-900 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
-          {copied ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
+          <Copy className="h-4 w-4" />
 
-          {copied
-            ? 'Copied'
-            : 'Copy codes'}
+          Copy codes
         </button>
 
         <button
@@ -2283,7 +2383,7 @@ function RecoveryCodesPanel({
           onClick={
             onDownload
           }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 text-xs font-black text-amber-800 transition hover:bg-amber-100 dark:border-amber-900 dark:bg-slate-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
         >
           <Download className="h-4 w-4" />
 
@@ -2295,9 +2395,9 @@ function RecoveryCodesPanel({
           onClick={
             onDone
           }
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-xs font-black text-white transition hover:bg-amber-700 sm:ml-auto"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 sm:ml-auto"
         >
-          <CheckCircle2 className="h-4 w-4" />
+          <Check className="h-4 w-4" />
 
           I&apos;ve saved them
         </button>
@@ -2430,67 +2530,6 @@ function SecurityInfoCard({
 }
 
 /* ============================================================
-   NOTICE
-   ============================================================ */
-
-function Notice({
-  notice,
-  onDismiss,
-}: {
-  notice:
-    NoticeState;
-
-  onDismiss:
-    () => void;
-}) {
-  const success =
-    notice.type ===
-    'success';
-
-  const warning =
-    notice.type ===
-    'warning';
-
-  return (
-    <div
-      role={
-        success
-          ? 'status'
-          : 'alert'
-      }
-      className={`flex items-start gap-3 rounded-[18px] border px-4 py-3 ${
-        success
-          ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-300'
-          : warning
-            ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300'
-            : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300'
-      }`}
-    >
-      {success ? (
-        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-      ) : (
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-      )}
-
-      <p className="flex-1 text-xs font-semibold leading-5">
-        {notice.message}
-      </p>
-
-      <button
-        type="button"
-        onClick={
-          onDismiss
-        }
-        aria-label="Dismiss message"
-        className="opacity-60 transition hover:opacity-100"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
-
-/* ============================================================
    ACTION CONFIGURATION
    ============================================================ */
 
@@ -2507,10 +2546,10 @@ function getActionConfiguration(
     case 'regenerate-recovery':
       return {
         title:
-          'Generate new recovery codes',
+          'Verify your identity',
 
         description:
-          'Verify your identity before replacing your current unused recovery codes.',
+          'Confirm your identity before replacing your current recovery-code set.',
 
         button:
           'Generate new codes',
@@ -2522,13 +2561,13 @@ function getActionConfiguration(
     case 'disable-two-factor':
       return {
         title:
-          'Disable two-factor authentication',
+          'Verify your identity',
 
         description:
-          'Verify your identity before removing two-factor protection from this SaMi account.',
+          'Confirm your identity before disabling authenticator protection.',
 
         button:
-          'Disable 2FA',
+          'Disable authenticator',
 
         danger:
           true,
@@ -2537,10 +2576,10 @@ function getActionConfiguration(
     default:
       return {
         title:
-          'Authenticator verification',
+          'Verify your identity',
 
         description:
-          'Verify your identity before starting authenticator setup.',
+          'Confirm your identity before starting authenticator setup.',
 
         button:
           'Continue setup',

@@ -7,11 +7,8 @@ import {
   ArrowLeft,
   Bot,
   Building2,
-  Check,
   ChevronRight,
   CreditCard,
-  Eye,
-  EyeOff,
   Loader2,
   LockKeyhole,
   Moon,
@@ -23,22 +20,16 @@ import {
 } from 'lucide-react';
 
 import {
-  type FormEvent,
   useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
-import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 import MyAccountSettings from './components/MyAccountSettings';
+import SecuritySettings from './components/SecuritySettings';
 import SessionsSettings from './components/SessionsSettings';
-import TwoFactorSettings from './components/TwoFactorSettings';
-
-import {
-  getAuthOverlayMessage,
-} from '@/lib/auth/auth-ui-messages';
 
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
@@ -113,11 +104,11 @@ type Props = {
   modules: ModuleData[];
 
   /*
-   * Kept for compatibility with the current settings page
-   * server contract.
+   * Kept because the current server Settings page already
+   * supplies this property.
    *
-   * SessionsSettings now obtains active sessions from its
-   * dedicated live API rather than this one page-load value.
+   * SessionsSettings loads the authoritative active-session
+   * list through its dedicated API.
    */
   session: SessionData;
 };
@@ -294,47 +285,6 @@ function getFullName(
   );
 }
 
-function passwordChecks(
-  password: string
-) {
-  return {
-    length:
-      password.length >=
-      8,
-
-    uppercase:
-      /[A-Z]/.test(
-        password
-      ),
-
-    lowercase:
-      /[a-z]/.test(
-        password
-      ),
-
-    number:
-      /[0-9]/.test(
-        password
-      ),
-  };
-}
-
-function validPassword(
-  password: string
-) {
-  const checks =
-    passwordChecks(
-      password
-    );
-
-  return (
-    checks.length &&
-    checks.uppercase &&
-    checks.lowercase &&
-    checks.number
-  );
-}
-
 function getSectionFromUrl():
   | Section
   | null {
@@ -423,7 +373,7 @@ function applyThemeToDocument(
     /*
      * Local theme cache is optional.
      *
-     * The database preference remains authoritative.
+     * The persisted account preference remains authoritative.
      */
   }
 
@@ -464,7 +414,7 @@ export default function SettingsClient({
   modules,
 }: Props) {
   /* ==========================================================
-     ACTIVE SECTION
+     ACTIVE TOP-LEVEL SECTION
      ========================================================== */
 
   const [
@@ -476,7 +426,7 @@ export default function SettingsClient({
     );
 
   /* ==========================================================
-     USER DISPLAY PREFERENCES
+     DISPLAY PREFERENCES
      ========================================================== */
 
   const [
@@ -495,61 +445,17 @@ export default function SettingsClient({
     darkMode,
     setDarkMode,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     themeSaving,
     setThemeSaving,
   ] =
-    useState(false);
-
-  /* ==========================================================
-     PASSWORD
-     ========================================================== */
-
-  const [
-    currentPassword,
-    setCurrentPassword,
-  ] =
-    useState('');
-
-  const [
-    newPassword,
-    setNewPassword,
-  ] =
-    useState('');
-
-  const [
-    confirmPassword,
-    setConfirmPassword,
-  ] =
-    useState('');
-
-  const [
-    showPasswords,
-    setShowPasswords,
-  ] =
-    useState(false);
-
-  const [
-    submitting,
-    setSubmitting,
-  ] =
-    useState(false);
-
-  /* ==========================================================
-     OVERLAY
-     ========================================================== */
-
-  const [
-    overlay,
-    setOverlay,
-  ] =
-    useState<
-      ReturnType<
-        typeof getAuthOverlayMessage
-      > | null
-    >(null);
+    useState(
+      false
+    );
 
   /* ==========================================================
      ACCESS
@@ -593,7 +499,7 @@ export default function SettingsClient({
     );
 
   /* ==========================================================
-     INITIAL SECTION
+     INITIAL TOP-LEVEL SECTION
      ========================================================== */
 
   useEffect(
@@ -601,7 +507,9 @@ export default function SettingsClient({
       const requested =
         getSectionFromUrl();
 
-      if (!requested) {
+      if (
+        !requested
+      ) {
         return;
       }
 
@@ -621,6 +529,62 @@ export default function SettingsClient({
           requested
         );
       }
+    },
+    [
+      visibleNav,
+    ]
+  );
+
+  /* ==========================================================
+     BROWSER BACK / FORWARD
+     ========================================================== */
+
+  useEffect(
+    () => {
+      const syncSection =
+        () => {
+          const requested =
+            getSectionFromUrl();
+
+          if (
+            !requested
+          ) {
+            setActive(
+              'personal'
+            );
+
+            return;
+          }
+
+          const permitted =
+            visibleNav.some(
+              (
+                item
+              ) =>
+                item.key ===
+                requested
+            );
+
+          if (
+            permitted
+          ) {
+            setActive(
+              requested
+            );
+          }
+        };
+
+      window.addEventListener(
+        'popstate',
+        syncSection
+      );
+
+      return () => {
+        window.removeEventListener(
+          'popstate',
+          syncSection
+        );
+      };
     },
     [
       visibleNav,
@@ -676,7 +640,7 @@ export default function SettingsClient({
   );
 
   /* ==========================================================
-     LOAD SAVED USER PREFERENCES
+     LOAD SAVED PREFERENCES
      ========================================================== */
 
   useEffect(
@@ -740,9 +704,7 @@ export default function SettingsClient({
           );
         } catch {
           /*
-           * Settings remain usable with safe formatting defaults.
-           *
-           * My Account handles its own account-loading errors.
+           * Settings remain usable with safe defaults.
            */
         }
       }
@@ -809,7 +771,7 @@ export default function SettingsClient({
   );
 
   /* ==========================================================
-     TOP BAR THEME TOGGLE
+     THEME TOGGLE
      ========================================================== */
 
   async function toggleTheme() {
@@ -943,7 +905,7 @@ export default function SettingsClient({
   }
 
   /* ==========================================================
-     SECTION NAVIGATION
+     TOP-LEVEL NAVIGATION
      ========================================================== */
 
   function selectSection(
@@ -971,180 +933,36 @@ export default function SettingsClient({
       section
     );
 
-    window.history.replaceState(
+    /*
+     * When leaving Security, remove its nested navigation state.
+     *
+     * This means:
+     *
+     * Security > Verification > Authenticator
+     *
+     * does not unexpectedly reopen when the user intentionally
+     * enters another top-level Settings category.
+     */
+    if (
+      section !==
+      'security'
+    ) {
+      url.searchParams.delete(
+        'security'
+      );
+    }
+
+    window.history.pushState(
       {},
       '',
       `${url.pathname}${url.search}${url.hash}`
     );
-  }
 
-  /* ==========================================================
-     CHANGE PASSWORD
-     ========================================================== */
-
-  async function changePassword(
-    event:
-      FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (
-      submitting
-    ) {
-      return;
-    }
-
-    /* ========================================================
-       CURRENT PASSWORD
-       ======================================================== */
-
-    if (
-      !currentPassword
-    ) {
-      setOverlay(
-        getAuthOverlayMessage(
-          'CURRENT_PASSWORD_REQUIRED'
-        )
-      );
-
-      return;
-    }
-
-    /* ========================================================
-       PASSWORD POLICY
-       ======================================================== */
-
-    if (
-      !validPassword(
-        newPassword
-      )
-    ) {
-      setOverlay(
-        getAuthOverlayMessage(
-          'PASSWORD_WEAK'
-        )
-      );
-
-      return;
-    }
-
-    /* ========================================================
-       CONFIRMATION
-       ======================================================== */
-
-    if (
-      newPassword !==
-      confirmPassword
-    ) {
-      setOverlay(
-        getAuthOverlayMessage(
-          'PASSWORDS_DO_NOT_MATCH'
-        )
-      );
-
-      return;
-    }
-
-    /* ========================================================
-       REQUEST
-       ======================================================== */
-
-    setSubmitting(
-      true
-    );
-
-    setOverlay(
-      null
-    );
-
-    try {
-      const response =
-        await fetch(
-          '/api/auth/change-password',
-          {
-            method:
-              'POST',
-
-            headers: {
-              'Content-Type':
-                'application/json',
-
-              Accept:
-                'application/json',
-            },
-
-            credentials:
-              'include',
-
-            cache:
-              'no-store',
-
-            body:
-              JSON.stringify({
-                currentPassword,
-                newPassword,
-                confirmPassword,
-              }),
-          }
-        );
-
-      const data =
-        await response
-          .json()
-          .catch(
-            () => ({})
-          );
-
-      if (
-        !response.ok ||
-        !data.success
-      ) {
-        setOverlay(
-          getAuthOverlayMessage(
-            data.code,
-            {
-              fallback:
-                data.error ||
-                data.message,
-            }
-          )
-        );
-
-        return;
-      }
-
-      setCurrentPassword(
-        ''
-      );
-
-      setNewPassword(
-        ''
-      );
-
-      setConfirmPassword(
-        ''
-      );
-
-      setOverlay(
-        getAuthOverlayMessage(
-          'PASSWORD_CHANGED'
-        )
-      );
-    } catch {
-      setOverlay(
-        getAuthOverlayMessage(
-          'CHANGE_PASSWORD_ERROR',
-          {
-            fallback:
-              'SaMi could not connect to the server. Check your connection and try again.',
-          }
-        )
-      );
-    } finally {
-      setSubmitting(
-        false
-      );
-    }
+    window.scrollTo({
+      top: 0,
+      behavior:
+        'smooth',
+    });
   }
 
   /* ==========================================================
@@ -1176,739 +994,385 @@ export default function SettingsClient({
      ========================================================== */
 
   return (
-    <>
-      {/* ======================================================
-          OVERLAY
-          ====================================================== */}
-
-      {overlay && (
-        <SaMiOverlay
-          open
-          type={
-            overlay.type
-          }
-          title={
-            overlay.title
-          }
-          message={
-            overlay.message
-          }
-          primaryAction={
-            overlay.primaryAction
-          }
-          secondaryAction={
-            overlay.secondaryAction
-          }
-          onClose={() =>
-            setOverlay(
-              null
-            )
-          }
-        />
-      )}
-
-      <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
-
-        {/* ====================================================
-            TOP BAR
-            ==================================================== */}
-
-        <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-[#090d15]/90">
-
-          <div className="mx-auto flex h-[72px] max-w-[1500px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-
-            {/* BACK */}
-
-            <Link
-              href="/dashboard"
-              aria-label="Back to dashboard"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-
-            {/* LOGO */}
-
-            <Link
-              href="/dashboard"
-              className="min-w-0 shrink-0"
-            >
-              <SaMiLogo
-                size="sm"
-                className="max-w-full"
-              />
-            </Link>
-
-            <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
-
-            {/* PAGE IDENTITY */}
-
-            <div className="hidden min-w-0 sm:block">
-
-              <p className="truncate text-sm font-black">
-                Settings
-              </p>
-
-              <p className="truncate text-[10px] text-slate-400">
-                {tenant?.name ||
-                  'SaMi workspace'}
-              </p>
-            </div>
-
-            {/* RIGHT */}
-
-            <div className="ml-auto flex items-center gap-2">
-
-              {/* THEME */}
-
-              <button
-                type="button"
-                onClick={() =>
-                  void toggleTheme()
-                }
-                disabled={
-                  themeSaving
-                }
-                aria-label={
-                  darkMode
-                    ? 'Switch to light theme'
-                    : 'Switch to dark theme'
-                }
-                title={
-                  displayPreferences
-                    .theme ===
-                  'system'
-                    ? 'Theme currently follows your system'
-                    : `Theme: ${displayPreferences.theme}`
-                }
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-              >
-                {themeSaving ? (
-                  <Loader2 className="h-[17px] w-[17px] animate-spin" />
-                ) : darkMode ? (
-                  <Sun className="h-[17px] w-[17px]" />
-                ) : (
-                  <Moon className="h-[17px] w-[17px]" />
-                )}
-              </button>
-
-              {/* USER */}
-
-              <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white py-1.5 pl-2 pr-3 dark:border-slate-800 dark:bg-slate-900 md:flex">
-
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-[10px] font-black text-white">
-                  {getInitials(
-                    user
-                  )}
-                </div>
-
-                <div className="min-w-0">
-
-                  <p className="max-w-[160px] truncate text-[11px] font-black">
-                    {getFullName(
-                      user
-                    )}
-                  </p>
-
-                  <p className="text-[9px] capitalize text-slate-400">
-                    {membership?.label ||
-                      membership
-                        ?.accessLevel ||
-                      'Member'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* ====================================================
-            BODY
-            ==================================================== */}
-
-        <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
-
-          {/* ==================================================
-              MOBILE NAV
-              ================================================== */}
-
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-
-            {visibleNav.map(
-              (
-                item
-              ) => {
-                const Icon =
-                  item.icon;
-
-                const selected =
-                  active ===
-                  item.key;
-
-                return (
-                  <button
-                    key={
-                      item.key
-                    }
-                    type="button"
-                    onClick={() =>
-                      selectSection(
-                        item.key
-                      )
-                    }
-                    className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition ${
-                      selected
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
-                    }`}
-                  >
-                    <Icon className="h-4 w-4" />
-
-                    {item.label}
-                  </button>
-                );
-              }
-            )}
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-
-            {/* =================================================
-                SIDEBAR
-                ================================================= */}
-
-            <aside className="hidden h-fit rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] lg:block">
-
-              <div className="px-3 pb-3 pt-2">
-
-                <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
-                  Settings
-                </p>
-              </div>
-
-              <div className="space-y-1">
-
-                {visibleNav.map(
-                  (
-                    item
-                  ) => {
-                    const Icon =
-                      item.icon;
-
-                    const selected =
-                      active ===
-                      item.key;
-
-                    return (
-                      <button
-                        key={
-                          item.key
-                        }
-                        type="button"
-                        onClick={() =>
-                          selectSection(
-                            item.key
-                          )
-                        }
-                        className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                          selected
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
-                        }`}
-                      >
-
-                        <div
-                          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                            selected
-                              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
-                              : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4" />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-
-                          <p className="text-[12px] font-black">
-                            {item.label}
-                          </p>
-
-                          <p className="mt-0.5 truncate text-[9px] font-medium opacity-60">
-                            {item.description}
-                          </p>
-                        </div>
-
-                        <ChevronRight
-                          className={`h-3.5 w-3.5 transition ${
-                            selected
-                              ? 'opacity-100'
-                              : 'opacity-0 group-hover:opacity-50'
-                          }`}
-                        />
-                      </button>
-                    );
-                  }
-                )}
-              </div>
-            </aside>
-
-            {/* =================================================
-                CONTENT
-                ================================================= */}
-
-            <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-
-              {/* SECTION HEADER */}
-
-              <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
-
-                <div className="flex items-center gap-3">
-
-                  {currentNav && (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-                      <currentNav.icon className="h-[18px] w-[18px]" />
-                    </div>
-                  )}
-
-                  <div>
-
-                    <h1 className="text-lg font-black">
-                      {currentNav
-                        ?.label ||
-                        'Settings'}
-                    </h1>
-
-                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                      {currentNav
-                        ?.description}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-5 sm:p-7">
-
-                {/* =============================================
-                    MY ACCOUNT
-                    ============================================= */}
-
-                {active ===
-                  'personal' && (
-                  <MyAccountSettings />
-                )}
-
-                {/* =============================================
-                    SECURITY
-                    ============================================= */}
-
-                {active ===
-                  'security' && (
-                  <SecuritySection
-                    currentPassword={
-                      currentPassword
-                    }
-                    newPassword={
-                      newPassword
-                    }
-                    confirmPassword={
-                      confirmPassword
-                    }
-                    showPasswords={
-                      showPasswords
-                    }
-                    submitting={
-                      submitting
-                    }
-                    setCurrentPassword={
-                      setCurrentPassword
-                    }
-                    setNewPassword={
-                      setNewPassword
-                    }
-                    setConfirmPassword={
-                      setConfirmPassword
-                    }
-                    setShowPasswords={
-                      setShowPasswords
-                    }
-                    onSubmit={
-                      changePassword
-                    }
-                  />
-                )}
-
-                {/* =============================================
-                    SESSIONS & DEVICES
-                    ============================================= */}
-
-                {active ===
-                  'sessions' && (
-                  <SessionsSettings />
-                )}
-
-                {/* =============================================
-                    WORKSPACE
-                    ============================================= */}
-
-                {active ===
-                  'workspace' &&
-                  canAdminWorkspace && (
-                    <WorkspaceSection
-                      tenant={
-                        tenant
-                      }
-                      membership={
-                        membership
-                      }
-                    />
-                  )}
-
-                {/* =============================================
-                    APPS
-                    ============================================= */}
-
-                {active ===
-                  'apps' &&
-                  canAdminWorkspace && (
-                    <AppsSection
-                      modules={
-                        modules
-                      }
-                    />
-                  )}
-
-                {/* =============================================
-                    SAMI AI
-                    ============================================= */}
-
-                {active ===
-                  'ai' && (
-                  <AiSection
-                    planName={
-                      currentPlan
-                    }
-                  />
-                )}
-
-                {/* =============================================
-                    BILLING
-                    ============================================= */}
-
-                {active ===
-                  'billing' &&
-                  membership
-                    ?.isOwner && (
-                    <BillingSection
-                      subscription={
-                        subscription
-                      }
-                      currentPlan={
-                        currentPlan
-                      }
-                      preferences={
-                        displayPreferences
-                      }
-                    />
-                  )}
-              </div>
-            </section>
-          </div>
-        </div>
-      </main>
-    </>
-  );
-}
-
-/* ============================================================
-   SECURITY
-   ============================================================ */
-
-function SecuritySection({
-  currentPassword,
-  newPassword,
-  confirmPassword,
-  showPasswords,
-  submitting,
-  setCurrentPassword,
-  setNewPassword,
-  setConfirmPassword,
-  setShowPasswords,
-  onSubmit,
-}: {
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-  showPasswords: boolean;
-  submitting: boolean;
-
-  setCurrentPassword:
-    (
-      value: string
-    ) => void;
-
-  setNewPassword:
-    (
-      value: string
-    ) => void;
-
-  setConfirmPassword:
-    (
-      value: string
-    ) => void;
-
-  setShowPasswords:
-    (
-      value:
-        | boolean
-        | (
-            (
-              current:
-                boolean
-            ) =>
-              boolean
-          )
-    ) => void;
-
-  onSubmit:
-    (
-      event:
-        FormEvent<HTMLFormElement>
-    ) => void;
-}) {
-  const checks =
-    passwordChecks(
-      newPassword
-    );
-
-  const passwordsMatch =
-    Boolean(
-      confirmPassword &&
-      newPassword ===
-        confirmPassword
-    );
-
-  return (
-    <div className="max-w-5xl space-y-8">
+    <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
 
       {/* ======================================================
-          PASSWORD
+          TOP BAR
           ====================================================== */}
 
-      <section>
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-[#090d15]/90">
 
-        <div className="mb-5">
+        <div className="mx-auto flex h-[72px] max-w-[1500px] items-center gap-4 px-4 sm:px-6 lg:px-8">
 
-          <div className="flex items-center gap-2">
+          {/* BACK */}
 
-            <LockKeyhole className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-
-            <h2 className="text-sm font-black text-slate-950 dark:text-white">
-              Password
-            </h2>
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Change the password used to sign in to your SaMi account.
-          </p>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,560px)_1fr]">
-
-          {/* PASSWORD FORM */}
-
-          <form
-            onSubmit={
-              onSubmit
-            }
-            className="min-w-0"
+          <Link
+            href="/dashboard"
+            aria-label="Back to dashboard"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
           >
-            <div className="space-y-4">
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
 
-              <PasswordField
-                label="Current password"
-                value={
-                  currentPassword
-                }
-                onChange={
-                  setCurrentPassword
-                }
-                show={
-                  showPasswords
-                }
-                autoComplete="current-password"
-              />
+          {/* LOGO */}
 
-              <PasswordField
-                label="New password"
-                value={
-                  newPassword
-                }
-                onChange={
-                  setNewPassword
-                }
-                show={
-                  showPasswords
-                }
-                autoComplete="new-password"
-              />
+          <Link
+            href="/dashboard"
+            className="min-w-0 shrink-0"
+          >
+            <SaMiLogo
+              size="sm"
+              className="max-w-full"
+            />
+          </Link>
 
-              <PasswordField
-                label="Confirm new password"
-                value={
-                  confirmPassword
-                }
-                onChange={
-                  setConfirmPassword
-                }
-                show={
-                  showPasswords
-                }
-                autoComplete="new-password"
-              />
-            </div>
+          <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
+
+          {/* PAGE IDENTITY */}
+
+          <div className="hidden min-w-0 sm:block">
+
+            <p className="truncate text-sm font-black">
+              Settings
+            </p>
+
+            <p className="truncate text-[10px] text-slate-400">
+              {tenant?.name ||
+                'SaMi workspace'}
+            </p>
+          </div>
+
+          {/* RIGHT */}
+
+          <div className="ml-auto flex items-center gap-2">
+
+            {/* THEME */}
 
             <button
               type="button"
               onClick={() =>
-                setShowPasswords(
-                  (
-                    current
-                  ) =>
-                    !current
-                )
+                void toggleTheme()
               }
-              className="mt-3 inline-flex items-center gap-2 text-[11px] font-bold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-            >
-              {showPasswords ? (
-                <EyeOff className="h-4 w-4" />
-              ) : (
-                <Eye className="h-4 w-4" />
-              )}
-
-              {showPasswords
-                ? 'Hide passwords'
-                : 'Show passwords'}
-            </button>
-
-            <button
-              type="submit"
               disabled={
-                submitting
+                themeSaving
               }
-              className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white shadow-md shadow-blue-500/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              aria-label={
+                darkMode
+                  ? 'Switch to light theme'
+                  : 'Switch to dark theme'
+              }
+              title={
+                displayPreferences
+                  .theme ===
+                'system'
+                  ? 'Theme currently follows your system'
+                  : `Theme: ${displayPreferences.theme}`
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
             >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-
-                  Changing password...
-                </>
+              {themeSaving ? (
+                <Loader2 className="h-[17px] w-[17px] animate-spin" />
+              ) : darkMode ? (
+                <Sun className="h-[17px] w-[17px]" />
               ) : (
-                <>
-                  <ShieldCheck className="h-4 w-4" />
-
-                  Change password
-                </>
+                <Moon className="h-[17px] w-[17px]" />
               )}
             </button>
-          </form>
 
-          {/* PASSWORD REQUIREMENTS */}
+            {/* USER */}
 
-          <div>
+            <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white py-1.5 pl-2 pr-3 dark:border-slate-800 dark:bg-slate-900 md:flex">
 
-            <div className="rounded-[20px] border border-slate-200 p-4 dark:border-slate-800">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-[10px] font-black text-white">
+                {getInitials(
+                  user
+                )}
+              </div>
 
-              <p className="text-xs font-black">
-                Password requirements
+              <div className="min-w-0">
+
+                <p className="max-w-[160px] truncate text-[11px] font-black">
+                  {getFullName(
+                    user
+                  )}
+                </p>
+
+                <p className="text-[9px] capitalize text-slate-400">
+                  {membership?.label ||
+                    membership
+                      ?.accessLevel ||
+                    'Member'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ======================================================
+          BODY
+          ====================================================== */}
+
+      <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+
+        {/* ====================================================
+            MOBILE TOP-LEVEL NAV
+            ==================================================== */}
+
+        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+
+          {visibleNav.map(
+            (
+              item
+            ) => {
+              const Icon =
+                item.icon;
+
+              const selected =
+                active ===
+                item.key;
+
+              return (
+                <button
+                  key={
+                    item.key
+                  }
+                  type="button"
+                  onClick={() =>
+                    selectSection(
+                      item.key
+                    )
+                  }
+                  className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition ${
+                    selected
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+
+                  {item.label}
+                </button>
+              );
+            }
+          )}
+        </div>
+
+        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+          {/* ==================================================
+              SIDEBAR
+              ================================================== */}
+
+          <aside className="hidden h-fit rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] lg:block">
+
+            <div className="px-3 pb-3 pt-2">
+
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Settings
               </p>
+            </div>
 
-              <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                Your new password must satisfy all of these requirements.
-              </p>
+            <div className="space-y-1">
 
-              <div className="mt-4 grid gap-2">
+              {visibleNav.map(
+                (
+                  item
+                ) => {
+                  const Icon =
+                    item.icon;
 
-                <PasswordRule
-                  valid={
-                    checks.length
-                  }
-                  label="At least 8 characters"
-                />
+                  const selected =
+                    active ===
+                    item.key;
 
-                <PasswordRule
-                  valid={
-                    checks.uppercase
-                  }
-                  label="Uppercase letter"
-                />
+                  return (
+                    <button
+                      key={
+                        item.key
+                      }
+                      type="button"
+                      onClick={() =>
+                        selectSection(
+                          item.key
+                        )
+                      }
+                      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                        selected
+                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
+                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
+                      }`}
+                    >
 
-                <PasswordRule
-                  valid={
-                    checks.lowercase
-                  }
-                  label="Lowercase letter"
-                />
+                      <div
+                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                          selected
+                            ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
+                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </div>
 
-                <PasswordRule
-                  valid={
-                    checks.number
-                  }
-                  label="Number"
-                />
+                      <div className="min-w-0 flex-1">
 
-                <PasswordRule
-                  valid={
-                    passwordsMatch
-                  }
-                  label="Passwords match"
-                />
+                        <p className="text-[12px] font-black">
+                          {item.label}
+                        </p>
+
+                        <p className="mt-0.5 truncate text-[9px] font-medium opacity-60">
+                          {item.description}
+                        </p>
+                      </div>
+
+                      <ChevronRight
+                        className={`h-3.5 w-3.5 transition ${
+                          selected
+                            ? 'opacity-100'
+                            : 'opacity-0 group-hover:opacity-50'
+                        }`}
+                      />
+                    </button>
+                  );
+                }
+              )}
+            </div>
+          </aside>
+
+          {/* ==================================================
+              CONTENT
+              ================================================== */}
+
+          <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+
+            {/* ================================================
+                TOP-LEVEL SECTION HEADER
+                ================================================ */}
+
+            <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
+
+              <div className="flex items-center gap-3">
+
+                {currentNav && (
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                    <currentNav.icon className="h-[18px] w-[18px]" />
+                  </div>
+                )}
+
+                <div>
+
+                  <h1 className="text-lg font-black">
+                    {currentNav
+                      ?.label ||
+                      'Settings'}
+                  </h1>
+
+                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    {currentNav
+                      ?.description}
+                  </p>
+                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex items-start gap-3 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
+            <div className="p-5 sm:p-7">
 
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              {/* ==============================================
+                  MY ACCOUNT
+                  ============================================== */}
 
-              <p className="text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-                SaMi verifies your current password before allowing a password change. Password-reset and other security-sensitive flows can independently revoke sessions when required.
-              </p>
+              {active ===
+                'personal' && (
+                <MyAccountSettings />
+              )}
+
+              {/* ==============================================
+                  SECURITY
+                  ============================================== */}
+
+              {active ===
+                'security' && (
+                <SecuritySettings />
+              )}
+
+              {/* ==============================================
+                  SESSIONS & DEVICES
+                  ============================================== */}
+
+              {active ===
+                'sessions' && (
+                <SessionsSettings />
+              )}
+
+              {/* ==============================================
+                  WORKSPACE
+                  ============================================== */}
+
+              {active ===
+                'workspace' &&
+                canAdminWorkspace && (
+                  <WorkspaceSection
+                    tenant={
+                      tenant
+                    }
+                    membership={
+                      membership
+                    }
+                  />
+                )}
+
+              {/* ==============================================
+                  APPS
+                  ============================================== */}
+
+              {active ===
+                'apps' &&
+                canAdminWorkspace && (
+                  <AppsSection
+                    modules={
+                      modules
+                    }
+                  />
+                )}
+
+              {/* ==============================================
+                  SAMI AI
+                  ============================================== */}
+
+              {active ===
+                'ai' && (
+                <AiSection
+                  planName={
+                    currentPlan
+                  }
+                />
+              )}
+
+              {/* ==============================================
+                  BILLING
+                  ============================================== */}
+
+              {active ===
+                'billing' &&
+                membership
+                  ?.isOwner && (
+                  <BillingSection
+                    subscription={
+                      subscription
+                    }
+                    currentPlan={
+                      currentPlan
+                    }
+                    preferences={
+                      displayPreferences
+                    }
+                  />
+                )}
             </div>
-          </div>
+          </section>
         </div>
-      </section>
-
-      {/* ======================================================
-          DIVIDER
-          ====================================================== */}
-
-      <div className="border-t border-slate-200 dark:border-slate-800" />
-
-      {/* ======================================================
-          TWO-FACTOR AUTHENTICATION
-          ====================================================== */}
-
-      <section>
-
-        <div className="mb-5">
-
-          <div className="flex items-center gap-2">
-
-            <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-
-            <h2 className="text-sm font-black text-slate-950 dark:text-white">
-              Account verification
-            </h2>
-          </div>
-
-          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-            Add a second verification step to protect your account even if your password is compromised.
-          </p>
-        </div>
-
-        <TwoFactorSettings />
-      </section>
-    </div>
+      </div>
+    </main>
   );
 }
 
@@ -2035,23 +1499,20 @@ function AppsSection({
   return (
     <div>
 
-      <div className="mb-4 flex items-center justify-between gap-3">
+      <div className="mb-4">
 
-        <div>
+        <h2 className="text-sm font-black">
+          Installed apps
+        </h2>
 
-          <h2 className="text-sm font-black">
-            Installed apps
-          </h2>
-
-          <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
-            {modules.length}{' '}
-            {modules.length ===
-            1
-              ? 'business app'
-              : 'business apps'}{' '}
-            registered for this workspace.
-          </p>
-        </div>
+        <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+          {modules.length}{' '}
+          {modules.length ===
+          1
+            ? 'business app'
+            : 'business apps'}{' '}
+          registered for this workspace.
+        </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -2151,12 +1612,7 @@ function AiSection({
             </div>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              SaMi AI is part of the core
-              workspace rather than an
-              installed business app.
-              Installed apps can provide
-              additional tools and context to
-              AI when permitted.
+              SaMi AI is part of the core workspace rather than an installed business app. Installed apps can provide additional tools and context to AI when permitted.
             </p>
           </div>
         </div>
@@ -2182,12 +1638,7 @@ function AiSection({
         <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          SaMi AI query allowances are
-          assigned per user according to the
-          active subscription plan. This page
-          does not invent usage totals that
-          have not been supplied by the
-          platform usage service.
+          SaMi AI query allowances are assigned per user according to the active subscription plan. This page does not invent usage totals that have not been supplied by the platform usage service.
         </p>
       </div>
     </div>
@@ -2234,9 +1685,7 @@ function BillingSection({
             </h2>
 
             <p className="mt-1 text-[10px] text-blue-700 dark:text-blue-300">
-              Subscription pricing is
-              calculated per billable
-              workspace user.
+              Subscription pricing is calculated per billable workspace user.
             </p>
           </div>
         </div>
@@ -2289,10 +1738,7 @@ function BillingSection({
       <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
 
         <p className="text-[10px] leading-5 text-blue-700 dark:text-blue-300">
-          Subscription dates are displayed using your personal
-          timezone and date/time format. The billing period
-          itself remains an authoritative server-side
-          subscription value.
+          Subscription dates are displayed using your personal timezone and date/time format. The billing period itself remains an authoritative server-side subscription value.
         </p>
       </div>
 
@@ -2301,124 +1747,9 @@ function BillingSection({
         <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          SaMi subscriptions are charged per
-          user, and AI allowances are also
-          assigned per user. Final billable
-          user counts, entitlement limits and
-          payment totals remain server-side
-          subscription data.
+          SaMi subscriptions are charged per user, and AI allowances are also assigned per user. Final billable user counts, entitlement limits and payment totals remain server-side subscription data.
         </p>
       </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   PASSWORD FIELD
-   ============================================================ */
-
-function PasswordField({
-  label,
-  value,
-  onChange,
-  show,
-  autoComplete,
-}: {
-  label:
-    string;
-
-  value:
-    string;
-
-  onChange:
-    (
-      value:
-        string
-    ) => void;
-
-  show:
-    boolean;
-
-  autoComplete:
-    | 'current-password'
-    | 'new-password';
-}) {
-  return (
-    <div>
-
-      <label className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
-        {label}
-      </label>
-
-      <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:focus-within:border-blue-500">
-
-        <LockKeyhole className="h-4 w-4 shrink-0 text-slate-400" />
-
-        <input
-          type={
-            show
-              ? 'text'
-              : 'password'
-          }
-          value={
-            value
-          }
-          onChange={(
-            event
-          ) =>
-            onChange(
-              event.target
-                .value
-            )
-          }
-          maxLength={
-            128
-          }
-          autoComplete={
-            autoComplete
-          }
-          className="h-full min-w-0 flex-1 bg-transparent text-xs outline-none"
-        />
-      </div>
-    </div>
-  );
-}
-
-/* ============================================================
-   PASSWORD RULE
-   ============================================================ */
-
-function PasswordRule({
-  valid,
-  label,
-}: {
-  valid:
-    boolean;
-
-  label:
-    string;
-}) {
-  return (
-    <div
-      className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-[9px] font-bold ${
-        valid
-          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-          : 'bg-slate-50 text-slate-400 dark:bg-slate-950 dark:text-slate-500'
-      }`}
-    >
-      <span
-        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
-          valid
-            ? 'bg-emerald-500 text-white'
-            : 'border border-slate-300 dark:border-slate-700'
-        }`}
-      >
-        {valid && (
-          <Check className="h-2.5 w-2.5" />
-        )}
-      </span>
-
-      {label}
     </div>
   );
 }

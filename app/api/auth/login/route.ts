@@ -3,15 +3,25 @@ import {
   NextResponse,
 } from 'next/server';
 
-import { queryControl } from '@/lib/db/control';
+import {
+  queryControl,
+} from '@/lib/db/control';
 
-import { createSession } from '@/lib/auth/session';
+import {
+  createSession,
+} from '@/lib/auth/session';
 
-import { verifyPassword } from '@/lib/auth/password';
+import {
+  verifyPassword,
+} from '@/lib/auth/password';
 
-import { getTwoFactorStatus } from '@/lib/auth/two-factor';
+import {
+  createLoginChallenge,
+} from '@/lib/auth/login-challenges';
 
-import { createLoginChallenge } from '@/lib/auth/login-challenges';
+import {
+  getLoginTwoFactorMethods,
+} from '@/lib/auth/two-factor-methods';
 
 import {
   findUserForLogin,
@@ -30,15 +40,21 @@ import {
   recordLoginHistory,
 } from '@/lib/auth/auth-events';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
 
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
-const MAX_EMAIL_LENGTH = 254;
-const MAX_PASSWORD_LENGTH = 128;
+const MAX_EMAIL_LENGTH =
+  254;
+
+const MAX_PASSWORD_LENGTH =
+  128;
 
 const LOGIN_RATE_LIMIT_MAX_ATTEMPTS =
   getPositiveIntegerEnv(
@@ -76,8 +92,11 @@ const ACCOUNT_LOCK_MINUTES =
 
 type LoginBody = {
   email?: unknown;
+
   password?: unknown;
+
   rememberMe?: unknown;
+
   next?: unknown;
 };
 
@@ -98,8 +117,10 @@ type SecurityState = {
    ============================================================ */
 
 function getPositiveIntegerEnv(
-  name: string,
-  fallback: number
+  name:
+    string,
+  fallback:
+    number
 ) {
   const value =
     Number(
@@ -107,13 +128,18 @@ function getPositiveIntegerEnv(
     );
 
   if (
-    !Number.isFinite(value) ||
-    value <= 0
+    !Number.isFinite(
+      value
+    ) ||
+    value <=
+      0
   ) {
     return fallback;
   }
 
-  return Math.floor(value);
+  return Math.floor(
+    value
+  );
 }
 
 /* ============================================================
@@ -124,7 +150,8 @@ function normalizeEmail(
   value: unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
@@ -138,7 +165,8 @@ function normalizePassword(
   value: unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
@@ -153,10 +181,12 @@ function normalizePassword(
 }
 
 function isValidEmail(
-  email: string
+  email:
+    string
 ): boolean {
   return (
-    email.length > 0 &&
+    email.length >
+      0 &&
     email.length <=
       MAX_EMAIL_LENGTH &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
@@ -170,22 +200,36 @@ function isValidEmail(
    ============================================================ */
 
 function safeNextPath(
-  value?: string | null
+  value?:
+    string | null
 ): string {
   if (
     !value ||
-    !value.startsWith('/') ||
-    value.startsWith('//')
+    !value.startsWith(
+      '/'
+    ) ||
+    value.startsWith(
+      '//'
+    )
   ) {
     return '/dashboard';
   }
 
+  /*
+   * Never redirect a successful login into an API route.
+   */
   if (
-    value.startsWith('/api/')
+    value.startsWith(
+      '/api/'
+    )
   ) {
     return '/dashboard';
   }
 
+  /*
+   * Authentication/onboarding pages should not become
+   * post-login destinations.
+   */
   const blockedRoutes = [
     '/login',
     '/register',
@@ -199,8 +243,11 @@ function safeNextPath(
 
   if (
     blockedRoutes.some(
-      (route) =>
-        value === route ||
+      (
+        route
+      ) =>
+        value ===
+          route ||
         value.startsWith(
           `${route}?`
         ) ||
@@ -216,15 +263,18 @@ function safeNextPath(
 }
 
 function getRequestedNext(
-  request: NextRequest,
-  bodyValue: unknown
+  request:
+    NextRequest,
+  bodyValue:
+    unknown
 ): string {
   /* ----------------------------------------------------------
-     Explicit client-provided next
+     Explicit body value
      ---------------------------------------------------------- */
 
   if (
-    typeof bodyValue === 'string'
+    typeof bodyValue ===
+    'string'
   ) {
     const next =
       safeNextPath(
@@ -232,7 +282,8 @@ function getRequestedNext(
       );
 
     if (
-      next !== '/dashboard' ||
+      next !==
+        '/dashboard' ||
       bodyValue ===
         '/dashboard'
     ) {
@@ -241,7 +292,7 @@ function getRequestedNext(
   }
 
   /* ----------------------------------------------------------
-     Backwards-compatible login page:
+     Backwards-compatible:
      /login?next=/settings
      ---------------------------------------------------------- */
 
@@ -250,28 +301,37 @@ function getRequestedNext(
       'referer'
     );
 
-  if (referer) {
+  if (
+    referer
+  ) {
     try {
       const url =
-        new URL(referer);
+        new URL(
+          referer
+        );
 
       if (
         url.origin ===
-        request.nextUrl.origin
+        request.nextUrl
+          .origin
       ) {
         const requested =
           url.searchParams.get(
             'next'
           );
 
-        if (requested) {
+        if (
+          requested
+        ) {
           return safeNextPath(
             requested
           );
         }
       }
     } catch {
-      // Ignore invalid Referer.
+      /*
+       * Ignore invalid Referer.
+       */
     }
   }
 
@@ -283,15 +343,18 @@ function getRequestedNext(
    ============================================================ */
 
 function jsonResponse(
-  body: Record<
-    string,
-    unknown
-  >,
-  status = 200,
-  extraHeaders: Record<
-    string,
-    string
-  > = {}
+  body:
+    Record<
+      string,
+      unknown
+    >,
+  status =
+    200,
+  extraHeaders:
+    Record<
+      string,
+      string
+    > = {}
 ) {
   return NextResponse.json(
     body,
@@ -314,7 +377,8 @@ function jsonResponse(
 function genericInvalidCredentialsResponse() {
   return jsonResponse(
     {
-      success: false,
+      success:
+        false,
 
       code:
         'INVALID_CREDENTIALS',
@@ -327,7 +391,8 @@ function genericInvalidCredentialsResponse() {
 }
 
 function lockedResponse(
-  lockedUntil: Date
+  lockedUntil:
+    Date
 ) {
   const retryAfterSeconds =
     Math.max(
@@ -336,13 +401,15 @@ function lockedResponse(
         (
           lockedUntil.getTime() -
           Date.now()
-        ) / 1000
+        ) /
+          1000
       )
     );
 
   return jsonResponse(
     {
-      success: false,
+      success:
+        false,
 
       code:
         'ACCOUNT_LOCKED',
@@ -351,7 +418,8 @@ function lockedResponse(
         'Too many failed login attempts. Please try again later or reset your password.',
 
       lockedUntil:
-        lockedUntil.toISOString(),
+        lockedUntil
+          .toISOString(),
 
       retryAfterSeconds,
     },
@@ -370,11 +438,15 @@ function lockedResponse(
    ============================================================ */
 
 function rateLimitIdentifier(
-  request: NextRequest,
-  email: string
+  request:
+    NextRequest,
+  email:
+    string
 ): string {
   const ip =
-    getClientIp(request) ||
+    getClientIp(
+      request
+    ) ||
     'unknown-ip';
 
   return `login:${email}:${ip}`;
@@ -385,7 +457,8 @@ function rateLimitIdentifier(
    ============================================================ */
 
 async function getUserSecurityState(
-  userId: string
+  userId:
+    string
 ): Promise<
   SecurityState | null
 > {
@@ -419,7 +492,8 @@ async function getUserSecurityState(
    ============================================================ */
 
 async function clearExpiredAccountLock(
-  userId: string
+  userId:
+    string
 ) {
   await queryControl(
     `
@@ -446,7 +520,8 @@ async function clearExpiredAccountLock(
    ============================================================ */
 
 async function recordFailedPasswordAttempt(
-  userId: string
+  userId:
+    string
 ) {
   const lockUntil =
     new Date(
@@ -476,6 +551,7 @@ async function recordFailedPasswordAttempt(
                   0
                 ) + 1 >= $2
               THEN $3
+
               ELSE locked_until
             END,
 
@@ -502,11 +578,12 @@ async function recordFailedPasswordAttempt(
 }
 
 /* ============================================================
-   SUCCESSFUL PASSWORD LOGIN STATE
+   SUCCESSFUL LOGIN STATE
    ============================================================ */
 
 async function clearFailedLoginState(
-  userId: string
+  userId:
+    string
 ) {
   await queryControl(
     `
@@ -532,15 +609,18 @@ async function clearFailedLoginState(
    ============================================================ */
 
 async function safeRecordAuthEvent(
-  input: Parameters<
-    typeof recordAuthEvent
-  >[0]
+  input:
+    Parameters<
+      typeof recordAuthEvent
+    >[0]
 ) {
   try {
     await recordAuthEvent(
       input
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Failed to record auth event:',
       error
@@ -549,15 +629,18 @@ async function safeRecordAuthEvent(
 }
 
 async function safeRecordLoginHistory(
-  input: Parameters<
-    typeof recordLoginHistory
-  >[0]
+  input:
+    Parameters<
+      typeof recordLoginHistory
+    >[0]
 ) {
   try {
     await recordLoginHistory(
       input
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Failed to record login history:',
       error
@@ -566,13 +649,42 @@ async function safeRecordLoginHistory(
 }
 
 /* ============================================================
-   POST /api/auth/login
+   POST
+   /api/auth/login
+
+   FLOW
+
+   Email + password
+       ↓
+   Request rate limit
+       ↓
+   Find account
+       ↓
+   Account lock state
+       ↓
+   Verify password
+       ↓
+   Validate workspace/account access
+       ↓
+   Determine actual enabled 2FA methods
+       ↓
+   ┌─────────────────────────────────────────────┐
+   │ 2FA required?                              │
+   │                                             │
+   │ Yes → create login challenge               │
+   │       → return enabled methods              │
+   │       → NO authenticated session yet        │
+   │                                             │
+   │ No  → create authenticated session          │
+   └─────────────────────────────────────────────┘
    ============================================================ */
 
 export async function POST(
-  request: NextRequest
+  request:
+    NextRequest
 ) {
-  let email = '';
+  let email =
+    '';
 
   try {
     /* ========================================================
@@ -597,7 +709,8 @@ export async function POST(
       ) {
         return jsonResponse(
           {
-            success: false,
+            success:
+              false,
 
             code:
               'INVALID_REQUEST',
@@ -610,11 +723,13 @@ export async function POST(
       }
 
       body =
-        parsed as LoginBody;
+        parsed as
+          LoginBody;
     } catch {
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'INVALID_REQUEST',
@@ -643,7 +758,7 @@ export async function POST(
     /*
      * Strict boolean comparison.
      *
-     * Boolean("false") would incorrectly produce true.
+     * Boolean("false") would incorrectly become true.
      */
     const rememberMe =
       body.rememberMe ===
@@ -656,7 +771,7 @@ export async function POST(
       );
 
     /* ========================================================
-       3. VALIDATION
+       3. VALIDATE
        ======================================================== */
 
     if (
@@ -666,7 +781,8 @@ export async function POST(
     ) {
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'INVALID_EMAIL',
@@ -678,10 +794,13 @@ export async function POST(
       );
     }
 
-    if (!password) {
+    if (
+      !password
+    ) {
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'PASSWORD_REQUIRED',
@@ -698,10 +817,10 @@ export async function POST(
       MAX_PASSWORD_LENGTH
     ) {
       /*
-       * Keep the response generic.
+       * Keep this generic.
        *
-       * The browser UI already enforces the same maximum,
-       * while this protects the server from unreasonable input.
+       * The browser already applies its own field limits while
+       * this prevents unreasonable server input.
        */
       return genericInvalidCredentialsResponse();
     }
@@ -747,13 +866,15 @@ export async function POST(
           email,
 
           retryAfterSeconds:
-            rateLimit.retryAfterSeconds,
+            rateLimit
+              .retryAfterSeconds,
         },
       });
 
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           code:
             'LOGIN_RATE_LIMITED',
@@ -762,7 +883,8 @@ export async function POST(
             'Too many login attempts. Please wait before trying again.',
 
           retryAfterSeconds:
-            rateLimit.retryAfterSeconds,
+            rateLimit
+              .retryAfterSeconds,
         },
         429,
         {
@@ -770,7 +892,8 @@ export async function POST(
             String(
               Math.max(
                 1,
-                rateLimit.retryAfterSeconds ||
+                rateLimit
+                  .retryAfterSeconds ||
                   1
               )
             ),
@@ -781,7 +904,7 @@ export async function POST(
     /* ========================================================
        5. FIND USER
 
-       Unknown account and wrong password deliberately produce
+       Unknown account and wrong password intentionally return
        the same client-visible response.
        ======================================================== */
 
@@ -790,7 +913,9 @@ export async function POST(
         email
       );
 
-    if (!user) {
+    if (
+      !user
+    ) {
       await safeRecordLoginHistory({
         request,
 
@@ -832,11 +957,13 @@ export async function POST(
       );
 
     if (
-      securityState?.locked_until
+      securityState
+        ?.locked_until
     ) {
       const lockedUntil =
         new Date(
-          securityState.locked_until
+          securityState
+            .locked_until
         );
 
       if (
@@ -864,7 +991,8 @@ export async function POST(
               email,
 
               lockedUntil:
-                lockedUntil.toISOString(),
+                lockedUntil
+                  .toISOString(),
             },
           });
 
@@ -887,7 +1015,8 @@ export async function POST(
               email,
 
               lockedUntil:
-                lockedUntil.toISOString(),
+                lockedUntil
+                  .toISOString(),
             },
           });
 
@@ -897,10 +1026,7 @@ export async function POST(
         }
 
         /*
-         * The lock period has expired.
-         *
-         * Reset the old failed-attempt count before this new
-         * authentication attempt.
+         * The previous account lock has expired.
          */
         await clearExpiredAccountLock(
           user.id
@@ -981,18 +1107,22 @@ export async function POST(
          ------------------------------------------------------ */
 
       if (
-        failedState?.locked_until
+        failedState
+          ?.locked_until
       ) {
         const lockedUntil =
           new Date(
-            failedState.locked_until
+            failedState
+              .locked_until
           );
 
         if (
           !Number.isNaN(
-            lockedUntil.getTime()
+            lockedUntil
+              .getTime()
           ) &&
-          lockedUntil.getTime() >
+          lockedUntil
+            .getTime() >
             Date.now()
         ) {
           await safeRecordAuthEvent({
@@ -1015,10 +1145,12 @@ export async function POST(
                 'too_many_failed_logins',
 
               failedLoginAttempts:
-                failedState.failed_login_attempts,
+                failedState
+                  .failed_login_attempts,
 
               lockedUntil:
-                lockedUntil.toISOString(),
+                lockedUntil
+                  .toISOString(),
             },
           });
 
@@ -1078,7 +1210,8 @@ export async function POST(
 
         tenantId:
           accountContext
-            .tenant?.id ||
+            .tenant
+            ?.id ||
           null,
 
         eventType:
@@ -1104,7 +1237,8 @@ export async function POST(
 
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           code:
             validation.code,
@@ -1120,23 +1254,37 @@ export async function POST(
     }
 
     /* ========================================================
-       9. TWO-FACTOR AUTHENTICATION
+       9. MULTI-METHOD TWO-FACTOR AUTHENTICATION
+
+       IMPORTANT:
+
+       Do not assume:
+         users.two_factor_enabled === authenticator app
+
+       SaMi now supports:
+         - Authenticator
+         - Email
+
+       Recovery codes remain an emergency fallback rather than
+       a preferred primary method.
        ======================================================== */
 
-    const twoFactorStatus =
-      await getTwoFactorStatus(
+    const loginVerification =
+      await getLoginTwoFactorMethods(
         user.id
       );
 
     if (
-      twoFactorStatus.enabled
+      loginVerification.required
     ) {
       /*
-       * Password authentication has succeeded, but DO NOT
-       * create a SaMi session yet.
+       * Password authentication has succeeded.
        *
-       * The 2FA API becomes responsible for session creation
-       * after the challenge is satisfied.
+       * DO NOT create a SaMi session yet.
+       *
+       * The login verification flow becomes responsible for
+       * session creation after an allowed second-factor method
+       * succeeds.
        */
       const challenge =
         await createLoginChallenge({
@@ -1156,7 +1304,8 @@ export async function POST(
 
         tenantId:
           accountContext
-            .tenant?.id ||
+            .tenant
+            ?.id ||
           null,
 
         eventType:
@@ -1177,14 +1326,33 @@ export async function POST(
             requestedNext,
 
           challengeExpiresAt:
-            challenge.expiresAt.toISOString(),
+            challenge
+              .expiresAt
+              .toISOString(),
+
+          methods:
+            loginVerification
+              .methods,
+
+          preferredMethod:
+            loginVerification
+              .preferredMethod,
+
+          recoveryAvailable:
+            loginVerification
+              .recoveryAvailable,
         },
       });
 
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
+          /*
+           * Keep the existing response code so the current
+           * LoginClient remains backwards-compatible.
+           */
           code:
             'TWO_FACTOR_REQUIRED',
 
@@ -1194,12 +1362,57 @@ export async function POST(
           email,
 
           challengeToken:
-            challenge.challengeToken,
+            challenge
+              .challengeToken,
 
           /*
-           * LoginClient navigates here and keeps the original
-           * requested destination separately in
-           * sami_2fa_next.
+           * NEW:
+           *
+           * The verification page can now render the actual
+           * allowed methods instead of assuming Authenticator.
+           */
+          verification: {
+            methods:
+              loginVerification
+                .methods,
+
+            preferredMethod:
+              loginVerification
+                .preferredMethod,
+
+            maskedEmail:
+              loginVerification
+                .maskedEmail,
+
+            recoveryAvailable:
+              loginVerification
+                .recoveryAvailable,
+          },
+
+          /*
+           * Convenience fields are also returned at the
+           * top level for a simpler migration of existing
+           * clients.
+           */
+          methods:
+            loginVerification
+              .methods,
+
+          preferredMethod:
+            loginVerification
+              .preferredMethod,
+
+          maskedEmail:
+            loginVerification
+              .maskedEmail,
+
+          recoveryAvailable:
+            loginVerification
+              .recoveryAvailable,
+
+          /*
+           * LoginClient continues storing the user's original
+           * destination separately as `sami_2fa_next`.
            */
           next:
             '/login/two-factor',
@@ -1210,6 +1423,8 @@ export async function POST(
 
     /* ========================================================
        10. CREATE SESSION
+
+       No second factor is configured.
        ======================================================== */
 
     const session =
@@ -1222,15 +1437,17 @@ export async function POST(
       );
 
     /*
-     * These operations should normally succeed, but an audit
-     * or cleanup failure must not invalidate a session that
-     * has already been successfully created.
+     * These operations should normally succeed, but audit or
+     * cleanup failure must not invalidate a session that has
+     * already been successfully created.
      */
 
     await clearFailedLoginState(
       user.id
     ).catch(
-      (error) => {
+      (
+        error
+      ) => {
         console.error(
           '[Auth] Failed to clear successful login state:',
           error
@@ -1242,7 +1459,9 @@ export async function POST(
       rateKey,
       'login'
     ).catch(
-      (error) => {
+      (
+        error
+      ) => {
         console.error(
           '[Auth] Failed to reset login rate limit:',
           error
@@ -1261,7 +1480,8 @@ export async function POST(
         user.id,
 
       sessionId:
-        session.sessionId,
+        session
+          .sessionId,
 
       successful:
         true,
@@ -1288,7 +1508,8 @@ export async function POST(
 
       tenantId:
         accountContext
-          .tenant?.id ||
+          .tenant
+          ?.id ||
         null,
 
       eventType:
@@ -1298,7 +1519,8 @@ export async function POST(
         'session',
 
       entityId:
-        session.sessionId,
+        session
+          .sessionId,
 
       metadata: {
         email,
@@ -1321,7 +1543,8 @@ export async function POST(
        ======================================================== */
 
     return jsonResponse({
-      success: true,
+      success:
+        true,
 
       code:
         'LOGIN_SUCCESS',
@@ -1350,35 +1573,46 @@ export async function POST(
       },
 
       tenant:
-        accountContext.tenant,
+        accountContext
+          .tenant,
 
       owner:
-        accountContext.owner,
+        accountContext
+          .owner,
 
       membership:
-        accountContext.membership,
+        accountContext
+          .membership,
 
       subscription:
-        accountContext.subscription,
+        accountContext
+          .subscription,
 
       role:
-        accountContext.role,
+        accountContext
+          .role,
 
       modules:
-        accountContext.modules,
+        accountContext
+          .modules,
 
       session: {
         id:
-          session.sessionId,
+          session
+            .sessionId,
 
         expiresAt:
-          session.expiresAt.toISOString(),
+          session
+            .expiresAt
+            .toISOString(),
       },
 
       next:
         requestedNext,
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Login failed:',
       error
@@ -1394,7 +1628,8 @@ export async function POST(
         email,
 
         message:
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : 'Unknown login error',
       },
@@ -1402,7 +1637,8 @@ export async function POST(
 
     return jsonResponse(
       {
-        success: false,
+        success:
+          false,
 
         code:
           'LOGIN_ERROR',

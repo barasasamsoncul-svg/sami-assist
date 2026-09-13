@@ -1,3 +1,5 @@
+import 'server-only';
+
 import nodemailer from 'nodemailer';
 
 import type {
@@ -5,7 +7,7 @@ import type {
 } from 'nodemailer';
 
 /* ============================================================
-   TYPES
+   TYPES — ACCOUNT EMAIL VERIFICATION
    ============================================================ */
 
 export type SendVerificationEmailResult = {
@@ -15,39 +17,73 @@ export type SendVerificationEmailResult = {
 
 export type VerificationEmailOptions = {
   expiresInMinutes?: number;
-  verifyUrl?: string | null;
+
+  verifyUrl?:
+    | string
+    | null;
+};
+
+/* ============================================================
+   TYPES — EMAIL CHANGE
+   ============================================================ */
+
+export type SendEmailChangeVerificationEmailResult = {
+  success: boolean;
+  messageId?: string;
 };
 
 export type EmailChangeVerificationEmailOptions = {
   expiresInMinutes?: number;
 };
 
-type CodeEmailKind =
-  | 'account-verification'
-  | 'email-change-verification';
+/* ============================================================
+   TYPES — SECURITY / EMAIL 2FA
+   ============================================================ */
 
-type SendCodeEmailInput = {
-  kind: CodeEmailKind;
-  email: string;
-  code: string;
-  name: string;
-  expiresInMinutes: number;
-  actionUrl?: string | null;
+export type SecurityCodeEmailPurpose =
+  | 'email_2fa_setup'
+  | 'login_2fa'
+  | 'security_step_up';
+
+export type SecurityCodeEmailOptions = {
+  purpose:
+    SecurityCodeEmailPurpose;
+
+  expiresInMinutes?:
+    number;
+};
+
+export type SendSecurityCodeEmailResult = {
+  success: boolean;
+  messageId?: string;
 };
 
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
-const DEFAULT_EXPIRY_MINUTES = 15;
-const MAX_EMAIL_LENGTH = 254;
-const MAX_NAME_LENGTH = 120;
+const DEFAULT_VERIFICATION_EXPIRY_MINUTES =
+  15;
+
+const DEFAULT_EMAIL_CHANGE_EXPIRY_MINUTES =
+  15;
+
+const DEFAULT_SECURITY_CODE_EXPIRY_MINUTES =
+  10;
+
+const MAX_EMAIL_LENGTH =
+  254;
+
+const MAX_NAME_LENGTH =
+  120;
 
 /* ============================================================
    TRANSPORTER
    ============================================================ */
 
-let transporter: Transporter | null = null;
+let transporter:
+  Transporter | null =
+  null;
 
 /* ============================================================
    HTML
@@ -57,15 +93,30 @@ function escapeHtml(
   value: string
 ): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(
+      /&/g,
+      '&amp;'
+    )
+    .replace(
+      /</g,
+      '&lt;'
+    )
+    .replace(
+      />/g,
+      '&gt;'
+    )
+    .replace(
+      /"/g,
+      '&quot;'
+    )
+    .replace(
+      /'/g,
+      '&#039;'
+    );
 }
 
 /* ============================================================
-   EMAIL
+   EMAIL NORMALIZATION
    ============================================================ */
 
 function normalizeEmail(
@@ -80,8 +131,10 @@ function isValidEmail(
   email: string
 ): boolean {
   return (
-    email.length > 0 &&
-    email.length <= MAX_EMAIL_LENGTH &&
+    email.length >
+      0 &&
+    email.length <=
+      MAX_EMAIL_LENGTH &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
       email
     )
@@ -98,9 +151,14 @@ function normalizeName(
   const normalized =
     value
       .trim()
-      .replace(/\s+/g, ' ');
+      .replace(
+        /\s+/g,
+        ' '
+      );
 
-  if (!normalized) {
+  if (
+    !normalized
+  ) {
     return 'there';
   }
 
@@ -111,23 +169,58 @@ function normalizeName(
 }
 
 /* ============================================================
+   SIX-DIGIT CODE
+   ============================================================ */
+
+function normalizeSecurityCode(
+  value: string
+): string {
+  return value.trim();
+}
+
+function assertSixDigitCode(
+  code: string
+) {
+  if (
+    !/^\d{6}$/.test(
+      code
+    )
+  ) {
+    throw new Error(
+      'Verification code must contain exactly 6 digits.'
+    );
+  }
+}
+
+/* ============================================================
    EXPIRY
    ============================================================ */
 
 function normalizeExpiryMinutes(
-  value: number | undefined
+  value:
+    | number
+    | undefined,
+  fallback:
+    number
 ): number {
-  if (value === undefined) {
-    return DEFAULT_EXPIRY_MINUTES;
+  if (
+    value ===
+    undefined
+  ) {
+    return fallback;
   }
 
   if (
-    !Number.isInteger(value) ||
-    value < 1 ||
-    value > 60
+    !Number.isInteger(
+      value
+    ) ||
+    value <
+      1 ||
+    value >
+      60
   ) {
     throw new Error(
-      'Invalid verification email expiry.'
+      'Invalid email expiry.'
     );
   }
 
@@ -136,34 +229,31 @@ function normalizeExpiryMinutes(
 
 /* ============================================================
    APP URL
-
-   .env.local / Vercel:
-
-   APP_URL=https://your-domain.com
-
-   Public email logo:
-
-   ${APP_URL}/brand/sami-email-logo.png
-
-   No CID image.
-   No PNG attachment.
    ============================================================ */
 
-function getAppUrl(): string {
+function getAppUrl():
+  string {
   const raw =
-    process.env.APP_URL
+    process.env
+      .APP_URL
       ?.trim();
 
-  if (!raw) {
+  if (
+    !raw
+  ) {
     throw new Error(
       'APP_URL is required.'
     );
   }
 
-  let url: URL;
+  let url:
+    URL;
 
   try {
-    url = new URL(raw);
+    url =
+      new URL(
+        raw
+      );
   } catch {
     throw new Error(
       'APP_URL must be a valid URL.'
@@ -171,8 +261,10 @@ function getAppUrl(): string {
   }
 
   if (
-    url.protocol !== 'https:' &&
-    url.protocol !== 'http:'
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
   ) {
     throw new Error(
       'APP_URL must use HTTP or HTTPS.'
@@ -181,8 +273,15 @@ function getAppUrl(): string {
 
   return url
     .toString()
-    .replace(/\/+$/, '');
+    .replace(
+      /\/+$/,
+      ''
+    );
 }
+
+/* ============================================================
+   PUBLIC URL
+   ============================================================ */
 
 function getPublicUrl(
   pathname: string
@@ -193,14 +292,19 @@ function getPublicUrl(
   ).toString();
 }
 
-function getEmailLogoUrl(): string {
+/* ============================================================
+   EMAIL LOGO
+   ============================================================ */
+
+function getEmailLogoUrl():
+  string {
   return getPublicUrl(
     '/brand/sami-email-logo.png'
   );
 }
 
 /* ============================================================
-   URL
+   VERIFY URL
    ============================================================ */
 
 function normalizeVerifyUrl(
@@ -208,13 +312,17 @@ function normalizeVerifyUrl(
     | string
     | null
     | undefined,
-  appUrl: string
+  appUrl:
+    string
 ): string | null {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 
-  let url: URL;
+  let url:
+    URL;
 
   try {
     url =
@@ -226,15 +334,23 @@ function normalizeVerifyUrl(
   }
 
   if (
-    url.protocol !== 'https:' &&
-    url.protocol !== 'http:'
+    url.protocol !==
+      'https:' &&
+    url.protocol !==
+      'http:'
   ) {
     return null;
   }
 
   const configuredAppUrl =
-    new URL(appUrl);
+    new URL(
+      appUrl
+    );
 
+  /*
+   * Email verification links must return to the configured
+   * SaMi application origin.
+   */
   if (
     url.origin !==
     configuredAppUrl.origin
@@ -246,40 +362,50 @@ function normalizeVerifyUrl(
 }
 
 /* ============================================================
-   SMTP
+   SMTP CONFIGURATION
    ============================================================ */
 
-function isSmtpConfigured(): boolean {
+function isSmtpConfigured():
+  boolean {
   return (
     Boolean(
-      process.env.SMTP_HOST
+      process.env
+        .SMTP_HOST
         ?.trim()
     ) &&
     Boolean(
-      process.env.SMTP_USER
+      process.env
+        .SMTP_USER
         ?.trim()
     ) &&
     Boolean(
-      process.env.SMTP_PASSWORD
+      process.env
+        .SMTP_PASSWORD
     )
   );
 }
 
-function getTransporter(): Transporter {
-  if (transporter) {
+function getTransporter():
+  Transporter {
+  if (
+    transporter
+  ) {
     return transporter;
   }
 
   const host =
-    process.env.SMTP_HOST
+    process.env
+      .SMTP_HOST
       ?.trim();
 
   const user =
-    process.env.SMTP_USER
+    process.env
+      .SMTP_USER
       ?.trim();
 
   const password =
-    process.env.SMTP_PASSWORD;
+    process.env
+      .SMTP_PASSWORD;
 
   if (
     !host ||
@@ -293,15 +419,20 @@ function getTransporter(): Transporter {
 
   const port =
     Number.parseInt(
-      process.env.SMTP_PORT ||
+      process.env
+        .SMTP_PORT ||
         '587',
       10
     );
 
   if (
-    !Number.isInteger(port) ||
-    port <= 0 ||
-    port > 65535
+    !Number.isInteger(
+      port
+    ) ||
+    port <=
+      0 ||
+    port >
+      65535
   ) {
     throw new Error(
       'Invalid SMTP_PORT configuration.'
@@ -309,52 +440,66 @@ function getTransporter(): Transporter {
   }
 
   const secure =
-    process.env.SMTP_SECURE ===
+    process.env
+      .SMTP_SECURE ===
       'true' ||
-    port === 465;
+    port ===
+      465;
 
   transporter =
-    nodemailer.createTransport({
-      host,
-      port,
-      secure,
+    nodemailer
+      .createTransport({
+        host,
 
-      auth: {
-        user,
-        pass: password,
-      },
+        port,
 
-      connectionTimeout:
-        10_000,
+        secure,
 
-      greetingTimeout:
-        10_000,
+        auth: {
+          user,
 
-      socketTimeout:
-        20_000,
-    });
+          pass:
+            password,
+        },
+
+        connectionTimeout:
+          10_000,
+
+        greetingTimeout:
+          10_000,
+
+        socketTimeout:
+          20_000,
+      });
 
   return transporter;
 }
 
 /* ============================================================
-   SENDER
+   FROM
    ============================================================ */
 
-function getFromAddress(): string {
+function getFromAddress():
+  string {
   const configuredFrom =
-    process.env.EMAIL_FROM
+    process.env
+      .EMAIL_FROM
       ?.trim();
 
-  if (configuredFrom) {
+  if (
+    configuredFrom
+  ) {
     return configuredFrom;
   }
 
   const smtpUser =
-    process.env.SMTP_USER
+    process.env
+      .SMTP_USER
       ?.trim();
 
-  if (!smtpUser) {
+  if (
+    !smtpUser
+  ) {
     throw new Error(
       'Email sender is not configured.'
     );
@@ -363,13 +508,20 @@ function getFromAddress(): string {
   return `SaMi <${smtpUser}>`;
 }
 
+/* ============================================================
+   REPLY TO
+   ============================================================ */
+
 function getReplyTo():
   string | undefined {
   const replyTo =
-    process.env.EMAIL_REPLY_TO
+    process.env
+      .EMAIL_REPLY_TO
       ?.trim();
 
-  if (!replyTo) {
+  if (
+    !replyTo
+  ) {
     return undefined;
   }
 
@@ -394,205 +546,196 @@ function getReplyTo():
 }
 
 /* ============================================================
-   EMAIL CONTENT
+   EMAIL DELIVERY AVAILABILITY
    ============================================================ */
 
-function getCodeEmailContent(
-  input: SendCodeEmailInput
-) {
-  const {
-    kind,
-    code,
-    name,
-    actionUrl,
-  } = input;
-
+function ensureEmailDeliveryAvailable(
+  emailType:
+    string
+): boolean {
   if (
-    kind ===
-    'email-change-verification'
+    isSmtpConfigured()
   ) {
-    return {
-      subject:
-        'Confirm your new email address — SaMi',
-
-      preheader:
-        `Your SaMi email-change confirmation code is ${code}.`,
-
-      label:
-        'Account security',
-
-      title:
-        'Confirm your new email',
-
-      intro:
-        `Hi ${name}, you requested to change the email address on your SaMi account. Enter the six-digit code below in SaMi to confirm the new address.`,
-
-      codeLabel:
-        'CONFIRMATION CODE',
-
-      securityTitle:
-        'Your current email stays active',
-
-      securityText:
-        'SaMi will not change your account email until this code is verified successfully. Never share this code with anyone.',
-
-      footerText:
-        'If you did not request this email change, you can safely ignore this message. Your existing email address remains unchanged.',
-
-      buttonLabel:
-        null,
-
-      actionUrl:
-        null,
-
-      emailType:
-        'email-change-verification',
-    };
+    return true;
   }
 
-  return {
-    subject:
-      'Verify your email address — SaMi',
+  if (
+    process.env
+      .NODE_ENV ===
+    'production'
+  ) {
+    throw new Error(
+      'SMTP is not configured. Email delivery is required in production.'
+    );
+  }
 
+  console.warn(
+    `[SaMi] SMTP is not configured. ${emailType} email was not delivered.`
+  );
+
+  return false;
+}
+
+/* ============================================================
+   SECURITY EMAIL CONTENT
+   ============================================================ */
+
+function getSecurityEmailContent(
+  purpose:
+    SecurityCodeEmailPurpose
+) {
+  switch (
+    purpose
+  ) {
+    case 'email_2fa_setup':
+      return {
+        label:
+          'Verification setup',
+
+        title:
+          'Confirm email verification',
+
+        subject:
+          'Confirm email verification — SaMi',
+
+        intro:
+          'Use this code to confirm that your verified SaMi email can be used as a sign-in verification method.',
+
+        codeLabel:
+          'SETUP CODE',
+
+        securityMessage:
+          'Only enter this code inside your SaMi Security settings. Never send it to another person.',
+
+        ignoredMessage:
+          'If you did not request email verification setup, you can ignore this email. Your security settings will not change without successful verification.',
+      };
+
+    case 'login_2fa':
+      return {
+        label:
+          'Sign-in verification',
+
+        title:
+          'Verify your SaMi sign-in',
+
+        subject:
+          'Your SaMi sign-in code',
+
+        intro:
+          'A sign-in to your SaMi account needs email verification. Enter the code below on the SaMi verification screen.',
+
+        codeLabel:
+          'SIGN-IN CODE',
+
+        securityMessage:
+          'Never share this sign-in code. SaMi support will never ask you to tell us this code.',
+
+        ignoredMessage:
+          'If you are not trying to sign in to SaMi, do not use this code. Review your account security when you are able to sign in.',
+      };
+
+    case 'security_step_up':
+      return {
+        label:
+          'Security verification',
+
+        title:
+          'Confirm this security action',
+
+        subject:
+          'Your SaMi security verification code',
+
+        intro:
+          'SaMi needs to verify your identity before completing a security-sensitive account action.',
+
+        codeLabel:
+          'SECURITY CODE',
+
+        securityMessage:
+          'Only enter this code in SaMi. Do not share it with anyone, including someone claiming to be SaMi support.',
+
+        ignoredMessage:
+          'If you did not request this security action, do not use the code and review your SaMi account security.',
+      };
+  }
+}
+
+/* ============================================================
+   EMAIL SHELL
+   ============================================================ */
+
+function buildEmailShell(
+  input: {
     preheader:
-      `Your SaMi verification code is ${code}.`,
+      string;
 
     label:
-      'Email verification',
+      string;
 
     title:
-      `Welcome to SaMi, ${name}`,
+      string;
+
+    greeting:
+      string;
 
     intro:
-      'Verify your email address to finish securing your SaMi account. Enter the six-digit code below on the verification screen.',
+      string;
+
+    code:
+      string;
 
     codeLabel:
-      'VERIFICATION CODE',
+      string;
+
+    expiresInMinutes:
+      number;
 
     securityTitle:
-      'Keep your account secure',
+      string;
 
-    securityText:
-      'Never share this code with anyone. SaMi will never ask you to send your verification code by email or message.',
+    securityMessage:
+      string;
 
-    footerText:
-      "If you didn't create a SaMi account, you can safely ignore this email.",
+    bottomMessage:
+      string;
 
-    buttonLabel:
-      actionUrl
-        ? 'Verify email'
-        : null,
+    appUrl:
+      string;
 
-    actionUrl:
-      actionUrl ||
-      null,
+    logoUrl:
+      string;
 
-    emailType:
-      'email-verification',
-  };
-}
+    actionHtml?:
+      string;
 
-/* ============================================================
-   TEXT EMAIL
-   ============================================================ */
-
-function buildTextEmail(
-  input: SendCodeEmailInput,
-  appUrl: string
-): string {
-  const content =
-    getCodeEmailContent(
-      input
-    );
-
-  const lines = [
-    input.kind ===
-      'account-verification'
-      ? `Welcome to SaMi, ${input.name}!`
-      : `Hi ${input.name},`,
-
-    '',
-
-    input.kind ===
-      'account-verification'
-      ? 'Thanks for creating your SaMi account.'
-      : 'You requested to change the email address on your SaMi account.',
-
-    '',
-
-    input.kind ===
-      'account-verification'
-      ? 'Your verification code is:'
-      : 'Your confirmation code is:',
-
-    '',
-
-    input.code,
-
-    '',
-
-    `This code expires in ${input.expiresInMinutes} minute${
-      input.expiresInMinutes === 1
-        ? ''
-        : 's'
-    }.`,
-
-    '',
-  ];
-
-  if (
-    input.kind ===
-    'email-change-verification'
-  ) {
-    lines.push(
-      'Enter this code in SaMi to confirm your new email address.',
-      '',
-      'Your current account email will not change until this code is verified successfully.',
-      ''
-    );
+    automatedLabel:
+      string;
   }
-
-  lines.push(
-    'For your security, never share this verification code with anyone.'
-  );
-
-  if (
-    content.actionUrl
-  ) {
-    lines.push(
-      '',
-      'Open SaMi to verify your email:',
-      content.actionUrl
-    );
-  }
-
-  lines.push(
-    '',
-    `Open SaMi: ${appUrl}`,
-    '',
-    content.footerText,
-    '',
-    'SaMi',
-    'AI Powered Business Workspace'
-  );
-
-  return lines.join(
-    '\n'
-  );
-}
-
-/* ============================================================
-   HTML EMAIL
-   ============================================================ */
-
-function buildHtmlEmail(
-  input: SendCodeEmailInput,
-  appUrl: string,
-  logoUrl: string
 ): string {
-  const content =
-    getCodeEmailContent(
-      input
+  const safePreheader =
+    escapeHtml(
+      input.preheader
+    );
+
+  const safeLabel =
+    escapeHtml(
+      input.label
+    );
+
+  const safeTitle =
+    escapeHtml(
+      input.title
+    );
+
+  const safeGreeting =
+    escapeHtml(
+      input.greeting
+    );
+
+  const safeIntro =
+    escapeHtml(
+      input.intro
     );
 
   const safeCode =
@@ -600,246 +743,51 @@ function buildHtmlEmail(
       input.code
     );
 
-  const safeAppUrl =
-    escapeHtml(
-      appUrl
-    );
-
-  const safeLogoUrl =
-    escapeHtml(
-      logoUrl
-    );
-
-  const safePreheader =
-    escapeHtml(
-      content.preheader
-    );
-
-  const safeLabel =
-    escapeHtml(
-      content.label
-    );
-
-  const safeTitle =
-    escapeHtml(
-      content.title
-    );
-
-  const safeIntro =
-    escapeHtml(
-      content.intro
-    );
-
   const safeCodeLabel =
     escapeHtml(
-      content.codeLabel
+      input.codeLabel
     );
 
   const safeSecurityTitle =
     escapeHtml(
-      content.securityTitle
+      input.securityTitle
     );
 
-  const safeSecurityText =
+  const safeSecurityMessage =
     escapeHtml(
-      content.securityText
+      input.securityMessage
     );
 
-  const safeFooterText =
+  const safeBottomMessage =
     escapeHtml(
-      content.footerText
+      input.bottomMessage
     );
 
-  const safeActionUrl =
-    content.actionUrl
-      ? escapeHtml(
-          content.actionUrl
-        )
-      : null;
+  const safeAppUrl =
+    escapeHtml(
+      input.appUrl
+    );
 
-  const safeButtonLabel =
-    content.buttonLabel
-      ? escapeHtml(
-          content.buttonLabel
-        )
-      : null;
+  const safeLogoUrl =
+    escapeHtml(
+      input.logoUrl
+    );
+
+  const safeAutomatedLabel =
+    escapeHtml(
+      input.automatedLabel
+    );
 
   const year =
     new Date()
       .getFullYear();
 
-  /* ==========================================================
-     EXISTING ACCOUNT-VERIFICATION APP SECTION
-
-     Keep this for signup verification only.
-     Email-change verification does not need an install prompt.
-     ========================================================== */
-
-  const installSection =
-    input.kind ===
-      'account-verification'
-      ? `
-        <tr>
-          <td
-            style="
-              padding:0 34px 32px;
-            "
-          >
-            <table
-              role="presentation"
-              width="100%"
-              cellpadding="0"
-              cellspacing="0"
-              border="0"
-              style="
-                width:100%;
-                background:#f3f6fb;
-                border:1px solid #e4eaf3;
-                border-radius:16px;
-              "
-            >
-              <tr>
-                <td
-                  style="
-                    padding:18px 16px;
-                  "
-                >
-                  <table
-                    role="presentation"
-                    width="100%"
-                    cellpadding="0"
-                    cellspacing="0"
-                    border="0"
-                  >
-                    <tr>
-                      <td
-                        valign="middle"
-                        style="
-                          width:52px;
-                          padding-right:14px;
-                        "
-                      >
-                        <div
-                          style="
-                            width:48px;
-                            height:48px;
-                            border-radius:13px;
-                            background:#164a9f;
-                            color:#ffffff;
-                            text-align:center;
-                            line-height:48px;
-                            font-size:16px;
-                            font-weight:900;
-                          "
-                        >
-                          SM
-                        </div>
-                      </td>
-
-                      <td
-                        valign="middle"
-                      >
-                        <div
-                          style="
-                            font-size:13px;
-                            line-height:19px;
-                            font-weight:800;
-                            color:#111827;
-                          "
-                        >
-                          SaMi on the go
-                        </div>
-
-                        <div
-                          style="
-                            margin-top:3px;
-                            font-size:11px;
-                            line-height:17px;
-                            color:#64748b;
-                          "
-                        >
-                          Access your business workspace
-                          wherever you are.
-                        </div>
-                      </td>
-
-                      <td
-                        align="right"
-                        valign="middle"
-                        style="
-                          padding-left:12px;
-                        "
-                      >
-                        <a
-                          href="${safeAppUrl}"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style="
-                            display:inline-block;
-                            padding:10px 15px;
-                            border-radius:9px;
-                            background:#111827;
-                            color:#ffffff;
-                            text-decoration:none;
-                            font-size:11px;
-                            line-height:16px;
-                            font-weight:800;
-                            white-space:nowrap;
-                          "
-                        >
-                          Install app
-                        </a>
-                      </td>
-                    </tr>
-                  </table>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      `
-      : '';
-
-  const actionButton =
-    safeActionUrl &&
-    safeButtonLabel
-      ? `
-        <table
-          role="presentation"
-          cellpadding="0"
-          cellspacing="0"
-          border="0"
-          style="margin:24px 0 0;"
-        >
-          <tr>
-            <td
-              align="center"
-              bgcolor="#164a9f"
-              style="border-radius:10px;"
-            >
-              <a
-                href="${safeActionUrl}"
-                target="_blank"
-                rel="noopener noreferrer"
-                style="
-                  display:inline-block;
-                  padding:14px 24px;
-                  border-radius:10px;
-                  background:#164a9f;
-                  font-size:13px;
-                  line-height:19px;
-                  font-weight:800;
-                  color:#ffffff;
-                  text-decoration:none;
-                "
-              >
-                ${safeButtonLabel}
-              </a>
-            </td>
-          </tr>
-        </table>
-      `
-      : '';
+  const minuteLabel =
+    input
+      .expiresInMinutes ===
+    1
+      ? 'minute'
+      : 'minutes';
 
   return `
 <!DOCTYPE html>
@@ -847,6 +795,7 @@ function buildHtmlEmail(
 <html lang="en">
 
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -864,9 +813,8 @@ function buildHtmlEmail(
     content="light"
   >
 
-  <title>
-    ${safeTitle}
-  </title>
+  <title>${safeTitle}</title>
+
 </head>
 
 <body
@@ -879,6 +827,9 @@ function buildHtmlEmail(
     -webkit-text-size-adjust:100%;
   "
 >
+
+  <!-- PREHEADER -->
+
   <div
     style="
       display:none;
@@ -904,13 +855,16 @@ function buildHtmlEmail(
       background:#f5f6f8;
     "
   >
+
     <tr>
+
       <td
         align="center"
         style="
           padding:26px 12px 40px;
         "
       >
+
         <table
           role="presentation"
           width="100%"
@@ -922,16 +876,19 @@ function buildHtmlEmail(
             max-width:620px;
           "
         >
-          <!-- ==================================================
+
+          <!-- ================================================
                TOP BRAND
-               ================================================== -->
+               ================================================ -->
 
           <tr>
+
             <td
               style="
                 padding:0 4px 18px;
               "
             >
+
               <table
                 role="presentation"
                 width="100%"
@@ -939,11 +896,14 @@ function buildHtmlEmail(
                 cellspacing="0"
                 border="0"
               >
+
                 <tr>
+
                   <td
                     align="left"
                     valign="middle"
                   >
+
                     <a
                       href="${safeAppUrl}"
                       target="_blank"
@@ -953,6 +913,7 @@ function buildHtmlEmail(
                         text-decoration:none;
                       "
                     >
+
                       <img
                         src="${safeLogoUrl}"
                         width="182"
@@ -967,7 +928,9 @@ function buildHtmlEmail(
                           text-decoration:none;
                         "
                       >
+
                     </a>
+
                   </td>
 
                   <td
@@ -978,6 +941,7 @@ function buildHtmlEmail(
                       line-height:18px;
                     "
                   >
+
                     <a
                       href="${safeAppUrl}"
                       target="_blank"
@@ -990,18 +954,25 @@ function buildHtmlEmail(
                     >
                       Open SaMi
                     </a>
+
                   </td>
+
                 </tr>
+
               </table>
+
             </td>
+
           </tr>
 
-          <!-- ==================================================
+          <!-- ================================================
                MAIN CARD
-               ================================================== -->
+               ================================================ -->
 
           <tr>
+
             <td>
+
               <table
                 role="presentation"
                 width="100%"
@@ -1016,9 +987,11 @@ function buildHtmlEmail(
                   overflow:hidden;
                 "
               >
+
                 <!-- BRAND STRIP -->
 
                 <tr>
+
                   <td
                     style="
                       height:5px;
@@ -1029,16 +1002,19 @@ function buildHtmlEmail(
                   >
                     &nbsp;
                   </td>
+
                 </tr>
 
                 <!-- HEADER -->
 
                 <tr>
+
                   <td
                     style="
                       padding:34px 34px 12px;
                     "
                   >
+
                     <div
                       style="
                         font-size:11px;
@@ -1065,17 +1041,32 @@ function buildHtmlEmail(
                     >
                       ${safeTitle}
                     </h1>
+
+                    <p
+                      style="
+                        margin:8px 0 0;
+                        font-size:13px;
+                        line-height:21px;
+                        color:#64748b;
+                      "
+                    >
+                      ${safeGreeting}
+                    </p>
+
                   </td>
+
                 </tr>
 
                 <!-- CONTENT -->
 
                 <tr>
+
                   <td
                     style="
                       padding:8px 34px 32px;
                     "
                   >
+
                     <p
                       style="
                         margin:0;
@@ -1103,13 +1094,16 @@ function buildHtmlEmail(
                         border-radius:16px;
                       "
                     >
+
                       <tr>
+
                         <td
                           align="center"
                           style="
                             padding:24px 16px;
                           "
                         >
+
                           <div
                             style="
                               margin-bottom:9px;
@@ -1149,20 +1143,20 @@ function buildHtmlEmail(
                               color:#64748b;
                             "
                           >
-                            Expires in ${input.expiresInMinutes}
-                            minute${
-                              input.expiresInMinutes === 1
-                                ? ''
-                                : 's'
-                            }.
+                            Expires in
+                            ${input.expiresInMinutes}
+                            ${minuteLabel}.
                           </div>
+
                         </td>
+
                       </tr>
+
                     </table>
 
-                    ${actionButton}
+                    ${input.actionHtml || ''}
 
-                    <!-- SECURITY -->
+                    <!-- SECURITY MESSAGE -->
 
                     <table
                       role="presentation"
@@ -1178,12 +1172,15 @@ function buildHtmlEmail(
                         border-radius:13px;
                       "
                     >
+
                       <tr>
+
                         <td
                           style="
                             padding:15px 16px;
                           "
                         >
+
                           <div
                             style="
                               font-size:12px;
@@ -1203,19 +1200,164 @@ function buildHtmlEmail(
                               color:#64748b;
                             "
                           >
-                            ${safeSecurityText}
+                            ${safeSecurityMessage}
                           </div>
+
                         </td>
+
                       </tr>
+
                     </table>
+
                   </td>
+
                 </tr>
 
-                ${installSection}
+                <!-- SAMI ACCESS -->
+
+                <tr>
+
+                  <td
+                    style="
+                      padding:0 34px 32px;
+                    "
+                  >
+
+                    <table
+                      role="presentation"
+                      width="100%"
+                      cellpadding="0"
+                      cellspacing="0"
+                      border="0"
+                      style="
+                        width:100%;
+                        background:#f3f6fb;
+                        border:1px solid #e4eaf3;
+                        border-radius:16px;
+                      "
+                    >
+
+                      <tr>
+
+                        <td
+                          style="
+                            padding:18px 16px;
+                          "
+                        >
+
+                          <table
+                            role="presentation"
+                            width="100%"
+                            cellpadding="0"
+                            cellspacing="0"
+                            border="0"
+                          >
+
+                            <tr>
+
+                              <td
+                                valign="middle"
+                                style="
+                                  width:52px;
+                                  padding-right:14px;
+                                "
+                              >
+
+                                <div
+                                  style="
+                                    width:48px;
+                                    height:48px;
+                                    border-radius:13px;
+                                    background:#164a9f;
+                                    color:#ffffff;
+                                    text-align:center;
+                                    line-height:48px;
+                                    font-size:16px;
+                                    font-weight:900;
+                                  "
+                                >
+                                  SM
+                                </div>
+
+                              </td>
+
+                              <td
+                                valign="middle"
+                              >
+
+                                <div
+                                  style="
+                                    font-size:13px;
+                                    line-height:19px;
+                                    font-weight:800;
+                                    color:#111827;
+                                  "
+                                >
+                                  SaMi security
+                                </div>
+
+                                <div
+                                  style="
+                                    margin-top:3px;
+                                    font-size:11px;
+                                    line-height:17px;
+                                    color:#64748b;
+                                  "
+                                >
+                                  Manage your account security
+                                  directly inside SaMi.
+                                </div>
+
+                              </td>
+
+                              <td
+                                align="right"
+                                valign="middle"
+                                style="
+                                  padding-left:12px;
+                                "
+                              >
+
+                                <a
+                                  href="${safeAppUrl}"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style="
+                                    display:inline-block;
+                                    padding:10px 15px;
+                                    border-radius:9px;
+                                    background:#111827;
+                                    color:#ffffff;
+                                    text-decoration:none;
+                                    font-size:11px;
+                                    line-height:16px;
+                                    font-weight:800;
+                                    white-space:nowrap;
+                                  "
+                                >
+                                  Open SaMi
+                                </a>
+
+                              </td>
+
+                            </tr>
+
+                          </table>
+
+                        </td>
+
+                      </tr>
+
+                    </table>
+
+                  </td>
+
+                </tr>
 
                 <!-- BOTTOM MESSAGE -->
 
                 <tr>
+
                   <td
                     style="
                       padding:22px 34px 26px;
@@ -1223,6 +1365,7 @@ function buildHtmlEmail(
                       background:#fbfcfd;
                     "
                   >
+
                     <p
                       style="
                         margin:0;
@@ -1231,25 +1374,32 @@ function buildHtmlEmail(
                         color:#64748b;
                       "
                     >
-                      ${safeFooterText}
+                      ${safeBottomMessage}
                     </p>
+
                   </td>
+
                 </tr>
+
               </table>
+
             </td>
+
           </tr>
 
-          <!-- ==================================================
+          <!-- ================================================
                FOOTER
-               ================================================== -->
+               ================================================ -->
 
           <tr>
+
             <td
               align="center"
               style="
                 padding:24px 16px 0;
               "
             >
+
               <p
                 style="
                   margin:0;
@@ -1258,6 +1408,7 @@ function buildHtmlEmail(
                   color:#64748b;
                 "
               >
+
                 <a
                   href="${safeAppUrl}"
                   target="_blank"
@@ -1269,6 +1420,7 @@ function buildHtmlEmail(
                 >
                   Open SaMi
                 </a>
+
               </p>
 
               <p
@@ -1301,14 +1453,21 @@ function buildHtmlEmail(
                   color:#b2bac5;
                 "
               >
-                This is an automated SaMi account email.
+                ${safeAutomatedLabel}
               </p>
+
             </td>
+
           </tr>
+
         </table>
+
       </td>
+
     </tr>
+
   </table>
+
 </body>
 
 </html>
@@ -1316,29 +1475,113 @@ function buildHtmlEmail(
 }
 
 /* ============================================================
-   SEND SHARED CODE EMAIL
+   OPTIONAL VERIFICATION BUTTON
    ============================================================ */
 
-async function sendCodeEmail(
-  input: SendCodeEmailInput
+function buildVerificationAction(
+  verifyUrl:
+    string | null
+): string {
+  if (
+    !verifyUrl
+  ) {
+    return '';
+  }
+
+  const safeVerifyUrl =
+    escapeHtml(
+      verifyUrl
+    );
+
+  return `
+    <table
+      role="presentation"
+      cellpadding="0"
+      cellspacing="0"
+      border="0"
+      style="
+        margin:24px 0 0;
+      "
+    >
+
+      <tr>
+
+        <td
+          align="center"
+          bgcolor="#164a9f"
+          style="
+            border-radius:10px;
+          "
+        >
+
+          <a
+            href="${safeVerifyUrl}"
+            target="_blank"
+            rel="noopener noreferrer"
+            style="
+              display:inline-block;
+              padding:14px 24px;
+              border-radius:10px;
+              background:#164a9f;
+              font-size:13px;
+              line-height:19px;
+              font-weight:800;
+              color:#ffffff;
+              text-decoration:none;
+            "
+          >
+            Verify email
+          </a>
+
+        </td>
+
+      </tr>
+
+    </table>
+  `;
+}
+
+/* ============================================================
+   SEND ACCOUNT VERIFICATION EMAIL
+   ============================================================ */
+
+export async function sendVerificationEmail(
+  email: string,
+  code: string,
+  name: string,
+  options:
+    VerificationEmailOptions = {}
 ): Promise<
   SendVerificationEmailResult
 > {
+  /* ==========================================================
+     1. NORMALIZE
+     ========================================================== */
+
   const normalizedEmail =
     normalizeEmail(
-      input.email
+      email
     );
 
   const cleanName =
     normalizeName(
-      input.name
+      name
     );
 
   const cleanCode =
-    input.code.trim();
+    normalizeSecurityCode(
+      code
+    );
+
+  const expiresInMinutes =
+    normalizeExpiryMinutes(
+      options
+        .expiresInMinutes,
+      DEFAULT_VERIFICATION_EXPIRY_MINUTES
+    );
 
   /* ==========================================================
-     VALIDATION
+     2. VALIDATE
      ========================================================== */
 
   if (
@@ -1351,43 +1594,12 @@ async function sendCodeEmail(
     );
   }
 
-  if (
-    !/^\d{6}$/.test(
-      cleanCode
-    )
-  ) {
-    throw new Error(
-      'Verification code must contain exactly 6 digits.'
-    );
-  }
+  assertSixDigitCode(
+    cleanCode
+  );
 
   /* ==========================================================
-     SMTP
-     ========================================================== */
-
-  if (
-    !isSmtpConfigured()
-  ) {
-    if (
-      process.env.NODE_ENV ===
-      'production'
-    ) {
-      throw new Error(
-        'SMTP is not configured. Email delivery is required in production.'
-      );
-    }
-
-    console.warn(
-      `[SaMi] SMTP is not configured. ${input.kind} email was not delivered.`
-    );
-
-    return {
-      success: false,
-    };
-  }
-
-  /* ==========================================================
-     NORMALIZED INPUT
+     3. APP / BRAND
      ========================================================== */
 
   const appUrl =
@@ -1396,44 +1608,144 @@ async function sendCodeEmail(
   const logoUrl =
     getEmailLogoUrl();
 
-  const normalizedInput:
-    SendCodeEmailInput = {
-      ...input,
-
-      email:
-        normalizedEmail,
-
-      name:
-        cleanName,
-
-      code:
-        cleanCode,
-    };
-
-  const content =
-    getCodeEmailContent(
-      normalizedInput
-    );
-
-  /* ==========================================================
-     CONTENT
-     ========================================================== */
-
-  const text =
-    buildTextEmail(
-      normalizedInput,
+  const verifyUrl =
+    normalizeVerifyUrl(
+      options.verifyUrl,
       appUrl
     );
 
-  const html =
-    buildHtmlEmail(
-      normalizedInput,
-      appUrl,
-      logoUrl
+  /* ==========================================================
+     4. SMTP
+     ========================================================== */
+
+  if (
+    !ensureEmailDeliveryAvailable(
+      'Verification'
+    )
+  ) {
+    return {
+      success:
+        false,
+    };
+  }
+
+  /* ==========================================================
+     5. TEXT
+     ========================================================== */
+
+  const textParts = [
+    `Welcome to SaMi, ${cleanName}!`,
+
+    '',
+
+    'Verify your email address to finish securing your SaMi account.',
+
+    '',
+
+    'Your verification code is:',
+
+    '',
+
+    cleanCode,
+
+    '',
+
+    `This code expires in ${expiresInMinutes} minute${
+      expiresInMinutes ===
+      1
+        ? ''
+        : 's'
+    }.`,
+
+    '',
+
+    'Never share this verification code with anyone.',
+  ];
+
+  if (
+    verifyUrl
+  ) {
+    textParts.push(
+      '',
+      'Open SaMi to verify your email:',
+      verifyUrl
+    );
+  }
+
+  textParts.push(
+    '',
+
+    `Open SaMi: ${appUrl}`,
+
+    '',
+
+    'If you did not create a SaMi account, you can safely ignore this email.',
+
+    '',
+
+    'SaMi',
+
+    'AI Powered Business Workspace'
+  );
+
+  const text =
+    textParts.join(
+      '\n'
     );
 
   /* ==========================================================
-     SEND
+     6. HTML
+     ========================================================== */
+
+  const html =
+    buildEmailShell({
+      preheader:
+        'Confirm your SaMi email address.',
+
+      label:
+        'Email verification',
+
+      title:
+        `Welcome to SaMi, ${cleanName}`,
+
+      greeting:
+        'Confirm your email address.',
+
+      intro:
+        'Verify your email address to finish securing your SaMi account. Enter the six-digit code below on the verification screen.',
+
+      code:
+        cleanCode,
+
+      codeLabel:
+        'VERIFICATION CODE',
+
+      expiresInMinutes,
+
+      securityTitle:
+        'Keep your account secure',
+
+      securityMessage:
+        'Never share this code with anyone. SaMi will never ask you to send your verification code by email or message.',
+
+      bottomMessage:
+        'If you did not create a SaMi account, you can safely ignore this email.',
+
+      appUrl,
+
+      logoUrl,
+
+      actionHtml:
+        buildVerificationAction(
+          verifyUrl
+        ),
+
+      automatedLabel:
+        'This is an automated account-verification email.',
+    });
+
+  /* ==========================================================
+     7. SEND
      ========================================================== */
 
   const mailer =
@@ -1441,44 +1753,45 @@ async function sendCodeEmail(
 
   try {
     const info =
-      await mailer.sendMail({
-        from:
-          getFromAddress(),
+      await mailer
+        .sendMail({
+          from:
+            getFromAddress(),
 
-        to:
-          normalizedEmail,
+          to:
+            normalizedEmail,
 
-        replyTo:
-          getReplyTo(),
+          replyTo:
+            getReplyTo(),
 
-        subject:
-          content.subject,
+          subject:
+            'Verify your email address — SaMi',
 
-        text,
+          text,
 
-        html,
+          html,
 
-        /*
-         * Intentionally no attachments.
-         *
-         * The SaMi logo continues to load from:
-         *
-         * APP_URL/brand/sami-email-logo.png
-         */
-        headers: {
-          'X-SaMi-Email-Type':
-            content.emailType,
+          /*
+           * No attachments.
+           *
+           * Branding loads from:
+           *
+           * APP_URL/brand/sami-email-logo.png
+           */
+          headers: {
+            'X-SaMi-Email-Type':
+              'email-verification',
 
-          'X-Auto-Response-Suppress':
-            'All',
+            'X-Auto-Response-Suppress':
+              'All',
 
-          'Auto-Submitted':
-            'auto-generated',
-        },
-      });
+            'Auto-Submitted':
+              'auto-generated',
+          },
+        });
 
     console.log(
-      `[SaMi] ${input.kind} email delivered successfully.`,
+      '[SaMi] Verification email delivered successfully.',
       {
         messageId:
           info.messageId,
@@ -1486,87 +1799,28 @@ async function sendCodeEmail(
     );
 
     return {
-      success: true,
+      success:
+        true,
 
       messageId:
         info.messageId,
     };
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
-      `[SaMi] ${input.kind} email delivery failed:`,
+      '[SaMi] Verification email delivery failed:',
       error
     );
 
     throw new Error(
-      input.kind ===
-        'email-change-verification'
-        ? 'Email-change verification email could not be sent.'
-        : 'Verification email could not be sent.'
+      'Verification email could not be sent.'
     );
   }
 }
 
 /* ============================================================
-   SEND ACCOUNT VERIFICATION EMAIL
-
-   Existing public contract is preserved:
-
-   sendVerificationEmail(
-     email,
-     code,
-     name,
-     options
-   )
-   ============================================================ */
-
-export async function sendVerificationEmail(
-  email: string,
-  code: string,
-  name: string,
-  options:
-    VerificationEmailOptions = {}
-): Promise<
-  SendVerificationEmailResult
-> {
-  const expiresInMinutes =
-    normalizeExpiryMinutes(
-      options
-        .expiresInMinutes
-    );
-
-  const appUrl =
-    getAppUrl();
-
-  const verifyUrl =
-    normalizeVerifyUrl(
-      options.verifyUrl,
-      appUrl
-    );
-
-  return sendCodeEmail({
-    kind:
-      'account-verification',
-
-    email,
-    code,
-    name,
-
-    expiresInMinutes,
-
-    actionUrl:
-      verifyUrl,
-  });
-}
-
-/* ============================================================
-   SEND EMAIL-CHANGE VERIFICATION EMAIL
-
-   Used only for an authenticated user's My Account email-change
-   workflow.
-
-   The recipient is the NEW email address.
-
-   The raw code must never be returned to the browser.
+   SEND EMAIL CHANGE VERIFICATION
    ============================================================ */
 
 export async function sendEmailChangeVerificationEmail(
@@ -1576,25 +1830,543 @@ export async function sendEmailChangeVerificationEmail(
   options:
     EmailChangeVerificationEmailOptions = {}
 ): Promise<
-  SendVerificationEmailResult
+  SendEmailChangeVerificationEmailResult
 > {
+  /* ==========================================================
+     1. NORMALIZE
+     ========================================================== */
+
+  const normalizedEmail =
+    normalizeEmail(
+      email
+    );
+
+  const cleanName =
+    normalizeName(
+      name
+    );
+
+  const cleanCode =
+    normalizeSecurityCode(
+      code
+    );
+
   const expiresInMinutes =
     normalizeExpiryMinutes(
       options
-        .expiresInMinutes
+        .expiresInMinutes,
+      DEFAULT_EMAIL_CHANGE_EXPIRY_MINUTES
     );
 
-  return sendCodeEmail({
-    kind:
-      'email-change-verification',
+  /* ==========================================================
+     2. VALIDATE
+     ========================================================== */
 
-    email,
-    code,
-    name,
+  if (
+    !isValidEmail(
+      normalizedEmail
+    )
+  ) {
+    throw new Error(
+      'A valid recipient email is required.'
+    );
+  }
 
-    expiresInMinutes,
+  assertSixDigitCode(
+    cleanCode
+  );
 
-    actionUrl:
-      null,
-  });
+  /* ==========================================================
+     3. APP / BRAND
+     ========================================================== */
+
+  const appUrl =
+    getAppUrl();
+
+  const logoUrl =
+    getEmailLogoUrl();
+
+  /* ==========================================================
+     4. SMTP
+     ========================================================== */
+
+  if (
+    !ensureEmailDeliveryAvailable(
+      'Email-change verification'
+    )
+  ) {
+    return {
+      success:
+        false,
+    };
+  }
+
+  /* ==========================================================
+     5. TEXT
+     ========================================================== */
+
+  const text = [
+    `Hello ${cleanName},`,
+
+    '',
+
+    'A request was made to change the email address on your SaMi account.',
+
+    '',
+
+    'Use this verification code to confirm the new email address:',
+
+    '',
+
+    cleanCode,
+
+    '',
+
+    `This code expires in ${expiresInMinutes} minute${
+      expiresInMinutes ===
+      1
+        ? ''
+        : 's'
+    }.`,
+
+    '',
+
+    'Only enter this code inside your SaMi account settings.',
+
+    '',
+
+    'If you did not request this email change, do not use the code. Your current SaMi email address will remain unchanged.',
+
+    '',
+
+    `Open SaMi: ${appUrl}`,
+
+    '',
+
+    'SaMi',
+
+    'AI Powered Business Workspace',
+  ].join(
+    '\n'
+  );
+
+  /* ==========================================================
+     6. HTML
+     ========================================================== */
+
+  const html =
+    buildEmailShell({
+      preheader:
+        'Confirm your new SaMi email address.',
+
+      label:
+        'Email change',
+
+      title:
+        'Confirm your new email address',
+
+      greeting:
+        `Hello ${cleanName}.`,
+
+      intro:
+        'A request was made to change the email address on your SaMi account. Enter the six-digit code below in SaMi to confirm this new email address.',
+
+      code:
+        cleanCode,
+
+      codeLabel:
+        'EMAIL CHANGE CODE',
+
+      expiresInMinutes,
+
+      securityTitle:
+        'Protect this code',
+
+      securityMessage:
+        'Only enter this code inside your SaMi account settings. Never share it with anyone, including someone claiming to be SaMi support.',
+
+      bottomMessage:
+        'If you did not request this email change, do not use this code. Your current SaMi email address will remain unchanged.',
+
+      appUrl,
+
+      logoUrl,
+
+      automatedLabel:
+        'This is an automated SaMi account-security email.',
+    });
+
+  /* ==========================================================
+     7. SEND
+     ========================================================== */
+
+  const mailer =
+    getTransporter();
+
+  try {
+    const info =
+      await mailer
+        .sendMail({
+          from:
+            getFromAddress(),
+
+          to:
+            normalizedEmail,
+
+          replyTo:
+            getReplyTo(),
+
+          subject:
+            'Confirm your new email address — SaMi',
+
+          text,
+
+          html,
+
+          headers: {
+            'X-SaMi-Email-Type':
+              'email-change-verification',
+
+            'X-Auto-Response-Suppress':
+              'All',
+
+            'Auto-Submitted':
+              'auto-generated',
+          },
+        });
+
+    /*
+     * Never log:
+     *
+     * - verification code
+     * - recipient email
+     * - email-change request details
+     */
+    console.log(
+      '[SaMi] Email-change verification delivered successfully.',
+      {
+        messageId:
+          info.messageId,
+      }
+    );
+
+    return {
+      success:
+        true,
+
+      messageId:
+        info.messageId,
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi] Email-change verification delivery failed:',
+      error
+    );
+
+    throw new Error(
+      'Email-change verification could not be sent.'
+    );
+  }
+}
+
+/* ============================================================
+   SEND SECURITY / EMAIL 2FA CODE
+   ============================================================ */
+
+/**
+ * Email delivery only.
+ *
+ * This function DOES NOT:
+ *
+ * - generate the OTP
+ * - hash the OTP
+ * - save the OTP
+ * - verify the OTP
+ * - enable Email 2FA
+ *
+ * Those responsibilities belong to:
+ *
+ * lib/auth/email-two-factor.ts
+ */
+export async function sendSecurityCodeEmail(
+  email: string,
+  code: string,
+  name: string,
+  options:
+    SecurityCodeEmailOptions
+): Promise<
+  SendSecurityCodeEmailResult
+> {
+  /* ==========================================================
+     1. NORMALIZE
+     ========================================================== */
+
+  const normalizedEmail =
+    normalizeEmail(
+      email
+    );
+
+  const cleanName =
+    normalizeName(
+      name
+    );
+
+  const cleanCode =
+    normalizeSecurityCode(
+      code
+    );
+
+  const expiresInMinutes =
+    normalizeExpiryMinutes(
+      options
+        .expiresInMinutes,
+      DEFAULT_SECURITY_CODE_EXPIRY_MINUTES
+    );
+
+  /* ==========================================================
+     2. VALIDATE
+     ========================================================== */
+
+  if (
+    !isValidEmail(
+      normalizedEmail
+    )
+  ) {
+    throw new Error(
+      'A valid recipient email is required.'
+    );
+  }
+
+  assertSixDigitCode(
+    cleanCode
+  );
+
+  if (
+    options.purpose !==
+      'email_2fa_setup' &&
+    options.purpose !==
+      'login_2fa' &&
+    options.purpose !==
+      'security_step_up'
+  ) {
+    throw new Error(
+      'Invalid SaMi security email purpose.'
+    );
+  }
+
+  /* ==========================================================
+     3. CONTENT
+     ========================================================== */
+
+  const content =
+    getSecurityEmailContent(
+      options.purpose
+    );
+
+  const appUrl =
+    getAppUrl();
+
+  const logoUrl =
+    getEmailLogoUrl();
+
+  /* ==========================================================
+     4. SMTP
+     ========================================================== */
+
+  if (
+    !ensureEmailDeliveryAvailable(
+      'Security-code'
+    )
+  ) {
+    return {
+      success:
+        false,
+    };
+  }
+
+  /* ==========================================================
+     5. TEXT
+     ========================================================== */
+
+  const text = [
+    `Hello ${cleanName},`,
+
+    '',
+
+    content.intro,
+
+    '',
+
+    `${content.codeLabel}:`,
+
+    '',
+
+    cleanCode,
+
+    '',
+
+    `This code expires in ${expiresInMinutes} minute${
+      expiresInMinutes ===
+      1
+        ? ''
+        : 's'
+    }.`,
+
+    '',
+
+    content.securityMessage,
+
+    '',
+
+    content.ignoredMessage,
+
+    '',
+
+    `Open SaMi: ${appUrl}`,
+
+    '',
+
+    'SaMi',
+
+    'AI Powered Business Workspace',
+  ].join(
+    '\n'
+  );
+
+  /* ==========================================================
+     6. HTML
+     ========================================================== */
+
+  const html =
+    buildEmailShell({
+      preheader:
+        'A SaMi security verification code was requested.',
+
+      label:
+        content.label,
+
+      title:
+        content.title,
+
+      greeting:
+        `Hello ${cleanName}.`,
+
+      intro:
+        content.intro,
+
+      code:
+        cleanCode,
+
+      codeLabel:
+        content.codeLabel,
+
+      expiresInMinutes,
+
+      securityTitle:
+        'Protect this code',
+
+      securityMessage:
+        content.securityMessage,
+
+      bottomMessage:
+        content.ignoredMessage,
+
+      appUrl,
+
+      logoUrl,
+
+      automatedLabel:
+        'This is an automated SaMi security email.',
+    });
+
+  /* ==========================================================
+     7. SEND
+     ========================================================== */
+
+  const mailer =
+    getTransporter();
+
+  try {
+    const info =
+      await mailer
+        .sendMail({
+          from:
+            getFromAddress(),
+
+          to:
+            normalizedEmail,
+
+          replyTo:
+            getReplyTo(),
+
+          subject:
+            content.subject,
+
+          text,
+
+          html,
+
+          /*
+           * No attachment or CID image.
+           *
+           * Email branding loads from:
+           *
+           * APP_URL/brand/sami-email-logo.png
+           */
+          headers: {
+            'X-SaMi-Email-Type':
+              options.purpose,
+
+            'X-Auto-Response-Suppress':
+              'All',
+
+            'Auto-Submitted':
+              'auto-generated',
+          },
+        });
+
+    /*
+     * Never log:
+     *
+     * - OTP
+     * - email address
+     * - verification context
+     */
+    console.log(
+      '[SaMi] Security code email delivered successfully.',
+      {
+        messageId:
+          info.messageId,
+
+        purpose:
+          options.purpose,
+      }
+    );
+
+    return {
+      success:
+        true,
+
+      messageId:
+        info.messageId,
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi] Security code email delivery failed:',
+      {
+        purpose:
+          options.purpose,
+
+        error,
+      }
+    );
+
+    throw new Error(
+      'Security verification email could not be sent.'
+    );
+  }
 }

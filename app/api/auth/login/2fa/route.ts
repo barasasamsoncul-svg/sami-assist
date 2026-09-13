@@ -10,7 +10,9 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
-import { createSession } from '@/lib/auth/session';
+import {
+  createSession,
+} from '@/lib/auth/session';
 
 import {
   findUserForLogin,
@@ -23,7 +25,18 @@ import {
   markLoginChallengeUsed,
 } from '@/lib/auth/login-challenges';
 
-import { verifyUserTwoFactorCode } from '@/lib/auth/two-factor';
+import {
+  verifyUserTwoFactorCode,
+} from '@/lib/auth/two-factor';
+
+import {
+  getLoginTwoFactorMethods,
+  type TwoFactorMethod,
+} from '@/lib/auth/two-factor-methods';
+
+import {
+  verifyEmailTwoFactorCode,
+} from '@/lib/auth/email-two-factor';
 
 import {
   checkRateLimit,
@@ -36,14 +49,18 @@ import {
   recordLoginHistory,
 } from '@/lib/auth/auth-events';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
 
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
-const MAX_EMAIL_LENGTH = 254;
+const MAX_EMAIL_LENGTH =
+  254;
 
 const MAX_CHALLENGE_TOKEN_LENGTH =
   512;
@@ -73,10 +90,19 @@ const TWO_FACTOR_RATE_LIMIT_BLOCK_MS =
    TYPES
    ============================================================ */
 
+type LoginVerificationMethod =
+  | TwoFactorMethod
+  | 'recovery';
+
 type TwoFactorLoginBody = {
   email?: unknown;
+
   challengeToken?: unknown;
+
   code?: unknown;
+
+  method?: unknown;
+
   rememberMe?: unknown;
 };
 
@@ -92,8 +118,10 @@ type AccountSecurityState = {
    ============================================================ */
 
 function getPositiveIntegerEnv(
-  name: string,
-  fallback: number
+  name:
+    string,
+  fallback:
+    number
 ) {
   const value =
     Number(
@@ -101,13 +129,18 @@ function getPositiveIntegerEnv(
     );
 
   if (
-    !Number.isFinite(value) ||
-    value <= 0
+    !Number.isFinite(
+      value
+    ) ||
+    value <=
+      0
   ) {
     return fallback;
   }
 
-  return Math.floor(value);
+  return Math.floor(
+    value
+  );
 }
 
 /* ============================================================
@@ -115,10 +148,12 @@ function getPositiveIntegerEnv(
    ============================================================ */
 
 function normalizeEmail(
-  value: unknown
+  value:
+    unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
@@ -129,10 +164,12 @@ function normalizeEmail(
 }
 
 function normalizeChallengeToken(
-  value: unknown
+  value:
+    unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
@@ -141,28 +178,63 @@ function normalizeChallengeToken(
 }
 
 function normalizeCode(
-  value: unknown
+  value:
+    unknown
 ): string {
   if (
-    typeof value !== 'string'
+    typeof value !==
+    'string'
   ) {
     return '';
   }
 
   /*
-   * Do not force numeric input here.
+   * Do not force numeric input.
    *
-   * verifyUserTwoFactorCode() also supports recovery
-   * codes, which may contain letters or separators.
+   * Authenticator codes are numeric.
+   * Email OTPs are numeric.
+   * Recovery codes may contain letters/separators.
    */
   return value.trim();
 }
 
+function normalizeVerificationMethod(
+  value:
+    unknown
+): LoginVerificationMethod | null {
+  if (
+    typeof value !==
+    'string'
+  ) {
+    return null;
+  }
+
+  const method =
+    value
+      .trim()
+      .toLowerCase();
+
+  if (
+    method ===
+      'authenticator' ||
+    method ===
+      'email' ||
+    method ===
+      'recovery'
+  ) {
+    return method;
+  }
+
+  return null;
+}
+
 function isValidEmail(
-  value: string
+  value:
+    string
 ) {
   return (
-    value.length > 0 &&
+    value.length >
+      0 &&
     value.length <=
       MAX_EMAIL_LENGTH &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
@@ -176,15 +248,18 @@ function isValidEmail(
    ============================================================ */
 
 function jsonResponse(
-  body: Record<
-    string,
-    unknown
-  >,
-  status = 200,
-  headers: Record<
-    string,
-    string
-  > = {}
+  body:
+    Record<
+      string,
+      unknown
+    >,
+  status =
+    200,
+  headers:
+    Record<
+      string,
+      string
+    > = {}
 ) {
   return NextResponse.json(
     body,
@@ -205,23 +280,32 @@ function jsonResponse(
 }
 
 function errorResponse(
-  status: number,
-  code: string,
-  error: string,
-  extra: Record<
+  status:
+    number,
+  code:
     string,
-    unknown
-  > = {},
-  headers: Record<
+  error:
     string,
-    string
-  > = {}
+  extra:
+    Record<
+      string,
+      unknown
+    > = {},
+  headers:
+    Record<
+      string,
+      string
+    > = {}
 ) {
   return jsonResponse(
     {
-      success: false,
+      success:
+        false,
+
       code,
+
       error,
+
       ...extra,
     },
     status,
@@ -242,27 +326,37 @@ function challengeExpiredResponse() {
    ============================================================ */
 
 function hashValue(
-  value: string
+  value:
+    string
 ) {
   return crypto
-    .createHash('sha256')
+    .createHash(
+      'sha256'
+    )
     .update(
       value,
       'utf8'
     )
-    .digest('hex');
+    .digest(
+      'hex'
+    );
 }
 
 function twoFactorRateIdentifier(
-  request: NextRequest,
-  challengeToken: string
+  request:
+    NextRequest,
+  challengeToken:
+    string
 ) {
   const ip =
-    getClientIp(request) ||
+    getClientIp(
+      request
+    ) ||
     'unknown-ip';
 
   /*
-   * Never place the raw login challenge in rate-limit storage.
+   * Never place the raw login challenge token in
+   * rate-limit storage.
    */
   const challengeHash =
     hashValue(
@@ -275,29 +369,35 @@ function twoFactorRateIdentifier(
 /* ============================================================
    ORIGINAL LOGIN RATE KEY
 
-   Must match /api/auth/login.
+   Must remain identical to /api/auth/login.
    ============================================================ */
 
 function loginRateIdentifier(
-  request: NextRequest,
-  email: string
+  request:
+    NextRequest,
+  email:
+    string
 ) {
   const ip =
-    getClientIp(request) ||
+    getClientIp(
+      request
+    ) ||
     'unknown-ip';
 
   return `login:${email}:${ip}`;
 }
 
 /* ============================================================
-   REMEMBER DEVICE
+   REMEMBER ME
 
-   Prefer the value stored with the server-side challenge.
+   Server-side challenge value wins whenever available.
    ============================================================ */
 
 function resolveRememberMe(
-  challenge: unknown,
-  requestedValue: unknown
+  challenge:
+    unknown,
+  requestedValue:
+    unknown
 ) {
   if (
     challenge &&
@@ -311,26 +411,30 @@ function resolveRememberMe(
       >;
 
     if (
-      typeof row.remember_me ===
-      'boolean'
+      typeof row
+        .remember_me ===
+        'boolean'
     ) {
-      return row.remember_me;
+      return row
+        .remember_me;
     }
 
     if (
-      typeof row.rememberMe ===
-      'boolean'
+      typeof row
+        .rememberMe ===
+        'boolean'
     ) {
-      return row.rememberMe;
+      return row
+        .rememberMe;
     }
   }
 
   /*
-   * Backwards compatibility if the current
-   * login-challenges helper has not yet exposed
-   * remember_me on its returned row.
+   * Backwards compatibility for older login-challenge
+   * rows/helpers.
    */
-  return requestedValue === true;
+  return requestedValue ===
+    true;
 }
 
 /* ============================================================
@@ -338,7 +442,8 @@ function resolveRememberMe(
    ============================================================ */
 
 async function getAccountSecurityState(
-  userId: string
+  userId:
+    string
 ): Promise<
   AccountSecurityState | null
 > {
@@ -367,7 +472,8 @@ async function getAccountSecurityState(
 }
 
 function accountLockedResponse(
-  lockedUntil: Date
+  lockedUntil:
+    Date
 ) {
   const retryAfterSeconds =
     Math.max(
@@ -376,7 +482,8 @@ function accountLockedResponse(
         (
           lockedUntil.getTime() -
           Date.now()
-        ) / 1000
+        ) /
+          1000
       )
     );
 
@@ -386,7 +493,8 @@ function accountLockedResponse(
     'This account is temporarily locked. Please try again later.',
     {
       lockedUntil:
-        lockedUntil.toISOString(),
+        lockedUntil
+          .toISOString(),
 
       retryAfterSeconds,
     },
@@ -404,7 +512,8 @@ function accountLockedResponse(
    ============================================================ */
 
 async function clearSuccessfulLoginState(
-  userId: string
+  userId:
+    string
 ) {
   await queryControl(
     `
@@ -430,15 +539,18 @@ async function clearSuccessfulLoginState(
    ============================================================ */
 
 async function safeRecordAuthEvent(
-  input: Parameters<
-    typeof recordAuthEvent
-  >[0]
+  input:
+    Parameters<
+      typeof recordAuthEvent
+    >[0]
 ) {
   try {
     await recordAuthEvent(
       input
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Failed to record 2FA auth event:',
       error
@@ -447,15 +559,18 @@ async function safeRecordAuthEvent(
 }
 
 async function safeRecordLoginHistory(
-  input: Parameters<
-    typeof recordLoginHistory
-  >[0]
+  input:
+    Parameters<
+      typeof recordLoginHistory
+    >[0]
 ) {
   try {
     await recordLoginHistory(
       input
     );
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Failed to record 2FA login history:',
       error
@@ -464,15 +579,379 @@ async function safeRecordLoginHistory(
 }
 
 /* ============================================================
-   POST /api/auth/login/2fa
+   RESOLVE LOGIN METHOD
+
+   Backwards compatibility:
+
+   The existing SaMi 2FA client did not send `method`.
+
+   Therefore:
+   - if method is explicitly supplied, use it
+   - if omitted and Authenticator exists, keep old behavior
+   - otherwise use the sole available primary method
+   - recovery remains explicit except when it is the only
+     available verification fallback
+   ============================================================ */
+
+function resolveVerificationMethod(
+  input: {
+    requestedMethod:
+      LoginVerificationMethod | null;
+
+    methodWasSupplied:
+      boolean;
+
+    methods:
+      TwoFactorMethod[];
+
+    preferredMethod:
+      TwoFactorMethod | null;
+
+    recoveryAvailable:
+      boolean;
+  }
+): LoginVerificationMethod | null {
+  /* ----------------------------------------------------------
+     EXPLICIT METHOD
+     ---------------------------------------------------------- */
+
+  if (
+    input
+      .methodWasSupplied
+  ) {
+    return input
+      .requestedMethod;
+  }
+
+  /* ----------------------------------------------------------
+     LEGACY CLIENT
+
+     Existing SaMi login UI originally verified
+     Authenticator/Recovery through this endpoint.
+     ---------------------------------------------------------- */
+
+  if (
+    input.methods.includes(
+      'authenticator'
+    )
+  ) {
+    return 'authenticator';
+  }
+
+  /* ----------------------------------------------------------
+     ONE PRIMARY METHOD
+     ---------------------------------------------------------- */
+
+  if (
+    input.methods.length ===
+    1
+  ) {
+    return input.methods[0];
+  }
+
+  /* ----------------------------------------------------------
+     PREFERRED PRIMARY METHOD
+     ---------------------------------------------------------- */
+
+  if (
+    input.preferredMethod &&
+    input.methods.includes(
+      input.preferredMethod
+    )
+  ) {
+    return input
+      .preferredMethod;
+  }
+
+  /* ----------------------------------------------------------
+     RECOVERY-ONLY FALLBACK
+     ---------------------------------------------------------- */
+
+  if (
+    input.methods.length ===
+      0 &&
+    input.recoveryAvailable
+  ) {
+    return 'recovery';
+  }
+
+  return null;
+}
+
+/* ============================================================
+   METHOD AVAILABILITY
+   ============================================================ */
+
+function isVerificationMethodAvailable(
+  method:
+    LoginVerificationMethod,
+  input: {
+    methods:
+      TwoFactorMethod[];
+
+    recoveryAvailable:
+      boolean;
+  }
+) {
+  if (
+    method ===
+    'recovery'
+  ) {
+    return input
+      .recoveryAvailable;
+  }
+
+  return input
+    .methods
+    .includes(
+      method
+    );
+}
+
+/* ============================================================
+   METHOD STATE RESPONSE
+   ============================================================ */
+
+function methodUnavailableResponse(
+  input: {
+    methods:
+      TwoFactorMethod[];
+
+    preferredMethod:
+      TwoFactorMethod | null;
+
+    maskedEmail:
+      string | null;
+
+    recoveryAvailable:
+      boolean;
+  }
+) {
+  return errorResponse(
+    409,
+    'TWO_FACTOR_METHOD_NOT_AVAILABLE',
+    'This verification method is no longer available. Choose another method.',
+    {
+      verification: {
+        methods:
+          input.methods,
+
+        preferredMethod:
+          input
+            .preferredMethod,
+
+        maskedEmail:
+          input
+            .maskedEmail,
+
+        recoveryAvailable:
+          input
+            .recoveryAvailable,
+      },
+    }
+  );
+}
+
+/* ============================================================
+   EMAIL VERIFICATION FAILURE RESPONSE
+   ============================================================ */
+
+function emailVerificationFailureResponse(
+  result:
+    Awaited<
+      ReturnType<
+        typeof verifyEmailTwoFactorCode
+      >
+    >,
+  verification: {
+    methods:
+      TwoFactorMethod[];
+
+    preferredMethod:
+      TwoFactorMethod | null;
+
+    maskedEmail:
+      string | null;
+
+    recoveryAvailable:
+      boolean;
+  }
+) {
+  switch (
+    result.reason
+  ) {
+    /* --------------------------------------------------------
+       WRONG CODE
+       -------------------------------------------------------- */
+
+    case 'invalid':
+      return errorResponse(
+        400,
+        'INVALID_EMAIL_TWO_FACTOR_CODE',
+        'The email verification code is incorrect.',
+        {
+          attemptsRemaining:
+            result
+              .attemptsRemaining,
+        }
+      );
+
+    /* --------------------------------------------------------
+       EXPIRED CODE
+       -------------------------------------------------------- */
+
+    case 'expired':
+      return errorResponse(
+        400,
+        'EMAIL_TWO_FACTOR_CODE_EXPIRED',
+        'This email verification code has expired. Request a new code.',
+        {
+          attemptsRemaining:
+            result
+              .attemptsRemaining,
+        }
+      );
+
+    /* --------------------------------------------------------
+       TOO MANY ATTEMPTS ON THIS OTP
+       -------------------------------------------------------- */
+
+    case 'attempts_exhausted':
+      return errorResponse(
+        429,
+        'EMAIL_TWO_FACTOR_CODE_ATTEMPTS_EXHAUSTED',
+        'This email verification code can no longer be used. Request a new code.',
+        {
+          attemptsRemaining:
+            0,
+        }
+      );
+
+    /* --------------------------------------------------------
+       NO CURRENT OTP
+
+       Happens when:
+       - user did not request one
+       - previous code was consumed
+       - previous code was invalidated
+       -------------------------------------------------------- */
+
+    case 'not_found':
+      return errorResponse(
+        400,
+        'EMAIL_TWO_FACTOR_CODE_REQUIRED',
+        'Request a new email verification code and try again.'
+      );
+
+    /* --------------------------------------------------------
+       ACCOUNT EMAIL CHANGED DURING CHALLENGE
+       -------------------------------------------------------- */
+
+    case 'email_changed':
+      return errorResponse(
+        409,
+        'EMAIL_TWO_FACTOR_EMAIL_CHANGED',
+        'Your account email changed during this login. Sign in again.'
+      );
+
+    /* --------------------------------------------------------
+       EMAIL 2FA WAS DISABLED AFTER CHALLENGE CREATION
+       -------------------------------------------------------- */
+
+    case 'method_disabled':
+      return methodUnavailableResponse(
+        verification
+      );
+
+    /* --------------------------------------------------------
+       ACCOUNT BECAME UNAVAILABLE
+       -------------------------------------------------------- */
+
+    case 'account_unavailable':
+      return challengeExpiredResponse();
+
+    /* --------------------------------------------------------
+       SUCCESS IS HANDLED BEFORE THIS FUNCTION
+       -------------------------------------------------------- */
+
+    case 'verified':
+    default:
+      return errorResponse(
+        400,
+        'INVALID_EMAIL_TWO_FACTOR_CODE',
+        'The email verification code could not be verified.'
+      );
+  }
+}
+
+/* ============================================================
+   POST
+   /api/auth/login/2fa
+
+   REQUEST
+
+   Authenticator:
+   {
+     "email": "...",
+     "challengeToken": "...",
+     "method": "authenticator",
+     "code": "123456"
+   }
+
+   Email:
+   {
+     "email": "...",
+     "challengeToken": "...",
+     "method": "email",
+     "code": "123456"
+   }
+
+   Recovery:
+   {
+     "email": "...",
+     "challengeToken": "...",
+     "method": "recovery",
+     "code": "..."
+   }
+
+   FLOW
+
+   Password already verified
+        ↓
+   Validate login challenge
+        ↓
+   Rate-limit verification attempts
+        ↓
+   Advisory lock exact challenge
+        ↓
+   Revalidate challenge
+        ↓
+   Revalidate account/workspace
+        ↓
+   Revalidate currently enabled 2FA methods
+        ↓
+   Verify selected factor
+        ↓
+   Consume challenge ONCE
+        ↓
+   Create session
+        ↓
+   Login complete
    ============================================================ */
 
 export async function POST(
-  request: NextRequest
+  request:
+    NextRequest
 ) {
-  let email = '';
+  let email =
+    '';
 
-  let challengeToken = '';
+  let challengeToken =
+    '';
+
+  let selectedMethod:
+    LoginVerificationMethod | null =
+    null;
 
   try {
     /* ========================================================
@@ -503,7 +982,8 @@ export async function POST(
       }
 
       body =
-        parsed as TwoFactorLoginBody;
+        parsed as
+          TwoFactorLoginBody;
     } catch {
       return errorResponse(
         400,
@@ -531,6 +1011,19 @@ export async function POST(
         body.code
       );
 
+    const methodWasSupplied =
+      body.method !==
+        undefined &&
+      body.method !==
+        null &&
+      body.method !==
+        '';
+
+    const requestedMethod =
+      normalizeVerificationMethod(
+        body.method
+      );
+
     /* ========================================================
        3. VALIDATE INPUT
        ======================================================== */
@@ -556,6 +1049,17 @@ export async function POST(
     }
 
     if (
+      methodWasSupplied &&
+      !requestedMethod
+    ) {
+      return errorResponse(
+        400,
+        'INVALID_TWO_FACTOR_METHOD',
+        'Choose Authenticator, Email, or a recovery code.'
+      );
+    }
+
+    if (
       !code ||
       code.length >
         MAX_TWO_FACTOR_CODE_LENGTH
@@ -568,16 +1072,19 @@ export async function POST(
     }
 
     /* ========================================================
-       4. LOAD LOGIN CHALLENGE
+       4. INITIAL CHALLENGE VALIDATION
        ======================================================== */
 
     const initialChallenge =
       await getValidLoginChallenge({
         email,
+
         challengeToken,
       });
 
-    if (!initialChallenge) {
+    if (
+      !initialChallenge
+    ) {
       return challengeExpiredResponse();
     }
 
@@ -597,9 +1104,10 @@ export async function POST(
           twoFactorRateKey,
 
         /*
-         * Reuse the existing supported auth action.
-         * The identifier itself separates password login
-         * attempts from second-factor attempts.
+         * Reuse the supported login limiter action.
+         *
+         * The identifier separates password login attempts
+         * from challenge verification attempts.
          */
         action:
           'login',
@@ -618,13 +1126,15 @@ export async function POST(
       !rateLimit.allowed
     ) {
       /*
-       * The user must restart authentication after too many
-       * second-factor attempts.
+       * Too many challenge attempts invalidates the entire
+       * password-authenticated login challenge.
        */
       await markLoginChallengeUsed(
         initialChallenge.id
       ).catch(
-        (error) => {
+        (
+          error
+        ) => {
           console.error(
             '[Auth] Failed to invalidate rate-limited 2FA challenge:',
             error
@@ -636,7 +1146,8 @@ export async function POST(
         request,
 
         userId:
-          initialChallenge.user_id,
+          initialChallenge
+            .user_id,
 
         eventType:
           'TWO_FACTOR_RATE_LIMITED',
@@ -645,13 +1156,15 @@ export async function POST(
           'user',
 
         entityId:
-          initialChallenge.user_id,
+          initialChallenge
+            .user_id,
 
         metadata: {
           email,
 
           retryAfterSeconds:
-            rateLimit.retryAfterSeconds,
+            rateLimit
+              .retryAfterSeconds,
         },
       });
 
@@ -661,14 +1174,16 @@ export async function POST(
         'Too many verification attempts. Please sign in again.',
         {
           retryAfterSeconds:
-            rateLimit.retryAfterSeconds,
+            rateLimit
+              .retryAfterSeconds,
         },
         {
           'Retry-After':
             String(
               Math.max(
                 1,
-                rateLimit.retryAfterSeconds ||
+                rateLimit
+                  .retryAfterSeconds ||
                   1
               )
             ),
@@ -677,12 +1192,11 @@ export async function POST(
     }
 
     /* ========================================================
-       6. SERIALIZE CHALLENGE CONSUMPTION
+       6. SERIALIZE EXACT LOGIN CHALLENGE
 
-       Two requests with the same valid TOTP must not be able
-       to create two independent sessions.
-
-       The advisory lock serializes this exact challenge.
+       This prevents two concurrent successful verification
+       requests from creating two independent sessions using
+       one challenge.
        ======================================================== */
 
     const controlClient =
@@ -711,24 +1225,27 @@ export async function POST(
         true;
 
       /* ======================================================
-         7. REVALIDATE AFTER LOCK
+         7. REVALIDATE CHALLENGE AFTER LOCK
 
-         Another request may have consumed the challenge while
-         this request was waiting for the advisory lock.
+         Another request may have completed the challenge while
+         this request waited for the advisory lock.
          ====================================================== */
 
       const challenge =
         await getValidLoginChallenge({
           email,
+
           challengeToken,
         });
 
-      if (!challenge) {
+      if (
+        !challenge
+      ) {
         return challengeExpiredResponse();
       }
 
       /* ======================================================
-         8. BIND CHALLENGE TO USER
+         8. BIND CHALLENGE TO ACCOUNT
          ====================================================== */
 
       const user =
@@ -744,7 +1261,8 @@ export async function POST(
         await markLoginChallengeUsed(
           challenge.id
         ).catch(
-          () => undefined
+          () =>
+            undefined
         );
 
         return challengeExpiredResponse();
@@ -752,10 +1270,6 @@ export async function POST(
 
       /* ======================================================
          9. CHECK ACCOUNT LOCK AGAIN
-
-         Account state may have changed after the password was
-         accepted but before the user submitted the second
-         factor.
          ====================================================== */
 
       const securityState =
@@ -764,11 +1278,13 @@ export async function POST(
         );
 
       if (
-        securityState?.locked_until
+        securityState
+          ?.locked_until
       ) {
         const lockedUntil =
           new Date(
-            securityState.locked_until
+            securityState
+              .locked_until
           );
 
         if (
@@ -781,7 +1297,8 @@ export async function POST(
           await markLoginChallengeUsed(
             challenge.id
           ).catch(
-            () => undefined
+            () =>
+              undefined
           );
 
           await safeRecordAuthEvent({
@@ -806,7 +1323,8 @@ export async function POST(
               email,
 
               lockedUntil:
-                lockedUntil.toISOString(),
+                lockedUntil
+                  .toISOString(),
             },
           });
 
@@ -819,8 +1337,8 @@ export async function POST(
       /* ======================================================
          10. REVALIDATE ACCOUNT / WORKSPACE
 
-         A workspace could have been suspended, deleted or had
-         access revoked during the challenge lifetime.
+         Workspace, membership or subscription state may have
+         changed while the login challenge was open.
          ====================================================== */
 
       const accountContext =
@@ -840,7 +1358,8 @@ export async function POST(
         await markLoginChallengeUsed(
           challenge.id
         ).catch(
-          () => undefined
+          () =>
+            undefined
         );
 
         await safeRecordLoginHistory({
@@ -896,7 +1415,8 @@ export async function POST(
         });
 
         return errorResponse(
-          validation.httpStatus,
+          validation
+            .httpStatus,
           validation.code,
           validation.message,
           {
@@ -907,18 +1427,383 @@ export async function POST(
       }
 
       /* ======================================================
-         11. VERIFY AUTHENTICATOR / RECOVERY CODE
+         11. REVALIDATE CURRENT 2FA METHODS
+
+         Do not trust the methods returned earlier by
+         /api/auth/login.
+
+         They may have changed while this challenge remained
+         open.
          ====================================================== */
 
-      const validCode =
-        await verifyUserTwoFactorCode({
+      const verification =
+        await getLoginTwoFactorMethods(
+          challenge.user_id
+        );
+
+      /*
+       * If every second-factor method was removed while this
+       * challenge was open, do not silently downgrade the
+       * already-created challenge into password-only login.
+       *
+       * Invalidate it and require a fresh sign-in.
+       */
+      if (
+        !verification.required
+      ) {
+        await markLoginChallengeUsed(
+          challenge.id
+        ).catch(
+          () =>
+            undefined
+        );
+
+        return challengeExpiredResponse();
+      }
+
+      /* ======================================================
+         12. RESOLVE SELECTED METHOD
+         ====================================================== */
+
+      selectedMethod =
+        resolveVerificationMethod({
+          requestedMethod,
+
+          methodWasSupplied,
+
+          methods:
+            verification
+              .methods,
+
+          preferredMethod:
+            verification
+              .preferredMethod,
+
+          recoveryAvailable:
+            verification
+              .recoveryAvailable,
+        });
+
+      if (
+        !selectedMethod
+      ) {
+        return errorResponse(
+          400,
+          'TWO_FACTOR_METHOD_REQUIRED',
+          'Choose a verification method.',
+          {
+            verification: {
+              methods:
+                verification
+                  .methods,
+
+              preferredMethod:
+                verification
+                  .preferredMethod,
+
+              maskedEmail:
+                verification
+                  .maskedEmail,
+
+              recoveryAvailable:
+                verification
+                  .recoveryAvailable,
+            },
+          }
+        );
+      }
+
+      /* ======================================================
+         13. VERIFY METHOD IS STILL AVAILABLE
+         ====================================================== */
+
+      if (
+        !isVerificationMethodAvailable(
+          selectedMethod,
+          {
+            methods:
+              verification
+                .methods,
+
+            recoveryAvailable:
+              verification
+                .recoveryAvailable,
+          }
+        )
+      ) {
+        await safeRecordAuthEvent({
+          request,
+
           userId:
             challenge.user_id,
 
-          code,
+          tenantId:
+            accountContext
+              .tenant?.id ||
+            null,
+
+          eventType:
+            'TWO_FACTOR_METHOD_UNAVAILABLE',
+
+          entityType:
+            'user',
+
+          entityId:
+            challenge.user_id,
+
+          metadata: {
+            requestedMethod:
+              selectedMethod,
+
+            availableMethods:
+              verification
+                .methods,
+
+            recoveryAvailable:
+              verification
+                .recoveryAvailable,
+          },
         });
 
-      if (!validCode) {
+        return methodUnavailableResponse({
+          methods:
+            verification
+              .methods,
+
+          preferredMethod:
+            verification
+              .preferredMethod,
+
+          maskedEmail:
+            verification
+              .maskedEmail,
+
+          recoveryAvailable:
+            verification
+              .recoveryAvailable,
+        });
+      }
+
+      /* ======================================================
+         14. VERIFY SECOND FACTOR
+         ====================================================== */
+
+      let secondFactorValid =
+        false;
+
+      /* ------------------------------------------------------
+         EMAIL OTP
+         ------------------------------------------------------ */
+
+      if (
+        selectedMethod ===
+        'email'
+      ) {
+        const emailResult =
+          await verifyEmailTwoFactorCode({
+            userId:
+              challenge.user_id,
+
+            purpose:
+              'login_2fa',
+
+            /*
+             * Must match the exact context used by
+             * /api/auth/login/2fa/email/send.
+             */
+            context:
+              challengeToken,
+
+            code,
+          });
+
+        if (
+          !emailResult.success
+        ) {
+          await safeRecordLoginHistory({
+            request,
+
+            userId:
+              challenge.user_id,
+
+            successful:
+              false,
+
+            failureReason:
+              'invalid_two_factor_code',
+
+            metadata: {
+              email,
+
+              twoFactor:
+                true,
+
+              method:
+                'email',
+
+              reason:
+                emailResult.reason,
+
+              attemptsRemaining:
+                emailResult
+                  .attemptsRemaining,
+            },
+          });
+
+          await safeRecordAuthEvent({
+            request,
+
+            userId:
+              challenge.user_id,
+
+            tenantId:
+              accountContext
+                .tenant?.id ||
+              null,
+
+            eventType:
+              'TWO_FACTOR_FAILED',
+
+            entityType:
+              'user',
+
+            entityId:
+              challenge.user_id,
+
+            metadata: {
+              email,
+
+              method:
+                'email',
+
+              reason:
+                emailResult.reason,
+
+              attemptsRemaining:
+                emailResult
+                  .attemptsRemaining,
+            },
+          });
+
+          /*
+           * If the account itself became unavailable, this
+           * challenge should not remain reusable.
+           */
+          if (
+            emailResult.reason ===
+              'account_unavailable'
+          ) {
+            await markLoginChallengeUsed(
+              challenge.id
+            ).catch(
+              () =>
+                undefined
+            );
+          }
+
+          /*
+           * If the account email changed, require a completely
+           * fresh password login rather than continuing a
+           * challenge created for the previous email identity.
+           */
+          if (
+            emailResult.reason ===
+              'email_changed'
+          ) {
+            await markLoginChallengeUsed(
+              challenge.id
+            ).catch(
+              () =>
+                undefined
+            );
+          }
+
+          return emailVerificationFailureResponse(
+            emailResult,
+            {
+              methods:
+                verification
+                  .methods,
+
+              preferredMethod:
+                verification
+                  .preferredMethod,
+
+              maskedEmail:
+                verification
+                  .maskedEmail,
+
+              recoveryAvailable:
+                verification
+                  .recoveryAvailable,
+            }
+          );
+        }
+
+        secondFactorValid =
+          true;
+      }
+
+      /* ------------------------------------------------------
+         AUTHENTICATOR
+         ------------------------------------------------------ */
+
+      if (
+        selectedMethod ===
+        'authenticator'
+      ) {
+        /*
+         * verifyUserTwoFactorCode() currently understands both:
+         *
+         * - TOTP
+         * - Recovery codes
+         *
+         * For an explicit Authenticator request the normal
+         * six-digit TOTP path succeeds.
+         *
+         * Recovery remains separately exposed to the UI below
+         * as an emergency method.
+         */
+        secondFactorValid =
+          await verifyUserTwoFactorCode({
+            userId:
+              challenge.user_id,
+
+            code,
+          });
+      }
+
+      /* ------------------------------------------------------
+         RECOVERY CODE
+         ------------------------------------------------------ */
+
+      if (
+        selectedMethod ===
+        'recovery'
+      ) {
+        /*
+         * Recovery codes are account-level emergency fallback
+         * credentials.
+         *
+         * verifyUserTwoFactorCode() already consumes a matching
+         * recovery code one time.
+         */
+        secondFactorValid =
+          await verifyUserTwoFactorCode({
+            userId:
+              challenge.user_id,
+
+            code,
+          });
+      }
+
+      /* ======================================================
+         15. INVALID AUTHENTICATOR / RECOVERY
+         ====================================================== */
+
+      if (
+        !secondFactorValid
+      ) {
         await safeRecordLoginHistory({
           request,
 
@@ -936,6 +1821,9 @@ export async function POST(
 
             twoFactor:
               true,
+
+            method:
+              selectedMethod,
           },
         });
 
@@ -961,21 +1849,27 @@ export async function POST(
 
           metadata: {
             email,
+
+            method:
+              selectedMethod,
           },
         });
 
         return errorResponse(
           400,
-          'INVALID_TWO_FACTOR_CODE',
-          'Invalid verification or recovery code.'
+          selectedMethod ===
+            'recovery'
+            ? 'INVALID_RECOVERY_CODE'
+            : 'INVALID_TWO_FACTOR_CODE',
+          selectedMethod ===
+            'recovery'
+            ? 'Invalid or already-used recovery code.'
+            : 'Invalid authenticator verification code.'
         );
       }
 
       /* ======================================================
-         12. DETERMINE SESSION PERSISTENCE
-
-         Server-side challenge value wins whenever the
-         login-challenges helper exposes it.
+         16. DETERMINE SESSION PERSISTENCE
          ====================================================== */
 
       const rememberMe =
@@ -985,16 +1879,17 @@ export async function POST(
         );
 
       /* ======================================================
-         13. CONSUME CHALLENGE BEFORE CREATING SESSION
+         17. CONSUME LOGIN CHALLENGE
 
          At this point:
+
            password ✓
            account ✓
            workspace ✓
-           second factor ✓
+           selected second factor ✓
 
-         Consuming before session creation closes the challenge
-         replay window.
+         The advisory lock ensures only one request can reach
+         this point for this challenge at a time.
          ====================================================== */
 
       await markLoginChallengeUsed(
@@ -1002,7 +1897,10 @@ export async function POST(
       );
 
       /* ======================================================
-         14. CREATE AUTHENTICATED SESSION
+         18. CREATE AUTHENTICATED SESSION
+
+         No session existed before successful second-factor
+         verification.
          ====================================================== */
 
       const session =
@@ -1015,13 +1913,15 @@ export async function POST(
         );
 
       /* ======================================================
-         15. CLEAR LOGIN SECURITY STATE
+         19. CLEAR LOGIN SECURITY STATE
          ====================================================== */
 
       await clearSuccessfulLoginState(
         challenge.user_id
       ).catch(
-        (error) => {
+        (
+          error
+        ) => {
           console.error(
             '[Auth] Failed to clear login state after 2FA:',
             error
@@ -1029,9 +1929,10 @@ export async function POST(
         }
       );
 
-      /*
-       * Clear the original password-login rate limit.
-       */
+      /* ------------------------------------------------------
+         Original password-login limiter
+         ------------------------------------------------------ */
+
       const loginRateKey =
         loginRateIdentifier(
           request,
@@ -1042,7 +1943,9 @@ export async function POST(
         loginRateKey,
         'login'
       ).catch(
-        (error) => {
+        (
+          error
+        ) => {
           console.error(
             '[Auth] Failed to reset password login rate limit after 2FA:',
             error
@@ -1050,14 +1953,17 @@ export async function POST(
         }
       );
 
-      /*
-       * Clear the challenge-specific 2FA limiter.
-       */
+      /* ------------------------------------------------------
+         Challenge-specific second-factor limiter
+         ------------------------------------------------------ */
+
       await resetRateLimit(
         twoFactorRateKey,
         'login'
       ).catch(
-        (error) => {
+        (
+          error
+        ) => {
           console.error(
             '[Auth] Failed to reset 2FA rate limit:',
             error
@@ -1066,7 +1972,7 @@ export async function POST(
       );
 
       /* ======================================================
-         16. LOGIN HISTORY
+         20. LOGIN HISTORY
          ====================================================== */
 
       await safeRecordLoginHistory({
@@ -1087,12 +1993,15 @@ export async function POST(
           twoFactor:
             true,
 
+          twoFactorMethod:
+            selectedMethod,
+
           rememberMe,
         },
       });
 
       /* ======================================================
-         17. AUDIT
+         21. SECURITY AUDIT
          ====================================================== */
 
       await safeRecordAuthEvent({
@@ -1118,6 +2027,9 @@ export async function POST(
         metadata: {
           email,
 
+          method:
+            selectedMethod,
+
           rememberMe,
 
           accessLevel:
@@ -1129,31 +2041,17 @@ export async function POST(
       });
 
       /* ======================================================
-         18. SUCCESS
+         22. SUCCESS
 
-         IMPORTANT:
+         Do not force /dashboard here.
 
-         Do NOT return:
-           next: '/dashboard'
-
-         The new TwoFactorLoginClient already preserves the
-         original destination in `sami_2fa_next`.
-
-         By omitting next here, this works:
-
-           /settings
-              ↓
-           login
-              ↓
-           2FA
-              ↓
-           /settings
-
-         rather than forcing every 2FA login to Dashboard.
+         The login client already preserves the destination
+         across password → 2FA.
          ====================================================== */
 
       return jsonResponse({
-        success: true,
+        success:
+          true,
 
         code:
           'LOGIN_SUCCESS',
@@ -1161,35 +2059,47 @@ export async function POST(
         message:
           'Login successful.',
 
+        verificationMethod:
+          selectedMethod,
+
         tenant:
-          accountContext.tenant,
+          accountContext
+            .tenant,
 
         owner:
-          accountContext.owner,
+          accountContext
+            .owner,
 
         membership:
-          accountContext.membership,
+          accountContext
+            .membership,
 
         subscription:
-          accountContext.subscription,
+          accountContext
+            .subscription,
 
         role:
-          accountContext.role,
+          accountContext
+            .role,
 
         modules:
-          accountContext.modules,
+          accountContext
+            .modules,
 
         session: {
           id:
-            session.sessionId,
+            session
+              .sessionId,
 
           expiresAt:
-            session.expiresAt.toISOString(),
+            session
+              .expiresAt
+              .toISOString(),
         },
       });
     } finally {
       /* ======================================================
-         RELEASE CHALLENGE LOCK
+         RELEASE CHALLENGE ADVISORY LOCK
          ====================================================== */
 
       if (
@@ -1206,7 +2116,9 @@ export async function POST(
               challengeLockKey,
             ]
           );
-        } catch (unlockError) {
+        } catch (
+          unlockError
+        ) {
           console.error(
             '[Auth] Failed to release 2FA challenge lock:',
             unlockError
@@ -1216,7 +2128,15 @@ export async function POST(
 
       controlClient.release();
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
+    /*
+     * Never log:
+     * - verification code
+     * - recovery code
+     * - raw challenge token
+     */
     console.error(
       '[Auth] 2FA login failed:',
       error
@@ -1231,8 +2151,12 @@ export async function POST(
       metadata: {
         email,
 
+        method:
+          selectedMethod,
+
         message:
-          error instanceof Error
+          error instanceof
+            Error
             ? error.message
             : 'Unknown two-factor login error',
       },
