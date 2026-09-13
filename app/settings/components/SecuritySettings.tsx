@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  History,
   KeyRound,
   Loader2,
   LockKeyhole,
@@ -26,6 +27,7 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 import TwoFactorSettings from './TwoFactorSettings';
 import EmailTwoFactorSettings from './EmailTwoFactorSettings';
+import SecurityActivitySettings from './SecurityActivitySettings';
 
 /* ============================================================
    TYPES
@@ -36,7 +38,8 @@ type SecurityView =
   | 'password'
   | 'verification'
   | 'authenticator'
-  | 'email';
+  | 'email'
+  | 'activity';
 
 type OverlayState = {
   type:
@@ -128,6 +131,9 @@ function getSecurityViewFromUrl():
     case 'email':
       return 'email';
 
+    case 'activity':
+      return 'activity';
+
     default:
       return 'home';
   }
@@ -149,10 +155,6 @@ function updateSecurityUrl(
       window.location.href
     );
 
-  /*
-   * Security always remains the active top-level
-   * Settings category.
-   */
   url.searchParams.set(
     'tab',
     'security'
@@ -420,6 +422,7 @@ export default function SecuritySettings() {
 
           case 'password':
           case 'verification':
+          case 'activity':
             navigate(
               'home'
             );
@@ -464,10 +467,6 @@ export default function SecuritySettings() {
       null
     );
 
-    /* --------------------------------------------------------
-       CURRENT PASSWORD
-       -------------------------------------------------------- */
-
     if (
       !currentPassword
     ) {
@@ -484,10 +483,6 @@ export default function SecuritySettings() {
 
       return;
     }
-
-    /* --------------------------------------------------------
-       NEW PASSWORD
-       -------------------------------------------------------- */
 
     if (
       !newPassword
@@ -543,10 +538,6 @@ export default function SecuritySettings() {
       return;
     }
 
-    /* --------------------------------------------------------
-       CONFIRMATION
-       -------------------------------------------------------- */
-
     if (
       !confirmPassword
     ) {
@@ -568,10 +559,6 @@ export default function SecuritySettings() {
       return;
     }
 
-    /* --------------------------------------------------------
-       SAME PASSWORD
-       -------------------------------------------------------- */
-
     if (
       currentPassword ===
       newPassword
@@ -589,10 +576,6 @@ export default function SecuritySettings() {
 
       return;
     }
-
-    /* --------------------------------------------------------
-       REQUEST
-       -------------------------------------------------------- */
 
     setSubmittingPassword(
       true
@@ -643,10 +626,6 @@ export default function SecuritySettings() {
           | PasswordResponse
           | null;
 
-      /* ------------------------------------------------------
-         SESSION EXPIRED
-         ------------------------------------------------------ */
-
       if (
         response.status ===
           401 &&
@@ -677,10 +656,6 @@ export default function SecuritySettings() {
         return;
       }
 
-      /* ------------------------------------------------------
-         FAILURE
-         ------------------------------------------------------ */
-
       if (
         !response.ok ||
         !payload?.success
@@ -701,10 +676,6 @@ export default function SecuritySettings() {
 
         return;
       }
-
-      /* ------------------------------------------------------
-         SUCCESS
-         ------------------------------------------------------ */
 
       setCurrentPassword(
         ''
@@ -797,6 +768,15 @@ export default function SecuritySettings() {
                 'Use one-time verification codes sent to your verified SaMi email.',
             };
 
+          case 'activity':
+            return {
+              title:
+                'Security activity',
+
+              description:
+                'Review sign-ins and important security changes made to your SaMi account.',
+            };
+
           default:
             return {
               title:
@@ -818,10 +798,6 @@ export default function SecuritySettings() {
 
   return (
     <>
-      {/* ======================================================
-          PLATFORM OVERLAY
-         ====================================================== */}
-
       {overlay && (
         <SaMiOverlay
           open
@@ -890,9 +866,6 @@ export default function SecuritySettings() {
 
         {/* ====================================================
             SECURITY HOME
-
-            IMPORTANT:
-            Only real implemented subsections appear here.
            ==================================================== */}
 
         {view ===
@@ -920,6 +893,19 @@ export default function SecuritySettings() {
               onClick={() =>
                 navigate(
                   'verification'
+                )
+              }
+            />
+
+            <NavigationCard
+              title="Security activity"
+              description="Review your recent sign-ins, unsuccessful attempts, devices, and account security changes."
+              icon={
+                History
+              }
+              onClick={() =>
+                navigate(
+                  'activity'
                 )
               }
             />
@@ -956,8 +942,6 @@ export default function SecuritySettings() {
                 }
                 className="mt-6 max-w-xl space-y-5"
               >
-                {/* CURRENT PASSWORD */}
-
                 <PasswordField
                   label="Current password"
                   value={
@@ -980,8 +964,6 @@ export default function SecuritySettings() {
                   autoComplete="current-password"
                   placeholder="Enter your current password"
                 />
-
-                {/* NEW PASSWORD */}
 
                 <PasswordField
                   label="New password"
@@ -1020,8 +1002,6 @@ export default function SecuritySettings() {
                   autoComplete="new-password"
                   placeholder="Create a new password"
                 />
-
-                {/* REQUIREMENTS */}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                   <p className="text-xs font-black text-slate-700 dark:text-slate-300">
@@ -1066,8 +1046,6 @@ export default function SecuritySettings() {
                     </Requirement>
                   </div>
                 </div>
-
-                {/* CONFIRM PASSWORD */}
 
                 <PasswordField
                   label="Confirm new password"
@@ -1116,8 +1094,6 @@ export default function SecuritySettings() {
                   }
                 />
 
-                {/* ACTION */}
-
                 <div className="pt-1">
                   <button
                     type="submit"
@@ -1160,8 +1136,6 @@ export default function SecuritySettings() {
 
         {/* ====================================================
             VERIFICATION INDEX
-
-            REAL SUBSECTIONS ONLY.
            ==================================================== */}
 
         {view ===
@@ -1229,6 +1203,15 @@ export default function SecuritySettings() {
         {view ===
           'email' && (
           <EmailTwoFactorSettings />
+        )}
+
+        {/* ====================================================
+            SECURITY ACTIVITY SCREEN
+           ==================================================== */}
+
+        {view ===
+          'activity' && (
+          <SecurityActivitySettings />
         )}
       </div>
     </>
