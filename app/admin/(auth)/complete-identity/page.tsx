@@ -5,6 +5,7 @@ import {
   Suspense,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -37,89 +38,60 @@ import SaMiOverlay, {
    ============================================================ */
 
 type OverlayState = {
-  open:
-    boolean;
-
-  type:
-    SaMiOverlayType;
-
-  title:
-    string;
-
-  message:
-    string;
+  open: boolean;
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
 };
 
 type CompleteIdentityResponse = {
-  success?:
-    boolean;
+  success?: boolean;
 
-  code?:
-    string;
+  code?: string;
 
-  error?:
-    string;
+  error?: string;
 
-  message?:
-    string;
+  message?: string;
 
-  next?:
-    string;
+  next?: string;
 
-  retryAfterSeconds?:
-    number;
+  retryAfterSeconds?: number;
 
   admin?: {
-    id?:
-      string;
+    id?: string;
 
-    email?:
-      string;
+    email?: string;
 
-    firstName?:
-      string;
+    firstName?: string;
 
-    lastName?:
-      string;
+    lastName?: string;
 
-    fullName?:
-      string;
+    fullName?: string;
 
-    role?:
-      string;
+    role?: string;
 
-    status?:
-      string;
+    status?: string;
 
-    emailVerified?:
-      boolean;
+    emailVerified?: boolean;
 
-    twoFactorRequired?:
-      boolean;
+    twoFactorRequired?: boolean;
 
-    twoFactorEnabled?:
-      boolean;
+    twoFactorEnabled?: boolean;
   };
 };
 
 type PasswordRequirements = {
-  length:
-    boolean;
+  length: boolean;
 
-  uppercase:
-    boolean;
+  uppercase: boolean;
 
-  lowercase:
-    boolean;
+  lowercase: boolean;
 
-  number:
-    boolean;
+  number: boolean;
 
-  symbol:
-    boolean;
+  symbol: boolean;
 
-  noWhitespace:
-    boolean;
+  noWhitespace: boolean;
 };
 
 /* ============================================================
@@ -133,12 +105,11 @@ const MAX_PASSWORD_LENGTH =
   128;
 
 /* ============================================================
-   HELPERS
+   PASSWORD
    ============================================================ */
 
 function evaluatePassword(
-  password:
-    string
+  password: string
 ): PasswordRequirements {
   return {
     length:
@@ -163,7 +134,7 @@ function evaluatePassword(
       ),
 
     symbol:
-      /[^A-Za-z0-9]/.test(
+      /[^A-Za-z0-9\s]/.test(
         password
       ),
 
@@ -175,8 +146,7 @@ function evaluatePassword(
 }
 
 function isPasswordValid(
-  requirements:
-    PasswordRequirements
+  requirements: PasswordRequirements
 ): boolean {
   return Object
     .values(
@@ -187,12 +157,24 @@ function isPasswordValid(
     );
 }
 
+/* ============================================================
+   TOKEN
+   ============================================================ */
+
 function cleanSetupTokenFromUrl() {
   try {
     const url =
       new URL(
         window.location.href
       );
+
+    if (
+      !url.searchParams.has(
+        'token'
+      )
+    ) {
+      return;
+    }
 
     url.searchParams.delete(
       'token'
@@ -202,7 +184,7 @@ function cleanSetupTokenFromUrl() {
       `${url.pathname}${url.search}${url.hash}`;
 
     window.history.replaceState(
-      {},
+      window.history.state,
       '',
       replacement
     );
@@ -210,24 +192,22 @@ function cleanSetupTokenFromUrl() {
     /*
      * URL cleanup is defense-in-depth.
      *
-     * Failure here must not destroy the in-memory setup token.
+     * Failure to clean the address bar must not destroy the
+     * setup credential held in memory.
      */
   }
 }
 
 /* ============================================================
-   PASSWORD REQUIREMENT
+   REQUIREMENT
    ============================================================ */
 
 function Requirement({
   met,
   children,
 }: {
-  met:
-    boolean;
-
-  children:
-    React.ReactNode;
+  met: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <div
@@ -265,7 +245,7 @@ function Requirement({
 }
 
 /* ============================================================
-   MAIN CLIENT
+   CONTENT
    ============================================================ */
 
 function AdminCompleteIdentityContent() {
@@ -275,11 +255,33 @@ function AdminCompleteIdentityContent() {
   const searchParams =
     useSearchParams();
 
+  /*
+   * CRITICAL:
+   *
+   * Once captured, the token must NEVER be replaced by the
+   * cleaned URL's empty query parameter.
+   *
+   * The old page captured the token, removed it from the URL,
+   * then could run the effect again and set setupToken = ''.
+   */
+  const tokenCapturedRef =
+    useRef(
+      false
+    );
+
   const [
     setupToken,
     setSetupToken,
   ] =
     useState('');
+
+  const [
+    tokenReady,
+    setTokenReady,
+  ] =
+    useState(
+      false
+    );
 
   const [
     password,
@@ -297,31 +299,33 @@ function AdminCompleteIdentityContent() {
     showPassword,
     setShowPassword,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     showConfirmPassword,
     setShowConfirmPassword,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     submitting,
     setSubmitting,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     completed,
     setCompleted,
   ] =
-    useState(false);
-
-  const [
-    tokenReady,
-    setTokenReady,
-  ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     fieldError,
@@ -334,18 +338,15 @@ function AdminCompleteIdentityContent() {
     setOverlay,
   ] =
     useState<OverlayState>({
-      open:
-        false,
-
-      type:
-        'error',
-
-      title:
-        '',
-
-      message:
-        '',
+      open: false,
+      type: 'error',
+      title: '',
+      message: '',
     });
+
+  /* ==========================================================
+     PASSWORD STATE
+     ========================================================== */
 
   const passwordRequirements =
     useMemo(
@@ -372,22 +373,26 @@ function AdminCompleteIdentityContent() {
     );
 
   /* ==========================================================
-     TOKEN CAPTURE + URL CLEANUP
-
-     Capture once into memory, then immediately remove it from
-     the address bar.
-
-     This reduces accidental leakage through:
-     - copied URLs
-     - screenshots
-     - browser history display
-     - referrer propagation
-
-     The API still receives the in-memory token over POST.
+     CAPTURE SETUP TOKEN ONCE
      ========================================================== */
 
   useEffect(
     () => {
+      /*
+       * Important:
+       *
+       * useSearchParams can change when the address bar is
+       * cleaned. Never process it twice.
+       */
+      if (
+        tokenCapturedRef.current
+      ) {
+        return;
+      }
+
+      tokenCapturedRef.current =
+        true;
+
       const token =
         searchParams
           .get(
@@ -396,6 +401,9 @@ function AdminCompleteIdentityContent() {
           ?.trim() ||
         '';
 
+      /*
+       * First put the credential into React memory.
+       */
       setSetupToken(
         token
       );
@@ -404,6 +412,10 @@ function AdminCompleteIdentityContent() {
         true
       );
 
+      /*
+       * Only after capturing it do we remove it from the visible
+       * browser URL.
+       */
       if (
         token
       ) {
@@ -420,30 +432,19 @@ function AdminCompleteIdentityContent() {
      ========================================================== */
 
   function showOverlay(
-    type:
-      SaMiOverlayType,
-    title:
-      string,
-    message:
-      string
+    type: SaMiOverlayType,
+    title: string,
+    message: string
   ) {
     setOverlay({
-      open:
-        true,
-
+      open: true,
       type,
-
       title,
-
       message,
     });
   }
 
   function closeOverlay() {
-    /*
-     * After successful account activation the overlay should not
-     * simply reveal an already-completed form.
-     */
     if (
       completed
     ) {
@@ -457,8 +458,7 @@ function AdminCompleteIdentityContent() {
     setOverlay(
       current => ({
         ...current,
-        open:
-          false,
+        open: false,
       })
     );
   }
@@ -468,8 +468,7 @@ function AdminCompleteIdentityContent() {
      ========================================================== */
 
   async function handleSubmit(
-    event:
-      FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -488,7 +487,7 @@ function AdminCompleteIdentityContent() {
       showOverlay(
         'error',
         'Setup link unavailable',
-        'This administrator setup link is invalid or has expired.'
+        'This administrator setup credential is missing, expired, or has already been used.'
       );
 
       return;
@@ -578,8 +577,7 @@ function AdminCompleteIdentityContent() {
           await response.json();
       } catch {
         data = {
-          success:
-            false,
+          success: false,
 
           code:
             'INVALID_SERVER_RESPONSE',
@@ -598,20 +596,14 @@ function AdminCompleteIdentityContent() {
         data.success
       ) {
         /*
-         * Destroy the credential from React state as soon as the
-         * server has consumed it.
+         * Destroy the setup credential from memory immediately
+         * after successful server-side consumption.
          */
-        setSetupToken(
-          ''
-        );
+        setSetupToken('');
 
-        setPassword(
-          ''
-        );
+        setPassword('');
 
-        setConfirmPassword(
-          ''
-        );
+        setConfirmPassword('');
 
         setCompleted(
           true
@@ -641,10 +633,10 @@ function AdminCompleteIdentityContent() {
             1,
             Number(
               data.retryAfterSeconds ||
-              response.headers.get(
-                'Retry-After'
-              ) ||
-              60
+                response.headers.get(
+                  'Retry-After'
+                ) ||
+                60
             )
           );
 
@@ -658,7 +650,7 @@ function AdminCompleteIdentityContent() {
       }
 
       /* ======================================================
-         INVALID PASSWORD
+         PASSWORD
          ====================================================== */
 
       if (
@@ -685,7 +677,7 @@ function AdminCompleteIdentityContent() {
       }
 
       /* ======================================================
-         TOKEN FAILURE
+         TOKEN
          ====================================================== */
 
       if (
@@ -694,21 +686,19 @@ function AdminCompleteIdentityContent() {
         data.code ===
           'INVALID_TOKEN'
       ) {
-        setSetupToken(
-          ''
-        );
+        setSetupToken('');
 
         showOverlay(
           'error',
           'Setup link expired',
-          'This administrator setup link is invalid, expired, or has already been used.'
+          'This administrator setup credential is invalid, expired, or has already been used. Verify your administrator email again to receive a fresh setup credential.'
         );
 
         return;
       }
 
       /* ======================================================
-         SERVICE FAILURE
+         SERVICE
          ====================================================== */
 
       if (
@@ -720,15 +710,11 @@ function AdminCompleteIdentityContent() {
         showOverlay(
           'warning',
           'SaMi is temporarily unavailable',
-          'Your administrator setup could not be completed right now. Your setup link has not necessarily been consumed, so you can retry shortly.'
+          'Your administrator setup could not be completed right now. Your setup credential may still be valid, so retry before starting verification again.'
         );
 
         return;
       }
-
-      /* ======================================================
-         GENERAL FAILURE
-         ====================================================== */
 
       showOverlay(
         'error',
@@ -760,13 +746,81 @@ function AdminCompleteIdentityContent() {
   }
 
   /* ==========================================================
-     INVALID TOKEN SCREEN
+     LOADING TOKEN
      ========================================================== */
 
-  const missingToken =
-    tokenReady &&
+  if (
+    !tokenReady
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-7 w-7 animate-spin text-slate-500" />
+
+          <p className="mt-4 text-sm text-slate-500">
+            Preparing administrator setup…
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  /* ==========================================================
+     MISSING TOKEN
+     ========================================================== */
+
+  if (
     !setupToken &&
-    !completed;
+    !completed
+  ) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-10 text-slate-950 dark:bg-slate-950 dark:text-white">
+        <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-xl items-center">
+          <div className="w-full rounded-[30px] border border-slate-200 bg-white p-7 shadow-xl dark:border-slate-800 dark:bg-slate-900 sm:p-9">
+            <SaMiLogo
+              size="md"
+              showTagline
+              showBackground={false}
+            />
+
+            <div className="mt-8 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+              <KeyRound className="h-7 w-7" />
+            </div>
+
+            <h1 className="mt-5 text-2xl font-black">
+              Setup link unavailable
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              This administrator setup link is missing, expired, or has already been used.
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              If you just verified your email before this page was fixed, return to email verification and submit the same verification code again. SaMi can recognize the already-consumed valid verification and issue a new one-time setup credential.
+            </p>
+
+            <Link
+              href="/admin/verify-email"
+              className="mt-7 inline-flex h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+            >
+              Return to email verification
+            </Link>
+
+            <Link
+              href="/admin/login"
+              className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-xl border border-slate-200 px-5 text-sm font-bold transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800"
+            >
+              Administrator sign in
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* ==========================================================
+     MAIN
+     ========================================================== */
 
   return (
     <>
@@ -774,9 +828,7 @@ function AdminCompleteIdentityContent() {
         <div className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center justify-center">
           <div className="grid w-full overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-2xl shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/20 lg:grid-cols-[0.9fr_1.1fr]">
 
-            {/* =================================================
-                BRAND / SECURITY PANEL
-                ================================================= */}
+            {/* BRAND PANEL */}
 
             <section className="relative hidden overflow-hidden border-r border-slate-200 bg-slate-950 p-10 text-white dark:border-slate-800 lg:flex lg:flex-col lg:justify-between">
               <div
@@ -800,50 +852,57 @@ function AdminCompleteIdentityContent() {
                     Secure your Platform Administrator identity
                   </h1>
 
-                  <p className="mt-4 text-sm leading-7 text-slate-300">
+                  <p className="mt-4 text-sm leading-7 text-slate-400">
                     Your email ownership has been confirmed. Create the password that will protect your SaMi Platform Administrator identity.
                   </p>
                 </div>
-              </div>
 
-              <div className="relative z-10 space-y-4">
-                <div className="flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" />
+                <div className="mt-10 space-y-4">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex gap-3">
+                      <LockKeyhole className="mt-0.5 h-5 w-5 shrink-0 text-blue-300" />
 
-                  <div>
-                    <p className="text-sm font-bold">
-                      Strong administrator credentials
-                    </p>
+                      <div>
+                        <div className="text-sm font-bold">
+                          Strong administrator credentials
+                        </div>
 
-                    <p className="mt-1 text-xs leading-5 text-slate-400">
-                      Platform Administrator passwords use stricter requirements than standard workspace accounts.
-                    </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          Platform Administrator passwords use stricter requirements than standard workspace accounts.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                    <div className="flex gap-3">
+                      <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-purple-300" />
+
+                      <div>
+                        <div className="text-sm font-bold">
+                          One-time setup
+                        </div>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          This setup credential expires and can only activate your administrator identity once.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                <div className="flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-violet-300" />
-
-                  <div>
-                    <p className="text-sm font-bold">
-                      One-time setup
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-400">
-                      This setup credential expires and can only activate your administrator identity once.
-                    </p>
-                  </div>
-                </div>
               </div>
+
+              <p className="relative z-10 mt-12 text-xs text-slate-600">
+                SaMi — AI Powered Business Workspace
+              </p>
             </section>
 
-            {/* =================================================
-                FORM PANEL
-                ================================================= */}
+            {/* FORM */}
 
             <section className="p-6 sm:p-10 lg:p-12">
-              <div className="mx-auto w-full max-w-lg">
-                <div className="mb-8 lg:hidden">
+              <div className="mx-auto max-w-lg">
+
+                <div className="lg:hidden">
                   <SaMiLogo
                     size="md"
                     showTagline
@@ -851,13 +910,14 @@ function AdminCompleteIdentityContent() {
                   />
                 </div>
 
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+                <div className="mt-8 lg:mt-0">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 dark:border-slate-700 dark:text-slate-400">
                     <ShieldCheck className="h-3.5 w-3.5" />
+
                     Platform Administrator
                   </div>
 
-                  <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 dark:text-white">
+                  <h2 className="mt-5 text-3xl font-black tracking-tight">
                     Complete your account
                   </h2>
 
@@ -866,315 +926,256 @@ function AdminCompleteIdentityContent() {
                   </p>
                 </div>
 
-                {!tokenReady ? (
-                  <div className="flex min-h-72 items-center justify-center">
-                    <div className="text-center">
-                      <Loader2 className="mx-auto h-7 w-7 animate-spin text-slate-400" />
+                <form
+                  onSubmit={
+                    handleSubmit
+                  }
+                  className="mt-8 space-y-6"
+                >
 
-                      <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-                        Preparing secure setup…
-                      </p>
-                    </div>
-                  </div>
-                ) : missingToken ? (
-                  <div className="mt-8 rounded-3xl border border-red-200 bg-red-50 p-6 dark:border-red-900/60 dark:bg-red-950/20">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-300">
-                      <X className="h-6 w-6" />
-                    </div>
+                  {/* PASSWORD */}
 
-                    <h3 className="mt-5 text-lg font-black text-slate-950 dark:text-white">
-                      Setup link unavailable
-                    </h3>
-
-                    <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
-                      This administrator setup link is missing, expired, or has already been used.
-                    </p>
-
-                    <Link
-                      href="/admin/login"
-                      className="mt-6 inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  <div>
+                    <label
+                      htmlFor="admin-password"
+                      className="text-sm font-bold"
                     >
-                      Return to administrator sign in
-                    </Link>
-                  </div>
-                ) : (
-                  <form
-                    onSubmit={
-                      handleSubmit
-                    }
-                    className="mt-8 space-y-6"
-                  >
-                    {/* PASSWORD */}
+                      Administrator password
+                    </label>
 
-                    <div>
-                      <label
-                        htmlFor="admin-password"
-                        className="text-sm font-bold text-slate-700 dark:text-slate-200"
-                      >
-                        New administrator password
-                      </label>
+                    <div className="relative mt-2">
+                      <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-                      <div className="relative mt-2">
-                        <input
-                          id="admin-password"
-                          type={
-                            showPassword
-                              ? 'text'
-                              : 'password'
-                          }
-                          autoComplete="new-password"
-                          value={
-                            password
-                          }
-                          onChange={event => {
+                      <input
+                        id="admin-password"
+                        type={
+                          showPassword
+                            ? 'text'
+                            : 'password'
+                        }
+                        value={
+                          password
+                        }
+                        onChange={
+                          event => {
                             setPassword(
                               event.target.value
                             );
 
-                            if (
-                              fieldError
-                            ) {
-                              setFieldError(
-                                ''
-                              );
-                            }
-                          }}
-                          maxLength={
-                            MAX_PASSWORD_LENGTH
+                            setFieldError('');
                           }
-                          disabled={
-                            submitting ||
-                            completed
-                          }
-                          className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 pr-12 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:focus:border-blue-400"
-                          placeholder="Create a secure password"
-                        />
+                        }
+                        autoComplete="new-password"
+                        maxLength={
+                          MAX_PASSWORD_LENGTH
+                        }
+                        disabled={
+                          submitting ||
+                          completed
+                        }
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-12 text-sm outline-none transition focus:border-slate-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950"
+                      />
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowPassword(
-                              current =>
-                                !current
-                            )
-                          }
-                          disabled={
-                            submitting ||
-                            completed
-                          }
-                          aria-label={
-                            showPassword
-                              ? 'Hide password'
-                              : 'Show password'
-                          }
-                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
-                        >
-                          {showPassword ? (
-                            <EyeOff className="h-5 w-5" />
-                          ) : (
-                            <Eye className="h-5 w-5" />
-                          )}
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowPassword(
+                            current =>
+                              !current
+                          )
+                        }
+                        aria-label={
+                          showPassword
+                            ? 'Hide password'
+                            : 'Show password'
+                        }
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        {showPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
+                  </div>
 
-                    {/* REQUIREMENTS */}
+                  {/* REQUIREMENTS */}
 
-                    <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/60 sm:grid-cols-2">
-                      <Requirement
-                        met={
-                          passwordRequirements.length
+                  <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 dark:border-slate-800 dark:bg-slate-950/50">
+                    <Requirement
+                      met={
+                        passwordRequirements.length
+                      }
+                    >
+                      12–128 characters
+                    </Requirement>
+
+                    <Requirement
+                      met={
+                        passwordRequirements.uppercase
+                      }
+                    >
+                      Uppercase letter
+                    </Requirement>
+
+                    <Requirement
+                      met={
+                        passwordRequirements.lowercase
+                      }
+                    >
+                      Lowercase letter
+                    </Requirement>
+
+                    <Requirement
+                      met={
+                        passwordRequirements.number
+                      }
+                    >
+                      Number
+                    </Requirement>
+
+                    <Requirement
+                      met={
+                        passwordRequirements.symbol
+                      }
+                    >
+                      Symbol
+                    </Requirement>
+
+                    <Requirement
+                      met={
+                        passwordRequirements.noWhitespace
+                      }
+                    >
+                      No spaces
+                    </Requirement>
+                  </div>
+
+                  {/* CONFIRM */}
+
+                  <div>
+                    <label
+                      htmlFor="admin-confirm-password"
+                      className="text-sm font-bold"
+                    >
+                      Confirm administrator password
+                    </label>
+
+                    <div className="relative mt-2">
+                      <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        id="admin-confirm-password"
+                        type={
+                          showConfirmPassword
+                            ? 'text'
+                            : 'password'
                         }
-                      >
-                        12–128 characters
-                      </Requirement>
-
-                      <Requirement
-                        met={
-                          passwordRequirements.uppercase
+                        value={
+                          confirmPassword
                         }
-                      >
-                        Uppercase letter
-                      </Requirement>
-
-                      <Requirement
-                        met={
-                          passwordRequirements.lowercase
-                        }
-                      >
-                        Lowercase letter
-                      </Requirement>
-
-                      <Requirement
-                        met={
-                          passwordRequirements.number
-                        }
-                      >
-                        Number
-                      </Requirement>
-
-                      <Requirement
-                        met={
-                          passwordRequirements.symbol
-                        }
-                      >
-                        Symbol
-                      </Requirement>
-
-                      <Requirement
-                        met={
-                          passwordRequirements.noWhitespace
-                        }
-                      >
-                        No spaces
-                      </Requirement>
-                    </div>
-
-                    {/* CONFIRM */}
-
-                    <div>
-                      <label
-                        htmlFor="admin-password-confirm"
-                        className="text-sm font-bold text-slate-700 dark:text-slate-200"
-                      >
-                        Confirm password
-                      </label>
-
-                      <div className="relative mt-2">
-                        <input
-                          id="admin-password-confirm"
-                          type={
-                            showConfirmPassword
-                              ? 'text'
-                              : 'password'
-                          }
-                          autoComplete="new-password"
-                          value={
-                            confirmPassword
-                          }
-                          onChange={event => {
+                        onChange={
+                          event => {
                             setConfirmPassword(
                               event.target.value
                             );
 
-                            if (
-                              fieldError
-                            ) {
-                              setFieldError(
-                                ''
-                              );
-                            }
-                          }}
-                          maxLength={
-                            MAX_PASSWORD_LENGTH
+                            setFieldError('');
                           }
-                          disabled={
-                            submitting ||
-                            completed
-                          }
-                          className={[
-                            'h-12 w-full rounded-2xl border bg-white px-4 pr-12 text-sm font-medium text-slate-950 outline-none transition placeholder:text-slate-400 focus:ring-4 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-slate-950 dark:text-white',
-                            confirmPassword &&
-                            !passwordsMatch
-                              ? 'border-red-300 focus:border-red-500 focus:ring-red-500/10 dark:border-red-800'
-                              : 'border-slate-200 focus:border-blue-500 focus:ring-blue-500/10 dark:border-slate-700 dark:focus:border-blue-400',
-                          ].join(
-                            ' '
-                          )}
-                          placeholder="Repeat your password"
-                        />
+                        }
+                        autoComplete="new-password"
+                        maxLength={
+                          MAX_PASSWORD_LENGTH
+                        }
+                        disabled={
+                          submitting ||
+                          completed
+                        }
+                        className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-12 text-sm outline-none transition focus:border-slate-400 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950"
+                      />
 
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowConfirmPassword(
-                              current =>
-                                !current
-                            )
-                          }
-                          disabled={
-                            submitting ||
-                            completed
-                          }
-                          aria-label={
-                            showConfirmPassword
-                              ? 'Hide confirmation password'
-                              : 'Show confirmation password'
-                          }
-                          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-white"
-                        >
-                          {showConfirmPassword ? (
-                            <EyeOff className="h-5 w-5" />
-                          ) : (
-                            <Eye className="h-5 w-5" />
-                          )}
-                        </button>
-                      </div>
-
-                      {confirmPassword && (
-                        <p
-                          className={[
-                            'mt-2 text-xs font-semibold',
-                            passwordsMatch
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : 'text-red-600 dark:text-red-400',
-                          ].join(
-                            ' '
-                          )}
-                        >
-                          {passwordsMatch
-                            ? 'Passwords match.'
-                            : 'Passwords do not match.'}
-                        </p>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setShowConfirmPassword(
+                            current =>
+                              !current
+                          )
+                        }
+                        aria-label={
+                          showConfirmPassword
+                            ? 'Hide password confirmation'
+                            : 'Show password confirmation'
+                        }
+                        className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        {showConfirmPassword ? (
+                          <EyeOff className="h-4 w-4" />
+                        ) : (
+                          <Eye className="h-4 w-4" />
+                        )}
+                      </button>
                     </div>
 
-                    {/* FIELD ERROR */}
-
-                    {fieldError && (
-                      <div
-                        role="alert"
-                        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
+                    {confirmPassword && (
+                      <p
+                        className={[
+                          'mt-2 text-xs font-semibold',
+                          passwordsMatch
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-red-600 dark:text-red-400',
+                        ].join(
+                          ' '
+                        )}
                       >
-                        {fieldError}
-                      </div>
+                        {passwordsMatch
+                          ? 'Passwords match.'
+                          : 'Passwords do not match.'}
+                      </p>
                     )}
+                  </div>
 
-                    {/* SUBMIT */}
+                  {/* FIELD ERROR */}
 
-                    <button
-                      type="submit"
-                      disabled={
-                        submitting ||
-                        completed ||
-                        !passwordValid ||
-                        !passwordsMatch
-                      }
-                      className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  {fieldError && (
+                    <div
+                      role="alert"
+                      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
                     >
-                      {submitting ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Securing account…
-                        </>
-                      ) : (
-                        <>
-                          <ShieldCheck className="h-4 w-4" />
-                          Complete administrator setup
-                        </>
-                      )}
-                    </button>
-
-                    <div className="flex items-center justify-center">
-                      <Link
-                        href="/admin/login"
-                        className="text-sm font-semibold text-slate-500 transition hover:text-slate-950 dark:text-slate-400 dark:hover:text-white"
-                      >
-                        Return to administrator sign in
-                      </Link>
+                      {fieldError}
                     </div>
-                  </form>
-                )}
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={
+                      submitting ||
+                      completed ||
+                      !passwordValid ||
+                      !passwordsMatch
+                    }
+                    className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-45 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+
+                        Activating administrator…
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="h-4 w-4" />
+
+                        Activate Administrator Account
+                      </>
+                    )}
+                  </button>
+                </form>
+
+                <p className="mt-6 text-center text-xs leading-5 text-slate-500">
+                  This setup credential is one-time use. SaMi never stores it in plaintext.
+                </p>
               </div>
             </section>
           </div>
@@ -1197,35 +1198,6 @@ function AdminCompleteIdentityContent() {
         onClose={
           closeOverlay
         }
-        primaryAction={
-          completed
-            ? {
-                label:
-                  'Continue to sign in',
-
-                onClick: () => {
-                  router.replace(
-                    '/admin/login?reason=account_ready'
-                  );
-                },
-              }
-            : undefined
-        }
-        secondaryAction={
-          completed
-            ? undefined
-            : overlay.type ===
-                'error' &&
-              !setupToken
-              ? {
-                  label:
-                    'Administrator sign in',
-
-                  href:
-                    '/admin/login',
-                }
-              : undefined
-        }
       />
     </>
   );
@@ -1233,40 +1205,37 @@ function AdminCompleteIdentityContent() {
 
 /* ============================================================
    SUSPENSE FALLBACK
-
-   useSearchParams() requires a Suspense boundary for production
-   builds.
    ============================================================ */
 
-function AdminCompleteIdentityFallback() {
+function CompleteIdentityFallback() {
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 dark:bg-slate-950">
-      <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-xl items-center justify-center">
-        <div className="w-full rounded-[32px] border border-slate-200 bg-white p-8 text-center shadow-xl dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex justify-center">
-            <SaMiLogo
-              size="md"
-              showTagline
-              showBackground={false}
-            />
-          </div>
+    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+      <div className="text-center">
+        <SaMiLogo
+          size="md"
+          showTagline
+          showBackground={false}
+        />
 
-          <Loader2 className="mx-auto mt-8 h-7 w-7 animate-spin text-slate-400" />
+        <Loader2 className="mx-auto mt-8 h-7 w-7 animate-spin text-slate-500" />
 
-          <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-            Preparing secure administrator setup…
-          </p>
-        </div>
+        <p className="mt-4 text-sm text-slate-500">
+          Preparing administrator setup…
+        </p>
       </div>
     </main>
   );
 }
 
+/* ============================================================
+   PAGE
+   ============================================================ */
+
 export default function AdminCompleteIdentityPage() {
   return (
     <Suspense
       fallback={
-        <AdminCompleteIdentityFallback />
+        <CompleteIdentityFallback />
       }
     >
       <AdminCompleteIdentityContent />
