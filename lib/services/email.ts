@@ -7,6 +7,14 @@ import type {
 } from 'nodemailer';
 
 /* ============================================================
+   TYPES — IDENTITY AUDIENCE
+   ============================================================ */
+
+export type EmailAudience =
+  | 'workspace'
+  | 'platform_admin';
+
+/* ============================================================
    TYPES — ACCOUNT EMAIL VERIFICATION
    ============================================================ */
 
@@ -21,6 +29,14 @@ export type VerificationEmailOptions = {
   verifyUrl?:
     | string
     | null;
+
+  /**
+   * Workspace is the backward-compatible default.
+   *
+   * Platform Admin uses the same SaMi mail transport and branded
+   * email system without creating a second admin mailer.
+   */
+  audience?: EmailAudience;
 };
 
 /* ============================================================
@@ -34,6 +50,8 @@ export type SendEmailChangeVerificationEmailResult = {
 
 export type EmailChangeVerificationEmailOptions = {
   expiresInMinutes?: number;
+
+  audience?: EmailAudience;
 };
 
 /* ============================================================
@@ -51,6 +69,8 @@ export type SecurityCodeEmailOptions = {
 
   expiresInMinutes?:
     number;
+
+  audience?: EmailAudience;
 };
 
 export type SendSecurityCodeEmailResult = {
@@ -290,6 +310,70 @@ function getPublicUrl(
     pathname,
     `${getAppUrl()}/`
   ).toString();
+}
+
+
+/* ============================================================
+   IDENTITY AUDIENCE
+   ============================================================ */
+
+function normalizeAudience(
+  value:
+    | EmailAudience
+    | undefined
+): EmailAudience {
+  return value ===
+    'platform_admin'
+    ? 'platform_admin'
+    : 'workspace';
+}
+
+function getAudienceAccessUrl(
+  appUrl: string,
+  audience: EmailAudience
+): string {
+  if (
+    audience ===
+    'platform_admin'
+  ) {
+    return new URL(
+      '/admin',
+      `${appUrl}/`
+    ).toString();
+  }
+
+  return appUrl;
+}
+
+function getAudienceLabel(
+  audience: EmailAudience
+): string {
+  return audience ===
+    'platform_admin'
+    ? 'SaMi Platform Admin'
+    : 'SaMi';
+}
+
+function getAudienceAccountLabel(
+  audience: EmailAudience
+): string {
+  return audience ===
+    'platform_admin'
+    ? 'SaMi platform administrator account'
+    : 'SaMi account';
+}
+
+function getAudienceAutomatedLabel(
+  audience: EmailAudience,
+  purpose: string
+): string {
+  const scope =
+    audience ===
+      'platform_admin'
+      ? 'platform-administrator'
+      : 'account';
+
+  return `This is an automated SaMi ${scope} ${purpose} email.`;
 }
 
 /* ============================================================
@@ -582,8 +666,19 @@ function ensureEmailDeliveryAvailable(
 
 function getSecurityEmailContent(
   purpose:
-    SecurityCodeEmailPurpose
+    SecurityCodeEmailPurpose,
+  audience:
+    EmailAudience
 ) {
+  const accountLabel =
+    getAudienceAccountLabel(
+      audience
+    );
+
+  const productLabel =
+    getAudienceLabel(
+      audience
+    );
   switch (
     purpose
   ) {
@@ -599,7 +694,7 @@ function getSecurityEmailContent(
           'Confirm email verification — SaMi',
 
         intro:
-          'Use this code to confirm that your verified SaMi email can be used as a sign-in verification method.',
+          `Use this code to confirm that your verified email can be used as a sign-in verification method for your ${accountLabel}.`,
 
         codeLabel:
           'SETUP CODE',
@@ -623,7 +718,7 @@ function getSecurityEmailContent(
           'Your SaMi sign-in code',
 
         intro:
-          'A sign-in to your SaMi account needs email verification. Enter the code below on the SaMi verification screen.',
+          `A sign-in to your ${accountLabel} needs email verification. Enter the code below on the ${productLabel} verification screen.`,
 
         codeLabel:
           'SIGN-IN CODE',
@@ -632,7 +727,7 @@ function getSecurityEmailContent(
           'Never share this sign-in code. SaMi support will never ask you to tell us this code.',
 
         ignoredMessage:
-          'If you are not trying to sign in to SaMi, do not use this code. Review your account security when you are able to sign in.',
+          `If you are not trying to sign in to ${productLabel}, do not use this code. Review your account security when you are able to sign in.`,
       };
 
     case 'security_step_up':
@@ -647,7 +742,7 @@ function getSecurityEmailContent(
           'Your SaMi security verification code',
 
         intro:
-          'SaMi needs to verify your identity before completing a security-sensitive account action.',
+          `${productLabel} needs to verify your identity before completing a security-sensitive account action.`,
 
         codeLabel:
           'SECURITY CODE',
@@ -1580,6 +1675,11 @@ export async function sendVerificationEmail(
       DEFAULT_VERIFICATION_EXPIRY_MINUTES
     );
 
+  const audience =
+    normalizeAudience(
+      options.audience
+    );
+
   /* ==========================================================
      2. VALIDATE
      ========================================================== */
@@ -1602,8 +1702,14 @@ export async function sendVerificationEmail(
      3. APP / BRAND
      ========================================================== */
 
-  const appUrl =
+  const baseAppUrl =
     getAppUrl();
+
+  const appUrl =
+    getAudienceAccessUrl(
+      baseAppUrl,
+      audience
+    );
 
   const logoUrl =
     getEmailLogoUrl();
@@ -1611,7 +1717,17 @@ export async function sendVerificationEmail(
   const verifyUrl =
     normalizeVerifyUrl(
       options.verifyUrl,
-      appUrl
+      baseAppUrl
+    );
+
+  const accountLabel =
+    getAudienceAccountLabel(
+      audience
+    );
+
+  const productLabel =
+    getAudienceLabel(
+      audience
     );
 
   /* ==========================================================
@@ -1634,11 +1750,13 @@ export async function sendVerificationEmail(
      ========================================================== */
 
   const textParts = [
-    `Welcome to SaMi, ${cleanName}!`,
+    audience === 'platform_admin'
+      ? `Hello ${cleanName},`
+      : `Welcome to SaMi, ${cleanName}!`,
 
     '',
 
-    'Verify your email address to finish securing your SaMi account.',
+    `Verify your email address to finish securing your ${accountLabel}.`,
 
     '',
 
@@ -1667,7 +1785,7 @@ export async function sendVerificationEmail(
   ) {
     textParts.push(
       '',
-      'Open SaMi to verify your email:',
+      `Open ${productLabel} to verify your email:`,
       verifyUrl
     );
   }
@@ -1675,11 +1793,13 @@ export async function sendVerificationEmail(
   textParts.push(
     '',
 
-    `Open SaMi: ${appUrl}`,
+    `Open ${productLabel}: ${appUrl}`,
 
     '',
 
-    'If you did not create a SaMi account, you can safely ignore this email.',
+    audience === 'platform_admin'
+      ? 'If you did not expect a SaMi platform administrator account to be created for you, contact SaMi platform security.'
+      : 'If you did not create a SaMi account, you can safely ignore this email.',
 
     '',
 
@@ -1706,13 +1826,17 @@ export async function sendVerificationEmail(
         'Email verification',
 
       title:
-        `Welcome to SaMi, ${cleanName}`,
+        audience === 'platform_admin'
+          ? 'Verify your platform administrator email'
+          : `Welcome to SaMi, ${cleanName}`,
 
       greeting:
-        'Confirm your email address.',
+        audience === 'platform_admin'
+          ? `Hello ${cleanName}. Confirm your administrator email address.`
+          : 'Confirm your email address.',
 
       intro:
-        'Verify your email address to finish securing your SaMi account. Enter the six-digit code below on the verification screen.',
+        `Verify your email address to finish securing your ${accountLabel}. Enter the six-digit code below on the verification screen.`,
 
       code:
         cleanCode,
@@ -1729,7 +1853,9 @@ export async function sendVerificationEmail(
         'Never share this code with anyone. SaMi will never ask you to send your verification code by email or message.',
 
       bottomMessage:
-        'If you did not create a SaMi account, you can safely ignore this email.',
+        audience === 'platform_admin'
+          ? 'If you did not expect this administrator identity, contact SaMi platform security.'
+          : 'If you did not create a SaMi account, you can safely ignore this email.',
 
       appUrl,
 
@@ -1741,7 +1867,10 @@ export async function sendVerificationEmail(
         ),
 
       automatedLabel:
-        'This is an automated account-verification email.',
+        getAudienceAutomatedLabel(
+          audience,
+          'email-verification'
+        ),
     });
 
   /* ==========================================================
@@ -1781,6 +1910,9 @@ export async function sendVerificationEmail(
           headers: {
             'X-SaMi-Email-Type':
               'email-verification',
+
+            'X-SaMi-Audience':
+              audience,
 
             'X-Auto-Response-Suppress':
               'All',
@@ -1858,6 +1990,11 @@ export async function sendEmailChangeVerificationEmail(
       DEFAULT_EMAIL_CHANGE_EXPIRY_MINUTES
     );
 
+  const audience =
+    normalizeAudience(
+      options.audience
+    );
+
   /* ==========================================================
      2. VALIDATE
      ========================================================== */
@@ -1880,11 +2017,27 @@ export async function sendEmailChangeVerificationEmail(
      3. APP / BRAND
      ========================================================== */
 
-  const appUrl =
+  const baseAppUrl =
     getAppUrl();
+
+  const appUrl =
+    getAudienceAccessUrl(
+      baseAppUrl,
+      audience
+    );
 
   const logoUrl =
     getEmailLogoUrl();
+
+  const accountLabel =
+    getAudienceAccountLabel(
+      audience
+    );
+
+  const productLabel =
+    getAudienceLabel(
+      audience
+    );
 
   /* ==========================================================
      4. SMTP
@@ -1910,7 +2063,7 @@ export async function sendEmailChangeVerificationEmail(
 
     '',
 
-    'A request was made to change the email address on your SaMi account.',
+    `A request was made to change the email address on your ${accountLabel}.`,
 
     '',
 
@@ -1931,15 +2084,15 @@ export async function sendEmailChangeVerificationEmail(
 
     '',
 
-    'Only enter this code inside your SaMi account settings.',
+    `Only enter this code inside your ${productLabel} account settings.`,
 
     '',
 
-    'If you did not request this email change, do not use the code. Your current SaMi email address will remain unchanged.',
+    `If you did not request this email change, do not use the code. Your current ${productLabel} email address will remain unchanged.`,
 
     '',
 
-    `Open SaMi: ${appUrl}`,
+    `Open ${productLabel}: ${appUrl}`,
 
     '',
 
@@ -1969,7 +2122,7 @@ export async function sendEmailChangeVerificationEmail(
         `Hello ${cleanName}.`,
 
       intro:
-        'A request was made to change the email address on your SaMi account. Enter the six-digit code below in SaMi to confirm this new email address.',
+        `A request was made to change the email address on your ${accountLabel}. Enter the six-digit code below in ${productLabel} to confirm this new email address.`,
 
       code:
         cleanCode,
@@ -1983,17 +2136,20 @@ export async function sendEmailChangeVerificationEmail(
         'Protect this code',
 
       securityMessage:
-        'Only enter this code inside your SaMi account settings. Never share it with anyone, including someone claiming to be SaMi support.',
+        `Only enter this code inside your ${productLabel} account settings. Never share it with anyone, including someone claiming to be SaMi support.`,
 
       bottomMessage:
-        'If you did not request this email change, do not use this code. Your current SaMi email address will remain unchanged.',
+        `If you did not request this email change, do not use this code. Your current ${productLabel} email address will remain unchanged.`,
 
       appUrl,
 
       logoUrl,
 
       automatedLabel:
-        'This is an automated SaMi account-security email.',
+        getAudienceAutomatedLabel(
+          audience,
+          'account-security'
+        ),
     });
 
   /* ==========================================================
@@ -2026,6 +2182,9 @@ export async function sendEmailChangeVerificationEmail(
           headers: {
             'X-SaMi-Email-Type':
               'email-change-verification',
+
+            'X-SaMi-Audience':
+              audience,
 
             'X-Auto-Response-Suppress':
               'All',
@@ -2125,6 +2284,11 @@ export async function sendSecurityCodeEmail(
       DEFAULT_SECURITY_CODE_EXPIRY_MINUTES
     );
 
+  const audience =
+    normalizeAudience(
+      options.audience
+    );
+
   /* ==========================================================
      2. VALIDATE
      ========================================================== */
@@ -2162,14 +2326,26 @@ export async function sendSecurityCodeEmail(
 
   const content =
     getSecurityEmailContent(
-      options.purpose
+      options.purpose,
+      audience
     );
 
-  const appUrl =
+  const baseAppUrl =
     getAppUrl();
+
+  const appUrl =
+    getAudienceAccessUrl(
+      baseAppUrl,
+      audience
+    );
 
   const logoUrl =
     getEmailLogoUrl();
+
+  const productLabel =
+    getAudienceLabel(
+      audience
+    );
 
   /* ==========================================================
      4. SMTP
@@ -2224,7 +2400,7 @@ export async function sendSecurityCodeEmail(
 
     '',
 
-    `Open SaMi: ${appUrl}`,
+    `Open ${productLabel}: ${appUrl}`,
 
     '',
 
@@ -2278,7 +2454,10 @@ export async function sendSecurityCodeEmail(
       logoUrl,
 
       automatedLabel:
-        'This is an automated SaMi security email.',
+        getAudienceAutomatedLabel(
+          audience,
+          'security'
+        ),
     });
 
   /* ==========================================================
@@ -2318,6 +2497,9 @@ export async function sendSecurityCodeEmail(
           headers: {
             'X-SaMi-Email-Type':
               options.purpose,
+
+            'X-SaMi-Audience':
+              audience,
 
             'X-Auto-Response-Suppress':
               'All',

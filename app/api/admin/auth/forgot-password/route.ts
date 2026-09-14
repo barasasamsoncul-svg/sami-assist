@@ -20,13 +20,15 @@ export const dynamic =
    TYPES
    ============================================================ */
 
-type ForgotPasswordBody = {
+type AdminForgotPasswordBody = {
   email?:
     unknown;
 };
 
 /* ============================================================
-   RESPONSE
+   GENERIC RESPONSE
+
+   Never reveal whether a Platform Admin identity exists.
    ============================================================ */
 
 function successResponse() {
@@ -36,10 +38,10 @@ function successResponse() {
         true,
 
       code:
-        'RESET_LINK_SENT',
+        'ADMIN_RESET_LINK_SENT',
 
       message:
-        'If the email exists, a password reset link has been sent.',
+        'If the administrator account exists and is eligible for recovery, a password reset link has been sent.',
 
       retryAfterSeconds:
         PASSWORD_RESET_RESEND_COOLDOWN_SECONDS,
@@ -104,7 +106,7 @@ export async function POST(
     NextRequest
 ) {
   let body:
-    ForgotPasswordBody;
+    AdminForgotPasswordBody;
 
   try {
     const parsed:
@@ -128,7 +130,7 @@ export async function POST(
 
     body =
       parsed as
-        ForgotPasswordBody;
+        AdminForgotPasswordBody;
   } catch {
     return errorResponse(
       400,
@@ -150,42 +152,40 @@ export async function POST(
     return errorResponse(
       400,
       'INVALID_EMAIL',
-      'Please enter a valid email address.'
+      'Enter a valid administrator email address.'
     );
   }
 
   try {
-    /*
-     * IMPORTANT:
-     *
-     * The result is deliberately not exposed to the browser.
-     *
-     * Whether the account exists, is allowed to reset, was
-     * throttled, or experienced email-delivery failure must not
-     * become an account-enumeration signal.
-     */
     await requestPasswordReset({
       request,
 
       identityType:
-        'user',
+        'platform_admin',
 
       email,
     });
 
+    /*
+     * Generic response regardless of:
+     * - administrator exists
+     * - status
+     * - throttling
+     * - delivery
+     */
     return successResponse();
   } catch (
     error
   ) {
     console.error(
-      '[Auth] Forgot password failed:',
+      '[Admin Auth] Forgot password failed:',
       error
     );
 
     return errorResponse(
       500,
-      'FORGOT_PASSWORD_ERROR',
-      'Could not process the password recovery request.'
+      'ADMIN_PASSWORD_RECOVERY_ERROR',
+      'The password recovery request could not be processed.'
     );
   }
 }

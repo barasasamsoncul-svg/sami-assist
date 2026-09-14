@@ -8,6 +8,10 @@ import type {
    TYPES
    ============================================================ */
 
+export type PasswordResetEmailAudience =
+  | 'workspace'
+  | 'platform_admin';
+
 export interface SendPasswordResetEmailInput {
   email: string;
 
@@ -18,6 +22,15 @@ export interface SendPasswordResetEmailInput {
   resetUrl: string;
 
   expiresInMinutes?: number;
+
+  /**
+   * Workspace is the backward-compatible default.
+   *
+   * Platform Admin uses the same SaMi password-reset mailer,
+   * SMTP transport, branding, and validation without creating a
+   * separate admin email infrastructure.
+   */
+  audience?: PasswordResetEmailAudience;
 }
 
 export interface SendPasswordResetEmailResult {
@@ -234,6 +247,56 @@ function getPublicUrl(
   ).toString();
 }
 
+/* ============================================================
+   AUDIENCE
+   ============================================================ */
+
+function normalizeAudience(
+  value:
+    | PasswordResetEmailAudience
+    | undefined
+): PasswordResetEmailAudience {
+  return value ===
+    'platform_admin'
+    ? 'platform_admin'
+    : 'workspace';
+}
+
+function getAudienceAccessUrl(
+  appUrl: string,
+  audience: PasswordResetEmailAudience
+): string {
+  if (
+    audience ===
+    'platform_admin'
+  ) {
+    return new URL(
+      '/admin',
+      `${appUrl}/`
+    ).toString();
+  }
+
+  return appUrl;
+}
+
+function getAudienceLabel(
+  audience: PasswordResetEmailAudience
+): string {
+  return audience ===
+    'platform_admin'
+    ? 'SaMi Platform Admin'
+    : 'SaMi';
+}
+
+function getAudienceAccountLabel(
+  audience: PasswordResetEmailAudience
+): string {
+  return audience ===
+    'platform_admin'
+    ? 'SaMi platform administrator account'
+    : 'SaMi account';
+}
+
 function getEmailLogoUrl():
   string {
   return getPublicUrl(
@@ -241,8 +304,20 @@ function getEmailLogoUrl():
   );
 }
 
-function getInstallAppUrl():
-  string {
+function getInstallAppUrl(
+  audience:
+    PasswordResetEmailAudience
+): string {
+  if (
+    audience ===
+    'platform_admin'
+  ) {
+    return getAudienceAccessUrl(
+      getAppUrl(),
+      audience
+    );
+  }
+
   const configured =
     process.env
       .SAMI_APP_INSTALL_URL
@@ -526,6 +601,7 @@ function buildTextEmail({
   resetUrl,
   expiresInMinutes,
   installAppUrl,
+  audience,
 }: {
   firstName: string;
 
@@ -535,13 +611,26 @@ function buildTextEmail({
     number;
 
   installAppUrl: string;
+
+  audience:
+    PasswordResetEmailAudience;
 }): string {
+  const productLabel =
+    getAudienceLabel(
+      audience
+    );
+
+  const accountLabel =
+    getAudienceAccountLabel(
+      audience
+    );
+
   return [
     `Hello ${firstName},`,
 
     '',
 
-    'We received a request to reset the password for your SaMi account.',
+    `We received a request to reset the password for your ${accountLabel}.`,
 
     '',
 
@@ -559,19 +648,28 @@ function buildTextEmail({
 
     '',
 
-    'If you did not request this password reset, you can safely ignore this email. Your password will remain unchanged.',
+    audience ===
+      'platform_admin'
+      ? 'If you did not request this password reset, do not use the link and contact SaMi platform security. Your password will remain unchanged.'
+      : 'If you did not request this password reset, you can safely ignore this email. Your password will remain unchanged.',
 
     '',
 
-    'Get SaMi:',
+    audience ===
+      'platform_admin'
+      ? 'Open SaMi Platform Admin:'
+      : 'Get SaMi:',
 
     installAppUrl,
 
     '',
 
-    'SaMi',
+    productLabel,
 
-    'AI Powered Business Workspace',
+    audience ===
+      'platform_admin'
+      ? 'Secure Platform Administration'
+      : 'AI Powered Business Workspace',
   ].join('\n');
 }
 
@@ -586,6 +684,7 @@ function buildHtmlEmail({
   logoUrl,
   appUrl,
   installAppUrl,
+  audience,
 }: {
   firstName: string;
 
@@ -599,7 +698,20 @@ function buildHtmlEmail({
   appUrl: string;
 
   installAppUrl: string;
+
+  audience:
+    PasswordResetEmailAudience;
 }): string {
+  const productLabel =
+    getAudienceLabel(
+      audience
+    );
+
+  const accountLabel =
+    getAudienceAccountLabel(
+      audience
+    );
+
   const safeFirstName =
     escapeHtml(
       firstName
@@ -623,6 +735,16 @@ function buildHtmlEmail({
   const safeInstallAppUrl =
     escapeHtml(
       installAppUrl
+    );
+
+  const safeProductLabel =
+    escapeHtml(
+      productLabel
+    );
+
+  const safeAccountLabel =
+    escapeHtml(
+      accountLabel
     );
 
   const safeHelpUrl =
@@ -701,7 +823,7 @@ function buildHtmlEmail({
       color:transparent;
     "
   >
-    Reset your SaMi password securely. This link expires in ${expiresInMinutes} minutes.
+    Reset your ${safeProductLabel} password securely. This link expires in ${expiresInMinutes} minutes.
   </div>
 
   <table
@@ -802,7 +924,7 @@ function buildHtmlEmail({
                         font-weight:700;
                       "
                     >
-                      Open SaMi
+                      Open ${safeProductLabel}
                     </a>
                   </td>
 
@@ -862,7 +984,12 @@ function buildHtmlEmail({
                         color:#2563c9;
                       "
                     >
-                      Account security
+                      ${
+                        audience ===
+                          'platform_admin'
+                          ? 'Platform security'
+                          : 'Account security'
+                      }
                     </div>
 
                     <h1
@@ -910,8 +1037,8 @@ function buildHtmlEmail({
                       "
                     >
                       We received a request to reset the password for
-                      your SaMi account. Use the button below to create
-                      a new password.
+                      your ${safeAccountLabel}. Use the button below to
+                      create a new password.
                     </p>
 
                     <!-- RESET BUTTON -->
@@ -1036,7 +1163,7 @@ function buildHtmlEmail({
                 </tr>
 
                 <!-- ============================================
-                     APP / INSTALL SECTION
+                     APP / ADMIN ACCESS SECTION
                      ============================================ -->
 
                 <tr>
@@ -1110,7 +1237,12 @@ function buildHtmlEmail({
                                     color:#111827;
                                   "
                                 >
-                                  SaMi on the go
+                                  ${
+                                    audience ===
+                                      'platform_admin'
+                                      ? 'SaMi Platform Admin'
+                                      : 'SaMi on the go'
+                                  }
                                 </div>
 
                                 <div
@@ -1121,7 +1253,12 @@ function buildHtmlEmail({
                                     color:#64748b;
                                   "
                                 >
-                                  Access your business workspace wherever you are.
+                                  ${
+                                    audience ===
+                                      'platform_admin'
+                                      ? 'Return to the protected platform administration workspace.'
+                                      : 'Access your business workspace wherever you are.'
+                                  }
                                 </div>
                               </td>
 
@@ -1149,7 +1286,12 @@ function buildHtmlEmail({
                                     white-space:nowrap;
                                   "
                                 >
-                                  Install app
+                                  ${
+                                    audience ===
+                                      'platform_admin'
+                                      ? 'Open admin'
+                                      : 'Install app'
+                                  }
                                 </a>
                               </td>
 
@@ -1182,9 +1324,12 @@ function buildHtmlEmail({
                         color:#64748b;
                       "
                     >
-                      If you didn't request this password reset, you
-                      can safely ignore this email. Your password will
-                      remain unchanged.
+                      ${
+                        audience ===
+                          'platform_admin'
+                          ? "If you didn't request this password reset, do not use this link and contact SaMi platform security. Your password will remain unchanged."
+                          : "If you didn't request this password reset, you can safely ignore this email. Your password will remain unchanged."
+                      }
                     </p>
                   </td>
                 </tr>
@@ -1298,7 +1443,12 @@ function buildHtmlEmail({
                   color:#b2bac5;
                 "
               >
-                This is an automated account-security email.
+                ${
+                  audience ===
+                    'platform_admin'
+                    ? 'This is an automated SaMi platform-administrator security email.'
+                    : 'This is an automated account-security email.'
+                }
               </p>
 
             </td>
@@ -1346,8 +1496,19 @@ export async function sendPasswordResetEmail(
         input.expiresInMinutes
       );
 
-    const appUrl =
+    const audience =
+      normalizeAudience(
+        input.audience
+      );
+
+    const baseAppUrl =
       getAppUrl();
+
+    const appUrl =
+      getAudienceAccessUrl(
+        baseAppUrl,
+        audience
+      );
 
     const resetUrl =
       normalizeResetUrl(
@@ -1358,7 +1519,9 @@ export async function sendPasswordResetEmail(
       getEmailLogoUrl();
 
     const installAppUrl =
-      getInstallAppUrl();
+      getInstallAppUrl(
+        audience
+      );
 
     /* ========================================================
        2. VALIDATE EMAIL
@@ -1410,7 +1573,10 @@ export async function sendPasswordResetEmail(
        ======================================================== */
 
     const subject =
-      'Reset your password — SaMi';
+      audience ===
+        'platform_admin'
+        ? 'Reset your Platform Admin password — SaMi'
+        : 'Reset your password — SaMi';
 
     const text =
       buildTextEmail({
@@ -1421,6 +1587,8 @@ export async function sendPasswordResetEmail(
         expiresInMinutes,
 
         installAppUrl,
+
+        audience,
       });
 
     const html =
@@ -1436,6 +1604,8 @@ export async function sendPasswordResetEmail(
         appUrl,
 
         installAppUrl,
+
+        audience,
       });
 
     /* ========================================================
@@ -1470,6 +1640,9 @@ export async function sendPasswordResetEmail(
           'X-SaMi-Email-Type':
             'password-reset',
 
+          'X-SaMi-Audience':
+            audience,
+
           'X-Auto-Response-Suppress':
             'All',
 
@@ -1491,6 +1664,8 @@ export async function sendPasswordResetEmail(
       {
         messageId:
           info.messageId,
+
+        audience,
       }
     );
 

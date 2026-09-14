@@ -15,15 +15,49 @@ import {
    ============================================================ */
 
 const MAX_EMAIL_LENGTH = 254;
-
 const EMAIL_CHANGE_CODE_LENGTH = 6;
-
 const EMAIL_CHANGE_EXPIRY_MINUTES = 15;
-
 const EMAIL_CHANGE_COOLDOWN_SECONDS = 60;
 
 /* ============================================================
-   TYPES
+   IDENTITY DOMAINS
+
+   Workspace users and Platform Admins intentionally use separate
+   identity tables and request tables, but share the same secure
+   SaMi email-change engine.
+   ============================================================ */
+
+export type EmailChangeIdentityType =
+  | 'user'
+  | 'platform_admin';
+
+type IdentityConfig = {
+  identityTable: 'users' | 'platform_admins';
+  requestTable:
+    | 'user_email_change_requests'
+    | 'platform_admin_email_change_requests';
+  foreignKey: 'user_id' | 'admin_id';
+};
+
+const IDENTITY_CONFIG: Record<
+  EmailChangeIdentityType,
+  IdentityConfig
+> = {
+  user: {
+    identityTable: 'users',
+    requestTable: 'user_email_change_requests',
+    foreignKey: 'user_id',
+  },
+
+  platform_admin: {
+    identityTable: 'platform_admins',
+    requestTable: 'platform_admin_email_change_requests',
+    foreignKey: 'admin_id',
+  },
+};
+
+/* ============================================================
+   PUBLIC TYPES
    ============================================================ */
 
 export type EmailChangeRequestResult = {
@@ -45,7 +79,30 @@ export type EmailChangeRequestResult = {
   expiresAt: string;
 };
 
-type CurrentUserRow = {
+export type PendingEmailChange = {
+  email: string;
+  expiresAt: string;
+  createdAt: string;
+  canResendInSeconds: number;
+};
+
+export type PlatformAdminEmailChangeAccount = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
+};
+
+/* ============================================================
+   INTERNAL ROW TYPES
+   ============================================================ */
+
+type CurrentIdentityRow = {
   id: string;
   email: string;
 };
@@ -53,41 +110,33 @@ type CurrentUserRow = {
 type OpenRequestRow = {
   id: string;
   new_email: string;
-  created_at:
-    | Date
-    | string;
-
-  expires_at:
-    | Date
-    | string;
+  created_at: Date | string;
+  expires_at: Date | string;
 };
 
 type InsertedRequestRow = {
   id: string;
   new_email: string;
-
-  expires_at:
-    | Date
-    | string;
+  expires_at: Date | string;
 };
 
 type ExistingRequestRow = {
   id: string;
   new_email: string;
+  expires_at: Date | string;
+  used_at: Date | string | null;
+  deleted_at: Date | string | null;
+};
 
-  expires_at:
-    | Date
-    | string;
-
-  used_at:
-    | Date
-    | string
-    | null;
-
-  deleted_at:
-    | Date
-    | string
-    | null;
+type PlatformAdminAccountRow = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  email_verified_at: Date | string | null;
 };
 
 /* ============================================================
@@ -101,42 +150,28 @@ export type EmailChangeErrorCode =
   | 'EMAIL_CHANGE_COOLDOWN'
   | 'INVALID_EMAIL_CHANGE_CODE'
   | 'EMAIL_CHANGE_EXPIRED'
-  | 'EMAIL_CHANGE_FAILED';
+  | 'EMAIL_CHANGE_FAILED'
+  | 'IDENTITY_NOT_FOUND'
+  | 'IDENTITY_UNAVAILABLE';
 
 /* ============================================================
    ERROR
    ============================================================ */
 
-export class EmailChangeError
-  extends Error {
-  readonly code:
-    EmailChangeErrorCode;
-
-  readonly retryAfterSeconds:
-    number | null;
+export class EmailChangeError extends Error {
+  readonly code: EmailChangeErrorCode;
+  readonly retryAfterSeconds: number | null;
 
   constructor(
-    code:
-      EmailChangeErrorCode,
-
-    message:
-      string,
-
-    retryAfterSeconds:
-      number | null = null
+    code: EmailChangeErrorCode,
+    message: string,
+    retryAfterSeconds: number | null = null
   ) {
-    super(
-      message
-    );
+    super(message);
 
-    this.name =
-      'EmailChangeError';
-
-    this.code =
-      code;
-
-    this.retryAfterSeconds =
-      retryAfterSeconds;
+    this.name = 'EmailChangeError';
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }
 
@@ -144,46 +179,37 @@ export class EmailChangeError
    EMAIL
    ============================================================ */
 
-function normalizeEmail(
-  value:
-    string
-): string {
-  return value
-    .trim()
-    .toLowerCase();
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
 }
 
-function isValidEmail(
-  value:
-    string
-): boolean {
+function isValidEmail(value: string): boolean {
   return (
-    Boolean(
-      value
-    ) &&
-    value.length <=
-      MAX_EMAIL_LENGTH &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-      value
-    )
+    Boolean(value) &&
+    value.length <= MAX_EMAIL_LENGTH &&
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
   );
 }
 
 /* ============================================================
-   USER
+   IDENTITY ID
    ============================================================ */
 
-function assertUserId(
-  userId:
-    string
+function assertIdentityId(
+  identityId: string,
+  identityType: EmailChangeIdentityType
 ): string {
-  const normalized =
-    userId.trim();
+  const normalized = identityId.trim();
 
-  if (
-    !normalized
-  ) {
-    throw new UserAccountNotFoundError();
+  if (!normalized) {
+    if (identityType === 'user') {
+      throw new UserAccountNotFoundError();
+    }
+
+    throw new EmailChangeError(
+      'IDENTITY_NOT_FOUND',
+      'The platform administrator account could not be found.'
+    );
   }
 
   return normalized;
@@ -193,76 +219,49 @@ function assertUserId(
    VERIFICATION CODE
    ============================================================ */
 
-function generateVerificationCode():
-  string {
+function generateVerificationCode(): string {
   return crypto
-    .randomInt(
-      100000,
-      1000000
-    )
+    .randomInt(100000, 1000000)
     .toString();
 }
 
-function hashVerificationCode(
-  code:
-    string
-): string {
+function hashVerificationCode(code: string): string {
   return crypto
-    .createHash(
-      'sha256'
-    )
-    .update(
-      code,
-      'utf8'
-    )
-    .digest(
-      'hex'
-    );
+    .createHash('sha256')
+    .update(code, 'utf8')
+    .digest('hex');
 }
 
-function normalizeVerificationCode(
-  value:
-    string
-): string {
+function normalizeVerificationCode(value: string): string {
   return value.trim();
 }
 
-function isValidVerificationCode(
-  value:
-    string
-): boolean {
+function isValidVerificationCode(value: string): boolean {
   return new RegExp(
     `^\\d{${EMAIL_CHANGE_CODE_LENGTH}}$`
-  ).test(
-    value
-  );
+  ).test(value);
 }
 
 /* ============================================================
    DATE
    ============================================================ */
 
-function toDate(
-  value:
-    | Date
-    | string
-): Date {
-  return value instanceof
-    Date
+function toDate(value: Date | string): Date {
+  return value instanceof Date
     ? value
-    : new Date(
-        value
-      );
+    : new Date(value);
 }
 
-function toIsoString(
-  value:
-    | Date
-    | string
-): string {
-  return toDate(
-    value
-  ).toISOString();
+function toIsoString(value: Date | string): string {
+  return toDate(value).toISOString();
+}
+
+function toNullableIsoString(
+  value: Date | string | null
+): string | null {
+  return value
+    ? toIsoString(value)
+    : null;
 }
 
 /* ============================================================
@@ -270,119 +269,204 @@ function toIsoString(
    ============================================================ */
 
 function getPostgresErrorCode(
-  error:
-    unknown
+  error: unknown
 ): string | null {
   if (
     !error ||
-    typeof error !==
-      'object'
+    typeof error !== 'object'
   ) {
     return null;
   }
 
-  const value =
-    error as {
-      code?: unknown;
-    };
+  const value = error as {
+    code?: unknown;
+  };
 
-  return typeof value.code ===
-    'string'
+  return typeof value.code === 'string'
     ? value.code
     : null;
 }
 
-function isUniqueViolation(
-  error:
-    unknown
-): boolean {
-  return (
-    getPostgresErrorCode(
-      error
-    ) ===
-    '23505'
-  );
+function isUniqueViolation(error: unknown): boolean {
+  return getPostgresErrorCode(error) === '23505';
 }
 
 /* ============================================================
-   CURRENT ACCOUNT
+   CURRENT IDENTITY
    ============================================================ */
 
-async function getCurrentUser(
-  userId:
-    string
-): Promise<CurrentUserRow> {
-  const result =
-    await queryControl(
-      `
-        SELECT
-          id,
-          email
+async function getCurrentIdentity(
+  identityType: EmailChangeIdentityType,
+  identityId: string
+): Promise<CurrentIdentityRow> {
+  const config =
+    IDENTITY_CONFIG[identityType];
 
-        FROM users
+  /*
+   * Table/column identifiers are not user input. They come only
+   * from the closed IDENTITY_CONFIG above.
+   */
+  const result = await queryControl(
+    `
+      SELECT
+        id,
+        email
 
-        WHERE id = $1
-          AND deleted_at IS NULL
+      FROM ${config.identityTable}
 
-        LIMIT 1
-      `,
-      [
-        userId,
-      ]
+      WHERE id = $1
+        AND deleted_at IS NULL
+
+      LIMIT 1
+    `,
+    [identityId]
+  );
+
+  if (result.rows.length === 0) {
+    if (identityType === 'user') {
+      throw new UserAccountNotFoundError();
+    }
+
+    throw new EmailChangeError(
+      'IDENTITY_NOT_FOUND',
+      'The platform administrator account could not be found.'
     );
-
-  if (
-    result.rows.length ===
-    0
-  ) {
-    throw new UserAccountNotFoundError();
   }
 
-  return result
-    .rows[0] as CurrentUserRow;
+  return result.rows[0] as CurrentIdentityRow;
+}
+
+/* ============================================================
+   PLATFORM ADMIN ACCOUNT
+   ============================================================ */
+
+export async function getPlatformAdminEmailAccount(
+  adminId: string
+): Promise<PlatformAdminEmailChangeAccount> {
+  const id =
+    assertIdentityId(
+      adminId,
+      'platform_admin'
+    );
+
+  const result = await queryControl(
+    `
+      SELECT
+        id,
+        first_name,
+        last_name,
+        email,
+        role,
+        status,
+        email_verified,
+        email_verified_at
+
+      FROM platform_admins
+
+      WHERE id = $1
+        AND deleted_at IS NULL
+
+      LIMIT 1
+    `,
+    [id]
+  );
+
+  if (result.rows.length === 0) {
+    throw new EmailChangeError(
+      'IDENTITY_NOT_FOUND',
+      'The platform administrator account could not be found.'
+    );
+  }
+
+  const row =
+    result.rows[0] as PlatformAdminAccountRow;
+
+  const firstName =
+    row.first_name?.trim() || '';
+
+  const lastName =
+    row.last_name?.trim() || '';
+
+  return {
+    id: row.id,
+    firstName,
+    lastName,
+    fullName:
+      [firstName, lastName]
+        .filter(Boolean)
+        .join(' ') || 'Platform Administrator',
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    emailVerified:
+      Boolean(row.email_verified),
+    emailVerifiedAt:
+      toNullableIsoString(
+        row.email_verified_at
+      ),
+  };
 }
 
 /* ============================================================
    EMAIL OWNERSHIP
+
+   Email uniqueness is global across SaMi identities.
+
+   A customer email must not silently become a platform-admin
+   identity and a platform-admin email must not silently become
+   a customer identity.
+
+   Deleted identities deliberately remain reserved, matching the
+   existing workspace behavior.
    ============================================================ */
 
-/**
- * Deleted accounts deliberately remain part of this check.
- *
- * SaMi currently reserves an email even when the account has
- * been soft deleted.
- */
-
-async function emailBelongsToAnotherAccount(
-  userId:
-    string,
-
-  email:
-    string
+async function emailBelongsToAnotherIdentity(
+  identityType: EmailChangeIdentityType,
+  identityId: string,
+  email: string
 ): Promise<boolean> {
-  const result =
-    await queryControl(
-      `
-        SELECT
-          id
+  const ownTable =
+    IDENTITY_CONFIG[identityType]
+      .identityTable;
 
-        FROM users
+  const otherTable =
+    identityType === 'user'
+      ? 'platform_admins'
+      : 'users';
+
+  const result = await queryControl(
+    `
+      SELECT
+        1
+
+      WHERE EXISTS (
+        SELECT
+          1
+
+        FROM ${ownTable}
 
         WHERE LOWER(email) = $1
           AND id <> $2
+      )
 
-        LIMIT 1
-      `,
-      [
-        email,
-        userId,
-      ]
-    );
+      OR EXISTS (
+        SELECT
+          1
 
-  return (
-    result.rows.length >
-    0
+        FROM ${otherTable}
+
+        WHERE LOWER(email) = $1
+      )
+
+      LIMIT 1
+    `,
+    [
+      email,
+      identityId,
+    ]
   );
+
+  return result.rows.length > 0;
 }
 
 /* ============================================================
@@ -390,45 +474,39 @@ async function emailBelongsToAnotherAccount(
    ============================================================ */
 
 async function getOpenRequest(
-  userId:
-    string
-): Promise<
-  OpenRequestRow | null
-> {
-  const result =
-    await queryControl(
-      `
-        SELECT
-          id,
-          new_email,
-          created_at,
-          expires_at
+  identityType: EmailChangeIdentityType,
+  identityId: string
+): Promise<OpenRequestRow | null> {
+  const config =
+    IDENTITY_CONFIG[identityType];
 
-        FROM user_email_change_requests
+  const result = await queryControl(
+    `
+      SELECT
+        id,
+        new_email,
+        created_at,
+        expires_at
 
-        WHERE user_id = $1
-          AND used_at IS NULL
-          AND deleted_at IS NULL
+      FROM ${config.requestTable}
 
-        ORDER BY
-          created_at DESC
+      WHERE ${config.foreignKey} = $1
+        AND used_at IS NULL
+        AND deleted_at IS NULL
 
-        LIMIT 1
-      `,
-      [
-        userId,
-      ]
-    );
+      ORDER BY
+        created_at DESC
 
-  if (
-    result.rows.length ===
-    0
-  ) {
+      LIMIT 1
+    `,
+    [identityId]
+  );
+
+  if (result.rows.length === 0) {
     return null;
   }
 
-  return result
-    .rows[0] as OpenRequestRow;
+  return result.rows[0] as OpenRequestRow;
 }
 
 /* ============================================================
@@ -436,139 +514,94 @@ async function getOpenRequest(
    ============================================================ */
 
 function getCooldownRemainingSeconds(
-  createdAt:
-    | Date
-    | string
+  createdAt: Date | string
 ): number {
   const availableAt =
-    toDate(
-      createdAt
-    ).getTime() +
-    EMAIL_CHANGE_COOLDOWN_SECONDS *
-      1000;
+    toDate(createdAt).getTime() +
+    EMAIL_CHANGE_COOLDOWN_SECONDS * 1000;
 
   const remainingMs =
-    availableAt -
-    Date.now();
+    availableAt - Date.now();
 
-  if (
-    remainingMs <=
-    0
-  ) {
+  if (remainingMs <= 0) {
     return 0;
   }
 
   return Math.ceil(
-    remainingMs /
-      1000
+    remainingMs / 1000
   );
 }
 
 /* ============================================================
-   REQUEST EMAIL CHANGE
+   SHARED REQUEST ENGINE
    ============================================================ */
 
-export async function requestEmailChange(
-  userId:
-    string,
-
-  newEmail:
-    string
+async function requestIdentityEmailChange(
+  identityType: EmailChangeIdentityType,
+  identityId: string,
+  newEmail: string
 ): Promise<EmailChangeRequestResult> {
   const id =
-    assertUserId(
-      userId
+    assertIdentityId(
+      identityId,
+      identityType
     );
 
   const email =
-    normalizeEmail(
-      newEmail
-    );
+    normalizeEmail(newEmail);
 
-  /* ==========================================================
-     EMAIL VALIDATION
-     ========================================================== */
-
-  if (
-    !isValidEmail(
-      email
-    )
-  ) {
+  if (!isValidEmail(email)) {
     throw new EmailChangeError(
       'INVALID_NEW_EMAIL',
       'Enter a valid email address.'
     );
   }
 
-  /* ==========================================================
-     ACCOUNT
-     ========================================================== */
-
-  const currentUser =
-    await getCurrentUser(
+  const currentIdentity =
+    await getCurrentIdentity(
+      identityType,
       id
     );
 
   const currentEmail =
     normalizeEmail(
-      currentUser.email
+      currentIdentity.email
     );
 
-  /* ==========================================================
-     SAME EMAIL
-     ========================================================== */
-
-  if (
-    currentEmail ===
-    email
-  ) {
+  if (currentEmail === email) {
     throw new EmailChangeError(
       'EMAIL_UNCHANGED',
       'This is already your current email address.'
     );
   }
 
-  /* ==========================================================
-     EMAIL AVAILABILITY
-     ========================================================== */
-
   const unavailable =
-    await emailBelongsToAnotherAccount(
+    await emailBelongsToAnotherIdentity(
+      identityType,
       id,
       email
     );
 
-  if (
-    unavailable
-  ) {
+  if (unavailable) {
     throw new EmailChangeError(
       'EMAIL_UNAVAILABLE',
       'This email address cannot be used.'
     );
   }
 
-  /* ==========================================================
-     COOLDOWN
-     ========================================================== */
-
   const openRequest =
     await getOpenRequest(
+      identityType,
       id
     );
 
-  if (
-    openRequest
-  ) {
+  if (openRequest) {
     const retryAfterSeconds =
       getCooldownRemainingSeconds(
-        openRequest
-          .created_at
+        openRequest.created_at
       );
 
-    if (
-      retryAfterSeconds >
-      0
-    ) {
+    if (retryAfterSeconds > 0) {
       throw new EmailChangeError(
         'EMAIL_CHANGE_COOLDOWN',
         'Please wait before requesting another verification code.',
@@ -577,37 +610,27 @@ export async function requestEmailChange(
     }
   }
 
-  /* ==========================================================
-     CODE
-     ========================================================== */
-
   const code =
     generateVerificationCode();
 
   const codeHash =
-    hashVerificationCode(
-      code
-    );
+    hashVerificationCode(code);
 
-  /* ==========================================================
-     CREATE REQUEST
-
-     Old pending requests are invalidated and the new request is
-     inserted in the same SQL statement.
-     ========================================================== */
+  const config =
+    IDENTITY_CONFIG[identityType];
 
   try {
     const result =
       await queryControl(
         `
           WITH invalidated_requests AS (
-            UPDATE user_email_change_requests
+            UPDATE ${config.requestTable}
 
             SET
               deleted_at = NOW(),
               updated_at = NOW()
 
-            WHERE user_id = $1
+            WHERE ${config.foreignKey} = $1
               AND used_at IS NULL
               AND deleted_at IS NULL
 
@@ -616,8 +639,8 @@ export async function requestEmailChange(
           ),
 
           inserted_request AS (
-            INSERT INTO user_email_change_requests (
-              user_id,
+            INSERT INTO ${config.requestTable} (
+              ${config.foreignKey},
               new_email,
               code_hash,
               expires_at,
@@ -633,7 +656,7 @@ export async function requestEmailChange(
               NOW(),
               NOW()
 
-            FROM users
+            FROM ${config.identityTable}
 
             WHERE id = $1
               AND deleted_at IS NULL
@@ -658,16 +681,19 @@ export async function requestEmailChange(
         ]
       );
 
-    if (
-      result.rows.length ===
-      0
-    ) {
-      throw new UserAccountNotFoundError();
+    if (result.rows.length === 0) {
+      if (identityType === 'user') {
+        throw new UserAccountNotFoundError();
+      }
+
+      throw new EmailChangeError(
+        'IDENTITY_NOT_FOUND',
+        'The platform administrator account could not be found.'
+      );
     }
 
     const request =
-      result
-        .rows[0] as InsertedRequestRow;
+      result.rows[0] as InsertedRequestRow;
 
     return {
       requestId:
@@ -683,26 +709,17 @@ export async function requestEmailChange(
           request.expires_at
         ),
     };
-  } catch (
-    error
-  ) {
+  } catch (error) {
     if (
       error instanceof
-      UserAccountNotFoundError
+        UserAccountNotFoundError ||
+      error instanceof
+        EmailChangeError
     ) {
       throw error;
     }
 
-    /*
-     * Database uniqueness remains the final protection if two
-     * requests race after both pass the preliminary cooldown.
-     */
-
-    if (
-      isUniqueViolation(
-        error
-      )
-    ) {
+    if (isUniqueViolation(error)) {
       throw new EmailChangeError(
         'EMAIL_CHANGE_COOLDOWN',
         'Please wait before requesting another verification code.',
@@ -715,19 +732,18 @@ export async function requestEmailChange(
 }
 
 /* ============================================================
-   VERIFY EMAIL CHANGE
+   SHARED VERIFY ENGINE
    ============================================================ */
 
-export async function verifyEmailChange(
-  userId:
-    string,
-
-  verificationCode:
-    string
-): Promise<UserAccount> {
+async function verifyIdentityEmailChange(
+  identityType: EmailChangeIdentityType,
+  identityId: string,
+  verificationCode: string
+): Promise<void> {
   const id =
-    assertUserId(
-      userId
+    assertIdentityId(
+      identityId,
+      identityType
     );
 
   const code =
@@ -735,15 +751,7 @@ export async function verifyEmailChange(
       verificationCode
     );
 
-  /* ==========================================================
-     CODE FORMAT
-     ========================================================== */
-
-  if (
-    !isValidVerificationCode(
-      code
-    )
-  ) {
+  if (!isValidVerificationCode(code)) {
     throw new EmailChangeError(
       'INVALID_EMAIL_CHANGE_CODE',
       'Enter the complete 6-digit verification code.'
@@ -751,13 +759,15 @@ export async function verifyEmailChange(
   }
 
   const codeHash =
-    hashVerificationCode(
-      code
-    );
+    hashVerificationCode(code);
 
-  /* ==========================================================
-     ATOMIC VERIFY + UPDATE
-     ========================================================== */
+  const config =
+    IDENTITY_CONFIG[identityType];
+
+  const otherIdentityTable =
+    identityType === 'user'
+      ? 'platform_admins'
+      : 'users';
 
   try {
     const result =
@@ -768,9 +778,9 @@ export async function verifyEmailChange(
               r.id,
               r.new_email
 
-            FROM user_email_change_requests r
+            FROM ${config.requestTable} r
 
-            WHERE r.user_id = $1
+            WHERE r.${config.foreignKey} = $1
               AND r.code_hash = $2
               AND r.used_at IS NULL
               AND r.deleted_at IS NULL
@@ -784,8 +794,8 @@ export async function verifyEmailChange(
             FOR UPDATE
           ),
 
-          updated_user AS (
-            UPDATE users u
+          updated_identity AS (
+            UPDATE ${config.identityTable} i
 
             SET
               email =
@@ -802,33 +812,43 @@ export async function verifyEmailChange(
 
             FROM candidate_request
 
-            WHERE u.id = $1
-              AND u.deleted_at IS NULL
+            WHERE i.id = $1
+              AND i.deleted_at IS NULL
 
               AND NOT EXISTS (
                 SELECT
                   1
 
-                FROM users conflict_user
+                FROM ${config.identityTable} conflict_identity
 
-                WHERE
-                  LOWER(
-                    conflict_user.email
-                  ) =
-                  LOWER(
-                    candidate_request.new_email
-                  )
+                WHERE LOWER(
+                  conflict_identity.email
+                ) = LOWER(
+                  candidate_request.new_email
+                )
 
-                  AND conflict_user.id <>
-                    u.id
+                AND conflict_identity.id <> i.id
+              )
+
+              AND NOT EXISTS (
+                SELECT
+                  1
+
+                FROM ${otherIdentityTable} other_identity
+
+                WHERE LOWER(
+                  other_identity.email
+                ) = LOWER(
+                  candidate_request.new_email
+                )
               )
 
             RETURNING
-              u.id
+              i.id
           ),
 
           consumed_request AS (
-            UPDATE user_email_change_requests r
+            UPDATE ${config.requestTable} r
 
             SET
               used_at = NOW(),
@@ -843,21 +863,21 @@ export async function verifyEmailChange(
               LIMIT 1
             )
 
-              AND EXISTS (
-                SELECT
-                  1
+            AND EXISTS (
+              SELECT
+                1
 
-                FROM updated_user
-              )
+              FROM updated_identity
+            )
 
             RETURNING
               r.id
           )
 
           SELECT
-            updated_user.id
+            updated_identity.id
 
-          FROM updated_user
+          FROM updated_identity
 
           WHERE EXISTS (
             SELECT
@@ -872,27 +892,11 @@ export async function verifyEmailChange(
         ]
       );
 
-    if (
-      result.rows.length >
-      0
-    ) {
-      return getUserAccount(
-        id
-      );
+    if (result.rows.length > 0) {
+      return;
     }
-  } catch (
-    error
-  ) {
-    /*
-     * The case-insensitive users email unique index remains the
-     * final race-condition protection.
-     */
-
-    if (
-      isUniqueViolation(
-        error
-      )
-    ) {
+  } catch (error) {
+    if (isUniqueViolation(error)) {
       throw new EmailChangeError(
         'EMAIL_UNAVAILABLE',
         'This email address can no longer be used.'
@@ -902,12 +906,9 @@ export async function verifyEmailChange(
     throw error;
   }
 
-  /* ==========================================================
-     FAILURE STATE
-     ========================================================== */
-
-  const currentUser =
-    await getCurrentUser(
+  const currentIdentity =
+    await getCurrentIdentity(
+      identityType,
       id
     );
 
@@ -921,9 +922,9 @@ export async function verifyEmailChange(
           used_at,
           deleted_at
 
-        FROM user_email_change_requests
+        FROM ${config.requestTable}
 
-        WHERE user_id = $1
+        WHERE ${config.foreignKey} = $1
           AND code_hash = $2
 
         ORDER BY
@@ -937,11 +938,7 @@ export async function verifyEmailChange(
       ]
     );
 
-  if (
-    requestResult
-      .rows.length ===
-    0
-  ) {
+  if (requestResult.rows.length === 0) {
     throw new EmailChangeError(
       'INVALID_EMAIL_CHANGE_CODE',
       'The verification code is invalid or has expired.'
@@ -952,38 +949,28 @@ export async function verifyEmailChange(
     requestResult
       .rows[0] as ExistingRequestRow;
 
-  /* ==========================================================
-     IDEMPOTENT SUCCESS
-
-     Browser replay after successful verification should still
-     resolve successfully.
-     ========================================================== */
-
+  /*
+   * Idempotent success:
+   * a browser replay after successful verification still succeeds.
+   */
   if (
     request.used_at &&
     normalizeEmail(
-      currentUser.email
+      currentIdentity.email
     ) ===
       normalizeEmail(
         request.new_email
       )
   ) {
-    return getUserAccount(
-      id
-    );
+    return;
   }
-
-  /* ==========================================================
-     EXPIRED
-     ========================================================== */
 
   if (
     !request.used_at &&
     !request.deleted_at &&
     toDate(
       request.expires_at
-    ).getTime() <=
-      Date.now()
+    ).getTime() <= Date.now()
   ) {
     throw new EmailChangeError(
       'EMAIL_CHANGE_EXPIRED',
@@ -991,35 +978,26 @@ export async function verifyEmailChange(
     );
   }
 
-  /* ==========================================================
-     DESTINATION EMAIL BECAME UNAVAILABLE
-     ========================================================== */
-
   if (
     !request.used_at &&
     !request.deleted_at
   ) {
     const unavailable =
-      await emailBelongsToAnotherAccount(
+      await emailBelongsToAnotherIdentity(
+        identityType,
         id,
         normalizeEmail(
           request.new_email
         )
       );
 
-    if (
-      unavailable
-    ) {
+    if (unavailable) {
       throw new EmailChangeError(
         'EMAIL_UNAVAILABLE',
         'This email address can no longer be used.'
       );
     }
   }
-
-  /* ==========================================================
-     OLD / REPLACED / INVALID CODE
-     ========================================================== */
 
   throw new EmailChangeError(
     'INVALID_EMAIL_CHANGE_CODE',
@@ -1028,75 +1006,49 @@ export async function verifyEmailChange(
 }
 
 /* ============================================================
-   TARGETED REQUEST CANCELLATION
+   SHARED TARGETED CANCELLATION
    ============================================================ */
 
-/**
- * Cancels ONE exact email-change request.
- *
- * This function is intentionally used by server-side email
- * delivery cleanup.
- *
- * Example:
- *
- * Request A
- *   ↓
- * delivery delayed
- *
- * Request B becomes current
- *   ↓
- *
- * delivery for A fails
- *   ↓
- *
- * cancelEmailChangeRequest(userId, A)
- *
- * Only A is touched.
- *
- * Request B remains intact.
- */
-
-export async function cancelEmailChangeRequest(
-  userId:
-    string,
-
-  requestId:
-    string
+async function cancelIdentityEmailChangeRequest(
+  identityType: EmailChangeIdentityType,
+  identityId: string,
+  requestId: string
 ): Promise<void> {
   const id =
-    assertUserId(
-      userId
+    assertIdentityId(
+      identityId,
+      identityType
     );
 
   const normalizedRequestId =
     requestId.trim();
 
   /*
-   * Never fall back to broad user-wide cancellation when the
-   * request identifier is unavailable.
-   *
-   * A no-op is safer than deleting another valid request.
+   * Never fall back to broad cancellation if the exact request ID
+   * is unavailable. A no-op is safer than cancelling a newer
+   * valid request.
    */
-
-  if (
-    !normalizedRequestId
-  ) {
+  if (!normalizedRequestId) {
     return;
   }
 
-  await getCurrentUser(
+  await getCurrentIdentity(
+    identityType,
     id
   );
 
+  const config =
+    IDENTITY_CONFIG[identityType];
+
   await queryControl(
     `
-      UPDATE user_email_change_requests
+      UPDATE ${config.requestTable}
 
       SET
         deleted_at = NOW(),
         updated_at = NOW()
 
-      WHERE user_id = $1
+      WHERE ${config.foreignKey} = $1
         AND id = $2
         AND used_at IS NULL
         AND deleted_at IS NULL
@@ -1109,79 +1061,64 @@ export async function cancelEmailChangeRequest(
 }
 
 /* ============================================================
-   USER-WIDE CANCELLATION
+   SHARED USER-WIDE / ADMIN-WIDE CANCELLATION
    ============================================================ */
 
-/**
- * Cancels all currently pending email-change requests belonging
- * to the user.
- *
- * This remains the correct operation for the explicit
- * "Cancel email change" action in My Account.
- */
-
-export async function cancelEmailChange(
-  userId:
-    string
+async function cancelIdentityEmailChange(
+  identityType: EmailChangeIdentityType,
+  identityId: string
 ): Promise<void> {
   const id =
-    assertUserId(
-      userId
+    assertIdentityId(
+      identityId,
+      identityType
     );
 
-  await getCurrentUser(
+  await getCurrentIdentity(
+    identityType,
     id
   );
 
+  const config =
+    IDENTITY_CONFIG[identityType];
+
   await queryControl(
     `
-      UPDATE user_email_change_requests
+      UPDATE ${config.requestTable}
 
       SET
         deleted_at = NOW(),
         updated_at = NOW()
 
-      WHERE user_id = $1
+      WHERE ${config.foreignKey} = $1
         AND used_at IS NULL
         AND deleted_at IS NULL
     `,
-    [
-      id,
-    ]
+    [id]
   );
 }
 
 /* ============================================================
-   PENDING EMAIL CHANGE
+   SHARED PENDING STATE
    ============================================================ */
 
-export type PendingEmailChange = {
-  email: string;
-  expiresAt: string;
-  createdAt: string;
-  canResendInSeconds: number;
-};
-
-/**
- * Restores My Account pending verification state.
- *
- * Verification codes and hashes are never returned.
- */
-
-export async function getPendingEmailChange(
-  userId:
-    string
-): Promise<
-  PendingEmailChange | null
-> {
+async function getPendingIdentityEmailChange(
+  identityType: EmailChangeIdentityType,
+  identityId: string
+): Promise<PendingEmailChange | null> {
   const id =
-    assertUserId(
-      userId
+    assertIdentityId(
+      identityId,
+      identityType
     );
 
-  await getCurrentUser(
+  await getCurrentIdentity(
+    identityType,
     id
   );
+
+  const config =
+    IDENTITY_CONFIG[identityType];
 
   const result =
     await queryControl(
@@ -1191,9 +1128,9 @@ export async function getPendingEmailChange(
           created_at,
           expires_at
 
-        FROM user_email_change_requests
+        FROM ${config.requestTable}
 
-        WHERE user_id = $1
+        WHERE ${config.foreignKey} = $1
           AND used_at IS NULL
           AND deleted_at IS NULL
           AND expires_at > NOW()
@@ -1203,31 +1140,18 @@ export async function getPendingEmailChange(
 
         LIMIT 1
       `,
-      [
-        id,
-      ]
+      [id]
     );
 
-  if (
-    result.rows.length ===
-    0
-  ) {
+  if (result.rows.length === 0) {
     return null;
   }
 
   const row =
-    result
-      .rows[0] as {
-      new_email:
-        string;
-
-      created_at:
-        | Date
-        | string;
-
-      expires_at:
-        | Date
-        | string;
+    result.rows[0] as {
+      new_email: string;
+      created_at: Date | string;
+      expires_at: Date | string;
     };
 
   return {
@@ -1249,4 +1173,136 @@ export async function getPendingEmailChange(
         row.created_at
       ),
   };
+}
+
+/* ============================================================
+   WORKSPACE PUBLIC API
+
+   Existing signatures are intentionally preserved so current
+   workspace routes continue to work without changes.
+   ============================================================ */
+
+export async function requestEmailChange(
+  userId: string,
+  newEmail: string
+): Promise<EmailChangeRequestResult> {
+  return requestIdentityEmailChange(
+    'user',
+    userId,
+    newEmail
+  );
+}
+
+export async function verifyEmailChange(
+  userId: string,
+  verificationCode: string
+): Promise<UserAccount> {
+  const id =
+    assertIdentityId(
+      userId,
+      'user'
+    );
+
+  await verifyIdentityEmailChange(
+    'user',
+    id,
+    verificationCode
+  );
+
+  return getUserAccount(id);
+}
+
+export async function cancelEmailChangeRequest(
+  userId: string,
+  requestId: string
+): Promise<void> {
+  return cancelIdentityEmailChangeRequest(
+    'user',
+    userId,
+    requestId
+  );
+}
+
+export async function cancelEmailChange(
+  userId: string
+): Promise<void> {
+  return cancelIdentityEmailChange(
+    'user',
+    userId
+  );
+}
+
+export async function getPendingEmailChange(
+  userId: string
+): Promise<PendingEmailChange | null> {
+  return getPendingIdentityEmailChange(
+    'user',
+    userId
+  );
+}
+
+/* ============================================================
+   PLATFORM ADMIN PUBLIC API
+
+   Platform Admin now uses the SAME SaMi email-change engine while
+   retaining a completely separate admin identity/session boundary.
+   ============================================================ */
+
+export async function requestPlatformAdminEmailChange(
+  adminId: string,
+  newEmail: string
+): Promise<EmailChangeRequestResult> {
+  return requestIdentityEmailChange(
+    'platform_admin',
+    adminId,
+    newEmail
+  );
+}
+
+export async function verifyPlatformAdminEmailChange(
+  adminId: string,
+  verificationCode: string
+): Promise<PlatformAdminEmailChangeAccount> {
+  const id =
+    assertIdentityId(
+      adminId,
+      'platform_admin'
+    );
+
+  await verifyIdentityEmailChange(
+    'platform_admin',
+    id,
+    verificationCode
+  );
+
+  return getPlatformAdminEmailAccount(id);
+}
+
+export async function cancelPlatformAdminEmailChangeRequest(
+  adminId: string,
+  requestId: string
+): Promise<void> {
+  return cancelIdentityEmailChangeRequest(
+    'platform_admin',
+    adminId,
+    requestId
+  );
+}
+
+export async function cancelPlatformAdminEmailChange(
+  adminId: string
+): Promise<void> {
+  return cancelIdentityEmailChange(
+    'platform_admin',
+    adminId
+  );
+}
+
+export async function getPendingPlatformAdminEmailChange(
+  adminId: string
+): Promise<PendingEmailChange | null> {
+  return getPendingIdentityEmailChange(
+    'platform_admin',
+    adminId
+  );
 }

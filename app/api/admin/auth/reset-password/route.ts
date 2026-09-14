@@ -17,7 +17,7 @@ export const dynamic =
    TYPES
    ============================================================ */
 
-type ResetPasswordBody = {
+type ResetAdminPasswordBody = {
   token?:
     unknown;
 
@@ -56,7 +56,7 @@ function jsonResponse(
 }
 
 /* ============================================================
-   POST /api/auth/reset-password
+   POST /api/admin/auth/reset-password
    ============================================================ */
 
 export async function POST(
@@ -64,7 +64,7 @@ export async function POST(
     NextRequest
 ) {
   let body:
-    ResetPasswordBody;
+    ResetAdminPasswordBody;
 
   try {
     const parsed:
@@ -96,7 +96,7 @@ export async function POST(
 
     body =
       parsed as
-        ResetPasswordBody;
+        ResetAdminPasswordBody;
   } catch {
     return jsonResponse(
       {
@@ -119,7 +119,7 @@ export async function POST(
         request,
 
         identityType:
-          'user',
+          'platform_admin',
 
         token:
           body.token,
@@ -155,10 +155,10 @@ export async function POST(
           true,
 
         code:
-          'PASSWORD_RESET_SUCCESS',
+          'ADMIN_PASSWORD_RESET_SUCCESS',
 
         message:
-          'Password reset successfully. Please sign in with your new password.',
+          'Administrator password reset successfully. Sign in using your new password.',
 
         next:
           result.next,
@@ -168,7 +168,7 @@ export async function POST(
     error
   ) {
     console.error(
-      '[Auth] Reset password failed:',
+      '[Admin Auth] Password reset failed:',
       error
     );
 
@@ -178,10 +178,10 @@ export async function POST(
           false,
 
         code:
-          'PASSWORD_RESET_ERROR',
+          'ADMIN_PASSWORD_RESET_ERROR',
 
         error:
-          'Something went wrong while resetting your password.',
+          'The administrator password could not be reset.',
       },
       500
     );

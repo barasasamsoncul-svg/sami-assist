@@ -28,6 +28,10 @@ import {
   recordAdminLoginSuccess,
 } from '@/lib/auth/admin-events';
 
+import {
+  requestAdminEmailVerification,
+} from '@/lib/auth/admin-email-verification';
+
 export const runtime =
   'nodejs';
 
@@ -99,6 +103,19 @@ function authenticationFailureStatus(
     default:
       return 401;
   }
+}
+
+/* ============================================================
+   VERIFICATION URL
+   ============================================================ */
+
+function buildAdminVerificationPath(
+  email:
+    string
+) {
+  return `/admin/verify-email?email=${encodeURIComponent(
+    email
+  )}`;
 }
 
 /* ============================================================
@@ -234,7 +251,224 @@ export async function POST(
       );
 
     /* ========================================================
-       5. FIRST-TIME 2FA SETUP REQUIRED
+       5. EMAIL VERIFICATION REQUIRED
+
+       IMPORTANT:
+       authenticatePlatformAdmin() reaches EMAIL_NOT_VERIFIED
+       only after the identity/password path has been checked.
+
+       We can therefore safely send a verification challenge
+       for this administrator without exposing account existence
+       to someone who only knows an email address.
+       ======================================================== */
+
+    if (
+      !authentication.success &&
+      authentication.code ===
+        'EMAIL_NOT_VERIFIED' &&
+      authentication.adminId
+    ) {
+      const admin =
+        await findPlatformAdminById(
+          authentication.adminId
+        );
+
+      if (
+        !admin ||
+        admin.emailVerified ||
+        (
+          admin.status !==
+            'active' &&
+          admin.status !==
+            'invited'
+        )
+      ) {
+        await recordAdminLoginFailure({
+          request,
+
+          adminId:
+            authentication.adminId,
+
+          attemptedEmail,
+
+          failureReason:
+            'email_verification_account_invalid',
+
+          metadata: {
+            stage:
+              'email_verification',
+          },
+        });
+
+        const response =
+          jsonResponse(
+            {
+              success:
+                false,
+
+              code:
+                'ACCOUNT_NOT_AVAILABLE',
+
+              error:
+                'This administrator account cannot continue sign-in.',
+            },
+            403
+          );
+
+        clearAdminLoginChallengeCookie(
+          response
+        );
+
+        return response;
+      }
+
+      /*
+       * Send or safely throttle the verification email.
+       *
+       * The shared verification engine handles:
+       * - 6 digit code generation
+       * - hashing
+       * - expiry
+       * - cooldown
+       * - rate limiting
+       * - SMTP
+       * - audit events
+       */
+      const verification =
+        await requestAdminEmailVerification({
+          request,
+
+          adminId:
+            admin.id,
+
+          email:
+            admin.email,
+
+          purpose:
+            'initial_verification',
+        });
+
+      await recordAdminLoginFailure({
+        request,
+
+        adminId:
+          admin.id,
+
+        attemptedEmail,
+
+        failureReason:
+          'email_verification_required',
+
+        metadata: {
+          stage:
+            'email_verification',
+
+          verificationSent:
+            verification.sent,
+
+          verificationCooldown:
+            verification.cooldown,
+
+          retryAfterSeconds:
+            verification.retryAfterSeconds,
+        },
+      });
+
+      await recordAdminAuditEvent({
+        request,
+
+        adminId:
+          admin.id,
+
+        eventType:
+          'admin.login.email_verification_required',
+
+        action:
+          'admin_login',
+
+        targetType:
+          'platform_admin',
+
+        targetId:
+          admin.id,
+
+        successful:
+          false,
+
+        failureReason:
+          'email_not_verified',
+
+        metadata: {
+          stage:
+            'email_verification',
+
+          verificationSent:
+            verification.sent,
+
+          verificationCooldown:
+            verification.cooldown,
+
+          retryAfterSeconds:
+            verification.retryAfterSeconds,
+        },
+      });
+
+      const response =
+        jsonResponse(
+          {
+            success:
+              false,
+
+            code:
+              'EMAIL_VERIFICATION_REQUIRED',
+
+            authenticated:
+              false,
+
+            requiresEmailVerification:
+              true,
+
+            requiresTwoFactor:
+              false,
+
+            requiresTwoFactorSetup:
+              false,
+
+            /*
+             * Returning the already-submitted email here is
+             * safe because the caller supplied it and already
+             * proved the password path.
+             */
+            email:
+              admin.email,
+
+            next:
+              buildAdminVerificationPath(
+                admin.email
+              ),
+
+            message:
+              verification.sent
+                ? 'A verification code has been sent to your administrator email.'
+                : verification.cooldown
+                  ? 'A verification code was recently requested. Use the latest code sent to your administrator email.'
+                  : 'Verify your administrator email to continue signing in.',
+
+            retryAfterSeconds:
+              verification.retryAfterSeconds,
+          },
+          403
+        );
+
+      clearAdminLoginChallengeCookie(
+        response
+      );
+
+      return response;
+    }
+
+    /* ========================================================
+       6. FIRST-TIME 2FA SETUP REQUIRED
 
        authenticatePlatformAdmin only returns this AFTER the
        password has been verified successfully.
@@ -348,6 +582,9 @@ export async function POST(
           authenticated:
             false,
 
+          requiresEmailVerification:
+            false,
+
           requiresTwoFactor:
             true,
 
@@ -375,7 +612,7 @@ export async function POST(
     }
 
     /* ========================================================
-       6. NORMAL AUTH FAILURE
+       7. NORMAL AUTH FAILURE
        ======================================================== */
 
     if (
@@ -411,6 +648,12 @@ export async function POST(
             code:
               authentication.code,
 
+            authenticated:
+              false,
+
+            requiresEmailVerification:
+              false,
+
             error:
               authentication.message,
 
@@ -435,7 +678,114 @@ export async function POST(
       authentication.admin;
 
     /* ========================================================
-       7. EXISTING 2FA REQUIRED
+       8. DEFENSIVE EMAIL VERIFICATION CHECK
+
+       authenticatePlatformAdmin() should already enforce this.
+       This check prevents a future auth-helper regression from
+       accidentally establishing an admin session for an
+       unverified identity.
+       ======================================================== */
+
+    if (
+      !admin.emailVerified
+    ) {
+      const verification =
+        await requestAdminEmailVerification({
+          request,
+
+          adminId:
+            admin.id,
+
+          email:
+            admin.email,
+
+          purpose:
+            'initial_verification',
+        });
+
+      await recordAdminAuditEvent({
+        request,
+
+        adminId:
+          admin.id,
+
+        eventType:
+          'admin.login.email_verification_required',
+
+        action:
+          'admin_login',
+
+        targetType:
+          'platform_admin',
+
+        targetId:
+          admin.id,
+
+        successful:
+          false,
+
+        failureReason:
+          'email_not_verified',
+
+        metadata: {
+          stage:
+            'defensive_verification_check',
+
+          verificationSent:
+            verification.sent,
+
+          verificationCooldown:
+            verification.cooldown,
+        },
+      });
+
+      const response =
+        jsonResponse(
+          {
+            success:
+              false,
+
+            code:
+              'EMAIL_VERIFICATION_REQUIRED',
+
+            authenticated:
+              false,
+
+            requiresEmailVerification:
+              true,
+
+            requiresTwoFactor:
+              false,
+
+            requiresTwoFactorSetup:
+              false,
+
+            email:
+              admin.email,
+
+            next:
+              buildAdminVerificationPath(
+                admin.email
+              ),
+
+            message:
+              'Verify your administrator email to continue signing in.',
+
+            retryAfterSeconds:
+              verification.retryAfterSeconds,
+          },
+          403
+        );
+
+      clearAdminLoginChallengeCookie(
+        response
+      );
+
+      return response;
+    }
+
+    /* ========================================================
+       9. EXISTING 2FA REQUIRED
        ======================================================== */
 
     if (
@@ -497,6 +847,9 @@ export async function POST(
           authenticated:
             false,
 
+          requiresEmailVerification:
+            false,
+
           requiresTwoFactor:
             true,
 
@@ -524,7 +877,7 @@ export async function POST(
     }
 
     /* ========================================================
-       8. NO 2FA REQUIRED — CREATE SESSION
+       10. NO 2FA REQUIRED — CREATE SESSION
        ======================================================== */
 
     const session =
@@ -538,7 +891,7 @@ export async function POST(
       });
 
     /* ========================================================
-       9. UPDATE LOGIN STATE
+       11. UPDATE LOGIN STATE
        ======================================================== */
 
     await updateAdminSuccessfulLogin(
@@ -549,7 +902,7 @@ export async function POST(
     );
 
     /* ========================================================
-       10. HISTORY + AUDIT
+       12. HISTORY + AUDIT
        ======================================================== */
 
     await recordAdminLoginSuccess({
@@ -576,7 +929,7 @@ export async function POST(
     });
 
     /* ========================================================
-       11. RESPONSE
+       13. RESPONSE
        ======================================================== */
 
     const response =
@@ -589,6 +942,9 @@ export async function POST(
 
         authenticated:
           true,
+
+        requiresEmailVerification:
+          false,
 
         requiresTwoFactor:
           false,
@@ -659,6 +1015,12 @@ export async function POST(
 
           code:
             'ADMIN_LOGIN_ERROR',
+
+          authenticated:
+            false,
+
+          requiresEmailVerification:
+            false,
 
           error:
             'SaMi could not complete administrator sign-in.',
