@@ -2,13 +2,9 @@ import 'server-only';
 
 import crypto from 'crypto';
 
-import type {
-  NextRequest,
-} from 'next/server';
+import type { NextRequest } from 'next/server';
 
-import {
-  queryControl,
-} from '@/lib/db/control';
+import { queryControl } from '@/lib/db/control';
 
 import {
   hashAdminPassword,
@@ -32,20 +28,15 @@ import {
    CONSTANTS
    ============================================================ */
 
-const SETUP_TOKEN_BYTES =
-  48;
+const SETUP_TOKEN_BYTES = 48;
 
-const SETUP_TOKEN_EXPIRY_MINUTES =
-  30;
+const SETUP_TOKEN_EXPIRY_MINUTES = 30;
 
-const MIN_SETUP_TOKEN_LENGTH =
-  40;
+const MIN_SETUP_TOKEN_LENGTH = 40;
 
-const MAX_SETUP_TOKEN_LENGTH =
-  512;
+const MAX_SETUP_TOKEN_LENGTH = 512;
 
-const COMPLETE_RATE_LIMIT_MAX_ATTEMPTS =
-  8;
+const COMPLETE_RATE_LIMIT_MAX_ATTEMPTS = 8;
 
 const COMPLETE_RATE_LIMIT_WINDOW_MS =
   15 * 60 * 1000;
@@ -58,73 +49,50 @@ const COMPLETE_RATE_LIMIT_BLOCK_MS =
    ============================================================ */
 
 export type AdminIdentitySetupTokenResult = {
-  token:
-    string;
-
-  expiresAt:
-    Date;
+  token: string;
+  expiresAt: Date;
 };
 
 export type CompleteAdminIdentityInput = {
-  request:
-    NextRequest;
-
-  token:
-    unknown;
-
-  password:
-    unknown;
-
-  confirmPassword:
-    unknown;
+  request: NextRequest;
+  token: unknown;
+  password: unknown;
+  confirmPassword: unknown;
 };
 
 export type CompleteAdminIdentityResult =
   | {
-      success:
-        true;
+      success: true;
 
       code:
         'ADMIN_IDENTITY_COMPLETED';
 
       admin: {
-        id:
-          string;
+        id: string;
 
-        email:
-          string;
+        email: string;
 
-        firstName:
-          string;
+        firstName: string;
 
-        lastName:
-          string;
+        lastName: string;
 
-        fullName:
-          string;
+        fullName: string;
 
-        role:
-          string;
+        role: string;
 
-        status:
-          'active';
+        status: 'active';
 
-        emailVerified:
-          true;
+        emailVerified: true;
 
-        twoFactorRequired:
-          true;
+        twoFactorRequired: true;
 
-        twoFactorEnabled:
-          boolean;
+        twoFactorEnabled: boolean;
       };
 
-      next:
-        string;
+      next: string;
     }
   | {
-      success:
-        false;
+      success: false;
 
       code:
         | 'INVALID_TOKEN'
@@ -135,40 +103,30 @@ export type CompleteAdminIdentityResult =
         | 'ADMIN_NOT_ELIGIBLE'
         | 'SETUP_COMPLETION_FAILED';
 
-      error:
-        string;
+      error: string;
 
       retryAfterSeconds?:
         number | null;
     };
 
 type ActivatedAdminRow = {
-  id:
-    string;
+  id: string;
 
-  email:
-    string;
+  email: string;
 
-  first_name:
-    string;
+  first_name: string;
 
-  last_name:
-    string;
+  last_name: string;
 
-  role:
-    string;
+  role: string;
 
-  status:
-    'active';
+  status: 'active';
 
-  email_verified:
-    boolean;
+  email_verified: boolean;
 
-  two_factor_required:
-    boolean;
+  two_factor_required: boolean;
 
-  two_factor_enabled:
-    boolean;
+  two_factor_enabled: boolean;
 };
 
 /* ============================================================
@@ -187,8 +145,7 @@ function generateSetupToken():
 }
 
 function normalizeSetupToken(
-  value:
-    unknown
+  value: unknown
 ): string {
   if (
     typeof value !==
@@ -201,8 +158,7 @@ function normalizeSetupToken(
 }
 
 function isValidSetupToken(
-  token:
-    string
+  token: string
 ): boolean {
   return (
     token.length >=
@@ -216,8 +172,7 @@ function isValidSetupToken(
 }
 
 function hashSetupToken(
-  token:
-    string
+  token: string
 ): string {
   return crypto
     .createHash(
@@ -237,14 +192,13 @@ function hashSetupToken(
    ============================================================ */
 
 function normalizePassword(
-  value:
-    unknown
+  value: unknown
 ): string {
   /*
-   * Never trim passwords.
+   * Passwords must never be trimmed.
    *
-   * Admin whitespace restrictions belong to the single
-   * authoritative policy in admin-auth.ts.
+   * Administrator whitespace rules are enforced by the
+   * authoritative password policy in admin-auth.ts.
    */
   return typeof value ===
     'string'
@@ -257,8 +211,7 @@ function normalizePassword(
    ============================================================ */
 
 function getRequestIp(
-  request:
-    NextRequest
+  request: NextRequest
 ): string {
   return (
     getAdminRequestIp(
@@ -269,16 +222,12 @@ function getRequestIp(
 }
 
 function getSetupRateLimitIdentifier(
-  request:
-    NextRequest,
-  tokenHash:
-    string
+  request: NextRequest,
+  tokenHash: string
 ): string {
   /*
-   * Never put the raw setup token into auth_rate_limits.
-   *
-   * A shortened SHA-256 fingerprint is enough to separate
-   * challenges without persisting the credential itself.
+   * Never persist the raw identity-setup credential inside the
+   * rate limiter.
    */
   const fingerprint =
     tokenHash.slice(
@@ -302,10 +251,9 @@ function getSetupRateLimitIdentifier(
    ============================================================ */
 
 async function safeRecordAdminAudit(
-  input:
-    Parameters<
-      typeof recordAdminAuditEvent
-    >[0]
+  input: Parameters<
+    typeof recordAdminAuditEvent
+  >[0]
 ): Promise<void> {
   try {
     await recordAdminAuditEvent(
@@ -315,8 +263,8 @@ async function safeRecordAdminAudit(
     error
   ) {
     /*
-     * Audit storage failure must not undo a successful credential
-     * operation.
+     * Audit persistence must not roll back a successful
+     * credential operation.
      */
     console.error(
       '[Admin Identity Setup] Audit event failed:',
@@ -331,26 +279,46 @@ async function safeRecordAdminAudit(
 /* ============================================================
    ISSUE IDENTITY SETUP TOKEN
 
-   Called only after administrator email ownership has been
-   established.
-
-   Eligible identity:
+   Eligible administrator:
    - exists
-   - not deleted
+   - email matches
    - status = invited
-   - email_verified = TRUE
+   - email ownership verified
+   - not deleted
 
-   Creating a new setup token atomically invalidates every
-   previous unused token for this administrator.
+   IMPORTANT:
+
+   platform_admin_identity_setup_tokens has a partial unique
+   constraint allowing only one active token per administrator.
+
+   We therefore DO NOT attempt:
+
+       UPDATE old token
+       +
+       INSERT new token
+
+   through sibling data-modifying CTEs.
+
+   PostgreSQL does not guarantee that sibling data-changing CTEs
+   observe one another in textual order.
+
+   Instead:
+
+   INSERT ... ON CONFLICT ... DO UPDATE
+
+   rotates the one active token atomically.
+
+   This preserves:
+   - one active token
+   - replay protection
+   - concurrency protection
+   - retryability after verification
    ============================================================ */
 
 export async function issueAdminIdentitySetupToken(
   input: {
-    adminId:
-      string;
-
-    email:
-      string;
+    adminId: string;
+    email: string;
   }
 ): Promise<
   AdminIdentitySetupTokenResult
@@ -362,6 +330,23 @@ export async function issueAdminIdentitySetupToken(
     !input.email ||
     typeof input.email !==
       'string'
+  ) {
+    throw new Error(
+      'ADMIN_NOT_ELIGIBLE_FOR_IDENTITY_SETUP'
+    );
+  }
+
+  const adminId =
+    input.adminId.trim();
+
+  const email =
+    input.email
+      .trim()
+      .toLowerCase();
+
+  if (
+    !adminId ||
+    !email
   ) {
     throw new Error(
       'ADMIN_NOT_ELIGIBLE_FOR_IDENTITY_SETUP'
@@ -385,97 +370,98 @@ export async function issueAdminIdentitySetupToken(
     );
 
   /*
-   * One SQL statement means:
+   * Atomic token rotation.
    *
-   * - eligibility check
-   * - previous token invalidation
-   * - new token insertion
+   * uq_platform_admin_identity_setup_one_active is:
    *
-   * form one atomic database transition.
+   *   UNIQUE (admin_id)
+   *   WHERE used_at IS NULL
+   *     AND deleted_at IS NULL
    *
-   * The partial unique index is an additional hard guarantee.
+   * PostgreSQL can infer that partial index from the identical
+   * conflict target predicate below.
+   *
+   * If no active token exists:
+   *   INSERT a fresh row.
+   *
+   * If an active token already exists:
+   *   replace its hash and expiry in-place.
+   *
+   * In either case there remains exactly one active credential.
    */
   const result =
     await queryControl(
       `
-        WITH eligible_admin AS (
-          SELECT
-            a.id
-
-          FROM
-            platform_admins a
-
-          WHERE
-            a.id = $1
-            AND LOWER(a.email) =
-              LOWER($2)
-            AND a.status =
-              'invited'
-            AND a.email_verified =
-              TRUE
-            AND a.deleted_at
-              IS NULL
-
-          LIMIT 1
-        ),
-
-        invalidated_tokens AS (
-          UPDATE
-            platform_admin_identity_setup_tokens t
-
-          SET
-            deleted_at =
-              COALESCE(
-                t.deleted_at,
-                NOW()
-              )
-
-          WHERE
-            t.admin_id IN (
-              SELECT id
-              FROM eligible_admin
-            )
-
-            AND t.used_at
-              IS NULL
-            AND t.deleted_at
-              IS NULL
-
-          RETURNING
-            t.id
-        ),
-
-        inserted_token AS (
-          INSERT INTO
-            platform_admin_identity_setup_tokens (
-              admin_id,
-              token_hash,
-              expires_at,
-              created_at
-            )
-
-          SELECT
-            id,
-            $3,
-            $4,
-            NOW()
-
-          FROM
-            eligible_admin
-
-          RETURNING
-            id
-        )
+        INSERT INTO
+          platform_admin_identity_setup_tokens (
+            admin_id,
+            token_hash,
+            expires_at,
+            used_at,
+            deleted_at,
+            created_at
+          )
 
         SELECT
-          id
+          a.id,
+          $3,
+          $4,
+          NULL,
+          NULL,
+          NOW()
 
         FROM
-          inserted_token
+          platform_admins a
+
+        WHERE
+          a.id = $1
+
+          AND LOWER(
+            a.email
+          ) = LOWER(
+            $2
+          )
+
+          AND a.status =
+            'invited'
+
+          AND a.email_verified =
+            TRUE
+
+          AND a.deleted_at
+            IS NULL
+
+        ON CONFLICT (
+          admin_id
+        )
+        WHERE
+          used_at IS NULL
+          AND deleted_at IS NULL
+
+        DO UPDATE
+
+        SET
+          token_hash =
+            EXCLUDED.token_hash,
+
+          expires_at =
+            EXCLUDED.expires_at,
+
+          used_at =
+            NULL,
+
+          deleted_at =
+            NULL,
+
+          created_at =
+            NOW()
+
+        RETURNING
+          id
       `,
       [
-        input.adminId,
-        input.email,
+        adminId,
+        email,
         tokenHash,
         expiresAt,
       ]
@@ -505,27 +491,27 @@ export async function issueAdminIdentitySetupToken(
        ↓
    rate limit
        ↓
-   password policy
+   administrator password policy
        ↓
    consume setup token
        ↓
    invited → active
        ↓
-   replace placeholder password
+   replace provisional password
        ↓
    require 2FA
        ↓
-   revoke any stale admin sessions
+   revoke stale sessions
        ↓
    invalidate login challenges
        ↓
-   invalidate password reset tokens
+   invalidate password-reset tokens
        ↓
-   invalidate verification codes
+   invalidate email-verification codes
        ↓
-   invalidate every other setup token
+   invalidate remaining setup tokens
 
-   The DB state transition is performed by one SQL statement.
+   The state transition occurs in one SQL statement.
    ============================================================ */
 
 export async function completeAdminIdentity(
@@ -560,8 +546,7 @@ export async function completeAdminIdentity(
     )
   ) {
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'INVALID_TOKEN',
@@ -578,9 +563,6 @@ export async function completeAdminIdentity(
 
   /* ==========================================================
      2. RATE LIMIT
-
-     Public setup endpoint:
-     token fingerprint + client IP.
      ========================================================== */
 
   const rateLimitIdentifier =
@@ -637,8 +619,7 @@ export async function completeAdminIdentity(
     });
 
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'SETUP_RATE_LIMITED',
@@ -647,7 +628,8 @@ export async function completeAdminIdentity(
         'Too many administrator setup attempts. Please wait before trying again.',
 
       retryAfterSeconds:
-        rateLimit.retryAfterSeconds,
+        rateLimit
+          .retryAfterSeconds,
     };
   }
 
@@ -662,8 +644,7 @@ export async function completeAdminIdentity(
     )
   ) {
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'INVALID_PASSWORD',
@@ -679,8 +660,7 @@ export async function completeAdminIdentity(
       confirmPassword
   ) {
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'PASSWORD_MISMATCH',
@@ -691,12 +671,10 @@ export async function completeAdminIdentity(
   }
 
   /* ==========================================================
-     4. HASH NEW PASSWORD
+     4. HASH PASSWORD FIRST
 
-     Do this BEFORE consuming the setup token.
-
-     If crypto fails, the administrator does not lose the valid
-     setup challenge.
+     Never consume the setup token before successfully creating
+     the password hash.
      ========================================================== */
 
   let passwordHash:
@@ -719,8 +697,7 @@ export async function completeAdminIdentity(
     );
 
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'SETUP_COMPLETION_FAILED',
@@ -732,11 +709,6 @@ export async function completeAdminIdentity(
 
   /* ==========================================================
      5. ATOMIC IDENTITY ACTIVATION
-
-     Only ONE request can consume the setup token because:
-     - token_hash is unique
-     - used_at must still be NULL
-     - UPDATE consumes it atomically
      ========================================================== */
 
   let result;
@@ -750,7 +722,8 @@ export async function completeAdminIdentity(
               platform_admin_identity_setup_tokens t
 
             SET
-              used_at = NOW()
+              used_at =
+                NOW()
 
             FROM
               platform_admins a
@@ -809,8 +782,8 @@ export async function completeAdminIdentity(
                 TRUE,
 
               /*
-               * New administrator identities must pass through
-               * fresh 2FA setup.
+               * Every newly activated administrator starts with
+               * fresh 2FA enrollment.
                */
               two_factor_enabled =
                 FALSE,
@@ -865,8 +838,11 @@ export async function completeAdminIdentity(
 
             WHERE
               s.admin_id IN (
-                SELECT id
-                FROM activated_admin
+                SELECT
+                  id
+
+                FROM
+                  activated_admin
               )
 
               AND s.revoked_at
@@ -889,8 +865,11 @@ export async function completeAdminIdentity(
 
             WHERE
               c.admin_id IN (
-                SELECT id
-                FROM activated_admin
+                SELECT
+                  id
+
+                FROM
+                  activated_admin
               )
 
               AND c.used_at
@@ -913,8 +892,11 @@ export async function completeAdminIdentity(
 
             WHERE
               p.admin_id IN (
-                SELECT id
-                FROM activated_admin
+                SELECT
+                  id
+
+                FROM
+                  activated_admin
               )
 
               AND p.used_at
@@ -940,8 +922,11 @@ export async function completeAdminIdentity(
 
             WHERE
               v.admin_id IN (
-                SELECT id
-                FROM activated_admin
+                SELECT
+                  id
+
+                FROM
+                  activated_admin
               )
 
               AND v.used_at
@@ -967,8 +952,11 @@ export async function completeAdminIdentity(
 
             WHERE
               t.admin_id IN (
-                SELECT id
-                FROM activated_admin
+                SELECT
+                  id
+
+                FROM
+                  activated_admin
               )
 
               AND t.used_at
@@ -1032,8 +1020,7 @@ export async function completeAdminIdentity(
     });
 
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'SETUP_COMPLETION_FAILED',
@@ -1072,8 +1059,7 @@ export async function completeAdminIdentity(
     });
 
     return {
-      success:
-        false,
+      success: false,
 
       code:
         'SETUP_TOKEN_INVALID',
@@ -1088,7 +1074,7 @@ export async function completeAdminIdentity(
       ActivatedAdminRow;
 
   /* ==========================================================
-     7. RESET RATE LIMIT AFTER SUCCESS
+     7. RESET RATE LIMIT
      ========================================================== */
 
   try {
@@ -1099,10 +1085,6 @@ export async function completeAdminIdentity(
   } catch (
     error
   ) {
-    /*
-     * Successful identity activation must not be reversed because
-     * rate-limit cleanup failed.
-     */
     console.error(
       '[Admin Identity Setup] Failed to reset rate limit:',
       error instanceof
@@ -1178,8 +1160,7 @@ export async function completeAdminIdentity(
     '';
 
   return {
-    success:
-      true,
+    success: true,
 
     code:
       'ADMIN_IDENTITY_COMPLETED',
@@ -1213,20 +1194,17 @@ export async function completeAdminIdentity(
 
       twoFactorEnabled:
         Boolean(
-          activated.two_factor_enabled
+          activated
+            .two_factor_enabled
         ),
     },
 
     /*
-     * No administrator session is created here.
-
-     * The newly activated administrator signs in normally.
+     * Account setup deliberately does not create an administrator
+     * session.
      *
-     * Existing login architecture then detects:
-     *   two_factor_required = TRUE
-     *   two_factor_enabled = FALSE
-     *
-     * and routes them through the existing secure 2FA setup flow.
+     * The new administrator signs in normally and the existing
+     * authentication architecture then enforces required 2FA.
      */
     next:
       '/admin/login?reason=account_ready',
