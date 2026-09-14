@@ -16,6 +16,7 @@ import {
 
 import {
   hashAdminPassword,
+  isValidAdminPassword,
 } from '@/lib/auth/admin-auth';
 
 import {
@@ -105,9 +106,6 @@ type ResetIdentityRow = {
 const USER_MIN_PASSWORD_LENGTH =
   8;
 
-const ADMIN_MIN_PASSWORD_LENGTH =
-  12;
-
 const MAX_PASSWORD_LENGTH =
   128;
 
@@ -127,7 +125,7 @@ function normalizeToken(
 ): string {
   if (
     typeof value !==
-      'string'
+    'string'
   ) {
     return '';
   }
@@ -141,7 +139,7 @@ function normalizePassword(
 ): string {
   if (
     typeof value !==
-      'string'
+    'string'
   ) {
     return '';
   }
@@ -149,9 +147,31 @@ function normalizePassword(
   /*
    * Never trim passwords.
    *
-   * Spaces may intentionally be part of the password.
+   * Workspace passwords may deliberately contain spaces.
+   *
+   * Platform Admin whitespace restrictions are enforced by
+   * isValidAdminPassword() in admin-auth.ts.
    */
   return value;
+}
+
+/* ============================================================
+   TOKEN VALIDATION
+   ============================================================ */
+
+function isValidResetToken(
+  token:
+    string
+): boolean {
+  return (
+    token.length >=
+      MIN_RESET_TOKEN_LENGTH &&
+    token.length <=
+      MAX_RESET_TOKEN_LENGTH &&
+    /^[A-Za-z0-9_-]+$/.test(
+      token
+    )
+  );
 }
 
 /* ============================================================
@@ -177,6 +197,13 @@ function hashResetToken(
 
 /* ============================================================
    PASSWORD POLICY
+
+   Workspace:
+   - existing SaMi workspace policy remains here.
+
+   Platform Admin:
+   - NEVER duplicate the administrator policy here.
+   - admin-auth.ts is the authoritative source.
    ============================================================ */
 
 function validatePassword(
@@ -197,15 +224,39 @@ function validatePassword(
       message:
         string;
     } {
-  const minimumLength =
+  if (
     identityType ===
-      'platform_admin'
-      ? ADMIN_MIN_PASSWORD_LENGTH
-      : USER_MIN_PASSWORD_LENGTH;
+    'platform_admin'
+  ) {
+    if (
+      !isValidAdminPassword(
+        password
+      )
+    ) {
+      return {
+        success:
+          false,
 
+        message:
+          'Use 12–128 characters with uppercase, lowercase, a number and a symbol. Administrator passwords cannot contain whitespace.',
+      };
+    }
+
+    return {
+      success:
+        true,
+    };
+  }
+
+  /*
+   * Existing workspace password-reset policy.
+   *
+   * Do not silently strengthen or alter workspace authentication
+   * while catching Platform Admin up.
+   */
   if (
     password.length <
-      minimumLength ||
+      USER_MIN_PASSWORD_LENGTH ||
     password.length >
       MAX_PASSWORD_LENGTH
   ) {
@@ -214,10 +265,7 @@ function validatePassword(
         false,
 
       message:
-        identityType ===
-          'platform_admin'
-          ? 'Use between 12 and 128 characters.'
-          : 'Use between 8 and 128 characters.',
+        'Use between 8 and 128 characters.',
     };
   }
 
@@ -239,43 +287,6 @@ function validatePassword(
       message:
         'Use uppercase, lowercase and a number.',
     };
-  }
-
-  /*
-   * Platform administrators use the stricter policy already
-   * established in lib/auth/admin-auth.ts.
-   */
-  if (
-    identityType ===
-      'platform_admin'
-  ) {
-    if (
-      !/[^A-Za-z0-9]/.test(
-        password
-      )
-    ) {
-      return {
-        success:
-          false,
-
-        message:
-          'Administrator passwords must also contain a symbol.',
-      };
-    }
-
-    if (
-      /\s/.test(
-        password
-      )
-    ) {
-      return {
-        success:
-          false,
-
-        message:
-          'Administrator passwords cannot contain whitespace.',
-      };
-    }
   }
 
   return {
@@ -313,6 +324,9 @@ async function recordUserResetCompleted(
       metadata: {
         sessionsRevoked:
           true,
+
+        resetTokensInvalidated:
+          true,
       },
     });
   } catch (
@@ -320,7 +334,10 @@ async function recordUserResetCompleted(
   ) {
     console.error(
       '[Password Reset] Failed to record user password reset:',
-      error
+      error instanceof
+        Error
+        ? error.message
+        : 'Unknown audit error'
     );
   }
 }
@@ -360,6 +377,12 @@ async function recordAdminResetCompleted(
       metadata: {
         sessionsRevoked:
           true,
+
+        loginChallengesInvalidated:
+          true,
+
+        resetTokensInvalidated:
+          true,
       },
     });
   } catch (
@@ -367,7 +390,10 @@ async function recordAdminResetCompleted(
   ) {
     console.error(
       '[Password Reset] Failed to record administrator password reset:',
-      error
+      error instanceof
+        Error
+        ? error.message
+        : 'Unknown audit error'
     );
   }
 }
@@ -383,7 +409,7 @@ async function clearIdentityCookie(
   try {
     if (
       identityType ===
-        'platform_admin'
+      'platform_admin'
     ) {
       await clearAdminSessionCookie();
 
@@ -395,18 +421,41 @@ async function clearIdentityCookie(
     error
   ) {
     /*
-     * Server-side sessions have already been revoked.
-     * Cookie cleanup failure must not roll back the reset.
+     * Server-side sessions have already been revoked by the
+     * successful database reset.
+     *
+     * Browser cookie cleanup failure must never roll back the
+     * credential change.
      */
     console.error(
       '[Password Reset] Failed to clear stale authentication cookie:',
-      error
+      error instanceof
+        Error
+        ? error.message
+        : 'Unknown cookie cleanup error'
     );
   }
 }
 
 /* ============================================================
    USER RESET
+
+   Atomic security transition:
+
+   valid reset token
+        ↓
+   consume token
+        ↓
+   update password
+        ↓
+   clear temporary lock
+        ↓
+   revoke all sessions
+        ↓
+   invalidate remaining reset tokens
+
+   If the token was already consumed, expired, deleted or invalid,
+   no password update occurs.
    ============================================================ */
 
 async function resetUserPassword(
@@ -422,19 +471,24 @@ async function resetUserPassword(
     await queryControl(
       `
         WITH consumed_token AS (
-          UPDATE password_reset_tokens prt
+          UPDATE
+            password_reset_tokens prt
 
           SET
             used_at = NOW()
 
-          FROM users u
+          FROM
+            users u
 
-          WHERE prt.user_id = u.id
+          WHERE
+            prt.user_id = u.id
             AND prt.token_hash = $1
             AND prt.used_at IS NULL
             AND prt.deleted_at IS NULL
             AND prt.expires_at > NOW()
+
             AND u.deleted_at IS NULL
+
             AND LOWER(u.status) IN (
               'active',
               'locked',
@@ -446,7 +500,8 @@ async function resetUserPassword(
         ),
 
         updated_identity AS (
-          UPDATE users u
+          UPDATE
+            users u
 
           SET
             password_hash = $2,
@@ -457,18 +512,24 @@ async function resetUserPassword(
 
             status =
               CASE
-                WHEN LOWER(u.status) = 'locked'
-                THEN 'active'
-                ELSE u.status
+                WHEN
+                  LOWER(u.status) =
+                    'locked'
+                THEN
+                  'active'
+                ELSE
+                  u.status
               END,
 
-            updated_at = NOW()
+            updated_at =
+              NOW()
 
-          FROM consumed_token ct
+          FROM
+            consumed_token ct
 
-          WHERE u.id =
-            ct.user_id
-
+          WHERE
+            u.id =
+              ct.user_id
             AND u.deleted_at IS NULL
 
           RETURNING
@@ -478,7 +539,8 @@ async function resetUserPassword(
         ),
 
         revoked_sessions AS (
-          UPDATE sessions s
+          UPDATE
+            sessions s
 
           SET
             is_current = FALSE,
@@ -489,10 +551,11 @@ async function resetUserPassword(
                 NOW()
               )
 
-          WHERE s.user_id IN (
-            SELECT id
-            FROM updated_identity
-          )
+          WHERE
+            s.user_id IN (
+              SELECT id
+              FROM updated_identity
+            )
 
             AND s.revoked_at IS NULL
 
@@ -501,15 +564,21 @@ async function resetUserPassword(
         ),
 
         invalidated_tokens AS (
-          UPDATE password_reset_tokens prt
+          UPDATE
+            password_reset_tokens prt
 
           SET
-            deleted_at = NOW()
+            deleted_at =
+              COALESCE(
+                prt.deleted_at,
+                NOW()
+              )
 
-          WHERE prt.user_id IN (
-            SELECT id
-            FROM updated_identity
-          )
+          WHERE
+            prt.user_id IN (
+              SELECT id
+              FROM updated_identity
+            )
 
             AND prt.used_at IS NULL
             AND prt.deleted_at IS NULL
@@ -523,7 +592,8 @@ async function resetUserPassword(
           email,
           status
 
-        FROM updated_identity
+        FROM
+          updated_identity
       `,
       [
         tokenHash,
@@ -533,7 +603,7 @@ async function resetUserPassword(
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     return null;
   }
@@ -545,6 +615,24 @@ async function resetUserPassword(
 
 /* ============================================================
    PLATFORM ADMIN RESET
+
+   Security consequences are deliberately stronger than
+   workspace reset.
+
+   On successful reset:
+   - consume the reset token
+   - update password
+   - update password_changed_at
+   - clear temporary login lock
+   - revoke ALL admin sessions
+   - invalidate ALL pending login/2FA challenges
+   - invalidate all other password-reset tokens
+
+   Suspended / disabled / invited identities cannot use this
+   password-reset path.
+
+   Invited administrators complete their identity through the
+   separate invitation/identity-completion flow.
    ============================================================ */
 
 async function resetPlatformAdminPassword(
@@ -560,19 +648,24 @@ async function resetPlatformAdminPassword(
     await queryControl(
       `
         WITH consumed_token AS (
-          UPDATE platform_admin_password_reset_tokens prt
+          UPDATE
+            platform_admin_password_reset_tokens prt
 
           SET
             used_at = NOW()
 
-          FROM platform_admins a
+          FROM
+            platform_admins a
 
-          WHERE prt.admin_id = a.id
+          WHERE
+            prt.admin_id = a.id
             AND prt.token_hash = $1
             AND prt.used_at IS NULL
             AND prt.deleted_at IS NULL
             AND prt.expires_at > NOW()
+
             AND a.deleted_at IS NULL
+
             AND LOWER(a.status) IN (
               'active',
               'locked'
@@ -583,12 +676,14 @@ async function resetPlatformAdminPassword(
         ),
 
         updated_identity AS (
-          UPDATE platform_admins a
+          UPDATE
+            platform_admins a
 
           SET
             password_hash = $2,
 
-            password_changed_at = NOW(),
+            password_changed_at =
+              NOW(),
 
             failed_login_attempts = 0,
 
@@ -596,18 +691,38 @@ async function resetPlatformAdminPassword(
 
             status =
               CASE
-                WHEN LOWER(a.status) = 'locked'
-                THEN 'active'
-                ELSE a.status
+                /*
+                 * Password reset should only release a temporary
+                 * lock.
+                 *
+                 * A manual locked account is expected to have
+                 * locked_until IS NULL and therefore should not
+                 * arrive through a reset token request in the
+                 * hardened request engine.
+                 *
+                 * This extra condition protects the update itself.
+                 */
+                WHEN
+                  LOWER(a.status) =
+                    'locked'
+                  AND a.locked_until
+                    IS NOT NULL
+                THEN
+                  'active'
+
+                ELSE
+                  a.status
               END,
 
-            updated_at = NOW()
+            updated_at =
+              NOW()
 
-          FROM consumed_token ct
+          FROM
+            consumed_token ct
 
-          WHERE a.id =
-            ct.admin_id
-
+          WHERE
+            a.id =
+              ct.admin_id
             AND a.deleted_at IS NULL
 
           RETURNING
@@ -617,7 +732,8 @@ async function resetPlatformAdminPassword(
         ),
 
         revoked_sessions AS (
-          UPDATE platform_admin_sessions s
+          UPDATE
+            platform_admin_sessions s
 
           SET
             revoked_at =
@@ -632,10 +748,11 @@ async function resetPlatformAdminPassword(
                 'password_reset'
               )
 
-          WHERE s.admin_id IN (
-            SELECT id
-            FROM updated_identity
-          )
+          WHERE
+            s.admin_id IN (
+              SELECT id
+              FROM updated_identity
+            )
 
             AND s.revoked_at IS NULL
 
@@ -644,7 +761,8 @@ async function resetPlatformAdminPassword(
         ),
 
         invalidated_login_challenges AS (
-          UPDATE platform_admin_login_challenges c
+          UPDATE
+            platform_admin_login_challenges c
 
           SET
             used_at =
@@ -653,10 +771,11 @@ async function resetPlatformAdminPassword(
                 NOW()
               )
 
-          WHERE c.admin_id IN (
-            SELECT id
-            FROM updated_identity
-          )
+          WHERE
+            c.admin_id IN (
+              SELECT id
+              FROM updated_identity
+            )
 
             AND c.used_at IS NULL
 
@@ -665,15 +784,21 @@ async function resetPlatformAdminPassword(
         ),
 
         invalidated_tokens AS (
-          UPDATE platform_admin_password_reset_tokens prt
+          UPDATE
+            platform_admin_password_reset_tokens prt
 
           SET
-            deleted_at = NOW()
+            deleted_at =
+              COALESCE(
+                prt.deleted_at,
+                NOW()
+              )
 
-          WHERE prt.admin_id IN (
-            SELECT id
-            FROM updated_identity
-          )
+          WHERE
+            prt.admin_id IN (
+              SELECT id
+              FROM updated_identity
+            )
 
             AND prt.used_at IS NULL
             AND prt.deleted_at IS NULL
@@ -687,7 +812,8 @@ async function resetPlatformAdminPassword(
           email,
           status
 
-        FROM updated_identity
+        FROM
+          updated_identity
       `,
       [
         tokenHash,
@@ -697,7 +823,7 @@ async function resetPlatformAdminPassword(
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     return null;
   }
@@ -733,15 +859,40 @@ export async function completePasswordReset(
     );
 
   /* ==========================================================
+     IDENTITY TYPE
+
+     The TypeScript type protects normal callers, but this
+     runtime check keeps the shared security boundary fail-closed
+     if JavaScript or malformed internal usage reaches it.
+     ========================================================== */
+
+  if (
+    input.identityType !==
+      'user' &&
+    input.identityType !==
+      'platform_admin'
+  ) {
+    return {
+      success:
+        false,
+
+      code:
+        'RESET_TOKEN_INVALID',
+
+      message:
+        'This reset link is invalid or has expired.',
+    };
+  }
+
+  /* ==========================================================
      TOKEN
      ========================================================== */
 
   if (
     !token ||
-    token.length <
-      MIN_RESET_TOKEN_LENGTH ||
-    token.length >
-      MAX_RESET_TOKEN_LENGTH
+    !isValidResetToken(
+      token
+    )
   ) {
     return {
       success:
@@ -814,6 +965,13 @@ export async function completePasswordReset(
 
   /* ==========================================================
      HASH
+
+     Password hashing is intentionally performed before token
+     consumption.
+
+     If hashing fails, the valid reset token remains untouched so
+     the user/admin can retry rather than losing their recovery
+     mechanism because of a transient server crypto failure.
      ========================================================== */
 
   const tokenHash =
@@ -864,6 +1022,10 @@ export async function completePasswordReset(
 
   /* ==========================================================
      COOKIE
+
+     Database-side revocation is authoritative.
+
+     Cookie deletion is best-effort cleanup.
      ========================================================== */
 
   await clearIdentityCookie(
