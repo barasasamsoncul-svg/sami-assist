@@ -15,6 +15,10 @@ import {
   recordAdminAuditEvent,
 } from '@/lib/auth/admin-events';
 
+import {
+  queryControl,
+} from '@/lib/db/control';
+
 export const runtime =
   'nodejs';
 
@@ -26,28 +30,59 @@ export const dynamic =
    ============================================================ */
 
 type CreateAdministratorBody = {
-  firstName?:
-    unknown;
-
-  lastName?:
-    unknown;
-
-  email?:
-    unknown;
-
-  role?:
-    unknown;
+  firstName?: unknown;
+  lastName?: unknown;
+  email?: unknown;
+  role?: unknown;
 };
+
+type AdministratorRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+  status: string;
+  email_verified: boolean;
+  email_verified_at: Date | string | null;
+  two_factor_required: boolean;
+  two_factor_enabled: boolean;
+  failed_login_attempts: number;
+  locked_until: Date | string | null;
+  last_login_at: Date | string | null;
+  last_login_ip: string | null;
+  password_changed_at: Date | string | null;
+  created_by: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
+const ADMIN_ROLES = [
+  'super_admin',
+  'security_admin',
+  'support_admin',
+  'billing_admin',
+  'operations_admin',
+  'developer_admin',
+  'read_only_admin',
+] as const;
+
+const ADMIN_STATUSES = [
+  'invited',
+  'active',
+  'suspended',
+  'locked',
+  'disabled',
+] as const;
 
 /* ============================================================
    RESPONSE
    ============================================================ */
 
 function jsonResponse(
-  body:
-    Record<string, unknown>,
-  status =
-    200
+  body: Record<string, unknown>,
+  status = 200,
+  extraHeaders?: Record<string, string>
 ) {
   return NextResponse.json(
     body,
@@ -56,33 +91,29 @@ function jsonResponse(
 
       headers: {
         'Cache-Control':
-          'no-store, no-cache, must-revalidate',
+          'no-store, no-cache, must-revalidate, private',
 
         Pragma:
           'no-cache',
+
+        Expires:
+          '0',
+
+        'X-Content-Type-Options':
+          'nosniff',
+
+        ...extraHeaders,
       },
     }
   );
 }
 
 /* ============================================================
-   ORIGIN / CSRF PROTECTION
-
-   The administrator session cookie uses SameSite=Strict, but
-   privileged state-changing routes should still reject requests
-   originating from an unexpected website.
-
-   We allow:
-   - the request's own origin
-   - APP_URL origin, when configured
-
-   Same-origin browser requests therefore work locally and in
-   production without hardcoding localhost or a future domain.
+   CSRF / ORIGIN
    ============================================================ */
 
 function getAllowedOrigins(
-  request:
-    NextRequest
+  request: NextRequest
 ): Set<string> {
   const origins =
     new Set<string>();
@@ -92,16 +123,14 @@ function getAllowedOrigins(
       request.nextUrl.origin
     );
   } catch {
-    // Ignore malformed request origin.
+    // Ignore malformed request URL.
   }
 
   const appUrl =
     process.env.APP_URL
       ?.trim();
 
-  if (
-    appUrl
-  ) {
+  if (appUrl) {
     try {
       origins.add(
         new URL(
@@ -109,13 +138,7 @@ function getAllowedOrigins(
         ).origin
       );
     } catch {
-      /*
-       * Environment validation should eventually happen during
-       * application startup/deployment validation.
-       *
-       * Do not crash this request merely because APP_URL is
-       * malformed when request.nextUrl.origin is still usable.
-       */
+      // Deployment configuration issue.
     }
   }
 
@@ -123,8 +146,7 @@ function getAllowedOrigins(
 }
 
 function isTrustedMutationRequest(
-  request:
-    NextRequest
+  request: NextRequest
 ): boolean {
   const origin =
     request.headers.get(
@@ -136,57 +158,28 @@ function isTrustedMutationRequest(
       'sec-fetch-site'
     );
 
-  /*
-   * Explicit cross-site browser requests are never accepted.
-   */
   if (
     secFetchSite ===
-      'cross-site'
+    'cross-site'
   ) {
     return false;
   }
 
-  /*
-   * Browsers normally send Origin for fetch POST requests.
-   *
-   * When supplied, it must exactly match one of our known
-   * application origins.
-   */
-  if (
-    origin
-  ) {
-    const allowedOrigins =
-      getAllowedOrigins(
-        request
-      );
-
+  if (origin) {
     try {
-      const normalizedOrigin =
+      return getAllowedOrigins(
+        request
+      ).has(
         new URL(
           origin
-        ).origin;
-
-      return allowedOrigins.has(
-        normalizedOrigin
+        ).origin
       );
     } catch {
       return false;
     }
   }
 
-  /*
-   * Requests without Origin can occur in some same-origin or
-   * non-browser contexts.
-   *
-   * If Sec-Fetch-Site explicitly says same-origin, allow it.
-   *
-   * We do not allow "same-site" for this privileged admin write
-   * because another subdomain should not automatically inherit
-   * authority to provision SaMi Platform Administrators.
-   */
-  if (
-    secFetchSite
-  ) {
+  if (secFetchSite) {
     return (
       secFetchSite ===
         'same-origin' ||
@@ -195,24 +188,15 @@ function isTrustedMutationRequest(
     );
   }
 
-  /*
-   * Fall back to allowing requests where browser fetch metadata
-   * is unavailable. Authentication + authorization still apply.
-   *
-   * This preserves compatibility with development/testing tools
-   * while Origin-bearing cross-site browser requests remain
-   * blocked.
-   */
   return true;
 }
 
 /* ============================================================
-   DATABASE AVAILABILITY
+   INFRASTRUCTURE ERROR
    ============================================================ */
 
 function isDatabaseAvailabilityError(
-  error:
-    unknown
+  error: unknown
 ): boolean {
   if (
     !error ||
@@ -224,14 +208,8 @@ function isDatabaseAvailabilityError(
 
   const candidate =
     error as {
-      code?:
-        unknown;
-
-      message?:
-        unknown;
-
-      cause?:
-        unknown;
+      code?: unknown;
+      message?: unknown;
     };
 
   const code =
@@ -247,17 +225,13 @@ function isDatabaseAvailabilityError(
           .toLowerCase()
       : '';
 
-  const transientCodes =
+  const codes =
     new Set([
       'ECONNREFUSED',
       'ECONNRESET',
       'ETIMEDOUT',
       'EHOSTUNREACH',
       'ENETUNREACH',
-
-      /*
-       * PostgreSQL connection exception class.
-       */
       '08000',
       '08001',
       '08003',
@@ -265,24 +239,15 @@ function isDatabaseAvailabilityError(
       '08006',
       '08007',
       '08P01',
-
-      /*
-       * PostgreSQL server shutdown / unavailable.
-       */
       '57P01',
       '57P02',
       '57P03',
     ]);
 
-  if (
-    transientCodes.has(
-      code
-    )
-  ) {
-    return true;
-  }
-
   return (
+    codes.has(
+      code
+    ) ||
     message.includes(
       'connection terminated'
     ) ||
@@ -299,41 +264,28 @@ function isDatabaseAvailabilityError(
       'timeout'
     ) ||
     message.includes(
-      'server closed the connection'
-    ) ||
-    message.includes(
       'database is unavailable'
-    ) ||
-    message.includes(
-      'cannot connect'
     )
   );
 }
 
 /* ============================================================
    SAFE AUDIT
-
-   Audit persistence failure must not replace the primary API
-   result.
    ============================================================ */
 
 async function safeRecordAudit(
-  input:
-    Parameters<
-      typeof recordAdminAuditEvent
-    >[0]
+  input: Parameters<
+    typeof recordAdminAuditEvent
+  >[0]
 ) {
   try {
     await recordAdminAuditEvent(
       input
     );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
-      '[Admin Administrators API] Audit event failed:',
-      error instanceof
-        Error
+      '[Admin Administrators API] Audit failed:',
+      error instanceof Error
         ? error.message
         : 'Unknown audit error'
     );
@@ -341,20 +293,572 @@ async function safeRecordAudit(
 }
 
 /* ============================================================
+   SERIALIZATION
+   ============================================================ */
+
+function serializeAdministrator(
+  row: AdministratorRow
+) {
+  return {
+    id:
+      row.id,
+
+    firstName:
+      row.first_name,
+
+    lastName:
+      row.last_name,
+
+    fullName:
+      `${row.first_name} ${row.last_name}`
+        .trim(),
+
+    email:
+      row.email,
+
+    role:
+      row.role,
+
+    status:
+      row.status,
+
+    emailVerified:
+      Boolean(
+        row.email_verified
+      ),
+
+    emailVerifiedAt:
+      row.email_verified_at,
+
+    twoFactorRequired:
+      Boolean(
+        row.two_factor_required
+      ),
+
+    twoFactorEnabled:
+      Boolean(
+        row.two_factor_enabled
+      ),
+
+    failedLoginAttempts:
+      Number(
+        row.failed_login_attempts ||
+          0
+      ),
+
+    lockedUntil:
+      row.locked_until,
+
+    lastLoginAt:
+      row.last_login_at,
+
+    lastLoginIp:
+      row.last_login_ip,
+
+    passwordChangedAt:
+      row.password_changed_at,
+
+    createdBy:
+      row.created_by,
+
+    createdAt:
+      row.created_at,
+
+    updatedAt:
+      row.updated_at,
+  };
+}
+
+/* ============================================================
+   GET /api/admin/administrators
+   ============================================================ */
+
+export async function GET(
+  request: NextRequest
+) {
+  try {
+    const session =
+      await requireAdminRole([
+        'super_admin',
+      ]);
+
+    if (
+      session.status !==
+        'active' ||
+      !session.emailVerified
+    ) {
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          code:
+            'ADMIN_SECURITY_REQUIREMENTS_NOT_MET',
+
+          error:
+            'Your administrator account cannot perform this action.',
+        },
+        403
+      );
+    }
+
+    const searchParams =
+      request.nextUrl
+        .searchParams;
+
+    const rawQuery =
+      searchParams
+        .get('q')
+        ?.trim() ||
+      '';
+
+    const query =
+      rawQuery.slice(
+        0,
+        120
+      );
+
+    const rawRole =
+      searchParams
+        .get('role')
+        ?.trim() ||
+      '';
+
+    const role =
+      ADMIN_ROLES.includes(
+        rawRole as
+          (typeof ADMIN_ROLES)[number]
+      )
+        ? rawRole
+        : '';
+
+    const rawStatus =
+      searchParams
+        .get('status')
+        ?.trim() ||
+      '';
+
+    const status =
+      ADMIN_STATUSES.includes(
+        rawStatus as
+          (typeof ADMIN_STATUSES)[number]
+      )
+        ? rawStatus
+        : '';
+
+    const requestedPage =
+      Number(
+        searchParams.get(
+          'page'
+        ) ||
+          1
+      );
+
+    const requestedLimit =
+      Number(
+        searchParams.get(
+          'limit'
+        ) ||
+          25
+      );
+
+    const page =
+      Number.isInteger(
+        requestedPage
+      ) &&
+      requestedPage > 0
+        ? requestedPage
+        : 1;
+
+    const limit =
+      Number.isInteger(
+        requestedLimit
+      )
+        ? Math.min(
+            100,
+            Math.max(
+              1,
+              requestedLimit
+            )
+          )
+        : 25;
+
+    const offset =
+      (page - 1) *
+      limit;
+
+    const filters:
+      string[] = [
+        'a.deleted_at IS NULL',
+      ];
+
+    const values:
+      unknown[] = [];
+
+    if (query) {
+      values.push(
+        `%${query}%`
+      );
+
+      const index =
+        values.length;
+
+      filters.push(
+        `(
+          a.first_name ILIKE $${index}
+          OR a.last_name ILIKE $${index}
+          OR a.email ILIKE $${index}
+          OR CONCAT(a.first_name, ' ', a.last_name) ILIKE $${index}
+        )`
+      );
+    }
+
+    if (role) {
+      values.push(
+        role
+      );
+
+      filters.push(
+        `a.role = $${values.length}`
+      );
+    }
+
+    if (status) {
+      values.push(
+        status
+      );
+
+      filters.push(
+        `a.status = $${values.length}`
+      );
+    }
+
+    const whereClause =
+      filters.join(
+        '\nAND '
+      );
+
+    const countResult =
+      await queryControl(
+        `
+          SELECT
+            COUNT(*)::int AS total
+
+          FROM
+            platform_admins a
+
+          WHERE
+            ${whereClause}
+        `,
+        values
+      );
+
+    const total =
+      Number(
+        countResult.rows[0]
+          ?.total ||
+          0
+      );
+
+    const listValues = [
+      ...values,
+      limit,
+      offset,
+    ];
+
+    const limitIndex =
+      listValues.length -
+      1;
+
+    const offsetIndex =
+      listValues.length;
+
+    const administratorsResult =
+      await queryControl(
+        `
+          SELECT
+            a.id,
+            a.first_name,
+            a.last_name,
+            a.email,
+            a.role,
+            a.status,
+            a.email_verified,
+            a.email_verified_at,
+            a.two_factor_required,
+            a.two_factor_enabled,
+            a.failed_login_attempts,
+            a.locked_until,
+            a.last_login_at,
+            a.last_login_ip,
+            a.password_changed_at,
+            a.created_by,
+            a.created_at,
+            a.updated_at
+
+          FROM
+            platform_admins a
+
+          WHERE
+            ${whereClause}
+
+          ORDER BY
+            CASE
+              WHEN a.status = 'active'
+              THEN 0
+
+              WHEN a.status = 'invited'
+              THEN 1
+
+              ELSE 2
+            END,
+
+            a.created_at DESC
+
+          LIMIT
+            $${limitIndex}
+
+          OFFSET
+            $${offsetIndex}
+        `,
+        listValues
+      );
+
+    const summaryResult =
+      await queryControl(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+            )::int AS total,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND status = 'active'
+            )::int AS active,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND status = 'invited'
+            )::int AS invited,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND status = 'locked'
+            )::int AS locked,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND status = 'suspended'
+            )::int AS suspended,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND status = 'disabled'
+            )::int AS disabled,
+
+            COUNT(*) FILTER (
+              WHERE deleted_at IS NULL
+                AND two_factor_enabled = TRUE
+            )::int AS two_factor_enabled
+
+          FROM
+            platform_admins
+        `
+      );
+
+    const summary =
+      summaryResult.rows[0] ||
+      {};
+
+    return jsonResponse({
+      success:
+        true,
+
+      administrators:
+        administratorsResult
+          .rows
+          .map(
+            row =>
+              serializeAdministrator(
+                row as
+                  AdministratorRow
+              )
+          ),
+
+      summary: {
+        total:
+          Number(
+            summary.total ||
+              0
+          ),
+
+        active:
+          Number(
+            summary.active ||
+              0
+          ),
+
+        invited:
+          Number(
+            summary.invited ||
+              0
+          ),
+
+        locked:
+          Number(
+            summary.locked ||
+              0
+          ),
+
+        suspended:
+          Number(
+            summary.suspended ||
+              0
+          ),
+
+        disabled:
+          Number(
+            summary.disabled ||
+              0
+          ),
+
+        twoFactorEnabled:
+          Number(
+            summary.two_factor_enabled ||
+              0
+          ),
+      },
+
+      pagination: {
+        page,
+        limit,
+        total,
+
+        totalPages:
+          Math.max(
+            1,
+            Math.ceil(
+              total /
+                limit
+            )
+          ),
+      },
+
+      filters: {
+        query,
+        role:
+          role ||
+          null,
+
+        status:
+          status ||
+          null,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        'ADMIN_UNAUTHENTICATED'
+    ) {
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          code:
+            'ADMIN_UNAUTHENTICATED',
+
+          error:
+            'Administrator authentication is required.',
+        },
+        401
+      );
+    }
+
+    if (
+      error instanceof
+        Error &&
+      error.message ===
+        'ADMIN_FORBIDDEN'
+    ) {
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          code:
+            'ADMIN_FORBIDDEN',
+
+          error:
+            'Only a Super Administrator can manage Platform Administrators.',
+        },
+        403
+      );
+    }
+
+    if (
+      isDatabaseAvailabilityError(
+        error
+      )
+    ) {
+      console.error(
+        '[Admin Administrators API] Database temporarily unavailable:',
+        error instanceof Error
+          ? error.message
+          : 'Unknown database error'
+      );
+
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          code:
+            'SERVICE_TEMPORARILY_UNAVAILABLE',
+
+          error:
+            'SaMi is temporarily unable to load Platform Administrators.',
+        },
+        503,
+        {
+          'Retry-After':
+            '30',
+        }
+      );
+    }
+
+    console.error(
+      '[Admin Administrators API] GET failed:',
+      error instanceof Error
+        ? error.message
+        : 'Unknown administrators error'
+    );
+
+    return jsonResponse(
+      {
+        success:
+          false,
+
+        code:
+          'ADMINISTRATORS_LOAD_FAILED',
+
+        error:
+          'SaMi could not load Platform Administrators.',
+      },
+      500
+    );
+  }
+}
+
+/* ============================================================
    POST /api/admin/administrators
-
-   Provision a Platform Administrator.
-
-   CATEGORY 1 SECURITY RULE:
-   Only super_admin may provision another platform identity.
-
-   Category 8 will later introduce the complete fine-grained
-   roles/permissions administration model.
    ============================================================ */
 
 export async function POST(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
   let actorAdminId:
     string | null =
@@ -365,10 +869,6 @@ export async function POST(
     null;
 
   try {
-    /* ========================================================
-       1. CSRF / ORIGIN BOUNDARY
-       ======================================================== */
-
     if (
       !isTrustedMutationRequest(
         request
@@ -408,12 +908,6 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       2. AUTHENTICATION + AUTHORIZATION
-
-       Never accept actorAdminId / actorRole from the browser.
-       ======================================================== */
-
     const session =
       await requireAdminRole([
         'super_admin',
@@ -425,12 +919,6 @@ export async function POST(
     actorSessionId =
       session.sessionId;
 
-    /*
-     * requireAdminSession() already resolves only an active
-     * platform_admin session, but these checks deliberately make
-     * this privileged route fail closed if session semantics are
-     * later changed.
-     */
     if (
       session.status !==
         'active' ||
@@ -487,16 +975,11 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       3. CONTENT TYPE
-
-       Prevent ambiguous form/body parsing on this JSON API.
-       ======================================================== */
-
     const contentType =
       request.headers.get(
         'content-type'
-      ) || '';
+      ) ||
+      '';
 
     if (
       !contentType
@@ -520,9 +1003,35 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       4. BODY
-       ======================================================== */
+    const contentLength =
+      Number(
+        request.headers.get(
+          'content-length'
+        ) ||
+          0
+      );
+
+    if (
+      Number.isFinite(
+        contentLength
+      ) &&
+      contentLength >
+        16 * 1024
+    ) {
+      return jsonResponse(
+        {
+          success:
+            false,
+
+          code:
+            'REQUEST_TOO_LARGE',
+
+          error:
+            'The request is too large.',
+        },
+        413
+      );
+    }
 
     let body:
       CreateAdministratorBody;
@@ -574,14 +1083,6 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       5. PROVISION
-
-       The identity-domain service independently revalidates the
-       actor against platform_admins. The route-level role check
-       alone is intentionally not the final authority.
-       ======================================================== */
-
     const result =
       await provisionPlatformAdmin({
         request,
@@ -604,10 +1105,6 @@ export async function POST(
         role:
           body.role,
       });
-
-    /* ========================================================
-       6. CONTROLLED FAILURES
-       ======================================================== */
 
     if (
       !result.success
@@ -680,24 +1177,6 @@ export async function POST(
       }
     }
 
-    /* ========================================================
-       7. SUCCESS
-
-       Important architecture change:
-
-       Verification-email failure is NOT identity-provisioning
-       failure.
-
-       The provisioning service now returns one of:
-
-       ADMIN_PROVISIONED
-       ADMIN_PROVISIONED_VERIFICATION_PENDING
-
-       In both cases the administrator identity exists.
-
-       Therefore the caller must never blindly re-submit creation.
-       ======================================================== */
-
     const verificationPending =
       result.code ===
       'ADMIN_PROVISIONED_VERIFICATION_PENDING';
@@ -732,13 +1211,7 @@ export async function POST(
       },
       201
     );
-  } catch (
-    error
-  ) {
-    /* ========================================================
-       8. AUTHENTICATION FAILURE
-       ======================================================== */
-
+  } catch (error) {
     if (
       error instanceof
         Error &&
@@ -759,10 +1232,6 @@ export async function POST(
         401
       );
     }
-
-    /* ========================================================
-       9. AUTHORIZATION FAILURE
-       ======================================================== */
 
     if (
       error instanceof
@@ -814,12 +1283,6 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       10. TEMPORARY INFRASTRUCTURE FAILURE
-
-       Never expose raw Neon/PostgreSQL details.
-       ======================================================== */
-
     if (
       isDatabaseAvailabilityError(
         error
@@ -827,45 +1290,10 @@ export async function POST(
     ) {
       console.error(
         '[Admin Administrators API] Database temporarily unavailable:',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
-          : 'Unknown database availability error'
+          : 'Unknown database error'
       );
-
-      if (
-        actorAdminId
-      ) {
-        await safeRecordAudit({
-          request,
-
-          adminId:
-            actorAdminId,
-
-          sessionId:
-            actorSessionId,
-
-          eventType:
-            'admin.identity.provision_failed',
-
-          action:
-            'provision_platform_admin',
-
-          targetType:
-            'platform_admin',
-
-          successful:
-            false,
-
-          failureReason:
-            'database_temporarily_unavailable',
-
-          metadata: {
-            infrastructure:
-              'control_database',
-          },
-        });
-      }
 
       return jsonResponse(
         {
@@ -876,52 +1304,22 @@ export async function POST(
             'SERVICE_TEMPORARILY_UNAVAILABLE',
 
           error:
-            'SaMi is temporarily unable to complete this request. Try again shortly.',
+            'SaMi is temporarily unable to provision Platform Administrators.',
         },
-        503
+        503,
+        {
+          'Retry-After':
+            '30',
+        }
       );
     }
 
-    /* ========================================================
-       11. UNKNOWN INTERNAL ERROR
-       ======================================================== */
-
     console.error(
-      '[Admin Administrators API] Unexpected error:',
-      error instanceof
-        Error
+      '[Admin Administrators API] Provision failed:',
+      error instanceof Error
         ? error.message
-        : 'Unknown administrator provisioning error'
+        : 'Unknown provisioning error'
     );
-
-    if (
-      actorAdminId
-    ) {
-      await safeRecordAudit({
-        request,
-
-        adminId:
-          actorAdminId,
-
-        sessionId:
-          actorSessionId,
-
-        eventType:
-          'admin.identity.provision_failed',
-
-        action:
-          'provision_platform_admin',
-
-        targetType:
-          'platform_admin',
-
-        successful:
-          false,
-
-        failureReason:
-          'internal_error',
-      });
-    }
 
     return jsonResponse(
       {
@@ -929,10 +1327,10 @@ export async function POST(
           false,
 
         code:
-          'ADMIN_PROVISIONING_ERROR',
+          'ADMINISTRATOR_PROVISIONING_ERROR',
 
         error:
-          'SaMi could not complete administrator provisioning.',
+          'SaMi could not provision the Platform Administrator.',
       },
       500
     );
