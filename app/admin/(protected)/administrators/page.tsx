@@ -4,6 +4,7 @@ import {
   FormEvent,
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -11,8 +12,11 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Edit3,
   Loader2,
+  LockKeyhole,
   Mail,
+  MoreHorizontal,
   Plus,
   RefreshCcw,
   Search,
@@ -24,6 +28,7 @@ import {
 } from 'lucide-react';
 
 import SaMiOverlay, {
+  type SaMiOverlayAction,
   type SaMiOverlayType,
 } from '@/app/components/SaMiOverlay';
 
@@ -48,273 +53,214 @@ type PlatformAdminStatus =
   | 'disabled';
 
 type Administrator = {
-  id:
-    string;
+  id: string;
 
-  firstName:
-    string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
 
-  lastName:
-    string;
+  email: string;
 
-  fullName:
-    string;
+  role: PlatformAdminRole;
 
-  email:
-    string;
+  status: PlatformAdminStatus;
 
-  role:
-    PlatformAdminRole;
+  emailVerified: boolean;
+  emailVerifiedAt: string | null;
 
-  status:
-    PlatformAdminStatus;
+  twoFactorRequired: boolean;
+  twoFactorEnabled: boolean;
 
-  emailVerified:
-    boolean;
+  failedLoginAttempts: number;
 
-  emailVerifiedAt:
-    string | null;
+  lockedUntil: string | null;
 
-  twoFactorRequired:
-    boolean;
+  lastLoginAt: string | null;
+  lastLoginIp: string | null;
 
-  twoFactorEnabled:
-    boolean;
+  passwordChangedAt: string | null;
 
-  failedLoginAttempts:
-    number;
+  createdBy: string | null;
 
-  lockedUntil:
-    string | null;
-
-  lastLoginAt:
-    string | null;
-
-  lastLoginIp:
-    string | null;
-
-  passwordChangedAt:
-    string | null;
-
-  createdBy:
-    string | null;
-
-  createdAt:
-    string;
-
-  updatedAt:
-    string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Summary = {
-  total:
-    number;
-
-  active:
-    number;
-
-  invited:
-    number;
-
-  locked:
-    number;
-
-  suspended:
-    number;
-
-  disabled:
-    number;
-
-  twoFactorEnabled:
-    number;
+  total: number;
+  active: number;
+  invited: number;
+  locked: number;
+  suspended: number;
+  disabled: number;
+  twoFactorEnabled: number;
 };
 
 type Pagination = {
-  page:
-    number;
-
-  limit:
-    number;
-
-  total:
-    number;
-
-  totalPages:
-    number;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
 };
 
 type AdministratorsResponse = {
-  success?:
-    boolean;
+  success?: boolean;
+  code?: string;
+  error?: string;
 
-  code?:
-    string;
+  administrators?: Administrator[];
 
-  error?:
-    string;
+  summary?: Summary;
 
-  administrators?:
-    Administrator[];
-
-  summary?:
-    Summary;
-
-  pagination?:
-    Pagination;
+  pagination?: Pagination;
 };
 
 type CreateResponse = {
-  success?:
-    boolean;
-
-  code?:
-    string;
-
-  error?:
-    string;
-
-  message?:
-    string;
+  success?: boolean;
+  code?: string;
+  error?: string;
+  message?: string;
 
   verification?: {
-    sent?:
-      boolean;
+    sent?: boolean;
+    pending?: boolean;
+    cooldown?: boolean;
+    retryAfterSeconds?: number | null;
+  };
+};
 
-    pending?:
-      boolean;
+type LifecycleResponse = {
+  success?: boolean;
+  code?: string;
+  error?: string;
+  message?: string;
 
-    cooldown?:
-      boolean;
+  admin?: Administrator;
 
-    retryAfterSeconds?:
-      number | null;
+  security?: {
+    sessionsRevoked?: number;
+    challengesInvalidated?: number;
   };
 };
 
 type OverlayState = {
-  open:
-    boolean;
+  open: boolean;
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
 
-  type:
-    SaMiOverlayType;
-
-  title:
-    string;
-
-  message:
-    string;
+  primaryAction?: SaMiOverlayAction;
+  secondaryAction?: SaMiOverlayAction;
 };
+
+type ManageMode =
+  | 'role'
+  | 'status'
+  | 'unlock'
+  | null;
 
 /* ============================================================
    CONSTANTS
    ============================================================ */
 
 const ROLE_OPTIONS: {
-  value:
-    PlatformAdminRole;
-
-  label:
-    string;
-
-  description:
-    string;
+  value: PlatformAdminRole;
+  label: string;
+  description: string;
 }[] = [
   {
-    value:
-      'super_admin',
-
-    label:
-      'Super Administrator',
-
+    value: 'super_admin',
+    label: 'Super Administrator',
     description:
       'Full Platform Administration authority.',
   },
 
   {
-    value:
-      'security_admin',
-
-    label:
-      'Security Administrator',
-
+    value: 'security_admin',
+    label: 'Security Administrator',
     description:
       'Platform security and investigation responsibilities.',
   },
 
   {
-    value:
-      'support_admin',
-
-    label:
-      'Support Administrator',
-
+    value: 'support_admin',
+    label: 'Support Administrator',
     description:
       'Customer and tenant support responsibilities.',
   },
 
   {
-    value:
-      'billing_admin',
-
-    label:
-      'Billing Administrator',
-
+    value: 'billing_admin',
+    label: 'Billing Administrator',
     description:
       'Subscription and billing responsibilities.',
   },
 
   {
-    value:
-      'operations_admin',
-
-    label:
-      'Operations Administrator',
-
+    value: 'operations_admin',
+    label: 'Operations Administrator',
     description:
       'Platform operational responsibilities.',
   },
 
   {
-    value:
-      'developer_admin',
-
-    label:
-      'Developer Administrator',
-
+    value: 'developer_admin',
+    label: 'Developer Administrator',
     description:
       'Technical platform and developer responsibilities.',
   },
 
   {
-    value:
-      'read_only_admin',
-
-    label:
-      'Read-only Administrator',
-
+    value: 'read_only_admin',
+    label: 'Read-only Administrator',
     description:
       'Read-only Platform Administration access.',
   },
 ];
 
-const STATUS_OPTIONS = [
-  '',
+const FILTER_STATUS_OPTIONS: PlatformAdminStatus[] = [
   'active',
   'invited',
   'locked',
   'suspended',
   'disabled',
-] as const;
+];
+
+const MUTABLE_STATUS_OPTIONS: {
+  value: 'active' | 'suspended' | 'disabled';
+  label: string;
+  description: string;
+}[] = [
+  {
+    value: 'active',
+    label: 'Active',
+    description:
+      'Allow this administrator to authenticate and use their assigned role.',
+  },
+
+  {
+    value: 'suspended',
+    label: 'Suspended',
+    description:
+      'Temporarily prevent access while preserving the administrator identity.',
+  },
+
+  {
+    value: 'disabled',
+    label: 'Disabled',
+    description:
+      'Disable Platform Administrator access until explicitly reactivated.',
+  },
+];
 
 /* ============================================================
    HELPERS
    ============================================================ */
 
 function roleLabel(
-  role:
-    string
+  value: string
 ) {
-  return role
+  return value
     .split('_')
     .map(
       part =>
@@ -327,8 +273,7 @@ function roleLabel(
 }
 
 function statusClasses(
-  status:
-    PlatformAdminStatus
+  status: PlatformAdminStatus
 ) {
   switch (status) {
     case 'active':
@@ -349,12 +294,9 @@ function statusClasses(
 }
 
 function formatDate(
-  value:
-    string | null
+  value: string | null
 ) {
-  if (
-    !value
-  ) {
+  if (!value) {
     return 'Never';
   }
 
@@ -374,11 +316,8 @@ function formatDate(
   return new Intl.DateTimeFormat(
     undefined,
     {
-      dateStyle:
-        'medium',
-
-      timeStyle:
-        'short',
+      dateStyle: 'medium',
+      timeStyle: 'short',
     }
   ).format(
     date
@@ -394,35 +333,22 @@ export default function AdministratorsPage() {
     administrators,
     setAdministrators,
   ] =
-    useState<
-      Administrator[]
-    >([]);
+    useState<Administrator[]>(
+      []
+    );
 
   const [
     summary,
     setSummary,
   ] =
     useState<Summary>({
-      total:
-        0,
-
-      active:
-        0,
-
-      invited:
-        0,
-
-      locked:
-        0,
-
-      suspended:
-        0,
-
-      disabled:
-        0,
-
-      twoFactorEnabled:
-        0,
+      total: 0,
+      active: 0,
+      invited: 0,
+      locked: 0,
+      suspended: 0,
+      disabled: 0,
+      twoFactorEnabled: 0,
     });
 
   const [
@@ -430,24 +356,19 @@ export default function AdministratorsPage() {
     setPagination,
   ] =
     useState<Pagination>({
-      page:
-        1,
-
-      limit:
-        25,
-
-      total:
-        0,
-
-      totalPages:
-        1,
+      page: 1,
+      limit: 25,
+      total: 0,
+      totalPages: 1,
     });
 
   const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true
+    );
 
   const [
     query,
@@ -473,17 +394,25 @@ export default function AdministratorsPage() {
   ] =
     useState('');
 
+  /* ==========================================================
+     CREATE ADMIN
+     ========================================================== */
+
   const [
     createOpen,
     setCreateOpen,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     creating,
     setCreating,
   ] =
-    useState(false);
+    useState(
+      false
+    );
 
   const [
     firstName,
@@ -507,9 +436,7 @@ export default function AdministratorsPage() {
     newRole,
     setNewRole,
   ] =
-    useState<
-      PlatformAdminRole
-    >(
+    useState<PlatformAdminRole>(
       'read_only_admin'
     );
 
@@ -519,23 +446,98 @@ export default function AdministratorsPage() {
   ] =
     useState('');
 
+  /* ==========================================================
+     MANAGE ADMIN
+     ========================================================== */
+
+  const [
+    selectedAdmin,
+    setSelectedAdmin,
+  ] =
+    useState<Administrator | null>(
+      null
+    );
+
+  const [
+    manageMode,
+    setManageMode,
+  ] =
+    useState<ManageMode>(
+      null
+    );
+
+  const [
+    selectedRole,
+    setSelectedRole,
+  ] =
+    useState<PlatformAdminRole>(
+      'read_only_admin'
+    );
+
+  const [
+    selectedStatus,
+    setSelectedStatus,
+  ] =
+    useState<
+      'active' | 'suspended' | 'disabled'
+    >(
+      'active'
+    );
+
+  const [
+    mutating,
+    setMutating,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    mutationError,
+    setMutationError,
+  ] =
+    useState('');
+
+  /* ==========================================================
+     OVERLAY
+     ========================================================== */
+
   const [
     overlay,
     setOverlay,
   ] =
     useState<OverlayState>({
-      open:
-        false,
-
-      type:
-        'info',
-
-      title:
-        '',
-
-      message:
-        '',
+      open: false,
+      type: 'info',
+      title: '',
+      message: '',
     });
+
+  function closeOverlay() {
+    setOverlay(
+      current => ({
+        ...current,
+        open: false,
+      })
+    );
+  }
+
+  function showOverlay(
+    type: SaMiOverlayType,
+    title: string,
+    message: string,
+    primaryAction?: SaMiOverlayAction,
+    secondaryAction?: SaMiOverlayAction
+  ) {
+    setOverlay({
+      open: true,
+      type,
+      title,
+      message,
+      primaryAction,
+      secondaryAction,
+    });
+  }
 
   /* ==========================================================
      LOAD
@@ -606,9 +608,17 @@ export default function AdministratorsPage() {
               }
             );
 
-          const data:
-            AdministratorsResponse =
-            await response.json();
+          let data:
+            AdministratorsResponse;
+
+          try {
+            data =
+              await response.json();
+          } catch {
+            throw new Error(
+              'SaMi returned an invalid administrator response.'
+            );
+          }
 
           if (
             !response.ok ||
@@ -640,23 +650,17 @@ export default function AdministratorsPage() {
               data.pagination
             );
           }
-        } catch (error) {
-          setOverlay({
-            open:
-              true,
-
-            type:
-              'error',
-
-            title:
-              'Administrators unavailable',
-
-            message:
-              error instanceof
-                Error
-                ? error.message
-                : 'SaMi could not load Platform Administrators.',
-          });
+        } catch (
+          error
+        ) {
+          showOverlay(
+            'error',
+            'Administrators unavailable',
+            error instanceof
+              Error
+              ? error.message
+              : 'SaMi could not load Platform Administrators.'
+          );
         } finally {
           setLoading(
             false
@@ -690,8 +694,7 @@ export default function AdministratorsPage() {
      ========================================================== */
 
   function submitSearch(
-    event:
-      FormEvent
+    event: FormEvent
   ) {
     event.preventDefault();
 
@@ -705,8 +708,7 @@ export default function AdministratorsPage() {
      ========================================================== */
 
   async function createAdministrator(
-    event:
-      FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -739,8 +741,7 @@ export default function AdministratorsPage() {
         await fetch(
           '/api/admin/administrators',
           {
-            method:
-              'POST',
+            method: 'POST',
 
             headers: {
               'Content-Type':
@@ -767,9 +768,19 @@ export default function AdministratorsPage() {
           }
         );
 
-      const data:
-        CreateResponse =
-        await response.json();
+      let data:
+        CreateResponse;
+
+      try {
+        data =
+          await response.json();
+      } catch {
+        setFormError(
+          'SaMi returned an invalid response.'
+        );
+
+        return;
+      }
 
       if (
         !response.ok ||
@@ -787,17 +798,9 @@ export default function AdministratorsPage() {
         false
       );
 
-      setFirstName(
-        ''
-      );
-
-      setLastName(
-        ''
-      );
-
-      setEmail(
-        ''
-      );
+      setFirstName('');
+      setLastName('');
+      setEmail('');
 
       setNewRole(
         'read_only_admin'
@@ -811,36 +814,20 @@ export default function AdministratorsPage() {
         data.verification
           ?.sent
       ) {
-        setOverlay({
-          open:
-            true,
-
-          type:
-            'success',
-
-          title:
-            'Administrator created',
-
-          message:
-            'The Platform Administrator identity has been created and the verification email was sent.',
-        });
+        showOverlay(
+          'success',
+          'Administrator created',
+          'The Platform Administrator identity was created and the verification email was sent.'
+        );
 
         return;
       }
 
-      setOverlay({
-        open:
-          true,
-
-        type:
-          'warning',
-
-        title:
-          'Administrator created',
-
-        message:
-          'The administrator identity was created, but verification email delivery is still pending. Do not create the administrator again.',
-      });
+      showOverlay(
+        'warning',
+        'Administrator created',
+        'The administrator identity was created, but verification email delivery is still pending. Do not create the administrator again.'
+      );
     } catch {
       setFormError(
         'SaMi could not reach the administrator service.'
@@ -851,6 +838,491 @@ export default function AdministratorsPage() {
       );
     }
   }
+
+  /* ==========================================================
+     OPEN MANAGEMENT
+     ========================================================== */
+
+  function openManage(
+    admin: Administrator
+  ) {
+    setSelectedAdmin(
+      admin
+    );
+
+    setSelectedRole(
+      admin.role
+    );
+
+    if (
+      admin.status ===
+        'suspended' ||
+      admin.status ===
+        'disabled'
+    ) {
+      setSelectedStatus(
+        admin.status
+      );
+    } else {
+      setSelectedStatus(
+        'active'
+      );
+    }
+
+    setMutationError('');
+
+    setManageMode(
+      null
+    );
+  }
+
+  function closeManage() {
+    if (
+      mutating
+    ) {
+      return;
+    }
+
+    setSelectedAdmin(
+      null
+    );
+
+    setManageMode(
+      null
+    );
+
+    setMutationError('');
+  }
+
+  /* ==========================================================
+     LIFECYCLE REQUEST
+     ========================================================== */
+
+  async function lifecycleRequest(
+    admin: Administrator,
+    payload: Record<
+      string,
+      unknown
+    >
+  ): Promise<boolean> {
+    if (
+      mutating
+    ) {
+      return false;
+    }
+
+    setMutationError('');
+
+    setMutating(
+      true
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/admin/administrators/${encodeURIComponent(
+            admin.id
+          )}`,
+          {
+            method: 'PATCH',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            body:
+              JSON.stringify(
+                payload
+              ),
+          }
+        );
+
+      let data:
+        LifecycleResponse;
+
+      try {
+        data =
+          await response.json();
+      } catch {
+        setMutationError(
+          'SaMi returned an invalid administrator update response.'
+        );
+
+        return false;
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        const message =
+          data.error ||
+          'SaMi could not update this Platform Administrator.';
+
+        switch (
+          data.code
+        ) {
+          case 'LAST_SUPER_ADMIN_PROTECTED':
+            showOverlay(
+              'warning',
+              'Super Administrator protected',
+              'SaMi must always have at least one active Super Administrator. Create or promote another active Super Administrator before making this change.'
+            );
+
+            break;
+
+          case 'SELF_MODIFICATION_NOT_ALLOWED':
+            showOverlay(
+              'warning',
+              'Self-modification blocked',
+              'You cannot change your own Platform Administrator role or lifecycle status from administrator management.'
+            );
+
+            break;
+
+          case 'ADMIN_STATE_CONFLICT':
+            showOverlay(
+              'warning',
+              'Administrator changed',
+              message
+            );
+
+            break;
+
+          case 'ADMIN_NOT_LOCKED':
+            showOverlay(
+              'info',
+              'Administrator is not locked',
+              message
+            );
+
+            break;
+
+          case 'ADMIN_UNAUTHENTICATED':
+            showOverlay(
+              'error',
+              'Administrator session expired',
+              'Your administrator session is no longer valid. Sign in again before making Platform changes.',
+              {
+                label:
+                  'Sign in',
+                href:
+                  '/admin/login',
+              }
+            );
+
+            break;
+
+          case 'ADMIN_FORBIDDEN':
+          case 'FORBIDDEN':
+            showOverlay(
+              'error',
+              'Action not permitted',
+              message
+            );
+
+            break;
+
+          case 'SERVICE_TEMPORARILY_UNAVAILABLE':
+            showOverlay(
+              'warning',
+              'SaMi temporarily unavailable',
+              'SaMi could not safely complete this administrator change. Please retry shortly.'
+            );
+
+            break;
+
+          default:
+            setMutationError(
+              message
+            );
+        }
+
+        return false;
+      }
+
+      await loadAdministrators(
+        pagination.page
+      );
+
+      setSelectedAdmin(
+        null
+      );
+
+      setManageMode(
+        null
+      );
+
+      showOverlay(
+        'success',
+        'Administrator updated',
+        data.message ||
+          'The Platform Administrator was updated successfully.'
+      );
+
+      return true;
+    } catch {
+      setMutationError(
+        'SaMi could not reach the administrator service.'
+      );
+
+      return false;
+    } finally {
+      setMutating(
+        false
+      );
+    }
+  }
+
+  /* ==========================================================
+     CONFIRM ROLE
+     ========================================================== */
+
+  function confirmRoleChange() {
+    if (
+      !selectedAdmin
+    ) {
+      return;
+    }
+
+    if (
+      selectedRole ===
+      selectedAdmin.role
+    ) {
+      setMutationError(
+        'Select a different role.'
+      );
+
+      return;
+    }
+
+    const target =
+      selectedAdmin;
+
+    const nextRole =
+      selectedRole;
+
+    showOverlay(
+      'warning',
+      'Change administrator role?',
+      `Change ${target.fullName} from ${roleLabel(
+        target.role
+      )} to ${roleLabel(
+        nextRole
+      )}? Existing administrator sessions will be revoked.`,
+      {
+        label:
+          'Change role',
+
+        onClick: () => {
+          closeOverlay();
+
+          void lifecycleRequest(
+            target,
+            {
+              action:
+                'change_role',
+
+              role:
+                nextRole,
+            }
+          );
+        },
+      },
+      {
+        label:
+          'Cancel',
+
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  /* ==========================================================
+     CONFIRM STATUS
+     ========================================================== */
+
+  function confirmStatusChange() {
+    if (
+      !selectedAdmin
+    ) {
+      return;
+    }
+
+    if (
+      selectedStatus ===
+      selectedAdmin.status
+    ) {
+      setMutationError(
+        'Select a different status.'
+      );
+
+      return;
+    }
+
+    const target =
+      selectedAdmin;
+
+    const nextStatus =
+      selectedStatus;
+
+    let warning =
+      `Change ${target.fullName} to ${roleLabel(
+        nextStatus
+      )}. Existing administrator sessions will be revoked.`;
+
+    if (
+      nextStatus ===
+      'suspended'
+    ) {
+      warning =
+        `Suspend ${target.fullName}? They will immediately lose Platform Administration access and existing sessions will be revoked.`;
+    }
+
+    if (
+      nextStatus ===
+      'disabled'
+    ) {
+      warning =
+        `Disable ${target.fullName}? They will not be able to access Platform Administration until reactivated. Existing sessions will be revoked.`;
+    }
+
+    if (
+      nextStatus ===
+      'active'
+    ) {
+      warning =
+        `Reactivate ${target.fullName}? They will regain access according to their current administrator role.`;
+    }
+
+    showOverlay(
+      nextStatus ===
+        'active'
+        ? 'info'
+        : 'warning',
+      nextStatus ===
+        'active'
+        ? 'Reactivate administrator?'
+        : nextStatus ===
+            'suspended'
+          ? 'Suspend administrator?'
+          : 'Disable administrator?',
+      warning,
+      {
+        label:
+          nextStatus ===
+            'active'
+            ? 'Reactivate'
+            : nextStatus ===
+                'suspended'
+              ? 'Suspend'
+              : 'Disable',
+
+        onClick: () => {
+          closeOverlay();
+
+          void lifecycleRequest(
+            target,
+            {
+              action:
+                'change_status',
+
+              status:
+                nextStatus,
+            }
+          );
+        },
+      },
+      {
+        label:
+          'Cancel',
+
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  /* ==========================================================
+     CONFIRM UNLOCK
+     ========================================================== */
+
+  function confirmUnlock() {
+    if (
+      !selectedAdmin
+    ) {
+      return;
+    }
+
+    const target =
+      selectedAdmin;
+
+    showOverlay(
+      'warning',
+      'Unlock administrator?',
+      `Unlock ${target.fullName}? Failed login counters will be cleared, existing sessions will remain revoked, and they will need to authenticate again.`,
+      {
+        label:
+          'Unlock',
+
+        onClick: () => {
+          closeOverlay();
+
+          void lifecycleRequest(
+            target,
+            {
+              action:
+                'unlock',
+            }
+          );
+        },
+      },
+      {
+        label:
+          'Cancel',
+
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  /* ==========================================================
+     DERIVED
+     ========================================================== */
+
+  const selectedRoleDescription =
+    useMemo(
+      () =>
+        ROLE_OPTIONS.find(
+          item =>
+            item.value ===
+            selectedRole
+        )?.description ||
+        '',
+      [
+        selectedRole,
+      ]
+    );
+
+  const selectedStatusDescription =
+    useMemo(
+      () =>
+        MUTABLE_STATUS_OPTIONS.find(
+          item =>
+            item.value ===
+            selectedStatus
+        )?.description ||
+        '',
+      [
+        selectedStatus,
+      ]
+    );
 
   /* ==========================================================
      RENDER
@@ -865,6 +1337,7 @@ export default function AdministratorsPage() {
           <div>
             <div className="flex items-center gap-2 text-sm font-semibold text-zinc-500">
               <ShieldCheck className="h-4 w-4" />
+
               Platform Identity
             </div>
 
@@ -873,16 +1346,14 @@ export default function AdministratorsPage() {
             </h1>
 
             <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-500 dark:text-zinc-400">
-              Provision and review identities that can access SaMi Platform Administration.
+              Provision, review and securely manage identities that can access SaMi Platform Administration.
             </p>
           </div>
 
           <button
             type="button"
             onClick={() => {
-              setFormError(
-                ''
-              );
+              setFormError('');
 
               setCreateOpen(
                 true
@@ -891,6 +1362,7 @@ export default function AdministratorsPage() {
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
           >
             <Plus className="h-4 w-4" />
+
             Add Administrator
           </button>
         </div>
@@ -958,7 +1430,8 @@ export default function AdministratorsPage() {
                 onChange={
                   event =>
                     setQuery(
-                      event.target.value
+                      event.target
+                        .value
                     )
                 }
                 maxLength={
@@ -976,7 +1449,8 @@ export default function AdministratorsPage() {
               onChange={
                 event =>
                   setStatus(
-                    event.target.value
+                    event.target
+                      .value
                   )
               }
               className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-900"
@@ -985,27 +1459,22 @@ export default function AdministratorsPage() {
                 All statuses
               </option>
 
-              {STATUS_OPTIONS
-                .filter(
-                  value =>
-                    value
+              {FILTER_STATUS_OPTIONS.map(
+                item => (
+                  <option
+                    key={
+                      item
+                    }
+                    value={
+                      item
+                    }
+                  >
+                    {roleLabel(
+                      item
+                    )}
+                  </option>
                 )
-                .map(
-                  value => (
-                    <option
-                      key={
-                        value
-                      }
-                      value={
-                        value
-                      }
-                    >
-                      {roleLabel(
-                        value
-                      )}
-                    </option>
-                  )
-                )}
+              )}
             </select>
 
             <select
@@ -1015,7 +1484,8 @@ export default function AdministratorsPage() {
               onChange={
                 event =>
                   setRole(
-                    event.target.value
+                    event.target
+                      .value
                   )
               }
               className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-900"
@@ -1050,6 +1520,7 @@ export default function AdministratorsPage() {
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 text-sm font-semibold transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
             >
               <RefreshCcw className="h-4 w-4" />
+
               Refresh
             </button>
           </div>
@@ -1085,7 +1556,7 @@ export default function AdministratorsPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1000px] text-left">
+              <table className="w-full min-w-[1120px] text-left">
                 <thead className="border-b border-zinc-200 bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/60">
                   <tr>
                     <th className="px-5 py-4">
@@ -1115,6 +1586,10 @@ export default function AdministratorsPage() {
                     <th className="px-5 py-4">
                       Created
                     </th>
+
+                    <th className="px-5 py-4 text-right">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
 
@@ -1129,11 +1604,15 @@ export default function AdministratorsPage() {
                       >
                         <td className="px-5 py-4">
                           <div className="font-semibold text-zinc-950 dark:text-white">
-                            {admin.fullName}
+                            {
+                              admin.fullName
+                            }
                           </div>
 
                           <div className="mt-1 text-xs text-zinc-500">
-                            {admin.email}
+                            {
+                              admin.email
+                            }
                           </div>
                         </td>
 
@@ -1159,11 +1638,13 @@ export default function AdministratorsPage() {
                           {admin.emailVerified ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                               <CheckCircle2 className="h-4 w-4" />
+
                               Verified
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
                               <Mail className="h-4 w-4" />
+
                               Pending
                             </span>
                           )}
@@ -1173,11 +1654,13 @@ export default function AdministratorsPage() {
                           {admin.twoFactorEnabled ? (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                               <ShieldCheck className="h-4 w-4" />
+
                               Enabled
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500">
                               <ShieldOff className="h-4 w-4" />
+
                               Pending
                             </span>
                           )}
@@ -1194,6 +1677,22 @@ export default function AdministratorsPage() {
                             admin.createdAt
                           )}
                         </td>
+
+                        <td className="px-5 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openManage(
+                                admin
+                              )
+                            }
+                            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-zinc-200 px-3 text-xs font-bold transition hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+
+                            Manage
+                          </button>
+                        </td>
                       </tr>
                     )
                   )}
@@ -1202,15 +1701,15 @@ export default function AdministratorsPage() {
             </div>
           )}
 
-          {/* PAGINATION */}
-
           {!loading &&
             pagination.total >
               0 && (
               <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-4 dark:border-zinc-800">
                 <div className="text-xs text-zinc-500">
                   Page{' '}
-                  {pagination.page}{' '}
+                  {
+                    pagination.page
+                  }{' '}
                   of{' '}
                   {
                     pagination.totalPages
@@ -1266,10 +1765,12 @@ export default function AdministratorsPage() {
         </div>
       </div>
 
-      {/* CREATE MODAL */}
+      {/* ======================================================
+          CREATE ADMINISTRATOR
+          ====================================================== */}
 
       {createOpen && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-zinc-950/55 px-4 py-8 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/55 px-4 py-8 backdrop-blur-sm">
           <div className="w-full max-w-xl rounded-[28px] border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1278,18 +1779,22 @@ export default function AdministratorsPage() {
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-zinc-500">
-                  SaMi will create an invited identity and send the administrator a verification email.
+                  SaMi creates an invited identity and sends the administrator a verification email.
                 </p>
               </div>
 
               <button
                 type="button"
+                disabled={
+                  creating
+                }
                 onClick={() =>
                   setCreateOpen(
                     false
                   )
                 }
-                className="rounded-xl p-2 text-zinc-400 transition hover:bg-zinc-100 dark:hover:bg-zinc-900"
+                aria-label="Close"
+                className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-900"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1302,76 +1807,46 @@ export default function AdministratorsPage() {
               className="mt-6 space-y-5"
             >
               <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm font-semibold">
-                    First name
-                  </label>
-
-                  <input
-                    value={
-                      firstName
-                    }
-                    onChange={
-                      event =>
-                        setFirstName(
-                          event.target.value
-                        )
-                    }
-                    maxLength={
-                      120
-                    }
-                    autoComplete="off"
-                    className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-semibold">
-                    Last name
-                  </label>
-
-                  <input
-                    value={
-                      lastName
-                    }
-                    onChange={
-                      event =>
-                        setLastName(
-                          event.target.value
-                        )
-                    }
-                    maxLength={
-                      120
-                    }
-                    autoComplete="off"
-                    className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-semibold">
-                  Administrator email
-                </label>
-
-                <input
-                  type="email"
+                <Field
+                  label="First name"
                   value={
-                    email
+                    firstName
                   }
                   onChange={
-                    event =>
-                      setEmail(
-                        event.target.value
-                      )
+                    setFirstName
                   }
                   maxLength={
-                    254
+                    120
                   }
-                  autoComplete="off"
-                  className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"
+                />
+
+                <Field
+                  label="Last name"
+                  value={
+                    lastName
+                  }
+                  onChange={
+                    setLastName
+                  }
+                  maxLength={
+                    120
+                  }
                 />
               </div>
+
+              <Field
+                label="Administrator email"
+                type="email"
+                value={
+                  email
+                }
+                onChange={
+                  setEmail
+                }
+                maxLength={
+                  254
+                }
+              />
 
               <div>
                 <label className="text-sm font-semibold">
@@ -1421,12 +1896,9 @@ export default function AdministratorsPage() {
               </div>
 
               {formError && (
-                <div
-                  role="alert"
-                  className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
-                >
+                <InlineError>
                   {formError}
-                </div>
+                </InlineError>
               )}
 
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -1440,7 +1912,7 @@ export default function AdministratorsPage() {
                       false
                     )
                   }
-                  className="h-11 rounded-xl border border-zinc-200 px-5 text-sm font-bold transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
+                  className="h-11 rounded-xl border border-zinc-200 px-5 text-sm font-bold hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
                 >
                   Cancel
                 </button>
@@ -1450,7 +1922,7 @@ export default function AdministratorsPage() {
                   disabled={
                     creating
                   }
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-950"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white disabled:opacity-50 dark:bg-white dark:text-zinc-950"
                 >
                   {creating ? (
                     <>
@@ -1470,6 +1942,367 @@ export default function AdministratorsPage() {
         </div>
       )}
 
+      {/* ======================================================
+          MANAGE ADMINISTRATOR
+          ====================================================== */}
+
+      {selectedAdmin && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-zinc-950/55 px-4 py-8 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[28px] border border-zinc-200 bg-white p-6 shadow-2xl dark:border-zinc-800 dark:bg-zinc-950">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-100 dark:bg-zinc-900">
+                  <UserCog className="h-6 w-6" />
+                </div>
+
+                <h2 className="mt-4 text-xl font-black">
+                  {
+                    selectedAdmin.fullName
+                  }
+                </h2>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  {
+                    selectedAdmin.email
+                  }
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  mutating
+                }
+                onClick={
+                  closeManage
+                }
+                aria-label="Close"
+                className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-100 disabled:opacity-50 dark:hover:bg-zinc-900"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* CURRENT STATE */}
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <StateCard
+                label="Role"
+                value={
+                  roleLabel(
+                    selectedAdmin.role
+                  )
+                }
+              />
+
+              <StateCard
+                label="Status"
+                value={
+                  roleLabel(
+                    selectedAdmin.status
+                  )
+                }
+              />
+
+              <StateCard
+                label="2FA"
+                value={
+                  selectedAdmin
+                    .twoFactorEnabled
+                    ? 'Enabled'
+                    : 'Pending'
+                }
+              />
+            </div>
+
+            {/* ACTION SELECTOR */}
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setManageMode(
+                    'role'
+                  );
+
+                  setMutationError('');
+                }}
+                className={[
+                  'rounded-2xl border p-4 text-left transition',
+                  manageMode ===
+                  'role'
+                    ? 'border-zinc-950 bg-zinc-50 dark:border-white dark:bg-zinc-900'
+                    : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900',
+                ].join(
+                  ' '
+                )}
+              >
+                <Edit3 className="h-5 w-5" />
+
+                <div className="mt-3 text-sm font-bold">
+                  Change role
+                </div>
+
+                <div className="mt-1 text-xs leading-5 text-zinc-500">
+                  Change Platform permissions.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  selectedAdmin.status ===
+                  'invited'
+                }
+                onClick={() => {
+                  setManageMode(
+                    'status'
+                  );
+
+                  setMutationError('');
+                }}
+                className={[
+                  'rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
+                  manageMode ===
+                  'status'
+                    ? 'border-zinc-950 bg-zinc-50 dark:border-white dark:bg-zinc-900'
+                    : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900',
+                ].join(
+                  ' '
+                )}
+              >
+                <ShieldCheck className="h-5 w-5" />
+
+                <div className="mt-3 text-sm font-bold">
+                  Change status
+                </div>
+
+                <div className="mt-1 text-xs leading-5 text-zinc-500">
+                  Activate, suspend or disable.
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  selectedAdmin.status !==
+                  'locked'
+                }
+                onClick={() => {
+                  setManageMode(
+                    'unlock'
+                  );
+
+                  setMutationError('');
+                }}
+                className={[
+                  'rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-40',
+                  manageMode ===
+                  'unlock'
+                    ? 'border-zinc-950 bg-zinc-50 dark:border-white dark:bg-zinc-900'
+                    : 'border-zinc-200 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900',
+                ].join(
+                  ' '
+                )}
+              >
+                <LockKeyhole className="h-5 w-5" />
+
+                <div className="mt-3 text-sm font-bold">
+                  Unlock
+                </div>
+
+                <div className="mt-1 text-xs leading-5 text-zinc-500">
+                  Reset authentication lock.
+                </div>
+              </button>
+            </div>
+
+            {/* ROLE */}
+
+            {manageMode ===
+              'role' && (
+              <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                <h3 className="font-bold">
+                  Change administrator role
+                </h3>
+
+                <select
+                  value={
+                    selectedRole
+                  }
+                  onChange={
+                    event =>
+                      setSelectedRole(
+                        event.target
+                          .value as
+                          PlatformAdminRole
+                      )
+                  }
+                  className="mt-4 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  {ROLE_OPTIONS.map(
+                    option => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-2 text-xs leading-5 text-zinc-500">
+                  {
+                    selectedRoleDescription
+                  }
+                </p>
+
+                <button
+                  type="button"
+                  disabled={
+                    mutating ||
+                    selectedRole ===
+                      selectedAdmin.role
+                  }
+                  onClick={
+                    confirmRoleChange
+                  }
+                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white disabled:opacity-40 dark:bg-white dark:text-zinc-950"
+                >
+                  {mutating && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  Save role
+                </button>
+              </div>
+            )}
+
+            {/* STATUS */}
+
+            {manageMode ===
+              'status' && (
+              <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                <h3 className="font-bold">
+                  Change lifecycle status
+                </h3>
+
+                <select
+                  value={
+                    selectedStatus
+                  }
+                  onChange={
+                    event =>
+                      setSelectedStatus(
+                        event.target
+                          .value as
+                          | 'active'
+                          | 'suspended'
+                          | 'disabled'
+                      )
+                  }
+                  className="mt-4 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  {MUTABLE_STATUS_OPTIONS.map(
+                    option => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-2 text-xs leading-5 text-zinc-500">
+                  {
+                    selectedStatusDescription
+                  }
+                </p>
+
+                <button
+                  type="button"
+                  disabled={
+                    mutating ||
+                    selectedStatus ===
+                      selectedAdmin.status
+                  }
+                  onClick={
+                    confirmStatusChange
+                  }
+                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white disabled:opacity-40 dark:bg-white dark:text-zinc-950"
+                >
+                  {mutating && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  Save status
+                </button>
+              </div>
+            )}
+
+            {/* UNLOCK */}
+
+            {manageMode ===
+              'unlock' && (
+              <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50/50 p-5 dark:border-amber-900 dark:bg-amber-950/20">
+                <h3 className="font-bold">
+                  Unlock administrator
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-zinc-600 dark:text-zinc-400">
+                  This clears failed login attempts and removes the current authentication lock. The administrator must sign in again normally.
+                </p>
+
+                <button
+                  type="button"
+                  disabled={
+                    mutating
+                  }
+                  onClick={
+                    confirmUnlock
+                  }
+                  className="mt-5 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-bold text-white disabled:opacity-40 dark:bg-white dark:text-zinc-950"
+                >
+                  {mutating && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  Unlock Administrator
+                </button>
+              </div>
+            )}
+
+            {mutationError && (
+              <div className="mt-5">
+                <InlineError>
+                  {mutationError}
+                </InlineError>
+              </div>
+            )}
+
+            {selectedAdmin.status ===
+              'invited' && (
+              <div className="mt-5 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300">
+                This administrator is still completing identity setup. They cannot be manually activated from lifecycle management.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* SHARED SAMI OVERLAY */}
+
       <SaMiOverlay
         open={
           overlay.open
@@ -1483,14 +2316,14 @@ export default function AdministratorsPage() {
         message={
           overlay.message
         }
-        onClose={() =>
-          setOverlay(
-            current => ({
-              ...current,
-              open:
-                false,
-            })
-          )
+        primaryAction={
+          overlay.primaryAction
+        }
+        secondaryAction={
+          overlay.secondaryAction
+        }
+        onClose={
+          closeOverlay
         }
       />
     </>
@@ -1498,7 +2331,7 @@ export default function AdministratorsPage() {
 }
 
 /* ============================================================
-   SUMMARY CARD
+   COMPONENTS
    ============================================================ */
 
 function SummaryCard({
@@ -1506,21 +2339,14 @@ function SummaryCard({
   value,
   icon: Icon,
 }: {
-  label:
-    string;
-
-  value:
-    number;
-
-  icon:
-    React.ElementType;
+  label: string;
+  value: number;
+  icon: React.ElementType;
 }) {
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
-      <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-900">
-          <Icon className="h-5 w-5" />
-        </div>
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-900">
+        <Icon className="h-5 w-5" />
       </div>
 
       <div className="mt-5 text-3xl font-black">
@@ -1530,6 +2356,85 @@ function SummaryCard({
       <div className="mt-1 text-sm text-zinc-500">
         {label}
       </div>
+    </div>
+  );
+}
+
+function StateCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {label}
+      </div>
+
+      <div className="mt-2 text-sm font-bold">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  type = 'text',
+  value,
+  onChange,
+  maxLength,
+}: {
+  label: string;
+  type?: string;
+  value: string;
+  onChange: (
+    value: string
+  ) => void;
+  maxLength: number;
+}) {
+  return (
+    <div>
+      <label className="text-sm font-semibold">
+        {label}
+      </label>
+
+      <input
+        type={
+          type
+        }
+        value={
+          value
+        }
+        onChange={
+          event =>
+            onChange(
+              event.target.value
+            )
+        }
+        maxLength={
+          maxLength
+        }
+        autoComplete="off"
+        className="mt-2 h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm outline-none transition focus:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900"
+      />
+    </div>
+  );
+}
+
+function InlineError({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      role="alert"
+      className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300"
+    >
+      {children}
     </div>
   );
 }
