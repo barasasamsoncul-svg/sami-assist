@@ -1,5 +1,6 @@
-import crypto from 'crypto';
+import 'server-only';
 
+import crypto from 'crypto';
 
 import {
   queryControl,
@@ -15,81 +16,36 @@ import type {
    ============================================================ */
 
 export type PlatformAdminAccount = {
-  id:
-    string;
-
-  firstName:
-    string;
-
-  lastName:
-    string;
-
-  fullName:
-    string;
-
-  email:
-    string;
-
-  passwordHash:
-    string;
-
-  role:
-    PlatformAdminRole;
-
-  status:
-    PlatformAdminStatus;
-
-  emailVerified:
-    boolean;
-
-  twoFactorRequired:
-    boolean;
-
-  twoFactorEnabled:
-    boolean;
-
-  failedLoginAttempts:
-    number;
-
-  lockedUntil:
-    Date | null;
-
-  lastLoginAt:
-    Date | null;
-
-  passwordChangedAt:
-    Date;
-
-  createdAt:
-    Date;
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+  role: PlatformAdminRole;
+  status: PlatformAdminStatus;
+  emailVerified: boolean;
+  twoFactorRequired: boolean;
+  twoFactorEnabled: boolean;
+  failedLoginAttempts: number;
+  lockedUntil: Date | null;
+  lastLoginAt: Date | null;
+  passwordChangedAt: Date;
+  createdAt: Date;
 };
 
 export type AdminAuthenticationResult =
   | {
-      success:
-        true;
-
-      admin:
-        PlatformAdminAccount;
-
-      requiresTwoFactor:
-        boolean;
+      success: true;
+      admin: PlatformAdminAccount;
+      requiresTwoFactor: boolean;
     }
   | {
-      success:
-        false;
-
-      code:
-        AdminAuthenticationErrorCode;
-
-      message:
-        string;
-
-      adminId?:
-        string;
-
-      lockedUntil?:
-        Date;
+      success: false;
+      code: AdminAuthenticationErrorCode;
+      message: string;
+      adminId?: string;
+      lockedUntil?: Date;
     };
 
 export type AdminAuthenticationErrorCode =
@@ -102,50 +58,21 @@ export type AdminAuthenticationErrorCode =
   | 'TWO_FACTOR_SETUP_REQUIRED';
 
 type PlatformAdminRow = {
-  id:
-    string;
-
-  first_name:
-    string;
-
-  last_name:
-    string;
-
-  email:
-    string;
-
-  password_hash:
-    string;
-
-  role:
-    PlatformAdminRole;
-
-  status:
-    PlatformAdminStatus;
-
-  email_verified:
-    boolean;
-
-  two_factor_required:
-    boolean;
-
-  two_factor_enabled:
-    boolean;
-
-  failed_login_attempts:
-    number;
-
-  locked_until:
-    Date | string | null;
-
-  last_login_at:
-    Date | string | null;
-
-  password_changed_at:
-    Date | string;
-
-  created_at:
-    Date | string;
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  password_hash: string;
+  role: PlatformAdminRole;
+  status: PlatformAdminStatus;
+  email_verified: boolean;
+  two_factor_required: boolean;
+  two_factor_enabled: boolean;
+  failed_login_attempts: number;
+  locked_until: Date | string | null;
+  last_login_at: Date | string | null;
+  password_changed_at: Date | string;
+  created_at: Date | string;
 };
 
 /* ============================================================
@@ -155,10 +82,10 @@ type PlatformAdminRow = {
 const MAX_EMAIL_LENGTH =
   254;
 
-const MIN_ADMIN_PASSWORD_LENGTH =
+export const MIN_ADMIN_PASSWORD_LENGTH =
   12;
 
-const MAX_ADMIN_PASSWORD_LENGTH =
+export const MAX_ADMIN_PASSWORD_LENGTH =
   128;
 
 const ADMIN_MAX_FAILED_LOGIN_ATTEMPTS =
@@ -199,28 +126,17 @@ const INVALID_CREDENTIALS_MESSAGE =
    ============================================================ */
 
 type ScryptOptions = {
-  N:
-    number;
-
-  r:
-    number;
-
-  p:
-    number;
-
-  maxmem:
-    number;
+  N: number;
+  r: number;
+  p: number;
+  maxmem: number;
 };
 
 function deriveScryptKey(
-  password:
-    string,
-  salt:
-    string,
-  keyLength:
-    number,
-  options:
-    ScryptOptions
+  password: string,
+  salt: string,
+  keyLength: number,
+  options: ScryptOptions
 ): Promise<Buffer> {
   return new Promise(
     (
@@ -254,15 +170,14 @@ function deriveScryptKey(
     }
   );
 }
+
 /* ============================================================
    ENVIRONMENT
    ============================================================ */
 
 function getPositiveIntegerEnvironmentValue(
-  name:
-    string,
-  fallback:
-    number
+  name: string,
+  fallback: number
 ) {
   const value =
     Number(
@@ -273,8 +188,7 @@ function getPositiveIntegerEnvironmentValue(
     !Number.isFinite(
       value
     ) ||
-    value <=
-      0
+    value <= 0
   ) {
     return fallback;
   }
@@ -289,8 +203,7 @@ function getPositiveIntegerEnvironmentValue(
    ============================================================ */
 
 export function normalizeAdminEmail(
-  value:
-    unknown
+  value: unknown
 ) {
   if (
     typeof value !==
@@ -309,8 +222,7 @@ export function normalizeAdminEmail(
 }
 
 export function isValidAdminEmail(
-  value:
-    string
+  value: string
 ) {
   return (
     value.length >
@@ -325,11 +237,20 @@ export function isValidAdminEmail(
 
 /* ============================================================
    PASSWORD POLICY
+
+   This is the single authoritative Platform Admin password
+   policy.
+
+   All admin flows should reuse this function:
+   - bootstrap
+   - identity completion
+   - reset password
+   - change password
+   - future settings
    ============================================================ */
 
 export function getAdminPasswordRequirements(
-  password:
-    string
+  password: string
 ) {
   return {
     length:
@@ -358,16 +279,23 @@ export function getAdminPasswordRequirements(
         password
       ),
 
-    noWhitespaceOnly:
-      password.trim().length >
-      0,
+    noWhitespace:
+      !/\s/.test(
+        password
+      ),
   };
 }
 
 export function isValidAdminPassword(
-  password:
-    string
+  password: string
 ) {
+  if (
+    typeof password !==
+    'string'
+  ) {
+    return false;
+  }
+
   const requirements =
     getAdminPasswordRequirements(
       password
@@ -379,7 +307,7 @@ export function isValidAdminPassword(
     requirements.lowercase &&
     requirements.number &&
     requirements.symbol &&
-    requirements.noWhitespaceOnly
+    requirements.noWhitespace
   );
 }
 
@@ -391,8 +319,7 @@ export function isValidAdminPassword(
    ============================================================ */
 
 export async function hashAdminPassword(
-  password:
-    string
+  password: string
 ) {
   if (
     !isValidAdminPassword(
@@ -414,24 +341,24 @@ export async function hashAdminPassword(
       );
 
   const derivedKey =
-  await deriveScryptKey(
-    password,
-    salt,
-    SCRYPT_KEY_LENGTH,
-    {
-      N:
-        SCRYPT_COST,
+    await deriveScryptKey(
+      password,
+      salt,
+      SCRYPT_KEY_LENGTH,
+      {
+        N:
+          SCRYPT_COST,
 
-      r:
-        SCRYPT_BLOCK_SIZE,
+        r:
+          SCRYPT_BLOCK_SIZE,
 
-      p:
-        SCRYPT_PARALLELIZATION,
+        p:
+          SCRYPT_PARALLELIZATION,
 
-      maxmem:
-        SCRYPT_MAX_MEMORY,
-    }
-  );
+        maxmem:
+          SCRYPT_MAX_MEMORY,
+      }
+    );
 
   return [
     PASSWORD_HASH_PREFIX,
@@ -452,12 +379,20 @@ export async function hashAdminPassword(
    ============================================================ */
 
 export async function verifyAdminPassword(
-  password:
-    string,
-  storedHash:
-    string
+  password: string,
+  storedHash: string
 ) {
   try {
+    if (
+      typeof password !==
+        'string' ||
+      typeof storedHash !==
+        'string' ||
+      !storedHash
+    ) {
+      return false;
+    }
+
     const parts =
       storedHash.split(
         '$'
@@ -482,7 +417,7 @@ export async function verifyAdminPassword(
 
     if (
       prefix !==
-      PASSWORD_HASH_PREFIX ||
+        PASSWORD_HASH_PREFIX ||
       !salt ||
       !expectedKeyText
     ) {
@@ -504,6 +439,10 @@ export async function verifyAdminPassword(
         parallelizationText
       );
 
+    /*
+     * Do not allow malformed or unexpectedly expensive values
+     * from a corrupted hash to drive crypto resource usage.
+     */
     if (
       !Number.isInteger(
         cost
@@ -514,12 +453,15 @@ export async function verifyAdminPassword(
       !Number.isInteger(
         parallelization
       ) ||
-      cost <
-        2 ||
-      blockSize <
-        1 ||
-      parallelization <
-        1
+      cost < 2 ||
+      cost >
+        SCRYPT_COST ||
+      blockSize < 1 ||
+      blockSize >
+        SCRYPT_BLOCK_SIZE ||
+      parallelization < 1 ||
+      parallelization >
+        SCRYPT_PARALLELIZATION
     ) {
       return false;
     }
@@ -531,33 +473,31 @@ export async function verifyAdminPassword(
       );
 
     if (
-      expectedKey.length <
-        32 ||
-      expectedKey.length >
-        128
+      expectedKey.length !==
+      SCRYPT_KEY_LENGTH
     ) {
       return false;
     }
 
     const actualKey =
-  await deriveScryptKey(
-    password,
-    salt,
-    expectedKey.length,
-    {
-      N:
-        cost,
+      await deriveScryptKey(
+        password,
+        salt,
+        expectedKey.length,
+        {
+          N:
+            cost,
 
-      r:
-        blockSize,
+          r:
+            blockSize,
 
-      p:
-        parallelization,
+          p:
+            parallelization,
 
-      maxmem:
-        SCRYPT_MAX_MEMORY,
-    }
-  );
+          maxmem:
+            SCRYPT_MAX_MEMORY,
+        }
+      );
 
     if (
       actualKey.length !==
@@ -586,8 +526,7 @@ let dummyPasswordHash:
   null;
 
 async function performDummyPasswordVerification(
-  password:
-    string
+  password: string
 ) {
   if (
     !dummyPasswordHash
@@ -609,14 +548,15 @@ async function performDummyPasswordVerification(
    ============================================================ */
 
 function mapPlatformAdmin(
-  row:
-    PlatformAdminRow
+  row: PlatformAdminRow
 ): PlatformAdminAccount {
   const firstName =
-    row.first_name;
+    row.first_name ||
+    '';
 
   const lastName =
-    row.last_name;
+    row.last_name ||
+    '';
 
   return {
     id:
@@ -693,8 +633,7 @@ function mapPlatformAdmin(
    ============================================================ */
 
 export async function findPlatformAdminByEmail(
-  email:
-    string
+  email: string
 ) {
   const normalizedEmail =
     normalizeAdminEmail(
@@ -728,10 +667,14 @@ export async function findPlatformAdminByEmail(
           last_login_at,
           password_changed_at,
           created_at
-        FROM platform_admins
+
+        FROM
+          platform_admins
+
         WHERE
           LOWER(email) = $1
           AND deleted_at IS NULL
+
         LIMIT 1
       `,
       [
@@ -752,9 +695,16 @@ export async function findPlatformAdminByEmail(
 }
 
 export async function findPlatformAdminById(
-  adminId:
-    string
+  adminId: string
 ) {
+  if (
+    !adminId ||
+    typeof adminId !==
+      'string'
+  ) {
+    return null;
+  }
+
   const result =
     await queryControl(
       `
@@ -774,10 +724,14 @@ export async function findPlatformAdminById(
           last_login_at,
           password_changed_at,
           created_at
-        FROM platform_admins
+
+        FROM
+          platform_admins
+
         WHERE
           id = $1
           AND deleted_at IS NULL
+
         LIMIT 1
       `,
       [
@@ -802,44 +756,132 @@ export async function findPlatformAdminById(
    ============================================================ */
 
 export function isPlatformAdminLocked(
-  admin:
-    PlatformAdminAccount
+  admin: PlatformAdminAccount
 ) {
   if (
-    admin.status ===
-    'locked'
-  ) {
-    if (
-      !admin.lockedUntil
-    ) {
-      return true;
-    }
-
-    return (
-      admin.lockedUntil.getTime() >
-      Date.now()
-    );
-  }
-
-  return Boolean(
     admin.lockedUntil &&
     admin.lockedUntil.getTime() >
       Date.now()
+  ) {
+    return true;
+  }
+
+  /*
+   * A locked status without locked_until is treated as a
+   * deliberate/manual lock and therefore remains locked.
+   */
+  if (
+    admin.status ===
+      'locked' &&
+    !admin.lockedUntil
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/* ============================================================
+   CLEAR EXPIRED TEMPORARY LOCK
+
+   Previous implementation could leave:
+     status = 'locked'
+     locked_until = expired
+
+   That caused validateAdminAccountStatus() to reject the admin
+   indefinitely even though the temporary lock period had ended.
+
+   This function restores expired temporary locks to active.
+   Manual locks with locked_until = NULL remain locked.
+   ============================================================ */
+
+async function clearExpiredAdminLock(
+  admin: PlatformAdminAccount
+): Promise<
+  PlatformAdminAccount
+> {
+  if (
+    admin.status !==
+      'locked' ||
+    !admin.lockedUntil ||
+    admin.lockedUntil.getTime() >
+      Date.now()
+  ) {
+    return admin;
+  }
+
+  const result =
+    await queryControl(
+      `
+        UPDATE
+          platform_admins
+
+        SET
+          status = 'active',
+          failed_login_attempts = 0,
+          locked_until = NULL,
+          updated_at = NOW()
+
+        WHERE
+          id = $1
+          AND status = 'locked'
+          AND locked_until IS NOT NULL
+          AND locked_until <= NOW()
+          AND deleted_at IS NULL
+
+        RETURNING
+          id,
+          first_name,
+          last_name,
+          email,
+          password_hash,
+          role,
+          status,
+          email_verified,
+          two_factor_required,
+          two_factor_enabled,
+          failed_login_attempts,
+          locked_until,
+          last_login_at,
+          password_changed_at,
+          created_at
+      `,
+      [
+        admin.id,
+      ]
+    );
+
+  const row =
+    result.rows[0] as
+      | PlatformAdminRow
+      | undefined;
+
+  if (
+    !row
+  ) {
+    return admin;
+  }
+
+  return mapPlatformAdmin(
+    row
   );
 }
 
 /* ============================================================
    FAILED LOGIN
+
+   Atomic increment + lock transition.
    ============================================================ */
 
 export async function registerAdminFailedLogin(
-  adminId:
-    string
+  adminId: string
 ) {
   const result =
     await queryControl(
       `
-        UPDATE platform_admins
+        UPDATE
+          platform_admins
+
         SET
           failed_login_attempts =
             failed_login_attempts + 1,
@@ -874,6 +916,10 @@ export async function registerAdminFailedLogin(
         WHERE
           id = $1
           AND deleted_at IS NULL
+          AND status IN (
+            'active',
+            'locked'
+          )
 
         RETURNING
           failed_login_attempts,
@@ -921,25 +967,48 @@ export async function registerAdminFailedLogin(
 
 /* ============================================================
    RESET FAILED LOGIN
+
+   Only clears temporary locks.
+
+   A manually locked account with locked_until = NULL must not
+   be silently reactivated here.
    ============================================================ */
 
 export async function resetAdminFailedLogins(
-  adminId:
-    string
+  adminId: string
 ) {
   await queryControl(
     `
-      UPDATE platform_admins
+      UPDATE
+        platform_admins
+
       SET
         failed_login_attempts = 0,
-        locked_until = NULL,
+
+        locked_until =
+          CASE
+            WHEN
+              locked_until IS NOT NULL
+            THEN
+              NULL
+            ELSE
+              locked_until
+          END,
+
         status =
           CASE
-            WHEN status = 'locked'
-            THEN 'active'
-            ELSE status
+            WHEN
+              status = 'locked'
+              AND locked_until IS NOT NULL
+            THEN
+              'active'
+            ELSE
+              status
           END,
-        updated_at = NOW()
+
+        updated_at =
+          NOW()
+
       WHERE
         id = $1
         AND deleted_at IS NULL
@@ -955,26 +1024,47 @@ export async function resetAdminFailedLogins(
    ============================================================ */
 
 export async function updateAdminSuccessfulLogin(
-  adminId:
-    string,
-  ipAddress:
-    string | null
+  adminId: string,
+  ipAddress: string | null
 ) {
   await queryControl(
     `
-      UPDATE platform_admins
+      UPDATE
+        platform_admins
+
       SET
         failed_login_attempts = 0,
-        locked_until = NULL,
+
+        locked_until =
+          CASE
+            WHEN
+              locked_until IS NOT NULL
+            THEN
+              NULL
+            ELSE
+              locked_until
+          END,
+
         status =
           CASE
-            WHEN status = 'locked'
-            THEN 'active'
-            ELSE status
+            WHEN
+              status = 'locked'
+              AND locked_until IS NOT NULL
+            THEN
+              'active'
+            ELSE
+              status
           END,
-        last_login_at = NOW(),
-        last_login_ip = $2,
-        updated_at = NOW()
+
+        last_login_at =
+          NOW(),
+
+        last_login_ip =
+          $2,
+
+        updated_at =
+          NOW()
+
       WHERE
         id = $1
         AND deleted_at IS NULL
@@ -991,8 +1081,7 @@ export async function updateAdminSuccessfulLogin(
    ============================================================ */
 
 function validateAdminAccountStatus(
-  admin:
-    PlatformAdminAccount
+  admin: PlatformAdminAccount
 ): AdminAuthenticationResult | null {
   if (
     isPlatformAdminLocked(
@@ -1007,7 +1096,9 @@ function validateAdminAccountStatus(
         'ACCOUNT_LOCKED',
 
       message:
-        'This administrator account is temporarily locked.',
+        admin.lockedUntil
+          ? 'This administrator account is temporarily locked.'
+          : 'This administrator account is locked.',
 
       adminId:
         admin.id,
@@ -1067,6 +1158,11 @@ function validateAdminAccountStatus(
       };
 
     case 'locked':
+      /*
+       * If status is still locked here, it is a manual lock
+       * because expired temporary locks are cleared before this
+       * function is called.
+       */
       return {
         success:
           false,
@@ -1110,10 +1206,8 @@ function validateAdminAccountStatus(
    ============================================================ */
 
 export async function authenticatePlatformAdmin(
-  email:
-    unknown,
-  password:
-    unknown
+  email: unknown,
+  password: unknown
 ): Promise<
   AdminAuthenticationResult
 > {
@@ -1124,7 +1218,7 @@ export async function authenticatePlatformAdmin(
 
   const normalizedPassword =
     typeof password ===
-    'string'
+      'string'
       ? password
       : '';
 
@@ -1154,7 +1248,7 @@ export async function authenticatePlatformAdmin(
     };
   }
 
-  const admin =
+  let admin =
     await findPlatformAdminByEmail(
       normalizedEmail
     );
@@ -1178,17 +1272,22 @@ export async function authenticatePlatformAdmin(
     };
   }
 
-  const statusFailure =
-    validateAdminAccountStatus(
+  /*
+   * Automatically clear only expired temporary locks.
+   * Manual locks remain locked.
+   */
+  admin =
+    await clearExpiredAdminLock(
       admin
     );
 
-  if (
-    statusFailure
-  ) {
-    return statusFailure;
-  }
-
+  /*
+   * Verify the password BEFORE exposing specific account state.
+   *
+   * This prevents somebody who only knows an email address from
+   * learning whether the account is invited, suspended,
+   * disabled or locked.
+   */
   const passwordCorrect =
     await verifyAdminPassword(
       normalizedPassword,
@@ -1198,32 +1297,49 @@ export async function authenticatePlatformAdmin(
   if (
     !passwordCorrect
   ) {
-    const failure =
-      await registerAdminFailedLogin(
-        admin.id
-      );
-
+    /*
+     * Only active or temporarily locked identities participate
+     * in automatic failed-login locking.
+     *
+     * Suspended/disabled/invited accounts are not mutated by
+     * unauthenticated password guessing.
+     */
     if (
-      failure.lockedUntil &&
-      failure.lockedUntil.getTime() >
-        Date.now()
+      admin.status ===
+        'active' ||
+      (
+        admin.status ===
+          'locked' &&
+        admin.lockedUntil
+      )
     ) {
-      return {
-        success:
-          false,
+      const failure =
+        await registerAdminFailedLogin(
+          admin.id
+        );
 
-        code:
-          'ACCOUNT_LOCKED',
+      if (
+        failure.lockedUntil &&
+        failure.lockedUntil.getTime() >
+          Date.now()
+      ) {
+        return {
+          success:
+            false,
 
-        message:
-          'This administrator account has been temporarily locked after repeated unsuccessful sign-in attempts.',
+          code:
+            'ACCOUNT_LOCKED',
 
-        adminId:
-          admin.id,
+          message:
+            'This administrator account has been temporarily locked after repeated unsuccessful sign-in attempts.',
 
-        lockedUntil:
-          failure.lockedUntil,
-      };
+          adminId:
+            admin.id,
+
+          lockedUntil:
+            failure.lockedUntil,
+        };
+      }
     }
 
     return {
@@ -1239,6 +1355,21 @@ export async function authenticatePlatformAdmin(
       adminId:
         admin.id,
     };
+  }
+
+  /*
+   * Only after proving knowledge of the password do we reveal
+   * the account's specific state to that administrator.
+   */
+  const statusFailure =
+    validateAdminAccountStatus(
+      admin
+    );
+
+  if (
+    statusFailure
+  ) {
+    return statusFailure;
   }
 
   if (
@@ -1295,8 +1426,7 @@ export async function authenticatePlatformAdmin(
    ============================================================ */
 
 export function getSafePlatformAdmin(
-  admin:
-    PlatformAdminAccount
+  admin: PlatformAdminAccount
 ) {
   return {
     id:

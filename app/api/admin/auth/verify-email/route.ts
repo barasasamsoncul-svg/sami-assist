@@ -4,6 +4,10 @@ import {
 } from 'next/server';
 
 import {
+  issueAdminIdentitySetupToken,
+} from '@/lib/auth/admin-identity-setup';
+
+import {
   verifyAdminEmail,
 } from '@/lib/auth/admin-email-verification';
 
@@ -147,74 +151,109 @@ export async function POST(
     /* ========================================================
        3. SUCCESS
        ======================================================== */
+if (
+  result.success
+) {
+  let next =
+    '/admin/login?verified=1';
 
-    if (
-      result.success
-    ) {
-      return jsonResponse({
-        success:
-          true,
+  let identitySetup:
+    {
+      required:
+        boolean;
 
-        code:
-          result.code,
+      expiresAt:
+        string | null;
+    } = {
+      required:
+        false,
 
-        verified:
-          result.verified,
+      expiresAt:
+        null,
+    };
 
-        alreadyVerified:
-          result.alreadyVerified,
+  if (
+    result.admin?.status ===
+      'invited'
+  ) {
+    const setup =
+      await issueAdminIdentitySetupToken({
+        adminId:
+          result.admin.id,
 
-        admin:
-          result.admin
-            ? {
-                id:
-                  result.admin.id,
-
-                email:
-                  result.admin.email,
-
-                firstName:
-                  result.admin.firstName,
-
-                lastName:
-                  result.admin.lastName,
-
-                fullName:
-                  result.admin.fullName,
-
-                role:
-                  result.admin.role,
-
-                status:
-                  result.admin.status,
-
-                emailVerified:
-                  result.admin.emailVerified,
-
-                emailVerifiedAt:
-                  result.admin.emailVerifiedAt,
-              }
-            : null,
-
-        message:
-          result.alreadyVerified
-            ? 'This administrator email is already verified.'
-            : 'Administrator email verified successfully.',
-
-        /*
-         * Verification alone does not activate an invited admin.
-         *
-         * Existing active admins may continue to login.
-         * Invited admins will later continue through the
-         * invitation/provisioning flow.
-         */
-        next:
-          result.admin?.status ===
-          'active'
-            ? '/admin/login?verified=1'
-            : '/admin/login?verified=1&status=invited',
+        email:
+          result.admin.email,
       });
-    }
+
+    next =
+      `/admin/complete-identity?token=${encodeURIComponent(
+        setup.token
+      )}`;
+
+    identitySetup = {
+      required:
+        true,
+
+      expiresAt:
+        setup.expiresAt.toISOString(),
+    };
+  }
+
+  return jsonResponse({
+    success:
+      true,
+
+    code:
+      result.code,
+
+    verified:
+      result.verified,
+
+    alreadyVerified:
+      result.alreadyVerified,
+
+    admin:
+      result.admin
+        ? {
+            id:
+              result.admin.id,
+
+            email:
+              result.admin.email,
+
+            firstName:
+              result.admin.firstName,
+
+            lastName:
+              result.admin.lastName,
+
+            fullName:
+              result.admin.fullName,
+
+            role:
+              result.admin.role,
+
+            status:
+              result.admin.status,
+
+            emailVerified:
+              result.admin.emailVerified,
+
+            emailVerifiedAt:
+              result.admin.emailVerifiedAt,
+          }
+        : null,
+
+    identitySetup,
+
+    message:
+      result.alreadyVerified
+        ? 'This administrator email is already verified.'
+        : 'Administrator email verified successfully.',
+
+    next,
+  });
+}
 
     /* ========================================================
        4. CONTROLLED FAILURES
