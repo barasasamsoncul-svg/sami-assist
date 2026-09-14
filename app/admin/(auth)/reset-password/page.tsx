@@ -2,6 +2,7 @@
 
 import {
   FormEvent,
+  Suspense,
   useMemo,
   useState,
 } from 'react';
@@ -50,7 +51,7 @@ type ResetPasswordResponse = {
    PAGE
    ============================================================ */
 
-export default function AdminResetPasswordPage() {
+function AdminResetPasswordContent() {
   const router =
     useRouter();
 
@@ -905,5 +906,44 @@ export default function AdminResetPasswordPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+function AdminResetPasswordFallback() {
+  return (
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-950 px-4 py-10 text-white">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+      >
+        <div className="absolute left-1/2 top-[-20rem] h-[40rem] w-[40rem] -translate-x-1/2 rounded-full bg-blue-600/[0.08] blur-3xl" />
+
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
+      </div>
+
+      <div className="relative z-10 flex flex-col items-center gap-5">
+        <SaMiLogo
+          size="md"
+          showTagline={false}
+          showReflection={false}
+          showBackground={false}
+          className="max-w-[220px]"
+        />
+
+        <div className="flex items-center gap-3 text-sm text-zinc-400">
+          <Loader2 className="h-4 w-4 animate-spin" />
+
+          Loading secure password reset...
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export default function AdminResetPasswordPage() {
+  return (
+    <Suspense fallback={<AdminResetPasswordFallback />}>
+      <AdminResetPasswordContent />
+    </Suspense>
   );
 }
