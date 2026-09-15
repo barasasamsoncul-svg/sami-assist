@@ -48,6 +48,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import UserAvatar from '@/app/components/account/UserAvatar';
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import {
@@ -1212,7 +1213,6 @@ export default function DashboardClient({
           '/api/auth/logout',
           {
             method: 'POST',
-
             credentials:
               'include',
 
@@ -1738,9 +1738,19 @@ export default function DashboardClient({
                     }
                     className="flex h-10 items-center gap-2 rounded-xl pl-1 pr-2 transition hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-black text-white shadow-sm">
-                      {initials}
-                    </span>
+                    <UserAvatar
+                      avatarFileId={
+                        user.avatarFileId
+                      }
+                      displayName={
+                        displayName
+                      }
+                      initials={
+                        initials
+                      }
+                      size="sm"
+                      className="shadow-sm"
+                    />
 
                     <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
                   </button>

@@ -12,6 +12,7 @@ import {
   AlertCircle,
   AtSign,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   Clock3,
@@ -25,6 +26,7 @@ import {
   Save,
   ShieldCheck,
   SunMoon,
+  Trash2,
   UserRound,
   X,
 } from 'lucide-react';
@@ -498,6 +500,18 @@ export default function MyAccountSettings() {
     useState(false);
 
   const [
+    avatarSaving,
+    setAvatarSaving,
+  ] =
+    useState(false);
+
+  const [
+    avatarRemoving,
+    setAvatarRemoving,
+  ] =
+    useState(false);
+
+  const [
     preferencesSaving,
     setPreferencesSaving,
   ] =
@@ -582,6 +596,8 @@ export default function MyAccountSettings() {
   const busy =
     loading ||
     profileSaving ||
+    avatarSaving ||
+    avatarRemoving ||
     preferencesSaving ||
     requestingEmail ||
     verifyingEmail ||
@@ -878,6 +894,229 @@ export default function MyAccountSettings() {
       verifyRetrySeconds,
     ]
   );
+
+  /* ==========================================================
+     AVATAR
+     ========================================================== */
+
+  async function uploadAvatar(
+    file:
+      File | null
+  ) {
+    if (
+      !file ||
+      avatarSaving ||
+      avatarRemoving
+    ) {
+      return;
+    }
+
+    const allowedTypes =
+      new Set([
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+      ]);
+
+    if (
+      !allowedTypes.has(
+        file.type
+      )
+    ) {
+      setNotice({
+        type:
+          'warning',
+
+        message:
+          'Choose a JPEG, PNG, or WebP image.',
+      });
+
+      return;
+    }
+
+    if (
+      file.size >
+      5 * 1024 * 1024
+    ) {
+      setNotice({
+        type:
+          'warning',
+
+        message:
+          'Your profile image must be 5 MB or smaller.',
+      });
+
+      return;
+    }
+
+    setAvatarSaving(
+      true
+    );
+
+    setNotice(
+      null
+    );
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.append(
+        'avatar',
+        file
+      );
+
+      const response =
+        await fetch(
+          '/api/account/avatar',
+          {
+            method:
+              'POST',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            body:
+              formData,
+          }
+        );
+
+      const data =
+        await readJson(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'SaMi could not update your profile image.'
+        );
+      }
+
+      await loadAccount();
+
+      setNotice({
+        type:
+          'success',
+
+        message:
+          data.message ||
+          'Your profile image has been updated.',
+      });
+    } catch (
+      error
+    ) {
+      setNotice({
+        type:
+          'error',
+
+        message:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not update your profile image.',
+      });
+    } finally {
+      setAvatarSaving(
+        false
+      );
+    }
+  }
+
+  async function removeAvatar() {
+  if (
+    avatarSaving ||
+    avatarRemoving ||
+    !account ||
+    !account.avatarFileId
+  ) {
+    return;
+  }
+
+    setAvatarRemoving(
+      true
+    );
+
+    setNotice(
+      null
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/account/avatar',
+          {
+            method:
+              'DELETE',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+          }
+        );
+
+      const data =
+        await readJson(
+          response
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'SaMi could not remove your profile image.'
+        );
+      }
+
+      await loadAccount();
+
+      setNotice({
+        type:
+          'success',
+
+        message:
+          data.message ||
+          'Your profile image has been removed.',
+      });
+    } catch (
+      error
+    ) {
+      setNotice({
+        type:
+          'error',
+
+        message:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not remove your profile image.',
+      });
+    } finally {
+      setAvatarRemoving(
+        false
+      );
+    }
+  }
 
   /* ==========================================================
      PROFILE SAVE
@@ -1864,22 +2103,80 @@ export default function MyAccountSettings() {
 
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
 
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-lg font-black text-white shadow-sm">
+          <div className="relative h-20 w-20 shrink-0">
 
-            {account.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={
-                  account.avatarUrl
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-xl font-black text-white shadow-sm">
+
+              {account.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={
+                    account.avatarFileId ||
+                    account.avatarUrl
+                  }
+                  src={
+                    account.avatarFileId
+                      ? `${account.avatarUrl}?v=${encodeURIComponent(
+                          account.avatarFileId
+                        )}`
+                      : account.avatarUrl
+                  }
+                  alt={`${account.fullName || 'SaMi user'} profile`}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                initials(
+                  account
+                )
+              )}
+            </div>
+
+            <label
+              htmlFor="account-avatar"
+              className={`absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-xl border-4 border-white bg-blue-600 text-white shadow-sm transition dark:border-slate-900 ${
+                avatarSaving ||
+                avatarRemoving
+                  ? 'cursor-not-allowed opacity-60'
+                  : 'cursor-pointer hover:bg-blue-700'
+              }`}
+              title={
+                account.avatarFileId
+                  ? 'Replace profile image'
+                  : 'Upload profile image'
+              }
+            >
+              {avatarSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Camera className="h-4 w-4" />
+              )}
+
+              <input
+                id="account-avatar"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={
+                  avatarSaving ||
+                  avatarRemoving
                 }
-                alt=""
-                className="h-full w-full object-cover"
+                onChange={(
+                  event
+                ) => {
+                  const file =
+                    event.target
+                      .files?.[0] ||
+                    null;
+
+                  event.currentTarget.value =
+                    '';
+
+                  void uploadAvatar(
+                    file
+                  );
+                }}
+                className="sr-only"
               />
-            ) : (
-              initials(
-                account
-              )
-            )}
+            </label>
           </div>
 
           <div className="min-w-0 flex-1">
@@ -1908,6 +2205,59 @@ export default function MyAccountSettings() {
             <p className="mt-2 text-xs text-slate-400">
               Your personal SaMi account follows you across every workspace you belong to.
             </p>
+
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+
+              <label
+                htmlFor="account-avatar"
+                className={`inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 transition dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 ${
+                  avatarSaving ||
+                  avatarRemoving
+                    ? 'cursor-not-allowed opacity-50'
+                    : 'cursor-pointer hover:border-blue-300 hover:text-blue-600'
+                }`}
+              >
+                {avatarSaving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Camera className="h-3.5 w-3.5" />
+                )}
+
+                {avatarSaving
+                  ? 'Uploading...'
+                  : account.avatarFileId
+                    ? 'Replace photo'
+                    : 'Add photo'}
+              </label>
+
+              {account.avatarFileId && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    void removeAvatar()
+                  }
+                  disabled={
+                    avatarSaving ||
+                    avatarRemoving
+                  }
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 transition hover:border-red-200 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                >
+                  {avatarRemoving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+
+                  {avatarRemoving
+                    ? 'Removing...'
+                    : 'Remove photo'}
+                </button>
+              )}
+
+              <span className="text-[10px] leading-4 text-slate-400">
+                JPEG, PNG or WebP · max 5 MB
+              </span>
+            </div>
           </div>
         </div>
       </section>

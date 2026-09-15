@@ -10,11 +10,15 @@ import {
   AppWindow,
   Bell,
   Bot,
+  Boxes,
   Building2,
+  Calculator,
   ChevronDown,
   CircleHelp,
+  ContactRound,
   CreditCard,
   Folder,
+  FolderKanban,
   Home,
   LayoutGrid,
   LockKeyhole,
@@ -25,12 +29,8 @@ import {
   ShoppingCart,
   Store,
   User,
-  X,
-  Boxes,
-  Calculator,
-  ContactRound,
-  FolderKanban,
   UsersRound,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +41,7 @@ import {
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import UserAvatar from '@/app/components/account/UserAvatar';
 
 /* ============================================================
    TYPES
@@ -618,10 +619,6 @@ export default function WorkspaceSidebar({
     settingsRouteActive
   );
 
-  /*
-   * Automatically expose the current
-   * navigation branch.
-   */
   useEffect(() => {
     if (appRouteActive) {
       setAppsExpanded(
@@ -654,10 +651,6 @@ export default function WorkspaceSidebar({
     settingsRouteActive,
   ]);
 
-  /*
-   * Close mobile navigation after
-   * browser navigation.
-   */
   useEffect(() => {
     if (open) {
       onClose();
@@ -1071,9 +1064,18 @@ export default function WorkspaceSidebar({
             onClick={onClose}
             className="flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-900"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-black text-white">
-              {initials}
-            </div>
+            <UserAvatar
+              avatarFileId={
+                user.avatarFileId
+              }
+              displayName={
+                displayName
+              }
+              initials={
+                initials
+              }
+              size="md"
+            />
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-black text-slate-900 dark:text-white">
