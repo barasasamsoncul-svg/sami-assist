@@ -11,17 +11,28 @@ import {
   EmailChangeError,
 } from '@/lib/account/email-change';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+import {
+  getAvatarRecord,
+  AvatarError,
+} from '@/lib/account/avatar';
+
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
 
 /* ============================================================
    RESPONSE
    ============================================================ */
 
 function jsonResponse(
-  body: Record<string, unknown>,
-  status = 200,
-  extraHeaders?: Record<string, string>
+  body:
+    Record<string, unknown>,
+  status =
+    200,
+  extraHeaders?:
+    Record<string, string>
 ) {
   return NextResponse.json(
     body,
@@ -51,17 +62,26 @@ function jsonResponse(
 }
 
 function errorResponse(
-  status: number,
-  code: string,
-  error: string,
-  extra?: Record<string, unknown>,
-  headers?: Record<string, string>
+  status:
+    number,
+  code:
+    string,
+  error:
+    string,
+  extra?:
+    Record<string, unknown>,
+  headers?:
+    Record<string, string>
 ) {
   return jsonResponse(
     {
-      success: false,
+      success:
+        false,
+
       code,
+
       error,
+
       ...(extra || {}),
     },
     status,
@@ -74,11 +94,13 @@ function errorResponse(
    ============================================================ */
 
 function isTransientInfrastructureError(
-  error: unknown
+  error:
+    unknown
 ): boolean {
   if (
     !error ||
-    typeof error !== 'object'
+    typeof error !==
+      'object'
   ) {
     return false;
   }
@@ -90,13 +112,16 @@ function isTransientInfrastructureError(
     };
 
   const code =
-    typeof candidate.code === 'string'
+    typeof candidate.code ===
+    'string'
       ? candidate.code
       : '';
 
   const message =
-    typeof candidate.message === 'string'
-      ? candidate.message.toLowerCase()
+    typeof candidate.message ===
+    'string'
+      ? candidate.message
+          .toLowerCase()
       : '';
 
   const transientCodes =
@@ -121,7 +146,9 @@ function isTransientInfrastructureError(
     ]);
 
   return (
-    transientCodes.has(code) ||
+    transientCodes.has(
+      code
+    ) ||
     message.includes(
       'connection terminated'
     ) ||
@@ -151,19 +178,9 @@ function isTransientInfrastructureError(
    /api/admin/account
 
    Returns the authenticated Platform Administrator's own
-   identity information.
+   authoritative account identity.
 
-   IMPORTANT:
-
-   The browser does NOT supply:
-   - adminId
-   - role
-   - status
-   - email
-   - verification state
-
-   Identity is resolved exclusively from the authenticated
-   administrator session.
+   Browser-controlled identifiers are never accepted here.
    ============================================================ */
 
 export async function GET() {
@@ -178,7 +195,8 @@ export async function GET() {
       await requireAdminSession();
   } catch (error) {
     if (
-      error instanceof Error &&
+      error instanceof
+        Error &&
       error.message ===
         'ADMIN_UNAUTHENTICATED'
     ) {
@@ -204,10 +222,12 @@ export async function GET() {
         'SERVICE_TEMPORARILY_UNAVAILABLE',
         'SaMi administrator services are temporarily unavailable.',
         {
-          retryable: true,
+          retryable:
+            true,
         },
         {
-          'Retry-After': '30',
+          'Retry-After':
+            '30',
         }
       );
     }
@@ -220,17 +240,7 @@ export async function GET() {
   }
 
   /* ==========================================================
-     2. LOAD AUTHORITATIVE ACCOUNT
-
-     We intentionally reload the account from platform_admins
-     instead of returning the session snapshot.
-
-     This guarantees Settings sees the latest:
-     - email
-     - email verification state
-     - name
-     - role
-     - account status
+     2. AUTHORITATIVE ACCOUNT + AVATAR STATE
      ========================================================== */
 
   try {
@@ -241,16 +251,11 @@ export async function GET() {
 
     /* ========================================================
        3. DEFENCE-IN-DEPTH ACCOUNT STATE
-
-       requireAdminSession() already enforces the authenticated
-       session boundary.
-
-       We still ensure the identity returned to Settings remains
-       active.
        ======================================================== */
 
     if (
-      account.status !== 'active'
+      account.status !==
+      'active'
     ) {
       return errorResponse(
         403,
@@ -259,21 +264,31 @@ export async function GET() {
       );
     }
 
+    /*
+     * Avatar storage is private.
+     *
+     * We load only SaMi's metadata record here. We never expose:
+     * - R2 object key
+     * - R2 endpoint
+     * - bucket information
+     * - storage credentials
+     *
+     * The actual image is served through the authenticated
+     * /api/admin/account/avatar endpoint.
+     */
+    const avatar =
+      await getAvatarRecord(
+        'platform_admin',
+        session.adminId
+      );
+
     /* ========================================================
        4. SUCCESS
-
-       Deliberately excludes:
-       - password_hash
-       - failed_login_attempts
-       - locked_until
-       - internal token/challenge data
-       - session token
-       - verification hashes
-       - recovery codes
        ======================================================== */
 
     return jsonResponse({
-      success: true,
+      success:
+        true,
 
       code:
         'ADMIN_ACCOUNT_LOADED',
@@ -293,6 +308,15 @@ export async function GET() {
 
         email:
           account.email,
+
+        avatarFileId:
+          avatar?.id ??
+          null,
+
+        avatarUrl:
+          avatar
+            ? '/api/admin/account/avatar'
+            : null,
 
         role:
           account.role,
@@ -315,7 +339,7 @@ export async function GET() {
     });
   } catch (error) {
     /* ========================================================
-       5. DOMAIN ERRORS
+       5. EMAIL / IDENTITY DOMAIN ERRORS
        ======================================================== */
 
     if (
@@ -352,7 +376,59 @@ export async function GET() {
     }
 
     /* ========================================================
-       6. INTERNAL / INFRASTRUCTURE FAILURE
+       6. AVATAR DOMAIN ERRORS
+       ======================================================== */
+
+    if (
+      error instanceof
+      AvatarError
+    ) {
+      if (
+        error.code ===
+        'ACCOUNT_UNAVAILABLE'
+      ) {
+        return errorResponse(
+          403,
+          'ADMIN_ACCOUNT_UNAVAILABLE',
+          'This administrator account is not currently available.'
+        );
+      }
+
+      if (
+        error.code ===
+        'STORAGE_CONFIGURATION_ERROR' ||
+        error.code ===
+        'STORAGE_UNAVAILABLE'
+      ) {
+        return errorResponse(
+          503,
+          'AVATAR_SERVICE_UNAVAILABLE',
+          'Profile image services are temporarily unavailable.',
+          {
+            retryable:
+              true,
+          },
+          {
+            'Retry-After':
+              '30',
+          }
+        );
+      }
+
+      console.error(
+        '[Admin Account] Avatar metadata lookup failed:',
+        error.code
+      );
+
+      return errorResponse(
+        500,
+        'ADMIN_AVATAR_STATE_ERROR',
+        'SaMi could not load your profile image information.'
+      );
+    }
+
+    /* ========================================================
+       7. INTERNAL / INFRASTRUCTURE FAILURE
        ======================================================== */
 
     console.error(
@@ -370,10 +446,12 @@ export async function GET() {
         'SERVICE_TEMPORARILY_UNAVAILABLE',
         'SaMi administrator services are temporarily unavailable.',
         {
-          retryable: true,
+          retryable:
+            true,
         },
         {
-          'Retry-After': '30',
+          'Retry-After':
+            '30',
         }
       );
     }
