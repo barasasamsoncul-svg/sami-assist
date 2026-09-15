@@ -19,6 +19,10 @@ import {
   useState,
 } from 'react';
 
+import {
+  useSearchParams,
+} from 'next/navigation';
+
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import MyAccountSettings from './components/MyAccountSettings';
@@ -98,14 +102,6 @@ type Props = {
   membership: MembershipData;
   subscription: SubscriptionData;
   modules: ModuleData[];
-
-  /*
-   * Kept because the server Settings page
-   * already supplies the current session.
-   *
-   * SessionsSettings loads the authoritative
-   * active-session list through its own API.
-   */
   session: SessionData;
 };
 
@@ -178,35 +174,6 @@ function normalizeStatus(
   );
 }
 
-function getSectionFromUrl():
-  Section | null {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return null;
-  }
-
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  const tab =
-    params.get('tab');
-
-  if (
-    tab &&
-    VALID_SECTIONS.has(
-      tab as Section
-    )
-  ) {
-    return tab as Section;
-  }
-
-  return null;
-}
-
 function getSystemPrefersDark():
   boolean {
   if (
@@ -255,10 +222,7 @@ function applyThemeToDocument(
       theme
     );
   } catch {
-    /*
-     * Local cache is optional.
-     * Server preference remains authoritative.
-     */
+    // Local theme cache is optional.
   }
 
   return dark;
@@ -323,6 +287,9 @@ export default function SettingsClient({
   subscription,
   modules,
 }: Props) {
+  const searchParams =
+    useSearchParams();
+
   const [
     sidebarOpen,
     setSidebarOpen,
@@ -402,14 +369,33 @@ export default function SettingsClient({
 
   /* ==========================================================
      URL → SECTION
+
+     useSearchParams is authoritative.
+
+     This reacts to:
+     - sidebar navigation
+     - browser back
+     - browser forward
+     - direct URLs
+     - refresh
      ========================================================== */
 
   useEffect(() => {
-    const requested =
-      getSectionFromUrl();
+    const tab =
+      searchParams.get(
+        'tab'
+      );
+
+    const requested:
+      Section =
+      tab &&
+      VALID_SECTIONS.has(
+        tab as Section
+      )
+        ? (tab as Section)
+        : 'personal';
 
     if (
-      requested &&
       allowedSections.has(
         requested
       )
@@ -425,49 +411,7 @@ export default function SettingsClient({
       'personal'
     );
   }, [
-    allowedSections,
-  ]);
-
-  /* ==========================================================
-     BROWSER BACK / FORWARD
-     ========================================================== */
-
-  useEffect(() => {
-    const syncSection =
-      () => {
-        const requested =
-          getSectionFromUrl();
-
-        if (
-          requested &&
-          allowedSections.has(
-            requested
-          )
-        ) {
-          setActive(
-            requested
-          );
-
-          return;
-        }
-
-        setActive(
-          'personal'
-        );
-      };
-
-    window.addEventListener(
-      'popstate',
-      syncSection
-    );
-
-    return () => {
-      window.removeEventListener(
-        'popstate',
-        syncSection
-      );
-    };
-  }, [
+    searchParams,
     allowedSections,
   ]);
 
@@ -794,10 +738,6 @@ export default function SettingsClient({
     <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
       <div className="flex min-h-screen">
 
-        {/* ====================================================
-            SHARED WORKSPACE SIDEBAR
-            ==================================================== */}
-
         <WorkspaceSidebar
           user={user}
           tenant={tenant}
@@ -827,10 +767,6 @@ export default function SettingsClient({
           }
         />
 
-        {/* ====================================================
-            MAIN
-            ==================================================== */}
-
         <div className="min-w-0 flex-1 lg:pl-[286px]">
 
           {/* ==================================================
@@ -853,8 +789,6 @@ export default function SettingsClient({
                 <Menu className="h-5 w-5" />
               </button>
 
-              {/* PAGE IDENTITY */}
-
               <div className="min-w-0">
                 <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
                   Settings
@@ -865,16 +799,12 @@ export default function SettingsClient({
                 </p>
               </div>
 
-              {/* WORKSPACE */}
-
               <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-slate-800">
                 <p className="max-w-[260px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
                   {tenant?.name ||
                     'SaMi Workspace'}
                 </p>
               </div>
-
-              {/* THEME */}
 
               <div className="ml-auto">
                 <button
@@ -912,48 +842,26 @@ export default function SettingsClient({
           </header>
 
           {/* ==================================================
-              SETTINGS CONTENT
+              CONTENT
               ================================================== */}
 
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-
-            {/*
-             * No second Settings sidebar.
-             *
-             * No duplicated:
-             * Settings / My Account
-             * # My Account
-             * Manage your...
-             *
-             * Sidebar owns hierarchy.
-             * TopBar owns page identity.
-             * Body begins with actual settings.
-             */}
-
             <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-[#0d121b]">
-
-              {/* MY ACCOUNT */}
 
               {active ===
                 'personal' && (
                 <MyAccountSettings />
               )}
 
-              {/* SECURITY */}
-
               {active ===
                 'security' && (
                 <SecuritySettings />
               )}
 
-              {/* SESSIONS */}
-
               {active ===
                 'sessions' && (
                 <SessionsSettings />
               )}
-
-              {/* WORKSPACE */}
 
               {active ===
                 'workspace' &&
@@ -968,8 +876,6 @@ export default function SettingsClient({
                   />
                 )}
 
-              {/* APPS */}
-
               {active ===
                 'apps' &&
                 canAdminWorkspace && (
@@ -980,8 +886,6 @@ export default function SettingsClient({
                   />
                 )}
 
-              {/* SAMI AI */}
-
               {active ===
                 'ai' && (
                 <AiSection
@@ -990,8 +894,6 @@ export default function SettingsClient({
                   }
                 />
               )}
-
-              {/* BILLING */}
 
               {active ===
                 'billing' &&
