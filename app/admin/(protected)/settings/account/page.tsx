@@ -18,13 +18,22 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
+  CalendarDays,
+  Check,
   ChevronRight,
+  Clock3,
+  Globe2,
   KeyRound,
+  Languages,
   Loader2,
   Mail,
+  Monitor,
+  Moon,
   RefreshCw,
   Save,
+  Settings2,
   ShieldCheck,
+  Sun,
   UserRound,
   X,
 } from 'lucide-react';
@@ -39,57 +48,126 @@ import SaMiOverlay, {
 
 type AdminAccount = {
   id: string;
-
   firstName: string;
   lastName: string;
   fullName: string;
-
   email: string;
-
   role: string;
   status: string;
-
   emailVerified: boolean;
   emailVerifiedAt: string | null;
-
   twoFactorRequired: boolean;
   twoFactorEnabled: boolean;
-
   updatedAt?: string | null;
+};
+
+type AdminTheme =
+  | 'system'
+  | 'light'
+  | 'dark';
+
+type AdminDateFormat =
+  | 'DD/MM/YYYY'
+  | 'MM/DD/YYYY'
+  | 'YYYY-MM-DD';
+
+type AdminTimeFormat =
+  | '12h'
+  | '24h';
+
+type AdminPreferences = {
+  theme: AdminTheme;
+  locale: string;
+  timezone: string;
+  dateFormat: AdminDateFormat;
+  timeFormat: AdminTimeFormat;
+  firstDayOfWeek: number;
 };
 
 type ApiPayload = {
   success?: boolean;
-
   code?: string;
-
   account?: AdminAccount;
-
+  preferences?: AdminPreferences;
   error?: string;
-
   message?: string;
-
   field?: string | null;
-
   retryable?: boolean;
-
   requestId?: string;
 };
 
 type ViewMode =
   | 'overview'
-  | 'profile';
+  | 'profile'
+  | 'preferences';
 
 type OverlayState = {
   open: boolean;
-
-  type:
-    SaMiOverlayType;
-
+  type: SaMiOverlayType;
   title: string;
-
   message: string;
 };
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+
+const DEFAULT_PREFERENCES:
+  AdminPreferences = {
+    theme: 'system',
+    locale: 'en',
+    timezone: 'UTC',
+    dateFormat: 'DD/MM/YYYY',
+    timeFormat: '24h',
+    firstDayOfWeek: 1,
+  };
+
+const TIMEZONES = [
+  'Africa/Nairobi',
+  'Africa/Lagos',
+  'Africa/Johannesburg',
+  'Africa/Cairo',
+  'Europe/London',
+  'Europe/Paris',
+  'America/New_York',
+  'America/Chicago',
+  'America/Los_Angeles',
+  'Asia/Dubai',
+  'Asia/Kolkata',
+  'Asia/Singapore',
+  'Asia/Tokyo',
+  'Australia/Sydney',
+  'UTC',
+];
+
+const LOCALES = [
+  {
+    value: 'en',
+    label: 'English',
+  },
+  {
+    value: 'en-KE',
+    label: 'English (Kenya)',
+  },
+  {
+    value: 'en-GB',
+    label: 'English (United Kingdom)',
+  },
+  {
+    value: 'en-US',
+    label: 'English (United States)',
+  },
+];
+
+const DAYS = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
 
 /* ============================================================
    HELPERS
@@ -102,9 +180,7 @@ function roleLabel(
     .split('_')
     .map(
       part =>
-        part
-          .charAt(0)
-          .toUpperCase() +
+        part.charAt(0).toUpperCase() +
         part.slice(1)
     )
     .join(' ');
@@ -113,35 +189,18 @@ function roleLabel(
 function statusLabel(
   value: string
 ) {
-  return value
-    .split('_')
-    .map(
-      part =>
-        part
-          .charAt(0)
-          .toUpperCase() +
-        part.slice(1)
-    )
-    .join(' ');
+  return roleLabel(
+    value
+  );
 }
 
 function initials(
-  account:
-    AdminAccount
+  account: AdminAccount
 ) {
-  const first =
-    account.firstName
-      ?.trim()
-      .charAt(0);
-
-  const last =
-    account.lastName
-      ?.trim()
-      .charAt(0);
-
   return (
-    `${first || ''}${last || ''}`
-      .toUpperCase() ||
+    `${account.firstName?.[0] || ''}${
+      account.lastName?.[0] || ''
+    }`.toUpperCase() ||
     'SM'
   );
 }
@@ -151,10 +210,7 @@ function normalizeName(
 ) {
   return value
     .normalize('NFKC')
-    .replace(
-      /\s+/g,
-      ' '
-    )
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -167,10 +223,8 @@ function validName(
     );
 
   return (
-    normalized.length >=
-      1 &&
-    normalized.length <=
-      80 &&
+    normalized.length >= 1 &&
+    normalized.length <= 80 &&
     /^[\p{L}\p{M}][\p{L}\p{M}\s'’\-]*$/u.test(
       normalized
     )
@@ -202,13 +256,47 @@ async function readPayload(
 
   return {
     success: false,
-
     code:
       'INVALID_SERVER_RESPONSE',
-
     error:
       'SaMi returned an invalid response.',
   };
+}
+
+function applyTheme(
+  theme: AdminTheme
+) {
+  const root =
+    document.documentElement;
+
+  const prefersDark =
+    window.matchMedia(
+      '(prefers-color-scheme: dark)'
+    ).matches;
+
+  const dark =
+    theme === 'dark' ||
+    (
+      theme === 'system' &&
+      prefersDark
+    );
+
+  root.classList.toggle(
+    'dark',
+    dark
+  );
+
+  root.dataset.theme =
+    theme;
+
+  try {
+    localStorage.setItem(
+      'sami-admin-theme',
+      theme
+    );
+  } catch {
+    // Browser storage is optional.
+  }
 }
 
 /* ============================================================
@@ -219,16 +307,20 @@ export default function AdminMyAccountPage() {
   const router =
     useRouter();
 
-  /* ==========================================================
-     ACCOUNT
-     ========================================================== */
-
   const [
     account,
     setAccount,
   ] =
     useState<AdminAccount | null>(
       null
+    );
+
+  const [
+    preferences,
+    setPreferences,
+  ] =
+    useState<AdminPreferences>(
+      DEFAULT_PREFERENCES
     );
 
   const [
@@ -245,10 +337,6 @@ export default function AdminMyAccountPage() {
       null
     );
 
-  /* ==========================================================
-     NAVIGATION STATE
-     ========================================================== */
-
   const [
     view,
     setView,
@@ -258,7 +346,7 @@ export default function AdminMyAccountPage() {
     );
 
   /* ==========================================================
-     PROFILE FORM
+     PROFILE
      ========================================================== */
 
   const [
@@ -272,12 +360,6 @@ export default function AdminMyAccountPage() {
     setLastName,
   ] =
     useState('');
-
-  const [
-    savingProfile,
-    setSavingProfile,
-  ] =
-    useState(false);
 
   const [
     firstNameError,
@@ -295,6 +377,30 @@ export default function AdminMyAccountPage() {
       null
     );
 
+  const [
+    savingProfile,
+    setSavingProfile,
+  ] =
+    useState(false);
+
+  /* ==========================================================
+     PREFERENCES FORM
+     ========================================================== */
+
+  const [
+    draftPreferences,
+    setDraftPreferences,
+  ] =
+    useState<AdminPreferences>(
+      DEFAULT_PREFERENCES
+    );
+
+  const [
+    savingPreferences,
+    setSavingPreferences,
+  ] =
+    useState(false);
+
   /* ==========================================================
      OVERLAY
      ========================================================== */
@@ -305,12 +411,8 @@ export default function AdminMyAccountPage() {
   ] =
     useState<OverlayState>({
       open: false,
-
-      type:
-        'info',
-
+      type: 'info',
       title: '',
-
       message: '',
     });
 
@@ -338,10 +440,10 @@ export default function AdminMyAccountPage() {
   }
 
   /* ==========================================================
-     LOAD ACCOUNT
+     LOAD
      ========================================================== */
 
-  const loadAccount =
+  const loadData =
     useCallback(
       async () => {
         setLoading(
@@ -353,34 +455,62 @@ export default function AdminMyAccountPage() {
         );
 
         try {
-          const response =
-            await fetch(
-              '/api/admin/account',
-              {
-                method:
-                  'GET',
+          const [
+            accountResponse,
+            preferencesResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                '/api/admin/account',
+                {
+                  method:
+                    'GET',
+                  cache:
+                    'no-store',
+                  credentials:
+                    'same-origin',
+                  headers: {
+                    Accept:
+                      'application/json',
+                  },
+                }
+              ),
 
-                cache:
-                  'no-store',
+              fetch(
+                '/api/admin/account/preferences',
+                {
+                  method:
+                    'GET',
+                  cache:
+                    'no-store',
+                  credentials:
+                    'same-origin',
+                  headers: {
+                    Accept:
+                      'application/json',
+                  },
+                }
+              ),
+            ]);
 
-                credentials:
-                  'same-origin',
-
-                headers: {
-                  Accept:
-                    'application/json',
-                },
-              }
-            );
-
-          const payload =
-            await readPayload(
-              response
-            );
+          const [
+            accountPayload,
+            preferencesPayload,
+          ] =
+            await Promise.all([
+              readPayload(
+                accountResponse
+              ),
+              readPayload(
+                preferencesResponse
+              ),
+            ]);
 
           if (
-            response.status ===
-            401
+            accountResponse.status ===
+              401 ||
+            preferencesResponse.status ===
+              401
           ) {
             showOverlay(
               'warning',
@@ -392,38 +522,53 @@ export default function AdminMyAccountPage() {
           }
 
           if (
-            response.status ===
-            503
+            !accountResponse.ok ||
+            !accountPayload.account
           ) {
             throw new Error(
-              payload.error ||
-                'SaMi administrator services are temporarily unavailable.'
-            );
-          }
-
-          if (
-            !response.ok ||
-            !payload.account
-          ) {
-            throw new Error(
-              payload.error ||
+              accountPayload.error ||
                 'SaMi could not load your administrator account.'
             );
           }
 
-          const loaded =
-            payload.account;
+          if (
+            !preferencesResponse.ok ||
+            !preferencesPayload.preferences
+          ) {
+            throw new Error(
+              preferencesPayload.error ||
+                'SaMi could not load your administrator preferences.'
+            );
+          }
 
           setAccount(
-            loaded
+            accountPayload.account
           );
 
           setFirstName(
-            loaded.firstName
+            accountPayload
+              .account
+              .firstName
           );
 
           setLastName(
-            loaded.lastName
+            accountPayload
+              .account
+              .lastName
+          );
+
+          setPreferences(
+            preferencesPayload.preferences
+          );
+
+          setDraftPreferences(
+            preferencesPayload.preferences
+          );
+
+          applyTheme(
+            preferencesPayload
+              .preferences
+              .theme
           );
         } catch (
           error
@@ -450,10 +595,10 @@ export default function AdminMyAccountPage() {
 
   useEffect(
     () => {
-      void loadAccount();
+      void loadData();
     },
     [
-      loadAccount,
+      loadData,
     ]
   );
 
@@ -464,9 +609,7 @@ export default function AdminMyAccountPage() {
   const profileChanged =
     useMemo(
       () => {
-        if (
-          !account
-        ) {
+        if (!account) {
           return false;
         }
 
@@ -489,9 +632,7 @@ export default function AdminMyAccountPage() {
     );
 
   function openProfile() {
-    if (
-      !account
-    ) {
+    if (!account) {
       return;
     }
 
@@ -523,9 +664,7 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    if (
-      account
-    ) {
+    if (account) {
       setFirstName(
         account.firstName
       );
@@ -565,14 +704,6 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setFirstNameError(
-      null
-    );
-
-    setLastNameError(
-      null
-    );
-
     const normalizedFirst =
       normalizeName(
         firstName
@@ -583,6 +714,14 @@ export default function AdminMyAccountPage() {
         lastName
       );
 
+    setFirstNameError(
+      null
+    );
+
+    setLastNameError(
+      null
+    );
+
     let invalid =
       false;
 
@@ -592,7 +731,7 @@ export default function AdminMyAccountPage() {
       )
     ) {
       setFirstNameError(
-        'Enter a valid first name using 1–80 letters, spaces, apostrophes or hyphens.'
+        'Enter a valid first name.'
       );
 
       invalid =
@@ -605,7 +744,7 @@ export default function AdminMyAccountPage() {
       )
     ) {
       setLastNameError(
-        'Enter a valid last name using 1–80 letters, spaces, apostrophes or hyphens.'
+        'Enter a valid last name.'
       );
 
       invalid =
@@ -622,7 +761,7 @@ export default function AdminMyAccountPage() {
       showOverlay(
         'info',
         'No changes to save',
-        'Your administrator profile has not changed.'
+        'Your personal information has not changed.'
       );
 
       return;
@@ -677,7 +816,7 @@ export default function AdminMyAccountPage() {
         showOverlay(
           'warning',
           'Administrator session expired',
-          'Your administrator session is no longer active. Sign in again to continue.'
+          'Sign in again to continue.'
         );
 
         return;
@@ -711,41 +850,16 @@ export default function AdminMyAccountPage() {
           return;
         }
 
-        if (
-          response.status ===
-          503
-        ) {
-          showOverlay(
-            'warning',
-            'Service temporarily unavailable',
-            payload.error ||
-              'SaMi administrator services are temporarily unavailable. Your profile was not changed.'
-          );
-
-          return;
-        }
-
         throw new Error(
           payload.error ||
-            'SaMi could not update your administrator profile.'
+            'SaMi could not update your profile.'
         );
       }
 
-      const updated =
-        payload.account;
-
-      /*
-       * The profile endpoint intentionally returns
-       * only its authoritative identity fields.
-       *
-       * Preserve authentication/security state
-       * already loaded by /api/admin/account.
-       */
       const nextAccount:
         AdminAccount = {
         ...account,
-
-        ...updated,
+        ...payload.account,
 
         twoFactorRequired:
           account.twoFactorRequired,
@@ -773,23 +887,18 @@ export default function AdminMyAccountPage() {
       showOverlay(
         'success',
         'Profile updated',
-        'Your administrator personal information has been updated successfully.'
+        'Your personal information has been updated.'
       );
     } catch (
       error
     ) {
-      console.error(
-        '[Admin My Account] Profile update failed:',
-        error
-      );
-
       showOverlay(
         'error',
         'Profile update failed',
         error instanceof
           Error
           ? error.message
-          : 'SaMi could not update your administrator profile.'
+          : 'SaMi could not update your profile.'
       );
     } finally {
       setSavingProfile(
@@ -797,6 +906,249 @@ export default function AdminMyAccountPage() {
       );
     }
   }
+
+  /* ==========================================================
+     PREFERENCES
+     ========================================================== */
+
+  const preferencesChanged =
+    useMemo(
+      () =>
+        JSON.stringify(
+          preferences
+        ) !==
+        JSON.stringify(
+          draftPreferences
+        ),
+      [
+        preferences,
+        draftPreferences,
+      ]
+    );
+
+  function openPreferences() {
+    setDraftPreferences({
+      ...preferences,
+    });
+
+    setView(
+      'preferences'
+    );
+  }
+
+  function closePreferences() {
+    if (
+      savingPreferences
+    ) {
+      return;
+    }
+
+    setDraftPreferences({
+      ...preferences,
+    });
+
+    applyTheme(
+      preferences.theme
+    );
+
+    setView(
+      'overview'
+    );
+  }
+
+  function updatePreference<
+    K extends keyof AdminPreferences
+  >(
+    key: K,
+    value:
+      AdminPreferences[K]
+  ) {
+    setDraftPreferences(
+      current => ({
+        ...current,
+        [key]: value,
+      })
+    );
+
+    if (
+      key ===
+      'theme'
+    ) {
+      applyTheme(
+        value as
+          AdminTheme
+      );
+    }
+  }
+
+  async function savePreferences(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (
+      savingPreferences
+    ) {
+      return;
+    }
+
+    if (
+      !preferencesChanged
+    ) {
+      showOverlay(
+        'info',
+        'No changes to save',
+        'Your preferences have not changed.'
+      );
+
+      return;
+    }
+
+    setSavingPreferences(
+      true
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/preferences',
+          {
+            method:
+              'PATCH',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify(
+                draftPreferences
+              ),
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        showOverlay(
+          'warning',
+          'Administrator session expired',
+          'Sign in again to continue.'
+        );
+
+        return;
+      }
+
+      if (
+        !response.ok ||
+        !payload.preferences
+      ) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not update your preferences.'
+        );
+      }
+
+      setPreferences(
+        payload.preferences
+      );
+
+      setDraftPreferences(
+        payload.preferences
+      );
+
+      applyTheme(
+        payload.preferences
+          .theme
+      );
+
+      setView(
+        'overview'
+      );
+
+      showOverlay(
+        'success',
+        'Preferences updated',
+        'Your administrator preferences have been saved.'
+      );
+    } catch (
+      error
+    ) {
+      applyTheme(
+        preferences.theme
+      );
+
+      showOverlay(
+        'error',
+        'Preferences update failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not update your preferences.'
+      );
+    } finally {
+      setSavingPreferences(
+        false
+      );
+    }
+  }
+
+  /* ==========================================================
+     OVERLAY
+     ========================================================== */
+
+  const overlayElement = (
+    <SaMiOverlay
+      open={
+        overlay.open
+      }
+      type={
+        overlay.type
+      }
+      title={
+        overlay.title
+      }
+      message={
+        overlay.message
+      }
+      primaryAction={
+        overlay.title ===
+        'Administrator session expired'
+          ? {
+              label:
+                'Sign in again',
+
+              onClick:
+                () => {
+                  router.replace(
+                    '/admin/login'
+                  );
+                },
+            }
+          : undefined
+      }
+      onClose={
+        closeOverlay
+      }
+    />
+  );
 
   /* ==========================================================
      LOADING
@@ -813,7 +1165,7 @@ export default function AdminMyAccountPage() {
           </p>
 
           <p className="mt-1 text-sm text-zinc-500">
-            Verifying administrator information.
+            Preparing your administrator settings.
           </p>
         </div>
       </div>
@@ -821,7 +1173,7 @@ export default function AdminMyAccountPage() {
   }
 
   /* ==========================================================
-     LOAD FAILURE
+     ERROR
      ========================================================== */
 
   if (
@@ -831,13 +1183,15 @@ export default function AdminMyAccountPage() {
     return (
       <>
         <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8 shadow-sm dark:border-red-950 dark:bg-zinc-900">
-          <AlertTriangle className="h-7 w-7 text-red-600" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
 
           <h2 className="mt-5 text-xl font-bold text-zinc-950 dark:text-white">
             Account unavailable
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-zinc-500">
+          <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500">
             {loadError ||
               'SaMi could not load your administrator account.'}
           </p>
@@ -845,55 +1199,22 @@ export default function AdminMyAccountPage() {
           <button
             type="button"
             onClick={() =>
-              void loadAccount()
+              void loadData()
             }
-            className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
+            className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950"
           >
             <RefreshCw className="h-4 w-4" />
-
             Try again
           </button>
         </div>
 
-        <SaMiOverlay
-          open={
-            overlay.open
-          }
-          type={
-            overlay.type
-          }
-          title={
-            overlay.title
-          }
-          message={
-            overlay.message
-          }
-          primaryAction={
-            overlay.title ===
-            'Administrator session expired'
-              ? {
-                  label:
-                    'Sign in again',
-
-                  onClick:
-                    () => {
-                      router.replace(
-                        '/admin/login'
-                      );
-                    },
-                }
-              : undefined
-          }
-          onClose={
-            closeOverlay
-          }
-        />
+        {overlayElement}
       </>
     );
   }
 
   /* ==========================================================
-     PROFILE EDITOR
+     PROFILE VIEW
      ========================================================== */
 
   if (
@@ -903,46 +1224,32 @@ export default function AdminMyAccountPage() {
     return (
       <>
         <div className="mx-auto w-full max-w-4xl">
-          <button
-            type="button"
+          <BackButton
             onClick={
               closeProfile
             }
             disabled={
               savingProfile
             }
-            className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-
-            My Account
-          </button>
+          />
 
           <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex items-center gap-4 border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+            <SectionHeader
+              icon={
                 <UserRound className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h2 className="font-bold text-zinc-950 dark:text-white">
-                  Personal information
-                </h2>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  Update the name attached to your Platform Administrator identity.
-                </p>
-              </div>
-            </div>
+              }
+              title="Personal information"
+              description="Manage the name attached to your administrator identity."
+            />
 
             <form
               onSubmit={
                 saveProfile
               }
-              className="p-6"
+              className="p-6 sm:p-7"
             >
               <div className="grid gap-5 sm:grid-cols-2">
-                <div>
+                <Field>
                   <label
                     htmlFor="admin-first-name"
                     className="text-sm font-semibold text-zinc-800 dark:text-zinc-200"
@@ -952,51 +1259,44 @@ export default function AdminMyAccountPage() {
 
                   <input
                     id="admin-first-name"
-                    type="text"
                     value={
                       firstName
                     }
-                    disabled={
-                      savingProfile
-                    }
-                    autoComplete="given-name"
                     maxLength={
                       80
+                    }
+                    autoComplete="given-name"
+                    disabled={
+                      savingProfile
                     }
                     onChange={
                       event => {
                         setFirstName(
-                          event
-                            .target
-                            .value
+                          event.target.value
                         );
 
-                        if (
-                          firstNameError
-                        ) {
-                          setFirstNameError(
-                            null
-                          );
-                        }
+                        setFirstNameError(
+                          null
+                        );
                       }
                     }
-                    className={`mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950 dark:text-white ${
-                      firstNameError
-                        ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
-                        : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
-                    }`}
+                    className={inputClass(
+                      Boolean(
+                        firstNameError
+                      )
+                    )}
                   />
 
                   {firstNameError && (
-                    <p className="mt-2 text-xs font-medium leading-5 text-red-600 dark:text-red-400">
+                    <FieldError>
                       {
                         firstNameError
                       }
-                    </p>
+                    </FieldError>
                   )}
-                </div>
+                </Field>
 
-                <div>
+                <Field>
                   <label
                     htmlFor="admin-last-name"
                     className="text-sm font-semibold text-zinc-800 dark:text-zinc-200"
@@ -1006,252 +1306,524 @@ export default function AdminMyAccountPage() {
 
                   <input
                     id="admin-last-name"
-                    type="text"
                     value={
                       lastName
                     }
-                    disabled={
-                      savingProfile
-                    }
-                    autoComplete="family-name"
                     maxLength={
                       80
+                    }
+                    autoComplete="family-name"
+                    disabled={
+                      savingProfile
                     }
                     onChange={
                       event => {
                         setLastName(
-                          event
-                            .target
-                            .value
+                          event.target.value
                         );
 
-                        if (
-                          lastNameError
-                        ) {
-                          setLastNameError(
-                            null
-                          );
-                        }
+                        setLastNameError(
+                          null
+                        );
                       }
                     }
-                    className={`mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950 dark:text-white ${
-                      lastNameError
-                        ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
-                        : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
-                    }`}
+                    className={inputClass(
+                      Boolean(
+                        lastNameError
+                      )
+                    )}
                   />
 
                   {lastNameError && (
-                    <p className="mt-2 text-xs font-medium leading-5 text-red-600 dark:text-red-400">
+                    <FieldError>
                       {
                         lastNameError
                       }
-                    </p>
+                    </FieldError>
                   )}
+                </Field>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-950/60">
+                <div className="flex items-start gap-3">
+                  <Mail className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
+
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-950 dark:text-white">
+                      {account.email}
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">
+                      Your sign-in email is protected by a separate verification process.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950/60">
-                <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">
-                  Administrator email
+              <FormActions
+                saving={
+                  savingProfile
+                }
+                changed={
+                  profileChanged
+                }
+                onCancel={
+                  closeProfile
+                }
+              />
+            </form>
+          </section>
+        </div>
+
+        {overlayElement}
+      </>
+    );
+  }
+
+  /* ==========================================================
+     PREFERENCES VIEW
+     ========================================================== */
+
+  if (
+    view ===
+    'preferences'
+  ) {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-5xl">
+          <BackButton
+            onClick={
+              closePreferences
+            }
+            disabled={
+              savingPreferences
+            }
+          />
+
+          <form
+            onSubmit={
+              savePreferences
+            }
+            className="mt-4 space-y-5"
+          >
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <SectionHeader
+                icon={
+                  <Settings2 className="h-5 w-5" />
+                }
+                title="Preferences"
+                description="Personalize how the administrator workspace appears and formats information."
+              />
+
+              <div className="p-6 sm:p-7">
+                <p className="text-sm font-semibold text-zinc-950 dark:text-white">
+                  Appearance
                 </p>
 
-                <p className="mt-2 break-all text-sm font-semibold text-zinc-950 dark:text-white">
-                  {
-                    account.email
+                <p className="mt-1 text-sm text-zinc-500">
+                  Choose how SaMi looks on this account.
+                </p>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'system'
+                    }
+                    icon={
+                      <Monitor className="h-5 w-5" />
+                    }
+                    title="System"
+                    description="Follow your device"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
+                        'system'
+                      )
+                    }
+                  />
+
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'light'
+                    }
+                    icon={
+                      <Sun className="h-5 w-5" />
+                    }
+                    title="Light"
+                    description="Always use light"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
+                        'light'
+                      )
+                    }
+                  />
+
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'dark'
+                    }
+                    icon={
+                      <Moon className="h-5 w-5" />
+                    }
+                    title="Dark"
+                    description="Always use dark"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
+                        'dark'
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="grid divide-y divide-zinc-200 dark:divide-zinc-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+                <PreferenceBlock
+                  icon={
+                    <Languages className="h-5 w-5" />
                   }
-                </p>
+                  title="Language & locale"
+                  description="Controls language and regional formatting."
+                >
+                  <select
+                    value={
+                      draftPreferences.locale
+                    }
+                    disabled={
+                      savingPreferences
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'locale',
+                          event.target.value
+                        )
+                    }
+                    className={selectClass()}
+                  >
+                    {LOCALES.map(
+                      locale => (
+                        <option
+                          key={
+                            locale.value
+                          }
+                          value={
+                            locale.value
+                          }
+                        >
+                          {locale.label}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </PreferenceBlock>
 
-                <p className="mt-1 text-xs leading-5 text-zinc-500">
-                  Email is managed separately because changing your sign-in identity requires verification.
-                </p>
+                <PreferenceBlock
+                  icon={
+                    <Globe2 className="h-5 w-5" />
+                  }
+                  title="Time zone"
+                  description="Used when displaying dates and activity times."
+                >
+                  <select
+                    value={
+                      draftPreferences.timezone
+                    }
+                    disabled={
+                      savingPreferences
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'timezone',
+                          event.target.value
+                        )
+                    }
+                    className={selectClass()}
+                  >
+                    {TIMEZONES.map(
+                      timezone => (
+                        <option
+                          key={
+                            timezone
+                          }
+                          value={
+                            timezone
+                          }
+                        >
+                          {timezone}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </PreferenceBlock>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="h-5 w-5 text-zinc-500" />
+
+                  <div>
+                    <p className="font-semibold text-zinc-950 dark:text-white">
+                      Date & time
+                    </p>
+
+                    <p className="mt-1 text-sm text-zinc-500">
+                      Control how dates and times are presented.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <div className="grid gap-5 p-6 sm:p-7 lg:grid-cols-3">
+                <Field>
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    Date format
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.dateFormat
+                    }
+                    disabled={
+                      savingPreferences
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'dateFormat',
+                          event.target.value as
+                            AdminDateFormat
+                        )
+                    }
+                    className={selectClass()}
+                  >
+                    <option value="DD/MM/YYYY">
+                      DD/MM/YYYY
+                    </option>
+
+                    <option value="MM/DD/YYYY">
+                      MM/DD/YYYY
+                    </option>
+
+                    <option value="YYYY-MM-DD">
+                      YYYY-MM-DD
+                    </option>
+                  </select>
+                </Field>
+
+                <Field>
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    Time format
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.timeFormat
+                    }
+                    disabled={
+                      savingPreferences
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'timeFormat',
+                          event.target.value as
+                            AdminTimeFormat
+                        )
+                    }
+                    className={selectClass()}
+                  >
+                    <option value="12h">
+                      12-hour
+                    </option>
+
+                    <option value="24h">
+                      24-hour
+                    </option>
+                  </select>
+                </Field>
+
+                <Field>
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    First day of week
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.firstDayOfWeek
+                    }
+                    disabled={
+                      savingPreferences
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'firstDayOfWeek',
+                          Number(
+                            event.target.value
+                          )
+                        )
+                    }
+                    className={selectClass()}
+                  >
+                    {DAYS.map(
+                      (
+                        day,
+                        index
+                      ) => (
+                        <option
+                          key={
+                            day
+                          }
+                          value={
+                            index
+                          }
+                        >
+                          {day}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 px-6 py-5 dark:border-zinc-800 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={
-                    closeProfile
+                    closePreferences
                   }
                   disabled={
-                    savingProfile
+                    savingPreferences
                   }
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  className={secondaryButton()}
                 >
                   <X className="h-4 w-4" />
-
                   Cancel
                 </button>
 
                 <button
                   type="submit"
                   disabled={
-                    savingProfile ||
-                    !profileChanged
+                    savingPreferences ||
+                    !preferencesChanged
                   }
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
+                  className={primaryButton()}
                 >
-                  {savingProfile ? (
+                  {savingPreferences ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
 
-                  {savingProfile
+                  {savingPreferences
                     ? 'Saving'
-                    : 'Save changes'}
+                    : 'Save preferences'}
                 </button>
               </div>
-            </form>
-          </section>
+            </section>
+          </form>
         </div>
 
-        <SaMiOverlay
-          open={
-            overlay.open
-          }
-          type={
-            overlay.type
-          }
-          title={
-            overlay.title
-          }
-          message={
-            overlay.message
-          }
-          primaryAction={
-            overlay.title ===
-            'Administrator session expired'
-              ? {
-                  label:
-                    'Sign in again',
-
-                  onClick:
-                    () => {
-                      router.replace(
-                        '/admin/login'
-                      );
-                    },
-                }
-              : undefined
-          }
-          onClose={
-            closeOverlay
-          }
-        />
+        {overlayElement}
       </>
     );
   }
 
   /* ==========================================================
-     ACCOUNT OVERVIEW
+     OVERVIEW
      ========================================================== */
 
   return (
     <>
-      <div className="mx-auto w-full max-w-5xl">
+      <div className="mx-auto w-full max-w-5xl space-y-6">
+        <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="p-6 sm:p-7">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-zinc-950 text-xl font-bold text-white shadow-sm dark:bg-white dark:text-zinc-950">
+                  {initials(
+                    account
+                  )}
+                </div>
 
-        {/* ====================================================
-            IDENTITY SUMMARY
-            ==================================================== */}
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-lg font-bold text-zinc-950 dark:text-white">
+                      {
+                        account.fullName
+                      }
+                    </p>
 
-        <section className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-zinc-950 text-lg font-bold text-white dark:bg-white dark:text-zinc-950">
-                {initials(
-                  account
-                )}
+                    {account.emailVerified && (
+                      <BadgeCheck className="h-5 w-5 text-emerald-500" />
+                    )}
+                  </div>
+
+                  <p className="mt-1 truncate text-sm text-zinc-500">
+                    {
+                      account.email
+                    }
+                  </p>
+                </div>
               </div>
 
-              <div className="min-w-0">
-                <h2 className="truncate text-lg font-bold text-zinc-950 dark:text-white">
-                  {
-                    account.fullName
-                  }
-                </h2>
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                  {roleLabel(
+                    account.role
+                  )}
+                </span>
 
-                <p className="mt-1 truncate text-sm text-zinc-500">
-                  {
-                    account.email
-                  }
-                </p>
+                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  {statusLabel(
+                    account.status
+                  )}
+                </span>
               </div>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                {roleLabel(
-                  account.role
-                )}
-              </span>
-
-              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                {statusLabel(
-                  account.status
-                )}
-              </span>
             </div>
           </div>
         </section>
 
-        {/* ====================================================
-            ACCOUNT OPTIONS
-            ==================================================== */}
-
-        <section className="mt-6 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-            <h2 className="font-bold text-zinc-950 dark:text-white">
+            <p className="font-bold text-zinc-950 dark:text-white">
               Account settings
-            </h2>
+            </p>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Select what you want to manage.
+              Manage your personal administrator identity and preferences.
             </p>
           </div>
 
           <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-
-            {/* ================================================
-                PERSONAL INFORMATION
-                ================================================ */}
-
-            <button
-              type="button"
+            <SettingsRow
+              icon={
+                <UserRound className="h-5 w-5" />
+              }
+              title="Personal information"
+              description={`${account.firstName} ${account.lastName}`}
               onClick={
                 openProfile
               }
-              className="group flex w-full items-center gap-4 px-6 py-5 text-left transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-950"
-            >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-                <UserRound className="h-5 w-5" />
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-zinc-950 dark:text-white">
-                  Personal information
-                </p>
-
-                <p className="mt-1 truncate text-sm text-zinc-500">
-                  {account.firstName}{' '}
-                  {account.lastName}
-                </p>
-              </div>
-
-              <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
-            </button>
-
-            {/* ================================================
-                EMAIL
-                ================================================ */}
+            />
 
             <Link
               href="/admin/settings/account/email"
               className="group flex items-center gap-4 px-6 py-5 transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-950"
             >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+              <IconBox>
                 <Mail className="h-5 w-5" />
-              </div>
+              </IconBox>
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1262,7 +1834,6 @@ export default function AdminMyAccountPage() {
                   {account.emailVerified && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                       <BadgeCheck className="h-3.5 w-3.5" />
-
                       Verified
                     </span>
                   )}
@@ -1275,77 +1846,437 @@ export default function AdminMyAccountPage() {
                 </p>
               </div>
 
-              <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-zinc-700 dark:group-hover:text-zinc-200" />
+              <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5" />
             </Link>
 
-            {/* ================================================
-                PASSWORD
-                Category 4 — Security
-                ================================================ */}
+            <SettingsRow
+              icon={
+                <Settings2 className="h-5 w-5" />
+              }
+              title="Preferences"
+              description={`${themeLabel(
+                preferences.theme
+              )} · ${
+                preferences.timezone
+              } · ${
+                preferences.timeFormat ===
+                '24h'
+                  ? '24-hour time'
+                  : '12-hour time'
+              }`}
+              onClick={
+                openPreferences
+              }
+            />
 
             <div
               aria-disabled="true"
-              className="flex cursor-not-allowed items-center gap-4 px-6 py-5 opacity-60"
+              className="flex cursor-not-allowed items-center gap-4 px-6 py-5 opacity-55"
             >
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+              <IconBox>
                 <KeyRound className="h-5 w-5" />
-              </div>
+              </IconBox>
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-semibold text-zinc-950 dark:text-white">
-                    Password
+                    Password & security
                   </p>
 
                   <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:bg-zinc-800">
-                    Security
+                    Category 4
                   </span>
                 </div>
 
                 <p className="mt-1 text-sm text-zinc-500">
-                  Password management belongs to administrator Security.
+                  Password, two-factor authentication and security controls.
                 </p>
               </div>
 
-              <ShieldCheck className="h-5 w-5 shrink-0 text-zinc-300 dark:text-zinc-700" />
+              <ShieldCheck className="h-5 w-5 text-zinc-300 dark:text-zinc-700" />
             </div>
           </div>
         </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <StatusCard
+            icon={
+              <BadgeCheck className="h-5 w-5" />
+            }
+            label="Identity"
+            value={
+              account.emailVerified
+                ? 'Verified'
+                : 'Verification required'
+            }
+          />
+
+          <StatusCard
+            icon={
+              <ShieldCheck className="h-5 w-5" />
+            }
+            label="Administrator status"
+            value={statusLabel(
+              account.status
+            )}
+          />
+
+          <StatusCard
+            icon={
+              <Clock3 className="h-5 w-5" />
+            }
+            label="Time zone"
+            value={
+              preferences.timezone
+            }
+          />
+        </section>
       </div>
 
-      <SaMiOverlay
-        open={
-          overlay.open
-        }
-        type={
-          overlay.type
-        }
-        title={
-          overlay.title
-        }
-        message={
-          overlay.message
-        }
-        primaryAction={
-          overlay.title ===
-          'Administrator session expired'
-            ? {
-                label:
-                  'Sign in again',
-
-                onClick:
-                  () => {
-                    router.replace(
-                      '/admin/login'
-                    );
-                  },
-              }
-            : undefined
-        }
-        onClose={
-          closeOverlay
-        }
-      />
+      {overlayElement}
     </>
   );
+}
+
+/* ============================================================
+   UI COMPONENTS
+   ============================================================ */
+
+function BackButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      disabled={
+        disabled
+      }
+      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-white"
+    >
+      <ArrowLeft className="h-4 w-4" />
+      My Account
+    </button>
+  );
+}
+
+function SectionHeader({
+  icon,
+  title,
+  description,
+}: {
+  icon:
+    React.ReactNode;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
+      <IconBox>
+        {icon}
+      </IconBox>
+
+      <div>
+        <p className="font-bold text-zinc-950 dark:text-white">
+          {title}
+        </p>
+
+        <p className="mt-1 text-sm text-zinc-500">
+          {description}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function IconBox({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+      {children}
+    </div>
+  );
+}
+
+function SettingsRow({
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  icon:
+    React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className="group flex w-full items-center gap-4 px-6 py-5 text-left transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-950"
+    >
+      <IconBox>
+        {icon}
+      </IconBox>
+
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-zinc-950 dark:text-white">
+          {title}
+        </p>
+
+        <p className="mt-1 truncate text-sm text-zinc-500">
+          {description}
+        </p>
+      </div>
+
+      <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
+function StatusCard({
+  icon,
+  label,
+  value,
+}: {
+  icon:
+    React.ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex items-center gap-3 text-zinc-500">
+        {icon}
+
+        <p className="text-xs font-semibold uppercase tracking-wide">
+          {label}
+        </p>
+      </div>
+
+      <p className="mt-4 truncate text-sm font-bold text-zinc-950 dark:text-white">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function PreferenceBlock({
+  icon,
+  title,
+  description,
+  children,
+}: {
+  icon:
+    React.ReactNode;
+  title: string;
+  description: string;
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div className="p-6 sm:p-7">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 text-zinc-500">
+          {icon}
+        </div>
+
+        <div>
+          <p className="font-semibold text-zinc-950 dark:text-white">
+            {title}
+          </p>
+
+          <p className="mt-1 text-sm leading-6 text-zinc-500">
+            {description}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ThemeOption({
+  active,
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  icon:
+    React.ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className={`relative rounded-2xl border p-4 text-left transition ${
+        active
+          ? 'border-zinc-950 bg-zinc-50 ring-1 ring-zinc-950 dark:border-white dark:bg-zinc-800 dark:ring-white'
+          : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-800'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-zinc-600 dark:text-zinc-300">
+          {icon}
+        </div>
+
+        {active && (
+          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-950 text-white dark:bg-white dark:text-zinc-950">
+            <Check className="h-3 w-3" />
+          </div>
+        )}
+      </div>
+
+      <p className="mt-4 text-sm font-bold text-zinc-950 dark:text-white">
+        {title}
+      </p>
+
+      <p className="mt-1 text-xs text-zinc-500">
+        {description}
+      </p>
+    </button>
+  );
+}
+
+function Field({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div>
+      {children}
+    </div>
+  );
+}
+
+function FieldError({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
+      {children}
+    </p>
+  );
+}
+
+function FormActions({
+  saving,
+  changed,
+  onCancel,
+}: {
+  saving: boolean;
+  changed: boolean;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+      <button
+        type="button"
+        onClick={
+          onCancel
+        }
+        disabled={
+          saving
+        }
+        className={secondaryButton()}
+      >
+        <X className="h-4 w-4" />
+        Cancel
+      </button>
+
+      <button
+        type="submit"
+        disabled={
+          saving ||
+          !changed
+        }
+        className={primaryButton()}
+      >
+        {saving ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Save className="h-4 w-4" />
+        )}
+
+        {saving
+          ? 'Saving'
+          : 'Save changes'}
+      </button>
+    </div>
+  );
+}
+
+/* ============================================================
+   STYLES
+   ============================================================ */
+
+function inputClass(
+  error = false
+) {
+  return `mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950 dark:text-white ${
+    error
+      ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
+      : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
+  }`;
+}
+
+function selectClass() {
+  return 'h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white';
+}
+
+function primaryButton() {
+  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200';
+}
+
+function secondaryButton() {
+  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800';
+}
+
+function themeLabel(
+  theme:
+    AdminTheme
+) {
+  if (
+    theme ===
+    'dark'
+  ) {
+    return 'Dark';
+  }
+
+  if (
+    theme ===
+    'light'
+  ) {
+    return 'Light';
+  }
+
+  return 'System';
 }
