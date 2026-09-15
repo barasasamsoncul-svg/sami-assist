@@ -1,7 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+
+import {
+  usePathname,
+} from 'next/navigation';
 
 import {
   LayoutDashboard,
@@ -15,7 +23,11 @@ import {
   ScrollText,
   Settings,
   X,
-  ChevronRight,
+  ChevronDown,
+  UserRound,
+  Laptop,
+  Palette,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -35,18 +47,42 @@ type AdminSidebarProps = {
   onClose: () => void;
 };
 
-type NavigationItem = {
+type NavigationChild = {
   label: string;
   href: string;
-  icon: React.ElementType;
+
+  icon?: React.ElementType;
+
   roles?: readonly PlatformAdminRole[];
+
+  /**
+   * A child may be visible before its capability is complete.
+   * Disabled children never navigate.
+   */
+  disabled?: boolean;
+};
+
+type NavigationItem = {
+  label: string;
+
+  /**
+   * Parent href is optional because dropdown-only parents
+   * should not require a landing page.
+   */
+  href?: string;
+
+  icon: React.ElementType;
+
+  roles?: readonly PlatformAdminRole[];
+
+  children?: readonly NavigationChild[];
 };
 
 /* ============================================================
    NAVIGATION
    ============================================================ */
 
-const navigation: NavigationItem[] = [
+const navigation: readonly NavigationItem[] = [
   {
     label: 'Dashboard',
     href: '/admin',
@@ -154,31 +190,97 @@ const navigation: NavigationItem[] = [
     ],
   },
 
-  /*
-   * Personal administrator settings.
-   *
-   * IMPORTANT:
-   * Every authenticated Platform Administrator must be able to
-   * manage their own identity/account settings.
-   *
-   * Authorization for platform-wide configuration belongs inside
-   * the relevant settings section/API, not by hiding the entire
-   * Settings area from some administrator roles.
-   */
+  /* ==========================================================
+     SETTINGS
+
+     Settings is a dropdown parent.
+
+     We intentionally do NOT require the administrator to open
+     /admin/settings and then navigate through another sidebar.
+
+     The main Platform Admin sidebar owns this hierarchy.
+     ========================================================== */
+
   {
     label: 'Settings',
-    href: '/admin/settings',
     icon: Settings,
+
+    children: [
+      {
+        label: 'My Account',
+        href: '/admin/settings/account',
+        icon: UserRound,
+      },
+
+      {
+        label: 'Security',
+        href: '/admin/settings/security',
+        icon: ShieldCheck,
+
+        /*
+         * Visible architecture, but the actual Admin Category 4
+         * settings capability is not complete yet.
+         */
+        disabled: true,
+      },
+
+      {
+        label: 'Sessions & Devices',
+        href: '/admin/settings/sessions',
+        icon: Laptop,
+
+        /*
+         * Enabled when Platform Admin Category 3 is implemented.
+         */
+        disabled: true,
+      },
+
+      {
+        label: 'Preferences',
+        href: '/admin/settings/preferences',
+        icon: Palette,
+
+        disabled: true,
+      },
+
+      {
+        label: 'Notifications',
+        href: '/admin/settings/notifications',
+        icon: Bell,
+
+        disabled: true,
+      },
+
+      {
+        label: 'Platform Settings',
+        href: '/admin/settings/platform',
+        icon: SlidersHorizontal,
+
+        /*
+         * Category 25.
+         *
+         * This will later receive its own permission enforcement
+         * at both page and API boundaries.
+         */
+        roles: [
+          'super_admin',
+          'security_admin',
+          'developer_admin',
+        ],
+
+        disabled: true,
+      },
+    ],
   },
 ];
 
 /* ============================================================
-   ROLE ACCESS
+   ACCESS
    ============================================================ */
 
-function canSeeItem(
+function canSeeForRole(
   role: PlatformAdminRole,
-  item: NavigationItem
+  roles?: readonly PlatformAdminRole[]
 ) {
   if (
     role === 'super_admin'
@@ -186,19 +288,64 @@ function canSeeItem(
     return true;
   }
 
-  if (
-    !item.roles
-  ) {
+  if (!roles) {
     return true;
   }
 
-  return item.roles.includes(
-    role
+  return roles.includes(role);
+}
+
+function getVisibleChildren(
+  role: PlatformAdminRole,
+  item: NavigationItem
+) {
+  if (!item.children) {
+    return [];
+  }
+
+  return item.children.filter(
+    child =>
+      canSeeForRole(
+        role,
+        child.roles
+      )
   );
 }
 
+function canSeeItem(
+  role: PlatformAdminRole,
+  item: NavigationItem
+) {
+  if (
+    !canSeeForRole(
+      role,
+      item.roles
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * If this is a dropdown-only parent and none of its children
+   * are visible to the current role, hide the parent too.
+   */
+  if (
+    item.children &&
+    !item.href
+  ) {
+    return (
+      getVisibleChildren(
+        role,
+        item
+      ).length > 0
+    );
+  }
+
+  return true;
+}
+
 /* ============================================================
-   ROLE LABEL
+   LABELS
    ============================================================ */
 
 function roleLabel(
@@ -217,10 +364,10 @@ function roleLabel(
 }
 
 /* ============================================================
-   ACTIVE ROUTE
+   ROUTE MATCHING
    ============================================================ */
 
-function isNavigationItemActive(
+function isRouteActive(
   pathname: string,
   href: string
 ) {
@@ -238,6 +385,40 @@ function isNavigationItemActive(
   );
 }
 
+function isChildActive(
+  pathname: string,
+  child: NavigationChild
+) {
+  return isRouteActive(
+    pathname,
+    child.href
+  );
+}
+
+function isParentActive(
+  pathname: string,
+  item: NavigationItem,
+  visibleChildren: readonly NavigationChild[]
+) {
+  if (
+    item.href &&
+    isRouteActive(
+      pathname,
+      item.href
+    )
+  ) {
+    return true;
+  }
+
+  return visibleChildren.some(
+    child =>
+      isChildActive(
+        pathname,
+        child
+      )
+  );
+}
+
 /* ============================================================
    COMPONENT
    ============================================================ */
@@ -250,14 +431,130 @@ export default function AdminSidebar({
   const pathname =
     usePathname();
 
+  /* ==========================================================
+     VISIBLE NAVIGATION
+     ========================================================== */
+
   const visibleNavigation =
-    navigation.filter(
-      item =>
-        canSeeItem(
-          admin.role,
-          item
-        )
+    useMemo(
+      () =>
+        navigation.filter(
+          item =>
+            canSeeItem(
+              admin.role,
+              item
+            )
+        ),
+      [admin.role]
     );
+
+  /* ==========================================================
+     EXPANDED DROPDOWNS
+
+     Store labels rather than array indexes so the state remains
+     stable when role filtering changes navigation.
+     ========================================================== */
+
+  const [
+    expanded,
+    setExpanded,
+  ] =
+    useState<Record<string, boolean>>(
+      {}
+    );
+
+  /* ==========================================================
+     AUTO-EXPAND ACTIVE PARENT
+
+     If the administrator refreshes directly on:
+       /admin/settings/account
+
+     Settings remains expanded automatically.
+     ========================================================== */
+
+  useEffect(() => {
+    setExpanded(
+      current => {
+        let changed = false;
+
+        const next = {
+          ...current,
+        };
+
+        for (
+          const item of
+          visibleNavigation
+        ) {
+          const children =
+            getVisibleChildren(
+              admin.role,
+              item
+            );
+
+          if (
+            children.length === 0
+          ) {
+            continue;
+          }
+
+          const containsActiveRoute =
+            children.some(
+              child =>
+                isChildActive(
+                  pathname,
+                  child
+                )
+            );
+
+          if (
+            containsActiveRoute &&
+            !next[item.label]
+          ) {
+            next[item.label] =
+              true;
+
+            changed = true;
+          }
+        }
+
+        return changed
+          ? next
+          : current;
+      }
+    );
+  }, [
+    pathname,
+    admin.role,
+    visibleNavigation,
+  ]);
+
+  /* ==========================================================
+     TOGGLE
+     ========================================================== */
+
+  function toggleDropdown(
+    label: string
+  ) {
+    setExpanded(
+      current => ({
+        ...current,
+
+        [label]:
+          !current[label],
+      })
+    );
+  }
+
+  /* ==========================================================
+     MOBILE CLOSE
+
+     Navigation links close the mobile drawer.
+     Dropdown buttons do NOT close it.
+     ========================================================== */
+
+  function handleNavigation() {
+    onClose();
+  }
 
   return (
     <>
@@ -271,9 +568,13 @@ export default function AdminSidebar({
           aria-label="Close sidebar overlay"
           onClick={onClose}
           className="
-            fixed inset-0 z-40
+            fixed
+            inset-0
+            z-40
+
             bg-black/40
             backdrop-blur-sm
+
             lg:hidden
           "
         />
@@ -285,10 +586,18 @@ export default function AdminSidebar({
 
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50
-          flex w-72 flex-col
+          fixed
+          inset-y-0
+          left-0
+          z-50
 
-          border-r border-zinc-200
+          flex
+          w-72
+          flex-col
+
+          border-r
+          border-zinc-200
+
           bg-white
 
           transition-transform
@@ -312,25 +621,32 @@ export default function AdminSidebar({
 
         <div
           className="
-            flex min-h-20
+            flex
+            min-h-20
             items-center
             justify-between
 
             border-b
             border-zinc-200
 
-            px-5 py-3
+            px-5
+            py-3
 
             dark:border-zinc-800
           "
         >
           <Link
             href="/admin"
-            onClick={onClose}
+            onClick={
+              handleNavigation
+            }
             aria-label="SaMi Platform Administration"
             className="
-              min-w-0 flex-1
+              min-w-0
+              flex-1
+
               rounded-xl
+
               outline-none
 
               focus-visible:ring-2
@@ -352,6 +668,7 @@ export default function AdminSidebar({
             <div
               className="
                 mt-1
+
                 text-[11px]
                 font-medium
                 tracking-wide
@@ -368,7 +685,9 @@ export default function AdminSidebar({
             aria-label="Close navigation"
             className="
               ml-3
+
               rounded-lg
+
               p-2
 
               text-zinc-500
@@ -389,7 +708,12 @@ export default function AdminSidebar({
               lg:hidden
             "
           >
-            <X className="h-5 w-5" />
+            <X
+              className="
+                h-5
+                w-5
+              "
+            />
           </button>
         </div>
 
@@ -402,7 +726,8 @@ export default function AdminSidebar({
             border-b
             border-zinc-200
 
-            px-5 py-4
+            px-5
+            py-4
 
             dark:border-zinc-800
           "
@@ -410,20 +735,25 @@ export default function AdminSidebar({
           <div
             className="
               truncate
+
               text-sm
               font-semibold
               text-zinc-950
 
               dark:text-white
             "
-            title={admin.fullName}
+            title={
+              admin.fullName
+            }
           >
             {admin.fullName}
           </div>
 
           <div
             className="
-              mt-1 truncate
+              mt-1
+              truncate
+
               text-xs
               text-zinc-500
             "
@@ -435,13 +765,16 @@ export default function AdminSidebar({
           <div
             className="
               mt-3
+
               inline-flex
               items-center
 
               rounded-full
 
               bg-zinc-100
-              px-2.5 py-1
+
+              px-2.5
+              py-1
 
               text-xs
               font-medium
@@ -465,106 +798,481 @@ export default function AdminSidebar({
           aria-label="Platform administrator navigation"
           className="
             flex-1
-            space-y-1
 
             overflow-y-auto
 
-            px-3 py-4
+            px-3
+            py-4
           "
         >
-          {visibleNavigation.map(
-            item => {
-              const Icon =
-                item.icon;
+          <div className="space-y-1">
+            {visibleNavigation.map(
+              item => {
+                const Icon =
+                  item.icon;
 
-              const active =
-                isNavigationItemActive(
-                  pathname,
-                  item.href
-                );
+                const children =
+                  getVisibleChildren(
+                    admin.role,
+                    item
+                  );
 
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onClose}
-                  aria-current={
-                    active
-                      ? 'page'
-                      : undefined
+                const hasChildren =
+                  children.length > 0;
+
+                const parentActive =
+                  isParentActive(
+                    pathname,
+                    item,
+                    children
+                  );
+
+                const isExpanded =
+                  Boolean(
+                    expanded[
+                      item.label
+                    ]
+                  );
+
+                /* ============================================
+                   NORMAL LINK
+                   ============================================ */
+
+                if (
+                  !hasChildren
+                ) {
+                  if (!item.href) {
+                    return null;
                   }
-                  className={`
-                    group
 
-                    flex
-                    items-center
-                    gap-3
+                  return (
+                    <Link
+                      key={
+                        item.label
+                      }
+                      href={
+                        item.href
+                      }
+                      onClick={
+                        handleNavigation
+                      }
+                      aria-current={
+                        parentActive
+                          ? 'page'
+                          : undefined
+                      }
+                      className={`
+                        group
 
-                    rounded-xl
+                        flex
+                        items-center
+                        gap-3
 
-                    px-3 py-2.5
+                        rounded-xl
 
-                    text-sm
-                    font-medium
+                        px-3
+                        py-2.5
 
-                    transition-colors
+                        text-sm
+                        font-medium
 
-                    outline-none
+                        transition-colors
 
-                    focus-visible:ring-2
-                    focus-visible:ring-zinc-400
-                    focus-visible:ring-offset-2
+                        outline-none
 
-                    dark:focus-visible:ring-zinc-600
-                    dark:focus-visible:ring-offset-zinc-950
+                        focus-visible:ring-2
+                        focus-visible:ring-zinc-400
+                        focus-visible:ring-offset-2
 
-                    ${
-                      active
-                        ? `
-                          bg-zinc-950
-                          text-white
+                        dark:focus-visible:ring-zinc-600
+                        dark:focus-visible:ring-offset-zinc-950
 
-                          dark:bg-white
-                          dark:text-zinc-950
-                        `
-                        : `
-                          text-zinc-600
+                        ${
+                          parentActive
+                            ? `
+                              bg-zinc-950
+                              text-white
 
-                          hover:bg-zinc-100
-                          hover:text-zinc-950
+                              dark:bg-white
+                              dark:text-zinc-950
+                            `
+                            : `
+                              text-zinc-600
 
-                          dark:text-zinc-400
-                          dark:hover:bg-zinc-900
-                          dark:hover:text-white
-                        `
+                              hover:bg-zinc-100
+                              hover:text-zinc-950
+
+                              dark:text-zinc-400
+                              dark:hover:bg-zinc-900
+                              dark:hover:text-white
+                            `
+                        }
+                      `}
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        className="
+                          h-5
+                          w-5
+                          shrink-0
+                        "
+                      />
+
+                      <span className="flex-1">
+                        {item.label}
+                      </span>
+                    </Link>
+                  );
+                }
+
+                /* ============================================
+                   DROPDOWN PARENT
+                   ============================================ */
+
+                return (
+                  <div
+                    key={
+                      item.label
                     }
-                  `}
-                >
-                  <Icon
-                    aria-hidden="true"
-                    className="
-                      h-5 w-5
-                      shrink-0
-                    "
-                  />
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleDropdown(
+                          item.label
+                        )
+                      }
+                      aria-expanded={
+                        isExpanded
+                      }
+                      aria-controls={`admin-sidebar-${item.label
+                        .toLowerCase()
+                        .replace(
+                          /[^a-z0-9]+/g,
+                          '-'
+                        )}`}
+                      className={`
+                        group
 
-                  <span className="flex-1">
-                    {item.label}
-                  </span>
+                        flex
+                        w-full
+                        items-center
+                        gap-3
 
-                  {active && (
-                    <ChevronRight
-                      aria-hidden="true"
-                      className="
-                        h-4 w-4
-                        shrink-0
-                      "
-                    />
-                  )}
-                </Link>
-              );
-            }
-          )}
+                        rounded-xl
+
+                        px-3
+                        py-2.5
+
+                        text-left
+                        text-sm
+                        font-medium
+
+                        transition-colors
+
+                        outline-none
+
+                        focus-visible:ring-2
+                        focus-visible:ring-zinc-400
+                        focus-visible:ring-offset-2
+
+                        dark:focus-visible:ring-zinc-600
+                        dark:focus-visible:ring-offset-zinc-950
+
+                        ${
+                          parentActive
+                            ? `
+                              bg-zinc-100
+                              text-zinc-950
+
+                              dark:bg-zinc-900
+                              dark:text-white
+                            `
+                            : `
+                              text-zinc-600
+
+                              hover:bg-zinc-100
+                              hover:text-zinc-950
+
+                              dark:text-zinc-400
+                              dark:hover:bg-zinc-900
+                              dark:hover:text-white
+                            `
+                        }
+                      `}
+                    >
+                      <Icon
+                        aria-hidden="true"
+                        className="
+                          h-5
+                          w-5
+                          shrink-0
+                        "
+                      />
+
+                      <span
+                        className="
+                          min-w-0
+                          flex-1
+                          truncate
+                        "
+                      >
+                        {item.label}
+                      </span>
+
+                      <ChevronDown
+                        aria-hidden="true"
+                        className={`
+                          h-4
+                          w-4
+                          shrink-0
+
+                          transition-transform
+                          duration-200
+
+                          ${
+                            isExpanded
+                              ? 'rotate-180'
+                              : ''
+                          }
+                        `}
+                      />
+                    </button>
+
+                    {/* ========================================
+                        CHILDREN
+                        ======================================== */}
+
+                    <div
+                      id={`admin-sidebar-${item.label
+                        .toLowerCase()
+                        .replace(
+                          /[^a-z0-9]+/g,
+                          '-'
+                        )}`}
+                      className={`
+                        grid
+
+                        transition-[grid-template-rows,opacity]
+                        duration-200
+                        ease-out
+
+                        ${
+                          isExpanded
+                            ? `
+                              grid-rows-[1fr]
+                              opacity-100
+                            `
+                            : `
+                              grid-rows-[0fr]
+                              opacity-0
+                            `
+                        }
+                      `}
+                    >
+                      <div className="overflow-hidden">
+                        <div
+                          className="
+                            relative
+
+                            ml-5
+                            mt-1
+                            space-y-1
+
+                            border-l
+                            border-zinc-200
+
+                            pl-3
+
+                            dark:border-zinc-800
+                          "
+                        >
+                          {children.map(
+                            child => {
+                              const ChildIcon =
+                                child.icon;
+
+                              const active =
+                                isChildActive(
+                                  pathname,
+                                  child
+                                );
+
+                              /* ==============================
+                                 DISABLED CHILD
+                                 ============================== */
+
+                              if (
+                                child.disabled
+                              ) {
+                                return (
+                                  <div
+                                    key={
+                                      child.href
+                                    }
+                                    aria-disabled="true"
+                                    title="This section will become available when its SaMi capability is implemented."
+                                    className="
+                                      flex
+                                      cursor-not-allowed
+                                      items-center
+                                      gap-2.5
+
+                                      rounded-lg
+
+                                      px-3
+                                      py-2
+
+                                      text-sm
+                                      text-zinc-400
+
+                                      dark:text-zinc-600
+                                    "
+                                  >
+                                    {ChildIcon && (
+                                      <ChildIcon
+                                        aria-hidden="true"
+                                        className="
+                                          h-4
+                                          w-4
+                                          shrink-0
+                                        "
+                                      />
+                                    )}
+
+                                    <span
+                                      className="
+                                        min-w-0
+                                        flex-1
+                                        truncate
+                                      "
+                                    >
+                                      {child.label}
+                                    </span>
+
+                                    <span
+                                      className="
+                                        shrink-0
+
+                                        rounded-full
+
+                                        bg-zinc-100
+
+                                        px-1.5
+                                        py-0.5
+
+                                        text-[9px]
+                                        font-bold
+                                        uppercase
+                                        tracking-wide
+                                        text-zinc-400
+
+                                        dark:bg-zinc-900
+                                        dark:text-zinc-600
+                                      "
+                                    >
+                                      Later
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              /* ==============================
+                                 ACTIVE CHILD LINK
+                                 ============================== */
+
+                              return (
+                                <Link
+                                  key={
+                                    child.href
+                                  }
+                                  href={
+                                    child.href
+                                  }
+                                  onClick={
+                                    handleNavigation
+                                  }
+                                  aria-current={
+                                    active
+                                      ? 'page'
+                                      : undefined
+                                  }
+                                  className={`
+                                    flex
+                                    items-center
+                                    gap-2.5
+
+                                    rounded-lg
+
+                                    px-3
+                                    py-2
+
+                                    text-sm
+                                    font-medium
+
+                                    outline-none
+
+                                    transition-colors
+
+                                    focus-visible:ring-2
+                                    focus-visible:ring-zinc-400
+
+                                    dark:focus-visible:ring-zinc-600
+
+                                    ${
+                                      active
+                                        ? `
+                                          bg-zinc-950
+                                          text-white
+
+                                          dark:bg-white
+                                          dark:text-zinc-950
+                                        `
+                                        : `
+                                          text-zinc-500
+
+                                          hover:bg-zinc-100
+                                          hover:text-zinc-950
+
+                                          dark:text-zinc-500
+                                          dark:hover:bg-zinc-900
+                                          dark:hover:text-white
+                                        `
+                                    }
+                                  `}
+                                >
+                                  {ChildIcon && (
+                                    <ChildIcon
+                                      aria-hidden="true"
+                                      className="
+                                        h-4
+                                        w-4
+                                        shrink-0
+                                      "
+                                    />
+                                  )}
+
+                                  <span
+                                    className="
+                                      min-w-0
+                                      flex-1
+                                      truncate
+                                    "
+                                  >
+                                    {child.label}
+                                  </span>
+                                </Link>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+            )}
+          </div>
         </nav>
 
         {/* ====================================================
@@ -576,7 +1284,8 @@ export default function AdminSidebar({
             border-t
             border-zinc-200
 
-            px-5 py-4
+            px-5
+            py-4
 
             dark:border-zinc-800
           "
@@ -596,6 +1305,7 @@ export default function AdminSidebar({
           <div
             className="
               mt-1
+
               text-[11px]
               text-zinc-400
 
