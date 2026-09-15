@@ -1,6 +1,8 @@
 import 'server-only';
 
-import { queryControl } from '@/lib/db/control';
+import {
+  queryControl,
+} from '@/lib/db/control';
 
 /* ============================================================
    TYPES
@@ -84,12 +86,20 @@ type UserRow = {
   full_name: string | null;
   phone: string | null;
   avatar_file_id: string | null;
-  avatar_url: string | null;
   status: string | null;
   email_verified: boolean | null;
-  email_verified_at: Date | string | null;
-  created_at: Date | string | null;
-  updated_at: Date | string | null;
+  email_verified_at:
+    | Date
+    | string
+    | null;
+  created_at:
+    | Date
+    | string
+    | null;
+  updated_at:
+    | Date
+    | string
+    | null;
 };
 
 type UserPreferencesRow = {
@@ -105,17 +115,27 @@ type UserPreferencesRow = {
    CONSTANTS
    ============================================================ */
 
-const MAX_FIRST_NAME_LENGTH = 100;
-const MAX_LAST_NAME_LENGTH = 100;
-const MAX_PHONE_LENGTH = 50;
-const MAX_LOCALE_LENGTH = 20;
-const MAX_TIMEZONE_LENGTH = 100;
+const MAX_FIRST_NAME_LENGTH =
+  100;
 
-const THEMES = new Set<UserTheme>([
-  'system',
-  'light',
-  'dark',
-]);
+const MAX_LAST_NAME_LENGTH =
+  100;
+
+const MAX_PHONE_LENGTH =
+  50;
+
+const MAX_LOCALE_LENGTH =
+  20;
+
+const MAX_TIMEZONE_LENGTH =
+  100;
+
+const THEMES =
+  new Set<UserTheme>([
+    'system',
+    'light',
+    'dark',
+  ]);
 
 const DATE_FORMATS =
   new Set<UserDateFormat>([
@@ -130,14 +150,26 @@ const TIME_FORMATS =
     '24h',
   ]);
 
-const DEFAULT_PREFERENCES: UserPreferences = {
-  theme: 'system',
-  locale: 'en',
-  timezone: 'UTC',
-  dateFormat: 'DD/MM/YYYY',
-  timeFormat: '24h',
-  firstDayOfWeek: 1,
-};
+const DEFAULT_PREFERENCES:
+  UserPreferences = {
+    theme:
+      'system',
+
+    locale:
+      'en',
+
+    timezone:
+      'UTC',
+
+    dateFormat:
+      'DD/MM/YYYY',
+
+    timeFormat:
+      '24h',
+
+    firstDayOfWeek:
+      1,
+  };
 
 /* ============================================================
    ERRORS
@@ -164,39 +196,53 @@ export class UserAccountValidationError
     string;
 
   constructor(
-    code: UserAccountValidationCode,
-    field: string,
-    message: string
+    code:
+      UserAccountValidationCode,
+    field:
+      string,
+    message:
+      string
   ) {
-    super(message);
+    super(
+      message
+    );
 
     this.name =
       'UserAccountValidationError';
 
-    this.code = code;
-    this.field = field;
+    this.code =
+      code;
+
+    this.field =
+      field;
   }
 }
 
 /* ============================================================
-   HELPERS
+   GENERAL HELPERS
    ============================================================ */
 
 function toIsoString(
-  value: Date | string | null
+  value:
+    | Date
+    | string
+    | null
 ): string | null {
   if (!value) {
     return null;
   }
 
   if (
-    value instanceof Date
+    value instanceof
+    Date
   ) {
     return value.toISOString();
   }
 
   const parsed =
-    new Date(value);
+    new Date(
+      value
+    );
 
   if (
     Number.isNaN(
@@ -209,16 +255,36 @@ function toIsoString(
   return parsed.toISOString();
 }
 
+function assertUserId(
+  userId:
+    string
+): string {
+  const normalized =
+    userId.trim();
+
+  if (!normalized) {
+    throw new UserAccountNotFoundError();
+  }
+
+  return normalized;
+}
+
 function normalizeName(
-  value: string
+  value:
+    string
 ): string {
   return value
+    .normalize('NFKC')
     .trim()
-    .replace(/\s+/g, ' ');
+    .replace(
+      /\s+/g,
+      ' '
+    );
 }
 
 function normalizePhone(
-  value?: string | null
+  value?:
+    string | null
 ): string | null {
   if (
     value === undefined ||
@@ -228,28 +294,36 @@ function normalizePhone(
   }
 
   const normalized =
-    value.trim();
+    value
+      .normalize('NFKC')
+      .trim();
 
   return normalized ||
     null;
 }
 
 function normalizeLocale(
-  value: string
+  value:
+    string
 ): string {
   return value
     .trim()
-    .replace(/_/g, '-');
+    .replace(
+      /_/g,
+      '-'
+    );
 }
 
 function normalizeTimezone(
-  value: string
+  value:
+    string
 ): string {
   return value.trim();
 }
 
 function isValidLocale(
-  value: string
+  value:
+    string
 ): boolean {
   if (
     !value ||
@@ -265,7 +339,8 @@ function isValidLocale(
 }
 
 function isValidTimezone(
-  value: string
+  value:
+    string
 ): boolean {
   if (
     !value ||
@@ -279,7 +354,8 @@ function isValidTimezone(
     new Intl.DateTimeFormat(
       'en',
       {
-        timeZone: value,
+        timeZone:
+          value,
       }
     ).format();
 
@@ -289,21 +365,13 @@ function isValidTimezone(
   }
 }
 
-function assertUserId(
-  userId: string
-): string {
-  const normalized =
-    userId.trim();
-
-  if (!normalized) {
-    throw new UserAccountNotFoundError();
-  }
-
-  return normalized;
-}
+/* ============================================================
+   PROFILE VALIDATION
+   ============================================================ */
 
 function validateProfileInput(
-  input: UpdateUserProfileInput
+  input:
+    UpdateUserProfileInput
 ) {
   const firstName =
     normalizeName(
@@ -356,25 +424,32 @@ function validateProfileInput(
     );
   }
 
-  const fullName =
-    `${firstName} ${lastName}`;
-
   return {
     firstName,
     lastName,
-    fullName,
+
+    fullName:
+      `${firstName} ${lastName}`,
+
     phone,
   };
 }
 
+/* ============================================================
+   PREFERENCE VALIDATION
+   ============================================================ */
+
 function validatePreferencePatch(
-  input: UpdateUserPreferencesInput
+  input:
+    UpdateUserPreferencesInput
 ): UpdateUserPreferencesInput {
   const patch:
-    UpdateUserPreferencesInput = {};
+    UpdateUserPreferencesInput =
+    {};
 
   if (
-    input.theme !== undefined
+    input.theme !==
+    undefined
   ) {
     if (
       !THEMES.has(
@@ -393,7 +468,8 @@ function validatePreferencePatch(
   }
 
   if (
-    input.locale !== undefined
+    input.locale !==
+    undefined
   ) {
     const locale =
       normalizeLocale(
@@ -417,7 +493,8 @@ function validatePreferencePatch(
   }
 
   if (
-    input.timezone !== undefined
+    input.timezone !==
+    undefined
   ) {
     const timezone =
       normalizeTimezone(
@@ -441,7 +518,8 @@ function validatePreferencePatch(
   }
 
   if (
-    input.dateFormat !== undefined
+    input.dateFormat !==
+    undefined
   ) {
     if (
       !DATE_FORMATS.has(
@@ -460,7 +538,8 @@ function validatePreferencePatch(
   }
 
   if (
-    input.timeFormat !== undefined
+    input.timeFormat !==
+    undefined
   ) {
     if (
       !TIME_FORMATS.has(
@@ -479,7 +558,8 @@ function validatePreferencePatch(
   }
 
   if (
-    input.firstDayOfWeek !== undefined
+    input.firstDayOfWeek !==
+    undefined
   ) {
     if (
       !Number.isInteger(
@@ -504,52 +584,83 @@ function validatePreferencePatch(
   return patch;
 }
 
+/* ============================================================
+   ACCOUNT MAPPING
+   ============================================================ */
+
 function mapUserRow(
-  row: UserRow
+  row:
+    UserRow
 ): UserAccount {
   const firstName =
-    row.first_name || '';
+    row.first_name ||
+    '';
 
   const lastName =
-    row.last_name || '';
+    row.last_name ||
+    '';
 
   const derivedFullName =
-    `${firstName} ${lastName}`.trim();
+    `${firstName} ${lastName}`
+      .trim();
+
+  const avatarFileId =
+    row.avatar_file_id ||
+    null;
 
   return {
-    id: row.id,
-    email: row.email,
+    id:
+      row.id,
+
+    email:
+      row.email,
+
     firstName,
+
     lastName,
+
     fullName:
       row.full_name ||
       derivedFullName,
+
     phone:
       row.phone ||
       null,
-    avatarFileId:
-      row.avatar_file_id ||
-      null,
+
+    avatarFileId,
+
+    /*
+     * Avatar bytes are private in R2.
+     *
+     * The client receives only SaMi's authenticated
+     * avatar endpoint. R2 keys/endpoints are never exposed.
+     */
     avatarUrl:
-      row.avatar_url ||
-      null,
+      avatarFileId
+        ? '/api/account/avatar'
+        : null,
+
     status:
       row.status ||
       'unknown',
+
     emailVerified:
       row.email_verified ===
         true ||
       Boolean(
         row.email_verified_at
       ),
+
     emailVerifiedAt:
       toIsoString(
         row.email_verified_at
       ),
+
     createdAt:
       toIsoString(
         row.created_at
       ),
+
     updatedAt:
       toIsoString(
         row.updated_at
@@ -571,57 +682,67 @@ function mapPreferencesRow(
 
   const theme =
     THEMES.has(
-      row.theme as UserTheme
+      row.theme as
+        UserTheme
     )
       ? (
-          row.theme as UserTheme
+          row.theme as
+            UserTheme
         )
       : DEFAULT_PREFERENCES.theme;
 
   const dateFormat =
     DATE_FORMATS.has(
-      row.date_format as UserDateFormat
+      row.date_format as
+        UserDateFormat
     )
       ? (
-          row.date_format as UserDateFormat
+          row.date_format as
+            UserDateFormat
         )
       : DEFAULT_PREFERENCES.dateFormat;
 
   const timeFormat =
     TIME_FORMATS.has(
-      row.time_format as UserTimeFormat
+      row.time_format as
+        UserTimeFormat
     )
       ? (
-          row.time_format as UserTimeFormat
+          row.time_format as
+            UserTimeFormat
         )
       : DEFAULT_PREFERENCES.timeFormat;
 
-  const firstDayOfWeek =
-    Number.isInteger(
-      row.first_day_of_week
-    ) &&
+  const firstDay =
     Number(
       row.first_day_of_week
-    ) >= 0 &&
-    Number(
-      row.first_day_of_week
-    ) <= 6
-      ? Number(
-          row.first_day_of_week
-        )
-      : DEFAULT_PREFERENCES.firstDayOfWeek;
+    );
 
   return {
     theme,
+
     locale:
       row.locale ||
       DEFAULT_PREFERENCES.locale,
+
     timezone:
       row.timezone ||
       DEFAULT_PREFERENCES.timezone,
+
     dateFormat,
+
     timeFormat,
-    firstDayOfWeek,
+
+    firstDayOfWeek:
+      Number.isInteger(
+        firstDay
+      ) &&
+      firstDay >=
+        0 &&
+      firstDay <=
+        6
+        ? firstDay
+        : DEFAULT_PREFERENCES.firstDayOfWeek,
   };
 }
 
@@ -630,7 +751,8 @@ function mapPreferencesRow(
    ============================================================ */
 
 export async function getUserAccount(
-  userId: string
+  userId:
+    string
 ): Promise<UserAccount> {
   const id =
     assertUserId(
@@ -648,7 +770,6 @@ export async function getUserAccount(
           full_name,
           phone,
           avatar_file_id,
-          avatar_url,
           status,
           email_verified,
           email_verified_at,
@@ -675,26 +796,27 @@ export async function getUserAccount(
   }
 
   return mapUserRow(
-    result.rows[0] as UserRow
+    result.rows[0] as
+      UserRow
   );
 }
 
 /* ============================================================
    PROFILE UPDATE
 
-   Intentionally does NOT update:
+   Does NOT update:
    - email
    - password
    - avatar
    - status
-   - security fields
-
-   Those use their own protected workflows.
+   - security state
    ============================================================ */
 
 export async function updateUserProfile(
-  userId: string,
-  input: UpdateUserProfileInput
+  userId:
+    string,
+  input:
+    UpdateUserProfileInput
 ): Promise<UserAccount> {
   const id =
     assertUserId(
@@ -729,7 +851,6 @@ export async function updateUserProfile(
           full_name,
           phone,
           avatar_file_id,
-          avatar_url,
           status,
           email_verified,
           email_verified_at,
@@ -753,44 +874,18 @@ export async function updateUserProfile(
   }
 
   return mapUserRow(
-    result.rows[0] as UserRow
+    result.rows[0] as
+      UserRow
   );
 }
 
 /* ============================================================
-   PREFERENCES
+   PREFERENCES READ
    ============================================================ */
 
-async function ensureUserPreferences(
-  userId: string
-): Promise<void> {
-  await queryControl(
-    `
-      INSERT INTO user_preferences (
-        user_id
-      )
-
-      SELECT
-        id
-
-      FROM users
-
-      WHERE id = $1
-        AND deleted_at IS NULL
-
-      ON CONFLICT (
-        user_id
-      )
-      DO NOTHING
-    `,
-    [
-      userId,
-    ]
-  );
-}
-
 export async function getUserPreferences(
-  userId: string
+  userId:
+    string
 ): Promise<UserPreferences> {
   const id =
     assertUserId(
@@ -798,31 +893,28 @@ export async function getUserPreferences(
     );
 
   /*
-   * Confirm the user exists first so a nonexistent/deleted account
-   * cannot silently receive fallback preferences.
+   * Validate the account and read preferences without
+   * performing a write during an ordinary GET.
    */
-  await getUserAccount(
-    id
-  );
-
-  await ensureUserPreferences(
-    id
-  );
-
   const result =
     await queryControl(
       `
         SELECT
-          theme,
-          locale,
-          timezone,
-          date_format,
-          time_format,
-          first_day_of_week
+          p.theme,
+          p.locale,
+          p.timezone,
+          p.date_format,
+          p.time_format,
+          p.first_day_of_week
 
-        FROM user_preferences
+        FROM users u
 
-        WHERE user_id = $1
+        LEFT JOIN user_preferences p
+          ON p.user_id =
+            u.id
+
+        WHERE u.id = $1
+          AND u.deleted_at IS NULL
 
         LIMIT 1
       `,
@@ -831,16 +923,36 @@ export async function getUserPreferences(
       ]
     );
 
+  if (
+    result.rows.length ===
+    0
+  ) {
+    throw new UserAccountNotFoundError();
+  }
+
   return mapPreferencesRow(
     result.rows[0] as
-      | UserPreferencesRow
-      | undefined
+      UserPreferencesRow
   );
 }
 
+/* ============================================================
+   PREFERENCES UPDATE
+
+   Atomic partial UPSERT.
+
+   Each supplied field updates independently.
+
+   An omitted field preserves the existing database value,
+   preventing two concurrent partial PATCH requests from
+   overwriting each other's unrelated changes.
+   ============================================================ */
+
 export async function updateUserPreferences(
-  userId: string,
-  input: UpdateUserPreferencesInput
+  userId:
+    string,
+  input:
+    UpdateUserPreferencesInput
 ): Promise<UserPreferences> {
   const id =
     assertUserId(
@@ -852,38 +964,51 @@ export async function updateUserPreferences(
       input
     );
 
-  const current =
-    await getUserPreferences(
+  const hasTheme =
+    patch.theme !==
+    undefined;
+
+  const hasLocale =
+    patch.locale !==
+    undefined;
+
+  const hasTimezone =
+    patch.timezone !==
+    undefined;
+
+  const hasDateFormat =
+    patch.dateFormat !==
+    undefined;
+
+  const hasTimeFormat =
+    patch.timeFormat !==
+    undefined;
+
+  const hasFirstDay =
+    patch.firstDayOfWeek !==
+    undefined;
+
+  if (
+    !hasTheme &&
+    !hasLocale &&
+    !hasTimezone &&
+    !hasDateFormat &&
+    !hasTimeFormat &&
+    !hasFirstDay
+  ) {
+    return getUserPreferences(
       id
     );
+  }
 
-  const next:
-    UserPreferences = {
-      theme:
-        patch.theme ??
-        current.theme,
-
-      locale:
-        patch.locale ??
-        current.locale,
-
-      timezone:
-        patch.timezone ??
-        current.timezone,
-
-      dateFormat:
-        patch.dateFormat ??
-        current.dateFormat,
-
-      timeFormat:
-        patch.timeFormat ??
-        current.timeFormat,
-
-      firstDayOfWeek:
-        patch.firstDayOfWeek ??
-        current.firstDayOfWeek,
-    };
-
+  /*
+   * INSERT defaults are supplied for fields absent from the
+   * patch because a preference row may not exist yet.
+   *
+   * During ON CONFLICT, the boolean flags decide whether each
+   * existing value is replaced. This preserves true PATCH
+   * semantics without a read-before-write race.
+   */
   const result =
     await queryControl(
       `
@@ -899,35 +1024,67 @@ export async function updateUserPreferences(
           updated_at
         )
 
-        VALUES (
-          $1,
+        SELECT
+          u.id,
           $2,
-          $3,
           $4,
-          $5,
           $6,
-          $7,
+          $8,
+          $10,
+          $12,
           NOW(),
           NOW()
-        )
 
-        ON CONFLICT (
-          user_id
-        )
+        FROM users u
 
+        WHERE u.id = $1
+          AND u.deleted_at IS NULL
+
+        ON CONFLICT (user_id)
         DO UPDATE SET
+
           theme =
-            EXCLUDED.theme,
+            CASE
+              WHEN $3::boolean
+                THEN EXCLUDED.theme
+              ELSE user_preferences.theme
+            END,
+
           locale =
-            EXCLUDED.locale,
+            CASE
+              WHEN $5::boolean
+                THEN EXCLUDED.locale
+              ELSE user_preferences.locale
+            END,
+
           timezone =
-            EXCLUDED.timezone,
+            CASE
+              WHEN $7::boolean
+                THEN EXCLUDED.timezone
+              ELSE user_preferences.timezone
+            END,
+
           date_format =
-            EXCLUDED.date_format,
+            CASE
+              WHEN $9::boolean
+                THEN EXCLUDED.date_format
+              ELSE user_preferences.date_format
+            END,
+
           time_format =
-            EXCLUDED.time_format,
+            CASE
+              WHEN $11::boolean
+                THEN EXCLUDED.time_format
+              ELSE user_preferences.time_format
+            END,
+
           first_day_of_week =
-            EXCLUDED.first_day_of_week,
+            CASE
+              WHEN $13::boolean
+                THEN EXCLUDED.first_day_of_week
+              ELSE user_preferences.first_day_of_week
+            END,
+
           updated_at =
             NOW()
 
@@ -941,17 +1098,43 @@ export async function updateUserPreferences(
       `,
       [
         id,
-        next.theme,
-        next.locale,
-        next.timezone,
-        next.dateFormat,
-        next.timeFormat,
-        next.firstDayOfWeek,
+
+        patch.theme ??
+          DEFAULT_PREFERENCES.theme,
+        hasTheme,
+
+        patch.locale ??
+          DEFAULT_PREFERENCES.locale,
+        hasLocale,
+
+        patch.timezone ??
+          DEFAULT_PREFERENCES.timezone,
+        hasTimezone,
+
+        patch.dateFormat ??
+          DEFAULT_PREFERENCES.dateFormat,
+        hasDateFormat,
+
+        patch.timeFormat ??
+          DEFAULT_PREFERENCES.timeFormat,
+        hasTimeFormat,
+
+        patch.firstDayOfWeek ??
+          DEFAULT_PREFERENCES.firstDayOfWeek,
+        hasFirstDay,
       ]
     );
 
+  if (
+    result.rows.length !==
+    1
+  ) {
+    throw new UserAccountNotFoundError();
+  }
+
   return mapPreferencesRow(
-    result.rows[0] as UserPreferencesRow
+    result.rows[0] as
+      UserPreferencesRow
   );
 }
 
@@ -960,17 +1143,27 @@ export async function updateUserPreferences(
    ============================================================ */
 
 export async function getUserAccountWithPreferences(
-  userId: string
+  userId:
+    string
 ): Promise<UserAccountWithPreferences> {
-  const account =
-    await getUserAccount(
+  const id =
+    assertUserId(
       userId
     );
 
-  const preferences =
-    await getUserPreferences(
-      userId
-    );
+  const [
+    account,
+    preferences,
+  ] =
+    await Promise.all([
+      getUserAccount(
+        id
+      ),
+
+      getUserPreferences(
+        id
+      ),
+    ]);
 
   return {
     account,
