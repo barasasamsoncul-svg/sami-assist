@@ -5,18 +5,22 @@ import {
 
 import {
   requireAdminSession,
+  revokeAllAdminSessions,
 } from '@/lib/auth/admin-session';
 
 import {
-  requestPlatformAdminEmailChange,
-  cancelPlatformAdminEmailChangeRequest,
-  getPlatformAdminEmailAccount,
+  verifyPlatformAdminEmailChange,
   EmailChangeError,
 } from '@/lib/account/email-change';
 
 import {
-  sendEmailChangeVerificationEmail,
-} from '@/lib/services/email';
+  checkRateLimit,
+  resetRateLimit,
+} from '@/lib/auth/rate-limit';
+
+import {
+  getAdminRequestIp,
+} from '@/lib/auth/admin-session';
 
 import {
   recordAdminAuditEvent,
@@ -29,18 +33,26 @@ export const dynamic = 'force-dynamic';
    CONSTANTS
    ============================================================ */
 
-const EMAIL_CHANGE_EXPIRY_MINUTES = 15;
+const CODE_LENGTH = 6;
 
-const EMAIL_CHANGE_RESEND_SECONDS = 60;
+const MAX_REQUEST_BODY_BYTES =
+  8 * 1024;
 
-const MAX_REQUEST_BODY_BYTES = 8 * 1024;
+const VERIFY_RATE_LIMIT_MAX_ATTEMPTS =
+  8;
+
+const VERIFY_RATE_LIMIT_WINDOW_MS =
+  15 * 60 * 1000;
+
+const VERIFY_RATE_LIMIT_BLOCK_MS =
+  15 * 60 * 1000;
 
 /* ============================================================
    TYPES
    ============================================================ */
 
-type EmailChangeRequestBody = {
-  email?: unknown;
+type VerifyEmailChangeBody = {
+  code?: unknown;
 };
 
 /* ============================================================
@@ -99,7 +111,7 @@ function errorResponse(
 }
 
 /* ============================================================
-   ORIGIN PROTECTION
+   ORIGIN / CSRF PROTECTION
    ============================================================ */
 
 function getAllowedOrigins(
@@ -126,9 +138,8 @@ function getAllowedOrigins(
       );
     } catch {
       /*
-       * Deployment configuration validation belongs to the
-       * infrastructure layer. Do not expose configuration
-       * details to the browser.
+       * APP_URL validation belongs to deployment/infrastructure.
+       * Never expose configuration details here.
        */
     }
   }
@@ -177,10 +188,6 @@ function isTrustedBrowserRequest(
     );
   }
 
-  /*
-   * Allows controlled non-browser clients/tests that do not
-   * send browser fetch metadata.
-   */
   return true;
 }
 
@@ -211,32 +218,65 @@ function hasOversizedBody(
 }
 
 /* ============================================================
-   EMAIL
+   CODE
    ============================================================ */
 
-function normalizeEmail(
+function normalizeCode(
   value: string
 ): string {
-  return value
-    .trim()
-    .toLowerCase();
+  return value.trim();
+}
+
+function isValidCode(
+  value: string
+): boolean {
+  return new RegExp(
+    `^\\d{${CODE_LENGTH}}$`
+  ).test(value);
 }
 
 /* ============================================================
-   DOMAIN ERROR STATUS
+   RATE LIMIT
+   ============================================================ */
+
+function rateLimitIdentifier(
+  request: NextRequest,
+  adminId: string
+): string {
+  const ip =
+    getAdminRequestIp(
+      request
+    ) ||
+    'unknown-ip';
+
+  return [
+    'admin-email-change-verify',
+    adminId,
+    ip,
+  ].join(':');
+}
+
+/* ============================================================
+   EMAIL CHANGE ERROR
    ============================================================ */
 
 function getEmailChangeErrorStatus(
   error: EmailChangeError
 ): number {
   switch (error.code) {
+    case 'INVALID_EMAIL_CHANGE_CODE':
+      return 400;
+
+    case 'EMAIL_CHANGE_EXPIRED':
+      return 400;
+
+    case 'EMAIL_UNAVAILABLE':
+      return 409;
+
     case 'INVALID_NEW_EMAIL':
       return 400;
 
     case 'EMAIL_UNCHANGED':
-      return 409;
-
-    case 'EMAIL_UNAVAILABLE':
       return 409;
 
     case 'EMAIL_CHANGE_COOLDOWN':
@@ -254,7 +294,7 @@ function getEmailChangeErrorStatus(
 }
 
 /* ============================================================
-   TRANSIENT INFRASTRUCTURE FAILURE
+   INFRASTRUCTURE
    ============================================================ */
 
 function isTransientInfrastructureError(
@@ -335,9 +375,6 @@ function isTransientInfrastructureError(
 
 /* ============================================================
    SAFE AUDIT
-
-   Audit failure must not corrupt a successfully created or
-   delivered email-change challenge.
    ============================================================ */
 
 async function safeAudit(
@@ -350,8 +387,12 @@ async function safeAudit(
       input
     );
   } catch (error) {
+    /*
+     * A completed identity operation must not be rolled back or
+     * reported as failed merely because audit persistence failed.
+     */
     console.error(
-      '[Admin Email Change] Audit recording failed:',
+      '[Admin Email Change Verify] Audit recording failed:',
       error
     );
   }
@@ -359,39 +400,38 @@ async function safeAudit(
 
 /* ============================================================
    POST
-   /api/admin/account/email-change/request
+   /api/admin/account/email-change/verify
 
-   Starts a primary-email change for the CURRENT authenticated
-   Platform Administrator.
+   Security flow:
 
-   Security boundary:
+   authenticated administrator
+           ↓
+   same-origin request
+           ↓
+   strict six-digit code
+           ↓
+   verification rate limit
+           ↓
+   shared atomic email-change engine
+           ↓
+   primary admin identity changes
+           ↓
+   new email becomes verified
+           ↓
+   challenge becomes consumed
+           ↓
+   ALL admin sessions revoked
+           ↓
+   fresh authentication required
 
-   Browser
-      ↓
-   Same-origin request
-      ↓
-   Current administrator session
-      ↓
-   Server-resolved administrator identity
-      ↓
-   Shared SaMi email-change engine
-      ↓
-   Hashed six-digit challenge in control DB
-      ↓
-   Verification code delivered to NEW email
-
-   The client NEVER supplies:
-   - adminId
-   - actor role
-   - sessionId
-   - verification request ID
+   The browser never supplies adminId.
    ============================================================ */
 
 export async function POST(
   request: NextRequest
 ) {
   /* ==========================================================
-     1. ORIGIN / CSRF BOUNDARY
+     1. ORIGIN
      ========================================================== */
 
   if (
@@ -446,7 +486,7 @@ export async function POST(
   }
 
   /* ==========================================================
-     4. AUTHENTICATED ADMINISTRATOR
+     4. SESSION
      ========================================================== */
 
   let session;
@@ -468,7 +508,7 @@ export async function POST(
     }
 
     console.error(
-      '[Admin Email Change] Session lookup failed:',
+      '[Admin Email Change Verify] Session lookup failed:',
       error
     );
 
@@ -499,202 +539,11 @@ export async function POST(
   }
 
   /* ==========================================================
-     5. ACCOUNT STATE
-
-     requireAdminSession() already resolves only an active,
-     undeleted administrator. We resolve the identity again here
-     because email delivery needs current canonical identity data
-     and because the DB may have changed since the session was
-     originally issued.
-     ========================================================== */
-
-  let account;
-
-  try {
-    account =
-      await getPlatformAdminEmailAccount(
-        session.adminId
-      );
-  } catch (error) {
-    if (
-      error instanceof
-      EmailChangeError
-    ) {
-      await safeAudit({
-        request,
-
-        adminId:
-          session.adminId,
-
-        sessionId:
-          session.sessionId,
-
-        eventType:
-          'ADMIN_EMAIL_CHANGE_REQUEST_REJECTED',
-
-        action:
-          'platform_admin.email_change.request',
-
-        targetType:
-          'platform_admin',
-
-        targetId:
-          session.adminId,
-
-        successful:
-          false,
-
-        failureReason:
-          error.code,
-
-        metadata: {},
-      });
-
-      return errorResponse(
-        getEmailChangeErrorStatus(
-          error
-        ),
-        error.code,
-        error.message
-      );
-    }
-
-    console.error(
-      '[Admin Email Change] Administrator lookup failed:',
-      error
-    );
-
-    return errorResponse(
-      isTransientInfrastructureError(
-        error
-      )
-        ? 503
-        : 500,
-
-      isTransientInfrastructureError(
-        error
-      )
-        ? 'SERVICE_TEMPORARILY_UNAVAILABLE'
-        : 'ADMIN_EMAIL_CHANGE_ERROR',
-
-      isTransientInfrastructureError(
-        error
-      )
-        ? 'SaMi administrator services are temporarily unavailable.'
-        : 'SaMi could not start the administrator email change.',
-
-      isTransientInfrastructureError(
-        error
-      )
-        ? {
-            retryable: true,
-          }
-        : undefined,
-
-      isTransientInfrastructureError(
-        error
-      )
-        ? {
-            'Retry-After':
-              '30',
-          }
-        : undefined
-    );
-  }
-
-  /*
-   * This is deliberately explicit even though requireAdminSession
-   * currently requires status='active'.
-   *
-   * It protects this route if session policy evolves later.
-   */
-  if (
-    account.status !==
-    'active'
-  ) {
-    await safeAudit({
-      request,
-
-      adminId:
-        session.adminId,
-
-      sessionId:
-        session.sessionId,
-
-      eventType:
-        'ADMIN_EMAIL_CHANGE_REQUEST_REJECTED',
-
-      action:
-        'platform_admin.email_change.request',
-
-      targetType:
-        'platform_admin',
-
-      targetId:
-        session.adminId,
-
-      successful:
-        false,
-
-      failureReason:
-        'ADMIN_NOT_ACTIVE',
-
-      metadata: {},
-    });
-
-    return errorResponse(
-      403,
-      'ADMIN_NOT_ELIGIBLE',
-      'This administrator account cannot change its email address.'
-    );
-  }
-
-  if (
-    !account.emailVerified
-  ) {
-    await safeAudit({
-      request,
-
-      adminId:
-        session.adminId,
-
-      sessionId:
-        session.sessionId,
-
-      eventType:
-        'ADMIN_EMAIL_CHANGE_REQUEST_REJECTED',
-
-      action:
-        'platform_admin.email_change.request',
-
-      targetType:
-        'platform_admin',
-
-      targetId:
-        session.adminId,
-
-      successful:
-        false,
-
-      failureReason:
-        'CURRENT_EMAIL_NOT_VERIFIED',
-
-      metadata: {},
-    });
-
-    return errorResponse(
-      403,
-      'CURRENT_EMAIL_NOT_VERIFIED',
-      'Verify your current administrator email before changing it.'
-    );
-  }
-
-  /* ==========================================================
-     6. BODY
+     5. BODY
      ========================================================== */
 
   let body:
-    EmailChangeRequestBody;
+    VerifyEmailChangeBody;
 
   try {
     const parsed:
@@ -718,7 +567,7 @@ export async function POST(
 
     body =
       parsed as
-        EmailChangeRequestBody;
+        VerifyEmailChangeBody;
   } catch {
     return errorResponse(
       400,
@@ -728,47 +577,196 @@ export async function POST(
   }
 
   /* ==========================================================
-     7. EMAIL INPUT
+     6. CODE
      ========================================================== */
 
   if (
-    typeof body.email !==
+    typeof body.code !==
     'string'
   ) {
     return errorResponse(
       400,
-      'INVALID_NEW_EMAIL',
-      'Enter a valid email address.',
+      'INVALID_EMAIL_CHANGE_CODE',
+      'Enter the complete 6-digit verification code.',
       {
         field:
-          'email',
+          'code',
       }
     );
   }
 
-  const requestedEmail =
-    normalizeEmail(
-      body.email
+  const code =
+    normalizeCode(
+      body.code
     );
 
-  /*
-   * The shared engine performs authoritative email validation,
-   * current-email comparison and global identity uniqueness.
-   *
-   * Do not duplicate those rules here.
-   */
+  if (
+    !isValidCode(
+      code
+    )
+  ) {
+    return errorResponse(
+      400,
+      'INVALID_EMAIL_CHANGE_CODE',
+      'Enter the complete 6-digit verification code.',
+      {
+        field:
+          'code',
+      }
+    );
+  }
 
   /* ==========================================================
-     8. CREATE HASHED EMAIL-CHANGE CHALLENGE
+     7. RATE LIMIT
      ========================================================== */
 
-  let changeRequest;
+  const rateLimitKey =
+    rateLimitIdentifier(
+      request,
+      session.adminId
+    );
+
+  let rateLimit;
 
   try {
-    changeRequest =
-      await requestPlatformAdminEmailChange(
+    rateLimit =
+      await checkRateLimit({
+        identifier:
+          rateLimitKey,
+
+        action:
+          'admin-email-change-verify',
+
+        maxAttempts:
+          VERIFY_RATE_LIMIT_MAX_ATTEMPTS,
+
+        windowMs:
+          VERIFY_RATE_LIMIT_WINDOW_MS,
+
+        blockMs:
+          VERIFY_RATE_LIMIT_BLOCK_MS,
+      });
+  } catch (error) {
+    console.error(
+      '[Admin Email Change Verify] Rate-limit lookup failed:',
+      error
+    );
+
+    return errorResponse(
+      isTransientInfrastructureError(
+        error
+      )
+        ? 503
+        : 500,
+
+      isTransientInfrastructureError(
+        error
+      )
+        ? 'SERVICE_TEMPORARILY_UNAVAILABLE'
+        : 'ADMIN_EMAIL_CHANGE_VERIFY_ERROR',
+
+      isTransientInfrastructureError(
+        error
+      )
+        ? 'SaMi administrator services are temporarily unavailable.'
+        : 'SaMi could not verify the administrator email change.',
+
+      isTransientInfrastructureError(
+        error
+      )
+        ? {
+            retryable: true,
+          }
+        : undefined,
+
+      isTransientInfrastructureError(
+        error
+      )
+        ? {
+            'Retry-After':
+              '30',
+          }
+        : undefined
+    );
+  }
+
+  if (
+    !rateLimit.allowed
+  ) {
+    await safeAudit({
+      request,
+
+      adminId:
         session.adminId,
-        requestedEmail
+
+      sessionId:
+        session.sessionId,
+
+      eventType:
+        'ADMIN_EMAIL_CHANGE_VERIFICATION_RATE_LIMITED',
+
+      action:
+        'platform_admin.email_change.verify',
+
+      targetType:
+        'platform_admin',
+
+      targetId:
+        session.adminId,
+
+      successful:
+        false,
+
+      failureReason:
+        'RATE_LIMITED',
+
+      metadata: {
+        retryAfterSeconds:
+          rateLimit
+            .retryAfterSeconds,
+      },
+    });
+
+    const retryAfterSeconds =
+      Math.max(
+        1,
+        Number(
+          rateLimit
+            .retryAfterSeconds ||
+            60
+        )
+      );
+
+    return errorResponse(
+      429,
+      'ADMIN_EMAIL_CHANGE_VERIFICATION_RATE_LIMITED',
+      'Too many verification attempts. Please wait before trying again.',
+      {
+        retryAfterSeconds,
+      },
+      {
+        'Retry-After':
+          String(
+            retryAfterSeconds
+          ),
+      }
+    );
+  }
+
+  /* ==========================================================
+     8. VERIFY AND CHANGE IDENTITY
+     ========================================================== */
+
+  const previousEmail =
+    session.email;
+
+  let account;
+
+  try {
+    account =
+      await verifyPlatformAdminEmailChange(
+        session.adminId,
+        code
       );
   } catch (error) {
     if (
@@ -785,10 +783,10 @@ export async function POST(
           session.sessionId,
 
         eventType:
-          'ADMIN_EMAIL_CHANGE_REQUEST_REJECTED',
+          'ADMIN_EMAIL_CHANGE_VERIFICATION_FAILED',
 
         action:
-          'platform_admin.email_change.request',
+          'platform_admin.email_change.verify',
 
         targetType:
           'platform_admin',
@@ -802,18 +800,13 @@ export async function POST(
         failureReason:
           error.code,
 
-        metadata: {
-          requestedEmail,
-        },
+        metadata: {},
       });
 
       const status =
         getEmailChangeErrorStatus(
           error
         );
-
-      const retryAfterSeconds =
-        error.retryAfterSeconds;
 
       return errorResponse(
         status,
@@ -822,20 +815,22 @@ export async function POST(
         {
           field:
             error.code ===
-              'INVALID_NEW_EMAIL'
-              ? 'email'
+              'INVALID_EMAIL_CHANGE_CODE'
+              ? 'code'
               : undefined,
 
-          retryAfterSeconds,
+          retryAfterSeconds:
+            error.retryAfterSeconds,
         },
         status === 429 &&
-        retryAfterSeconds
+        error.retryAfterSeconds
           ? {
               'Retry-After':
                 String(
                   Math.max(
                     1,
-                    retryAfterSeconds
+                    error
+                      .retryAfterSeconds
                   )
                 ),
             }
@@ -844,9 +839,39 @@ export async function POST(
     }
 
     console.error(
-      '[Admin Email Change] Failed to create challenge:',
+      '[Admin Email Change Verify] Verification failed:',
       error
     );
+
+    await safeAudit({
+      request,
+
+      adminId:
+        session.adminId,
+
+      sessionId:
+        session.sessionId,
+
+      eventType:
+        'ADMIN_EMAIL_CHANGE_VERIFICATION_ERROR',
+
+      action:
+        'platform_admin.email_change.verify',
+
+      targetType:
+        'platform_admin',
+
+      targetId:
+        session.adminId,
+
+      successful:
+        false,
+
+      failureReason:
+        'INTERNAL_ERROR',
+
+      metadata: {},
+    });
 
     if (
       isTransientInfrastructureError(
@@ -869,130 +894,72 @@ export async function POST(
 
     return errorResponse(
       500,
-      'ADMIN_EMAIL_CHANGE_ERROR',
-      'SaMi could not start the administrator email change.'
+      'ADMIN_EMAIL_CHANGE_VERIFY_ERROR',
+      'SaMi could not verify the administrator email change.'
     );
   }
 
   /* ==========================================================
-     9. DELIVER CODE TO NEW EMAIL
+     9. EMAIL IS NOW CHANGED
 
-     The raw code exists only:
-     - in server memory
-     - in the outbound email
+     From this point onward the identity transition has already
+     committed.
 
-     Database stores only its SHA-256 hash.
+     Cleanup failures MUST NOT make the API claim that the email
+     change itself failed.
+     ========================================================== */
 
-     If delivery fails, invalidate ONLY the exact request that
-     failed delivery.
+  /* ==========================================================
+     10. RESET VERIFICATION RATE LIMIT
      ========================================================== */
 
   try {
-    const delivery =
-      await sendEmailChangeVerificationEmail(
-        changeRequest.email,
-        changeRequest.code,
+    await resetRateLimit(
+      rateLimitKey,
+      'admin-email-change-verify'
+    );
+  } catch (error) {
+    console.error(
+      '[Admin Email Change Verify] Failed to reset rate limit after successful verification:',
+      error
+    );
+  }
 
-        account.firstName ||
-          account.fullName ||
-          'Administrator',
+  /* ==========================================================
+     11. REVOKE ALL ADMINISTRATOR SESSIONS
 
-        {
-          expiresInMinutes:
-            EMAIL_CHANGE_EXPIRY_MINUTES,
+     Primary email is an administrator authentication identity.
 
-          audience:
-            'platform_admin',
-        }
+     After changing it, every existing admin session is invalidated,
+     including the session that performed the change.
+
+     The administrator must authenticate again using the NEW email.
+     ========================================================== */
+
+  let revokedSessions:
+    number | null =
+    null;
+
+  try {
+    revokedSessions =
+      await revokeAllAdminSessions(
+        session.adminId,
+        session.adminId,
+        'primary_email_changed'
       );
-
-    if (
-      !delivery.success
-    ) {
-      try {
-        await cancelPlatformAdminEmailChangeRequest(
-          session.adminId,
-          changeRequest.requestId
-        );
-      } catch (
-        cleanupError
-      ) {
-        console.error(
-          '[Admin Email Change] Failed to invalidate undelivered challenge:',
-          cleanupError
-        );
-      }
-
-      await safeAudit({
-        request,
-
-        adminId:
-          session.adminId,
-
-        sessionId:
-          session.sessionId,
-
-        eventType:
-          'ADMIN_EMAIL_CHANGE_DELIVERY_FAILED',
-
-        action:
-          'platform_admin.email_change.delivery',
-
-        targetType:
-          'platform_admin',
-
-        targetId:
-          session.adminId,
-
-        successful:
-          false,
-
-        failureReason:
-          'EMAIL_DELIVERY_UNAVAILABLE',
-
-        metadata: {
-          requestedEmail:
-            changeRequest.email,
-        },
-      });
-
-      return errorResponse(
-        503,
-        'EMAIL_CHANGE_DELIVERY_UNAVAILABLE',
-        'SaMi could not send the verification code. Please try again.',
-        {
-          retryable: true,
-        },
-        {
-          'Retry-After':
-            '30',
-        }
-      );
-    }
   } catch (error) {
     /*
-     * Delivery is not known to have succeeded.
+     * IMPORTANT:
      *
-     * Invalidate this exact challenge so an undelivered code
-     * cannot remain as an unexpected active credential.
+     * The email has already changed.
+     *
+     * Do not tell the browser the email change failed.
+     *
+     * But this is a security-significant cleanup failure and must
+     * be surfaced internally.
      */
-
-    try {
-      await cancelPlatformAdminEmailChangeRequest(
-        session.adminId,
-        changeRequest.requestId
-      );
-    } catch (
-      cleanupError
-    ) {
-      console.error(
-        '[Admin Email Change] Failed to clean up challenge after delivery error:',
-        cleanupError
-      );
-    }
-
     console.error(
-      '[Admin Email Change] Verification-email delivery failed:',
+      '[Admin Email Change Verify] CRITICAL: email changed but session revocation failed:',
       error
     );
 
@@ -1006,10 +973,10 @@ export async function POST(
         session.sessionId,
 
       eventType:
-        'ADMIN_EMAIL_CHANGE_DELIVERY_FAILED',
+        'ADMIN_EMAIL_CHANGED_SESSION_REVOCATION_FAILED',
 
       action:
-        'platform_admin.email_change.delivery',
+        'platform_admin.email_change.session_cleanup',
 
       targetType:
         'platform_admin',
@@ -1021,36 +988,18 @@ export async function POST(
         false,
 
       failureReason:
-        'EMAIL_DELIVERY_ERROR',
+        'SESSION_REVOCATION_FAILED',
 
       metadata: {
-        requestedEmail:
-          changeRequest.email,
+        previousEmail,
+        newEmail:
+          account.email,
       },
     });
-
-    return errorResponse(
-      503,
-      'EMAIL_CHANGE_DELIVERY_ERROR',
-      'SaMi could not send the verification code. Please try again.',
-      {
-        retryable: true,
-      },
-      {
-        'Retry-After':
-          '30',
-      }
-    );
   }
 
   /* ==========================================================
-     10. AUDIT SUCCESS
-
-     Never record:
-     - raw code
-     - code hash
-     - SMTP credentials
-     - request token
+     12. AUDIT SUCCESS
      ========================================================== */
 
   await safeAudit({
@@ -1063,10 +1012,10 @@ export async function POST(
       session.sessionId,
 
     eventType:
-      'ADMIN_EMAIL_CHANGE_REQUESTED',
+      'ADMIN_EMAIL_CHANGED',
 
     action:
-      'platform_admin.email_change.request',
+      'platform_admin.email_change.verify',
 
     targetType:
       'platform_admin',
@@ -1078,23 +1027,26 @@ export async function POST(
       true,
 
     metadata: {
-      currentEmail:
+      previousEmail,
+
+      newEmail:
         account.email,
 
-      requestedEmail:
-        changeRequest.email,
+      emailVerified:
+        account.emailVerified,
 
-      expiresAt:
-        changeRequest.expiresAt,
+      sessionsRevoked:
+        revokedSessions,
     },
   });
 
   /* ==========================================================
-     11. SAFE RESPONSE
+     13. RESPONSE
 
-     NEVER return:
-     - changeRequest.code
-     - changeRequest.requestId
+     The current session is no longer trusted after a privileged
+     identity change.
+
+     UI should show SaMiOverlay and redirect to admin login.
      ========================================================== */
 
   return jsonResponse({
@@ -1102,20 +1054,17 @@ export async function POST(
       true,
 
     code:
-      'ADMIN_EMAIL_CHANGE_CODE_SENT',
+      'ADMIN_EMAIL_CHANGED',
 
     message:
-      'A verification code has been sent to your new administrator email address.',
+      'Your administrator email has been updated. Sign in again using your new email address.',
 
-    pending: {
-      email:
-        changeRequest.email,
+    account,
 
-      expiresAt:
-        changeRequest.expiresAt,
+    sessionInvalidated:
+      true,
 
-      canResendInSeconds:
-        EMAIL_CHANGE_RESEND_SECONDS,
-    },
+    next:
+      '/admin/login?reason=email_changed',
   });
 }
