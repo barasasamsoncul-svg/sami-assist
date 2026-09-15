@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+
 import {
   Activity,
   AppWindow,
@@ -38,6 +39,7 @@ import {
   Zap,
   type LucideIcon,
 } from 'lucide-react';
+
 import {
   useEffect,
   useMemo,
@@ -46,7 +48,8 @@ import {
   type ReactNode,
 } from 'react';
 
-import SaMiLogo from '@/app/components/SaMiLogo';
+import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
@@ -167,68 +170,35 @@ const DISABLED_MODULE_STATUSES =
 
 const APP_ROUTE_ALIASES:
   Record<string, string> = {
-    invoice:
-      '/invoices',
+    invoice: '/invoices',
+    invoices: '/invoices',
+    invoicing: '/invoices',
 
-    invoices:
-      '/invoices',
+    accounting: '/accounting',
+    finance: '/accounting',
 
-    invoicing:
-      '/invoices',
+    crm: '/crm',
 
-    accounting:
-      '/accounting',
+    sale: '/sales',
+    sales: '/sales',
 
-    finance:
-      '/accounting',
+    pos: '/pos',
+    'point-of-sale': '/pos',
+    point_of_sale: '/pos',
 
-    crm:
-      '/crm',
+    inventory: '/inventory',
+    stock: '/inventory',
 
-    sale:
-      '/sales',
+    hr: '/hr',
+    human_resources: '/hr',
+    'human-resources': '/hr',
 
-    sales:
-      '/sales',
+    project: '/projects',
+    projects: '/projects',
 
-    pos:
-      '/pos',
-
-    'point-of-sale':
-      '/pos',
-
-    point_of_sale:
-      '/pos',
-
-    inventory:
-      '/inventory',
-
-    stock:
-      '/inventory',
-
-    hr:
-      '/hr',
-
-    human_resources:
-      '/hr',
-
-    'human-resources':
-      '/hr',
-
-    project:
-      '/projects',
-
-    projects:
-      '/projects',
-
-    ecommerce:
-      '/ecommerce',
-
-    'e-commerce':
-      '/ecommerce',
-
-    e_commerce:
-      '/ecommerce',
+    ecommerce: '/ecommerce',
+    'e-commerce': '/ecommerce',
+    e_commerce: '/ecommerce',
   };
 
 /* ============================================================
@@ -286,53 +256,40 @@ function getModuleIcon(
     );
 
   if (
-    normalized ===
-      'invoice' ||
-    normalized ===
-      'invoices' ||
-    normalized ===
-      'invoicing'
+    normalized === 'invoice' ||
+    normalized === 'invoices' ||
+    normalized === 'invoicing'
   ) {
     return ReceiptText;
   }
 
   if (
-    normalized ===
-      'accounting' ||
-    normalized ===
-      'finance'
+    normalized === 'accounting' ||
+    normalized === 'finance'
   ) {
     return Calculator;
   }
 
-  if (
-    normalized ===
-    'crm'
-  ) {
+  if (normalized === 'crm') {
     return ContactRound;
   }
 
   if (
-    normalized ===
-      'sale' ||
-    normalized ===
-      'sales'
+    normalized === 'sale' ||
+    normalized === 'sales'
   ) {
     return ShoppingCart;
   }
 
   if (
-    normalized ===
-      'inventory' ||
-    normalized ===
-      'stock'
+    normalized === 'inventory' ||
+    normalized === 'stock'
   ) {
     return Boxes;
   }
 
   if (
-    normalized ===
-      'hr' ||
+    normalized === 'hr' ||
     normalized ===
       'human-resources' ||
     normalized ===
@@ -342,28 +299,22 @@ function getModuleIcon(
   }
 
   if (
-    normalized ===
-      'project' ||
-    normalized ===
-      'projects'
+    normalized === 'project' ||
+    normalized === 'projects'
   ) {
     return FolderKanban;
   }
 
   if (
-    normalized ===
-      'ecommerce' ||
-    normalized ===
-      'e-commerce' ||
-    normalized ===
-      'e_commerce'
+    normalized === 'ecommerce' ||
+    normalized === 'e-commerce' ||
+    normalized === 'e_commerce'
   ) {
     return Store;
   }
 
   if (
-    normalized ===
-      'pos' ||
+    normalized === 'pos' ||
     normalized ===
       'point-of-sale' ||
     normalized ===
@@ -393,25 +344,18 @@ function getInitials(
       .trim();
 
   if (value) {
-    return value
-      .toUpperCase();
+    return value.toUpperCase();
   }
 
   if (
-    user.fullName
-      ?.trim()
+    user.fullName?.trim()
   ) {
     return user.fullName
       .trim()
       .split(/\s+/)
       .slice(0, 2)
-      .map(
-        (
-          part
-        ) =>
-          part.charAt(
-            0
-          )
+      .map(part =>
+        part.charAt(0)
       )
       .join('')
       .toUpperCase();
@@ -423,9 +367,7 @@ function getInitials(
 }
 
 function humanizeStatus(
-  value?:
-    | string
-    | null
+  value?: string | null
 ) {
   if (!value) {
     return 'Unknown';
@@ -438,9 +380,7 @@ function humanizeStatus(
     )
     .replace(
       /\b\w/g,
-      (
-        letter
-      ) =>
+      letter =>
         letter.toUpperCase()
     );
 }
@@ -456,14 +396,12 @@ function getSystemPrefersDark() {
   return (
     window.matchMedia?.(
       '(prefers-color-scheme: dark)'
-    ).matches ??
-    false
+    ).matches ?? false
   );
 }
 
 function applyThemeToDocument(
-  theme:
-    UserTheme
+  theme: UserTheme
 ) {
   const resolved =
     resolveUserTheme(
@@ -472,8 +410,7 @@ function applyThemeToDocument(
     );
 
   const dark =
-    resolved ===
-    'dark';
+    resolved === 'dark';
 
   if (
     typeof document !==
@@ -501,8 +438,7 @@ function applyThemeToDocument(
 }
 
 async function readPreferencesResponse(
-  response:
-    Response
+  response: Response
 ): Promise<PreferencesResponse> {
   try {
     return (
@@ -510,12 +446,9 @@ async function readPreferencesResponse(
     ) as PreferencesResponse;
   } catch {
     return {
-      success:
-        false,
-
+      success: false,
       code:
         'INVALID_SERVER_RESPONSE',
-
       error:
         'SaMi returned an invalid response.',
     };
@@ -525,8 +458,7 @@ async function readPreferencesResponse(
 function getGreeting(
   preferences:
     UserDisplayPreferences,
-  now:
-    Date
+  now: Date
 ) {
   try {
     const hourPart =
@@ -536,46 +468,30 @@ function getGreeting(
           timeZone:
             preferences.timezone,
 
-          hour:
-            '2-digit',
+          hour: '2-digit',
 
-          hourCycle:
-            'h23',
+          hourCycle: 'h23',
         }
       )
-        .formatToParts(
-          now
-        )
+        .formatToParts(now)
         .find(
-          (
-            part
-          ) =>
+          part =>
             part.type ===
             'hour'
         )
         ?.value;
 
     const hour =
-      Number(
-        hourPart
-      );
+      Number(hourPart);
 
     if (
-      Number.isFinite(
-        hour
-      )
+      Number.isFinite(hour)
     ) {
-      if (
-        hour <
-        12
-      ) {
+      if (hour < 12) {
         return 'Good morning';
       }
 
-      if (
-        hour <
-        17
-      ) {
+      if (hour < 17) {
         return 'Good afternoon';
       }
 
@@ -618,72 +534,49 @@ export default function DashboardClient({
   const [
     sidebarOpen,
     setSidebarOpen,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     profileOpen,
     setProfileOpen,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     searchFocused,
     setSearchFocused,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     searchQuery,
     setSearchQuery,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     loggingOut,
     setLoggingOut,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     logoutError,
     setLogoutError,
-  ] =
-    useState<
-      string | null
-    >(null);
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     darkMode,
     setDarkMode,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     themeSaving,
     setThemeSaving,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     preferencesLoading,
     setPreferencesLoading,
-  ] =
-    useState(
-      true
-    );
+  ] = useState(true);
 
   const [
     displayPreferences,
@@ -696,21 +589,17 @@ export default function DashboardClient({
   const [
     now,
     setNow,
-  ] =
-    useState(
-      () =>
-        new Date()
-    );
+  ] = useState(
+    () => new Date()
+  );
 
   const capabilities = {
     aiEnabled:
-      platform
-        ?.aiEnabled ??
+      platform?.aiEnabled ??
       true,
 
     filesEnabled:
-      platform
-        ?.filesEnabled ??
+      platform?.filesEnabled ??
       false,
 
     notificationsEnabled:
@@ -719,47 +608,35 @@ export default function DashboardClient({
       false,
 
     activityEnabled:
-      platform
-        ?.activityEnabled ??
+      platform?.activityEnabled ??
       false,
   };
 
   const installedApps =
     useMemo(
-      () => {
-        return modules.filter(
-          (
-            module
-          ) => {
+      () =>
+        modules.filter(
+          module => {
             const status =
               String(
-                module.status ||
-                  ''
-              )
-                .toLowerCase();
+                module.status || ''
+              ).toLowerCase();
 
             return !DISABLED_MODULE_STATUSES.has(
               status
             );
           }
-        );
-      },
-      [
-        modules,
-      ]
+        ),
+      [modules]
     );
 
   const displayName =
-    user.firstName
-      ?.trim() ||
-    user.fullName
-      ?.trim() ||
+    user.firstName?.trim() ||
+    user.fullName?.trim() ||
     user.email;
 
   const initials =
-    getInitials(
-      user
-    );
+    getInitials(user);
 
   const canManageWorkspace =
     Boolean(
@@ -768,10 +645,8 @@ export default function DashboardClient({
     );
 
   const planName =
-    subscription
-      ?.planName ||
-    subscription
-      ?.planKey ||
+    subscription?.planName ||
+    subscription?.planKey ||
     'Free';
 
   const subscriptionStatus =
@@ -782,8 +657,7 @@ export default function DashboardClient({
   const roleName =
     membership?.label ||
     humanizeStatus(
-      membership
-        ?.accessLevel ||
+      membership?.accessLevel ||
         'member'
     );
 
@@ -815,75 +689,59 @@ export default function DashboardClient({
     >(
       () => {
         const actions:
-          QuickActionItem[] =
-          [];
+          QuickActionItem[] = [];
 
         installedApps
-          .slice(
-            0,
-            2
-          )
-          .forEach(
-            (
-              module
-            ) => {
-              actions.push({
-                id:
-                  `open-${module.key}`,
+          .slice(0, 2)
+          .forEach(module => {
+            actions.push({
+              id:
+                `open-${module.key}`,
 
-                label:
-                  `Open ${module.name}`,
+              label:
+                `Open ${module.name}`,
 
-                description:
-                  module.description ||
-                  `Continue working in ${module.name}.`,
+              description:
+                module.description ||
+                `Continue working in ${module.name}.`,
 
-                href:
-                  getModuleHref(
-                    module
-                  ),
+              href:
+                getModuleHref(
+                  module
+                ),
 
-                icon:
-                  getModuleIcon(
-                    module.key
-                  ),
-              });
-            }
-          );
+              icon:
+                getModuleIcon(
+                  module.key
+                ),
+            });
+          });
 
         if (
-          capabilities
-            .aiEnabled
+          capabilities.aiEnabled
         ) {
           actions.push({
-            id:
-              'sami-ai',
+            id: 'sami-ai',
 
-            label:
-              'Ask SaMi AI',
+            label: 'Ask SaMi AI',
 
             description:
               'Work with permitted workspace context.',
 
-            href:
-              '/ai',
+            href: '/ai',
 
-            icon:
-              Bot,
+            icon: Bot,
           });
         }
 
         if (
           canManageWorkspace &&
-          actions.length <
-            4
+          actions.length < 4
         ) {
           actions.push({
-            id:
-              'manage-apps',
+            id: 'manage-apps',
 
-            label:
-              'Manage apps',
+            label: 'Manage apps',
 
             description:
               'Install or manage workspace apps.',
@@ -891,43 +749,34 @@ export default function DashboardClient({
             href:
               '/settings?tab=apps',
 
-            icon:
-              LayoutGrid,
+            icon: LayoutGrid,
           });
         }
 
         if (
-          actions.length <
-          4
+          actions.length < 4
         ) {
           actions.push({
-            id:
-              'settings',
+            id: 'settings',
 
-            label:
-              'Settings',
+            label: 'Settings',
 
             description:
               'Manage your account and workspace.',
 
-            href:
-              '/settings',
+            href: '/settings',
 
-            icon:
-              Settings,
+            icon: Settings,
           });
         }
 
         if (
-          actions.length <
-          4
+          actions.length < 4
         ) {
           actions.push({
-            id:
-              'security',
+            id: 'security',
 
-            label:
-              'Security',
+            label: 'Security',
 
             description:
               'Review password and account protection.',
@@ -935,8 +784,7 @@ export default function DashboardClient({
             href:
               '/settings?tab=security',
 
-            icon:
-              ShieldCheck,
+            icon: ShieldCheck,
           });
         }
 
@@ -947,8 +795,7 @@ export default function DashboardClient({
       },
       [
         installedApps,
-        capabilities
-          .aiEnabled,
+        capabilities.aiEnabled,
         canManageWorkspace,
       ]
     );
@@ -957,225 +804,192 @@ export default function DashboardClient({
      LIVE CLOCK
      ========================================================== */
 
-  useEffect(
-    () => {
-      const timer =
-        window.setInterval(
-          () => {
-            setNow(
-              new Date()
-            );
-          },
-          30_000
-        );
+  useEffect(() => {
+    const timer =
+      window.setInterval(
+        () => {
+          setNow(
+            new Date()
+          );
+        },
+        30_000
+      );
 
-      return () => {
-        window.clearInterval(
-          timer
-        );
-      };
-    },
-    []
-  );
+    return () => {
+      window.clearInterval(
+        timer
+      );
+    };
+  }, []);
 
   /* ==========================================================
      INITIAL LOCAL THEME
      ========================================================== */
 
-  useEffect(
-    () => {
-      try {
-        const stored =
-          localStorage.getItem(
-            THEME_STORAGE_KEY
-          );
-
-        const initialTheme:
-          UserTheme =
-          stored ===
-              'light' ||
-          stored ===
-              'dark' ||
-          stored ===
-              'system'
-            ? stored
-            : 'system';
-
-        const dark =
-          applyThemeToDocument(
-            initialTheme
-          );
-
-        setDarkMode(
-          dark
-        );
-      } catch {
-        const dark =
-          getSystemPrefersDark();
-
-        setDarkMode(
-          dark
+  useEffect(() => {
+    try {
+      const stored =
+        localStorage.getItem(
+          THEME_STORAGE_KEY
         );
 
-        document
-          .documentElement
-          .classList
-          .toggle(
-            'dark',
-            dark
-          );
-      }
-    },
-    []
-  );
+      const initialTheme:
+        UserTheme =
+        stored === 'light' ||
+        stored === 'dark' ||
+        stored === 'system'
+          ? stored
+          : 'system';
+
+      const dark =
+        applyThemeToDocument(
+          initialTheme
+        );
+
+      setDarkMode(dark);
+    } catch {
+      const dark =
+        getSystemPrefersDark();
+
+      setDarkMode(dark);
+
+      document
+        .documentElement
+        .classList
+        .toggle(
+          'dark',
+          dark
+        );
+    }
+  }, []);
 
   /* ==========================================================
      LOAD SAVED USER PREFERENCES
      ========================================================== */
 
-  useEffect(
-    () => {
-      let cancelled =
-        false;
+  useEffect(() => {
+    let cancelled = false;
 
-      async function loadPreferences() {
-        setPreferencesLoading(
-          true
+    async function loadPreferences() {
+      setPreferencesLoading(
+        true
+      );
+
+      try {
+        const response =
+          await fetch(
+            '/api/account/preferences',
+            {
+              method: 'GET',
+
+              headers: {
+                Accept:
+                  'application/json',
+              },
+
+              credentials:
+                'same-origin',
+
+              cache: 'no-store',
+            }
+          );
+
+        const data =
+          await readPreferencesResponse(
+            response
+          );
+
+        if (
+          !response.ok ||
+          !data.success ||
+          !data.preferences ||
+          cancelled
+        ) {
+          return;
+        }
+
+        setDisplayPreferences(
+          data.preferences
         );
 
-        try {
-          const response =
-            await fetch(
-              '/api/account/preferences',
-              {
-                method:
-                  'GET',
-
-                headers: {
-                  Accept:
-                    'application/json',
-                },
-
-                credentials:
-                  'same-origin',
-
-                cache:
-                  'no-store',
-              }
-            );
-
-          const data =
-            await readPreferencesResponse(
-              response
-            );
-
-          if (
-            !response.ok ||
-            !data.success ||
-            !data.preferences ||
-            cancelled
-          ) {
-            return;
-          }
-
-          setDisplayPreferences(
+        const dark =
+          applyThemeToDocument(
             data.preferences
+              .theme
           );
 
-          const dark =
-            applyThemeToDocument(
-              data.preferences
-                .theme
-            );
-
-          setDarkMode(
-            dark
+        setDarkMode(dark);
+      } catch {
+        /*
+         * Dashboard stays usable
+         * with safe defaults.
+         */
+      } finally {
+        if (!cancelled) {
+          setPreferencesLoading(
+            false
           );
-        } catch {
-          /*
-           * Dashboard stays usable
-           * with safe defaults.
-           */
-        } finally {
-          if (
-            !cancelled
-          ) {
-            setPreferencesLoading(
-              false
-            );
-          }
         }
       }
+    }
 
-      void loadPreferences();
+    void loadPreferences();
 
-      return () => {
-        cancelled =
-          true;
-      };
-    },
-    []
-  );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /* ==========================================================
      SYSTEM THEME CHANGES
      ========================================================== */
 
-  useEffect(
-    () => {
-      if (
-        displayPreferences
-          .theme !==
-        'system'
-      ) {
-        return;
-      }
+  useEffect(() => {
+    if (
+      displayPreferences
+        .theme !== 'system'
+    ) {
+      return;
+    }
 
-      const media =
-        window.matchMedia(
-          '(prefers-color-scheme: dark)'
-        );
+    const media =
+      window.matchMedia(
+        '(prefers-color-scheme: dark)'
+      );
 
-      const syncTheme =
-        () => {
-          const dark =
-            applyThemeToDocument(
-              'system'
-            );
-
-          setDarkMode(
-            dark
+    const syncTheme =
+      () => {
+        const dark =
+          applyThemeToDocument(
+            'system'
           );
-        };
 
-      syncTheme();
+        setDarkMode(dark);
+      };
 
-      media.addEventListener?.(
+    syncTheme();
+
+    media.addEventListener?.(
+      'change',
+      syncTheme
+    );
+
+    return () => {
+      media.removeEventListener?.(
         'change',
         syncTheme
       );
-
-      return () => {
-        media.removeEventListener?.(
-          'change',
-          syncTheme
-        );
-      };
-    },
-    [
-      displayPreferences
-        .theme,
-    ]
-  );
+    };
+  }, [
+    displayPreferences.theme,
+  ]);
 
   /* ==========================================================
      PERSISTED THEME TOGGLE
      ========================================================== */
 
   async function toggleTheme() {
-    if (
-      themeSaving
-    ) {
+    if (themeSaving) {
       return;
     }
 
@@ -1194,14 +1008,10 @@ export default function DashboardClient({
     const optimisticPreferences:
       UserDisplayPreferences = {
         ...displayPreferences,
-
-        theme:
-          nextTheme,
+        theme: nextTheme,
       };
 
-    setThemeSaving(
-      true
-    );
+    setThemeSaving(true);
 
     setDisplayPreferences(
       optimisticPreferences
@@ -1212,17 +1022,14 @@ export default function DashboardClient({
         nextTheme
       );
 
-    setDarkMode(
-      nextDark
-    );
+    setDarkMode(nextDark);
 
     try {
       const response =
         await fetch(
           '/api/account/preferences',
           {
-            method:
-              'PATCH',
+            method: 'PATCH',
 
             headers: {
               'Content-Type':
@@ -1235,13 +1042,11 @@ export default function DashboardClient({
             credentials:
               'same-origin',
 
-            cache:
-              'no-store',
+            cache: 'no-store',
 
             body:
               JSON.stringify({
-                theme:
-                  nextTheme,
+                theme: nextTheme,
               }),
           }
         );
@@ -1268,16 +1073,11 @@ export default function DashboardClient({
 
       const savedDark =
         applyThemeToDocument(
-          data.preferences
-            .theme
+          data.preferences.theme
         );
 
-      setDarkMode(
-        savedDark
-      );
-    } catch (
-      error
-    ) {
+      setDarkMode(savedDark);
+    } catch (error) {
       setDisplayPreferences(
         previousPreferences
       );
@@ -1296,9 +1096,7 @@ export default function DashboardClient({
         error
       );
     } finally {
-      setThemeSaving(
-        false
-      );
+      setThemeSaving(false);
     }
   }
 
@@ -1306,144 +1104,114 @@ export default function DashboardClient({
      PROFILE MENU
      ========================================================== */
 
-  useEffect(
-    () => {
-      function handlePointerDown(
-        event:
-          PointerEvent
+  useEffect(() => {
+    function handlePointerDown(
+      event: PointerEvent
+    ) {
+      const target =
+        event.target as
+          | Node
+          | null;
+
+      if (
+        profileMenuRef.current &&
+        target &&
+        !profileMenuRef.current.contains(
+          target
+        )
       ) {
-        const target =
-          event.target as
-            | Node
-            | null;
-
-        if (
-          profileMenuRef
-            .current &&
-          target &&
-          !profileMenuRef
-            .current
-            .contains(
-              target
-            )
-        ) {
-          setProfileOpen(
-            false
-          );
-        }
+        setProfileOpen(false);
       }
+    }
 
-      window.addEventListener(
+    window.addEventListener(
+      'pointerdown',
+      handlePointerDown
+    );
+
+    return () => {
+      window.removeEventListener(
         'pointerdown',
         handlePointerDown
       );
-
-      return () => {
-        window.removeEventListener(
-          'pointerdown',
-          handlePointerDown
-        );
-      };
-    },
-    []
-  );
+    };
+  }, []);
 
   /* ==========================================================
      KEYBOARD
      ========================================================== */
 
-  useEffect(
-    () => {
-      function handleKeyboard(
-        event:
-          KeyboardEvent
+  useEffect(() => {
+    function handleKeyboard(
+      event: KeyboardEvent
+    ) {
+      const target =
+        event.target as
+          | HTMLElement
+          | null;
+
+      const isTyping =
+        target?.tagName ===
+          'INPUT' ||
+        target?.tagName ===
+          'TEXTAREA' ||
+        target
+          ?.isContentEditable;
+
+      if (
+        event.key === '/' &&
+        !isTyping
       ) {
-        const target =
-          event.target as
-            | HTMLElement
-            | null;
+        event.preventDefault();
 
-        const isTyping =
-          target?.tagName ===
-            'INPUT' ||
-          target?.tagName ===
-            'TEXTAREA' ||
-          target
-            ?.isContentEditable;
+        searchInputRef
+          .current
+          ?.focus();
 
-        if (
-          event.key ===
-            '/' &&
-          !isTyping
-        ) {
-          event.preventDefault();
-
-          searchInputRef
-            .current
-            ?.focus();
-
-          return;
-        }
-
-        if (
-          event.key ===
-          'Escape'
-        ) {
-          setSidebarOpen(
-            false
-          );
-
-          setProfileOpen(
-            false
-          );
-
-          setSearchFocused(
-            false
-          );
-        }
+        return;
       }
 
-      window.addEventListener(
+      if (
+        event.key ===
+        'Escape'
+      ) {
+        setSidebarOpen(false);
+        setProfileOpen(false);
+        setSearchFocused(false);
+      }
+    }
+
+    window.addEventListener(
+      'keydown',
+      handleKeyboard
+    );
+
+    return () => {
+      window.removeEventListener(
         'keydown',
         handleKeyboard
       );
-
-      return () => {
-        window.removeEventListener(
-          'keydown',
-          handleKeyboard
-        );
-      };
-    },
-    []
-  );
+    };
+  }, []);
 
   /* ==========================================================
      LOGOUT
      ========================================================== */
 
   async function logout() {
-    if (
-      loggingOut
-    ) {
+    if (loggingOut) {
       return;
     }
 
-    setLogoutError(
-      null
-    );
-
-    setLoggingOut(
-      true
-    );
+    setLogoutError(null);
+    setLoggingOut(true);
 
     try {
       const response =
         await fetch(
           '/api/auth/logout',
           {
-            method:
-              'POST',
+            method: 'POST',
 
             credentials:
               'include',
@@ -1455,9 +1223,7 @@ export default function DashboardClient({
           }
         );
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         throw new Error(
           'Logout request failed.'
         );
@@ -1473,9 +1239,7 @@ export default function DashboardClient({
         'SaMi could not sign you out. Please try again.'
       );
     } finally {
-      setLoggingOut(
-        false
-      );
+      setLoggingOut(false);
     }
   }
 
@@ -1495,176 +1259,106 @@ export default function DashboardClient({
             icon: LucideIcon;
             keywords: string;
           }> = [
-            {
-              id:
-                'dashboard',
+          {
+            id: 'dashboard',
+            label: 'Dashboard',
+            description:
+              'Return to your workspace home.',
+            href: '/dashboard',
+            icon: Home,
+            keywords:
+              'dashboard workspace home',
+          },
 
-              label:
-                'Dashboard',
+          {
+            id: 'settings',
+            label: 'Settings',
+            description:
+              'Manage your SaMi account and workspace.',
+            href: '/settings',
+            icon: Settings,
+            keywords:
+              'settings account workspace profile',
+          },
 
-              description:
-                'Return to your workspace home.',
+          {
+            id: 'security',
+            label: 'Security',
+            description:
+              'Password and security settings.',
+            href:
+              '/settings?tab=security',
+            icon: ShieldCheck,
+            keywords:
+              'security password two factor 2fa',
+          },
 
-              href:
-                '/dashboard',
+          {
+            id: 'sessions',
+            label:
+              'Sessions & devices',
+            description:
+              'Review your signed-in sessions.',
+            href:
+              '/settings?tab=sessions',
+            icon: UserRound,
+            keywords:
+              'sessions devices login security',
+          },
 
-              icon:
-                Home,
-
-              keywords:
-                'dashboard workspace home',
-            },
-
-            {
-              id:
-                'settings',
-
-              label:
-                'Settings',
-
-              description:
-                'Manage your SaMi account and workspace.',
-
-              href:
-                '/settings',
-
-              icon:
-                Settings,
-
-              keywords:
-                'settings account workspace profile',
-            },
-
-            {
-              id:
-                'security',
-
-              label:
-                'Security',
-
-              description:
-                'Password and security settings.',
-
-              href:
-                '/settings?tab=security',
-
-              icon:
-                ShieldCheck,
-
-              keywords:
-                'security password two factor 2fa',
-            },
-
-            {
-              id:
-                'sessions',
-
-              label:
-                'Sessions & devices',
-
-              description:
-                'Review your signed-in sessions.',
-
-              href:
-                '/settings?tab=sessions',
-
-              icon:
-                UserRound,
-
-              keywords:
-                'sessions devices login security',
-            },
-
-            {
-              id:
-                'help',
-
-              label:
-                'Help',
-
-              description:
-                'Get help using SaMi.',
-
-              href:
-                '/help',
-
-              icon:
-                CircleHelp,
-
-              keywords:
-                'help support assistance',
-            },
-          ];
+          {
+            id: 'help',
+            label: 'Help',
+            description:
+              'Get help using SaMi.',
+            href: '/help',
+            icon: CircleHelp,
+            keywords:
+              'help support assistance',
+          },
+        ];
 
         if (
           canManageWorkspace
         ) {
           items.push({
-            id:
-              'manage-apps',
-
-            label:
-              'Manage apps',
-
+            id: 'manage-apps',
+            label: 'Manage apps',
             description:
               'Install or manage workspace apps.',
-
             href:
               '/settings?tab=apps',
-
-            icon:
-              LayoutGrid,
-
+            icon: LayoutGrid,
             keywords:
               'apps modules install manage',
           });
         }
 
         if (
-          capabilities
-            .aiEnabled
+          capabilities.aiEnabled
         ) {
           items.push({
-            id:
-              'sami-ai',
-
-            label:
-              'SaMi AI',
-
+            id: 'sami-ai',
+            label: 'SaMi AI',
             description:
               'Open the SaMi AI workspace.',
-
-            href:
-              '/ai',
-
-            icon:
-              Bot,
-
+            href: '/ai',
+            icon: Bot,
             keywords:
               'ai assistant sami artificial intelligence',
           });
         }
 
         if (
-          capabilities
-            .filesEnabled
+          capabilities.filesEnabled
         ) {
           items.push({
-            id:
-              'files',
-
-            label:
-              'Files',
-
+            id: 'files',
+            label: 'Files',
             description:
               'Open workspace files.',
-
-            href:
-              '/files',
-
-            icon:
-              Folder,
-
+            href: '/files',
+            icon: Folder,
             keywords:
               'files documents storage',
           });
@@ -1675,30 +1369,21 @@ export default function DashboardClient({
             .notificationsEnabled
         ) {
           items.push({
-            id:
-              'notifications',
-
+            id: 'notifications',
             label:
               'Notifications',
-
             description:
               'Review workspace notifications.',
-
             href:
               '/notifications',
-
-            icon:
-              Bell,
-
+            icon: Bell,
             keywords:
               'notifications alerts messages',
           });
         }
 
         installedApps.forEach(
-          (
-            module
-          ) => {
+          module => {
             items.push({
               id:
                 `app-${module.key}`,
@@ -1730,10 +1415,8 @@ export default function DashboardClient({
       },
       [
         installedApps,
-        capabilities
-          .aiEnabled,
-        capabilities
-          .filesEnabled,
+        capabilities.aiEnabled,
+        capabilities.filesEnabled,
         capabilities
           .notificationsEnabled,
         canManageWorkspace,
@@ -1756,21 +1439,12 @@ export default function DashboardClient({
         }
 
         return searchItems
-          .filter(
-            (
-              item
-            ) => {
-              return `${item.label} ${item.description} ${item.keywords}`
-                .toLowerCase()
-                .includes(
-                  query
-                );
-            }
+          .filter(item =>
+            `${item.label} ${item.description} ${item.keywords}`
+              .toLowerCase()
+              .includes(query)
           )
-          .slice(
-            0,
-            8
-          );
+          .slice(0, 8);
       },
       [
         searchItems,
@@ -1779,20 +1453,12 @@ export default function DashboardClient({
     );
 
   function navigateFromSearch(
-    href:
-      string
+    href: string
   ) {
-    setSearchFocused(
-      false
-    );
+    setSearchFocused(false);
+    setSearchQuery('');
 
-    setSearchQuery(
-      ''
-    );
-
-    router.push(
-      href
-    );
+    router.push(href);
   }
 
   /* ==========================================================
@@ -1801,317 +1467,41 @@ export default function DashboardClient({
 
   return (
     <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#080b12] dark:text-white">
-
       <div className="flex min-h-screen">
 
         {/* ====================================================
-            MOBILE SIDEBAR BACKDROP
+            SHARED WORKSPACE SIDEBAR
             ==================================================== */}
 
-        {sidebarOpen && (
-          <button
-            type="button"
-            aria-label="Close navigation"
-            onClick={() =>
-              setSidebarOpen(
-                false
-              )
-            }
-            className="fixed inset-0 z-40 bg-slate-950/55 backdrop-blur-[2px] lg:hidden"
-          />
-        )}
+        <WorkspaceSidebar
+          user={user}
+          tenant={tenant}
+          membership={
+            membership
+          }
+          subscription={
+            subscription
+          }
+          modules={modules}
+          capabilities={{
+            aiEnabled:
+              capabilities.aiEnabled,
 
-        {/* ====================================================
-            SIDEBAR
-            ==================================================== */}
+            filesEnabled:
+              capabilities.filesEnabled,
 
-        <aside
-          aria-label="SaMi navigation"
-          className={`
-            fixed inset-y-0 left-0 z-50
-            flex w-[286px] flex-col
-            border-r border-slate-200/80
-            bg-white
-            shadow-[12px_0_35px_rgba(15,23,42,0.03)]
-            transition-transform duration-300
-            dark:border-slate-800/90
-            dark:bg-[#0b0f18]
-            dark:shadow-none
-            lg:translate-x-0
-            ${
-              sidebarOpen
-                ? 'translate-x-0'
-                : '-translate-x-full'
-            }
-          `}
-        >
-
-          {/* BRAND */}
-
-          <div className="flex min-h-[88px] items-center justify-between border-b border-slate-100 px-5 dark:border-slate-800/80">
-
-            <Link
-              href="/dashboard"
-              aria-label="SaMi dashboard"
-              onClick={() =>
-                setSidebarOpen(
-                  false
-                )
-              }
-              className="min-w-0"
-            >
-              <SaMiLogo size="sm" />
-            </Link>
-
-            <button
-              type="button"
-              aria-label="Close navigation"
-              onClick={() =>
-                setSidebarOpen(
-                  false
-                )
-              }
-              className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* WORKSPACE */}
-
-          <div className="px-4 pt-5">
-
-            <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/70">
-
-              <p className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                Workspace
-              </p>
-
-              <p className="mt-1 truncate text-sm font-extrabold text-slate-900 dark:text-white">
-                {tenant?.name ||
-                  'SaMi Workspace'}
-              </p>
-
-              <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-
-                <span>
-                  {roleName}
-                </span>
-
-                <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-
-                <span>
-                  {planName}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* NAVIGATION */}
-
-          <nav className="mt-4 flex-1 overflow-y-auto px-3 pb-6">
-
-            <NavSectionLabel>
-              Workspace
-            </NavSectionLabel>
-
-            <div className="mt-2 space-y-1">
-
-              <NavLink
-                href="/dashboard"
-                icon={Home}
-                label="Dashboard"
-                active
-                onNavigate={() =>
-                  setSidebarOpen(
-                    false
-                  )
-                }
-              />
-
-              {capabilities
-                .aiEnabled && (
-                <NavLink
-                  href="/ai"
-                  icon={Bot}
-                  label="SaMi AI"
-                  onNavigate={() =>
-                    setSidebarOpen(
-                      false
-                    )
-                  }
-                />
-              )}
-            </div>
-
-            <NavSectionLabel className="mt-7">
-              Apps
-            </NavSectionLabel>
-
-            <div className="mt-2 space-y-1">
-
-              {installedApps.length >
-              0 ? (
-                installedApps
-                  .slice(
-                    0,
-                    10
-                  )
-                  .map(
-                    (
-                      module
-                    ) => {
-                      const Icon =
-                        getModuleIcon(
-                          module.key
-                        );
-
-                      return (
-                        <NavLink
-                          key={
-                            module.key
-                          }
-                          href={
-                            getModuleHref(
-                              module
-                            )
-                          }
-                          icon={
-                            Icon
-                          }
-                          label={
-                            module.name
-                          }
-                          onNavigate={() =>
-                            setSidebarOpen(
-                              false
-                            )
-                          }
-                        />
-                      );
-                    }
-                  )
-              ) : (
-                <div className="mx-1 rounded-2xl border border-dashed border-slate-300 px-4 py-4 text-xs leading-5 text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  No apps are installed in this workspace.
-                </div>
-              )}
-
-              {canManageWorkspace && (
-                <NavLink
-                  href="/settings?tab=apps"
-                  icon={LayoutGrid}
-                  label="Manage apps"
-                  onNavigate={() =>
-                    setSidebarOpen(
-                      false
-                    )
-                  }
-                />
-              )}
-            </div>
-
-            {(capabilities
-              .filesEnabled ||
+            notificationsEnabled:
               capabilities
-                .notificationsEnabled) && (
-              <>
-                <NavSectionLabel className="mt-7">
-                  Core
-                </NavSectionLabel>
-
-                <div className="mt-2 space-y-1">
-
-                  {capabilities
-                    .filesEnabled && (
-                    <NavLink
-                      href="/files"
-                      icon={Folder}
-                      label="Files"
-                      onNavigate={() =>
-                        setSidebarOpen(
-                          false
-                        )
-                      }
-                    />
-                  )}
-
-                  {capabilities
-                    .notificationsEnabled && (
-                    <NavLink
-                      href="/notifications"
-                      icon={Bell}
-                      label="Notifications"
-                      badge={
-                        unreadNotifications >
-                        0
-                          ? unreadNotifications
-                          : undefined
-                      }
-                      onNavigate={() =>
-                        setSidebarOpen(
-                          false
-                        )
-                      }
-                    />
-                  )}
-                </div>
-              </>
-            )}
-
-            <NavSectionLabel className="mt-7">
-              Account
-            </NavSectionLabel>
-
-            <div className="mt-2 space-y-1">
-
-              <NavLink
-                href="/settings"
-                icon={Settings}
-                label="Settings"
-                onNavigate={() =>
-                  setSidebarOpen(
-                    false
-                  )
-                }
-              />
-
-              <NavLink
-                href="/help"
-                icon={CircleHelp}
-                label="Help"
-                onNavigate={() =>
-                  setSidebarOpen(
-                    false
-                  )
-                }
-              />
-            </div>
-          </nav>
-
-          {/* USER */}
-
-          <div className="border-t border-slate-200/80 p-4 dark:border-slate-800">
-
-            <div className="flex items-center gap-3 rounded-2xl px-2 py-2">
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-black text-white shadow-sm">
-                {initials}
-              </div>
-
-              <div className="min-w-0 flex-1">
-
-                <p className="truncate text-sm font-bold">
-                  {displayName}
-                </p>
-
-                <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                  {user.email}
-                </p>
-              </div>
-            </div>
-          </div>
-        </aside>
+                .notificationsEnabled,
+          }}
+          unreadNotifications={
+            unreadNotifications
+          }
+          open={sidebarOpen}
+          onClose={() =>
+            setSidebarOpen(false)
+          }
+        />
 
         {/* ====================================================
             MAIN
@@ -2124,7 +1514,6 @@ export default function DashboardClient({
               ================================================== */}
 
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/88">
-
             <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:px-8">
 
               <button
@@ -2140,10 +1529,21 @@ export default function DashboardClient({
                 <Menu className="h-5 w-5" />
               </button>
 
+              {/* PAGE IDENTITY */}
+
+              <div className="hidden shrink-0 xl:block">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Workspace
+                </p>
+
+                <p className="mt-0.5 text-sm font-extrabold text-slate-900 dark:text-white">
+                  Dashboard
+                </p>
+              </div>
+
               {/* SEARCH */}
 
               <div className="relative min-w-0 max-w-2xl flex-1">
-
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
@@ -2154,12 +1554,9 @@ export default function DashboardClient({
                   value={
                     searchQuery
                   }
-                  onChange={(
-                    event
-                  ) =>
+                  onChange={event =>
                     setSearchQuery(
-                      event
-                        .target
+                      event.target
                         .value
                     )
                   }
@@ -2179,7 +1576,6 @@ export default function DashboardClient({
 
                 {searchFocused && (
                   <>
-
                     <button
                       type="button"
                       aria-label="Close search"
@@ -2203,11 +1599,8 @@ export default function DashboardClient({
                       {searchResults.length >
                       0 ? (
                         <div className="max-h-[380px] overflow-y-auto p-2">
-
                           {searchResults.map(
-                            (
-                              item
-                            ) => {
+                            item => {
                               const Icon =
                                 item.icon;
 
@@ -2224,19 +1617,21 @@ export default function DashboardClient({
                                   }
                                   className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800"
                                 >
-
                                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                     <Icon className="h-4 w-4" />
                                   </div>
 
                                   <div className="min-w-0 flex-1">
-
                                     <p className="truncate text-sm font-bold">
-                                      {item.label}
+                                      {
+                                        item.label
+                                      }
                                     </p>
 
                                     <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                                      {item.description}
+                                      {
+                                        item.description
+                                      }
                                     </p>
                                   </div>
 
@@ -2248,7 +1643,6 @@ export default function DashboardClient({
                         </div>
                       ) : (
                         <div className="px-5 py-8 text-center">
-
                           <Search className="mx-auto h-6 w-6 text-slate-300" />
 
                           <p className="mt-3 text-sm font-bold">
@@ -2308,7 +1702,6 @@ export default function DashboardClient({
                     aria-label="Notifications"
                     className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                   >
-
                     <Bell className="h-5 w-5" />
 
                     {unreadNotifications >
@@ -2331,7 +1724,6 @@ export default function DashboardClient({
                   }
                   className="relative"
                 >
-
                   <button
                     type="button"
                     aria-label="Open account menu"
@@ -2340,15 +1732,12 @@ export default function DashboardClient({
                     }
                     onClick={() =>
                       setProfileOpen(
-                        (
-                          current
-                        ) =>
+                        current =>
                           !current
                       )
                     }
                     className="flex h-10 items-center gap-2 rounded-xl pl-1 pr-2 transition hover:bg-slate-100 dark:hover:bg-slate-800"
                   >
-
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-black text-white shadow-sm">
                       {initials}
                     </span>
@@ -2360,9 +1749,10 @@ export default function DashboardClient({
                     <div className="absolute right-0 top-[48px] z-50 w-[270px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-900">
 
                       <div className="border-b border-slate-100 px-4 py-4 dark:border-slate-800">
-
                         <p className="truncate text-sm font-extrabold">
-                          {displayName}
+                          {
+                            displayName
+                          }
                         </p>
 
                         <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
@@ -2370,7 +1760,6 @@ export default function DashboardClient({
                         </p>
 
                         <div className="mt-3 flex gap-2">
-
                           <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                             {roleName}
                           </span>
@@ -2382,11 +1771,12 @@ export default function DashboardClient({
                       </div>
 
                       <div className="p-2">
-
                         <MenuItem
-                          href="/settings"
-                          icon={Settings}
-                          label="Settings"
+                          href="/settings?tab=personal"
+                          icon={
+                            Settings
+                          }
+                          label="My Account"
                           onNavigate={() =>
                             setProfileOpen(
                               false
@@ -2396,7 +1786,9 @@ export default function DashboardClient({
 
                         <MenuItem
                           href="/settings?tab=security"
-                          icon={ShieldCheck}
+                          icon={
+                            ShieldCheck
+                          }
                           label="Security"
                           onNavigate={() =>
                             setProfileOpen(
@@ -2407,7 +1799,9 @@ export default function DashboardClient({
 
                         <MenuItem
                           href="/help"
-                          icon={CircleHelp}
+                          icon={
+                            CircleHelp
+                          }
                           label="Help"
                           onNavigate={() =>
                             setProfileOpen(
@@ -2418,7 +1812,6 @@ export default function DashboardClient({
                       </div>
 
                       <div className="border-t border-slate-100 p-2 dark:border-slate-800">
-
                         <button
                           type="button"
                           onClick={
@@ -2453,14 +1846,11 @@ export default function DashboardClient({
 
           <div className="mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-8 lg:py-9">
 
-            {/* LOGOUT ERROR */}
-
             {logoutError && (
               <div
                 role="alert"
                 className="mb-6 flex items-start justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
               >
-
                 <span>
                   {logoutError}
                 </span>
@@ -2479,18 +1869,13 @@ export default function DashboardClient({
               </div>
             )}
 
-            {/* ==================================================
-                WELCOME
-                ================================================== */}
+            {/* WELCOME */}
 
             <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-[0_12px_35px_rgba(15,23,42,0.04)] sm:p-8 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-
               <div className="flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
 
                 <div className="min-w-0">
-
                   <div className="flex flex-wrap items-center gap-2">
-
                     <span className="inline-flex h-2 w-2 rounded-full bg-emerald-500" />
 
                     <p className="truncate text-sm font-bold text-slate-500 dark:text-slate-400">
@@ -2515,14 +1900,9 @@ export default function DashboardClient({
 
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center xl:justify-end">
 
-                  {/* USER TIME */}
-
                   <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/60">
-
                     <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-
                       <CalendarClock className="h-3.5 w-3.5" />
-
                       Your time
                     </div>
 
@@ -2540,26 +1920,22 @@ export default function DashboardClient({
                   </div>
 
                   <div className="flex gap-2">
-
                     {canManageWorkspace && (
                       <Link
                         href="/settings?tab=apps"
                         className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                       >
                         <LayoutGrid className="h-4 w-4" />
-
                         Manage apps
                       </Link>
                     )}
 
-                    {capabilities
-                      .aiEnabled && (
+                    {capabilities.aiEnabled && (
                       <Link
                         href="/ai"
                         className="inline-flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                       >
                         <Sparkles className="h-4 w-4" />
-
                         Ask SaMi AI
                       </Link>
                     )}
@@ -2568,14 +1944,9 @@ export default function DashboardClient({
               </div>
             </section>
 
-            {/* ==================================================
-                YOUR WORK + WORKSPACE SNAPSHOT
-                ================================================== */}
+            {/* YOUR WORK + SNAPSHOT */}
 
             <div className="mt-6 grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
-
-              {/* YOUR WORK */}
-
               <DashboardPanel
                 icon={
                   CheckCircle2
@@ -2584,20 +1955,13 @@ export default function DashboardClient({
                 title="Your work"
                 description="Continue working in the business apps available to you."
               >
-
                 {installedApps.length >
                 0 ? (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
                     {installedApps
-                      .slice(
-                        0,
-                        4
-                      )
+                      .slice(0, 4)
                       .map(
-                        (
-                          module
-                        ) => (
+                        module => (
                           <WorkAppCard
                             key={
                               module.key
@@ -2611,7 +1975,6 @@ export default function DashboardClient({
                   </div>
                 ) : (
                   <div className="mt-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center dark:border-slate-700 dark:bg-slate-950/50">
-
                     <AppWindow className="mx-auto h-6 w-6 text-slate-300 dark:text-slate-700" />
 
                     <p className="mt-3 text-sm font-bold">
@@ -2630,7 +1993,6 @@ export default function DashboardClient({
                         className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white dark:bg-white dark:text-slate-950"
                       >
                         <LayoutGrid className="h-4 w-4" />
-
                         Manage apps
                       </Link>
                     )}
@@ -2638,24 +2000,16 @@ export default function DashboardClient({
                 )}
               </DashboardPanel>
 
-              {/* WORKSPACE SNAPSHOT */}
-
               <DashboardPanel
-                icon={
-                  Activity
-                }
+                icon={Activity}
                 iconClassName="bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300"
                 title="Workspace snapshot"
                 description="Your current workspace access and plan."
               >
-
                 <dl className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
-
                   <StatusRow
                     label="Plan"
-                    value={
-                      planName
-                    }
+                    value={planName}
                   />
 
                   <StatusRow
@@ -2667,33 +2021,24 @@ export default function DashboardClient({
 
                   <StatusRow
                     label="Access"
-                    value={
-                      roleName
-                    }
+                    value={roleName}
                   />
 
                   <StatusRow
                     label="Installed apps"
-                    value={
-                      String(
-                        installedApps.length
-                      )
-                    }
+                    value={String(
+                      installedApps.length
+                    )}
                   />
                 </dl>
               </DashboardPanel>
             </div>
 
-            {/* ==================================================
-                QUICK ACTIONS
-                ================================================== */}
+            {/* QUICK ACTIONS */}
 
             <section className="mt-6">
-
               <div className="flex items-end justify-between gap-4">
-
                 <div>
-
                   <h2 className="text-lg font-extrabold tracking-tight">
                     Quick actions
                   </h2>
@@ -2705,11 +2050,8 @@ export default function DashboardClient({
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-
                 {quickActions.map(
-                  (
-                    action
-                  ) => (
+                  action => (
                     <QuickAction
                       key={
                         action.id
@@ -2732,60 +2074,42 @@ export default function DashboardClient({
               </div>
             </section>
 
-            {/* ==================================================
-                BUSINESS ACTIVITY + SAMI AI
-                ================================================== */}
+            {/* BUSINESS ACTIVITY + SAMI AI */}
 
             <div
               className={`mt-6 grid gap-5 ${
-                capabilities
-                  .aiEnabled
+                capabilities.aiEnabled
                   ? 'xl:grid-cols-[1.18fr_0.82fr]'
                   : ''
               }`}
             >
-
-              {/* BUSINESS ACTIVITY */}
-
               <DashboardPanel
-                icon={
-                  Activity
-                }
+                icon={Activity}
                 iconClassName="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300"
                 title="Business activity"
                 description="Recent activity from your workspace and connected apps."
               >
-
                 {activity.length >
                 0 ? (
                   <div className="mt-4 divide-y divide-slate-100 dark:divide-slate-800">
-
                     {activity
-                      .slice(
-                        0,
-                        8
-                      )
-                      .map(
-                        (
-                          item
-                        ) => (
-                          <ActivityRow
-                            key={
-                              item.id
-                            }
-                            item={
-                              item
-                            }
-                            preferences={
-                              displayPreferences
-                            }
-                          />
-                        )
-                      )}
+                      .slice(0, 8)
+                      .map(item => (
+                        <ActivityRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                          preferences={
+                            displayPreferences
+                          }
+                        />
+                      ))}
                   </div>
                 ) : (
                   <div className="mt-5 rounded-2xl bg-slate-50 px-5 py-8 text-center dark:bg-slate-950/60">
-
                     <Activity className="mx-auto h-6 w-6 text-slate-300 dark:text-slate-700" />
 
                     <p className="mt-3 text-sm font-bold">
@@ -2793,8 +2117,7 @@ export default function DashboardClient({
                     </p>
 
                     <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      {capabilities
-                        .activityEnabled
+                      {capabilities.activityEnabled
                         ? 'New workspace activity will appear here as work happens.'
                         : 'There is no workspace activity feed to display yet.'}
                     </p>
@@ -2802,18 +2125,13 @@ export default function DashboardClient({
                 )}
               </DashboardPanel>
 
-              {/* SAMI AI */}
-
-              {capabilities
-                .aiEnabled && (
+              {capabilities.aiEnabled && (
                 <section className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-[#09101f] via-[#0d1b38] to-[#172b65] p-6 text-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] sm:p-7">
-
                   <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
 
                   <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" />
 
                   <div className="relative flex h-full flex-col">
-
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/10">
                       <Bot className="h-5 w-5" />
                     </div>
@@ -2831,9 +2149,7 @@ export default function DashboardClient({
                     </p>
 
                     <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-
                       <div className="flex items-start gap-3">
-
                         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-blue-300" />
 
                         <p className="text-xs leading-5 text-slate-300">
@@ -2855,16 +2171,11 @@ export default function DashboardClient({
               )}
             </div>
 
-            {/* ==================================================
-                INSTALLED APPS
-                ================================================== */}
+            {/* INSTALLED APPS */}
 
             <section className="mt-8">
-
               <div className="flex items-end justify-between gap-4">
-
                 <div>
-
                   <h2 className="text-lg font-extrabold tracking-tight">
                     Installed apps
                   </h2>
@@ -2887,11 +2198,8 @@ export default function DashboardClient({
               {installedApps.length >
               0 ? (
                 <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-
                   {installedApps.map(
-                    (
-                      module
-                    ) => (
+                    module => (
                       <AppCard
                         key={
                           module.key
@@ -2905,7 +2213,6 @@ export default function DashboardClient({
                 </div>
               ) : (
                 <div className="mt-5 rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
-
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
                     <LayoutGrid className="h-5 w-5" />
                   </div>
@@ -2941,33 +2248,21 @@ export default function DashboardClient({
    ============================================================ */
 
 function DashboardPanel({
-  icon:
-    Icon,
+  icon: Icon,
   iconClassName,
   title,
   description,
   children,
 }: {
-  icon:
-    LucideIcon;
-
-  iconClassName:
-    string;
-
-  title:
-    string;
-
-  description:
-    string;
-
-  children:
-    ReactNode;
+  icon: LucideIcon;
+  iconClassName: string;
+  title: string;
+  description: string;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-[0_12px_35px_rgba(15,23,42,0.04)] sm:p-6 dark:border-slate-800 dark:bg-slate-900 dark:shadow-none">
-
       <div className="flex items-center gap-3">
-
         <div
           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${iconClassName}`}
         >
@@ -2975,7 +2270,6 @@ function DashboardPanel({
         </div>
 
         <div className="min-w-0">
-
           <h2 className="font-extrabold">
             {title}
           </h2>
@@ -2992,116 +2286,13 @@ function DashboardPanel({
 }
 
 /* ============================================================
-   NAV LABEL
-   ============================================================ */
-
-function NavSectionLabel({
-  children,
-  className = '',
-}: {
-  children:
-    ReactNode;
-
-  className?:
-    string;
-}) {
-  return (
-    <div
-      className={`px-3 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 ${className}`}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* ============================================================
-   NAV LINK
-   ============================================================ */
-
-function NavLink({
-  href,
-  icon:
-    Icon,
-  label,
-  active = false,
-  badge,
-  onNavigate,
-}: {
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-
-  label:
-    string;
-
-  active?:
-    boolean;
-
-  badge?:
-    number;
-
-  onNavigate?:
-    () => void;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      onClick={
-        onNavigate
-      }
-      className={`
-        group flex min-h-11 items-center gap-3
-        rounded-xl px-3
-        text-sm font-semibold
-        transition
-        ${
-          active
-            ? 'bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950'
-            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-900 dark:hover:text-white'
-        }
-      `}
-    >
-
-      <Icon
-        className={`h-[18px] w-[18px] shrink-0 ${
-          active
-            ? ''
-            : 'text-slate-400 transition group-hover:text-slate-600 dark:group-hover:text-slate-200'
-        }`}
-      />
-
-      <span className="min-w-0 flex-1 truncate">
-        {label}
-      </span>
-
-      {badge !==
-        undefined &&
-        badge >
-          0 && (
-        <span className="flex min-h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[9px] font-black text-white">
-          {badge >
-          99
-            ? '99+'
-            : badge}
-        </span>
-      )}
-    </Link>
-  );
-}
-
-/* ============================================================
    YOUR WORK APP CARD
    ============================================================ */
 
 function WorkAppCard({
   module,
 }: {
-  module:
-    ModuleData;
+  module: ModuleData;
 }) {
   const Icon =
     getModuleIcon(
@@ -3117,13 +2308,11 @@ function WorkAppCard({
       }
       className="group flex items-center gap-4 rounded-2xl border border-slate-200 p-4 transition hover:border-blue-200 hover:bg-blue-50/40 dark:border-slate-800 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/15"
     >
-
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-slate-800 dark:text-slate-300">
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
       <div className="min-w-0 flex-1">
-
         <p className="truncate text-sm font-black">
           {module.name}
         </p>
@@ -3146,8 +2335,7 @@ function WorkAppCard({
 function AppCard({
   module,
 }: {
-  module:
-    ModuleData;
+  module: ModuleData;
 }) {
   const Icon =
     getModuleIcon(
@@ -3163,9 +2351,7 @@ function AppCard({
       }
       className="group relative overflow-hidden rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.04)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_14px_38px_rgba(15,23,42,0.08)] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:shadow-none"
     >
-
       <div className="flex items-start justify-between gap-3">
-
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 text-blue-600 dark:from-blue-950/50 dark:to-indigo-950/40 dark:text-blue-300">
           <Icon className="h-5 w-5" />
         </div>
@@ -3191,37 +2377,25 @@ function AppCard({
 
 function QuickAction({
   href,
-  icon:
-    Icon,
+  icon: Icon,
   label,
   description,
 }: {
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-
-  label:
-    string;
-
-  description:
-    string;
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  description: string;
 }) {
   return (
     <Link
-      href={
-        href
-      }
+      href={href}
       className="group flex min-h-[92px] items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 dark:hover:border-blue-900/60 dark:hover:shadow-none"
     >
-
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-slate-800 dark:text-slate-300">
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
       <div className="min-w-0 flex-1">
-
         <p className="truncate text-sm font-bold">
           {label}
         </p>
@@ -3244,15 +2418,11 @@ function StatusRow({
   label,
   value,
 }: {
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-5 py-3 first:pt-0 last:pb-0">
-
       <dt className="text-sm text-slate-500 dark:text-slate-400">
         {label}
       </dt>
@@ -3288,30 +2458,30 @@ function ActivityRow({
 
   const content = (
     <div className="flex items-start gap-3 py-4">
-
       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
         <Activity className="h-4 w-4" />
       </div>
 
       <div className="min-w-0 flex-1">
-
         <p className="text-sm font-bold">
           {item.title}
         </p>
 
         {item.description && (
           <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-            {item.description}
+            {
+              item.description
+            }
           </p>
         )}
 
         {formattedDate &&
           formattedDate !==
             '—' && (
-          <p className="mt-1.5 text-[11px] text-slate-400">
-            {formattedDate}
-          </p>
-        )}
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              {formattedDate}
+            </p>
+          )}
       </div>
 
       {item.href && (
@@ -3320,14 +2490,10 @@ function ActivityRow({
     </div>
   );
 
-  if (
-    item.href
-  ) {
+  if (item.href) {
     return (
       <Link
-        href={
-          item.href
-        }
+        href={item.href}
         className="block rounded-xl transition hover:bg-slate-50 dark:hover:bg-slate-950"
       >
         {content}
@@ -3344,28 +2510,18 @@ function ActivityRow({
 
 function MenuItem({
   href,
-  icon:
-    Icon,
+  icon: Icon,
   label,
   onNavigate,
 }: {
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-
-  label:
-    string;
-
-  onNavigate?:
-    () => void;
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
-      href={
-        href
-      }
+      href={href}
       onClick={
         onNavigate
       }

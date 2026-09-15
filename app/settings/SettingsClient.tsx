@@ -1,20 +1,14 @@
 ﻿'use client';
 
-import Link from 'next/link';
-
 import {
   AppWindow,
-  ArrowLeft,
   Bot,
   Building2,
-  ChevronRight,
   CreditCard,
   Loader2,
-  LockKeyhole,
+  Menu,
   Moon,
-  ShieldCheck,
   Sun,
-  User,
   Users,
   type LucideIcon,
 } from 'lucide-react';
@@ -25,7 +19,7 @@ import {
   useState,
 } from 'react';
 
-import SaMiLogo from '@/app/components/SaMiLogo';
+import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import MyAccountSettings from './components/MyAccountSettings';
 import SecuritySettings from './components/SecuritySettings';
@@ -82,6 +76,8 @@ type ModuleData = {
   key: string;
   name: string;
   status: string;
+  href?: string | null;
+  description?: string | null;
 };
 
 type SessionData = {
@@ -104,11 +100,11 @@ type Props = {
   modules: ModuleData[];
 
   /*
-   * Kept because the current server Settings page already
-   * supplies this property.
+   * Kept because the server Settings page
+   * already supplies the current session.
    *
-   * SessionsSettings loads the authoritative active-session
-   * list through its dedicated API.
+   * SessionsSettings loads the authoritative
+   * active-session list through its own API.
    */
   session: SessionData;
 };
@@ -121,15 +117,6 @@ type Section =
   | 'apps'
   | 'ai'
   | 'billing';
-
-type NavItem = {
-  key: Section;
-  label: string;
-  description: string;
-  icon: LucideIcon;
-  ownerOnly?: boolean;
-  adminOnly?: boolean;
-};
 
 type PreferencesResponse = {
   success?: boolean;
@@ -146,66 +133,16 @@ type PreferencesResponse = {
 const THEME_STORAGE_KEY =
   'sami_theme';
 
-const NAV: NavItem[] = [
-  {
-    key: 'personal',
-    label: 'My Account',
-    description:
-      'Your personal SaMi account',
-    icon: User,
-  },
-
-  {
-    key: 'security',
-    label: 'Security',
-    description:
-      'Password and account protection',
-    icon: ShieldCheck,
-  },
-
-  {
-    key: 'sessions',
-    label: 'Sessions & Devices',
-    description:
-      'Manage signed-in devices',
-    icon: LockKeyhole,
-  },
-
-  {
-    key: 'workspace',
-    label: 'Workspace',
-    description:
-      'Organization and access',
-    icon: Building2,
-    adminOnly: true,
-  },
-
-  {
-    key: 'apps',
-    label: 'Apps',
-    description:
-      'Installed business apps',
-    icon: AppWindow,
-    adminOnly: true,
-  },
-
-  {
-    key: 'ai',
-    label: 'SaMi AI',
-    description:
-      'AI workspace configuration',
-    icon: Bot,
-  },
-
-  {
-    key: 'billing',
-    label: 'Billing',
-    description:
-      'Plan and subscription',
-    icon: CreditCard,
-    ownerOnly: true,
-  },
-];
+const VALID_SECTIONS =
+  new Set<Section>([
+    'personal',
+    'security',
+    'sessions',
+    'workspace',
+    'apps',
+    'ai',
+    'billing',
+  ]);
 
 /* ============================================================
    HELPERS
@@ -225,9 +162,7 @@ function formatLabel(
     )
     .replace(
       /\b\w/g,
-      (
-        character
-      ) =>
+      character =>
         character.toUpperCase()
     );
 }
@@ -243,51 +178,8 @@ function normalizeStatus(
   );
 }
 
-function getInitials(
-  user: UserData
-) {
-  const first =
-    user.firstName
-      ?.trim()
-      .charAt(0);
-
-  const last =
-    user.lastName
-      ?.trim()
-      .charAt(0);
-
-  const combined =
-    `${first || ''}${last || ''}`
-      .trim()
-      .toUpperCase();
-
-  if (combined) {
-    return combined;
-  }
-
-  return (
-    user.email
-      .charAt(0)
-      .toUpperCase() ||
-    'S'
-  );
-}
-
-function getFullName(
-  user: UserData
-) {
-  return (
-    user.fullName?.trim() ||
-    `${user.firstName || ''} ${
-      user.lastName || ''
-    }`.trim() ||
-    user.email
-  );
-}
-
 function getSectionFromUrl():
-  | Section
-  | null {
+  Section | null {
   if (
     typeof window ===
     'undefined'
@@ -301,23 +193,18 @@ function getSectionFromUrl():
     );
 
   const tab =
-    params.get(
-      'tab'
-    );
+    params.get('tab');
 
-  const match =
-    NAV.find(
-      (
-        item
-      ) =>
-        item.key ===
-        tab
-    );
+  if (
+    tab &&
+    VALID_SECTIONS.has(
+      tab as Section
+    )
+  ) {
+    return tab as Section;
+  }
 
-  return (
-    match?.key ??
-    null
-  );
+  return null;
 }
 
 function getSystemPrefersDark():
@@ -338,8 +225,7 @@ function getSystemPrefersDark():
 }
 
 function applyThemeToDocument(
-  theme:
-    UserTheme
+  theme: UserTheme
 ): boolean {
   const resolved =
     resolveUserTheme(
@@ -348,8 +234,7 @@ function applyThemeToDocument(
     );
 
   const dark =
-    resolved ===
-    'dark';
+    resolved === 'dark';
 
   if (
     typeof document !==
@@ -371,9 +256,8 @@ function applyThemeToDocument(
     );
   } catch {
     /*
-     * Local theme cache is optional.
-     *
-     * The persisted account preference remains authoritative.
+     * Local cache is optional.
+     * Server preference remains authoritative.
      */
   }
 
@@ -381,8 +265,7 @@ function applyThemeToDocument(
 }
 
 async function readPreferencesResponse(
-  response:
-    Response
+  response: Response
 ): Promise<PreferencesResponse> {
   try {
     return (
@@ -390,15 +273,42 @@ async function readPreferencesResponse(
     ) as PreferencesResponse;
   } catch {
     return {
-      success:
-        false,
-
+      success: false,
       code:
         'INVALID_SERVER_RESPONSE',
-
       error:
         'SaMi returned an invalid response.',
     };
+  }
+}
+
+function getSectionLabel(
+  section: Section
+) {
+  switch (section) {
+    case 'personal':
+      return 'My Account';
+
+    case 'security':
+      return 'Security';
+
+    case 'sessions':
+      return 'Sessions & Devices';
+
+    case 'workspace':
+      return 'Workspace';
+
+    case 'apps':
+      return 'Apps';
+
+    case 'ai':
+      return 'SaMi AI';
+
+    case 'billing':
+      return 'Billing';
+
+    default:
+      return 'Settings';
   }
 }
 
@@ -413,9 +323,10 @@ export default function SettingsClient({
   subscription,
   modules,
 }: Props) {
-  /* ==========================================================
-     ACTIVE TOP-LEVEL SECTION
-     ========================================================== */
+  const [
+    sidebarOpen,
+    setSidebarOpen,
+  ] = useState(false);
 
   const [
     active,
@@ -425,10 +336,6 @@ export default function SettingsClient({
       'personal'
     );
 
-  /* ==========================================================
-     DISPLAY PREFERENCES
-     ========================================================== */
-
   const [
     displayPreferences,
     setDisplayPreferences,
@@ -437,25 +344,15 @@ export default function SettingsClient({
       ...DEFAULT_USER_DISPLAY_PREFERENCES,
     });
 
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
   const [
     darkMode,
     setDarkMode,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     themeSaving,
     setThemeSaving,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   /* ==========================================================
      ACCESS
@@ -467,308 +364,276 @@ export default function SettingsClient({
         membership?.isOwner
     );
 
-  const visibleNav =
-    useMemo(
-      () =>
-        NAV.filter(
-          (
-            item
-          ) => {
-            if (
-              item.ownerOnly &&
-              !membership
-                ?.isOwner
-            ) {
-              return false;
-            }
+  const allowedSections =
+    useMemo(() => {
+      const sections =
+        new Set<Section>([
+          'personal',
+          'security',
+          'sessions',
+          'ai',
+        ]);
 
-            if (
-              item.adminOnly &&
-              !canAdminWorkspace
-            ) {
-              return false;
-            }
+      if (
+        canAdminWorkspace
+      ) {
+        sections.add(
+          'workspace'
+        );
 
-            return true;
-          }
-        ),
-      [
-        membership,
-        canAdminWorkspace,
-      ]
-    );
+        sections.add(
+          'apps'
+        );
+      }
+
+      if (
+        membership?.isOwner
+      ) {
+        sections.add(
+          'billing'
+        );
+      }
+
+      return sections;
+    }, [
+      canAdminWorkspace,
+      membership?.isOwner,
+    ]);
 
   /* ==========================================================
-     INITIAL TOP-LEVEL SECTION
+     URL → SECTION
      ========================================================== */
 
-  useEffect(
-    () => {
-      const requested =
-        getSectionFromUrl();
+  useEffect(() => {
+    const requested =
+      getSectionFromUrl();
 
-      if (
-        !requested
-      ) {
-        return;
-      }
+    if (
+      requested &&
+      allowedSections.has(
+        requested
+      )
+    ) {
+      setActive(
+        requested
+      );
 
-      const permitted =
-        visibleNav.some(
-          (
-            item
-          ) =>
-            item.key ===
-            requested
-        );
+      return;
+    }
 
-      if (
-        permitted
-      ) {
-        setActive(
-          requested
-        );
-      }
-    },
-    [
-      visibleNav,
-    ]
-  );
+    setActive(
+      'personal'
+    );
+  }, [
+    allowedSections,
+  ]);
 
   /* ==========================================================
      BROWSER BACK / FORWARD
      ========================================================== */
 
-  useEffect(
-    () => {
-      const syncSection =
-        () => {
-          const requested =
-            getSectionFromUrl();
+  useEffect(() => {
+    const syncSection =
+      () => {
+        const requested =
+          getSectionFromUrl();
 
-          if (
-            !requested
-          ) {
-            setActive(
-              'personal'
-            );
+        if (
+          requested &&
+          allowedSections.has(
+            requested
+          )
+        ) {
+          setActive(
+            requested
+          );
 
-            return;
-          }
+          return;
+        }
 
-          const permitted =
-            visibleNav.some(
-              (
-                item
-              ) =>
-                item.key ===
-                requested
-            );
+        setActive(
+          'personal'
+        );
+      };
 
-          if (
-            permitted
-          ) {
-            setActive(
-              requested
-            );
-          }
-        };
+    window.addEventListener(
+      'popstate',
+      syncSection
+    );
 
-      window.addEventListener(
+    return () => {
+      window.removeEventListener(
         'popstate',
         syncSection
       );
-
-      return () => {
-        window.removeEventListener(
-          'popstate',
-          syncSection
-        );
-      };
-    },
-    [
-      visibleNav,
-    ]
-  );
+    };
+  }, [
+    allowedSections,
+  ]);
 
   /* ==========================================================
      INITIAL LOCAL THEME
      ========================================================== */
 
-  useEffect(
-    () => {
+  useEffect(() => {
+    try {
+      const stored =
+        localStorage.getItem(
+          THEME_STORAGE_KEY
+        );
+
+      const theme:
+        UserTheme =
+        stored === 'dark' ||
+        stored === 'light' ||
+        stored === 'system'
+          ? stored
+          : 'system';
+
+      const dark =
+        applyThemeToDocument(
+          theme
+        );
+
+      setDarkMode(
+        dark
+      );
+    } catch {
+      const dark =
+        getSystemPrefersDark();
+
+      setDarkMode(
+        dark
+      );
+
+      document
+        .documentElement
+        .classList
+        .toggle(
+          'dark',
+          dark
+        );
+    }
+  }, []);
+
+  /* ==========================================================
+     LOAD SAVED PREFERENCES
+     ========================================================== */
+
+  useEffect(() => {
+    let cancelled =
+      false;
+
+    async function loadPreferences() {
       try {
-        const stored =
-          localStorage.getItem(
-            THEME_STORAGE_KEY
+        const response =
+          await fetch(
+            '/api/account/preferences',
+            {
+              method: 'GET',
+
+              headers: {
+                Accept:
+                  'application/json',
+              },
+
+              credentials:
+                'same-origin',
+
+              cache:
+                'no-store',
+            }
           );
 
-        const theme:
-          UserTheme =
-          stored ===
-            'dark' ||
-          stored ===
-            'light' ||
-          stored ===
-            'system'
-            ? stored
-            : 'system';
+        const data =
+          await readPreferencesResponse(
+            response
+          );
+
+        if (
+          !response.ok ||
+          !data.success ||
+          !data.preferences ||
+          cancelled
+        ) {
+          return;
+        }
+
+        setDisplayPreferences(
+          data.preferences
+        );
 
         const dark =
           applyThemeToDocument(
-            theme
+            data.preferences
+              .theme
           );
 
         setDarkMode(
           dark
         );
       } catch {
-        const dark =
-          getSystemPrefersDark();
-
-        setDarkMode(
-          dark
-        );
-
-        document.documentElement.classList.toggle(
-          'dark',
-          dark
-        );
+        /*
+         * Settings remain usable
+         * with safe defaults.
+         */
       }
-    },
-    []
-  );
+    }
 
-  /* ==========================================================
-     LOAD SAVED PREFERENCES
-     ========================================================== */
+    void loadPreferences();
 
-  useEffect(
-    () => {
-      let cancelled =
-        false;
-
-      async function loadPreferences() {
-        try {
-          const response =
-            await fetch(
-              '/api/account/preferences',
-              {
-                method:
-                  'GET',
-
-                headers: {
-                  Accept:
-                    'application/json',
-                },
-
-                credentials:
-                  'same-origin',
-
-                cache:
-                  'no-store',
-              }
-            );
-
-          const data =
-            await readPreferencesResponse(
-              response
-            );
-
-          if (
-            !response.ok ||
-            !data.success ||
-            !data.preferences
-          ) {
-            return;
-          }
-
-          if (
-            cancelled
-          ) {
-            return;
-          }
-
-          setDisplayPreferences(
-            data.preferences
-          );
-
-          const dark =
-            applyThemeToDocument(
-              data.preferences
-                .theme
-            );
-
-          setDarkMode(
-            dark
-          );
-        } catch {
-          /*
-           * Settings remain usable with safe defaults.
-           */
-        }
-      }
-
-      void loadPreferences();
-
-      return () => {
-        cancelled =
-          true;
-      };
-    },
-    []
-  );
+    return () => {
+      cancelled =
+        true;
+    };
+  }, []);
 
   /* ==========================================================
      SYSTEM THEME CHANGES
      ========================================================== */
 
-  useEffect(
-    () => {
-      if (
-        displayPreferences
-          .theme !==
-        'system'
-      ) {
-        return;
-      }
+  useEffect(() => {
+    if (
+      displayPreferences
+        .theme !==
+      'system'
+    ) {
+      return;
+    }
 
-      const media =
-        window.matchMedia(
-          '(prefers-color-scheme: dark)'
-        );
+    const media =
+      window.matchMedia(
+        '(prefers-color-scheme: dark)'
+      );
 
-      const syncTheme =
-        () => {
-          const dark =
-            applyThemeToDocument(
-              'system'
-            );
-
-          setDarkMode(
-            dark
+    const syncTheme =
+      () => {
+        const dark =
+          applyThemeToDocument(
+            'system'
           );
-        };
 
-      syncTheme();
+        setDarkMode(
+          dark
+        );
+      };
 
-      media.addEventListener?.(
+    syncTheme();
+
+    media.addEventListener?.(
+      'change',
+      syncTheme
+    );
+
+    return () => {
+      media.removeEventListener?.(
         'change',
         syncTheme
       );
-
-      return () => {
-        media.removeEventListener?.(
-          'change',
-          syncTheme
-        );
-      };
-    },
-    [
-      displayPreferences
-        .theme,
-    ]
-  );
+    };
+  }, [
+    displayPreferences.theme,
+  ]);
 
   /* ==========================================================
      THEME TOGGLE
@@ -795,11 +660,9 @@ export default function SettingsClient({
 
     const optimisticPreferences:
       UserDisplayPreferences = {
-      ...displayPreferences,
-
-      theme:
-        nextTheme,
-    };
+        ...displayPreferences,
+        theme: nextTheme,
+      };
 
     setThemeSaving(
       true
@@ -905,79 +768,8 @@ export default function SettingsClient({
   }
 
   /* ==========================================================
-     TOP-LEVEL NAVIGATION
-     ========================================================== */
-
-  function selectSection(
-    section:
-      Section
-  ) {
-    setActive(
-      section
-    );
-
-    if (
-      typeof window ===
-      'undefined'
-    ) {
-      return;
-    }
-
-    const url =
-      new URL(
-        window.location.href
-      );
-
-    url.searchParams.set(
-      'tab',
-      section
-    );
-
-    /*
-     * When leaving Security, remove its nested navigation state.
-     *
-     * This means:
-     *
-     * Security > Verification > Authenticator
-     *
-     * does not unexpectedly reopen when the user intentionally
-     * enters another top-level Settings category.
-     */
-    if (
-      section !==
-      'security'
-    ) {
-      url.searchParams.delete(
-        'security'
-      );
-    }
-
-    window.history.pushState(
-      {},
-      '',
-      `${url.pathname}${url.search}${url.hash}`
-    );
-
-    window.scrollTo({
-      top: 0,
-      behavior:
-        'smooth',
-    });
-  }
-
-  /* ==========================================================
      DERIVED
      ========================================================== */
-
-  const currentNav =
-    visibleNav.find(
-      (
-        item
-      ) =>
-        item.key ===
-        active
-    ) ??
-    visibleNav[0];
 
   const currentPlan =
     subscription?.planName ||
@@ -989,324 +781,179 @@ export default function SettingsClient({
         : 'Free'
     );
 
+  const pageLabel =
+    getSectionLabel(
+      active
+    );
+
   /* ==========================================================
      RENDER
      ========================================================== */
 
   return (
     <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
-
-      {/* ======================================================
-          TOP BAR
-          ====================================================== */}
-
-      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-[#090d15]/90">
-
-        <div className="mx-auto flex h-[72px] max-w-[1500px] items-center gap-4 px-4 sm:px-6 lg:px-8">
-
-          {/* BACK */}
-
-          <Link
-            href="/dashboard"
-            aria-label="Back to dashboard"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-
-          {/* LOGO */}
-
-          <Link
-            href="/dashboard"
-            className="min-w-0 shrink-0"
-          >
-            <SaMiLogo
-              size="sm"
-              className="max-w-full"
-            />
-          </Link>
-
-          <div className="hidden h-6 w-px bg-slate-200 dark:bg-slate-800 sm:block" />
-
-          {/* PAGE IDENTITY */}
-
-          <div className="hidden min-w-0 sm:block">
-
-            <p className="truncate text-sm font-black">
-              Settings
-            </p>
-
-            <p className="truncate text-[10px] text-slate-400">
-              {tenant?.name ||
-                'SaMi workspace'}
-            </p>
-          </div>
-
-          {/* RIGHT */}
-
-          <div className="ml-auto flex items-center gap-2">
-
-            {/* THEME */}
-
-            <button
-              type="button"
-              onClick={() =>
-                void toggleTheme()
-              }
-              disabled={
-                themeSaving
-              }
-              aria-label={
-                darkMode
-                  ? 'Switch to light theme'
-                  : 'Switch to dark theme'
-              }
-              title={
-                displayPreferences
-                  .theme ===
-                'system'
-                  ? 'Theme currently follows your system'
-                  : `Theme: ${displayPreferences.theme}`
-              }
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              {themeSaving ? (
-                <Loader2 className="h-[17px] w-[17px] animate-spin" />
-              ) : darkMode ? (
-                <Sun className="h-[17px] w-[17px]" />
-              ) : (
-                <Moon className="h-[17px] w-[17px]" />
-              )}
-            </button>
-
-            {/* USER */}
-
-            <div className="hidden items-center gap-3 rounded-xl border border-slate-200 bg-white py-1.5 pl-2 pr-3 dark:border-slate-800 dark:bg-slate-900 md:flex">
-
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 text-[10px] font-black text-white">
-                {getInitials(
-                  user
-                )}
-              </div>
-
-              <div className="min-w-0">
-
-                <p className="max-w-[160px] truncate text-[11px] font-black">
-                  {getFullName(
-                    user
-                  )}
-                </p>
-
-                <p className="text-[9px] capitalize text-slate-400">
-                  {membership?.label ||
-                    membership
-                      ?.accessLevel ||
-                    'Member'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* ======================================================
-          BODY
-          ====================================================== */}
-
-      <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+      <div className="flex min-h-screen">
 
         {/* ====================================================
-            MOBILE TOP-LEVEL NAV
+            SHARED WORKSPACE SIDEBAR
             ==================================================== */}
 
-        <div className="mb-4 flex gap-2 overflow-x-auto pb-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <WorkspaceSidebar
+          user={user}
+          tenant={tenant}
+          membership={
+            membership
+          }
+          subscription={
+            subscription
+          }
+          modules={modules}
+          capabilities={{
+            aiEnabled: true,
+            filesEnabled: false,
+            notificationsEnabled:
+              false,
+          }}
+          unreadNotifications={
+            0
+          }
+          open={
+            sidebarOpen
+          }
+          onClose={() =>
+            setSidebarOpen(
+              false
+            )
+          }
+        />
 
-          {visibleNav.map(
-            (
-              item
-            ) => {
-              const Icon =
-                item.icon;
+        {/* ====================================================
+            MAIN
+            ==================================================== */}
 
-              const selected =
-                active ===
-                item.key;
+        <div className="min-w-0 flex-1 lg:pl-[286px]">
 
-              return (
+          {/* ==================================================
+              TOP BAR
+              ================================================== */}
+
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/88">
+            <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+
+              <button
+                type="button"
+                aria-label="Open navigation"
+                onClick={() =>
+                  setSidebarOpen(
+                    true
+                  )
+                }
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+
+              {/* PAGE IDENTITY */}
+
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Settings
+                </p>
+
+                <p className="mt-0.5 truncate text-sm font-extrabold text-slate-900 dark:text-white">
+                  {pageLabel}
+                </p>
+              </div>
+
+              {/* WORKSPACE */}
+
+              <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-slate-800">
+                <p className="max-w-[260px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  {tenant?.name ||
+                    'SaMi Workspace'}
+                </p>
+              </div>
+
+              {/* THEME */}
+
+              <div className="ml-auto">
                 <button
-                  key={
-                    item.key
-                  }
                   type="button"
                   onClick={() =>
-                    selectSection(
-                      item.key
-                    )
+                    void toggleTheme()
                   }
-                  className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-bold transition ${
-                    selected
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
-                  }`}
+                  disabled={
+                    themeSaving
+                  }
+                  aria-label={
+                    darkMode
+                      ? 'Switch to light theme'
+                      : 'Switch to dark theme'
+                  }
+                  title={
+                    displayPreferences
+                      .theme ===
+                    'system'
+                      ? 'Theme currently follows your system'
+                      : `Theme: ${displayPreferences.theme}`
+                  }
+                  className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
-                  <Icon className="h-4 w-4" />
-
-                  {item.label}
+                  {themeSaving ? (
+                    <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                  ) : darkMode ? (
+                    <Sun className="h-[18px] w-[18px]" />
+                  ) : (
+                    <Moon className="h-[18px] w-[18px]" />
+                  )}
                 </button>
-              );
-            }
-          )}
-        </div>
-
-        <div className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
-
-          {/* ==================================================
-              SIDEBAR
-              ================================================== */}
-
-          <aside className="hidden h-fit rounded-[24px] border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] lg:block">
-
-            <div className="px-3 pb-3 pt-2">
-
-              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
-                Settings
-              </p>
-            </div>
-
-            <div className="space-y-1">
-
-              {visibleNav.map(
-                (
-                  item
-                ) => {
-                  const Icon =
-                    item.icon;
-
-                  const selected =
-                    active ===
-                    item.key;
-
-                  return (
-                    <button
-                      key={
-                        item.key
-                      }
-                      type="button"
-                      onClick={() =>
-                        selectSection(
-                          item.key
-                        )
-                      }
-                      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
-                        selected
-                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-                          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800/70 dark:hover:text-white'
-                      }`}
-                    >
-
-                      <div
-                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                          selected
-                            ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
-                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-
-                        <p className="text-[12px] font-black">
-                          {item.label}
-                        </p>
-
-                        <p className="mt-0.5 truncate text-[9px] font-medium opacity-60">
-                          {item.description}
-                        </p>
-                      </div>
-
-                      <ChevronRight
-                        className={`h-3.5 w-3.5 transition ${
-                          selected
-                            ? 'opacity-100'
-                            : 'opacity-0 group-hover:opacity-50'
-                        }`}
-                      />
-                    </button>
-                  );
-                }
-              )}
-            </div>
-          </aside>
-
-          {/* ==================================================
-              CONTENT
-              ================================================== */}
-
-          <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-
-            {/* ================================================
-                TOP-LEVEL SECTION HEADER
-                ================================================ */}
-
-            <div className="border-b border-slate-100 px-5 py-5 sm:px-7 dark:border-slate-800">
-
-              <div className="flex items-center gap-3">
-
-                {currentNav && (
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-                    <currentNav.icon className="h-[18px] w-[18px]" />
-                  </div>
-                )}
-
-                <div>
-
-                  <h1 className="text-lg font-black">
-                    {currentNav
-                      ?.label ||
-                      'Settings'}
-                  </h1>
-
-                  <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                    {currentNav
-                      ?.description}
-                  </p>
-                </div>
               </div>
             </div>
+          </header>
 
-            <div className="p-5 sm:p-7">
+          {/* ==================================================
+              SETTINGS CONTENT
+              ================================================== */}
 
-              {/* ==============================================
-                  MY ACCOUNT
-                  ============================================== */}
+          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
+            {/*
+             * No second Settings sidebar.
+             *
+             * No duplicated:
+             * Settings / My Account
+             * # My Account
+             * Manage your...
+             *
+             * Sidebar owns hierarchy.
+             * TopBar owns page identity.
+             * Body begins with actual settings.
+             */}
+
+            <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-[#0d121b]">
+
+              {/* MY ACCOUNT */}
 
               {active ===
                 'personal' && (
                 <MyAccountSettings />
               )}
 
-              {/* ==============================================
-                  SECURITY
-                  ============================================== */}
+              {/* SECURITY */}
 
               {active ===
                 'security' && (
                 <SecuritySettings />
               )}
 
-              {/* ==============================================
-                  SESSIONS & DEVICES
-                  ============================================== */}
+              {/* SESSIONS */}
 
               {active ===
                 'sessions' && (
                 <SessionsSettings />
               )}
 
-              {/* ==============================================
-                  WORKSPACE
-                  ============================================== */}
+              {/* WORKSPACE */}
 
               {active ===
                 'workspace' &&
@@ -1321,9 +968,7 @@ export default function SettingsClient({
                   />
                 )}
 
-              {/* ==============================================
-                  APPS
-                  ============================================== */}
+              {/* APPS */}
 
               {active ===
                 'apps' &&
@@ -1335,9 +980,7 @@ export default function SettingsClient({
                   />
                 )}
 
-              {/* ==============================================
-                  SAMI AI
-                  ============================================== */}
+              {/* SAMI AI */}
 
               {active ===
                 'ai' && (
@@ -1348,9 +991,7 @@ export default function SettingsClient({
                 />
               )}
 
-              {/* ==============================================
-                  BILLING
-                  ============================================== */}
+              {/* BILLING */}
 
               {active ===
                 'billing' &&
@@ -1368,8 +1009,8 @@ export default function SettingsClient({
                     }
                   />
                 )}
-            </div>
-          </section>
+            </section>
+          </div>
         </div>
       </div>
     </main>
@@ -1384,20 +1025,14 @@ function WorkspaceSection({
   tenant,
   membership,
 }: {
-  tenant:
-    TenantData;
-
+  tenant: TenantData;
   membership:
     MembershipData;
 }) {
-  if (
-    !tenant
-  ) {
+  if (!tenant) {
     return (
       <EmptyState
-        icon={
-          Building2
-        }
+        icon={Building2}
         title="No workspace available"
         description="SaMi could not find an active workspace for this account."
       />
@@ -1406,17 +1041,13 @@ function WorkspaceSection({
 
   return (
     <div className="max-w-4xl">
-
       <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50">
-
         <div className="flex items-center gap-4">
-
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
             <Building2 className="h-5 w-5" />
           </div>
 
           <div className="min-w-0">
-
             <h2 className="truncate text-lg font-black">
               {tenant.name}
             </h2>
@@ -1432,28 +1063,21 @@ function WorkspaceSection({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
         <InfoCard
           label="Workspace name"
-          value={
-            tenant.name
-          }
+          value={tenant.name}
         />
 
         <InfoCard
           label="Workspace identifier"
-          value={
-            tenant.slug
-          }
+          value={tenant.slug}
         />
 
         <InfoCard
           label="Workspace status"
-          value={
-            formatLabel(
-              tenant.status
-            )
-          }
+          value={formatLabel(
+            tenant.status
+          )}
         />
 
         <InfoCard
@@ -1478,18 +1102,14 @@ function WorkspaceSection({
 function AppsSection({
   modules,
 }: {
-  modules:
-    ModuleData[];
+  modules: ModuleData[];
 }) {
   if (
-    modules.length ===
-    0
+    modules.length === 0
   ) {
     return (
       <EmptyState
-        icon={
-          AppWindow
-        }
+        icon={AppWindow}
         title="No business apps installed"
         description="There are currently no installed business apps available to this workspace."
       />
@@ -1498,17 +1118,14 @@ function AppsSection({
 
   return (
     <div>
-
       <div className="mb-4">
-
         <h2 className="text-sm font-black">
           Installed apps
         </h2>
 
         <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
           {modules.length}{' '}
-          {modules.length ===
-          1
+          {modules.length === 1
             ? 'business app'
             : 'business apps'}{' '}
           registered for this workspace.
@@ -1516,16 +1133,12 @@ function AppsSection({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-
         {modules.map(
-          (
-            module
-          ) => {
+          module => {
             const active =
               normalizeStatus(
                 module.status
-              ) ===
-              'active';
+              ) === 'active';
 
             return (
               <div
@@ -1534,21 +1147,19 @@ function AppsSection({
                 }
                 className="rounded-[18px] border border-slate-200 p-4 transition dark:border-slate-800"
               >
-
                 <div className="flex items-start gap-3">
-
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
                     <AppWindow className="h-[18px] w-[18px]" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-
                     <p className="truncate text-xs font-black">
-                      {module.name}
+                      {
+                        module.name
+                      }
                     </p>
 
                     <div className="mt-2">
-
                       <span
                         className={`inline-flex rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${
                           active
@@ -1579,29 +1190,23 @@ function AppsSection({
 function AiSection({
   planName,
 }: {
-  planName:
-    string;
+  planName: string;
 }) {
   return (
     <div className="max-w-4xl">
-
       <div className="relative overflow-hidden rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:via-indigo-950/20 dark:to-violet-950/25">
-
         <div
           aria-hidden="true"
           className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl"
         />
 
         <div className="relative flex items-start gap-4">
-
           <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-500/20">
             <Bot className="h-5 w-5" />
           </div>
 
           <div>
-
             <div className="flex flex-wrap items-center gap-2">
-
               <h2 className="text-base font-black">
                 SaMi AI
               </h2>
@@ -1619,12 +1224,9 @@ function AiSection({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
         <InfoCard
           label="Current plan"
-          value={
-            planName
-          }
+          value={planName}
         />
 
         <InfoCard
@@ -1634,7 +1236,6 @@ function AiSection({
       </div>
 
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-
         <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
@@ -1665,17 +1266,13 @@ function BillingSection({
 }) {
   return (
     <div className="max-w-4xl">
-
       <div className="rounded-[24px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
-
         <div className="flex items-start gap-4">
-
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
             <CreditCard className="h-5 w-5" />
           </div>
 
           <div>
-
             <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
               Current subscription
             </p>
@@ -1692,32 +1289,24 @@ function BillingSection({
       </div>
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
         <InfoCard
           label="Plan"
-          value={
-            currentPlan
-          }
+          value={currentPlan}
         />
 
         <InfoCard
           label="Subscription status"
-          value={
-            formatLabel(
-              subscription
-                ?.status
-            )
-          }
+          value={formatLabel(
+            subscription?.status
+          )}
         />
 
         <InfoCard
           label="Billing cycle"
-          value={
-            formatLabel(
-              subscription
-                ?.billingCycle
-            )
-          }
+          value={formatLabel(
+            subscription
+              ?.billingCycle
+          )}
         />
 
         <InfoCard
@@ -1736,14 +1325,12 @@ function BillingSection({
       </div>
 
       <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
-
         <p className="text-[10px] leading-5 text-blue-700 dark:text-blue-300">
           Subscription dates are displayed using your personal timezone and date/time format. The billing period itself remains an authoritative server-side subscription value.
         </p>
       </div>
 
       <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-
         <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
 
         <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
@@ -1762,15 +1349,11 @@ function InfoCard({
   label,
   value,
 }: {
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 }) {
   return (
     <div className="rounded-[18px] border border-slate-200 p-4 dark:border-slate-800">
-
       <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
         {label}
       </p>
@@ -1787,23 +1370,16 @@ function InfoCard({
    ============================================================ */
 
 function EmptyState({
-  icon:
-    Icon,
+  icon: Icon,
   title,
   description,
 }: {
-  icon:
-    LucideIcon;
-
-  title:
-    string;
-
-  description:
-    string;
+  icon: LucideIcon;
+  title: string;
+  description: string;
 }) {
   return (
     <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
         <Icon className="h-6 w-6" />
       </div>
