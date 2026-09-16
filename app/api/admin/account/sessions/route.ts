@@ -18,6 +18,8 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const MAX_BODY_BYTES = 8 * 1024;
+
 function json(
   body: Record<string, unknown>,
   status = 200
@@ -29,10 +31,8 @@ function json(
         'no-store, no-cache, must-revalidate, private',
       Pragma: 'no-cache',
       Expires: '0',
-      'X-Content-Type-Options':
-        'nosniff',
-      'Referrer-Policy':
-        'no-referrer',
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'no-referrer',
     },
   });
 }
@@ -56,9 +56,7 @@ function isSameOrigin(
   request: NextRequest
 ) {
   const site =
-    request.headers.get(
-      'sec-fetch-site'
-    );
+    request.headers.get('sec-fetch-site');
 
   if (
     site &&
@@ -70,26 +68,19 @@ function isSameOrigin(
   }
 
   const origin =
-    request.headers.get(
-      'origin'
-    );
+    request.headers.get('origin');
 
   if (!origin) {
     return true;
   }
 
   try {
-    const source =
-      new URL(origin);
-
-    const target =
-      new URL(request.url);
+    const source = new URL(origin);
+    const target = new URL(request.url);
 
     return (
-      source.protocol ===
-        target.protocol &&
-      source.host ===
-        target.host
+      source.protocol === target.protocol &&
+      source.host === target.host
     );
   } catch {
     return false;
@@ -106,9 +97,7 @@ function serializeDate(
   const date =
     value instanceof Date
       ? value
-      : new Date(
-          String(value)
-        );
+      : new Date(String(value));
 
   if (
     Number.isNaN(
@@ -119,6 +108,31 @@ function serializeDate(
   }
 
   return date.toISOString();
+}
+
+function validSessionId(
+  value: unknown
+): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 200
+  );
+}
+
+async function auditSafely(
+  input: Parameters<
+    typeof recordAdminAuditEvent
+  >[0]
+) {
+  try {
+    await recordAdminAuditEvent(input);
+  } catch (auditError) {
+    console.error(
+      '[Admin Account] Session audit failed:',
+      auditError
+    );
+  }
 }
 
 export async function GET() {
@@ -170,50 +184,44 @@ export async function GET() {
       );
 
     const sessions =
-      result.rows.map(
-        row => ({
-          id: row.id,
+      result.rows.map(row => ({
+        id: row.id,
 
-          current:
-            row.id ===
-            session.sessionId,
+        current:
+          row.id ===
+          session.sessionId,
 
-          ipAddress:
-            row.ip_address ??
-            null,
+        ipAddress:
+          row.ip_address ?? null,
 
-          userAgent:
-            row.user_agent ??
-            null,
+        userAgent:
+          row.user_agent ?? null,
 
-          deviceType:
-            row.device_type ??
-            null,
+        deviceType:
+          row.device_type ?? null,
 
-          browser:
-            row.browser ??
-            null,
+        browser:
+          row.browser ?? null,
 
-          operatingSystem:
-            row.operating_system ??
-            null,
+        operatingSystem:
+          row.operating_system ??
+          null,
 
-          createdAt:
-            serializeDate(
-              row.created_at
-            ),
+        createdAt:
+          serializeDate(
+            row.created_at
+          ),
 
-          lastActivityAt:
-            serializeDate(
-              row.last_activity_at
-            ),
+        lastActivityAt:
+          serializeDate(
+            row.last_activity_at
+          ),
 
-          expiresAt:
-            serializeDate(
-              row.expires_at
-            ),
-        })
-      );
+        expiresAt:
+          serializeDate(
+            row.expires_at
+          ),
+      }));
 
     return json({
       success: true,
@@ -236,9 +244,7 @@ export async function GET() {
 export async function DELETE(
   request: NextRequest
 ) {
-  if (
-    !isSameOrigin(request)
-  ) {
+  if (!isSameOrigin(request)) {
     return error(
       403,
       'CROSS_ORIGIN_REQUEST_REJECTED',
@@ -259,33 +265,165 @@ export async function DELETE(
     );
   }
 
+  const contentLength =
+    request.headers.get(
+      'content-length'
+    );
+
+  if (
+    contentLength &&
+    Number(contentLength) >
+      MAX_BODY_BYTES
+  ) {
+    return error(
+      413,
+      'REQUEST_TOO_LARGE',
+      'This request is too large.'
+    );
+  }
+
+  let body: {
+    sessionId?: unknown;
+    allOthers?: unknown;
+  } = {};
+
   try {
-    const result =
-      await queryControl(
-        `
-          UPDATE platform_admin_sessions
-          SET
-            revoked_at = NOW(),
-            revoked_by = $1,
-            revocation_reason =
-              'user_revoked_other_sessions'
-          WHERE
-            admin_id = $1
-            AND id <> $2
-            AND revoked_at IS NULL
-          RETURNING id
-        `,
-        [
-          session.adminId,
-          session.sessionId,
-        ]
+    const text =
+      await request.text();
+
+    if (
+      Buffer.byteLength(
+        text,
+        'utf8'
+      ) > MAX_BODY_BYTES
+    ) {
+      return error(
+        413,
+        'REQUEST_TOO_LARGE',
+        'This request is too large.'
       );
+    }
 
-    const revokedCount =
-      result.rows.length;
+    if (text.trim()) {
+      const parsed =
+        JSON.parse(text);
 
+      if (
+        !parsed ||
+        typeof parsed !==
+          'object' ||
+        Array.isArray(parsed)
+      ) {
+        return error(
+          400,
+          'INVALID_REQUEST',
+          'This session request is invalid.'
+        );
+      }
+
+      const allowedKeys =
+        new Set([
+          'sessionId',
+          'allOthers',
+        ]);
+
+      for (
+        const key of Object.keys(
+          parsed
+        )
+      ) {
+        if (
+          !allowedKeys.has(key)
+        ) {
+          return error(
+            400,
+            'UNSUPPORTED_FIELD',
+            'This session request contains an unsupported field.'
+          );
+        }
+      }
+
+      body = parsed;
+    }
+  } catch {
+    return error(
+      400,
+      'INVALID_JSON',
+      'This session request is invalid.'
+    );
+  }
+
+  const revokeAllOthers =
+    body.allOthers === true ||
+    (!body.sessionId &&
+      body.allOthers ===
+        undefined);
+
+  if (
+    body.allOthers !==
+      undefined &&
+    typeof body.allOthers !==
+      'boolean'
+  ) {
+    return error(
+      400,
+      'INVALID_REQUEST',
+      'This session request is invalid.'
+    );
+  }
+
+  if (
+    !revokeAllOthers &&
+    !validSessionId(
+      body.sessionId
+    )
+  ) {
+    return error(
+      400,
+      'INVALID_SESSION',
+      'Choose a valid session to sign out.'
+    );
+  }
+
+  if (
+    body.sessionId ===
+    session.sessionId
+  ) {
+    return error(
+      400,
+      'CURRENT_SESSION_PROTECTED',
+      'Your current session cannot be signed out from this screen.'
+    );
+  }
+
+  if (revokeAllOthers) {
     try {
-      await recordAdminAuditEvent({
+      const result =
+        await queryControl(
+          `
+            UPDATE platform_admin_sessions
+            SET
+              revoked_at = NOW(),
+              revoked_by = $1,
+              revocation_reason =
+                'user_revoked_other_sessions'
+            WHERE
+              admin_id = $1
+              AND id <> $2
+              AND revoked_at IS NULL
+              AND expires_at > NOW()
+            RETURNING id
+          `,
+          [
+            session.adminId,
+            session.sessionId,
+          ]
+        );
+
+      const revokedCount =
+        result.rows.length;
+
+      await auditSafely({
         request,
 
         adminId:
@@ -312,36 +450,27 @@ export async function DELETE(
           revokedCount,
         },
       });
-    } catch (
-      auditError
-    ) {
+
+      return json({
+        success: true,
+
+        code:
+          'OTHER_ADMIN_SESSIONS_REVOKED',
+
+        revokedCount,
+
+        message:
+          revokedCount === 1
+            ? '1 other administrator session was signed out.'
+            : `${revokedCount} other administrator sessions were signed out.`,
+      });
+    } catch (requestError) {
       console.error(
-        '[Admin Account] Session audit failed:',
-        auditError
+        '[Admin Account] Session revocation failed:',
+        requestError
       );
-    }
 
-    return json({
-      success: true,
-
-      code:
-        'OTHER_ADMIN_SESSIONS_REVOKED',
-
-      revokedCount,
-
-      message:
-        revokedCount === 1
-          ? '1 other administrator session was signed out.'
-          : `${revokedCount} other administrator sessions were signed out.`,
-    });
-  } catch (requestError) {
-    console.error(
-      '[Admin Account] Session revocation failed:',
-      requestError
-    );
-
-    try {
-      await recordAdminAuditEvent({
+      await auditSafely({
         request,
 
         adminId:
@@ -367,14 +496,157 @@ export async function DELETE(
         failureReason:
           'internal_error',
       });
-    } catch {
-      // Preserve primary response.
+
+      return error(
+        500,
+        'ADMIN_SESSION_REVOCATION_FAILED',
+        'SaMi could not sign out your other administrator sessions.'
+      );
     }
+  }
+
+  const targetSessionId =
+    body.sessionId as string;
+
+  try {
+    const result =
+      await queryControl(
+        `
+          UPDATE platform_admin_sessions
+          SET
+            revoked_at = NOW(),
+            revoked_by = $1,
+            revocation_reason =
+              'user_revoked_session'
+          WHERE
+            id = $2
+            AND admin_id = $1
+            AND id <> $3
+            AND revoked_at IS NULL
+            AND expires_at > NOW()
+          RETURNING
+            id,
+            ip_address,
+            device_type,
+            browser,
+            operating_system
+        `,
+        [
+          session.adminId,
+          targetSessionId,
+          session.sessionId,
+        ]
+      );
+
+    if (
+      result.rows.length === 0
+    ) {
+      return error(
+        404,
+        'ADMIN_SESSION_NOT_FOUND',
+        'This session is no longer active.'
+      );
+    }
+
+    const revoked =
+      result.rows[0];
+
+    await auditSafely({
+      request,
+
+      adminId:
+        session.adminId,
+
+      sessionId:
+        session.sessionId,
+
+      eventType:
+        'admin.session.revoked',
+
+      action:
+        'revoke_session',
+
+      targetType:
+        'platform_admin_session',
+
+      targetId:
+        targetSessionId,
+
+      successful: true,
+
+      metadata: {
+        revokedSessionId:
+          targetSessionId,
+
+        ipAddress:
+          revoked.ip_address ??
+          null,
+
+        deviceType:
+          revoked.device_type ??
+          null,
+
+        browser:
+          revoked.browser ??
+          null,
+
+        operatingSystem:
+          revoked.operating_system ??
+          null,
+      },
+    });
+
+    return json({
+      success: true,
+
+      code:
+        'ADMIN_SESSION_REVOKED',
+
+      revokedCount: 1,
+
+      revokedSessionId:
+        targetSessionId,
+
+      message:
+        'The selected administrator session was signed out.',
+    });
+  } catch (requestError) {
+    console.error(
+      '[Admin Account] Individual session revocation failed:',
+      requestError
+    );
+
+    await auditSafely({
+      request,
+
+      adminId:
+        session.adminId,
+
+      sessionId:
+        session.sessionId,
+
+      eventType:
+        'admin.session.revoke_failed',
+
+      action:
+        'revoke_session',
+
+      targetType:
+        'platform_admin_session',
+
+      targetId:
+        targetSessionId,
+
+      successful: false,
+
+      failureReason:
+        'internal_error',
+    });
 
     return error(
       500,
       'ADMIN_SESSION_REVOCATION_FAILED',
-      'SaMi could not sign out your other administrator sessions.'
+      'SaMi could not sign out the selected administrator session.'
     );
   }
 }
