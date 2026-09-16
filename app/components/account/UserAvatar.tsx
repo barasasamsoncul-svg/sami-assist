@@ -4,6 +4,7 @@ type Props = {
   avatarFileId: string | null;
   displayName: string;
   initials: string;
+  endpoint?: string;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 };
@@ -18,6 +19,7 @@ export default function UserAvatar({
   avatarFileId,
   displayName,
   initials,
+  endpoint = '/api/account/avatar',
   size = 'md',
   className = '',
 }: Props) {
@@ -35,17 +37,26 @@ export default function UserAvatar({
     );
   }
 
+  const separator =
+    endpoint.includes('?')
+      ? '&'
+      : '?';
+
+  const avatarSrc =
+    `${endpoint}${separator}v=${encodeURIComponent(
+      avatarFileId
+    )}`;
+
   return (
     <span
       className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 ${sizeClass} ${className}`}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={`/api/account/avatar?v=${encodeURIComponent(
-          avatarFileId
-        )}`}
+        src={avatarSrc}
         alt={`${displayName} profile`}
         className="h-full w-full object-cover"
+        draggable={false}
       />
     </span>
   );

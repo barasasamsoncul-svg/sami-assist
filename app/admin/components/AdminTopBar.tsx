@@ -6,6 +6,7 @@ import {
 } from 'next/navigation';
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -27,6 +28,8 @@ import {
   Users,
 } from 'lucide-react';
 
+import UserAvatar from '@/app/components/account/UserAvatar';
+
 import type {
   AdminSession,
 } from '@/lib/auth/admin-session';
@@ -44,6 +47,20 @@ type RouteIdentity = {
   section: string;
   page: string;
   icon: React.ElementType;
+};
+
+type AdminAccountResponse = {
+  success?: boolean;
+
+  account?: {
+    id?: string;
+    firstName?: string;
+    lastName?: string;
+    fullName?: string;
+    email?: string;
+    avatarFileId?: string | null;
+    avatarUrl?: string | null;
+  };
 };
 
 /* ============================================================
@@ -231,9 +248,6 @@ function getRouteIdentity(
 
   /* ==========================================================
      BUSINESSES / TENANTS
-
-     The current navigation still uses "Businesses" as its
-     user-facing label. Database architecture remains tenants.
      ========================================================== */
 
   if (
@@ -472,6 +486,14 @@ export default function AdminTopBar({
   ] =
     useState(false);
 
+  const [
+    avatarFileId,
+    setAvatarFileId,
+  ] =
+    useState<string | null>(
+      null
+    );
+
   const route =
     useMemo(
       () =>
@@ -500,13 +522,86 @@ export default function AdminTopBar({
     );
 
   /* ==========================================================
+     ADMIN AVATAR
+
+     The authenticated account endpoint remains authoritative
+     for administrator account/profile data.
+
+     AdminSession does not need to become responsible for
+     profile-image state. This also means an avatar changed in
+     My Account can be refreshed without changing the session
+     security model.
+     ========================================================== */
+
+  useEffect(() => {
+    let cancelled =
+      false;
+
+    async function loadAvatar() {
+      try {
+        const response =
+          await fetch(
+            '/api/admin/account',
+            {
+              method:
+                'GET',
+
+              credentials:
+                'same-origin',
+
+              cache:
+                'no-store',
+
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            }
+          );
+
+        if (
+          !response.ok
+        ) {
+          return;
+        }
+
+        const data =
+          (await response.json()) as
+            AdminAccountResponse;
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
+
+        setAvatarFileId(
+          data.account
+            ?.avatarFileId ??
+            null
+        );
+      } catch (
+        error
+      ) {
+        console.error(
+          '[Admin TopBar] Failed to load administrator avatar:',
+          error
+        );
+      }
+    }
+
+    void loadAvatar();
+
+    return () => {
+      cancelled =
+        true;
+    };
+  }, [
+    pathname,
+  ]);
+
+  /* ==========================================================
      LOGOUT
-
-     Logout remains a server-side authenticated action.
-
-     Even if the network response cannot be read, we return the
-     browser to the administrator login boundary rather than
-     leaving a privileged screen visually active.
      ========================================================== */
 
   async function logout() {
@@ -769,29 +864,19 @@ export default function AdminTopBar({
             md:flex
           "
         >
-          <div
-            className="
-              flex
-              h-8
-              w-8
-              shrink-0
-              items-center
-              justify-center
-
-              rounded-lg
-
-              bg-zinc-950
-
-              text-[11px]
-              font-bold
-              text-white
-
-              dark:bg-white
-              dark:text-zinc-950
-            "
-          >
-            {initials}
-          </div>
+          <UserAvatar
+            avatarFileId={
+              avatarFileId
+            }
+            displayName={
+              admin.fullName
+            }
+            initials={
+              initials
+            }
+            endpoint="/api/admin/account/avatar"
+            size="sm"
+          />
 
           <div
             className="
@@ -838,6 +923,32 @@ export default function AdminTopBar({
         </div>
 
         {/* ====================================================
+            MOBILE ADMIN AVATAR
+            ==================================================== */}
+
+        <div
+          className="
+            flex
+            items-center
+            md:hidden
+          "
+        >
+          <UserAvatar
+            avatarFileId={
+              avatarFileId
+            }
+            displayName={
+              admin.fullName
+            }
+            initials={
+              initials
+            }
+            endpoint="/api/admin/account/avatar"
+            size="sm"
+          />
+        </div>
+
+        {/* ====================================================
             LOGOUT
             ==================================================== */}
 
@@ -854,12 +965,18 @@ export default function AdminTopBar({
               ? 'Signing out'
               : 'Sign out'
           }
+          title={
+            loggingOut
+              ? 'Signing out'
+              : 'Sign out'
+          }
           className="
             inline-flex
             h-10
+            w-10
+            shrink-0
             items-center
             justify-center
-            gap-2
 
             rounded-xl
 
@@ -868,22 +985,18 @@ export default function AdminTopBar({
 
             bg-white
 
-            px-3
-
-            text-sm
-            font-semibold
-            text-zinc-700
+            text-zinc-500
 
             outline-none
 
             transition
 
-            hover:border-zinc-300
-            hover:bg-zinc-50
-            hover:text-zinc-950
+            hover:border-red-200
+            hover:bg-red-50
+            hover:text-red-600
 
             focus-visible:ring-2
-            focus-visible:ring-zinc-400
+            focus-visible:ring-red-400
             focus-visible:ring-offset-2
 
             disabled:cursor-not-allowed
@@ -891,11 +1004,10 @@ export default function AdminTopBar({
 
             dark:border-zinc-800
             dark:bg-zinc-900
-            dark:text-zinc-300
-            dark:hover:border-zinc-700
-            dark:hover:bg-zinc-800
-            dark:hover:text-white
-            dark:focus-visible:ring-zinc-600
+            dark:text-zinc-400
+            dark:hover:border-red-900
+            dark:hover:bg-red-950/30
+            dark:hover:text-red-400
             dark:focus-visible:ring-offset-zinc-950
           "
         >
@@ -915,17 +1027,6 @@ export default function AdminTopBar({
               "
             />
           )}
-
-          <span
-            className="
-              hidden
-              sm:inline
-            "
-          >
-            {loggingOut
-              ? 'Signing out'
-              : 'Logout'}
-          </span>
         </button>
       </div>
     </header>

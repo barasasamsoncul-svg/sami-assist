@@ -1,24 +1,22 @@
 'use client';
 
 import Link from 'next/link';
-
 import {
+  type ChangeEvent,
   type FormEvent,
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
-
-import {
-  useRouter,
-} from 'next/navigation';
-
+import { useRouter } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   CalendarDays,
+  Camera,
   Check,
   ChevronRight,
   Clock3,
@@ -34,6 +32,8 @@ import {
   Settings2,
   ShieldCheck,
   Sun,
+  Trash2,
+  Upload,
   UserRound,
   X,
 } from 'lucide-react';
@@ -41,6 +41,8 @@ import {
 import SaMiOverlay, {
   type SaMiOverlayType,
 } from '@/app/components/SaMiOverlay';
+
+import UserAvatar from '@/app/components/account/UserAvatar';
 
 /* ============================================================
    TYPES
@@ -58,6 +60,8 @@ type AdminAccount = {
   emailVerifiedAt: string | null;
   twoFactorRequired: boolean;
   twoFactorEnabled: boolean;
+  avatarFileId: string | null;
+  avatarUrl?: string | null;
   updatedAt?: string | null;
 };
 
@@ -89,6 +93,8 @@ type ApiPayload = {
   code?: string;
   account?: AdminAccount;
   preferences?: AdminPreferences;
+  avatarFileId?: string | null;
+  avatarUrl?: string | null;
   error?: string;
   message?: string;
   field?: string | null;
@@ -111,6 +117,16 @@ type OverlayState = {
 /* ============================================================
    CONSTANTS
    ============================================================ */
+
+const MAX_AVATAR_BYTES =
+  5 * 1024 * 1024;
+
+const ACCEPTED_AVATAR_TYPES =
+  new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
 
 const DEFAULT_PREFERENCES:
   AdminPreferences = {
@@ -307,6 +323,11 @@ export default function AdminMyAccountPage() {
   const router =
     useRouter();
 
+  const avatarInputRef =
+    useRef<HTMLInputElement | null>(
+      null
+    );
+
   const [
     account,
     setAccount,
@@ -384,7 +405,27 @@ export default function AdminMyAccountPage() {
     useState(false);
 
   /* ==========================================================
-     PREFERENCES FORM
+     AVATAR
+     ========================================================== */
+
+  const [
+    savingAvatar,
+    setSavingAvatar,
+  ] =
+    useState(false);
+
+  const [
+    removingAvatar,
+    setRemovingAvatar,
+  ] =
+    useState(false);
+
+  const avatarBusy =
+    savingAvatar ||
+    removingAvatar;
+
+  /* ==========================================================
+     PREFERENCES
      ========================================================== */
 
   const [
@@ -541,20 +582,24 @@ export default function AdminMyAccountPage() {
             );
           }
 
+          const loadedAccount = {
+            ...accountPayload.account,
+            avatarFileId:
+              accountPayload.account
+                .avatarFileId ??
+              null,
+          };
+
           setAccount(
-            accountPayload.account
+            loadedAccount
           );
 
           setFirstName(
-            accountPayload
-              .account
-              .firstName
+            loadedAccount.firstName
           );
 
           setLastName(
-            accountPayload
-              .account
-              .lastName
+            loadedAccount.lastName
           );
 
           setPreferences(
@@ -601,6 +646,315 @@ export default function AdminMyAccountPage() {
       loadData,
     ]
   );
+
+  /* ==========================================================
+     AVATAR UPLOAD
+     ========================================================== */
+
+  function openAvatarPicker() {
+    if (
+      avatarBusy
+    ) {
+      return;
+    }
+
+    avatarInputRef.current?.click();
+  }
+
+  async function uploadAvatar(
+    event:
+      ChangeEvent<HTMLInputElement>
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value =
+      '';
+
+    if (
+      !file ||
+      !account ||
+      avatarBusy
+    ) {
+      return;
+    }
+
+    if (
+      !ACCEPTED_AVATAR_TYPES.has(
+        file.type
+      )
+    ) {
+      showOverlay(
+        'warning',
+        'Unsupported image',
+        'Choose a JPEG, PNG or WebP image.'
+      );
+
+      return;
+    }
+
+    if (
+      file.size <= 0 ||
+      file.size >
+        MAX_AVATAR_BYTES
+    ) {
+      showOverlay(
+        'warning',
+        'Image is too large',
+        'Choose an image smaller than 5 MB.'
+      );
+
+      return;
+    }
+
+    setSavingAvatar(
+      true
+    );
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.append(
+        'file',
+        file
+      );
+
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method:
+              'POST',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+
+            body:
+              formData,
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        showOverlay(
+          'warning',
+          'Administrator session expired',
+          'Sign in again to continue.'
+        );
+
+        return;
+      }
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not update your profile photo.'
+        );
+      }
+
+      /*
+       * The avatar route may return avatarFileId directly.
+       * If it does not, reload the authoritative account record.
+       */
+      if (
+        payload.avatarFileId
+      ) {
+        setAccount(
+          current =>
+            current
+              ? {
+                  ...current,
+                  avatarFileId:
+                    payload.avatarFileId ??
+                    null,
+                }
+              : current
+        );
+      } else {
+        const accountResponse =
+          await fetch(
+            '/api/admin/account',
+            {
+              method:
+                'GET',
+
+              credentials:
+                'same-origin',
+
+              cache:
+                'no-store',
+
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            }
+          );
+
+        const accountPayload =
+          await readPayload(
+            accountResponse
+          );
+
+        if (
+          accountResponse.ok &&
+          accountPayload.account
+        ) {
+          setAccount({
+            ...accountPayload.account,
+            avatarFileId:
+              accountPayload.account
+                .avatarFileId ??
+              null,
+          });
+        }
+      }
+
+      router.refresh();
+
+      showOverlay(
+        'success',
+        'Profile photo updated',
+        'Your administrator profile photo has been updated.'
+      );
+    } catch (
+      error
+    ) {
+      showOverlay(
+        'error',
+        'Photo update failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not update your profile photo.'
+      );
+    } finally {
+      setSavingAvatar(
+        false
+      );
+    }
+  }
+
+  /* ==========================================================
+     AVATAR REMOVE
+     ========================================================== */
+
+  async function removeAvatar() {
+    if (
+      !account ||
+      !account.avatarFileId ||
+      avatarBusy
+    ) {
+      return;
+    }
+
+    setRemovingAvatar(
+      true
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method:
+              'DELETE',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        showOverlay(
+          'warning',
+          'Administrator session expired',
+          'Sign in again to continue.'
+        );
+
+        return;
+      }
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not remove your profile photo.'
+        );
+      }
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                avatarFileId:
+                  null,
+                avatarUrl:
+                  null,
+              }
+            : current
+      );
+
+      router.refresh();
+
+      showOverlay(
+        'success',
+        'Profile photo removed',
+        'Your administrator profile photo has been removed.'
+      );
+    } catch (
+      error
+    ) {
+      showOverlay(
+        'error',
+        'Photo removal failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not remove your profile photo.'
+      );
+    } finally {
+      setRemovingAvatar(
+        false
+      );
+    }
+  }
 
   /* ==========================================================
      PROFILE STATE
@@ -659,7 +1013,8 @@ export default function AdminMyAccountPage() {
 
   function closeProfile() {
     if (
-      savingProfile
+      savingProfile ||
+      avatarBusy
     ) {
       return;
     }
@@ -861,6 +1216,11 @@ export default function AdminMyAccountPage() {
         ...account,
         ...payload.account,
 
+        avatarFileId:
+          payload.account
+            .avatarFileId ??
+          account.avatarFileId,
+
         twoFactorRequired:
           account.twoFactorRequired,
 
@@ -883,6 +1243,8 @@ export default function AdminMyAccountPage() {
       setView(
         'overview'
       );
+
+      router.refresh();
 
       showOverlay(
         'success',
@@ -1229,7 +1591,8 @@ export default function AdminMyAccountPage() {
               closeProfile
             }
             disabled={
-              savingProfile
+              savingProfile ||
+              avatarBusy
             }
           />
 
@@ -1239,8 +1602,114 @@ export default function AdminMyAccountPage() {
                 <UserRound className="h-5 w-5" />
               }
               title="Personal information"
-              description="Manage the name attached to your administrator identity."
+              description="Manage your administrator identity and profile photo."
             />
+
+            {/* AVATAR */}
+
+            <div className="border-b border-zinc-200 p-6 sm:p-7 dark:border-zinc-800">
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="relative shrink-0">
+                  <UserAvatar
+                    avatarFileId={
+                      account.avatarFileId
+                    }
+                    displayName={
+                      account.fullName
+                    }
+                    initials={
+                      initials(
+                        account
+                      )
+                    }
+                    endpoint="/api/admin/account/avatar"
+                    size="lg"
+                    className="ring-4 ring-zinc-100 dark:ring-zinc-800"
+                  />
+
+                  {savingAvatar && (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55">
+                      <Loader2 className="h-5 w-5 animate-spin text-white" />
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-zinc-950 dark:text-white">
+                    Profile photo
+                  </p>
+
+                  <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">
+                    JPEG, PNG or WebP. Maximum file size 5 MB.
+                  </p>
+
+                  <input
+                    ref={
+                      avatarInputRef
+                    }
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    disabled={
+                      avatarBusy
+                    }
+                    onChange={
+                      uploadAvatar
+                    }
+                  />
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={
+                        avatarBusy
+                      }
+                      onClick={
+                        openAvatarPicker
+                      }
+                      className={secondaryButton()}
+                    >
+                      {savingAvatar ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : account.avatarFileId ? (
+                        <Camera className="h-4 w-4" />
+                      ) : (
+                        <Upload className="h-4 w-4" />
+                      )}
+
+                      {savingAvatar
+                        ? 'Uploading'
+                        : account.avatarFileId
+                          ? 'Change photo'
+                          : 'Upload photo'}
+                    </button>
+
+                    {account.avatarFileId && (
+                      <button
+                        type="button"
+                        disabled={
+                          avatarBusy
+                        }
+                        onClick={() =>
+                          void removeAvatar()
+                        }
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                      >
+                        {removingAvatar ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+
+                        {removingAvatar
+                          ? 'Removing'
+                          : 'Remove'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <form
               onSubmit={
@@ -1289,9 +1758,7 @@ export default function AdminMyAccountPage() {
 
                   {firstNameError && (
                     <FieldError>
-                      {
-                        firstNameError
-                      }
+                      {firstNameError}
                     </FieldError>
                   )}
                 </Field>
@@ -1336,9 +1803,7 @@ export default function AdminMyAccountPage() {
 
                   {lastNameError && (
                     <FieldError>
-                      {
-                        lastNameError
-                      }
+                      {lastNameError}
                     </FieldError>
                   )}
                 </Field>
@@ -1750,18 +2215,27 @@ export default function AdminMyAccountPage() {
           <div className="p-6 sm:p-7">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-zinc-950 text-xl font-bold text-white shadow-sm dark:bg-white dark:text-zinc-950">
-                  {initials(
-                    account
-                  )}
-                </div>
+                <UserAvatar
+                  avatarFileId={
+                    account.avatarFileId
+                  }
+                  displayName={
+                    account.fullName
+                  }
+                  initials={
+                    initials(
+                      account
+                    )
+                  }
+                  endpoint="/api/admin/account/avatar"
+                  size="lg"
+                  className="shadow-sm ring-4 ring-zinc-100 dark:ring-zinc-800"
+                />
 
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-lg font-bold text-zinc-950 dark:text-white">
-                      {
-                        account.fullName
-                      }
+                      {account.fullName}
                     </p>
 
                     {account.emailVerified && (
@@ -1770,10 +2244,22 @@ export default function AdminMyAccountPage() {
                   </div>
 
                   <p className="mt-1 truncate text-sm text-zinc-500">
-                    {
-                      account.email
-                    }
+                    {account.email}
                   </p>
+
+                  <button
+                    type="button"
+                    onClick={
+                      openProfile
+                    }
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
+                  >
+                    <Camera className="h-3.5 w-3.5" />
+
+                    {account.avatarFileId
+                      ? 'Change profile photo'
+                      : 'Add profile photo'}
+                  </button>
                 </div>
               </div>
 
@@ -1840,9 +2326,7 @@ export default function AdminMyAccountPage() {
                 </div>
 
                 <p className="mt-1 truncate text-sm text-zinc-500">
-                  {
-                    account.email
-                  }
+                  {account.email}
                 </p>
               </div>
 
