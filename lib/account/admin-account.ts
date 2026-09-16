@@ -230,7 +230,10 @@ function mapPreferences(
       row.theme as
         AdminTheme
     )
-      ? (row.theme as AdminTheme)
+      ? (
+          row.theme as
+            AdminTheme
+        )
       : DEFAULT_ADMIN_PREFERENCES.theme;
 
   const dateFormat =
@@ -238,7 +241,10 @@ function mapPreferences(
       row.date_format as
         AdminDateFormat
     )
-      ? (row.date_format as AdminDateFormat)
+      ? (
+          row.date_format as
+            AdminDateFormat
+        )
       : DEFAULT_ADMIN_PREFERENCES.dateFormat;
 
   const timeFormat =
@@ -246,7 +252,10 @@ function mapPreferences(
       row.time_format as
         AdminTimeFormat
     )
-      ? (row.time_format as AdminTimeFormat)
+      ? (
+          row.time_format as
+            AdminTimeFormat
+        )
       : DEFAULT_ADMIN_PREFERENCES.timeFormat;
 
   const firstDay =
@@ -282,13 +291,6 @@ function mapPreferences(
 
 /* ============================================================
    ADMIN EXISTENCE / STATE
-
-   Preferences are personal settings, but they are available
-   only to a real, active, non-deleted administrator.
-
-   Session validation already enforces this. We deliberately
-   re-check at the write/read boundary so a revoked administrator
-   cannot mutate state during a race with account suspension.
    ============================================================ */
 
 async function assertActiveAdmin(
@@ -312,7 +314,9 @@ async function assertActiveAdmin(
 
         LIMIT 1
       `,
-      [id]
+      [
+        id,
+      ]
     );
 
   if (
@@ -503,15 +507,11 @@ export async function getAdminPreferences(
 
         LIMIT 1
       `,
-      [id]
+      [
+        id,
+      ]
     );
 
-  /*
-   * Absence of a row is valid.
-   *
-   * Preferences are lazily created only when the administrator
-   * changes something. This avoids writes during ordinary GETs.
-   */
   if (
     result.rows.length ===
     0
@@ -530,12 +530,19 @@ export async function getAdminPreferences(
 /* ============================================================
    UPDATE PREFERENCES
 
-   Single atomic UPSERT.
+   IMPORTANT:
+   Partial PATCH values are resolved inside PostgreSQL.
 
-   No:
-   - read-before-write race
-   - duplicate preference rows
-   - partial multi-query update
+   We do NOT:
+   1. read the current row,
+   2. merge in Node,
+   3. write the complete row.
+
+   That pattern allows two concurrent PATCH requests to overwrite
+   each other's changes.
+
+   Each supplied field is instead applied independently by the
+   single atomic UPSERT below.
    ============================================================ */
 
 export async function updateAdminPreferences(
@@ -567,50 +574,44 @@ export async function updateAdminPreferences(
     );
   }
 
-  /*
-   * We first resolve the current values so partial PATCH
-   * semantics are preserved.
-   *
-   * The actual write remains one UPSERT statement.
-   */
-  const current =
-    await getAdminPreferences(
-      id
-    );
+  const hasTheme =
+    patch.theme !==
+    undefined;
 
-  const next:
-    AdminPreferences = {
-    theme:
-      patch.theme ??
-      current.theme,
+  const hasLocale =
+    patch.locale !==
+    undefined;
 
-    locale:
-      patch.locale ??
-      current.locale,
+  const hasTimezone =
+    patch.timezone !==
+    undefined;
 
-    timezone:
-      patch.timezone ??
-      current.timezone,
+  const hasDateFormat =
+    patch.dateFormat !==
+    undefined;
 
-    dateFormat:
-      patch.dateFormat ??
-      current.dateFormat,
+  const hasTimeFormat =
+    patch.timeFormat !==
+    undefined;
 
-    timeFormat:
-      patch.timeFormat ??
-      current.timeFormat,
-
-    firstDayOfWeek:
-      patch.firstDayOfWeek ??
-      current.firstDayOfWeek,
-  };
+  const hasFirstDayOfWeek =
+    patch.firstDayOfWeek !==
+    undefined;
 
   /*
-   * Re-check administrator state inside the INSERT source.
+   * INSERT case:
+   * Missing values receive SaMi defaults.
    *
-   * If the administrator was disabled between the earlier
-   * validation and this write, zero rows are inserted/updated.
+   * CONFLICT case:
+   * Only fields explicitly supplied by this PATCH are replaced.
+   *
+   * This keeps concurrent partial updates independent.
+   *
+   * Administrator state is checked again inside the INSERT
+   * source. If the administrator is disabled/deleted after the
+   * earlier validation, the write returns zero rows.
    */
+
   const result =
     await queryControl(
       `
@@ -627,41 +628,97 @@ export async function updateAdminPreferences(
         )
 
         SELECT
-          id,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
+          pa.id,
+
+          CASE
+            WHEN $2::boolean
+              THEN $3::text
+            ELSE $14::text
+          END,
+
+          CASE
+            WHEN $4::boolean
+              THEN $5::text
+            ELSE $15::text
+          END,
+
+          CASE
+            WHEN $6::boolean
+              THEN $7::text
+            ELSE $16::text
+          END,
+
+          CASE
+            WHEN $8::boolean
+              THEN $9::text
+            ELSE $17::text
+          END,
+
+          CASE
+            WHEN $10::boolean
+              THEN $11::text
+            ELSE $18::text
+          END,
+
+          CASE
+            WHEN $12::boolean
+              THEN $13::integer
+            ELSE $19::integer
+          END,
+
           NOW(),
           NOW()
 
-        FROM platform_admins
+        FROM platform_admins pa
 
-        WHERE id = $1
-          AND status = 'active'
-          AND deleted_at IS NULL
+        WHERE pa.id = $1
+          AND pa.status = 'active'
+          AND pa.deleted_at IS NULL
 
         ON CONFLICT (admin_id)
         DO UPDATE SET
+
           theme =
-            EXCLUDED.theme,
+            CASE
+              WHEN $2::boolean
+                THEN $3::text
+              ELSE platform_admin_preferences.theme
+            END,
 
           locale =
-            EXCLUDED.locale,
+            CASE
+              WHEN $4::boolean
+                THEN $5::text
+              ELSE platform_admin_preferences.locale
+            END,
 
           timezone =
-            EXCLUDED.timezone,
+            CASE
+              WHEN $6::boolean
+                THEN $7::text
+              ELSE platform_admin_preferences.timezone
+            END,
 
           date_format =
-            EXCLUDED.date_format,
+            CASE
+              WHEN $8::boolean
+                THEN $9::text
+              ELSE platform_admin_preferences.date_format
+            END,
 
           time_format =
-            EXCLUDED.time_format,
+            CASE
+              WHEN $10::boolean
+                THEN $11::text
+              ELSE platform_admin_preferences.time_format
+            END,
 
           first_day_of_week =
-            EXCLUDED.first_day_of_week,
+            CASE
+              WHEN $12::boolean
+                THEN $13::integer
+              ELSE platform_admin_preferences.first_day_of_week
+            END,
 
           updated_at =
             NOW()
@@ -676,12 +733,37 @@ export async function updateAdminPreferences(
       `,
       [
         id,
-        next.theme,
-        next.locale,
-        next.timezone,
-        next.dateFormat,
-        next.timeFormat,
-        next.firstDayOfWeek,
+
+        hasTheme,
+        patch.theme ??
+          null,
+
+        hasLocale,
+        patch.locale ??
+          null,
+
+        hasTimezone,
+        patch.timezone ??
+          null,
+
+        hasDateFormat,
+        patch.dateFormat ??
+          null,
+
+        hasTimeFormat,
+        patch.timeFormat ??
+          null,
+
+        hasFirstDayOfWeek,
+        patch.firstDayOfWeek ??
+          null,
+
+        DEFAULT_ADMIN_PREFERENCES.theme,
+        DEFAULT_ADMIN_PREFERENCES.locale,
+        DEFAULT_ADMIN_PREFERENCES.timezone,
+        DEFAULT_ADMIN_PREFERENCES.dateFormat,
+        DEFAULT_ADMIN_PREFERENCES.timeFormat,
+        DEFAULT_ADMIN_PREFERENCES.firstDayOfWeek,
       ]
     );
 
