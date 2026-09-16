@@ -55,6 +55,7 @@ type View =
   | 'overview'
   | 'profile'
   | 'preferences'
+  | 'security'
   | 'password';
 
 type AdminTheme =
@@ -703,41 +704,35 @@ export default function AdminMyAccountPage() {
       []
     );
 
-  useEffect(
-    () => {
-      void loadData();
-    },
-    [loadData]
-  );
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   /* ==========================================================
      PROFILE
      ========================================================== */
 
   const profileChanged =
-    useMemo(
-      () => {
-        if (!account) {
-          return false;
-        }
+    useMemo(() => {
+      if (!account) {
+        return false;
+      }
 
-        return (
-          normalizeName(
-            firstName
-          ) !==
-            account.firstName ||
-          normalizeName(
-            lastName
-          ) !==
-            account.lastName
-        );
-      },
-      [
-        account,
-        firstName,
-        lastName,
-      ]
-    );
+      return (
+        normalizeName(
+          firstName
+        ) !==
+          account.firstName ||
+        normalizeName(
+          lastName
+        ) !==
+          account.lastName
+      );
+    }, [
+      account,
+      firstName,
+      lastName,
+    ]);
 
   function openProfile() {
     if (!account) {
@@ -752,8 +747,13 @@ export default function AdminMyAccountPage() {
       account.lastName
     );
 
-    setFirstNameError(null);
-    setLastNameError(null);
+    setFirstNameError(
+      null
+    );
+
+    setLastNameError(
+      null
+    );
 
     setView('profile');
   }
@@ -771,25 +771,30 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    const normalizedFirst =
+    const cleanFirstName =
       normalizeName(
         firstName
       );
 
-    const normalizedLast =
+    const cleanLastName =
       normalizeName(
         lastName
       );
 
-    setFirstNameError(null);
-    setLastNameError(null);
+    setFirstNameError(
+      null
+    );
+
+    setLastNameError(
+      null
+    );
 
     let invalid =
       false;
 
     if (
       !validName(
-        normalizedFirst
+        cleanFirstName
       )
     ) {
       setFirstNameError(
@@ -801,7 +806,7 @@ export default function AdminMyAccountPage() {
 
     if (
       !validName(
-        normalizedLast
+        cleanLastName
       )
     ) {
       setLastNameError(
@@ -815,17 +820,9 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    if (!profileChanged) {
-      showOverlay(
-        'info',
-        'No changes to save',
-        'Your personal information has not changed.'
-      );
-
-      return;
-    }
-
-    setSavingProfile(true);
+    setSavingProfile(
+      true
+    );
 
     try {
       const response =
@@ -844,13 +841,12 @@ export default function AdminMyAccountPage() {
                 'application/json',
             },
 
-            body:
-              JSON.stringify({
-                firstName:
-                  normalizedFirst,
-                lastName:
-                  normalizedLast,
-              }),
+            body: JSON.stringify({
+              firstName:
+                cleanFirstName,
+              lastName:
+                cleanLastName,
+            }),
           }
         );
 
@@ -877,7 +873,7 @@ export default function AdminMyAccountPage() {
         ) {
           setFirstNameError(
             payload.error ||
-              'First name is invalid.'
+              'Enter a valid first name.'
           );
 
           return;
@@ -889,7 +885,7 @@ export default function AdminMyAccountPage() {
         ) {
           setLastNameError(
             payload.error ||
-              'Last name is invalid.'
+              'Enter a valid last name.'
           );
 
           return;
@@ -901,44 +897,34 @@ export default function AdminMyAccountPage() {
         );
       }
 
-      const nextAccount:
-        AdminAccount = {
-        ...account,
-        ...payload.account,
-
-        avatarFileId:
-          payload.account
-            .avatarFileId ??
-          account.avatarFileId,
-
-        twoFactorRequired:
-          account.twoFactorRequired,
-
-        twoFactorEnabled:
-          account.twoFactorEnabled,
-      };
+      const updatedAccount =
+        {
+          ...payload.account,
+          avatarFileId:
+            payload.account
+              .avatarFileId ??
+            account.avatarFileId,
+        };
 
       setAccount(
-        nextAccount
+        updatedAccount
       );
 
       setFirstName(
-        nextAccount.firstName
+        updatedAccount.firstName
       );
 
       setLastName(
-        nextAccount.lastName
+        updatedAccount.lastName
       );
-
-      setView('overview');
-
-      router.refresh();
 
       showOverlay(
         'success',
         'Profile updated',
-        'Your personal information has been updated.'
+        'Your personal information has been saved.'
       );
+
+      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
@@ -948,7 +934,9 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not update your profile.'
       );
     } finally {
-      setSavingProfile(false);
+      setSavingProfile(
+        false
+      );
     }
   }
 
@@ -957,21 +945,24 @@ export default function AdminMyAccountPage() {
      ========================================================== */
 
   function openAvatarPicker() {
-    if (!avatarBusy) {
-      avatarInputRef
-        .current
-        ?.click();
+    if (avatarBusy) {
+      return;
     }
+
+    avatarInputRef.current?.click();
   }
 
   async function uploadAvatar(
     event:
       ChangeEvent<HTMLInputElement>
   ) {
-    const file =
-      event.target.files?.[0];
+    const input =
+      event.currentTarget;
 
-    event.target.value = '';
+    const file =
+      input.files?.[0];
+
+    input.value = '';
 
     if (
       !file ||
@@ -987,7 +978,7 @@ export default function AdminMyAccountPage() {
       )
     ) {
       showOverlay(
-        'warning',
+        'error',
         'Unsupported image',
         'Choose a JPEG, PNG or WebP image.'
       );
@@ -996,27 +987,28 @@ export default function AdminMyAccountPage() {
     }
 
     if (
-      file.size <= 0 ||
       file.size >
-        MAX_AVATAR_BYTES
+      MAX_AVATAR_BYTES
     ) {
       showOverlay(
-        'warning',
-        'Image is too large',
-        'Choose an image smaller than 5 MB.'
+        'error',
+        'Image too large',
+        'Your profile photo must be 5 MB or smaller.'
       );
 
       return;
     }
 
-    setSavingAvatar(true);
+    setSavingAvatar(
+      true
+    );
 
     try {
       const formData =
         new FormData();
 
       formData.append(
-        'file',
+        'avatar',
         file
       );
 
@@ -1049,60 +1041,61 @@ export default function AdminMyAccountPage() {
         return;
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           payload.error ||
-            'SaMi could not update your profile photo.'
+            'SaMi could not upload your profile photo.'
         );
       }
 
-      if (
-        payload.avatarFileId
-      ) {
-        setAccount(
-          current =>
-            current
-              ? {
-                  ...current,
-                  avatarFileId:
-                    payload.avatarFileId ??
-                    null,
-                }
-              : current
-        );
-      } else {
-        await loadData();
-      }
-
-      router.refresh();
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                avatarFileId:
+                  payload.avatarFileId ??
+                  null,
+              }
+            : current
+      );
 
       showOverlay(
         'success',
         'Profile photo updated',
-        'Your administrator profile photo has been updated.'
+        'Your new profile photo has been saved.'
       );
+
+      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
-        'Photo update failed',
+        'Upload failed',
         error instanceof Error
           ? error.message
-          : 'SaMi could not update your profile photo.'
+          : 'SaMi could not upload your profile photo.'
       );
     } finally {
-      setSavingAvatar(false);
+      setSavingAvatar(
+        false
+      );
     }
   }
 
   async function removeAvatar() {
     if (
-      !account?.avatarFileId ||
-      avatarBusy
+      !account ||
+      avatarBusy ||
+      !account.avatarFileId
     ) {
       return;
     }
 
-    setRemovingAvatar(true);
+    setRemovingAvatar(
+      true
+    );
 
     try {
       const response =
@@ -1133,7 +1126,9 @@ export default function AdminMyAccountPage() {
         return;
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           payload.error ||
             'SaMi could not remove your profile photo.'
@@ -1147,29 +1142,29 @@ export default function AdminMyAccountPage() {
                 ...current,
                 avatarFileId:
                   null,
-                avatarUrl:
-                  null,
               }
             : current
       );
 
-      router.refresh();
-
       showOverlay(
         'success',
         'Profile photo removed',
-        'Your administrator profile photo has been removed.'
+        'Your profile photo has been removed.'
       );
+
+      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
-        'Photo removal failed',
+        'Remove failed',
         error instanceof Error
           ? error.message
           : 'SaMi could not remove your profile photo.'
       );
     } finally {
-      setRemovingAvatar(false);
+      setRemovingAvatar(
+        false
+      );
     }
   }
 
@@ -1192,27 +1187,6 @@ export default function AdminMyAccountPage() {
       ]
     );
 
-  function updatePreference<
-    K extends keyof AdminPreferences
-  >(
-    key: K,
-    value:
-      AdminPreferences[K]
-  ) {
-    setDraftPreferences(
-      current => ({
-        ...current,
-        [key]: value,
-      })
-    );
-
-    if (key === 'theme') {
-      applyTheme(
-        value as AdminTheme
-      );
-    }
-  }
-
   async function savePreferences(
     event:
       FormEvent<HTMLFormElement>
@@ -1226,7 +1200,9 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setSavingPreferences(true);
+    setSavingPreferences(
+      true
+    );
 
     try {
       const response =
@@ -1245,10 +1221,9 @@ export default function AdminMyAccountPage() {
                 'application/json',
             },
 
-            body:
-              JSON.stringify(
-                draftPreferences
-              ),
+            body: JSON.stringify(
+              draftPreferences
+            ),
           }
         );
 
@@ -1287,12 +1262,10 @@ export default function AdminMyAccountPage() {
         payload.preferences.theme
       );
 
-      setView('overview');
-
       showOverlay(
         'success',
         'Preferences updated',
-        'Your administrator preferences have been saved.'
+        'Your personal preferences have been saved.'
       );
     } catch (error) {
       applyTheme(
@@ -1307,7 +1280,9 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not update your preferences.'
       );
     } finally {
-      setSavingPreferences(false);
+      setSavingPreferences(
+        false
+      );
     }
   }
 
@@ -1384,6 +1359,11 @@ export default function AdminMyAccountPage() {
     );
   }
 
+  function openSecurity() {
+    clearPasswordForm();
+    setView('security');
+  }
+
   function openPassword() {
     clearPasswordForm();
     setView('password');
@@ -1395,7 +1375,7 @@ export default function AdminMyAccountPage() {
     }
 
     clearPasswordForm();
-    setView('overview');
+    setView('security');
   }
 
   async function changePassword(
@@ -1496,17 +1476,15 @@ export default function AdminMyAccountPage() {
             headers: {
               Accept:
                 'application/json',
-
               'Content-Type':
                 'application/json',
             },
 
-            body:
-              JSON.stringify({
-                currentPassword,
-                newPassword,
-                confirmPassword,
-              }),
+            body: JSON.stringify({
+              currentPassword,
+              newPassword,
+              confirmPassword,
+            }),
           }
         );
 
@@ -1523,14 +1501,16 @@ export default function AdminMyAccountPage() {
         return;
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         if (
           payload.field ===
           'currentPassword'
         ) {
           setCurrentPasswordError(
             payload.error ||
-              'The current password is incorrect.'
+              'Your current password is incorrect.'
           );
 
           return;
@@ -1542,7 +1522,7 @@ export default function AdminMyAccountPage() {
         ) {
           setNewPasswordError(
             payload.error ||
-              'The new password is invalid.'
+              'Enter a valid new password.'
           );
 
           return;
@@ -1554,7 +1534,7 @@ export default function AdminMyAccountPage() {
         ) {
           setConfirmPasswordError(
             payload.error ||
-              'The password confirmation is invalid.'
+              'The password confirmation does not match.'
           );
 
           return;
@@ -1566,19 +1546,21 @@ export default function AdminMyAccountPage() {
         );
       }
 
+      clearPasswordForm();
+
       const revoked =
         payload.otherSessionsRevoked ??
         0;
-
-      clearPasswordForm();
-
-      setView('overview');
 
       showOverlay(
         'success',
         'Password changed',
         revoked > 0
-          ? `Your password has been changed. ${revoked} other signed-in session${revoked === 1 ? '' : 's'} were revoked.`
+          ? `Your password has been changed and ${revoked} other administrator ${
+              revoked === 1
+                ? 'session has'
+                : 'sessions have'
+            } been signed out.`
           : 'Your password has been changed successfully.'
       );
     } catch (error) {
@@ -1687,6 +1669,83 @@ export default function AdminMyAccountPage() {
   }
 
   /* ==========================================================
+     SECURITY VIEW
+     ========================================================== */
+
+  if (view === 'security') {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-4xl">
+          <BackButton
+            onClick={() =>
+              setView('overview')
+            }
+          />
+
+          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <SectionHeader
+              icon={
+                <ShieldCheck className="h-5 w-5" />
+              }
+              title="Password & security"
+              description="Manage your sign-in credentials and administrator account protection."
+            />
+
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <SettingsRow
+                icon={
+                  <KeyRound className="h-5 w-5" />
+                }
+                title="Password"
+                description="Change your sign-in password."
+                onClick={
+                  openPassword
+                }
+              />
+
+              <div className="flex items-center gap-4 px-6 py-5">
+                <IconBox>
+                  <ShieldCheck className="h-5 w-5" />
+                </IconBox>
+
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-zinc-950 dark:text-white">
+                    Two-factor authentication
+                  </p>
+
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {account.twoFactorEnabled
+                      ? 'Two-factor authentication is enabled for this administrator account.'
+                      : account.twoFactorRequired
+                        ? 'Two-factor authentication is required for this administrator account.'
+                        : 'Add an extra layer of protection to your administrator account.'}
+                  </p>
+                </div>
+
+                <span
+                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                    account.twoFactorEnabled
+                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                      : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
+                  }`}
+                >
+                  {account.twoFactorEnabled
+                    ? 'Enabled'
+                    : account.twoFactorRequired
+                      ? 'Required'
+                      : 'Not enabled'}
+                </span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {overlayElement}
+      </>
+    );
+  }
+
+  /* ==========================================================
      PASSWORD VIEW
      ========================================================== */
 
@@ -1708,8 +1767,8 @@ export default function AdminMyAccountPage() {
               icon={
                 <KeyRound className="h-5 w-5" />
               }
-              title="Password & security"
-              description="Protect your administrator account and control your sign-in credentials."
+              title="Password"
+              description="Change the password you use to sign in to your administrator account."
             />
 
             <form
@@ -1895,41 +1954,6 @@ export default function AdminMyAccountPage() {
             </form>
           </section>
 
-          <section className="mt-5 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex items-center gap-4 p-6">
-              <IconBox>
-                <ShieldCheck className="h-5 w-5" />
-              </IconBox>
-
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-zinc-950 dark:text-white">
-                  Two-factor authentication
-                </p>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  {account.twoFactorEnabled
-                    ? 'Two-factor authentication is enabled for this administrator account.'
-                    : account.twoFactorRequired
-                      ? 'Two-factor authentication is required for this administrator account.'
-                      : 'Additional sign-in protection for your administrator account.'}
-                </p>
-              </div>
-
-              <span
-                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                  account.twoFactorEnabled
-                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                    : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
-                }`}
-              >
-                {account.twoFactorEnabled
-                  ? 'Enabled'
-                  : account.twoFactorRequired
-                    ? 'Required'
-                    : 'Not enabled'}
-              </span>
-            </div>
-          </section>
         </div>
 
         {overlayElement}
@@ -2081,12 +2105,22 @@ export default function AdminMyAccountPage() {
                     disabled={
                       savingProfile
                     }
+                    maxLength={100}
+                    autoComplete="given-name"
                     onChange={
-                      event =>
+                      event => {
                         setFirstName(
-                          event.target
-                            .value
-                        )
+                          event.target.value
+                        );
+
+                        if (
+                          firstNameError
+                        ) {
+                          setFirstNameError(
+                            null
+                          );
+                        }
+                      }
                     }
                     className={
                       inputClass(
@@ -2116,12 +2150,22 @@ export default function AdminMyAccountPage() {
                     disabled={
                       savingProfile
                     }
+                    maxLength={100}
+                    autoComplete="family-name"
                     onChange={
-                      event =>
+                      event => {
                         setLastName(
-                          event.target
-                            .value
-                        )
+                          event.target.value
+                        );
+
+                        if (
+                          lastNameError
+                        ) {
+                          setLastNameError(
+                            null
+                          );
+                        }
+                      }
                     }
                     className={
                       inputClass(
@@ -2140,20 +2184,52 @@ export default function AdminMyAccountPage() {
                 </Field>
               </div>
 
-              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-950/60">
-                <div className="flex gap-3">
-                  <Mail className="mt-0.5 h-5 w-5 text-zinc-400" />
+              <div className="mt-6 grid gap-5 sm:grid-cols-2">
+                <Field>
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    Email
+                  </label>
 
-                  <div>
-                    <p className="text-sm font-semibold text-zinc-950 dark:text-white">
-                      {account.email}
-                    </p>
+                  <div className="relative">
+                    <input
+                      value={
+                        account.email
+                      }
+                      readOnly
+                      className={`${inputClass()} pr-12`}
+                    />
 
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Your sign-in email uses a separate verification process.
-                    </p>
+                    {account.emailVerified && (
+                      <BadgeCheck className="absolute right-4 top-1/2 mt-1 h-5 w-5 -translate-y-1/2 text-emerald-500" />
+                    )}
                   </div>
-                </div>
+
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Email changes are managed separately.
+                  </p>
+                </Field>
+
+                <Field>
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                    Role
+                  </label>
+
+                  <input
+                    value={
+                      roleLabel(
+                        account.role
+                      )
+                    }
+                    readOnly
+                    className={
+                      inputClass()
+                    }
+                  />
+
+                  <p className="mt-2 text-xs text-zinc-500">
+                    Administrator roles are controlled by platform access management.
+                  </p>
+                </Field>
               </div>
 
               <FormActions
@@ -2163,11 +2239,27 @@ export default function AdminMyAccountPage() {
                 changed={
                   profileChanged
                 }
-                onCancel={() =>
+                onCancel={() => {
+                  setFirstName(
+                    account.firstName
+                  );
+
+                  setLastName(
+                    account.lastName
+                  );
+
+                  setFirstNameError(
+                    null
+                  );
+
+                  setLastNameError(
+                    null
+                  );
+
                   setView(
                     'overview'
-                  )
-                }
+                  );
+                }}
               />
             </form>
           </section>
@@ -2188,9 +2280,15 @@ export default function AdminMyAccountPage() {
   ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="mx-auto w-full max-w-4xl">
           <BackButton
             onClick={() => {
+              if (
+                savingPreferences
+              ) {
+                return;
+              }
+
               setDraftPreferences({
                 ...preferences,
               });
@@ -2212,324 +2310,382 @@ export default function AdminMyAccountPage() {
             onSubmit={
               savePreferences
             }
-            className="mt-4 space-y-5"
           >
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <SectionHeader
                 icon={
                   <Settings2 className="h-5 w-5" />
                 }
                 title="Preferences"
-                description="Personalize your administrator workspace."
+                description="Personalize how the administrator workspace appears and formats information."
               />
 
-              <div className="p-6 sm:p-7">
-                <p className="text-sm font-semibold text-zinc-950 dark:text-white">
-                  Appearance
-                </p>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'system'
-                    }
-                    icon={
-                      <Monitor className="h-5 w-5" />
-                    }
-                    title="System"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                <PreferenceBlock
+                  icon={
+                    <Sun className="h-5 w-5 text-zinc-500" />
+                  }
+                  title="Appearance"
+                >
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <ThemeOption
+                      active={
+                        draftPreferences.theme ===
                         'system'
-                      )
-                    }
-                  />
+                      }
+                      icon={
+                        <Monitor className="h-5 w-5" />
+                      }
+                      title="System"
+                      onClick={() => {
+                        const next = {
+                          ...draftPreferences,
+                          theme:
+                            'system' as const,
+                        };
 
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'light'
-                    }
-                    icon={
-                      <Sun className="h-5 w-5" />
-                    }
-                    title="Light"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
+                        setDraftPreferences(
+                          next
+                        );
+
+                        applyTheme(
+                          next.theme
+                        );
+                      }}
+                    />
+
+                    <ThemeOption
+                      active={
+                        draftPreferences.theme ===
                         'light'
-                      )
-                    }
-                  />
+                      }
+                      icon={
+                        <Sun className="h-5 w-5" />
+                      }
+                      title="Light"
+                      onClick={() => {
+                        const next = {
+                          ...draftPreferences,
+                          theme:
+                            'light' as const,
+                        };
 
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'dark'
-                    }
-                    icon={
-                      <Moon className="h-5 w-5" />
-                    }
-                    title="Dark"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
+                        setDraftPreferences(
+                          next
+                        );
+
+                        applyTheme(
+                          next.theme
+                        );
+                      }}
+                    />
+
+                    <ThemeOption
+                      active={
+                        draftPreferences.theme ===
                         'dark'
-                      )
-                    }
-                  />
-                </div>
-              </div>
-            </section>
+                      }
+                      icon={
+                        <Moon className="h-5 w-5" />
+                      }
+                      title="Dark"
+                      onClick={() => {
+                        const next = {
+                          ...draftPreferences,
+                          theme:
+                            'dark' as const,
+                        };
 
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="grid divide-y divide-zinc-200 dark:divide-zinc-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                <PreferenceBlock
-                  icon={
-                    <Languages className="h-5 w-5" />
-                  }
-                  title="Language & locale"
-                >
-                  <select
-                    value={
-                      draftPreferences.locale
-                    }
-                    onChange={
-                      event =>
-                        updatePreference(
-                          'locale',
-                          event.target
-                            .value
-                        )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {LOCALES.map(
-                      item => (
-                        <option
-                          key={
-                            item.value
-                          }
-                          value={
-                            item.value
-                          }
-                        >
-                          {item.label}
-                        </option>
-                      )
-                    )}
-                  </select>
+                        setDraftPreferences(
+                          next
+                        );
+
+                        applyTheme(
+                          next.theme
+                        );
+                      }}
+                    />
+                  </div>
                 </PreferenceBlock>
 
                 <PreferenceBlock
                   icon={
-                    <Globe2 className="h-5 w-5" />
+                    <Languages className="h-5 w-5 text-zinc-500" />
                   }
-                  title="Time zone"
+                  title="Language & region"
                 >
-                  <select
-                    value={
-                      draftPreferences.timezone
-                    }
-                    onChange={
-                      event =>
-                        updatePreference(
-                          'timezone',
-                          event.target
-                            .value
-                        )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {TIMEZONES.map(
-                      timezone => (
-                        <option
-                          key={
-                            timezone
-                          }
-                          value={
-                            timezone
-                          }
-                        >
-                          {timezone}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </PreferenceBlock>
-              </div>
-            </section>
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        Language
+                      </label>
 
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-                <div className="flex items-center gap-3">
-                  <CalendarDays className="h-5 w-5 text-zinc-500" />
-
-                  <p className="font-semibold text-zinc-950 dark:text-white">
-                    Date & time
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-5 p-6 sm:p-7 lg:grid-cols-3">
-                <Field>
-                  <label className="text-sm font-semibold">
-                    Date format
-                  </label>
-
-                  <select
-                    value={
-                      draftPreferences.dateFormat
-                    }
-                    onChange={
-                      event =>
-                        updatePreference(
-                          'dateFormat',
-                          event.target
-                            .value as
-                            AdminDateFormat
-                        )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    <option value="DD/MM/YYYY">
-                      DD/MM/YYYY
-                    </option>
-
-                    <option value="MM/DD/YYYY">
-                      MM/DD/YYYY
-                    </option>
-
-                    <option value="YYYY-MM-DD">
-                      YYYY-MM-DD
-                    </option>
-                  </select>
-                </Field>
-
-                <Field>
-                  <label className="text-sm font-semibold">
-                    Time format
-                  </label>
-
-                  <select
-                    value={
-                      draftPreferences.timeFormat
-                    }
-                    onChange={
-                      event =>
-                        updatePreference(
-                          'timeFormat',
-                          event.target
-                            .value as
-                            AdminTimeFormat
-                        )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    <option value="12h">
-                      12-hour
-                    </option>
-
-                    <option value="24h">
-                      24-hour
-                    </option>
-                  </select>
-                </Field>
-
-                <Field>
-                  <label className="text-sm font-semibold">
-                    First day of week
-                  </label>
-
-                  <select
-                    value={
-                      draftPreferences.firstDayOfWeek
-                    }
-                    onChange={
-                      event =>
-                        updatePreference(
-                          'firstDayOfWeek',
-                          Number(
-                            event.target
-                              .value
+                      <select
+                        value={
+                          draftPreferences.locale
+                        }
+                        onChange={
+                          event =>
+                            setDraftPreferences(
+                              current => ({
+                                ...current,
+                                locale:
+                                  event
+                                    .target
+                                    .value,
+                              })
+                            )
+                        }
+                        className={
+                          selectClass()
+                        }
+                      >
+                        {LOCALES.map(
+                          locale => (
+                            <option
+                              key={
+                                locale.value
+                              }
+                              value={
+                                locale.value
+                              }
+                            >
+                              {
+                                locale.label
+                              }
+                            </option>
                           )
-                        )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {DAYS.map(
-                      (
-                        day,
-                        index
-                      ) => (
-                        <option
-                          key={day}
-                          value={
-                            index
-                          }
-                        >
-                          {day}
+                        )}
+                      </select>
+                    </Field>
+
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        Time zone
+                      </label>
+
+                      <select
+                        value={
+                          draftPreferences.timezone
+                        }
+                        onChange={
+                          event =>
+                            setDraftPreferences(
+                              current => ({
+                                ...current,
+                                timezone:
+                                  event
+                                    .target
+                                    .value,
+                              })
+                            )
+                        }
+                        className={
+                          selectClass()
+                        }
+                      >
+                        {TIMEZONES.map(
+                          timezone => (
+                            <option
+                              key={
+                                timezone
+                              }
+                              value={
+                                timezone
+                              }
+                            >
+                              {timezone.replace(
+                                /_/g,
+                                ' '
+                              )}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </Field>
+                  </div>
+                </PreferenceBlock>
+
+                <PreferenceBlock
+                  icon={
+                    <CalendarDays className="h-5 w-5 text-zinc-500" />
+                  }
+                  title="Date & time"
+                >
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        Date format
+                      </label>
+
+                      <select
+                        value={
+                          draftPreferences.dateFormat
+                        }
+                        onChange={
+                          event =>
+                            setDraftPreferences(
+                              current => ({
+                                ...current,
+                                dateFormat:
+                                  event
+                                    .target
+                                    .value as AdminDateFormat,
+                              })
+                            )
+                        }
+                        className={
+                          selectClass()
+                        }
+                      >
+                        <option value="DD/MM/YYYY">
+                          DD/MM/YYYY
                         </option>
-                      )
-                    )}
-                  </select>
-                </Field>
-              </div>
 
-              <div className="flex justify-end gap-3 border-t border-zinc-200 p-6 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDraftPreferences({
-                      ...preferences,
-                    });
+                        <option value="MM/DD/YYYY">
+                          MM/DD/YYYY
+                        </option>
 
-                    applyTheme(
-                      preferences.theme
-                    );
+                        <option value="YYYY-MM-DD">
+                          YYYY-MM-DD
+                        </option>
+                      </select>
+                    </Field>
 
-                    setView(
-                      'overview'
-                    );
-                  }}
-                  className={
-                    secondaryButton()
-                  }
-                >
-                  Cancel
-                </button>
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        Time format
+                      </label>
 
-                <button
-                  type="submit"
-                  disabled={
-                    savingPreferences ||
-                    !preferencesChanged
-                  }
-                  className={
-                    primaryButton()
-                  }
-                >
-                  {savingPreferences ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Save className="h-4 w-4" />
-                  )}
+                      <select
+                        value={
+                          draftPreferences.timeFormat
+                        }
+                        onChange={
+                          event =>
+                            setDraftPreferences(
+                              current => ({
+                                ...current,
+                                timeFormat:
+                                  event
+                                    .target
+                                    .value as AdminTimeFormat,
+                              })
+                            )
+                        }
+                        className={
+                          selectClass()
+                        }
+                      >
+                        <option value="24h">
+                          24-hour
+                        </option>
 
-                  Save preferences
-                </button>
+                        <option value="12h">
+                          12-hour
+                        </option>
+                      </select>
+                    </Field>
+
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        First day of week
+                      </label>
+
+                      <select
+                        value={
+                          draftPreferences.firstDayOfWeek
+                        }
+                        onChange={
+                          event =>
+                            setDraftPreferences(
+                              current => ({
+                                ...current,
+                                firstDayOfWeek:
+                                  Number(
+                                    event
+                                      .target
+                                      .value
+                                  ),
+                              })
+                            )
+                        }
+                        className={
+                          selectClass()
+                        }
+                      >
+                        {DAYS.map(
+                          (
+                            day,
+                            index
+                          ) => (
+                            <option
+                              key={
+                                day
+                              }
+                              value={
+                                index
+                              }
+                            >
+                              {day}
+                            </option>
+                          )
+                        )}
+                      </select>
+                    </Field>
+
+                    <Field>
+                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                        Preview
+                      </label>
+
+                      <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-950">
+                        <p className="text-sm font-semibold text-zinc-950 dark:text-white">
+                          {
+                            draftPreferences.dateFormat
+                          }
+                        </p>
+
+                        <p className="mt-1 text-xs text-zinc-500">
+                          {
+                            draftPreferences.timeFormat ===
+                            '24h'
+                              ? '18:30'
+                              : '6:30 PM'
+                          }{' '}
+                          ·{' '}
+                          {
+                            draftPreferences.timezone
+                          }
+                        </p>
+                      </div>
+                    </Field>
+                  </div>
+                </PreferenceBlock>
               </div>
             </section>
+
+            <FormActions
+              saving={
+                savingPreferences
+              }
+              changed={
+                preferencesChanged
+              }
+              onCancel={() => {
+                setDraftPreferences({
+                  ...preferences,
+                });
+
+                applyTheme(
+                  preferences.theme
+                );
+
+                setView(
+                  'overview'
+                );
+              }}
+            />
           </form>
         </div>
 
@@ -2703,7 +2859,7 @@ export default function AdminMyAccountPage() {
                   : 'Password and administrator account protection'
               }
               onClick={
-                openPassword
+                openSecurity
               }
               trailing={
                 account.twoFactorEnabled ? (
