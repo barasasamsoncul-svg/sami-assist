@@ -29,7 +29,7 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-  ],
+, "app/dmin"  ],
   "exclude": ["node_modules", "_backup_old"]
 }
 

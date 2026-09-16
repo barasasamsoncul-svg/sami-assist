@@ -1,28 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-
 import {
   type ChangeEvent,
   type FormEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
-  useEffect,
 } from 'react';
-
 import { useRouter } from 'next/navigation';
-
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   Camera,
   Check,
   ChevronRight,
+  Copy,
   Eye,
   EyeOff,
+  Globe2,
   KeyRound,
   Languages,
   Loader2,
@@ -34,29 +34,27 @@ import {
   Save,
   Settings2,
   ShieldCheck,
+  Smartphone,
   Sun,
   Trash2,
   Upload,
   UserRound,
   X,
-  AlertTriangle,
-  Globe2,
   CalendarDays,
 } from 'lucide-react';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import UserAvatar from '@/app/components/account/UserAvatar';
 
-/* ============================================================
-   TYPES
-   ============================================================ */
-
 type View =
   | 'overview'
   | 'profile'
   | 'preferences'
   | 'security'
-  | 'password';
+  | 'password'
+  | 'two-factor'
+  | 'sessions'
+  | 'activity';
 
 type AdminTheme =
   | 'system'
@@ -97,6 +95,51 @@ type AdminPreferences = {
   firstDayOfWeek: number;
 };
 
+type TwoFactorState = {
+  enabled: boolean;
+  required: boolean;
+  method: string;
+  verifiedAt: string | null;
+  lastUsedAt: string | null;
+  recoveryCodesRemaining: number;
+};
+
+type TwoFactorSetup = {
+  method: string;
+  secret: string;
+  otpauthUrl: string;
+};
+
+
+
+type AdminSessionItem = {
+  id: string;
+  current: boolean;
+  ipAddress: string | null;
+  userAgent: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  operatingSystem: string | null;
+  createdAt: string;
+  lastActivityAt: string;
+  expiresAt: string;
+};
+
+type SecurityActivityItem = {
+  id: string;
+  source: 'audit' | 'login';
+  eventType: string;
+  action: string | null;
+  successful: boolean;
+  failureReason: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  operatingSystem: string | null;
+  createdAt: string | null;
+};
+
 type ApiPayload = {
   success?: boolean;
   code?: string;
@@ -109,9 +152,17 @@ type ApiPayload = {
 
   avatarFileId?: string | null;
   otherSessionsRevoked?: number;
+
+  twoFactor?: TwoFactorState;
+  twoFactorEnabled?: boolean;
+  setup?: TwoFactorSetup;
+  recoveryCodes?: string[];
+  sessions?: AdminSessionItem[];
+  revokedCount?: number;
+  activity?: SecurityActivityItem[];
 };
 
-type SaMiOverlayType =
+type OverlayType =
   | 'success'
   | 'error'
   | 'warning'
@@ -119,14 +170,12 @@ type SaMiOverlayType =
 
 type OverlayState = {
   open: boolean;
-  type: SaMiOverlayType;
+  type: OverlayType;
   title: string;
   message: string;
+  primaryAction?: { label: string; onClick?: () => void };
+  secondaryAction?: { label: string; onClick?: () => void };
 };
-
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
 
 const DEFAULT_PREFERENCES: AdminPreferences = {
   theme: 'system',
@@ -185,10 +234,6 @@ const DAYS = [
   'Saturday',
 ];
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
 async function readPayload(
   response: Response
 ): Promise<ApiPayload> {
@@ -211,15 +256,12 @@ function normalizeName(
 function validName(
   value: string
 ) {
-  if (
-    value.length < 1 ||
-    value.length > 100
-  ) {
-    return false;
-  }
-
-  return /^[\p{L}\p{M}'’ -]+$/u.test(
-    value
+  return (
+    value.length >= 1 &&
+    value.length <= 100 &&
+    /^[\p{L}\p{M}'’ -]+$/u.test(
+      value
+    )
   );
 }
 
@@ -236,29 +278,17 @@ function initials(
       ?.trim()
       .charAt(0);
 
-  const result =
+  return (
     `${first || ''}${last || ''}`
-      .toUpperCase();
-
-  return result || 'SA';
+      .toUpperCase() ||
+    'SA'
+  );
 }
 
-function roleLabel(
-  role: string
+function labelFromValue(
+  value: string
 ) {
-  return role
-    .replace(/_/g, ' ')
-    .replace(
-      /\b\w/g,
-      character =>
-        character.toUpperCase()
-    );
-}
-
-function statusLabel(
-  status: string
-) {
-  return status
+  return value
     .replace(/_/g, ' ')
     .replace(
       /\b\w/g,
@@ -310,20 +340,72 @@ function applyTheme(
     return;
   }
 
-  const prefersDark =
+  const dark =
     window.matchMedia(
       '(prefers-color-scheme: dark)'
     ).matches;
 
   root.classList.toggle(
     'dark',
-    prefersDark
+    dark
   );
 }
 
-/* ============================================================
-   PAGE
-   ============================================================ */
+function formatSecurityDate(
+  value: string | null
+) {
+  if (!value) {
+    return 'Not yet';
+  }
+
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return 'Not yet';
+  }
+
+  return date.toLocaleString();
+}
+
+function formatAccountDate(value: string | null) {
+  if (!value) return 'Unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  return date.toLocaleString();
+}
+
+function securityActivityTitle(item: SecurityActivityItem) {
+  if (item.source === 'login') {
+    return item.successful ? 'Administrator sign-in' : 'Failed administrator sign-in';
+  }
+
+  const labels: Record<string, string> = {
+    'admin.password.changed': 'Password changed',
+    'admin.two_factor.enabled': 'Two-factor authentication enabled',
+    'admin.two_factor.disabled': 'Two-factor authentication disabled',
+    'admin.two_factor.recovery_codes_regenerated': 'Recovery codes replaced',
+    'admin.sessions.others_revoked': 'Other sessions signed out',
+  };
+
+  if (labels[item.eventType]) return labels[item.eventType];
+
+  return item.eventType
+    .replace(/^admin[._-]/i, '')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, character => character.toUpperCase()) || 'Security activity';
+}
+
+function sessionDeviceLabel(item: AdminSessionItem) {
+  if (item.browser && item.operatingSystem) return `${item.browser} on ${item.operatingSystem}`;
+  return item.browser || item.operatingSystem || item.deviceType || 'Unknown device';
+}
 
 export default function AdminMyAccountPage() {
   const router =
@@ -380,10 +462,6 @@ export default function AdminMyAccountPage() {
       DEFAULT_PREFERENCES
     );
 
-  /* ==========================================================
-     PROFILE
-     ========================================================== */
-
   const [
     firstName,
     setFirstName,
@@ -418,10 +496,6 @@ export default function AdminMyAccountPage() {
   ] =
     useState(false);
 
-  /* ==========================================================
-     AVATAR
-     ========================================================== */
-
   const [
     savingAvatar,
     setSavingAvatar,
@@ -438,19 +512,11 @@ export default function AdminMyAccountPage() {
     savingAvatar ||
     removingAvatar;
 
-  /* ==========================================================
-     PREFERENCES
-     ========================================================== */
-
   const [
     savingPreferences,
     setSavingPreferences,
   ] =
     useState(false);
-
-  /* ==========================================================
-     PASSWORD
-     ========================================================== */
 
   const [
     currentPassword,
@@ -518,9 +584,65 @@ export default function AdminMyAccountPage() {
   ] =
     useState(false);
 
-  /* ==========================================================
-     OVERLAY
-     ========================================================== */
+  const [
+    twoFactor,
+    setTwoFactor,
+  ] =
+    useState<TwoFactorState | null>(
+      null
+    );
+
+  const [
+    loadingTwoFactor,
+    setLoadingTwoFactor,
+  ] =
+    useState(false);
+
+  const [
+    twoFactorBusy,
+    setTwoFactorBusy,
+  ] =
+    useState(false);
+
+  const [
+    twoFactorSetup,
+    setTwoFactorSetup,
+  ] =
+    useState<TwoFactorSetup | null>(
+      null
+    );
+
+  const [
+    twoFactorCode,
+    setTwoFactorCode,
+  ] =
+    useState('');
+
+  const [
+    twoFactorCodeError,
+    setTwoFactorCodeError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    recoveryCodes,
+    setRecoveryCodes,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    recoveryCopied,
+    setRecoveryCopied,
+  ] =
+    useState(false);
+
+  const [sessions, setSessions] = useState<AdminSessionItem[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [revokingSessions, setRevokingSessions] = useState(false);
+  const [securityActivity, setSecurityActivity] = useState<SecurityActivityItem[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
 
   const [
     overlay,
@@ -534,15 +656,19 @@ export default function AdminMyAccountPage() {
     });
 
   function showOverlay(
-    type: SaMiOverlayType,
+    type: OverlayType,
     title: string,
-    message: string
+    message: string,
+    primaryAction?: OverlayState['primaryAction'],
+    secondaryAction?: OverlayState['secondaryAction']
   ) {
     setOverlay({
       open: true,
       type,
       title,
       message,
+      primaryAction,
+      secondaryAction,
     });
   }
 
@@ -555,17 +681,13 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  function handleSessionExpired() {
+  function sessionExpired() {
     showOverlay(
       'warning',
       'Administrator session expired',
       'Your administrator session is no longer active. Sign in again to continue.'
     );
   }
-
-  /* ==========================================================
-     LOAD
-     ========================================================== */
 
   const loadData =
     useCallback(
@@ -629,7 +751,7 @@ export default function AdminMyAccountPage() {
             preferencesResponse.status ===
               401
           ) {
-            handleSessionExpired();
+            sessionExpired();
             return;
           }
 
@@ -649,12 +771,11 @@ export default function AdminMyAccountPage() {
           ) {
             throw new Error(
               preferencesPayload.error ||
-                'SaMi could not load your administrator preferences.'
+                'SaMi could not load your preferences.'
             );
           }
 
-          const loadedAccount:
-            AdminAccount = {
+          const loadedAccount = {
             ...accountPayload.account,
             avatarFileId:
               accountPayload.account
@@ -687,11 +808,6 @@ export default function AdminMyAccountPage() {
               .preferences.theme
           );
         } catch (error) {
-          console.error(
-            '[Admin My Account] Load failed:',
-            error
-          );
-
           setLoadError(
             error instanceof Error
               ? error.message
@@ -704,35 +820,35 @@ export default function AdminMyAccountPage() {
       []
     );
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  /* ==========================================================
-     PROFILE
-     ========================================================== */
+  useEffect(
+    () => {
+      void loadData();
+    },
+    [loadData]
+  );
 
   const profileChanged =
-    useMemo(() => {
-      if (!account) {
-        return false;
-      }
-
-      return (
-        normalizeName(
-          firstName
-        ) !==
-          account.firstName ||
-        normalizeName(
-          lastName
-        ) !==
-          account.lastName
-      );
-    }, [
-      account,
-      firstName,
-      lastName,
-    ]);
+    useMemo(
+      () =>
+        Boolean(
+          account &&
+            (
+              normalizeName(
+                firstName
+              ) !==
+                account.firstName ||
+              normalizeName(
+                lastName
+              ) !==
+                account.lastName
+            )
+        ),
+      [
+        account,
+        firstName,
+        lastName,
+      ]
+    );
 
   function openProfile() {
     if (!account) {
@@ -747,13 +863,8 @@ export default function AdminMyAccountPage() {
       account.lastName
     );
 
-    setFirstNameError(
-      null
-    );
-
-    setLastNameError(
-      null
-    );
+    setFirstNameError(null);
+    setLastNameError(null);
 
     setView('profile');
   }
@@ -771,30 +882,24 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    const cleanFirstName =
+    const normalizedFirst =
       normalizeName(
         firstName
       );
 
-    const cleanLastName =
+    const normalizedLast =
       normalizeName(
         lastName
       );
 
-    setFirstNameError(
-      null
-    );
+    setFirstNameError(null);
+    setLastNameError(null);
 
-    setLastNameError(
-      null
-    );
-
-    let invalid =
-      false;
+    let invalid = false;
 
     if (
       !validName(
-        cleanFirstName
+        normalizedFirst
       )
     ) {
       setFirstNameError(
@@ -806,7 +911,7 @@ export default function AdminMyAccountPage() {
 
     if (
       !validName(
-        cleanLastName
+        normalizedLast
       )
     ) {
       setLastNameError(
@@ -820,9 +925,7 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setSavingProfile(
-      true
-    );
+    setSavingProfile(true);
 
     try {
       const response =
@@ -833,20 +936,19 @@ export default function AdminMyAccountPage() {
             credentials:
               'same-origin',
             cache: 'no-store',
-
             headers: {
               Accept:
                 'application/json',
               'Content-Type':
                 'application/json',
             },
-
-            body: JSON.stringify({
-              firstName:
-                cleanFirstName,
-              lastName:
-                cleanLastName,
-            }),
+            body:
+              JSON.stringify({
+                firstName:
+                  normalizedFirst,
+                lastName:
+                  normalizedLast,
+              }),
           }
         );
 
@@ -859,7 +961,7 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        handleSessionExpired();
+        sessionExpired();
         return;
       }
 
@@ -873,7 +975,7 @@ export default function AdminMyAccountPage() {
         ) {
           setFirstNameError(
             payload.error ||
-              'Enter a valid first name.'
+              'First name is invalid.'
           );
 
           return;
@@ -885,7 +987,7 @@ export default function AdminMyAccountPage() {
         ) {
           setLastNameError(
             payload.error ||
-              'Enter a valid last name.'
+              'Last name is invalid.'
           );
 
           return;
@@ -897,34 +999,40 @@ export default function AdminMyAccountPage() {
         );
       }
 
-      const updatedAccount =
-        {
-          ...payload.account,
-          avatarFileId:
-            payload.account
-              .avatarFileId ??
-            account.avatarFileId,
-        };
+      const nextAccount: AdminAccount = {
+        ...account,
+        ...payload.account,
+        avatarFileId:
+          payload.account
+            .avatarFileId ??
+          account.avatarFileId,
+        twoFactorRequired:
+          account.twoFactorRequired,
+        twoFactorEnabled:
+          account.twoFactorEnabled,
+      };
 
       setAccount(
-        updatedAccount
+        nextAccount
       );
 
       setFirstName(
-        updatedAccount.firstName
+        nextAccount.firstName
       );
 
       setLastName(
-        updatedAccount.lastName
+        nextAccount.lastName
       );
+
+      setView('overview');
+
+      router.refresh();
 
       showOverlay(
         'success',
         'Profile updated',
-        'Your personal information has been saved.'
+        'Your personal information has been updated.'
       );
-
-      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
@@ -934,35 +1042,26 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not update your profile.'
       );
     } finally {
-      setSavingProfile(
-        false
-      );
+      setSavingProfile(false);
     }
   }
 
-  /* ==========================================================
-     AVATAR
-     ========================================================== */
-
   function openAvatarPicker() {
-    if (avatarBusy) {
-      return;
+    if (!avatarBusy) {
+      avatarInputRef
+        .current
+        ?.click();
     }
-
-    avatarInputRef.current?.click();
   }
 
   async function uploadAvatar(
     event:
       ChangeEvent<HTMLInputElement>
   ) {
-    const input =
-      event.currentTarget;
-
     const file =
-      input.files?.[0];
+      event.target.files?.[0];
 
-    input.value = '';
+    event.target.value = '';
 
     if (
       !file ||
@@ -978,7 +1077,7 @@ export default function AdminMyAccountPage() {
       )
     ) {
       showOverlay(
-        'error',
+        'warning',
         'Unsupported image',
         'Choose a JPEG, PNG or WebP image.'
       );
@@ -987,28 +1086,27 @@ export default function AdminMyAccountPage() {
     }
 
     if (
+      file.size <= 0 ||
       file.size >
-      MAX_AVATAR_BYTES
+        MAX_AVATAR_BYTES
     ) {
       showOverlay(
-        'error',
-        'Image too large',
-        'Your profile photo must be 5 MB or smaller.'
+        'warning',
+        'Image is too large',
+        'Choose an image smaller than 5 MB.'
       );
 
       return;
     }
 
-    setSavingAvatar(
-      true
-    );
+    setSavingAvatar(true);
 
     try {
       const formData =
         new FormData();
 
       formData.append(
-        'avatar',
+        'file',
         file
       );
 
@@ -1037,65 +1135,64 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        handleSessionExpired();
+        sessionExpired();
         return;
       }
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         throw new Error(
           payload.error ||
-            'SaMi could not upload your profile photo.'
+            'SaMi could not update your profile photo.'
         );
       }
 
-      setAccount(
-        current =>
-          current
-            ? {
-                ...current,
-                avatarFileId:
-                  payload.avatarFileId ??
-                  null,
-              }
-            : current
-      );
+      if (
+        payload.avatarFileId
+      ) {
+        setAccount(
+          current =>
+            current
+              ? {
+                  ...current,
+                  avatarFileId:
+                    payload.avatarFileId ??
+                    null,
+                }
+              : current
+        );
+      } else {
+        await loadData();
+      }
+
+      router.refresh();
 
       showOverlay(
         'success',
         'Profile photo updated',
-        'Your new profile photo has been saved.'
+        'Your profile photo has been updated.'
       );
-
-      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
-        'Upload failed',
+        'Photo update failed',
         error instanceof Error
           ? error.message
-          : 'SaMi could not upload your profile photo.'
+          : 'SaMi could not update your profile photo.'
       );
     } finally {
-      setSavingAvatar(
-        false
-      );
+      setSavingAvatar(false);
     }
   }
 
   async function removeAvatar() {
     if (
-      !account ||
-      avatarBusy ||
-      !account.avatarFileId
+      !account?.avatarFileId ||
+      avatarBusy
     ) {
       return;
     }
 
-    setRemovingAvatar(
-      true
-    );
+    setRemovingAvatar(true);
 
     try {
       const response =
@@ -1122,13 +1219,11 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        handleSessionExpired();
+        sessionExpired();
         return;
       }
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         throw new Error(
           payload.error ||
             'SaMi could not remove your profile photo.'
@@ -1142,35 +1237,31 @@ export default function AdminMyAccountPage() {
                 ...current,
                 avatarFileId:
                   null,
+                avatarUrl:
+                  null,
               }
             : current
       );
+
+      router.refresh();
 
       showOverlay(
         'success',
         'Profile photo removed',
         'Your profile photo has been removed.'
       );
-
-      router.refresh();
     } catch (error) {
       showOverlay(
         'error',
-        'Remove failed',
+        'Photo removal failed',
         error instanceof Error
           ? error.message
           : 'SaMi could not remove your profile photo.'
       );
     } finally {
-      setRemovingAvatar(
-        false
-      );
+      setRemovingAvatar(false);
     }
   }
-
-  /* ==========================================================
-     PREFERENCES
-     ========================================================== */
 
   const preferencesChanged =
     useMemo(
@@ -1187,6 +1278,30 @@ export default function AdminMyAccountPage() {
       ]
     );
 
+  function updatePreference<
+    K extends keyof AdminPreferences
+  >(
+    key: K,
+    value:
+      AdminPreferences[K]
+  ) {
+    setDraftPreferences(
+      current => ({
+        ...current,
+        [key]: value,
+      })
+    );
+
+    if (
+      key ===
+      'theme'
+    ) {
+      applyTheme(
+        value as AdminTheme
+      );
+    }
+  }
+
   async function savePreferences(
     event:
       FormEvent<HTMLFormElement>
@@ -1200,9 +1315,7 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setSavingPreferences(
-      true
-    );
+    setSavingPreferences(true);
 
     try {
       const response =
@@ -1213,17 +1326,16 @@ export default function AdminMyAccountPage() {
             credentials:
               'same-origin',
             cache: 'no-store',
-
             headers: {
               Accept:
                 'application/json',
               'Content-Type':
                 'application/json',
             },
-
-            body: JSON.stringify(
-              draftPreferences
-            ),
+            body:
+              JSON.stringify(
+                draftPreferences
+              ),
           }
         );
 
@@ -1236,7 +1348,7 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        handleSessionExpired();
+        sessionExpired();
         return;
       }
 
@@ -1262,10 +1374,12 @@ export default function AdminMyAccountPage() {
         payload.preferences.theme
       );
 
+      setView('overview');
+
       showOverlay(
         'success',
         'Preferences updated',
-        'Your personal preferences have been saved.'
+        'Your preferences have been saved.'
       );
     } catch (error) {
       applyTheme(
@@ -1280,15 +1394,9 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not update your preferences.'
       );
     } finally {
-      setSavingPreferences(
-        false
-      );
+      setSavingPreferences(false);
     }
   }
-
-  /* ==========================================================
-     PASSWORD
-     ========================================================== */
 
   const passwordRules =
     useMemo(
@@ -1359,11 +1467,6 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  function openSecurity() {
-    clearPasswordForm();
-    setView('security');
-  }
-
   function openPassword() {
     clearPasswordForm();
     setView('password');
@@ -1400,8 +1503,7 @@ export default function AdminMyAccountPage() {
       null
     );
 
-    let invalid =
-      false;
+    let invalid = false;
 
     if (!currentPassword) {
       setCurrentPasswordError(
@@ -1472,19 +1574,18 @@ export default function AdminMyAccountPage() {
             credentials:
               'same-origin',
             cache: 'no-store',
-
             headers: {
               Accept:
                 'application/json',
               'Content-Type':
                 'application/json',
             },
-
-            body: JSON.stringify({
-              currentPassword,
-              newPassword,
-              confirmPassword,
-            }),
+            body:
+              JSON.stringify({
+                currentPassword,
+                newPassword,
+                confirmPassword,
+              }),
           }
         );
 
@@ -1497,20 +1598,18 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        handleSessionExpired();
+        sessionExpired();
         return;
       }
 
-      if (
-        !response.ok
-      ) {
+      if (!response.ok) {
         if (
           payload.field ===
           'currentPassword'
         ) {
           setCurrentPasswordError(
             payload.error ||
-              'Your current password is incorrect.'
+              'The current password is incorrect.'
           );
 
           return;
@@ -1522,7 +1621,7 @@ export default function AdminMyAccountPage() {
         ) {
           setNewPasswordError(
             payload.error ||
-              'Enter a valid new password.'
+              'The new password is invalid.'
           );
 
           return;
@@ -1534,7 +1633,7 @@ export default function AdminMyAccountPage() {
         ) {
           setConfirmPasswordError(
             payload.error ||
-              'The password confirmation does not match.'
+              'The password confirmation is invalid.'
           );
 
           return;
@@ -1546,21 +1645,19 @@ export default function AdminMyAccountPage() {
         );
       }
 
-      clearPasswordForm();
-
       const revoked =
         payload.otherSessionsRevoked ??
         0;
+
+      clearPasswordForm();
+
+      setView('security');
 
       showOverlay(
         'success',
         'Password changed',
         revoked > 0
-          ? `Your password has been changed and ${revoked} other administrator ${
-              revoked === 1
-                ? 'session has'
-                : 'sessions have'
-            } been signed out.`
+          ? `Your password has been changed. ${revoked} other signed-in session${revoked === 1 ? '' : 's'} were revoked.`
           : 'Your password has been changed successfully.'
       );
     } catch (error) {
@@ -1576,38 +1673,610 @@ export default function AdminMyAccountPage() {
     }
   }
 
-  /* ==========================================================
-     OVERLAY
-     ========================================================== */
+  function clearTwoFactorAction() {
+    setTwoFactorSetup(null);
+    setTwoFactorCode('');
+    setTwoFactorCodeError(null);
+    setRecoveryCodes([]);
+    setRecoveryCopied(false);
+  }
+
+  async function loadTwoFactor() {
+    setLoadingTwoFactor(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/two-factor',
+          {
+            method: 'GET',
+            credentials:
+              'same-origin',
+            cache: 'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        sessionExpired();
+        return;
+      }
+
+      if (
+        !response.ok ||
+        !payload.twoFactor
+      ) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not load your security settings.'
+        );
+      }
+
+      setTwoFactor(
+        payload.twoFactor
+      );
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                twoFactorEnabled:
+                  payload
+                    .twoFactor!
+                    .enabled,
+                twoFactorRequired:
+                  payload
+                    .twoFactor!
+                    .required,
+              }
+            : current
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Security settings unavailable',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not load your security settings.'
+      );
+    } finally {
+      setLoadingTwoFactor(false);
+    }
+  }
+
+  async function openTwoFactor() {
+    clearTwoFactorAction();
+
+    setView(
+      'two-factor'
+    );
+
+    await loadTwoFactor();
+  }
+
+  async function twoFactorRequest(
+    body: Record<
+      string,
+      unknown
+    >
+  ) {
+    const response =
+      await fetch(
+        '/api/admin/account/two-factor',
+        {
+          method: 'POST',
+          credentials:
+            'same-origin',
+          cache: 'no-store',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify(
+              body
+            ),
+        }
+      );
+
+    const payload =
+      await readPayload(
+        response
+      );
+
+    if (
+      response.status ===
+      401
+    ) {
+      sessionExpired();
+
+      throw new Error(
+        'SESSION_EXPIRED'
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        payload.error ||
+          'SaMi could not complete this security action.'
+      );
+    }
+
+    return payload;
+  }
+
+  async function startTwoFactorSetup() {
+    if (twoFactorBusy) {
+      return;
+    }
+
+    setTwoFactorBusy(true);
+    setTwoFactorCode('');
+    setTwoFactorCodeError(null);
+    setRecoveryCodes([]);
+
+    try {
+      const payload =
+        await twoFactorRequest({
+          action:
+            'start_setup',
+        });
+
+      if (!payload.setup) {
+        throw new Error(
+          'SaMi could not start authenticator setup.'
+        );
+      }
+
+      setTwoFactorSetup(
+        payload.setup
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          'SESSION_EXPIRED'
+      ) {
+        return;
+      }
+
+      showOverlay(
+        'error',
+        'Setup could not start',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not start authenticator setup.'
+      );
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function confirmTwoFactorSetup(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (twoFactorBusy) {
+      return;
+    }
+
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
+
+    setTwoFactorCodeError(
+      null
+    );
+
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorCodeError(
+        'Enter the 6-digit code from your authenticator app.'
+      );
+
+      return;
+    }
+
+    setTwoFactorBusy(true);
+
+    try {
+      const payload =
+        await twoFactorRequest({
+          action:
+            'confirm_setup',
+          code,
+        });
+
+      const codes =
+        payload.recoveryCodes ??
+        [];
+
+      setRecoveryCodes(
+        codes
+      );
+
+      setTwoFactorSetup(
+        null
+      );
+
+      setTwoFactorCode('');
+
+      await loadTwoFactor();
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                twoFactorEnabled:
+                  true,
+              }
+            : current
+      );
+
+      showOverlay(
+        'success',
+        'Two-factor authentication enabled',
+        'Your authenticator app is now protecting your administrator account.'
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          'SESSION_EXPIRED'
+      ) {
+        return;
+      }
+
+      setTwoFactorCodeError(
+        error instanceof Error
+          ? error.message
+          : 'The verification code could not be confirmed.'
+      );
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function disableTwoFactor(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (twoFactorBusy) {
+      return;
+    }
+
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
+
+    setTwoFactorCodeError(
+      null
+    );
+
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorCodeError(
+        'Enter the 6-digit code from your authenticator app.'
+      );
+
+      return;
+    }
+
+    setTwoFactorBusy(true);
+
+    try {
+      await twoFactorRequest({
+        action:
+          'disable',
+        code,
+      });
+
+      setTwoFactorCode('');
+
+      await loadTwoFactor();
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                twoFactorEnabled:
+                  false,
+              }
+            : current
+      );
+
+      showOverlay(
+        'success',
+        'Two-factor authentication disabled',
+        'Authenticator protection has been removed from your account.'
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          'SESSION_EXPIRED'
+      ) {
+        return;
+      }
+
+      setTwoFactorCodeError(
+        error instanceof Error
+          ? error.message
+          : 'Two-factor authentication could not be disabled.'
+      );
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function regenerateRecoveryCodes(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (twoFactorBusy) {
+      return;
+    }
+
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
+
+    setTwoFactorCodeError(
+      null
+    );
+
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorCodeError(
+        'Enter the 6-digit code from your authenticator app.'
+      );
+
+      return;
+    }
+
+    setTwoFactorBusy(true);
+
+    try {
+      const payload =
+        await twoFactorRequest({
+          action:
+            'regenerate_recovery_codes',
+          code,
+        });
+
+      setRecoveryCodes(
+        payload.recoveryCodes ??
+        []
+      );
+
+      setTwoFactorCode('');
+
+      await loadTwoFactor();
+
+      showOverlay(
+        'success',
+        'Recovery codes replaced',
+        'Your previous recovery codes can no longer be used.'
+      );
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message ===
+          'SESSION_EXPIRED'
+      ) {
+        return;
+      }
+
+      setTwoFactorCodeError(
+        error instanceof Error
+          ? error.message
+          : 'New recovery codes could not be generated.'
+      );
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function copyRecoveryCodes() {
+    if (
+      recoveryCodes.length ===
+      0
+    ) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        recoveryCodes.join(
+          '\n'
+        )
+      );
+
+      setRecoveryCopied(
+        true
+      );
+
+      showOverlay('success', 'Recovery codes copied', 'Your recovery codes have been copied. Store them somewhere safe.');
+
+      window.setTimeout(
+        () =>
+          setRecoveryCopied(
+            false
+          ),
+        2000
+      );
+    } catch {
+      showOverlay(
+        'warning',
+        'Could not copy codes',
+        'Select and save your recovery codes manually.'
+      );
+    }
+  }
+
+  async function openSessions() {
+    setView('sessions');
+    setLoadingSessions(true);
+
+    try {
+      const response = await fetch('/api/admin/account/sessions', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await readPayload(response);
+
+      if (response.status === 401) {
+        sessionExpired();
+        return;
+      }
+      if (!response.ok || !Array.isArray(payload.sessions)) {
+        throw new Error(payload.error || 'SaMi could not load your active sessions.');
+      }
+      setSessions(payload.sessions);
+    } catch (error) {
+      showOverlay('error', 'Sessions unavailable', error instanceof Error ? error.message : 'SaMi could not load your active sessions.');
+    } finally {
+      setLoadingSessions(false);
+    }
+  }
+
+  function confirmRevokeOtherSessions() {
+    const others = sessions.filter(item => !item.current).length;
+    if (!others || revokingSessions) return;
+
+    showOverlay(
+      'warning',
+      'Sign out other sessions?',
+      'Every other active administrator session will be signed out. This device will remain signed in.',
+      {
+        label: 'Sign out other sessions',
+        onClick: () => {
+          closeOverlay();
+          void revokeOtherSessions();
+        },
+      },
+      { label: 'Cancel', onClick: closeOverlay }
+    );
+  }
+
+  async function revokeOtherSessions() {
+    if (revokingSessions) return;
+    setRevokingSessions(true);
+
+    try {
+      const response = await fetch('/api/admin/account/sessions', {
+        method: 'DELETE',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await readPayload(response);
+
+      if (response.status === 401) {
+        sessionExpired();
+        return;
+      }
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error || 'SaMi could not sign out your other sessions.');
+      }
+
+      setSessions(current => current.filter(item => item.current));
+      const count = payload.revokedCount ?? 0;
+      showOverlay('success', 'Other sessions signed out', count === 1 ? '1 other administrator session has been signed out.' : `${count} other administrator sessions have been signed out.`);
+    } catch (error) {
+      showOverlay('error', 'Sign out failed', error instanceof Error ? error.message : 'SaMi could not sign out your other sessions.');
+    } finally {
+      setRevokingSessions(false);
+    }
+  }
+
+  async function openSecurityActivity() {
+    setView('activity');
+    setLoadingActivity(true);
+
+    try {
+      const response = await fetch('/api/admin/account/security-activity', {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+      });
+      const payload = await readPayload(response);
+
+      if (response.status === 401) {
+        sessionExpired();
+        return;
+      }
+      if (!response.ok || !Array.isArray(payload.activity)) {
+        throw new Error(payload.error || 'SaMi could not load your security activity.');
+      }
+      setSecurityActivity(payload.activity);
+    } catch (error) {
+      showOverlay('error', 'Security activity unavailable', error instanceof Error ? error.message : 'SaMi could not load your security activity.');
+    } finally {
+      setLoadingActivity(false);
+    }
+  }
 
   const overlayElement = (
     <SaMiOverlay
       open={overlay.open}
       type={overlay.type}
       title={overlay.title}
-      message={overlay.message}
+      message={
+        overlay.message
+      }
       primaryAction={
-        overlay.title ===
-        'Administrator session expired'
+        overlay.primaryAction ??
+        (overlay.title === 'Administrator session expired'
           ? {
-              label:
-                'Sign in again',
-
+              label: 'Sign in again',
               onClick: () => {
-                router.replace(
-                  '/admin/login'
-                );
+                router.replace('/admin/login');
               },
             }
-          : undefined
+          : undefined)
       }
+      secondaryAction={overlay.secondaryAction}
       onClose={closeOverlay}
     />
   );
-
-  /* ==========================================================
-     LOADING
-     ========================================================== */
 
   if (loading) {
     return (
@@ -1620,16 +2289,12 @@ export default function AdminMyAccountPage() {
           </p>
 
           <p className="mt-1 text-sm text-zinc-500">
-            Preparing your administrator settings.
+            Preparing your settings.
           </p>
         </div>
       </div>
     );
   }
-
-  /* ==========================================================
-     LOAD ERROR
-     ========================================================== */
 
   if (
     loadError ||
@@ -1638,17 +2303,15 @@ export default function AdminMyAccountPage() {
     return (
       <>
         <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8 shadow-sm dark:border-red-950 dark:bg-zinc-900">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400">
-            <AlertTriangle className="h-6 w-6" />
-          </div>
+          <AlertTriangle className="h-8 w-8 text-red-500" />
 
-          <h2 className="mt-5 text-xl font-bold text-zinc-950 dark:text-white">
+          <h2 className="mt-5 text-xl font-bold">
             Account unavailable
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-zinc-500">
+          <p className="mt-2 text-sm text-zinc-500">
             {loadError ||
-              'SaMi could not load your administrator account.'}
+              'SaMi could not load your account.'}
           </p>
 
           <button
@@ -1668,17 +2331,151 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  /* ==========================================================
-     SECURITY VIEW
-     ========================================================== */
-
   if (view === 'security') {
     return (
       <>
         <div className="mx-auto w-full max-w-4xl">
+          <BackButton label="My Account" onClick={() => setView('overview')} />
+
+          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <SectionHeader
+              icon={<ShieldCheck className="h-5 w-5" />}
+              title="Password & security"
+              description="Manage your password, sign-in protection, sessions and recent security activity."
+            />
+
+            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              <SettingsRow
+                icon={<LockKeyhole className="h-5 w-5" />}
+                title="Password"
+                description="Change the password you use to sign in."
+                onClick={openPassword}
+              />
+              <SettingsRow
+                icon={<ShieldCheck className="h-5 w-5" />}
+                title="Two-factor authentication"
+                description={account.twoFactorEnabled ? 'Authenticator protection is enabled.' : account.twoFactorRequired ? 'Authenticator protection is required.' : 'Add an extra layer of protection to your account.'}
+                onClick={() => void openTwoFactor()}
+                trailing={account.twoFactorEnabled ? <span className="mr-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Enabled</span> : undefined}
+              />
+              <SettingsRow
+                icon={<Monitor className="h-5 w-5" />}
+                title="Sessions & devices"
+                description="Review devices currently signed in to your administrator account."
+                onClick={() => void openSessions()}
+              />
+              <SettingsRow
+                icon={<BadgeCheck className="h-5 w-5" />}
+                title="Security activity"
+                description="Review recent sign-ins and security changes."
+                onClick={() => void openSecurityActivity()}
+              />
+            </div>
+          </section>
+        </div>
+        {overlayElement}
+      </>
+    );
+  }
+
+  if (view === 'sessions') {
+    const otherSessions = sessions.filter(item => !item.current);
+    return (
+      <>
+        <div className="mx-auto w-full max-w-4xl">
+          <BackButton label="Password & security" onClick={() => setView('security')} disabled={revokingSessions} />
+          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <SectionHeader icon={<Monitor className="h-5 w-5" />} title="Sessions & devices" description="Review devices currently signed in to your administrator account." />
+            {loadingSessions ? (
+              <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-zinc-500" /></div>
+            ) : (
+              <div className="p-6 sm:p-7">
+                <div className="space-y-3">
+                  {sessions.length === 0 ? (
+                    <p className="rounded-2xl border border-zinc-200 p-5 text-sm text-zinc-500 dark:border-zinc-800">No active sessions were found.</p>
+                  ) : sessions.map(item => (
+                    <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                      <IconBox>{item.deviceType?.toLowerCase().includes('mobile') ? <Smartphone className="h-5 w-5" /> : <Monitor className="h-5 w-5" />}</IconBox>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{sessionDeviceLabel(item)}</p>
+                          {item.current && <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">Current</span>}
+                        </div>
+                        <p className="mt-1 text-sm text-zinc-500">Last active {formatAccountDate(item.lastActivityAt)}</p>
+                        <p className="mt-1 text-xs text-zinc-400">{item.ipAddress ? `IP ${item.ipAddress} · ` : ''}Signed in {formatAccountDate(item.createdAt)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {otherSessions.length > 0 && (
+                  <div className="mt-6 flex justify-end">
+                    <button type="button" disabled={revokingSessions} onClick={confirmRevokeOtherSessions} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50">
+                      {revokingSessions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Monitor className="h-4 w-4" />}
+                      Sign out other sessions
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+        </div>
+        {overlayElement}
+      </>
+    );
+  }
+
+  if (view === 'activity') {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-4xl">
+          <BackButton label="Password & security" onClick={() => setView('security')} />
+          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <SectionHeader icon={<BadgeCheck className="h-5 w-5" />} title="Security activity" description="Review recent sign-ins and security changes on your administrator account." />
+            {loadingActivity ? (
+              <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-zinc-500" /></div>
+            ) : securityActivity.length === 0 ? (
+              <div className="p-10 text-center text-sm text-zinc-500">No recent security activity was found.</div>
+            ) : (
+              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                {securityActivity.map(item => (
+                  <div key={`${item.source}-${item.id}`} className="flex items-start gap-4 px-6 py-5">
+                    <IconBox>{item.successful ? <ShieldCheck className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5 text-red-500" />}</IconBox>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">{securityActivityTitle(item)}</p>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${item.successful ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'}`}>{item.successful ? 'Successful' : 'Failed'}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-zinc-500">{formatAccountDate(item.createdAt)}</p>
+                      {item.ipAddress && <p className="mt-1 text-xs text-zinc-400">IP {item.ipAddress}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+        {overlayElement}
+      </>
+    );
+  }
+
+  if (
+    view ===
+    'two-factor'
+  ) {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-4xl">
           <BackButton
-            onClick={() =>
-              setView('overview')
+            label="Password & security"
+            onClick={() => {
+              clearTwoFactorAction();
+              setView(
+                'security'
+              );
+            }}
+            disabled={
+              twoFactorBusy
             }
           />
 
@@ -1687,56 +2484,314 @@ export default function AdminMyAccountPage() {
               icon={
                 <ShieldCheck className="h-5 w-5" />
               }
-              title="Password & security"
-              description="Manage your sign-in credentials and administrator account protection."
+              title="Two-factor authentication"
+              description="Add an authenticator app as an extra layer of sign-in protection."
             />
 
-            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              <SettingsRow
-                icon={
-                  <KeyRound className="h-5 w-5" />
-                }
-                title="Password"
-                description="Change your sign-in password."
-                onClick={
-                  openPassword
-                }
-              />
+            {loadingTwoFactor ? (
+              <div className="flex min-h-64 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+              </div>
+            ) : (
+              <div className="p-6 sm:p-7">
+                <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800 sm:flex-row sm:items-center">
+                  <IconBox>
+                    <Smartphone className="h-5 w-5" />
+                  </IconBox>
 
-              <div className="flex items-center gap-4 px-6 py-5">
-                <IconBox>
-                  <ShieldCheck className="h-5 w-5" />
-                </IconBox>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-zinc-950 dark:text-white">
+                      Authenticator app
+                    </p>
 
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-zinc-950 dark:text-white">
-                    Two-factor authentication
-                  </p>
+                    <p className="mt-1 text-sm text-zinc-500">
+                      {twoFactor?.enabled
+                        ? 'Use a verification code from your authenticator app when signing in.'
+                        : 'Use time-based verification codes from an authenticator app.'}
+                    </p>
+                  </div>
 
-                  <p className="mt-1 text-sm text-zinc-500">
-                    {account.twoFactorEnabled
-                      ? 'Two-factor authentication is enabled for this administrator account.'
-                      : account.twoFactorRequired
-                        ? 'Two-factor authentication is required for this administrator account.'
-                        : 'Add an extra layer of protection to your administrator account.'}
-                  </p>
+                  <StatusBadge
+                    enabled={
+                      Boolean(
+                        twoFactor?.enabled
+                      )
+                    }
+                    required={
+                      Boolean(
+                        twoFactor?.required
+                      )
+                    }
+                  />
                 </div>
 
-                <span
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-                    account.twoFactorEnabled
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                      : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
-                  }`}
-                >
-                  {account.twoFactorEnabled
-                    ? 'Enabled'
-                    : account.twoFactorRequired
-                      ? 'Required'
-                      : 'Not enabled'}
-                </span>
+                {twoFactor?.enabled && (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <SecurityInfo
+                      label="Status"
+                      value="Enabled"
+                    />
+
+                    <SecurityInfo
+                      label="Recovery codes"
+                      value={`${twoFactor.recoveryCodesRemaining} remaining`}
+                    />
+
+                    <SecurityInfo
+                      label="Last used"
+                      value={
+                        formatSecurityDate(
+                          twoFactor.lastUsedAt
+                        )
+                      }
+                    />
+                  </div>
+                )}
+
+                {!twoFactor?.enabled &&
+                  !twoFactorSetup &&
+                  recoveryCodes.length ===
+                    0 && (
+                    <div className="mt-6">
+                      <button
+                        type="button"
+                        disabled={
+                          twoFactorBusy
+                        }
+                        onClick={() =>
+                          void startTwoFactorSetup()
+                        }
+                        className={
+                          primaryButton()
+                        }
+                      >
+                        {twoFactorBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ShieldCheck className="h-4 w-4" />
+                        )}
+
+                        Set up authenticator
+                      </button>
+                    </div>
+                  )}
+
+                {twoFactorSetup && (
+                  <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                    <p className="font-semibold text-zinc-950 dark:text-white">
+                      Connect your authenticator
+                    </p>
+
+                    <p className="mt-2 text-sm leading-6 text-zinc-500">
+                      Add a new account in your authenticator app, then enter the key below.
+                    </p>
+
+                    <div className="mt-4 rounded-xl bg-zinc-100 p-4 dark:bg-zinc-950">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                        Setup key
+                      </p>
+
+                      <p className="mt-2 break-all font-mono text-sm font-bold tracking-wider text-zinc-950 dark:text-white">
+                        {
+                          twoFactorSetup.secret
+                        }
+                      </p>
+                    </div>
+
+                    <form
+                      onSubmit={
+                        confirmTwoFactorSetup
+                      }
+                      className="mt-5"
+                    >
+                      <VerificationField
+                        value={
+                          twoFactorCode
+                        }
+                        error={
+                          twoFactorCodeError
+                        }
+                        disabled={
+                          twoFactorBusy
+                        }
+                        onChange={
+                          setTwoFactorCode
+                        }
+                      />
+
+                      <div className="mt-5 flex flex-wrap justify-end gap-3">
+                        <button
+                          type="button"
+                          disabled={
+                            twoFactorBusy
+                          }
+                          onClick={
+                            clearTwoFactorAction
+                          }
+                          className={
+                            secondaryButton()
+                          }
+                        >
+                          Cancel
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            twoFactorBusy
+                          }
+                          className={
+                            primaryButton()
+                          }
+                        >
+                          {twoFactorBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Check className="h-4 w-4" />
+                          )}
+
+                          Verify and enable
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                )}
+
+                {recoveryCodes.length >
+                  0 && (
+                  <RecoveryCodes
+                    codes={
+                      recoveryCodes
+                    }
+                    copied={
+                      recoveryCopied
+                    }
+                    onCopy={() =>
+                      void copyRecoveryCodes()
+                    }
+                    onDone={() => {
+                      setRecoveryCodes(
+                        []
+                      );
+
+                      setTwoFactorCode(
+                        ''
+                      );
+
+                      void loadTwoFactor();
+                    }}
+                  />
+                )}
+
+                {twoFactor?.enabled &&
+                  recoveryCodes.length ===
+                    0 && (
+                    <div className="mt-6 space-y-5">
+                      <section className="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+                        <p className="font-semibold">
+                          Replace recovery codes
+                        </p>
+
+                        <p className="mt-1 text-sm leading-6 text-zinc-500">
+                          Generate a new set if your existing recovery codes are lost or exposed. Your old codes will stop working.
+                        </p>
+
+                        <form
+                          onSubmit={
+                            regenerateRecoveryCodes
+                          }
+                          className="mt-5"
+                        >
+                          <VerificationField
+                            value={
+                              twoFactorCode
+                            }
+                            error={
+                              twoFactorCodeError
+                            }
+                            disabled={
+                              twoFactorBusy
+                            }
+                            onChange={
+                              setTwoFactorCode
+                            }
+                          />
+
+                          <button
+                            type="submit"
+                            disabled={
+                              twoFactorBusy
+                            }
+                            className={`${secondaryButton()} mt-4`}
+                          >
+                            {twoFactorBusy ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <KeyRound className="h-4 w-4" />
+                            )}
+
+                            Generate new recovery codes
+                          </button>
+                        </form>
+                      </section>
+
+                      <section className="rounded-2xl border border-red-200 p-5 dark:border-red-950">
+                        <p className="font-semibold text-red-700 dark:text-red-400">
+                          Turn off two-factor authentication
+                        </p>
+
+                        <p className="mt-1 text-sm leading-6 text-zinc-500">
+                          Your account will no longer require authenticator codes when signing in.
+                        </p>
+
+                        {twoFactor.required ? (
+                          <p className="mt-4 rounded-xl bg-zinc-100 p-4 text-sm font-medium text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300">
+                            Two-factor authentication is required for this account and cannot be turned off.
+                          </p>
+                        ) : (
+                          <form
+                            onSubmit={
+                              disableTwoFactor
+                            }
+                            className="mt-5"
+                          >
+                            <VerificationField
+                              value={
+                                twoFactorCode
+                              }
+                              error={
+                                twoFactorCodeError
+                              }
+                              disabled={
+                                twoFactorBusy
+                              }
+                              onChange={
+                                setTwoFactorCode
+                              }
+                            />
+
+                            <button
+                              type="submit"
+                              disabled={
+                                twoFactorBusy
+                              }
+                              className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+                            >
+                              {twoFactorBusy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ShieldCheck className="h-4 w-4" />
+                              )}
+
+                              Turn off
+                            </button>
+                          </form>
+                        )}
+                      </section>
+                    </div>
+                  )}
               </div>
-            </div>
+            )}
           </section>
         </div>
 
@@ -1745,15 +2800,15 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  /* ==========================================================
-     PASSWORD VIEW
-     ========================================================== */
-
-  if (view === 'password') {
+  if (
+    view ===
+    'password'
+  ) {
     return (
       <>
         <div className="mx-auto w-full max-w-4xl">
           <BackButton
+            label="Password & security"
             onClick={
               closePassword
             }
@@ -1762,13 +2817,17 @@ export default function AdminMyAccountPage() {
             }
           />
 
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+
+          <section
+            id="change-password"
+            className="mt-4 scroll-mt-6 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+          >
             <SectionHeader
               icon={
-                <KeyRound className="h-5 w-5" />
+                <LockKeyhole className="h-5 w-5" />
               }
-              title="Password"
-              description="Change the password you use to sign in to your administrator account."
+              title="Change password"
+              description="Choose a strong password you do not use elsewhere."
             />
 
             <form
@@ -1777,22 +2836,6 @@ export default function AdminMyAccountPage() {
               }
               className="p-6 sm:p-7"
             >
-              <div className="mb-7 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-950 dark:bg-blue-950/30">
-                <div className="flex items-start gap-3">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
-
-                  <div>
-                    <p className="text-sm font-bold text-blue-950 dark:text-blue-200">
-                      Administrator security
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">
-                      Changing your password keeps this session active and revokes your other administrator sessions.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
               <div className="space-y-5">
                 <PasswordField
                   label="Current password"
@@ -1953,7 +2996,6 @@ export default function AdminMyAccountPage() {
               </div>
             </form>
           </section>
-
         </div>
 
         {overlayElement}
@@ -1961,11 +3003,10 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  /* ==========================================================
-     PROFILE VIEW
-     ========================================================== */
-
-  if (view === 'profile') {
+  if (
+    view ===
+    'profile'
+  ) {
     return (
       <>
         <div className="mx-auto w-full max-w-4xl">
@@ -1987,7 +3028,7 @@ export default function AdminMyAccountPage() {
                 <UserRound className="h-5 w-5" />
               }
               title="Personal information"
-              description="Manage your administrator identity and profile photo."
+              description="Manage your name and profile photo."
             />
 
             <div className="border-b border-zinc-200 p-6 dark:border-zinc-800 sm:p-7">
@@ -2010,7 +3051,7 @@ export default function AdminMyAccountPage() {
                 />
 
                 <div className="flex-1">
-                  <p className="text-sm font-bold text-zinc-950 dark:text-white">
+                  <p className="text-sm font-bold">
                     Profile photo
                   </p>
 
@@ -2054,11 +3095,9 @@ export default function AdminMyAccountPage() {
                         <Upload className="h-4 w-4" />
                       )}
 
-                      {savingAvatar
-                        ? 'Uploading'
-                        : account.avatarFileId
-                          ? 'Change photo'
-                          : 'Upload photo'}
+                      {account.avatarFileId
+                        ? 'Change photo'
+                        : 'Upload photo'}
                     </button>
 
                     {account.avatarFileId && (
@@ -2070,14 +3109,9 @@ export default function AdminMyAccountPage() {
                         onClick={() =>
                           void removeAvatar()
                         }
-                        className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                        className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400"
                       >
-                        {removingAvatar ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-
+                        <Trash2 className="h-4 w-4" />
                         Remove
                       </button>
                     )}
@@ -2094,7 +3128,7 @@ export default function AdminMyAccountPage() {
             >
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                  <label className="text-sm font-semibold">
                     First name
                   </label>
 
@@ -2105,22 +3139,12 @@ export default function AdminMyAccountPage() {
                     disabled={
                       savingProfile
                     }
-                    maxLength={100}
-                    autoComplete="given-name"
                     onChange={
-                      event => {
+                      event =>
                         setFirstName(
-                          event.target.value
-                        );
-
-                        if (
-                          firstNameError
-                        ) {
-                          setFirstNameError(
-                            null
-                          );
-                        }
-                      }
+                          event.target
+                            .value
+                        )
                     }
                     className={
                       inputClass(
@@ -2139,7 +3163,7 @@ export default function AdminMyAccountPage() {
                 </Field>
 
                 <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                  <label className="text-sm font-semibold">
                     Last name
                   </label>
 
@@ -2150,22 +3174,12 @@ export default function AdminMyAccountPage() {
                     disabled={
                       savingProfile
                     }
-                    maxLength={100}
-                    autoComplete="family-name"
                     onChange={
-                      event => {
+                      event =>
                         setLastName(
-                          event.target.value
-                        );
-
-                        if (
-                          lastNameError
-                        ) {
-                          setLastNameError(
-                            null
-                          );
-                        }
-                      }
+                          event.target
+                            .value
+                        )
                     }
                     className={
                       inputClass(
@@ -2184,52 +3198,20 @@ export default function AdminMyAccountPage() {
                 </Field>
               </div>
 
-              <div className="mt-6 grid gap-5 sm:grid-cols-2">
-                <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                    Email
-                  </label>
+              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-950/60">
+                <div className="flex gap-3">
+                  <Mail className="mt-0.5 h-5 w-5 text-zinc-400" />
 
-                  <div className="relative">
-                    <input
-                      value={
-                        account.email
-                      }
-                      readOnly
-                      className={`${inputClass()} pr-12`}
-                    />
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {account.email}
+                    </p>
 
-                    {account.emailVerified && (
-                      <BadgeCheck className="absolute right-4 top-1/2 mt-1 h-5 w-5 -translate-y-1/2 text-emerald-500" />
-                    )}
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Your sign-in email uses a separate verification process.
+                    </p>
                   </div>
-
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Email changes are managed separately.
-                  </p>
-                </Field>
-
-                <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                    Role
-                  </label>
-
-                  <input
-                    value={
-                      roleLabel(
-                        account.role
-                      )
-                    }
-                    readOnly
-                    className={
-                      inputClass()
-                    }
-                  />
-
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Administrator roles are controlled by platform access management.
-                  </p>
-                </Field>
+                </div>
               </div>
 
               <FormActions
@@ -2239,27 +3221,11 @@ export default function AdminMyAccountPage() {
                 changed={
                   profileChanged
                 }
-                onCancel={() => {
-                  setFirstName(
-                    account.firstName
-                  );
-
-                  setLastName(
-                    account.lastName
-                  );
-
-                  setFirstNameError(
-                    null
-                  );
-
-                  setLastNameError(
-                    null
-                  );
-
+                onCancel={() =>
                   setView(
                     'overview'
-                  );
-                }}
+                  )
+                }
               />
             </form>
           </section>
@@ -2270,25 +3236,15 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  /* ==========================================================
-     PREFERENCES VIEW
-     ========================================================== */
-
   if (
     view ===
     'preferences'
   ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-4xl">
+        <div className="mx-auto w-full max-w-5xl">
           <BackButton
             onClick={() => {
-              if (
-                savingPreferences
-              ) {
-                return;
-              }
-
               setDraftPreferences({
                 ...preferences,
               });
@@ -2310,382 +3266,324 @@ export default function AdminMyAccountPage() {
             onSubmit={
               savePreferences
             }
+            className="mt-4 space-y-5"
           >
-            <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <SectionHeader
                 icon={
                   <Settings2 className="h-5 w-5" />
                 }
                 title="Preferences"
-                description="Personalize how the administrator workspace appears and formats information."
+                description="Personalize your workspace."
               />
 
-              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                <PreferenceBlock
-                  icon={
-                    <Sun className="h-5 w-5 text-zinc-500" />
-                  }
-                  title="Appearance"
-                >
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <ThemeOption
-                      active={
-                        draftPreferences.theme ===
+              <div className="p-6 sm:p-7">
+                <p className="text-sm font-semibold">
+                  Appearance
+                </p>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'system'
+                    }
+                    icon={
+                      <Monitor className="h-5 w-5" />
+                    }
+                    title="System"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
                         'system'
-                      }
-                      icon={
-                        <Monitor className="h-5 w-5" />
-                      }
-                      title="System"
-                      onClick={() => {
-                        const next = {
-                          ...draftPreferences,
-                          theme:
-                            'system' as const,
-                        };
+                      )
+                    }
+                  />
 
-                        setDraftPreferences(
-                          next
-                        );
-
-                        applyTheme(
-                          next.theme
-                        );
-                      }}
-                    />
-
-                    <ThemeOption
-                      active={
-                        draftPreferences.theme ===
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'light'
+                    }
+                    icon={
+                      <Sun className="h-5 w-5" />
+                    }
+                    title="Light"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
                         'light'
-                      }
-                      icon={
-                        <Sun className="h-5 w-5" />
-                      }
-                      title="Light"
-                      onClick={() => {
-                        const next = {
-                          ...draftPreferences,
-                          theme:
-                            'light' as const,
-                        };
+                      )
+                    }
+                  />
 
-                        setDraftPreferences(
-                          next
-                        );
-
-                        applyTheme(
-                          next.theme
-                        );
-                      }}
-                    />
-
-                    <ThemeOption
-                      active={
-                        draftPreferences.theme ===
+                  <ThemeOption
+                    active={
+                      draftPreferences.theme ===
+                      'dark'
+                    }
+                    icon={
+                      <Moon className="h-5 w-5" />
+                    }
+                    title="Dark"
+                    onClick={() =>
+                      updatePreference(
+                        'theme',
                         'dark'
-                      }
-                      icon={
-                        <Moon className="h-5 w-5" />
-                      }
-                      title="Dark"
-                      onClick={() => {
-                        const next = {
-                          ...draftPreferences,
-                          theme:
-                            'dark' as const,
-                        };
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </section>
 
-                        setDraftPreferences(
-                          next
-                        );
-
-                        applyTheme(
-                          next.theme
-                        );
-                      }}
-                    />
-                  </div>
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="grid divide-y divide-zinc-200 dark:divide-zinc-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
+                <PreferenceBlock
+                  icon={
+                    <Languages className="h-5 w-5" />
+                  }
+                  title="Language & locale"
+                >
+                  <select
+                    value={
+                      draftPreferences.locale
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'locale',
+                          event.target
+                            .value
+                        )
+                    }
+                    className={
+                      selectClass()
+                    }
+                  >
+                    {LOCALES.map(
+                      item => (
+                        <option
+                          key={
+                            item.value
+                          }
+                          value={
+                            item.value
+                          }
+                        >
+                          {item.label}
+                        </option>
+                      )
+                    )}
+                  </select>
                 </PreferenceBlock>
 
                 <PreferenceBlock
                   icon={
-                    <Languages className="h-5 w-5 text-zinc-500" />
+                    <Globe2 className="h-5 w-5" />
                   }
-                  title="Language & region"
+                  title="Time zone"
                 >
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        Language
-                      </label>
-
-                      <select
-                        value={
-                          draftPreferences.locale
-                        }
-                        onChange={
-                          event =>
-                            setDraftPreferences(
-                              current => ({
-                                ...current,
-                                locale:
-                                  event
-                                    .target
-                                    .value,
-                              })
-                            )
-                        }
-                        className={
-                          selectClass()
-                        }
-                      >
-                        {LOCALES.map(
-                          locale => (
-                            <option
-                              key={
-                                locale.value
-                              }
-                              value={
-                                locale.value
-                              }
-                            >
-                              {
-                                locale.label
-                              }
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </Field>
-
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        Time zone
-                      </label>
-
-                      <select
-                        value={
-                          draftPreferences.timezone
-                        }
-                        onChange={
-                          event =>
-                            setDraftPreferences(
-                              current => ({
-                                ...current,
-                                timezone:
-                                  event
-                                    .target
-                                    .value,
-                              })
-                            )
-                        }
-                        className={
-                          selectClass()
-                        }
-                      >
-                        {TIMEZONES.map(
-                          timezone => (
-                            <option
-                              key={
-                                timezone
-                              }
-                              value={
-                                timezone
-                              }
-                            >
-                              {timezone.replace(
-                                /_/g,
-                                ' '
-                              )}
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </Field>
-                  </div>
-                </PreferenceBlock>
-
-                <PreferenceBlock
-                  icon={
-                    <CalendarDays className="h-5 w-5 text-zinc-500" />
-                  }
-                  title="Date & time"
-                >
-                  <div className="grid gap-5 sm:grid-cols-2">
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        Date format
-                      </label>
-
-                      <select
-                        value={
-                          draftPreferences.dateFormat
-                        }
-                        onChange={
-                          event =>
-                            setDraftPreferences(
-                              current => ({
-                                ...current,
-                                dateFormat:
-                                  event
-                                    .target
-                                    .value as AdminDateFormat,
-                              })
-                            )
-                        }
-                        className={
-                          selectClass()
-                        }
-                      >
-                        <option value="DD/MM/YYYY">
-                          DD/MM/YYYY
-                        </option>
-
-                        <option value="MM/DD/YYYY">
-                          MM/DD/YYYY
-                        </option>
-
-                        <option value="YYYY-MM-DD">
-                          YYYY-MM-DD
-                        </option>
-                      </select>
-                    </Field>
-
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        Time format
-                      </label>
-
-                      <select
-                        value={
-                          draftPreferences.timeFormat
-                        }
-                        onChange={
-                          event =>
-                            setDraftPreferences(
-                              current => ({
-                                ...current,
-                                timeFormat:
-                                  event
-                                    .target
-                                    .value as AdminTimeFormat,
-                              })
-                            )
-                        }
-                        className={
-                          selectClass()
-                        }
-                      >
-                        <option value="24h">
-                          24-hour
-                        </option>
-
-                        <option value="12h">
-                          12-hour
-                        </option>
-                      </select>
-                    </Field>
-
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        First day of week
-                      </label>
-
-                      <select
-                        value={
-                          draftPreferences.firstDayOfWeek
-                        }
-                        onChange={
-                          event =>
-                            setDraftPreferences(
-                              current => ({
-                                ...current,
-                                firstDayOfWeek:
-                                  Number(
-                                    event
-                                      .target
-                                      .value
-                                  ),
-                              })
-                            )
-                        }
-                        className={
-                          selectClass()
-                        }
-                      >
-                        {DAYS.map(
-                          (
-                            day,
-                            index
-                          ) => (
-                            <option
-                              key={
-                                day
-                              }
-                              value={
-                                index
-                              }
-                            >
-                              {day}
-                            </option>
-                          )
-                        )}
-                      </select>
-                    </Field>
-
-                    <Field>
-                      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                        Preview
-                      </label>
-
-                      <div className="mt-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-700 dark:bg-zinc-950">
-                        <p className="text-sm font-semibold text-zinc-950 dark:text-white">
-                          {
-                            draftPreferences.dateFormat
+                  <select
+                    value={
+                      draftPreferences.timezone
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'timezone',
+                          event.target
+                            .value
+                        )
+                    }
+                    className={
+                      selectClass()
+                    }
+                  >
+                    {TIMEZONES.map(
+                      timezone => (
+                        <option
+                          key={
+                            timezone
                           }
-                        </p>
-
-                        <p className="mt-1 text-xs text-zinc-500">
-                          {
-                            draftPreferences.timeFormat ===
-                            '24h'
-                              ? '18:30'
-                              : '6:30 PM'
-                          }{' '}
-                          ·{' '}
-                          {
-                            draftPreferences.timezone
+                          value={
+                            timezone
                           }
-                        </p>
-                      </div>
-                    </Field>
-                  </div>
+                        >
+                          {timezone}
+                        </option>
+                      )
+                    )}
+                  </select>
                 </PreferenceBlock>
               </div>
             </section>
 
-            <FormActions
-              saving={
-                savingPreferences
-              }
-              changed={
-                preferencesChanged
-              }
-              onCancel={() => {
-                setDraftPreferences({
-                  ...preferences,
-                });
+            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+              <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <CalendarDays className="h-5 w-5 text-zinc-500" />
 
-                applyTheme(
-                  preferences.theme
-                );
+                  <p className="font-semibold">
+                    Date & time
+                  </p>
+                </div>
+              </div>
 
-                setView(
-                  'overview'
-                );
-              }}
-            />
+              <div className="grid gap-5 p-6 sm:p-7 lg:grid-cols-3">
+                <Field>
+                  <label className="text-sm font-semibold">
+                    Date format
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.dateFormat
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'dateFormat',
+                          event.target
+                            .value as
+                            AdminDateFormat
+                        )
+                    }
+                    className={
+                      selectClass()
+                    }
+                  >
+                    <option value="DD/MM/YYYY">
+                      DD/MM/YYYY
+                    </option>
+
+                    <option value="MM/DD/YYYY">
+                      MM/DD/YYYY
+                    </option>
+
+                    <option value="YYYY-MM-DD">
+                      YYYY-MM-DD
+                    </option>
+                  </select>
+                </Field>
+
+                <Field>
+                  <label className="text-sm font-semibold">
+                    Time format
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.timeFormat
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'timeFormat',
+                          event.target
+                            .value as
+                            AdminTimeFormat
+                        )
+                    }
+                    className={
+                      selectClass()
+                    }
+                  >
+                    <option value="12h">
+                      12-hour
+                    </option>
+
+                    <option value="24h">
+                      24-hour
+                    </option>
+                  </select>
+                </Field>
+
+                <Field>
+                  <label className="text-sm font-semibold">
+                    First day of week
+                  </label>
+
+                  <select
+                    value={
+                      draftPreferences.firstDayOfWeek
+                    }
+                    onChange={
+                      event =>
+                        updatePreference(
+                          'firstDayOfWeek',
+                          Number(
+                            event.target
+                              .value
+                          )
+                        )
+                    }
+                    className={
+                      selectClass()
+                    }
+                  >
+                    {DAYS.map(
+                      (
+                        day,
+                        index
+                      ) => (
+                        <option
+                          key={day}
+                          value={
+                            index
+                          }
+                        >
+                          {day}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-zinc-200 p-6 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraftPreferences({
+                      ...preferences,
+                    });
+
+                    applyTheme(
+                      preferences.theme
+                    );
+
+                    setView(
+                      'overview'
+                    );
+                  }}
+                  className={
+                    secondaryButton()
+                  }
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    savingPreferences ||
+                    !preferencesChanged
+                  }
+                  className={
+                    primaryButton()
+                  }
+                >
+                  {savingPreferences ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+
+                  Save preferences
+                </button>
+              </div>
+            </section>
           </form>
         </div>
 
@@ -2693,10 +3591,6 @@ export default function AdminMyAccountPage() {
       </>
     );
   }
-
-  /* ==========================================================
-     OVERVIEW
-     ========================================================== */
 
   return (
     <>
@@ -2724,7 +3618,7 @@ export default function AdminMyAccountPage() {
 
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="truncate text-lg font-bold text-zinc-950 dark:text-white">
+                    <p className="truncate text-lg font-bold">
                       {account.fullName}
                     </p>
 
@@ -2755,13 +3649,13 @@ export default function AdminMyAccountPage() {
 
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800">
-                  {roleLabel(
+                  {labelFromValue(
                     account.role
                   )}
                 </span>
 
                 <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  {statusLabel(
+                  {labelFromValue(
                     account.status
                   )}
                 </span>
@@ -2772,12 +3666,12 @@ export default function AdminMyAccountPage() {
 
         <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
           <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-            <p className="font-bold text-zinc-950 dark:text-white">
+            <p className="font-bold">
               Account settings
             </p>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Manage your personal administrator account.
+              Manage your personal account.
             </p>
           </div>
 
@@ -2803,7 +3697,7 @@ export default function AdminMyAccountPage() {
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <p className="font-semibold text-zinc-950 dark:text-white">
+                  <p className="font-semibold">
                     Email
                   </p>
 
@@ -2855,12 +3749,10 @@ export default function AdminMyAccountPage() {
               title="Password & security"
               description={
                 account.twoFactorEnabled
-                  ? 'Password and two-factor authentication · 2FA enabled'
-                  : 'Password and administrator account protection'
+                  ? 'Password and two-factor authentication'
+                  : 'Password and sign-in protection'
               }
-              onClick={
-                openSecurity
-              }
+              onClick={() => setView('security')}
               trailing={
                 account.twoFactorEnabled ? (
                   <span className="mr-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
@@ -2878,10 +3770,6 @@ export default function AdminMyAccountPage() {
     </>
   );
 }
-
-/* ============================================================
-   PASSWORD FIELD
-   ============================================================ */
 
 function PasswordField({
   label,
@@ -2908,7 +3796,7 @@ function PasswordField({
 }) {
   return (
     <Field>
-      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+      <label className="text-sm font-semibold">
         {label}
       </label>
 
@@ -2933,9 +3821,9 @@ function PasswordField({
                 event.target.value
               )
           }
-          className={`h-12 w-full rounded-xl border bg-white px-4 pr-12 text-sm font-medium text-zinc-950 outline-none transition dark:bg-zinc-950 dark:text-white ${
+          className={`h-12 w-full rounded-xl border bg-white px-4 pr-12 text-sm font-medium outline-none transition dark:bg-zinc-950 ${
             error
-              ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
+              ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10'
               : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
           }`}
         />
@@ -2948,12 +3836,7 @@ function PasswordField({
           onClick={
             onToggle
           }
-          aria-label={
-            visible
-              ? `Hide ${label.toLowerCase()}`
-              : `Show ${label.toLowerCase()}`
-          }
-          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-400"
         >
           {visible ? (
             <EyeOff className="h-4 w-4" />
@@ -2972,9 +3855,185 @@ function PasswordField({
   );
 }
 
-/* ============================================================
-   PASSWORD RULE
-   ============================================================ */
+function VerificationField({
+  value,
+  error,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  error: string | null;
+  disabled: boolean;
+  onChange:
+    (value: string) => void;
+}) {
+  return (
+    <Field>
+      <label className="text-sm font-semibold">
+        Verification code
+      </label>
+
+      <input
+        value={value}
+        disabled={
+          disabled
+        }
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={6}
+        placeholder="000000"
+        onChange={
+          event =>
+            onChange(
+              event.target.value
+                .replace(
+                  /\D/g,
+                  ''
+                )
+                .slice(
+                  0,
+                  6
+                )
+            )
+        }
+        className={`${inputClass(
+          Boolean(
+            error
+          )
+        )} font-mono tracking-[0.35em]`}
+      />
+
+      {error && (
+        <FieldError>
+          {error}
+        </FieldError>
+      )}
+    </Field>
+  );
+}
+
+function RecoveryCodes({
+  codes,
+  copied,
+  onCopy,
+  onDone,
+}: {
+  codes: string[];
+  copied: boolean;
+  onCopy: () => void;
+  onDone: () => void;
+}) {
+  return (
+    <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-950 dark:bg-amber-950/20">
+      <div className="flex gap-3">
+        <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+
+        <div>
+          <p className="font-bold">
+            Save your recovery codes
+          </p>
+
+          <p className="mt-1 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
+            Keep these codes somewhere safe. Each code can be used once if you cannot access your authenticator app.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-2 rounded-2xl border border-amber-200 bg-white p-4 font-mono text-sm font-semibold dark:border-amber-950 dark:bg-zinc-950 sm:grid-cols-2">
+        {codes.map(
+          code => (
+            <div
+              key={code}
+              className="rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-900"
+            >
+              {code}
+            </div>
+          )
+        )}
+      </div>
+
+      <div className="mt-5 flex flex-wrap justify-end gap-3">
+        <button
+          type="button"
+          onClick={
+            onCopy
+          }
+          className={
+            secondaryButton()
+          }
+        >
+          {copied ? (
+            <Check className="h-4 w-4" />
+          ) : (
+            <Copy className="h-4 w-4" />
+          )}
+
+          {copied
+            ? 'Copied'
+            : 'Copy codes'}
+        </button>
+
+        <button
+          type="button"
+          onClick={
+            onDone
+          }
+          className={
+            primaryButton()
+          }
+        >
+          I saved my codes
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SecurityInfo({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
+      <p className="text-xs font-semibold text-zinc-500">
+        {label}
+      </p>
+
+      <p className="mt-2 text-sm font-semibold">
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function StatusBadge({
+  enabled,
+  required,
+}: {
+  enabled: boolean;
+  required: boolean;
+}) {
+  return (
+    <span
+      className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+        enabled
+          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+          : required
+            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+            : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
+      }`}
+    >
+      {enabled
+        ? 'Enabled'
+        : required
+          ? 'Required'
+          : 'Not enabled'}
+    </span>
+  );
+}
 
 function PasswordRule({
   passed,
@@ -3008,10 +4067,6 @@ function PasswordRule({
   );
 }
 
-/* ============================================================
-   SETTINGS ROW
-   ============================================================ */
-
 function SettingsRow({
   icon,
   title,
@@ -3038,7 +4093,7 @@ function SettingsRow({
       </IconBox>
 
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-zinc-950 dark:text-white">
+        <p className="font-semibold">
           {title}
         </p>
 
@@ -3053,10 +4108,6 @@ function SettingsRow({
     </button>
   );
 }
-
-/* ============================================================
-   UI
-   ============================================================ */
 
 function IconBox({
   children,
@@ -3087,7 +4138,7 @@ function SectionHeader({
         </IconBox>
 
         <div>
-          <p className="font-bold text-zinc-950 dark:text-white">
+          <p className="font-bold">
             {title}
           </p>
 
@@ -3103,9 +4154,11 @@ function SectionHeader({
 function BackButton({
   onClick,
   disabled,
+  label = 'My Account',
 }: {
   onClick: () => void;
   disabled?: boolean;
+  label?: string;
 }) {
   return (
     <button
@@ -3119,7 +4172,7 @@ function BackButton({
       className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
     >
       <ArrowLeft className="h-4 w-4" />
-      My Account
+      {label}
     </button>
   );
 }
@@ -3162,7 +4215,7 @@ function PreferenceBlock({
       <div className="mb-5 flex items-center gap-3">
         {icon}
 
-        <p className="font-semibold text-zinc-950 dark:text-white">
+        <p className="font-semibold">
           {title}
         </p>
       </div>
@@ -3258,10 +4311,6 @@ function FormActions({
     </div>
   );
 }
-
-/* ============================================================
-   STYLES
-   ============================================================ */
 
 function inputClass(
   error = false
