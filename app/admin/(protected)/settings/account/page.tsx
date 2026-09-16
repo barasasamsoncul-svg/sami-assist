@@ -103,6 +103,7 @@ type TwoFactorSetup = {
   method: string;
   secret: string;
   otpauthUrl: string;
+  qrDataUrl: string;
 };
 
 type AdminSessionItem = {
@@ -959,7 +960,7 @@ export default function AdminMyAccountPage() {
       const formData =
         new FormData();
 
-      formData.append('file', file);
+      formData.append('avatar', file);
 
       const response = await fetch(
         '/api/admin/account/avatar',
@@ -2576,83 +2577,83 @@ export default function AdminMyAccountPage() {
                   )}
 
                 {twoFactorSetup && (
-                  <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
-                    <p className="font-semibold text-zinc-950 dark:text-white">
-                      Connect your authenticator
-                    </p>
+  <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+    <p className="font-semibold text-zinc-950 dark:text-white">
+      Scan the QR code
+    </p>
 
-                    <p className="mt-2 text-sm leading-6 text-zinc-500">
-                      Add a new account in your authenticator app, then enter the key below.
-                    </p>
+    <p className="mt-2 text-sm leading-6 text-zinc-500">
+      Open your authenticator app, add a new account and scan this QR code.
+    </p>
 
-                    <div className="mt-4 rounded-xl bg-zinc-100 p-4 dark:bg-zinc-950">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                        Setup key
-                      </p>
+    <div className="mt-5 flex justify-center">
+      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+        <img
+          src={twoFactorSetup.qrDataUrl}
+          alt="Authenticator QR code"
+          width={280}
+          height={280}
+          className="h-[280px] w-[280px]"
+        />
+      </div>
+    </div>
 
-                      <p className="mt-2 break-all font-mono text-sm font-bold tracking-wider text-zinc-950 dark:text-white">
-                        {
-                          twoFactorSetup.secret
-                        }
-                      </p>
-                    </div>
+    <details className="mt-5 rounded-xl border border-zinc-200 dark:border-zinc-800">
+      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+        Can’t scan the QR code?
+      </summary>
 
-                    <form
-                      onSubmit={
-                        confirmTwoFactorSetup
-                      }
-                      className="mt-5"
-                    >
-                      <VerificationField
-                        value={twoFactorCode}
-                        error={
-                          twoFactorCodeError
-                        }
-                        disabled={
-                          twoFactorBusy
-                        }
-                        onChange={
-                          setTwoFactorCode
-                        }
-                      />
+      <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
+        <p className="text-sm text-zinc-500">
+          Enter this setup key manually in your authenticator app.
+        </p>
 
-                      <div className="mt-5 flex flex-wrap justify-end gap-3">
-                        <button
-                          type="button"
-                          disabled={
-                            twoFactorBusy
-                          }
-                          onClick={
-                            clearTwoFactorAction
-                          }
-                          className={
-                            secondaryButton()
-                          }
-                        >
-                          Cancel
-                        </button>
+        <div className="mt-3 rounded-xl bg-zinc-100 p-4 dark:bg-zinc-950">
+          <p className="break-all font-mono text-sm font-bold tracking-wider text-zinc-950 dark:text-white">
+            {twoFactorSetup.secret}
+          </p>
+        </div>
+      </div>
+    </details>
 
-                        <button
-                          type="submit"
-                          disabled={
-                            twoFactorBusy
-                          }
-                          className={
-                            primaryButton()
-                          }
-                        >
-                          {twoFactorBusy ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Check className="h-4 w-4" />
-                          )}
+    <form
+      onSubmit={confirmTwoFactorSetup}
+      className="mt-5"
+    >
+      <VerificationField
+        value={twoFactorCode}
+        error={twoFactorCodeError}
+        disabled={twoFactorBusy}
+        onChange={setTwoFactorCode}
+      />
 
-                          Verify and enable
-                        </button>
-                      </div>
-                    </form>
-                  </div>
-                )}
+      <div className="mt-5 flex flex-wrap justify-end gap-3">
+        <button
+          type="button"
+          disabled={twoFactorBusy}
+          onClick={clearTwoFactorAction}
+          className={secondaryButton()}
+        >
+          Cancel
+        </button>
+
+        <button
+          type="submit"
+          disabled={twoFactorBusy}
+          className={primaryButton()}
+        >
+          {twoFactorBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4" />
+          )}
+
+          Verify and enable
+        </button>
+      </div>
+    </form>
+  </div>
+)}
 
                 {recoveryCodes.length >
                   0 && (

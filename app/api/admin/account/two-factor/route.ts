@@ -3,6 +3,8 @@ import {
   NextResponse,
 } from 'next/server';
 
+import QRCode from 'qrcode';
+
 import {
   requireAdminSession,
 } from '@/lib/auth/admin-session';
@@ -26,21 +28,15 @@ import {
   resetRateLimit,
 } from '@/lib/auth/rate-limit';
 
-export const runtime =
-  'nodejs';
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export const dynamic =
-  'force-dynamic';
-
-const MAX_BODY_BYTES =
-  8 * 1024;
+const MAX_BODY_BYTES = 8 * 1024;
 
 const VERIFY_LIMIT = {
   maxAttempts: 6,
-  windowMs:
-    10 * 60 * 1000,
-  blockMs:
-    15 * 60 * 1000,
+  windowMs: 10 * 60 * 1000,
+  blockMs: 15 * 60 * 1000,
 };
 
 type Action =
@@ -55,60 +51,37 @@ type Body = {
 };
 
 function jsonResponse(
-  body:
-    Record<string, unknown>,
+  body: Record<string, unknown>,
   status = 200,
-  extraHeaders?:
-    Record<string, string>
+  extraHeaders?: Record<string, string>
 ) {
-  return NextResponse.json(
-    body,
-    {
-      status,
-
-      headers: {
-        'Cache-Control':
-          'no-store, no-cache, must-revalidate, private',
-
-        Pragma:
-          'no-cache',
-
-        Expires:
-          '0',
-
-        'Referrer-Policy':
-          'no-referrer',
-
-        'X-Content-Type-Options':
-          'nosniff',
-
-        ...extraHeaders,
-      },
-    }
-  );
+  return NextResponse.json(body, {
+    status,
+    headers: {
+      'Cache-Control':
+        'no-store, no-cache, must-revalidate, private',
+      Pragma: 'no-cache',
+      Expires: '0',
+      'Referrer-Policy': 'no-referrer',
+      'X-Content-Type-Options':
+        'nosniff',
+      ...extraHeaders,
+    },
+  });
 }
 
 function errorResponse(
-  status:
-    number,
-  code:
-    string,
-  error:
-    string,
-  extra?:
-    Record<string, unknown>,
-  headers?:
-    Record<string, string>
+  status: number,
+  code: string,
+  error: string,
+  extra?: Record<string, unknown>,
+  headers?: Record<string, string>
 ) {
   return jsonResponse(
     {
-      success:
-        false,
-
+      success: false,
       code,
-
       error,
-
       ...(extra || {}),
     },
     status,
@@ -117,8 +90,7 @@ function errorResponse(
 }
 
 function getClientIp(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
   const forwarded =
     request.headers.get(
@@ -129,22 +101,19 @@ function getClientIp(
     return (
       forwarded
         .split(',')[0]
-        ?.trim() ||
-      'unknown'
+        ?.trim() || 'unknown'
     );
   }
 
   return (
     request.headers.get(
       'x-real-ip'
-    ) ||
-    'unknown'
+    ) || 'unknown'
   );
 }
 
 function requestHasJsonContentType(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
   const contentType =
     request.headers.get(
@@ -161,8 +130,7 @@ function requestHasJsonContentType(
 }
 
 function bodyWithinLimit(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
   const contentLength =
     request.headers.get(
@@ -177,23 +145,31 @@ function bodyWithinLimit(
     Number(contentLength);
 
   return (
-    Number.isFinite(
-      parsed
-    ) &&
+    Number.isFinite(parsed) &&
     parsed >= 0 &&
-    parsed <=
-      MAX_BODY_BYTES
+    parsed <= MAX_BODY_BYTES
   );
 }
 
 function sameOrigin(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
-  const origin =
+  const site =
     request.headers.get(
-      'origin'
+      'sec-fetch-site'
     );
+
+  if (
+    site &&
+    site !== 'same-origin' &&
+    site !== 'same-site' &&
+    site !== 'none'
+  ) {
+    return false;
+  }
+
+  const origin =
+    request.headers.get('origin');
 
   if (!origin) {
     return true;
@@ -210,12 +186,10 @@ function sameOrigin(
 }
 
 function normalizeCode(
-  value:
-    unknown
+  value: unknown
 ) {
   if (
-    typeof value !==
-    'string'
+    typeof value !== 'string'
   ) {
     return '';
   }
@@ -226,31 +200,57 @@ function normalizeCode(
 }
 
 async function readBody(
-  request:
-    NextRequest
+  request: NextRequest
 ): Promise<Body | null> {
   if (
     !requestHasJsonContentType(
       request
     ) ||
-    !bodyWithinLimit(
-      request
-    )
+    !bodyWithinLimit(request)
   ) {
     return null;
   }
 
   try {
+    const raw =
+      await request.text();
+
+    if (
+      Buffer.byteLength(
+        raw,
+        'utf8'
+      ) > MAX_BODY_BYTES
+    ) {
+      return null;
+    }
+
     const body =
-      await request.json();
+      JSON.parse(raw);
 
     if (
       !body ||
-      typeof body !==
-        'object' ||
+      typeof body !== 'object' ||
       Array.isArray(body)
     ) {
       return null;
+    }
+
+    const allowedKeys =
+      new Set([
+        'action',
+        'code',
+      ]);
+
+    for (
+      const key of Object.keys(
+        body
+      )
+    ) {
+      if (
+        !allowedKeys.has(key)
+      ) {
+        return null;
+      }
     }
 
     return body as Body;
@@ -259,9 +259,59 @@ async function readBody(
   }
 }
 
-/* ============================================================
-   GET
-   ============================================================ */
+async function auditSafely(
+  input: Parameters<
+    typeof recordAdminAuditEvent
+  >[0]
+) {
+  try {
+    await recordAdminAuditEvent(
+      input
+    );
+  } catch (error) {
+    console.error(
+      '[Admin Account 2FA] Audit error:',
+      error
+    );
+  }
+}
+
+async function checkVerificationLimit(
+  identifier: string,
+  action: string
+) {
+  return checkRateLimit({
+    identifier,
+    action,
+    maxAttempts:
+      VERIFY_LIMIT.maxAttempts,
+    windowMs:
+      VERIFY_LIMIT.windowMs,
+    blockMs:
+      VERIFY_LIMIT.blockMs,
+  });
+}
+
+function rateLimitResponse(
+  retryAfterSeconds:
+    number | null
+) {
+  return errorResponse(
+    429,
+    'TOO_MANY_ATTEMPTS',
+    'Too many verification attempts. Try again later.',
+    {
+      retryAfterSeconds,
+    },
+    retryAfterSeconds
+      ? {
+          'Retry-After': String(
+            retryAfterSeconds
+          ),
+        }
+      : undefined
+  );
+}
 
 export async function GET() {
   try {
@@ -271,29 +321,26 @@ export async function GET() {
     const [
       factor,
       recoveryCodesRemaining,
-    ] =
-      await Promise.all([
-        getAdminTwoFactor(
-          session.adminId
-        ),
+    ] = await Promise.all([
+      getAdminTwoFactor(
+        session.adminId
+      ),
 
-        countUnusedAdminRecoveryCodes(
-          session.adminId
-        ),
-      ]);
+      countUnusedAdminRecoveryCodes(
+        session.adminId
+      ),
+    ]);
 
     return jsonResponse({
-      success:
-        true,
+      success: true,
 
       code:
         'ADMIN_TWO_FACTOR_STATE_LOADED',
 
       twoFactor: {
-        enabled:
-          Boolean(
-            factor?.enabled
-          ),
+        enabled: Boolean(
+          factor?.enabled
+        ),
 
         required:
           session.twoFactorRequired,
@@ -312,14 +359,12 @@ export async function GET() {
             ?.toISOString() ??
           null,
 
-        recoveryCodesRemaining:
-          recoveryCodesRemaining,
+        recoveryCodesRemaining,
       },
     });
   } catch (error) {
     if (
-      error instanceof
-        Error &&
+      error instanceof Error &&
       error.message ===
         'ADMIN_UNAUTHENTICATED'
     ) {
@@ -343,19 +388,10 @@ export async function GET() {
   }
 }
 
-/* ============================================================
-   POST
-   ============================================================ */
-
 export async function POST(
-  request:
-    NextRequest
+  request: NextRequest
 ) {
-  if (
-    !sameOrigin(
-      request
-    )
-  ) {
+  if (!sameOrigin(request)) {
     return errorResponse(
       403,
       'INVALID_ORIGIN',
@@ -364,9 +400,7 @@ export async function POST(
   }
 
   const body =
-    await readBody(
-      request
-    );
+    await readBody(request);
 
   if (!body) {
     return errorResponse(
@@ -380,12 +414,10 @@ export async function POST(
     body.action;
 
   if (
-    action !==
-      'start_setup' &&
+    action !== 'start_setup' &&
     action !==
       'confirm_setup' &&
-    action !==
-      'disable' &&
+    action !== 'disable' &&
     action !==
       'regenerate_recovery_codes'
   ) {
@@ -403,8 +435,7 @@ export async function POST(
       await requireAdminSession();
   } catch (error) {
     if (
-      error instanceof
-        Error &&
+      error instanceof Error &&
       error.message ===
         'ADMIN_UNAUTHENTICATED'
     ) {
@@ -414,11 +445,6 @@ export async function POST(
         'Your administrator session has expired. Sign in again.'
       );
     }
-
-    console.error(
-      '[Admin Account 2FA] Session error:',
-      error
-    );
 
     return errorResponse(
       500,
@@ -431,17 +457,10 @@ export async function POST(
     session.adminId;
 
   const ip =
-    getClientIp(
-      request
-    );
-
-  /* ==========================================================
-     START SETUP
-     ========================================================== */
+    getClientIp(request);
 
   if (
-    action ===
-    'start_setup'
+    action === 'start_setup'
   ) {
     try {
       const existing =
@@ -449,9 +468,7 @@ export async function POST(
           adminId
         );
 
-      if (
-        existing?.enabled
-      ) {
+      if (existing?.enabled) {
         return errorResponse(
           409,
           'TWO_FACTOR_ALREADY_ENABLED',
@@ -460,17 +477,32 @@ export async function POST(
       }
 
       const setup =
-        await createAdminTwoFactorSetup({
-          adminId,
+        await createAdminTwoFactorSetup(
+          {
+            adminId,
+            email:
+              session.email,
+          }
+        );
 
-          email:
-            session.email,
-        });
+      const qrDataUrl =
+        await QRCode.toDataURL(
+          setup.otpauthUrl,
+          {
+            errorCorrectionLevel:
+              'M',
+            margin: 1,
+            width: 280,
+            type: 'image/png',
+          }
+        );
 
-      await recordAdminAuditEvent({
+      await auditSafely({
         request,
-
         adminId,
+
+        sessionId:
+          session.sessionId,
 
         eventType:
           'admin.two_factor.account_setup_started',
@@ -481,11 +513,9 @@ export async function POST(
         targetType:
           'platform_admin',
 
-        targetId:
-          adminId,
+        targetId: adminId,
 
-        successful:
-          true,
+        successful: true,
 
         metadata: {
           method:
@@ -494,8 +524,7 @@ export async function POST(
       });
 
       return jsonResponse({
-        success:
-          true,
+        success: true,
 
         code:
           'ADMIN_TWO_FACTOR_SETUP_STARTED',
@@ -503,6 +532,8 @@ export async function POST(
         setup: {
           method:
             'authenticator',
+
+          qrDataUrl,
 
           secret:
             setup.secret,
@@ -525,76 +556,44 @@ export async function POST(
     }
   }
 
-  /* ==========================================================
-     CONFIRM SETUP
-     ========================================================== */
+  const code =
+    normalizeCode(
+      body.code
+    );
+
+  if (
+    !/^\d{6}$/.test(code)
+  ) {
+    return errorResponse(
+      400,
+      'INVALID_VERIFICATION_CODE',
+      'Enter the 6-digit code from your authenticator app.',
+      {
+        field: 'code',
+      }
+    );
+  }
 
   if (
     action ===
     'confirm_setup'
   ) {
-    const code =
-      normalizeCode(
-        body.code
-      );
-
-    if (
-      !/^\d{6}$/.test(
-        code
-      )
-    ) {
-      return errorResponse(
-        400,
-        'INVALID_VERIFICATION_CODE',
-        'Enter the 6-digit code from your authenticator app.',
-        {
-          field:
-            'code',
-        }
-      );
-    }
-
     const rateIdentifier =
       `admin-2fa-setup:${adminId}:${ip}`;
 
+    const rateAction =
+      'admin-two-factor-setup-confirm';
+
     try {
       const limit =
-        await checkRateLimit({
-          identifier:
-            rateIdentifier,
+        await checkVerificationLimit(
+          rateIdentifier,
+          rateAction
+        );
 
-          action:
-            'admin-two-factor-setup-confirm',
-
-          maxAttempts:
-            VERIFY_LIMIT.maxAttempts,
-
-          windowMs:
-            VERIFY_LIMIT.windowMs,
-
-          blockMs:
-            VERIFY_LIMIT.blockMs,
-        });
-
-      if (
-        !limit.allowed
-      ) {
-        return errorResponse(
-          429,
-          'TOO_MANY_ATTEMPTS',
-          'Too many verification attempts. Try again later.',
-          {
-            retryAfterSeconds:
-              limit.retryAfterSeconds,
-          },
+      if (!limit.allowed) {
+        return rateLimitResponse(
           limit.retryAfterSeconds
-            ? {
-                'Retry-After':
-                  String(
-                    limit.retryAfterSeconds
-                  ),
-              }
-            : undefined
         );
       }
     } catch (error) {
@@ -608,31 +607,30 @@ export async function POST(
         'SECURITY_SERVICE_UNAVAILABLE',
         'SaMi security services are temporarily unavailable.',
         {
-          retryable:
-            true,
+          retryable: true,
         },
         {
-          'Retry-After':
-            '30',
+          'Retry-After': '30',
         }
       );
     }
 
     try {
       const result =
-        await confirmAdminTwoFactorSetup({
-          adminId,
+        await confirmAdminTwoFactorSetup(
+          {
+            adminId,
+            code,
+          }
+        );
 
-          code,
-        });
-
-      if (
-        !result.enabled
-      ) {
-        await recordAdminAuditEvent({
+      if (!result.enabled) {
+        await auditSafely({
           request,
-
           adminId,
+
+          sessionId:
+            session.sessionId,
 
           eventType:
             'admin.two_factor.account_setup_failed',
@@ -646,8 +644,7 @@ export async function POST(
           targetId:
             adminId,
 
-          successful:
-            false,
+          successful: false,
 
           failureReason:
             'invalid_authenticator_code',
@@ -658,8 +655,7 @@ export async function POST(
           'INVALID_VERIFICATION_CODE',
           'The verification code is incorrect or has expired.',
           {
-            field:
-              'code',
+            field: 'code',
           }
         );
       }
@@ -667,7 +663,7 @@ export async function POST(
       try {
         await resetRateLimit(
           rateIdentifier,
-          'admin-two-factor-setup-confirm'
+          rateAction
         );
       } catch (error) {
         console.error(
@@ -676,10 +672,12 @@ export async function POST(
         );
       }
 
-      await recordAdminAuditEvent({
+      await auditSafely({
         request,
-
         adminId,
+
+        sessionId:
+          session.sessionId,
 
         eventType:
           'admin.two_factor.account_enabled',
@@ -693,23 +691,20 @@ export async function POST(
         targetId:
           adminId,
 
-        successful:
-          true,
+        successful: true,
 
         metadata: {
           method:
             'authenticator',
 
           recoveryCodeCount:
-            result
-              .recoveryCodes
+            result.recoveryCodes
               .length,
         },
       });
 
       return jsonResponse({
-        success:
-          true,
+        success: true,
 
         code:
           'ADMIN_TWO_FACTOR_ENABLED',
@@ -734,35 +729,7 @@ export async function POST(
     }
   }
 
-  /* ==========================================================
-     DISABLE
-     ========================================================== */
-
-  if (
-    action ===
-    'disable'
-  ) {
-    const code =
-      normalizeCode(
-        body.code
-      );
-
-    if (
-      !/^\d{6}$/.test(
-        code
-      )
-    ) {
-      return errorResponse(
-        400,
-        'INVALID_VERIFICATION_CODE',
-        'Enter the 6-digit code from your authenticator app.',
-        {
-          field:
-            'code',
-        }
-      );
-    }
-
+  if (action === 'disable') {
     if (
       session.twoFactorRequired
     ) {
@@ -776,86 +743,57 @@ export async function POST(
     const rateIdentifier =
       `admin-2fa-disable:${adminId}:${ip}`;
 
+    const rateAction =
+      'admin-two-factor-disable';
+
     try {
       const limit =
-        await checkRateLimit({
-          identifier:
-            rateIdentifier,
+        await checkVerificationLimit(
+          rateIdentifier,
+          rateAction
+        );
 
-          action:
-            'admin-two-factor-disable',
-
-          maxAttempts:
-            VERIFY_LIMIT.maxAttempts,
-
-          windowMs:
-            VERIFY_LIMIT.windowMs,
-
-          blockMs:
-            VERIFY_LIMIT.blockMs,
-        });
-
-      if (
-        !limit.allowed
-      ) {
-        return errorResponse(
-          429,
-          'TOO_MANY_ATTEMPTS',
-          'Too many verification attempts. Try again later.',
-          {
-            retryAfterSeconds:
-              limit.retryAfterSeconds,
-          },
+      if (!limit.allowed) {
+        return rateLimitResponse(
           limit.retryAfterSeconds
-            ? {
-                'Retry-After':
-                  String(
-                    limit.retryAfterSeconds
-                  ),
-              }
-            : undefined
         );
       }
-    } catch (error) {
-      console.error(
-        '[Admin Account 2FA] Rate limiter error:',
-        error
-      );
-
+    } catch {
       return errorResponse(
         503,
         'SECURITY_SERVICE_UNAVAILABLE',
         'SaMi security services are temporarily unavailable.',
         {
-          retryable:
-            true,
+          retryable: true,
         },
         {
-          'Retry-After':
-            '30',
+          'Retry-After': '30',
         }
       );
     }
 
     try {
       const valid =
-        await verifyAdminTwoFactorCode({
-          adminId,
-
-          code,
-        });
+        await verifyAdminTwoFactorCode(
+          {
+            adminId,
+            code,
+          }
+        );
 
       if (!valid) {
-        await recordAdminAuditEvent({
+        await auditSafely({
           request,
-
           adminId,
 
+          sessionId:
+            session.sessionId,
+
           eventType:
-            'admin.two_factor.account_disable_failed',
+            'admin.two_factor.disable_failed',
 
           action:
-            'admin_two_factor_account_disable',
+            'admin_two_factor_disable',
 
           targetType:
             'platform_admin',
@@ -863,8 +801,7 @@ export async function POST(
           targetId:
             adminId,
 
-          successful:
-            false,
+          successful: false,
 
           failureReason:
             'invalid_authenticator_code',
@@ -875,8 +812,7 @@ export async function POST(
           'INVALID_VERIFICATION_CODE',
           'The verification code is incorrect or has expired.',
           {
-            field:
-              'code',
+            field: 'code',
           }
         );
       }
@@ -888,25 +824,24 @@ export async function POST(
       try {
         await resetRateLimit(
           rateIdentifier,
-          'admin-two-factor-disable'
+          rateAction
         );
-      } catch (error) {
-        console.error(
-          '[Admin Account 2FA] Rate reset failed:',
-          error
-        );
+      } catch {
+        // Security action succeeded.
       }
 
-      await recordAdminAuditEvent({
+      await auditSafely({
         request,
-
         adminId,
+
+        sessionId:
+          session.sessionId,
 
         eventType:
           'admin.two_factor.account_disabled',
 
         action:
-          'admin_two_factor_account_disable',
+          'admin_two_factor_disable',
 
         targetType:
           'platform_admin',
@@ -914,19 +849,25 @@ export async function POST(
         targetId:
           adminId,
 
-        successful:
-          true,
+        successful: true,
+
+        metadata: {
+          method:
+            'authenticator',
+        },
       });
 
       return jsonResponse({
-        success:
-          true,
+        success: true,
 
         code:
           'ADMIN_TWO_FACTOR_DISABLED',
 
         twoFactorEnabled:
           false,
+
+        message:
+          'Two-factor authentication has been turned off.',
       });
     } catch (error) {
       console.error(
@@ -937,134 +878,131 @@ export async function POST(
       return errorResponse(
         500,
         'ADMIN_TWO_FACTOR_DISABLE_ERROR',
-        'SaMi could not disable two-factor authentication.'
+        'SaMi could not turn off two-factor authentication.'
       );
     }
   }
-
-  /* ==========================================================
-     REGENERATE RECOVERY CODES
-     ========================================================== */
-
-  const code =
-    normalizeCode(
-      body.code
-    );
 
   if (
-    !/^\d{6}$/.test(
-      code
-    )
+    action ===
+    'regenerate_recovery_codes'
   ) {
-    return errorResponse(
-      400,
-      'INVALID_VERIFICATION_CODE',
-      'Enter the 6-digit code from your authenticator app.',
-      {
-        field:
-          'code',
-      }
-    );
-  }
+    const rateIdentifier =
+      `admin-2fa-recovery:${adminId}:${ip}`;
 
-  const rateIdentifier =
-    `admin-2fa-recovery:${adminId}:${ip}`;
+    const rateAction =
+      'admin-two-factor-recovery-regenerate';
 
-  try {
-    const limit =
-      await checkRateLimit({
-        identifier:
+    try {
+      const limit =
+        await checkVerificationLimit(
           rateIdentifier,
+          rateAction
+        );
 
-        action:
-          'admin-two-factor-recovery-regenerate',
-
-        maxAttempts:
-          VERIFY_LIMIT.maxAttempts,
-
-        windowMs:
-          VERIFY_LIMIT.windowMs,
-
-        blockMs:
-          VERIFY_LIMIT.blockMs,
-      });
-
-    if (
-      !limit.allowed
-    ) {
-      return errorResponse(
-        429,
-        'TOO_MANY_ATTEMPTS',
-        'Too many verification attempts. Try again later.',
-        {
-          retryAfterSeconds:
-            limit.retryAfterSeconds,
-        },
-        limit.retryAfterSeconds
-          ? {
-              'Retry-After':
-                String(
-                  limit.retryAfterSeconds
-                ),
-            }
-          : undefined
-      );
-    }
-  } catch (error) {
-    console.error(
-      '[Admin Account 2FA] Rate limiter error:',
-      error
-    );
-
-    return errorResponse(
-      503,
-      'SECURITY_SERVICE_UNAVAILABLE',
-      'SaMi security services are temporarily unavailable.',
-      {
-        retryable:
-          true,
-      },
-      {
-        'Retry-After':
-          '30',
+      if (!limit.allowed) {
+        return rateLimitResponse(
+          limit.retryAfterSeconds
+        );
       }
-    );
-  }
-
-  try {
-    const factor =
-      await getAdminTwoFactor(
-        adminId
-      );
-
-    if (
-      !factor?.enabled
-    ) {
+    } catch {
       return errorResponse(
-        409,
-        'TWO_FACTOR_NOT_ENABLED',
-        'Two-factor authentication is not enabled.'
+        503,
+        'SECURITY_SERVICE_UNAVAILABLE',
+        'SaMi security services are temporarily unavailable.',
+        {
+          retryable: true,
+        },
+        {
+          'Retry-After': '30',
+        }
       );
     }
 
-    const valid =
-      await verifyAdminTwoFactorCode({
-        adminId,
+    try {
+      const factor =
+        await getAdminTwoFactor(
+          adminId
+        );
 
-        code,
-      });
+      if (!factor?.enabled) {
+        return errorResponse(
+          409,
+          'TWO_FACTOR_NOT_ENABLED',
+          'Two-factor authentication is not enabled.'
+        );
+      }
 
-    if (!valid) {
-      await recordAdminAuditEvent({
+      const valid =
+        await verifyAdminTwoFactorCode(
+          {
+            adminId,
+            code,
+          }
+        );
+
+      if (!valid) {
+        await auditSafely({
+          request,
+          adminId,
+
+          sessionId:
+            session.sessionId,
+
+          eventType:
+            'admin.two_factor.recovery_codes_regenerate_failed',
+
+          action:
+            'admin_two_factor_recovery_codes_regenerate',
+
+          targetType:
+            'platform_admin',
+
+          targetId:
+            adminId,
+
+          successful: false,
+
+          failureReason:
+            'invalid_authenticator_code',
+        });
+
+        return errorResponse(
+          400,
+          'INVALID_VERIFICATION_CODE',
+          'The verification code is incorrect or has expired.',
+          {
+            field: 'code',
+          }
+        );
+      }
+
+      const recoveryCodes =
+        await regenerateAdminRecoveryCodes(
+          adminId
+        );
+
+      try {
+        await resetRateLimit(
+          rateIdentifier,
+          rateAction
+        );
+      } catch {
+        // Security action succeeded.
+      }
+
+      await auditSafely({
         request,
-
         adminId,
+
+        sessionId:
+          session.sessionId,
 
         eventType:
-          'admin.two_factor.recovery_regeneration_failed',
+          'admin.two_factor.recovery_codes_regenerated',
 
         action:
-          'admin_two_factor_recovery_regenerate',
+          'admin_two_factor_recovery_codes_regenerate',
 
         targetType:
           'platform_admin',
@@ -1072,86 +1010,42 @@ export async function POST(
         targetId:
           adminId,
 
-        successful:
-          false,
+        successful: true,
 
-        failureReason:
-          'invalid_authenticator_code',
+        metadata: {
+          recoveryCodeCount:
+            recoveryCodes.length,
+        },
       });
 
-      return errorResponse(
-        400,
-        'INVALID_VERIFICATION_CODE',
-        'The verification code is incorrect or has expired.',
-        {
-          field:
-            'code',
-        }
-      );
-    }
+      return jsonResponse({
+        success: true,
 
-    const recoveryCodes =
-      await regenerateAdminRecoveryCodes(
-        adminId
-      );
+        code:
+          'ADMIN_RECOVERY_CODES_REGENERATED',
 
-    try {
-      await resetRateLimit(
-        rateIdentifier,
-        'admin-two-factor-recovery-regenerate'
-      );
+        recoveryCodes,
+
+        message:
+          'New recovery codes have been generated.',
+      });
     } catch (error) {
       console.error(
-        '[Admin Account 2FA] Rate reset failed:',
+        '[Admin Account 2FA] Recovery code regeneration error:',
         error
       );
+
+      return errorResponse(
+        500,
+        'ADMIN_RECOVERY_CODES_ERROR',
+        'SaMi could not generate new recovery codes.'
+      );
     }
-
-    await recordAdminAuditEvent({
-      request,
-
-      adminId,
-
-      eventType:
-        'admin.two_factor.recovery_codes_regenerated',
-
-      action:
-        'admin_two_factor_recovery_regenerate',
-
-      targetType:
-        'platform_admin',
-
-      targetId:
-        adminId,
-
-      successful:
-        true,
-
-      metadata: {
-        recoveryCodeCount:
-          recoveryCodes.length,
-      },
-    });
-
-    return jsonResponse({
-      success:
-        true,
-
-      code:
-        'ADMIN_RECOVERY_CODES_REGENERATED',
-
-      recoveryCodes,
-    });
-  } catch (error) {
-    console.error(
-      '[Admin Account 2FA] Recovery regeneration error:',
-      error
-    );
-
-    return errorResponse(
-      500,
-      'ADMIN_RECOVERY_CODES_ERROR',
-      'SaMi could not generate new recovery codes.'
-    );
   }
+
+  return errorResponse(
+    400,
+    'INVALID_ACTION',
+    'Choose a valid security action.'
+  );
 }
