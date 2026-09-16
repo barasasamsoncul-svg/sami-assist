@@ -1250,6 +1250,53 @@ export async function revokeAllAdminSessions(
 }
 
 /* ============================================================
+   REVOKE OTHER ADMIN SESSIONS
+
+   Used for security-sensitive account changes such as
+   password changes.
+
+   The currently authenticated session remains active.
+   ============================================================ */
+
+export async function revokeOtherAdminSessions(
+  adminId:
+    string,
+  currentSessionId:
+    string,
+  revokedBy:
+    string | null,
+  reason =
+    'password_changed'
+) {
+  const result =
+    await queryControl(
+      `
+        UPDATE platform_admin_sessions
+        SET
+          revoked_at = NOW(),
+          revoked_by = $3,
+          revocation_reason = $4
+        WHERE
+          admin_id = $1
+          AND id <> $2
+          AND revoked_at IS NULL
+        RETURNING id
+      `,
+      [
+        adminId,
+        currentSessionId,
+        revokedBy,
+        reason.slice(
+          0,
+          255
+        ),
+      ]
+    );
+
+  return result.rows.length;
+}
+
+/* ============================================================
    CLEAN EXPIRED SESSIONS
    ============================================================ */
 

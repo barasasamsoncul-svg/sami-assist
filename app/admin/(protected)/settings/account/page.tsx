@@ -1,29 +1,32 @@
 'use client';
 
 import Link from 'next/link';
+
 import {
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
+  useEffect,
 } from 'react';
+
 import { useRouter } from 'next/navigation';
+
 import {
-  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
-  CalendarDays,
   Camera,
   Check,
   ChevronRight,
-  Clock3,
-  Globe2,
+  Eye,
+  EyeOff,
   KeyRound,
   Languages,
   Loader2,
+  LockKeyhole,
   Mail,
   Monitor,
   Moon,
@@ -36,34 +39,23 @@ import {
   Upload,
   UserRound,
   X,
+  AlertTriangle,
+  Globe2,
+  CalendarDays,
 } from 'lucide-react';
 
-import SaMiOverlay, {
-  type SaMiOverlayType,
-} from '@/app/components/SaMiOverlay';
-
+import SaMiOverlay from '@/app/components/SaMiOverlay';
 import UserAvatar from '@/app/components/account/UserAvatar';
 
 /* ============================================================
    TYPES
    ============================================================ */
 
-type AdminAccount = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  fullName: string;
-  email: string;
-  role: string;
-  status: string;
-  emailVerified: boolean;
-  emailVerifiedAt: string | null;
-  twoFactorRequired: boolean;
-  twoFactorEnabled: boolean;
-  avatarFileId: string | null;
-  avatarUrl?: string | null;
-  updatedAt?: string | null;
-};
+type View =
+  | 'overview'
+  | 'profile'
+  | 'preferences'
+  | 'password';
 
 type AdminTheme =
   | 'system'
@@ -79,6 +71,22 @@ type AdminTimeFormat =
   | '12h'
   | '24h';
 
+type AdminAccount = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  emailVerifiedAt?: string | null;
+  twoFactorRequired: boolean;
+  twoFactorEnabled: boolean;
+  avatarFileId: string | null;
+  avatarUrl?: string | null;
+};
+
 type AdminPreferences = {
   theme: AdminTheme;
   locale: string;
@@ -91,21 +99,22 @@ type AdminPreferences = {
 type ApiPayload = {
   success?: boolean;
   code?: string;
-  account?: AdminAccount;
-  preferences?: AdminPreferences;
-  avatarFileId?: string | null;
-  avatarUrl?: string | null;
   error?: string;
   message?: string;
-  field?: string | null;
-  retryable?: boolean;
-  requestId?: string;
+  field?: string;
+
+  account?: AdminAccount;
+  preferences?: AdminPreferences;
+
+  avatarFileId?: string | null;
+  otherSessionsRevoked?: number;
 };
 
-type ViewMode =
-  | 'overview'
-  | 'profile'
-  | 'preferences';
+type SaMiOverlayType =
+  | 'success'
+  | 'error'
+  | 'warning'
+  | 'info';
 
 type OverlayState = {
   open: boolean;
@@ -118,6 +127,15 @@ type OverlayState = {
    CONSTANTS
    ============================================================ */
 
+const DEFAULT_PREFERENCES: AdminPreferences = {
+  theme: 'system',
+  locale: 'en-KE',
+  timezone: 'Africa/Nairobi',
+  dateFormat: 'DD/MM/YYYY',
+  timeFormat: '24h',
+  firstDayOfWeek: 1,
+};
+
 const MAX_AVATAR_BYTES =
   5 * 1024 * 1024;
 
@@ -128,51 +146,32 @@ const ACCEPTED_AVATAR_TYPES =
     'image/webp',
   ]);
 
-const DEFAULT_PREFERENCES:
-  AdminPreferences = {
-    theme: 'system',
-    locale: 'en',
-    timezone: 'UTC',
-    dateFormat: 'DD/MM/YYYY',
-    timeFormat: '24h',
-    firstDayOfWeek: 1,
-  };
-
-const TIMEZONES = [
-  'Africa/Nairobi',
-  'Africa/Lagos',
-  'Africa/Johannesburg',
-  'Africa/Cairo',
-  'Europe/London',
-  'Europe/Paris',
-  'America/New_York',
-  'America/Chicago',
-  'America/Los_Angeles',
-  'Asia/Dubai',
-  'Asia/Kolkata',
-  'Asia/Singapore',
-  'Asia/Tokyo',
-  'Australia/Sydney',
-  'UTC',
-];
-
 const LOCALES = [
-  {
-    value: 'en',
-    label: 'English',
-  },
   {
     value: 'en-KE',
     label: 'English (Kenya)',
   },
   {
-    value: 'en-GB',
-    label: 'English (United Kingdom)',
-  },
-  {
     value: 'en-US',
     label: 'English (United States)',
   },
+  {
+    value: 'en-GB',
+    label: 'English (United Kingdom)',
+  },
+];
+
+const TIMEZONES = [
+  'Africa/Nairobi',
+  'Africa/Kampala',
+  'Africa/Dar_es_Salaam',
+  'Africa/Kigali',
+  'Africa/Lagos',
+  'Africa/Johannesburg',
+  'Europe/London',
+  'America/New_York',
+  'America/Los_Angeles',
+  'Asia/Dubai',
 ];
 
 const DAYS = [
@@ -189,36 +188,14 @@ const DAYS = [
    HELPERS
    ============================================================ */
 
-function roleLabel(
-  value: string
-) {
-  return value
-    .split('_')
-    .map(
-      part =>
-        part.charAt(0).toUpperCase() +
-        part.slice(1)
-    )
-    .join(' ');
-}
-
-function statusLabel(
-  value: string
-) {
-  return roleLabel(
-    value
-  );
-}
-
-function initials(
-  account: AdminAccount
-) {
-  return (
-    `${account.firstName?.[0] || ''}${
-      account.lastName?.[0] || ''
-    }`.toUpperCase() ||
-    'SM'
-  );
+async function readPayload(
+  response: Response
+): Promise<ApiPayload> {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
 }
 
 function normalizeName(
@@ -233,90 +210,118 @@ function normalizeName(
 function validName(
   value: string
 ) {
-  const normalized =
-    normalizeName(
-      value
-    );
+  if (
+    value.length < 1 ||
+    value.length > 100
+  ) {
+    return false;
+  }
 
-  return (
-    normalized.length >= 1 &&
-    normalized.length <= 80 &&
-    /^[\p{L}\p{M}][\p{L}\p{M}\s'’\-]*$/u.test(
-      normalized
-    )
+  return /^[\p{L}\p{M}'’ -]+$/u.test(
+    value
   );
 }
 
-async function readPayload(
-  response: Response
-): Promise<ApiPayload> {
-  try {
-    const body:
-      unknown =
-      await response.json();
+function initials(
+  account: AdminAccount
+) {
+  const first =
+    account.firstName
+      ?.trim()
+      .charAt(0);
 
-    if (
-      body &&
-      typeof body ===
-        'object' &&
-      !Array.isArray(
-        body
-      )
-    ) {
-      return body as
-        ApiPayload;
-    }
-  } catch {
-    // handled below
+  const last =
+    account.lastName
+      ?.trim()
+      .charAt(0);
+
+  const result =
+    `${first || ''}${last || ''}`
+      .toUpperCase();
+
+  return result || 'SA';
+}
+
+function roleLabel(
+  role: string
+) {
+  return role
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      character =>
+        character.toUpperCase()
+    );
+}
+
+function statusLabel(
+  status: string
+) {
+  return status
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      character =>
+        character.toUpperCase()
+    );
+}
+
+function themeLabel(
+  theme: AdminTheme
+) {
+  if (theme === 'dark') {
+    return 'Dark';
   }
 
-  return {
-    success: false,
-    code:
-      'INVALID_SERVER_RESPONSE',
-    error:
-      'SaMi returned an invalid response.',
-  };
+  if (theme === 'light') {
+    return 'Light';
+  }
+
+  return 'System';
 }
 
 function applyTheme(
   theme: AdminTheme
 ) {
+  if (
+    typeof document ===
+    'undefined'
+  ) {
+    return;
+  }
+
   const root =
     document.documentElement;
+
+  if (theme === 'dark') {
+    root.classList.add(
+      'dark'
+    );
+
+    return;
+  }
+
+  if (theme === 'light') {
+    root.classList.remove(
+      'dark'
+    );
+
+    return;
+  }
 
   const prefersDark =
     window.matchMedia(
       '(prefers-color-scheme: dark)'
     ).matches;
 
-  const dark =
-    theme === 'dark' ||
-    (
-      theme === 'system' &&
-      prefersDark
-    );
-
   root.classList.toggle(
     'dark',
-    dark
+    prefersDark
   );
-
-  root.dataset.theme =
-    theme;
-
-  try {
-    localStorage.setItem(
-      'sami-admin-theme',
-      theme
-    );
-  } catch {
-    // Browser storage is optional.
-  }
 }
 
 /* ============================================================
-   COMPONENT
+   PAGE
    ============================================================ */
 
 export default function AdminMyAccountPage() {
@@ -324,7 +329,29 @@ export default function AdminMyAccountPage() {
     useRouter();
 
   const avatarInputRef =
-    useRef<HTMLInputElement | null>(
+    useRef<HTMLInputElement>(
+      null
+    );
+
+  const [
+    view,
+    setView,
+  ] =
+    useState<View>(
+      'overview'
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(true);
+
+  const [
+    loadError,
+    setLoadError,
+  ] =
+    useState<string | null>(
       null
     );
 
@@ -345,25 +372,11 @@ export default function AdminMyAccountPage() {
     );
 
   const [
-    loading,
-    setLoading,
+    draftPreferences,
+    setDraftPreferences,
   ] =
-    useState(true);
-
-  const [
-    loadError,
-    setLoadError,
-  ] =
-    useState<string | null>(
-      null
-    );
-
-  const [
-    view,
-    setView,
-  ] =
-    useState<ViewMode>(
-      'overview'
+    useState<AdminPreferences>(
+      DEFAULT_PREFERENCES
     );
 
   /* ==========================================================
@@ -429,16 +442,78 @@ export default function AdminMyAccountPage() {
      ========================================================== */
 
   const [
-    draftPreferences,
-    setDraftPreferences,
+    savingPreferences,
+    setSavingPreferences,
   ] =
-    useState<AdminPreferences>(
-      DEFAULT_PREFERENCES
+    useState(false);
+
+  /* ==========================================================
+     PASSWORD
+     ========================================================== */
+
+  const [
+    currentPassword,
+    setCurrentPassword,
+  ] =
+    useState('');
+
+  const [
+    newPassword,
+    setNewPassword,
+  ] =
+    useState('');
+
+  const [
+    confirmPassword,
+    setConfirmPassword,
+  ] =
+    useState('');
+
+  const [
+    showCurrentPassword,
+    setShowCurrentPassword,
+  ] =
+    useState(false);
+
+  const [
+    showNewPassword,
+    setShowNewPassword,
+  ] =
+    useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] =
+    useState(false);
+
+  const [
+    currentPasswordError,
+    setCurrentPasswordError,
+  ] =
+    useState<string | null>(
+      null
     );
 
   const [
-    savingPreferences,
-    setSavingPreferences,
+    newPasswordError,
+    setNewPasswordError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    confirmPasswordError,
+    setConfirmPasswordError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    savingPassword,
+    setSavingPassword,
   ] =
     useState(false);
 
@@ -458,8 +533,7 @@ export default function AdminMyAccountPage() {
     });
 
   function showOverlay(
-    type:
-      SaMiOverlayType,
+    type: SaMiOverlayType,
     title: string,
     message: string
   ) {
@@ -480,6 +554,14 @@ export default function AdminMyAccountPage() {
     );
   }
 
+  function handleSessionExpired() {
+    showOverlay(
+      'warning',
+      'Administrator session expired',
+      'Your administrator session is no longer active. Sign in again to continue.'
+    );
+  }
+
   /* ==========================================================
      LOAD
      ========================================================== */
@@ -487,13 +569,8 @@ export default function AdminMyAccountPage() {
   const loadData =
     useCallback(
       async () => {
-        setLoading(
-          true
-        );
-
-        setLoadError(
-          null
-        );
+        setLoading(true);
+        setLoadError(null);
 
         try {
           const [
@@ -504,8 +581,7 @@ export default function AdminMyAccountPage() {
               fetch(
                 '/api/admin/account',
                 {
-                  method:
-                    'GET',
+                  method: 'GET',
                   cache:
                     'no-store',
                   credentials:
@@ -520,8 +596,7 @@ export default function AdminMyAccountPage() {
               fetch(
                 '/api/admin/account/preferences',
                 {
-                  method:
-                    'GET',
+                  method: 'GET',
                   cache:
                     'no-store',
                   credentials:
@@ -553,12 +628,7 @@ export default function AdminMyAccountPage() {
             preferencesResponse.status ===
               401
           ) {
-            showOverlay(
-              'warning',
-              'Administrator session expired',
-              'Your administrator session is no longer active. Sign in again to continue.'
-            );
-
+            handleSessionExpired();
             return;
           }
 
@@ -582,7 +652,8 @@ export default function AdminMyAccountPage() {
             );
           }
 
-          const loadedAccount = {
+          const loadedAccount:
+            AdminAccount = {
             ...accountPayload.account,
             avatarFileId:
               accountPayload.account
@@ -612,27 +683,21 @@ export default function AdminMyAccountPage() {
 
           applyTheme(
             preferencesPayload
-              .preferences
-              .theme
+              .preferences.theme
           );
-        } catch (
-          error
-        ) {
+        } catch (error) {
           console.error(
             '[Admin My Account] Load failed:',
             error
           );
 
           setLoadError(
-            error instanceof
-              Error
+            error instanceof Error
               ? error.message
               : 'SaMi could not load your administrator account.'
           );
         } finally {
-          setLoading(
-            false
-          );
+          setLoading(false);
         }
       },
       []
@@ -642,322 +707,11 @@ export default function AdminMyAccountPage() {
     () => {
       void loadData();
     },
-    [
-      loadData,
-    ]
+    [loadData]
   );
 
   /* ==========================================================
-     AVATAR UPLOAD
-     ========================================================== */
-
-  function openAvatarPicker() {
-    if (
-      avatarBusy
-    ) {
-      return;
-    }
-
-    avatarInputRef.current?.click();
-  }
-
-  async function uploadAvatar(
-    event:
-      ChangeEvent<HTMLInputElement>
-  ) {
-    const file =
-      event.target.files?.[0];
-
-    event.target.value =
-      '';
-
-    if (
-      !file ||
-      !account ||
-      avatarBusy
-    ) {
-      return;
-    }
-
-    if (
-      !ACCEPTED_AVATAR_TYPES.has(
-        file.type
-      )
-    ) {
-      showOverlay(
-        'warning',
-        'Unsupported image',
-        'Choose a JPEG, PNG or WebP image.'
-      );
-
-      return;
-    }
-
-    if (
-      file.size <= 0 ||
-      file.size >
-        MAX_AVATAR_BYTES
-    ) {
-      showOverlay(
-        'warning',
-        'Image is too large',
-        'Choose an image smaller than 5 MB.'
-      );
-
-      return;
-    }
-
-    setSavingAvatar(
-      true
-    );
-
-    try {
-      const formData =
-        new FormData();
-
-      formData.append(
-        'file',
-        file
-      );
-
-      const response =
-        await fetch(
-          '/api/admin/account/avatar',
-          {
-            method:
-              'POST',
-
-            credentials:
-              'same-origin',
-
-            cache:
-              'no-store',
-
-            headers: {
-              Accept:
-                'application/json',
-            },
-
-            body:
-              formData,
-          }
-        );
-
-      const payload =
-        await readPayload(
-          response
-        );
-
-      if (
-        response.status ===
-        401
-      ) {
-        showOverlay(
-          'warning',
-          'Administrator session expired',
-          'Sign in again to continue.'
-        );
-
-        return;
-      }
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          payload.error ||
-            'SaMi could not update your profile photo.'
-        );
-      }
-
-      /*
-       * The avatar route may return avatarFileId directly.
-       * If it does not, reload the authoritative account record.
-       */
-      if (
-        payload.avatarFileId
-      ) {
-        setAccount(
-          current =>
-            current
-              ? {
-                  ...current,
-                  avatarFileId:
-                    payload.avatarFileId ??
-                    null,
-                }
-              : current
-        );
-      } else {
-        const accountResponse =
-          await fetch(
-            '/api/admin/account',
-            {
-              method:
-                'GET',
-
-              credentials:
-                'same-origin',
-
-              cache:
-                'no-store',
-
-              headers: {
-                Accept:
-                  'application/json',
-              },
-            }
-          );
-
-        const accountPayload =
-          await readPayload(
-            accountResponse
-          );
-
-        if (
-          accountResponse.ok &&
-          accountPayload.account
-        ) {
-          setAccount({
-            ...accountPayload.account,
-            avatarFileId:
-              accountPayload.account
-                .avatarFileId ??
-              null,
-          });
-        }
-      }
-
-      router.refresh();
-
-      showOverlay(
-        'success',
-        'Profile photo updated',
-        'Your administrator profile photo has been updated.'
-      );
-    } catch (
-      error
-    ) {
-      showOverlay(
-        'error',
-        'Photo update failed',
-        error instanceof
-          Error
-          ? error.message
-          : 'SaMi could not update your profile photo.'
-      );
-    } finally {
-      setSavingAvatar(
-        false
-      );
-    }
-  }
-
-  /* ==========================================================
-     AVATAR REMOVE
-     ========================================================== */
-
-  async function removeAvatar() {
-    if (
-      !account ||
-      !account.avatarFileId ||
-      avatarBusy
-    ) {
-      return;
-    }
-
-    setRemovingAvatar(
-      true
-    );
-
-    try {
-      const response =
-        await fetch(
-          '/api/admin/account/avatar',
-          {
-            method:
-              'DELETE',
-
-            credentials:
-              'same-origin',
-
-            cache:
-              'no-store',
-
-            headers: {
-              Accept:
-                'application/json',
-            },
-          }
-        );
-
-      const payload =
-        await readPayload(
-          response
-        );
-
-      if (
-        response.status ===
-        401
-      ) {
-        showOverlay(
-          'warning',
-          'Administrator session expired',
-          'Sign in again to continue.'
-        );
-
-        return;
-      }
-
-      if (
-        !response.ok
-      ) {
-        throw new Error(
-          payload.error ||
-            'SaMi could not remove your profile photo.'
-        );
-      }
-
-      setAccount(
-        current =>
-          current
-            ? {
-                ...current,
-                avatarFileId:
-                  null,
-                avatarUrl:
-                  null,
-              }
-            : current
-      );
-
-      router.refresh();
-
-      showOverlay(
-        'success',
-        'Profile photo removed',
-        'Your administrator profile photo has been removed.'
-      );
-    } catch (
-      error
-    ) {
-      showOverlay(
-        'error',
-        'Photo removal failed',
-        error instanceof
-          Error
-          ? error.message
-          : 'SaMi could not remove your profile photo.'
-      );
-    } finally {
-      setRemovingAvatar(
-        false
-      );
-    }
-  }
-
-  /* ==========================================================
-     PROFILE STATE
+     PROFILE
      ========================================================== */
 
   const profileChanged =
@@ -998,53 +752,11 @@ export default function AdminMyAccountPage() {
       account.lastName
     );
 
-    setFirstNameError(
-      null
-    );
+    setFirstNameError(null);
+    setLastNameError(null);
 
-    setLastNameError(
-      null
-    );
-
-    setView(
-      'profile'
-    );
+    setView('profile');
   }
-
-  function closeProfile() {
-    if (
-      savingProfile ||
-      avatarBusy
-    ) {
-      return;
-    }
-
-    if (account) {
-      setFirstName(
-        account.firstName
-      );
-
-      setLastName(
-        account.lastName
-      );
-    }
-
-    setFirstNameError(
-      null
-    );
-
-    setLastNameError(
-      null
-    );
-
-    setView(
-      'overview'
-    );
-  }
-
-  /* ==========================================================
-     SAVE PROFILE
-     ========================================================== */
 
   async function saveProfile(
     event:
@@ -1069,13 +781,8 @@ export default function AdminMyAccountPage() {
         lastName
       );
 
-    setFirstNameError(
-      null
-    );
-
-    setLastNameError(
-      null
-    );
+    setFirstNameError(null);
+    setLastNameError(null);
 
     let invalid =
       false;
@@ -1089,8 +796,7 @@ export default function AdminMyAccountPage() {
         'Enter a valid first name.'
       );
 
-      invalid =
-        true;
+      invalid = true;
     }
 
     if (
@@ -1102,17 +808,14 @@ export default function AdminMyAccountPage() {
         'Enter a valid last name.'
       );
 
-      invalid =
-        true;
+      invalid = true;
     }
 
     if (invalid) {
       return;
     }
 
-    if (
-      !profileChanged
-    ) {
+    if (!profileChanged) {
       showOverlay(
         'info',
         'No changes to save',
@@ -1122,28 +825,21 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setSavingProfile(
-      true
-    );
+    setSavingProfile(true);
 
     try {
       const response =
         await fetch(
           '/api/admin/account/profile',
           {
-            method:
-              'PATCH',
-
+            method: 'PATCH',
             credentials:
               'same-origin',
-
-            cache:
-              'no-store',
+            cache: 'no-store',
 
             headers: {
               Accept:
                 'application/json',
-
               'Content-Type':
                 'application/json',
             },
@@ -1152,7 +848,6 @@ export default function AdminMyAccountPage() {
               JSON.stringify({
                 firstName:
                   normalizedFirst,
-
                 lastName:
                   normalizedLast,
               }),
@@ -1168,12 +863,7 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        showOverlay(
-          'warning',
-          'Administrator session expired',
-          'Sign in again to continue.'
-        );
-
+        handleSessionExpired();
         return;
       }
 
@@ -1240,9 +930,7 @@ export default function AdminMyAccountPage() {
         nextAccount.lastName
       );
 
-      setView(
-        'overview'
-      );
+      setView('overview');
 
       router.refresh();
 
@@ -1251,21 +939,237 @@ export default function AdminMyAccountPage() {
         'Profile updated',
         'Your personal information has been updated.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Profile update failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not update your profile.'
       );
     } finally {
-      setSavingProfile(
-        false
+      setSavingProfile(false);
+    }
+  }
+
+  /* ==========================================================
+     AVATAR
+     ========================================================== */
+
+  function openAvatarPicker() {
+    if (!avatarBusy) {
+      avatarInputRef
+        .current
+        ?.click();
+    }
+  }
+
+  async function uploadAvatar(
+    event:
+      ChangeEvent<HTMLInputElement>
+  ) {
+    const file =
+      event.target.files?.[0];
+
+    event.target.value = '';
+
+    if (
+      !file ||
+      !account ||
+      avatarBusy
+    ) {
+      return;
+    }
+
+    if (
+      !ACCEPTED_AVATAR_TYPES.has(
+        file.type
+      )
+    ) {
+      showOverlay(
+        'warning',
+        'Unsupported image',
+        'Choose a JPEG, PNG or WebP image.'
       );
+
+      return;
+    }
+
+    if (
+      file.size <= 0 ||
+      file.size >
+        MAX_AVATAR_BYTES
+    ) {
+      showOverlay(
+        'warning',
+        'Image is too large',
+        'Choose an image smaller than 5 MB.'
+      );
+
+      return;
+    }
+
+    setSavingAvatar(true);
+
+    try {
+      const formData =
+        new FormData();
+
+      formData.append(
+        'file',
+        file
+      );
+
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            cache: 'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+            body: formData,
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        handleSessionExpired();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not update your profile photo.'
+        );
+      }
+
+      if (
+        payload.avatarFileId
+      ) {
+        setAccount(
+          current =>
+            current
+              ? {
+                  ...current,
+                  avatarFileId:
+                    payload.avatarFileId ??
+                    null,
+                }
+              : current
+        );
+      } else {
+        await loadData();
+      }
+
+      router.refresh();
+
+      showOverlay(
+        'success',
+        'Profile photo updated',
+        'Your administrator profile photo has been updated.'
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Photo update failed',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not update your profile photo.'
+      );
+    } finally {
+      setSavingAvatar(false);
+    }
+  }
+
+  async function removeAvatar() {
+    if (
+      !account?.avatarFileId ||
+      avatarBusy
+    ) {
+      return;
+    }
+
+    setRemovingAvatar(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method: 'DELETE',
+            credentials:
+              'same-origin',
+            cache: 'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        handleSessionExpired();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not remove your profile photo.'
+        );
+      }
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                avatarFileId:
+                  null,
+                avatarUrl:
+                  null,
+              }
+            : current
+      );
+
+      router.refresh();
+
+      showOverlay(
+        'success',
+        'Profile photo removed',
+        'Your administrator profile photo has been removed.'
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Photo removal failed',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not remove your profile photo.'
+      );
+    } finally {
+      setRemovingAvatar(false);
     }
   }
 
@@ -1288,36 +1192,6 @@ export default function AdminMyAccountPage() {
       ]
     );
 
-  function openPreferences() {
-    setDraftPreferences({
-      ...preferences,
-    });
-
-    setView(
-      'preferences'
-    );
-  }
-
-  function closePreferences() {
-    if (
-      savingPreferences
-    ) {
-      return;
-    }
-
-    setDraftPreferences({
-      ...preferences,
-    });
-
-    applyTheme(
-      preferences.theme
-    );
-
-    setView(
-      'overview'
-    );
-  }
-
   function updatePreference<
     K extends keyof AdminPreferences
   >(
@@ -1332,13 +1206,9 @@ export default function AdminMyAccountPage() {
       })
     );
 
-    if (
-      key ===
-      'theme'
-    ) {
+    if (key === 'theme') {
       applyTheme(
-        value as
-          AdminTheme
+        value as AdminTheme
       );
     }
   }
@@ -1350,45 +1220,27 @@ export default function AdminMyAccountPage() {
     event.preventDefault();
 
     if (
-      savingPreferences
-    ) {
-      return;
-    }
-
-    if (
+      savingPreferences ||
       !preferencesChanged
     ) {
-      showOverlay(
-        'info',
-        'No changes to save',
-        'Your preferences have not changed.'
-      );
-
       return;
     }
 
-    setSavingPreferences(
-      true
-    );
+    setSavingPreferences(true);
 
     try {
       const response =
         await fetch(
           '/api/admin/account/preferences',
           {
-            method:
-              'PATCH',
-
+            method: 'PATCH',
             credentials:
               'same-origin',
-
-            cache:
-              'no-store',
+            cache: 'no-store',
 
             headers: {
               Accept:
                 'application/json',
-
               'Content-Type':
                 'application/json',
             },
@@ -1409,12 +1261,7 @@ export default function AdminMyAccountPage() {
         response.status ===
         401
       ) {
-        showOverlay(
-          'warning',
-          'Administrator session expired',
-          'Sign in again to continue.'
-        );
-
+        handleSessionExpired();
         return;
       }
 
@@ -1437,22 +1284,17 @@ export default function AdminMyAccountPage() {
       );
 
       applyTheme(
-        payload.preferences
-          .theme
+        payload.preferences.theme
       );
 
-      setView(
-        'overview'
-      );
+      setView('overview');
 
       showOverlay(
         'success',
         'Preferences updated',
         'Your administrator preferences have been saved.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       applyTheme(
         preferences.theme
       );
@@ -1460,15 +1302,295 @@ export default function AdminMyAccountPage() {
       showOverlay(
         'error',
         'Preferences update failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not update your preferences.'
       );
     } finally {
-      setSavingPreferences(
-        false
+      setSavingPreferences(false);
+    }
+  }
+
+  /* ==========================================================
+     PASSWORD
+     ========================================================== */
+
+  const passwordRules =
+    useMemo(
+      () => ({
+        length:
+          newPassword.length >=
+            8 &&
+          newPassword.length <=
+            128,
+
+        uppercase:
+          /[A-Z]/.test(
+            newPassword
+          ),
+
+        lowercase:
+          /[a-z]/.test(
+            newPassword
+          ),
+
+        number:
+          /[0-9]/.test(
+            newPassword
+          ),
+      }),
+      [newPassword]
+    );
+
+  const passwordValid =
+    Object.values(
+      passwordRules
+    ).every(Boolean);
+
+  const passwordChanged =
+    Boolean(
+      currentPassword ||
+      newPassword ||
+      confirmPassword
+    );
+
+  function clearPasswordForm() {
+    setCurrentPassword('');
+    setNewPassword('');
+    setConfirmPassword('');
+
+    setCurrentPasswordError(
+      null
+    );
+
+    setNewPasswordError(
+      null
+    );
+
+    setConfirmPasswordError(
+      null
+    );
+
+    setShowCurrentPassword(
+      false
+    );
+
+    setShowNewPassword(
+      false
+    );
+
+    setShowConfirmPassword(
+      false
+    );
+  }
+
+  function openPassword() {
+    clearPasswordForm();
+    setView('password');
+  }
+
+  function closePassword() {
+    if (savingPassword) {
+      return;
+    }
+
+    clearPasswordForm();
+    setView('overview');
+  }
+
+  async function changePassword(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (savingPassword) {
+      return;
+    }
+
+    setCurrentPasswordError(
+      null
+    );
+
+    setNewPasswordError(
+      null
+    );
+
+    setConfirmPasswordError(
+      null
+    );
+
+    let invalid =
+      false;
+
+    if (!currentPassword) {
+      setCurrentPasswordError(
+        'Enter your current password.'
       );
+
+      invalid = true;
+    }
+
+    if (!newPassword) {
+      setNewPasswordError(
+        'Enter a new password.'
+      );
+
+      invalid = true;
+    } else if (
+      !passwordValid
+    ) {
+      setNewPasswordError(
+        'Your new password does not meet the password requirements.'
+      );
+
+      invalid = true;
+    }
+
+    if (!confirmPassword) {
+      setConfirmPasswordError(
+        'Confirm your new password.'
+      );
+
+      invalid = true;
+    } else if (
+      newPassword !==
+      confirmPassword
+    ) {
+      setConfirmPasswordError(
+        'The password confirmation does not match.'
+      );
+
+      invalid = true;
+    }
+
+    if (
+      currentPassword &&
+      newPassword &&
+      currentPassword ===
+        newPassword
+    ) {
+      setNewPasswordError(
+        'Your new password must be different from your current password.'
+      );
+
+      invalid = true;
+    }
+
+    if (invalid) {
+      return;
+    }
+
+    setSavingPassword(true);
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/change-password',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            cache: 'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+
+              'Content-Type':
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                currentPassword,
+                newPassword,
+                confirmPassword,
+              }),
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
+        handleSessionExpired();
+        return;
+      }
+
+      if (!response.ok) {
+        if (
+          payload.field ===
+          'currentPassword'
+        ) {
+          setCurrentPasswordError(
+            payload.error ||
+              'The current password is incorrect.'
+          );
+
+          return;
+        }
+
+        if (
+          payload.field ===
+          'newPassword'
+        ) {
+          setNewPasswordError(
+            payload.error ||
+              'The new password is invalid.'
+          );
+
+          return;
+        }
+
+        if (
+          payload.field ===
+          'confirmPassword'
+        ) {
+          setConfirmPasswordError(
+            payload.error ||
+              'The password confirmation is invalid.'
+          );
+
+          return;
+        }
+
+        throw new Error(
+          payload.error ||
+            'SaMi could not change your password.'
+        );
+      }
+
+      const revoked =
+        payload.otherSessionsRevoked ??
+        0;
+
+      clearPasswordForm();
+
+      setView('overview');
+
+      showOverlay(
+        'success',
+        'Password changed',
+        revoked > 0
+          ? `Your password has been changed. ${revoked} other signed-in session${revoked === 1 ? '' : 's'} were revoked.`
+          : 'Your password has been changed successfully.'
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Password change failed',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not change your password.'
+      );
+    } finally {
+      setSavingPassword(false);
     }
   }
 
@@ -1478,18 +1600,10 @@ export default function AdminMyAccountPage() {
 
   const overlayElement = (
     <SaMiOverlay
-      open={
-        overlay.open
-      }
-      type={
-        overlay.type
-      }
-      title={
-        overlay.title
-      }
-      message={
-        overlay.message
-      }
+      open={overlay.open}
+      type={overlay.type}
+      title={overlay.title}
+      message={overlay.message}
       primaryAction={
         overlay.title ===
         'Administrator session expired'
@@ -1497,18 +1611,15 @@ export default function AdminMyAccountPage() {
               label:
                 'Sign in again',
 
-              onClick:
-                () => {
-                  router.replace(
-                    '/admin/login'
-                  );
-                },
+              onClick: () => {
+                router.replace(
+                  '/admin/login'
+                );
+              },
             }
           : undefined
       }
-      onClose={
-        closeOverlay
-      }
+      onClose={closeOverlay}
     />
   );
 
@@ -1535,7 +1646,7 @@ export default function AdminMyAccountPage() {
   }
 
   /* ==========================================================
-     ERROR
+     LOAD ERROR
      ========================================================== */
 
   if (
@@ -1553,7 +1664,7 @@ export default function AdminMyAccountPage() {
             Account unavailable
           </h2>
 
-          <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500">
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
             {loadError ||
               'SaMi could not load your administrator account.'}
           </p>
@@ -1563,7 +1674,7 @@ export default function AdminMyAccountPage() {
             onClick={() =>
               void loadData()
             }
-            className="mt-6 inline-flex h-11 items-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950"
+            className={`${primaryButton()} mt-6`}
           >
             <RefreshCw className="h-4 w-4" />
             Try again
@@ -1576,19 +1687,269 @@ export default function AdminMyAccountPage() {
   }
 
   /* ==========================================================
-     PROFILE VIEW
+     PASSWORD VIEW
      ========================================================== */
 
-  if (
-    view ===
-    'profile'
-  ) {
+  if (view === 'password') {
     return (
       <>
         <div className="mx-auto w-full max-w-4xl">
           <BackButton
             onClick={
-              closeProfile
+              closePassword
+            }
+            disabled={
+              savingPassword
+            }
+          />
+
+          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <SectionHeader
+              icon={
+                <KeyRound className="h-5 w-5" />
+              }
+              title="Password & security"
+              description="Protect your administrator account and control your sign-in credentials."
+            />
+
+            <form
+              onSubmit={
+                changePassword
+              }
+              className="p-6 sm:p-7"
+            >
+              <div className="mb-7 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-950 dark:bg-blue-950/30">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+
+                  <div>
+                    <p className="text-sm font-bold text-blue-950 dark:text-blue-200">
+                      Administrator security
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-blue-700 dark:text-blue-300">
+                      Changing your password keeps this session active and revokes your other administrator sessions.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <PasswordField
+                  label="Current password"
+                  value={
+                    currentPassword
+                  }
+                  visible={
+                    showCurrentPassword
+                  }
+                  error={
+                    currentPasswordError
+                  }
+                  autoComplete="current-password"
+                  disabled={
+                    savingPassword
+                  }
+                  onChange={
+                    setCurrentPassword
+                  }
+                  onToggle={() =>
+                    setShowCurrentPassword(
+                      current =>
+                        !current
+                    )
+                  }
+                />
+
+                <PasswordField
+                  label="New password"
+                  value={
+                    newPassword
+                  }
+                  visible={
+                    showNewPassword
+                  }
+                  error={
+                    newPasswordError
+                  }
+                  autoComplete="new-password"
+                  disabled={
+                    savingPassword
+                  }
+                  onChange={
+                    setNewPassword
+                  }
+                  onToggle={() =>
+                    setShowNewPassword(
+                      current =>
+                        !current
+                    )
+                  }
+                />
+
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950/60">
+                  <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
+                    Password requirements
+                  </p>
+
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <PasswordRule
+                      passed={
+                        passwordRules.length
+                      }
+                    >
+                      8–128 characters
+                    </PasswordRule>
+
+                    <PasswordRule
+                      passed={
+                        passwordRules.uppercase
+                      }
+                    >
+                      One uppercase letter
+                    </PasswordRule>
+
+                    <PasswordRule
+                      passed={
+                        passwordRules.lowercase
+                      }
+                    >
+                      One lowercase letter
+                    </PasswordRule>
+
+                    <PasswordRule
+                      passed={
+                        passwordRules.number
+                      }
+                    >
+                      One number
+                    </PasswordRule>
+                  </div>
+                </div>
+
+                <PasswordField
+                  label="Confirm new password"
+                  value={
+                    confirmPassword
+                  }
+                  visible={
+                    showConfirmPassword
+                  }
+                  error={
+                    confirmPasswordError
+                  }
+                  autoComplete="new-password"
+                  disabled={
+                    savingPassword
+                  }
+                  onChange={
+                    setConfirmPassword
+                  }
+                  onToggle={() =>
+                    setShowConfirmPassword(
+                      current =>
+                        !current
+                    )
+                  }
+                />
+              </div>
+
+              <div className="mt-8 flex flex-col-reverse gap-3 border-t border-zinc-200 pt-6 dark:border-zinc-800 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={
+                    savingPassword
+                  }
+                  onClick={
+                    closePassword
+                  }
+                  className={
+                    secondaryButton()
+                  }
+                >
+                  <X className="h-4 w-4" />
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    savingPassword ||
+                    !passwordChanged
+                  }
+                  className={
+                    primaryButton()
+                  }
+                >
+                  {savingPassword ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+
+                  {savingPassword
+                    ? 'Changing password'
+                    : 'Change password'}
+                </button>
+              </div>
+            </form>
+          </section>
+
+          <section className="mt-5 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            <div className="flex items-center gap-4 p-6">
+              <IconBox>
+                <ShieldCheck className="h-5 w-5" />
+              </IconBox>
+
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-zinc-950 dark:text-white">
+                  Two-factor authentication
+                </p>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  {account.twoFactorEnabled
+                    ? 'Two-factor authentication is enabled for this administrator account.'
+                    : account.twoFactorRequired
+                      ? 'Two-factor authentication is required for this administrator account.'
+                      : 'Additional sign-in protection for your administrator account.'}
+                </p>
+              </div>
+
+              <span
+                className={`rounded-full px-3 py-1.5 text-xs font-bold ${
+                  account.twoFactorEnabled
+                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                    : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
+                }`}
+              >
+                {account.twoFactorEnabled
+                  ? 'Enabled'
+                  : account.twoFactorRequired
+                    ? 'Required'
+                    : 'Not enabled'}
+              </span>
+            </div>
+          </section>
+        </div>
+
+        {overlayElement}
+      </>
+    );
+  }
+
+  /* ==========================================================
+     PROFILE VIEW
+     ========================================================== */
+
+  if (view === 'profile') {
+    return (
+      <>
+        <div className="mx-auto w-full max-w-4xl">
+          <BackButton
+            onClick={() =>
+              setView(
+                'overview'
+              )
             }
             disabled={
               savingProfile ||
@@ -1605,42 +1966,32 @@ export default function AdminMyAccountPage() {
               description="Manage your administrator identity and profile photo."
             />
 
-            {/* AVATAR */}
-
-            <div className="border-b border-zinc-200 p-6 sm:p-7 dark:border-zinc-800">
+            <div className="border-b border-zinc-200 p-6 dark:border-zinc-800 sm:p-7">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <div className="relative shrink-0">
-                  <UserAvatar
-                    avatarFileId={
-                      account.avatarFileId
-                    }
-                    displayName={
-                      account.fullName
-                    }
-                    initials={
-                      initials(
-                        account
-                      )
-                    }
-                    endpoint="/api/admin/account/avatar"
-                    size="lg"
-                    className="ring-4 ring-zinc-100 dark:ring-zinc-800"
-                  />
+                <UserAvatar
+                  avatarFileId={
+                    account.avatarFileId
+                  }
+                  displayName={
+                    account.fullName
+                  }
+                  initials={
+                    initials(
+                      account
+                    )
+                  }
+                  endpoint="/api/admin/account/avatar"
+                  size="lg"
+                  className="ring-4 ring-zinc-100 dark:ring-zinc-800"
+                />
 
-                  {savingAvatar && (
-                    <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55">
-                      <Loader2 className="h-5 w-5 animate-spin text-white" />
-                    </div>
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
+                <div className="flex-1">
                   <p className="text-sm font-bold text-zinc-950 dark:text-white">
                     Profile photo
                   </p>
 
-                  <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">
-                    JPEG, PNG or WebP. Maximum file size 5 MB.
+                  <p className="mt-1 text-xs text-zinc-500">
+                    JPEG, PNG or WebP. Maximum 5 MB.
                   </p>
 
                   <input
@@ -1667,7 +2018,9 @@ export default function AdminMyAccountPage() {
                       onClick={
                         openAvatarPicker
                       }
-                      className={secondaryButton()}
+                      className={
+                        secondaryButton()
+                      }
                     >
                       {savingAvatar ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -1693,7 +2046,7 @@ export default function AdminMyAccountPage() {
                         onClick={() =>
                           void removeAvatar()
                         }
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                        className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
                       >
                         {removingAvatar ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -1701,9 +2054,7 @@ export default function AdminMyAccountPage() {
                           <Trash2 className="h-4 w-4" />
                         )}
 
-                        {removingAvatar
-                          ? 'Removing'
-                          : 'Remove'}
+                        Remove
                       </button>
                     )}
                   </div>
@@ -1719,41 +2070,31 @@ export default function AdminMyAccountPage() {
             >
               <div className="grid gap-5 sm:grid-cols-2">
                 <Field>
-                  <label
-                    htmlFor="admin-first-name"
-                    className="text-sm font-semibold text-zinc-800 dark:text-zinc-200"
-                  >
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
                     First name
                   </label>
 
                   <input
-                    id="admin-first-name"
                     value={
                       firstName
                     }
-                    maxLength={
-                      80
-                    }
-                    autoComplete="given-name"
                     disabled={
                       savingProfile
                     }
                     onChange={
-                      event => {
+                      event =>
                         setFirstName(
-                          event.target.value
-                        );
-
-                        setFirstNameError(
-                          null
-                        );
-                      }
+                          event.target
+                            .value
+                        )
                     }
-                    className={inputClass(
-                      Boolean(
-                        firstNameError
+                    className={
+                      inputClass(
+                        Boolean(
+                          firstNameError
+                        )
                       )
-                    )}
+                    }
                   />
 
                   {firstNameError && (
@@ -1764,41 +2105,31 @@ export default function AdminMyAccountPage() {
                 </Field>
 
                 <Field>
-                  <label
-                    htmlFor="admin-last-name"
-                    className="text-sm font-semibold text-zinc-800 dark:text-zinc-200"
-                  >
+                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
                     Last name
                   </label>
 
                   <input
-                    id="admin-last-name"
                     value={
                       lastName
                     }
-                    maxLength={
-                      80
-                    }
-                    autoComplete="family-name"
                     disabled={
                       savingProfile
                     }
                     onChange={
-                      event => {
+                      event =>
                         setLastName(
-                          event.target.value
-                        );
-
-                        setLastNameError(
-                          null
-                        );
-                      }
+                          event.target
+                            .value
+                        )
                     }
-                    className={inputClass(
-                      Boolean(
-                        lastNameError
+                    className={
+                      inputClass(
+                        Boolean(
+                          lastNameError
+                        )
                       )
-                    )}
+                    }
                   />
 
                   {lastNameError && (
@@ -1810,16 +2141,16 @@ export default function AdminMyAccountPage() {
               </div>
 
               <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-950/60">
-                <div className="flex items-start gap-3">
-                  <Mail className="mt-0.5 h-5 w-5 shrink-0 text-zinc-400" />
+                <div className="flex gap-3">
+                  <Mail className="mt-0.5 h-5 w-5 text-zinc-400" />
 
                   <div>
                     <p className="text-sm font-semibold text-zinc-950 dark:text-white">
                       {account.email}
                     </p>
 
-                    <p className="mt-1 text-xs leading-5 text-zinc-500">
-                      Your sign-in email is protected by a separate verification process.
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Your sign-in email uses a separate verification process.
                     </p>
                   </div>
                 </div>
@@ -1832,8 +2163,10 @@ export default function AdminMyAccountPage() {
                 changed={
                   profileChanged
                 }
-                onCancel={
-                  closeProfile
+                onCancel={() =>
+                  setView(
+                    'overview'
+                  )
                 }
               />
             </form>
@@ -1857,9 +2190,19 @@ export default function AdminMyAccountPage() {
       <>
         <div className="mx-auto w-full max-w-5xl">
           <BackButton
-            onClick={
-              closePreferences
-            }
+            onClick={() => {
+              setDraftPreferences({
+                ...preferences,
+              });
+
+              applyTheme(
+                preferences.theme
+              );
+
+              setView(
+                'overview'
+              );
+            }}
             disabled={
               savingPreferences
             }
@@ -1877,16 +2220,12 @@ export default function AdminMyAccountPage() {
                   <Settings2 className="h-5 w-5" />
                 }
                 title="Preferences"
-                description="Personalize how the administrator workspace appears and formats information."
+                description="Personalize your administrator workspace."
               />
 
               <div className="p-6 sm:p-7">
                 <p className="text-sm font-semibold text-zinc-950 dark:text-white">
                   Appearance
-                </p>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  Choose how SaMi looks on this account.
                 </p>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -1899,7 +2238,6 @@ export default function AdminMyAccountPage() {
                       <Monitor className="h-5 w-5" />
                     }
                     title="System"
-                    description="Follow your device"
                     onClick={() =>
                       updatePreference(
                         'theme',
@@ -1917,7 +2255,6 @@ export default function AdminMyAccountPage() {
                       <Sun className="h-5 w-5" />
                     }
                     title="Light"
-                    description="Always use light"
                     onClick={() =>
                       updatePreference(
                         'theme',
@@ -1935,7 +2272,6 @@ export default function AdminMyAccountPage() {
                       <Moon className="h-5 w-5" />
                     }
                     title="Dark"
-                    description="Always use dark"
                     onClick={() =>
                       updatePreference(
                         'theme',
@@ -1954,35 +2290,34 @@ export default function AdminMyAccountPage() {
                     <Languages className="h-5 w-5" />
                   }
                   title="Language & locale"
-                  description="Controls language and regional formatting."
                 >
                   <select
                     value={
                       draftPreferences.locale
                     }
-                    disabled={
-                      savingPreferences
-                    }
                     onChange={
                       event =>
                         updatePreference(
                           'locale',
-                          event.target.value
+                          event.target
+                            .value
                         )
                     }
-                    className={selectClass()}
+                    className={
+                      selectClass()
+                    }
                   >
                     {LOCALES.map(
-                      locale => (
+                      item => (
                         <option
                           key={
-                            locale.value
+                            item.value
                           }
                           value={
-                            locale.value
+                            item.value
                           }
                         >
-                          {locale.label}
+                          {item.label}
                         </option>
                       )
                     )}
@@ -1994,23 +2329,22 @@ export default function AdminMyAccountPage() {
                     <Globe2 className="h-5 w-5" />
                   }
                   title="Time zone"
-                  description="Used when displaying dates and activity times."
                 >
                   <select
                     value={
                       draftPreferences.timezone
                     }
-                    disabled={
-                      savingPreferences
-                    }
                     onChange={
                       event =>
                         updatePreference(
                           'timezone',
-                          event.target.value
+                          event.target
+                            .value
                         )
                     }
-                    className={selectClass()}
+                    className={
+                      selectClass()
+                    }
                   >
                     {TIMEZONES.map(
                       timezone => (
@@ -2036,21 +2370,15 @@ export default function AdminMyAccountPage() {
                 <div className="flex items-center gap-3">
                   <CalendarDays className="h-5 w-5 text-zinc-500" />
 
-                  <div>
-                    <p className="font-semibold text-zinc-950 dark:text-white">
-                      Date & time
-                    </p>
-
-                    <p className="mt-1 text-sm text-zinc-500">
-                      Control how dates and times are presented.
-                    </p>
-                  </div>
+                  <p className="font-semibold text-zinc-950 dark:text-white">
+                    Date & time
+                  </p>
                 </div>
               </div>
 
               <div className="grid gap-5 p-6 sm:p-7 lg:grid-cols-3">
                 <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                  <label className="text-sm font-semibold">
                     Date format
                   </label>
 
@@ -2058,18 +2386,18 @@ export default function AdminMyAccountPage() {
                     value={
                       draftPreferences.dateFormat
                     }
-                    disabled={
-                      savingPreferences
-                    }
                     onChange={
                       event =>
                         updatePreference(
                           'dateFormat',
-                          event.target.value as
+                          event.target
+                            .value as
                             AdminDateFormat
                         )
                     }
-                    className={selectClass()}
+                    className={
+                      selectClass()
+                    }
                   >
                     <option value="DD/MM/YYYY">
                       DD/MM/YYYY
@@ -2086,7 +2414,7 @@ export default function AdminMyAccountPage() {
                 </Field>
 
                 <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                  <label className="text-sm font-semibold">
                     Time format
                   </label>
 
@@ -2094,18 +2422,18 @@ export default function AdminMyAccountPage() {
                     value={
                       draftPreferences.timeFormat
                     }
-                    disabled={
-                      savingPreferences
-                    }
                     onChange={
                       event =>
                         updatePreference(
                           'timeFormat',
-                          event.target.value as
+                          event.target
+                            .value as
                             AdminTimeFormat
                         )
                     }
-                    className={selectClass()}
+                    className={
+                      selectClass()
+                    }
                   >
                     <option value="12h">
                       12-hour
@@ -2118,7 +2446,7 @@ export default function AdminMyAccountPage() {
                 </Field>
 
                 <Field>
-                  <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                  <label className="text-sm font-semibold">
                     First day of week
                   </label>
 
@@ -2126,19 +2454,19 @@ export default function AdminMyAccountPage() {
                     value={
                       draftPreferences.firstDayOfWeek
                     }
-                    disabled={
-                      savingPreferences
-                    }
                     onChange={
                       event =>
                         updatePreference(
                           'firstDayOfWeek',
                           Number(
-                            event.target.value
+                            event.target
+                              .value
                           )
                         )
                     }
-                    className={selectClass()}
+                    className={
+                      selectClass()
+                    }
                   >
                     {DAYS.map(
                       (
@@ -2146,9 +2474,7 @@ export default function AdminMyAccountPage() {
                         index
                       ) => (
                         <option
-                          key={
-                            day
-                          }
+                          key={day}
                           value={
                             index
                           }
@@ -2161,18 +2487,26 @@ export default function AdminMyAccountPage() {
                 </Field>
               </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-zinc-200 px-6 py-5 dark:border-zinc-800 sm:flex-row sm:justify-end">
+              <div className="flex justify-end gap-3 border-t border-zinc-200 p-6 dark:border-zinc-800">
                 <button
                   type="button"
-                  onClick={
-                    closePreferences
+                  onClick={() => {
+                    setDraftPreferences({
+                      ...preferences,
+                    });
+
+                    applyTheme(
+                      preferences.theme
+                    );
+
+                    setView(
+                      'overview'
+                    );
+                  }}
+                  className={
+                    secondaryButton()
                   }
-                  disabled={
-                    savingPreferences
-                  }
-                  className={secondaryButton()}
                 >
-                  <X className="h-4 w-4" />
                   Cancel
                 </button>
 
@@ -2182,7 +2516,9 @@ export default function AdminMyAccountPage() {
                     savingPreferences ||
                     !preferencesChanged
                   }
-                  className={primaryButton()}
+                  className={
+                    primaryButton()
+                  }
                 >
                   {savingPreferences ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -2190,9 +2526,7 @@ export default function AdminMyAccountPage() {
                     <Save className="h-4 w-4" />
                   )}
 
-                  {savingPreferences
-                    ? 'Saving'
-                    : 'Save preferences'}
+                  Save preferences
                 </button>
               </div>
             </section>
@@ -2229,11 +2563,11 @@ export default function AdminMyAccountPage() {
                   }
                   endpoint="/api/admin/account/avatar"
                   size="lg"
-                  className="shadow-sm ring-4 ring-zinc-100 dark:ring-zinc-800"
+                  className="ring-4 ring-zinc-100 dark:ring-zinc-800"
                 />
 
                 <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <p className="truncate text-lg font-bold text-zinc-950 dark:text-white">
                       {account.fullName}
                     </p>
@@ -2252,7 +2586,7 @@ export default function AdminMyAccountPage() {
                     onClick={
                       openProfile
                     }
-                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
+                    className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400"
                   >
                     <Camera className="h-3.5 w-3.5" />
 
@@ -2264,7 +2598,7 @@ export default function AdminMyAccountPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-xs font-semibold dark:border-zinc-700 dark:bg-zinc-800">
                   {roleLabel(
                     account.role
                   )}
@@ -2287,7 +2621,7 @@ export default function AdminMyAccountPage() {
             </p>
 
             <p className="mt-1 text-sm text-zinc-500">
-              Manage your personal administrator identity and preferences.
+              Manage your personal administrator account.
             </p>
           </div>
 
@@ -2305,21 +2639,20 @@ export default function AdminMyAccountPage() {
 
             <Link
               href="/admin/settings/account/email"
-              className="group flex items-center gap-4 px-6 py-5 transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-950"
+              className="group flex items-center gap-4 px-6 py-5 transition hover:bg-zinc-50 dark:hover:bg-zinc-950"
             >
               <IconBox>
                 <Mail className="h-5 w-5" />
               </IconBox>
 
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2">
                   <p className="font-semibold text-zinc-950 dark:text-white">
                     Email
                   </p>
 
                   {account.emailVerified && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      <BadgeCheck className="h-3.5 w-3.5" />
+                    <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
                       Verified
                     </span>
                   )}
@@ -2330,7 +2663,7 @@ export default function AdminMyAccountPage() {
                 </p>
               </div>
 
-              <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5" />
+              <ChevronRight className="h-5 w-5 text-zinc-400" />
             </Link>
 
             <SettingsRow
@@ -2348,72 +2681,40 @@ export default function AdminMyAccountPage() {
                   ? '24-hour time'
                   : '12-hour time'
               }`}
-              onClick={
-                openPreferences
-              }
+              onClick={() => {
+                setDraftPreferences({
+                  ...preferences,
+                });
+
+                setView(
+                  'preferences'
+                );
+              }}
             />
 
-            <div
-              aria-disabled="true"
-              className="flex cursor-not-allowed items-center gap-4 px-6 py-5 opacity-55"
-            >
-              <IconBox>
+            <SettingsRow
+              icon={
                 <KeyRound className="h-5 w-5" />
-              </IconBox>
-
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-zinc-950 dark:text-white">
-                    Password & security
-                  </p>
-
-                  <span className="rounded-full bg-zinc-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-zinc-400 dark:bg-zinc-800">
-                    Category 4
+              }
+              title="Password & security"
+              description={
+                account.twoFactorEnabled
+                  ? 'Password and two-factor authentication · 2FA enabled'
+                  : 'Password and administrator account protection'
+              }
+              onClick={
+                openPassword
+              }
+              trailing={
+                account.twoFactorEnabled ? (
+                  <span className="mr-2 inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    Protected
                   </span>
-                </div>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  Password, two-factor authentication and security controls.
-                </p>
-              </div>
-
-              <ShieldCheck className="h-5 w-5 text-zinc-300 dark:text-zinc-700" />
-            </div>
+                ) : undefined
+              }
+            />
           </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <StatusCard
-            icon={
-              <BadgeCheck className="h-5 w-5" />
-            }
-            label="Identity"
-            value={
-              account.emailVerified
-                ? 'Verified'
-                : 'Verification required'
-            }
-          />
-
-          <StatusCard
-            icon={
-              <ShieldCheck className="h-5 w-5" />
-            }
-            label="Administrator status"
-            value={statusLabel(
-              account.status
-            )}
-          />
-
-          <StatusCard
-            icon={
-              <Clock3 className="h-5 w-5" />
-            }
-            label="Time zone"
-            value={
-              preferences.timezone
-            }
-          />
         </section>
       </div>
 
@@ -2423,86 +2724,150 @@ export default function AdminMyAccountPage() {
 }
 
 /* ============================================================
-   UI COMPONENTS
+   PASSWORD FIELD
    ============================================================ */
 
-function BackButton({
-  onClick,
+function PasswordField({
+  label,
+  value,
+  visible,
+  error,
+  autoComplete,
   disabled,
+  onChange,
+  onToggle,
 }: {
-  onClick: () => void;
-  disabled?: boolean;
+  label: string;
+  value: string;
+  visible: boolean;
+  error: string | null;
+  autoComplete:
+    | 'current-password'
+    | 'new-password';
+  disabled: boolean;
+  onChange:
+    (value: string) => void;
+  onToggle:
+    () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={
-        onClick
-      }
-      disabled={
-        disabled
-      }
-      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-950 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-white"
-    >
-      <ArrowLeft className="h-4 w-4" />
-      My Account
-    </button>
-  );
-}
+    <Field>
+      <label className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+        {label}
+      </label>
 
-function SectionHeader({
-  icon,
-  title,
-  description,
-}: {
-  icon:
-    React.ReactNode;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex items-center gap-4 border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-      <IconBox>
-        {icon}
-      </IconBox>
+      <div className="relative mt-2">
+        <input
+          type={
+            visible
+              ? 'text'
+              : 'password'
+          }
+          value={value}
+          disabled={
+            disabled
+          }
+          autoComplete={
+            autoComplete
+          }
+          maxLength={128}
+          onChange={
+            event =>
+              onChange(
+                event.target.value
+              )
+          }
+          className={`h-12 w-full rounded-xl border bg-white px-4 pr-12 text-sm font-medium text-zinc-950 outline-none transition dark:bg-zinc-950 dark:text-white ${
+            error
+              ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
+              : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
+          }`}
+        />
 
-      <div>
-        <p className="font-bold text-zinc-950 dark:text-white">
-          {title}
-        </p>
-
-        <p className="mt-1 text-sm text-zinc-500">
-          {description}
-        </p>
+        <button
+          type="button"
+          disabled={
+            disabled
+          }
+          onClick={
+            onToggle
+          }
+          aria-label={
+            visible
+              ? `Hide ${label.toLowerCase()}`
+              : `Show ${label.toLowerCase()}`
+          }
+          className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+        >
+          {visible ? (
+            <EyeOff className="h-4 w-4" />
+          ) : (
+            <Eye className="h-4 w-4" />
+          )}
+        </button>
       </div>
-    </div>
+
+      {error && (
+        <FieldError>
+          {error}
+        </FieldError>
+      )}
+    </Field>
   );
 }
 
-function IconBox({
+/* ============================================================
+   PASSWORD RULE
+   ============================================================ */
+
+function PasswordRule({
+  passed,
   children,
 }: {
-  children:
-    React.ReactNode;
+  passed: boolean;
+  children: ReactNode;
 }) {
   return (
-    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+    <div
+      className={`flex items-center gap-2 text-xs ${
+        passed
+          ? 'text-emerald-600 dark:text-emerald-400'
+          : 'text-zinc-500'
+      }`}
+    >
+      <span
+        className={`flex h-4 w-4 items-center justify-center rounded-full ${
+          passed
+            ? 'bg-emerald-100 dark:bg-emerald-950'
+            : 'bg-zinc-200 dark:bg-zinc-800'
+        }`}
+      >
+        {passed && (
+          <Check className="h-3 w-3" />
+        )}
+      </span>
+
       {children}
     </div>
   );
 }
+
+/* ============================================================
+   SETTINGS ROW
+   ============================================================ */
 
 function SettingsRow({
   icon,
   title,
   description,
   onClick,
+  trailing,
 }: {
-  icon:
-    React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
   onClick: () => void;
+  trailing?: ReactNode;
 }) {
   return (
     <button
@@ -2526,121 +2891,79 @@ function SettingsRow({
         </p>
       </div>
 
+      {trailing}
+
       <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5" />
     </button>
   );
 }
 
-function StatusCard({
-  icon,
-  label,
-  value,
+/* ============================================================
+   UI
+   ============================================================ */
+
+function IconBox({
+  children,
 }: {
-  icon:
-    React.ReactNode;
-  label: string;
-  value: string;
+  children: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex items-center gap-3 text-zinc-500">
-        {icon}
-
-        <p className="text-xs font-semibold uppercase tracking-wide">
-          {label}
-        </p>
-      </div>
-
-      <p className="mt-4 truncate text-sm font-bold text-zinc-950 dark:text-white">
-        {value}
-      </p>
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      {children}
     </div>
   );
 }
 
-function PreferenceBlock({
+function SectionHeader({
   icon,
   title,
   description,
-  children,
 }: {
-  icon:
-    React.ReactNode;
+  icon: ReactNode;
   title: string;
   description: string;
-  children:
-    React.ReactNode;
 }) {
   return (
-    <div className="p-6 sm:p-7">
+    <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 text-zinc-500">
+        <IconBox>
           {icon}
-        </div>
+        </IconBox>
 
         <div>
-          <p className="font-semibold text-zinc-950 dark:text-white">
+          <p className="font-bold text-zinc-950 dark:text-white">
             {title}
           </p>
 
-          <p className="mt-1 text-sm leading-6 text-zinc-500">
+          <p className="mt-1 text-sm text-zinc-500">
             {description}
           </p>
         </div>
       </div>
-
-      <div className="mt-5">
-        {children}
-      </div>
     </div>
   );
 }
 
-function ThemeOption({
-  active,
-  icon,
-  title,
-  description,
+function BackButton({
   onClick,
+  disabled,
 }: {
-  active: boolean;
-  icon:
-    React.ReactNode;
-  title: string;
-  description: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
+      disabled={
+        disabled
+      }
       onClick={
         onClick
       }
-      className={`relative rounded-2xl border p-4 text-left transition ${
-        active
-          ? 'border-zinc-950 bg-zinc-50 ring-1 ring-zinc-950 dark:border-white dark:bg-zinc-800 dark:ring-white'
-          : 'border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:border-zinc-600 dark:hover:bg-zinc-800'
-      }`}
+      className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-zinc-600 dark:text-zinc-300">
-          {icon}
-        </div>
-
-        {active && (
-          <div className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-950 text-white dark:bg-white dark:text-zinc-950">
-            <Check className="h-3 w-3" />
-          </div>
-        )}
-      </div>
-
-      <p className="mt-4 text-sm font-bold text-zinc-950 dark:text-white">
-        {title}
-      </p>
-
-      <p className="mt-1 text-xs text-zinc-500">
-        {description}
-      </p>
+      <ArrowLeft className="h-4 w-4" />
+      My Account
     </button>
   );
 }
@@ -2648,8 +2971,7 @@ function ThemeOption({
 function Field({
   children,
 }: {
-  children:
-    React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div>
@@ -2661,13 +2983,72 @@ function Field({
 function FieldError({
   children,
 }: {
-  children:
-    React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
       {children}
     </p>
+  );
+}
+
+function PreferenceBlock({
+  icon,
+  title,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="p-6 sm:p-7">
+      <div className="mb-5 flex items-center gap-3">
+        {icon}
+
+        <p className="font-semibold text-zinc-950 dark:text-white">
+          {title}
+        </p>
+      </div>
+
+      {children}
+    </div>
+  );
+}
+
+function ThemeOption({
+  active,
+  icon,
+  title,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+        active
+          ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/10 dark:bg-blue-950/30 dark:text-blue-300'
+          : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'
+      }`}
+    >
+      {icon}
+
+      <span className="font-semibold">
+        {title}
+      </span>
+
+      {active && (
+        <Check className="ml-auto h-4 w-4" />
+      )}
+    </button>
   );
 }
 
@@ -2681,16 +3062,18 @@ function FormActions({
   onCancel: () => void;
 }) {
   return (
-    <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+    <div className="mt-8 flex flex-col-reverse gap-3 border-t border-zinc-200 pt-6 dark:border-zinc-800 sm:flex-row sm:justify-end">
       <button
         type="button"
-        onClick={
-          onCancel
-        }
         disabled={
           saving
         }
-        className={secondaryButton()}
+        onClick={
+          onCancel
+        }
+        className={
+          secondaryButton()
+        }
       >
         <X className="h-4 w-4" />
         Cancel
@@ -2702,7 +3085,9 @@ function FormActions({
           saving ||
           !changed
         }
-        className={primaryButton()}
+        className={
+          primaryButton()
+        }
       >
         {saving ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -2733,7 +3118,7 @@ function inputClass(
 }
 
 function selectClass() {
-  return 'h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white';
+  return 'mt-2 h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white';
 }
 
 function primaryButton() {
@@ -2742,25 +3127,4 @@ function primaryButton() {
 
 function secondaryButton() {
   return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800';
-}
-
-function themeLabel(
-  theme:
-    AdminTheme
-) {
-  if (
-    theme ===
-    'dark'
-  ) {
-    return 'Dark';
-  }
-
-  if (
-    theme ===
-    'light'
-  ) {
-    return 'Light';
-  }
-
-  return 'System';
 }

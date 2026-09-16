@@ -4,13 +4,13 @@ import {
 } from 'next/server';
 
 import {
-  requireSession,
-} from '@/lib/auth/session';
+  requireAdminSession,
+} from '@/lib/auth/admin-session';
 
 import {
-  hashPassword,
-  verifyPassword,
-} from '@/lib/auth/password';
+  hashAdminPassword,
+  verifyAdminPassword,
+} from '@/lib/auth/admin-auth';
 
 import {
   checkRateLimit,
@@ -18,9 +18,8 @@ import {
 } from '@/lib/auth/rate-limit';
 
 import {
-  getClientIp,
-  recordAuthEvent,
-} from '@/lib/auth/auth-events';
+  recordAdminAuditEvent,
+} from '@/lib/auth/admin-events';
 
 import {
   queryControl,
@@ -140,6 +139,33 @@ function isSameOrigin(
   }
 }
 
+function getIp(
+  request: NextRequest
+) {
+  const forwarded =
+    request.headers.get(
+      'x-forwarded-for'
+    );
+
+  if (forwarded) {
+    const first =
+      forwarded
+        .split(',')[0]
+        ?.trim();
+
+    if (first) {
+      return first;
+    }
+  }
+
+  return (
+    request.headers.get(
+      'x-real-ip'
+    ) ||
+    'unknown-ip'
+  );
+}
+
 function validateNewPassword(
   value: unknown
 ):
@@ -205,14 +231,16 @@ function validateNewPassword(
 
 async function safeAudit(
   input: Parameters<
-    typeof recordAuthEvent
+    typeof recordAdminAuditEvent
   >[0]
 ) {
   try {
-    await recordAuthEvent(input);
+    await recordAdminAuditEvent(
+      input
+    );
   } catch (auditError) {
     console.error(
-      '[Auth] Password audit failed:',
+      '[Admin] Password audit failed:',
       auditError
     );
   }
@@ -269,21 +297,19 @@ export async function POST(
 
   try {
     session =
-      await requireSession();
+      await requireAdminSession();
   } catch {
     return error(
       401,
-      'UNAUTHENTICATED',
-      'Your session has expired. Sign in again.'
+      'ADMIN_UNAUTHENTICATED',
+      'Your administrator session has expired. Sign in again.'
     );
   }
 
-  const ip =
-    getClientIp(request) ||
-    'unknown-ip';
-
   const rateLimitIdentifier =
-    `password-change:${session.user.id}:${ip}`;
+    `admin-password-change:${session.adminId}:${getIp(
+      request
+    )}`;
 
   let rateLimit;
 
@@ -293,7 +319,7 @@ export async function POST(
         identifier:
           rateLimitIdentifier,
         action:
-          'password-change',
+          'admin-password-change',
         maxAttempts:
           RATE_LIMIT_MAX_ATTEMPTS,
         windowMs:
@@ -303,14 +329,14 @@ export async function POST(
       });
   } catch (rateLimitError) {
     console.error(
-      '[Auth] Password rate limiter failed:',
+      '[Admin] Password rate limiter failed:',
       rateLimitError
     );
 
     return error(
       503,
-      'SECURITY_SERVICE_UNAVAILABLE',
-      'SaMi security services are temporarily unavailable.'
+      'ADMIN_SECURITY_SERVICE_UNAVAILABLE',
+      'SaMi administrator security services are temporarily unavailable.'
     );
   }
 
@@ -321,10 +347,21 @@ export async function POST(
 
     await safeAudit({
       request,
-      userId:
-        session.user.id,
+      adminId:
+        session.adminId,
+      sessionId:
+        session.sessionId,
       eventType:
-        'PASSWORD_CHANGE_RATE_LIMITED',
+        'admin.password.change.rate_limited',
+      action:
+        'change_own_password',
+      targetType:
+        'platform_admin',
+      targetId:
+        session.adminId,
+      successful: false,
+      failureReason:
+        'rate_limited',
       metadata: {
         retryAfterSeconds:
           retryAfter,
@@ -333,7 +370,7 @@ export async function POST(
 
     return error(
       429,
-      'PASSWORD_CHANGE_RATE_LIMITED',
+      'ADMIN_PASSWORD_CHANGE_RATE_LIMITED',
       'Too many password-change attempts. Please wait before trying again.',
       undefined,
       {
@@ -440,8 +477,8 @@ export async function POST(
   ) {
     return error(
       400,
-      'CURRENT_PASSWORD_INCORRECT',
-      'Current password is incorrect.',
+      'INVALID_CURRENT_PASSWORD',
+      'The current password is incorrect.',
       'currentPassword'
     );
   }
@@ -472,7 +509,7 @@ export async function POST(
   ) {
     return error(
       400,
-      'PASSWORDS_DO_NOT_MATCH',
+      'PASSWORD_CONFIRMATION_MISMATCH',
       'The password confirmation does not match.',
       'confirmPassword'
     );
@@ -485,92 +522,95 @@ export async function POST(
           SELECT
             id,
             password_hash,
-            status
-          FROM users
+            status,
+            deleted_at
+          FROM platform_admins
           WHERE id = $1
-            AND deleted_at IS NULL
           LIMIT 1
         `,
-        [session.user.id]
+        [session.adminId]
       );
 
-    const user =
+    const admin =
       result.rows[0];
 
     if (
-      !user ||
-      user.status !==
-        'active'
+      !admin ||
+      admin.deleted_at ||
+      admin.status !==
+        'active' ||
+      !admin.password_hash
     ) {
       return error(
         403,
-        'ACCOUNT_UNAVAILABLE',
-        'This account is not currently available.'
-      );
-    }
-
-    if (!user.password_hash) {
-      return error(
-        400,
-        'PASSWORD_NOT_SET',
-        'This account does not currently have a password.'
+        'ADMIN_ACCOUNT_UNAVAILABLE',
+        'This administrator account is not currently available.'
       );
     }
 
     const validCurrent =
-      await verifyPassword(
+      await verifyAdminPassword(
         currentPassword,
-        user.password_hash
+        admin.password_hash
       );
 
     if (!validCurrent) {
       await safeAudit({
         request,
-        userId: user.id,
+        adminId:
+          session.adminId,
+        sessionId:
+          session.sessionId,
         eventType:
-          'PASSWORD_CHANGE_FAILED',
-        metadata: {
-          reason:
-            'invalid_current_password',
-        },
+          'admin.password.change.failed',
+        action:
+          'change_own_password',
+        targetType:
+          'platform_admin',
+        targetId:
+          session.adminId,
+        successful: false,
+        failureReason:
+          'invalid_current_password',
       });
 
       return error(
         400,
-        'CURRENT_PASSWORD_INCORRECT',
-        'Current password is incorrect.',
+        'INVALID_CURRENT_PASSWORD',
+        'The current password is incorrect.',
         'currentPassword'
       );
     }
 
     const reused =
-      await verifyPassword(
+      await verifyAdminPassword(
         validation.password,
-        user.password_hash
+        admin.password_hash
       );
 
     if (reused) {
       return error(
         400,
-        'PASSWORD_REUSED',
+        'PASSWORD_REUSE_NOT_ALLOWED',
         'Your new password must be different from your current password.',
         'newPassword'
       );
     }
 
     const newHash =
-      await hashPassword(
+      await hashAdminPassword(
         validation.password
       );
 
     const mutation =
       await queryControl(
         `
-          WITH updated_user AS (
-            UPDATE users
+          WITH updated_admin AS (
+            UPDATE platform_admins
             SET
               password_hash = $2,
               password_changed_at = NOW(),
+              updated_by = $1,
               updated_at = NOW()
             WHERE id = $1
               AND status = 'active'
@@ -580,18 +620,18 @@ export async function POST(
           ),
 
           revoked_sessions AS (
-            UPDATE sessions
+            UPDATE platform_admin_sessions
             SET
               revoked_at = NOW(),
-              is_current = FALSE,
-              updated_at = NOW()
-            WHERE user_id = $1
+              revoked_by = $1,
+              revocation_reason =
+                'password_changed'
+            WHERE admin_id = $1
               AND id <> $4
               AND revoked_at IS NULL
-              AND deleted_at IS NULL
               AND EXISTS (
                 SELECT 1
-                FROM updated_user
+                FROM updated_admin
               )
             RETURNING id
           )
@@ -599,7 +639,7 @@ export async function POST(
           SELECT
             (
               SELECT COUNT(*)
-              FROM updated_user
+              FROM updated_admin
             )::int
               AS updated_count,
 
@@ -610,9 +650,9 @@ export async function POST(
               AS revoked_count
         `,
         [
-          user.id,
+          session.adminId,
           newHash,
-          user.password_hash,
+          admin.password_hash,
           session.sessionId,
         ]
       );
@@ -637,6 +677,25 @@ export async function POST(
     if (
       updatedCount !== 1
     ) {
+      await safeAudit({
+        request,
+        adminId:
+          session.adminId,
+        sessionId:
+          session.sessionId,
+        eventType:
+          'admin.password.change.failed',
+        action:
+          'change_own_password',
+        targetType:
+          'platform_admin',
+        targetId:
+          session.adminId,
+        successful: false,
+        failureReason:
+          'password_state_changed',
+      });
+
       return error(
         409,
         'PASSWORD_STATE_CHANGED',
@@ -647,20 +706,30 @@ export async function POST(
     try {
       await resetRateLimit(
         rateLimitIdentifier,
-        'password-change'
+        'admin-password-change'
       );
     } catch (resetError) {
       console.error(
-        '[Auth] Password rate-limit reset failed:',
+        '[Admin] Password rate-limit reset failed:',
         resetError
       );
     }
 
     await safeAudit({
       request,
-      userId: user.id,
+      adminId:
+        session.adminId,
+      sessionId:
+        session.sessionId,
       eventType:
-        'PASSWORD_CHANGED',
+        'admin.password.changed',
+      action:
+        'change_own_password',
+      targetType:
+        'platform_admin',
+      targetId:
+        session.adminId,
+      successful: true,
       metadata: {
         otherSessionsRevoked:
           revokedCount,
@@ -670,7 +739,7 @@ export async function POST(
     return json({
       success: true,
       code:
-        'PASSWORD_CHANGED',
+        'ADMIN_PASSWORD_CHANGED',
       message:
         'Your password has been changed successfully.',
       otherSessionsRevoked:
@@ -678,13 +747,13 @@ export async function POST(
     });
   } catch (requestError) {
     console.error(
-      '[Auth] Password change failed:',
+      '[Admin] Password change failed:',
       requestError
     );
 
     return error(
       500,
-      'PASSWORD_CHANGE_FAILED',
+      'ADMIN_PASSWORD_CHANGE_FAILED',
       'SaMi could not change your password.'
     );
   }
