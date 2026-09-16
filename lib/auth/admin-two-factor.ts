@@ -1,15 +1,13 @@
 import crypto from 'crypto';
 
-import { queryControl } from '@/lib/db/control';
+import {
+  queryControl,
+} from '@/lib/db/control';
 
 import {
   decryptSecret,
   encryptSecret,
 } from '@/lib/auth/totp';
-
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
 
 const ADMIN_TOTP_ISSUER =
   'SaMi Admin';
@@ -32,9 +30,8 @@ const ADMIN_RECOVERY_CODE_COUNT =
 const ADMIN_RECOVERY_CODE_BYTES =
   8;
 
-/* ============================================================
-   TYPES
-   ============================================================ */
+const BASE32_ALPHABET =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
 export type AdminTwoFactorMethod =
   | 'authenticator'
@@ -42,120 +39,97 @@ export type AdminTwoFactorMethod =
 
 export type AdminTwoFactor = {
   id: string;
-
   adminId: string;
-
-  method:
-    AdminTwoFactorMethod;
-
-  enabled:
-    boolean;
-
-  verifiedAt:
-    Date | null;
-
-  lastUsedAt:
-    Date | null;
-
-  createdAt:
-    Date;
-
-  updatedAt:
-    Date;
+  method: AdminTwoFactorMethod;
+  enabled: boolean;
+  verifiedAt: Date | null;
+  lastUsedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type AdminRecoveryCode = {
   id: string;
-
   adminId: string;
-
   codeHash: string;
-
   usedAt: Date | null;
-
   createdAt: Date;
 };
 
 export type AdminTwoFactorSetup = {
   secret: string;
-
   otpauthUrl: string;
+};
+
+export type AdminTwoFactorMethodStatus = {
+  enabled: boolean;
+
+  authenticator: {
+    enabled: boolean;
+    verifiedAt: Date | null;
+    lastUsedAt: Date | null;
+  };
+
+  email: {
+    enabled: boolean;
+    verifiedAt: Date | null;
+    lastUsedAt: Date | null;
+  };
 };
 
 type AdminTwoFactorRow = {
   id: string;
-
   admin_id: string;
-
-  method:
-    AdminTwoFactorMethod;
-
+  method: AdminTwoFactorMethod;
   secret_encrypted:
-    string | null;
-
+    | string
+    | null;
   pending_secret_encrypted:
-    string | null;
-
-  enabled:
-    boolean;
-
+    | string
+    | null;
+  enabled: boolean;
   verified_at:
-    Date | string | null;
-
+    | Date
+    | string
+    | null;
   last_used_at:
-    Date | string | null;
-
+    | Date
+    | string
+    | null;
   created_at:
-    Date | string;
-
+    | Date
+    | string;
   updated_at:
-    Date | string;
+    | Date
+    | string;
 };
 
 type AdminRecoveryCodeRow = {
   id: string;
-
   admin_id: string;
-
   code_hash: string;
-
   used_at:
-    Date | string | null;
-
+    | Date
+    | string
+    | null;
   created_at:
-    Date | string;
+    | Date
+    | string;
 };
 
-/* ============================================================
-   BASE32
-   ============================================================ */
-
-const BASE32_ALPHABET =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-
 function base32Encode(
-  buffer:
-    Buffer
+  buffer: Buffer
 ): string {
-  let bits =
-    '';
+  let bits = '';
+  let output = '';
 
-  let output =
-    '';
-
-  for (
-    const byte of
-    buffer
-  ) {
-    bits +=
-      byte
-        .toString(
-          2
-        )
-        .padStart(
-          8,
-          '0'
-        );
+  for (const byte of buffer) {
+    bits += byte
+      .toString(2)
+      .padStart(
+        8,
+        '0'
+      );
   }
 
   for (
@@ -187,8 +161,7 @@ function base32Encode(
 }
 
 function base32Decode(
-  value:
-    string
+  value: string
 ): Buffer {
   const clean =
     value
@@ -202,21 +175,15 @@ function base32Decode(
       )
       .toUpperCase();
 
-  let bits =
-    '';
+  let bits = '';
 
-  for (
-    const char of
-    clean
-  ) {
+  for (const char of clean) {
     const index =
       BASE32_ALPHABET.indexOf(
         char
       );
 
-    if (
-      index === -1
-    ) {
+    if (index === -1) {
       throw new Error(
         'Invalid base32 secret.'
       );
@@ -224,17 +191,15 @@ function base32Decode(
 
     bits +=
       index
-        .toString(
-          2
-        )
+        .toString(2)
         .padStart(
           5,
           '0'
         );
   }
 
-  const bytes:
-    number[] = [];
+  const bytes: number[] =
+    [];
 
   for (
     let index = 0;
@@ -258,10 +223,6 @@ function base32Decode(
   );
 }
 
-/* ============================================================
-   TOTP
-   ============================================================ */
-
 function createTotpSecret():
   string {
   return base32Encode(
@@ -272,10 +233,8 @@ function createTotpSecret():
 }
 
 function createTotpCode(
-  secret:
-    string,
-  timeStep:
-    number
+  secret: string,
+  timeStep: number
 ): string {
   const key =
     base32Decode(
@@ -283,14 +242,10 @@ function createTotpCode(
     );
 
   const counter =
-    Buffer.alloc(
-      8
-    );
+    Buffer.alloc(8);
 
   counter.writeBigUInt64BE(
-    BigInt(
-      timeStep
-    )
+    BigInt(timeStep)
   );
 
   const hmac =
@@ -299,50 +254,39 @@ function createTotpCode(
         'sha1',
         key
       )
-      .update(
-        counter
-      )
+      .update(counter)
       .digest();
 
   const offset =
     hmac[
       hmac.length - 1
-    ] &
-    0x0f;
+    ] & 0x0f;
 
   const binary =
     (
       (
-        hmac[
-          offset
-        ] &
+        hmac[offset] &
         0x7f
-      ) <<
-      24
+      ) << 24
     ) |
     (
       (
         hmac[
           offset + 1
-        ] &
-        0xff
-      ) <<
-      16
+        ] & 0xff
+      ) << 16
     ) |
     (
       (
         hmac[
           offset + 2
-        ] &
-        0xff
-      ) <<
-      8
+        ] & 0xff
+      ) << 8
     ) |
     (
       hmac[
         offset + 3
-      ] &
-      0xff
+      ] & 0xff
     );
 
   const token =
@@ -359,20 +303,14 @@ function createTotpCode(
 }
 
 function timingSafeEqualString(
-  left:
-    string,
-  right:
-    string
+  left: string,
+  right: string
 ): boolean {
   const leftBuffer =
-    Buffer.from(
-      left
-    );
+    Buffer.from(left);
 
   const rightBuffer =
-    Buffer.from(
-      right
-    );
+    Buffer.from(right);
 
   if (
     leftBuffer.length !==
@@ -381,16 +319,14 @@ function timingSafeEqualString(
     return false;
   }
 
-  return crypto
-    .timingSafeEqual(
-      leftBuffer,
-      rightBuffer
-    );
+  return crypto.timingSafeEqual(
+    leftBuffer,
+    rightBuffer
+  );
 }
 
 function normalizeTotpCode(
-  code:
-    string
+  code: string
 ): string {
   return code
     .replace(
@@ -434,10 +370,8 @@ export function verifyAdminTotpCode(
   for (
     let offset =
       -ADMIN_TOTP_WINDOW;
-
     offset <=
-    ADMIN_TOTP_WINDOW;
-
+      ADMIN_TOTP_WINDOW;
     offset += 1
   ) {
     const expected =
@@ -460,10 +394,6 @@ export function verifyAdminTotpCode(
   return false;
 }
 
-/* ============================================================
-   OTPAUTH URL
-   ============================================================ */
-
 function createOtpAuthUrl(
   input: {
     email: string;
@@ -484,19 +414,14 @@ function createOtpAuthUrl(
     `otpauth://totp/${label}` +
     `?secret=${input.secret}` +
     `&issuer=${issuer}` +
-    `&algorithm=SHA1` +
+    '&algorithm=SHA1' +
     `&digits=${ADMIN_TOTP_DIGITS}` +
     `&period=${ADMIN_TOTP_STEP_SECONDS}`
   );
 }
 
-/* ============================================================
-   ROW MAPPING
-   ============================================================ */
-
 function mapAdminTwoFactorRow(
-  row:
-    AdminTwoFactorRow
+  row: AdminTwoFactorRow
 ): AdminTwoFactor {
   return {
     id:
@@ -538,8 +463,7 @@ function mapAdminTwoFactorRow(
 }
 
 function mapAdminRecoveryCodeRow(
-  row:
-    AdminRecoveryCodeRow
+  row: AdminRecoveryCodeRow
 ): AdminRecoveryCode {
   return {
     id:
@@ -565,13 +489,10 @@ function mapAdminRecoveryCodeRow(
   };
 }
 
-/* ============================================================
-   GET FACTOR
-   ============================================================ */
-
-export async function getAdminTwoFactor(
-  adminId:
-    string
+export async function getAdminTwoFactorMethod(
+  adminId: string,
+  method:
+    AdminTwoFactorMethod
 ): Promise<
   AdminTwoFactor | null
 > {
@@ -591,11 +512,12 @@ export async function getAdminTwoFactor(
           updated_at
         FROM platform_admin_two_factor
         WHERE admin_id = $1
-          AND method = 'authenticator'
+          AND method = $2
         LIMIT 1
       `,
       [
         adminId,
+        method,
       ]
     );
 
@@ -611,40 +533,202 @@ export async function getAdminTwoFactor(
     : null;
 }
 
-/* ============================================================
-   ENABLED CHECK
-   ============================================================ */
+export async function getAdminTwoFactor(
+  adminId: string
+): Promise<
+  AdminTwoFactor | null
+> {
+  return getAdminTwoFactorMethod(
+    adminId,
+    'authenticator'
+  );
+}
 
-export async function adminHasEnabledTwoFactor(
-  adminId:
-    string
-): Promise<boolean> {
+export async function getAdminTwoFactorMethodStatus(
+  adminId: string
+): Promise<AdminTwoFactorMethodStatus> {
   const result =
     await queryControl(
       `
         SELECT
-          id
+          method,
+          enabled,
+          verified_at,
+          last_used_at
         FROM platform_admin_two_factor
         WHERE admin_id = $1
-          AND method = 'authenticator'
-          AND enabled = TRUE
-          AND verified_at IS NOT NULL
-          AND secret_encrypted IS NOT NULL
-        LIMIT 1
+          AND method IN (
+            'authenticator',
+            'email'
+          )
       `,
-      [
-        adminId,
-      ]
+      [adminId]
+    );
+
+  let authenticator = {
+    enabled: false,
+    verifiedAt:
+      null as Date | null,
+    lastUsedAt:
+      null as Date | null,
+  };
+
+  let email = {
+    enabled: false,
+    verifiedAt:
+      null as Date | null,
+    lastUsedAt:
+      null as Date | null,
+  };
+
+  for (
+    const row of
+    result.rows
+  ) {
+    const state = {
+      enabled:
+        row.enabled === true &&
+        Boolean(
+          row.verified_at
+        ),
+
+      verifiedAt:
+        row.verified_at
+          ? new Date(
+              row.verified_at
+            )
+          : null,
+
+      lastUsedAt:
+        row.last_used_at
+          ? new Date(
+              row.last_used_at
+            )
+          : null,
+    };
+
+    if (
+      row.method ===
+      'authenticator'
+    ) {
+      authenticator =
+        state;
+    }
+
+    if (
+      row.method ===
+      'email'
+    ) {
+      email =
+        state;
+    }
+  }
+
+  return {
+    enabled:
+      authenticator.enabled ||
+      email.enabled,
+
+    authenticator,
+
+    email,
+  };
+}
+
+export async function adminHasEnabledTwoFactor(
+  adminId: string
+): Promise<boolean> {
+  const status =
+    await getAdminTwoFactorMethodStatus(
+      adminId
+    );
+
+  return status.enabled;
+}
+
+export async function adminHasEnabledAuthenticator(
+  adminId: string
+): Promise<boolean> {
+  const factor =
+    await getAdminTwoFactorMethod(
+      adminId,
+      'authenticator'
     );
 
   return Boolean(
-    result.rows[0]
+    factor?.enabled &&
+      factor.verifiedAt
   );
 }
 
-/* ============================================================
-   CREATE SETUP
-   ============================================================ */
+export async function adminHasEnabledEmailTwoFactor(
+  adminId: string
+): Promise<boolean> {
+  const factor =
+    await getAdminTwoFactorMethod(
+      adminId,
+      'email'
+    );
+
+  return Boolean(
+    factor?.enabled &&
+      factor.verifiedAt
+  );
+}
+
+export async function reconcileAdminTwoFactorState(
+  adminId: string
+): Promise<boolean> {
+  const result =
+    await queryControl(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM platform_admin_two_factor
+          WHERE admin_id = $1
+            AND method IN (
+              'authenticator',
+              'email'
+            )
+            AND enabled = TRUE
+            AND verified_at IS NOT NULL
+        ) AS enabled
+      `,
+      [adminId]
+    );
+
+  const enabled =
+    result.rows[0]
+      ?.enabled === true;
+
+  await queryControl(
+    `
+      UPDATE platform_admins
+      SET
+        two_factor_enabled = $2,
+        updated_at = NOW()
+      WHERE id = $1
+        AND deleted_at IS NULL
+    `,
+    [
+      adminId,
+      enabled,
+    ]
+  );
+
+  if (!enabled) {
+    await queryControl(
+      `
+        DELETE FROM
+          platform_admin_recovery_codes
+        WHERE admin_id = $1
+      `,
+      [adminId]
+    );
+  }
+
+  return enabled;
+}
 
 export async function createAdminTwoFactorSetup(
   input: {
@@ -656,9 +740,7 @@ export async function createAdminTwoFactorSetup(
     createTotpSecret();
 
   const encryptedSecret =
-    encryptSecret(
-      secret
-    );
+    encryptSecret(secret);
 
   await queryControl(
     `
@@ -693,11 +775,8 @@ export async function createAdminTwoFactorSetup(
       DO UPDATE SET
         pending_secret_encrypted =
           EXCLUDED.pending_secret_encrypted,
-
         enabled = FALSE,
-
         verified_at = NULL,
-
         updated_at = NOW()
     `,
     [
@@ -718,10 +797,6 @@ export async function createAdminTwoFactorSetup(
       }),
   };
 }
-
-/* ============================================================
-   CONFIRM SETUP
-   ============================================================ */
 
 export async function confirmAdminTwoFactorSetup(
   input: {
@@ -744,9 +819,7 @@ export async function confirmAdminTwoFactorSetup(
           AND pending_secret_encrypted IS NOT NULL
         LIMIT 1
       `,
-      [
-        input.adminId,
-      ]
+      [input.adminId]
     );
 
   const encryptedSecret =
@@ -755,60 +828,42 @@ export async function confirmAdminTwoFactorSetup(
       | string
       | undefined;
 
-  if (
-    !encryptedSecret
-  ) {
+  if (!encryptedSecret) {
     return {
-      enabled:
-        false,
-
-      recoveryCodes:
-        [],
+      enabled: false,
+      recoveryCodes: [],
     };
   }
 
-  let secret:
-    string;
+  let secret: string;
 
   try {
     secret =
       decryptSecret(
         encryptedSecret
       );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       '[Admin 2FA] Failed to decrypt pending authenticator secret:',
       error
     );
 
     return {
-      enabled:
-        false,
-
-      recoveryCodes:
-        [],
+      enabled: false,
+      recoveryCodes: [],
     };
   }
 
-  const valid =
-    verifyAdminTotpCode({
+  if (
+    !verifyAdminTotpCode({
       secret,
-
       code:
         input.code,
-    });
-
-  if (
-    !valid
+    })
   ) {
     return {
-      enabled:
-        false,
-
-      recoveryCodes:
-        [],
+      enabled: false,
+      recoveryCodes: [],
     };
   }
 
@@ -819,62 +874,32 @@ export async function confirmAdminTwoFactorSetup(
         SET
           secret_encrypted =
             pending_secret_encrypted,
-
           pending_secret_encrypted =
             NULL,
-
-          enabled =
-            TRUE,
-
-          verified_at =
-            NOW(),
-
-          last_used_at =
-            NOW(),
-
-          updated_at =
-            NOW()
-
+          enabled = TRUE,
+          verified_at = NOW(),
+          last_used_at = NOW(),
+          updated_at = NOW()
         WHERE admin_id = $1
           AND method = 'authenticator'
           AND enabled = FALSE
           AND pending_secret_encrypted IS NOT NULL
-
         RETURNING id
       `,
-      [
-        input.adminId,
-      ]
+      [input.adminId]
     );
 
   if (
     !activation.rows[0]
   ) {
     return {
-      enabled:
-        false,
-
-      recoveryCodes:
-        [],
+      enabled: false,
+      recoveryCodes: [],
     };
   }
 
-  await queryControl(
-    `
-      UPDATE platform_admins
-      SET
-        two_factor_enabled =
-          TRUE,
-
-        updated_at =
-          NOW()
-
-      WHERE id = $1
-        AND deleted_at IS NULL
-    `,
-    [
-      input.adminId,
-    ]
+  await reconcileAdminTwoFactorState(
+    input.adminId
   );
 
   const recoveryCodes =
@@ -883,82 +908,125 @@ export async function confirmAdminTwoFactorSetup(
     );
 
   return {
-    enabled:
-      true,
-
+    enabled: true,
     recoveryCodes,
   };
 }
 
-/* ============================================================
-   DISABLE
-   ============================================================ */
-
 export async function disableAdminTwoFactor(
-  adminId:
-    string
+  adminId: string
 ): Promise<void> {
   await queryControl(
     `
       UPDATE platform_admin_two_factor
       SET
-        secret_encrypted =
-          NULL,
-
-        pending_secret_encrypted =
-          NULL,
-
-        enabled =
-          FALSE,
-
-        verified_at =
-          NULL,
-
-        last_used_at =
-          NULL,
-
-        updated_at =
-          NOW()
-
+        secret_encrypted = NULL,
+        pending_secret_encrypted = NULL,
+        enabled = FALSE,
+        verified_at = NULL,
+        last_used_at = NULL,
+        updated_at = NOW()
       WHERE admin_id = $1
+        AND method = 'authenticator'
     `,
-    [
-      adminId,
-    ]
+    [adminId]
   );
 
-  await queryControl(
-    `
-      DELETE FROM platform_admin_recovery_codes
-      WHERE admin_id = $1
-    `,
-    [
-      adminId,
-    ]
-  );
-
-  await queryControl(
-    `
-      UPDATE platform_admins
-      SET
-        two_factor_enabled =
-          FALSE,
-
-        updated_at =
-          NOW()
-
-      WHERE id = $1
-        AND deleted_at IS NULL
-    `,
-    [
-      adminId,
-    ]
+  await reconcileAdminTwoFactorState(
+    adminId
   );
 }
 
-/* ============================================================
-   VERIFY AUTHENTICATOR
-   ============================================================ */
+export async function enableAdminEmailTwoFactor(
+  adminId: string
+): Promise<void> {
+  await queryControl(
+    `
+      INSERT INTO platform_admin_two_factor (
+        admin_id,
+        method,
+        secret_encrypted,
+        pending_secret_encrypted,
+        enabled,
+        verified_at,
+        last_used_at,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        'email',
+        NULL,
+        NULL,
+        TRUE,
+        NOW(),
+        NOW(),
+        NOW(),
+        NOW()
+      )
+
+      ON CONFLICT (
+        admin_id,
+        method
+      )
+
+      DO UPDATE SET
+        secret_encrypted = NULL,
+        pending_secret_encrypted = NULL,
+        enabled = TRUE,
+        verified_at = NOW(),
+        last_used_at = NOW(),
+        updated_at = NOW()
+    `,
+    [adminId]
+  );
+
+  await reconcileAdminTwoFactorState(
+    adminId
+  );
+}
+
+export async function disableAdminEmailTwoFactor(
+  adminId: string
+): Promise<void> {
+  await queryControl(
+    `
+      UPDATE platform_admin_two_factor
+      SET
+        secret_encrypted = NULL,
+        pending_secret_encrypted = NULL,
+        enabled = FALSE,
+        verified_at = NULL,
+        last_used_at = NULL,
+        updated_at = NOW()
+      WHERE admin_id = $1
+        AND method = 'email'
+    `,
+    [adminId]
+  );
+
+  await reconcileAdminTwoFactorState(
+    adminId
+  );
+}
+
+export async function markAdminEmailTwoFactorUsed(
+  adminId: string
+): Promise<void> {
+  await queryControl(
+    `
+      UPDATE platform_admin_two_factor
+      SET
+        last_used_at = NOW(),
+        updated_at = NOW()
+      WHERE admin_id = $1
+        AND method = 'email'
+        AND enabled = TRUE
+        AND verified_at IS NOT NULL
+    `,
+    [adminId]
+  );
+}
 
 export async function verifyAdminTwoFactorCode(
   input: {
@@ -980,39 +1048,30 @@ export async function verifyAdminTwoFactorCode(
           AND secret_encrypted IS NOT NULL
         LIMIT 1
       `,
-      [
-        input.adminId,
-      ]
+      [input.adminId]
     );
 
   const row =
     result.rows[0] as
       | {
-          id:
-            string;
-
+          id: string;
           secret_encrypted:
             string;
         }
       | undefined;
 
-  if (
-    !row
-  ) {
+  if (!row) {
     return false;
   }
 
-  let secret:
-    string;
+  let secret: string;
 
   try {
     secret =
       decryptSecret(
         row.secret_encrypted
       );
-  } catch (
-    error
-  ) {
+  } catch (error) {
     console.error(
       '[Admin 2FA] Failed to decrypt authenticator secret:',
       error
@@ -1029,9 +1088,7 @@ export async function verifyAdminTwoFactorCode(
         input.code,
     });
 
-  if (
-    !valid
-  ) {
+  if (!valid) {
     return false;
   }
 
@@ -1039,12 +1096,8 @@ export async function verifyAdminTwoFactorCode(
     `
       UPDATE platform_admin_two_factor
       SET
-        last_used_at =
-          NOW(),
-
-        updated_at =
-          NOW()
-
+        last_used_at = NOW(),
+        updated_at = NOW()
       WHERE id = $1
         AND admin_id = $2
         AND enabled = TRUE
@@ -1058,13 +1111,8 @@ export async function verifyAdminTwoFactorCode(
   return true;
 }
 
-/* ============================================================
-   RECOVERY CODES
-   ============================================================ */
-
 function normalizeRecoveryCode(
-  code:
-    string
+  code: string
 ): string {
   return code
     .trim()
@@ -1080,8 +1128,7 @@ function normalizeRecoveryCode(
 }
 
 function hashRecoveryCode(
-  code:
-    string
+  code: string
 ): string {
   return crypto
     .createHash(
@@ -1092,9 +1139,7 @@ function hashRecoveryCode(
         code
       )
     )
-    .digest(
-      'hex'
-    );
+    .digest('hex');
 }
 
 function createRecoveryCode():
@@ -1104,39 +1149,19 @@ function createRecoveryCode():
       .randomBytes(
         ADMIN_RECOVERY_CODE_BYTES
       )
-      .toString(
-        'hex'
-      )
+      .toString('hex')
       .toUpperCase();
 
   return [
-    raw.slice(
-      0,
-      4
-    ),
-
-    raw.slice(
-      4,
-      8
-    ),
-
-    raw.slice(
-      8,
-      12
-    ),
-
-    raw.slice(
-      12,
-      16
-    ),
-  ].join(
-    '-'
-  );
+    raw.slice(0, 4),
+    raw.slice(4, 8),
+    raw.slice(8, 12),
+    raw.slice(12, 16),
+  ].join('-');
 }
 
 export async function listAdminRecoveryCodes(
-  adminId:
-    string
+  adminId: string
 ): Promise<
   AdminRecoveryCode[]
 > {
@@ -1153,9 +1178,7 @@ export async function listAdminRecoveryCodes(
         WHERE admin_id = $1
         ORDER BY created_at ASC
       `,
-      [
-        adminId,
-      ]
+      [adminId]
     );
 
   return (
@@ -1167,8 +1190,7 @@ export async function listAdminRecoveryCodes(
 }
 
 export async function countUnusedAdminRecoveryCodes(
-  adminId:
-    string
+  adminId: string
 ): Promise<number> {
   const result =
     await queryControl(
@@ -1179,24 +1201,18 @@ export async function countUnusedAdminRecoveryCodes(
         WHERE admin_id = $1
           AND used_at IS NULL
       `,
-      [
-        adminId,
-      ]
+      [adminId]
     );
 
   return Number(
     result.rows[0]
-      ?.count ??
-      0
+      ?.count ?? 0
   );
 }
 
 export async function regenerateAdminRecoveryCodes(
-  adminId:
-    string
-): Promise<
-  string[]
-> {
+  adminId: string
+): Promise<string[]> {
   const recoveryCodes =
     Array.from(
       {
@@ -1212,9 +1228,7 @@ export async function regenerateAdminRecoveryCodes(
       DELETE FROM platform_admin_recovery_codes
       WHERE admin_id = $1
     `,
-    [
-      adminId,
-    ]
+    [adminId]
   );
 
   for (
@@ -1238,7 +1252,6 @@ export async function regenerateAdminRecoveryCodes(
       `,
       [
         adminId,
-
         hashRecoveryCode(
           code
         ),
@@ -1247,6 +1260,23 @@ export async function regenerateAdminRecoveryCodes(
   }
 
   return recoveryCodes;
+}
+
+export async function ensureAdminRecoveryCodes(
+  adminId: string
+): Promise<string[]> {
+  const count =
+    await countUnusedAdminRecoveryCodes(
+      adminId
+    );
+
+  if (count > 0) {
+    return [];
+  }
+
+  return regenerateAdminRecoveryCodes(
+    adminId
+  );
 }
 
 export async function useAdminRecoveryCode(
@@ -1264,11 +1294,8 @@ export async function useAdminRecoveryCode(
     await queryControl(
       `
         UPDATE platform_admin_recovery_codes
-
         SET
-          used_at =
-            NOW()
-
+          used_at = NOW()
         WHERE id = (
           SELECT id
           FROM platform_admin_recovery_codes
@@ -1276,8 +1303,8 @@ export async function useAdminRecoveryCode(
             AND code_hash = $2
             AND used_at IS NULL
           LIMIT 1
+          FOR UPDATE SKIP LOCKED
         )
-
         RETURNING id
       `,
       [
@@ -1291,10 +1318,6 @@ export async function useAdminRecoveryCode(
   );
 }
 
-/* ============================================================
-   VERIFY SECOND FACTOR
-   ============================================================ */
-
 export async function verifyAdminSecondFactor(
   input: {
     adminId: string;
@@ -1302,25 +1325,18 @@ export async function verifyAdminSecondFactor(
   }
 ): Promise<{
   valid: boolean;
-
   method:
     | 'totp'
     | 'recovery_code'
     | null;
 }> {
   const cleanCode =
-    input.code
-      .trim();
+    input.code.trim();
 
-  if (
-    !cleanCode
-  ) {
+  if (!cleanCode) {
     return {
-      valid:
-        false,
-
-      method:
-        null,
+      valid: false,
+      method: null,
     };
   }
 
@@ -1338,15 +1354,10 @@ export async function verifyAdminSecondFactor(
           cleanCode,
       });
 
-    if (
-      totpValid
-    ) {
+    if (totpValid) {
       return {
-        valid:
-          true,
-
-        method:
-          'totp',
+        valid: true,
+        method: 'totp',
       };
     }
   }
@@ -1360,23 +1371,16 @@ export async function verifyAdminSecondFactor(
         cleanCode,
     });
 
-  if (
-    recoveryValid
-  ) {
+  if (recoveryValid) {
     return {
-      valid:
-        true,
-
+      valid: true,
       method:
         'recovery_code',
     };
   }
 
   return {
-    valid:
-      false,
-
-    method:
-      null,
+    valid: false,
+    method: null,
   };
 }

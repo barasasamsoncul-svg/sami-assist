@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import {
   type ChangeEvent,
   type FormEvent,
@@ -56,14 +55,19 @@ type View =
   | 'sessions'
   | 'activity';
 
-type AdminTheme = 'system' | 'light' | 'dark';
+type AdminTheme =
+  | 'system'
+  | 'light'
+  | 'dark';
 
 type AdminDateFormat =
   | 'DD/MM/YYYY'
   | 'MM/DD/YYYY'
   | 'YYYY-MM-DD';
 
-type AdminTimeFormat = '12h' | '24h';
+type AdminTimeFormat =
+  | '12h'
+  | '24h';
 
 type AdminAccount = {
   id: string;
@@ -93,7 +97,7 @@ type AdminPreferences = {
 type TwoFactorState = {
   enabled: boolean;
   required: boolean;
-  method: string;
+  method?: string;
   verifiedAt: string | null;
   lastUsedAt: string | null;
   recoveryCodesRemaining: number;
@@ -103,7 +107,17 @@ type TwoFactorSetup = {
   method: string;
   secret: string;
   otpauthUrl: string;
-  qrDataUrl: string;
+  qrDataUrl?: string | null;
+};
+
+type EmailTwoFactorState = {
+  enabled: boolean;
+  verifiedAt: string | null;
+  lastUsedAt: string | null;
+  authenticatorEnabled: boolean;
+  twoFactorEnabled: boolean;
+  emailVerified: boolean;
+  email: string;
 };
 
 type AdminSessionItem = {
@@ -119,20 +133,40 @@ type AdminSessionItem = {
   expiresAt: string;
 };
 
+type ActivityStatus =
+  | 'success'
+  | 'failed'
+  | 'blocked';
+
 type SecurityActivityItem = {
   id: string;
   source: 'audit' | 'login';
   eventType: string;
-  action: string | null;
-  successful: boolean;
-  failureReason: string | null;
-  ipAddress: string | null;
-  userAgent: string | null;
-  deviceType: string | null;
-  browser: string | null;
-  operatingSystem: string | null;
+  action?: string | null;
+  category?: string;
+  status?: ActivityStatus;
+  title?: string;
+  description?: string;
+  successful?: boolean;
+  failureReason?: string | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  deviceType?: string | null;
+  browser?: string | null;
+  operatingSystem?: string | null;
   createdAt: string | null;
 };
+
+type ActivityFilter =
+  | 'all'
+  | 'sign_ins'
+  | 'security_changes';
+
+type ActivityStatusFilter =
+  | 'all'
+  | 'success'
+  | 'failed'
+  | 'blocked';
 
 type ApiPayload = {
   success?: boolean;
@@ -144,7 +178,13 @@ type ApiPayload = {
   account?: AdminAccount;
   preferences?: AdminPreferences;
 
-  avatarFileId?: string | null;
+  avatar?: {
+    id: string;
+    mimeType: string;
+    sizeBytes: number;
+    url: string;
+  };
+
   otherSessionsRevoked?: number;
 
   twoFactor?: TwoFactorState;
@@ -152,10 +192,23 @@ type ApiPayload = {
   setup?: TwoFactorSetup;
   recoveryCodes?: string[];
 
+  emailTwoFactor?: EmailTwoFactorState;
+  emailTwoFactorEnabled?: boolean;
+  authenticatorEnabled?: boolean;
+  contextToken?: string;
+  expiresInMinutes?: number;
+
   sessions?: AdminSessionItem[];
   revokedCount?: number;
+  revokedSessionId?: string;
 
   activity?: SecurityActivityItem[];
+
+  pagination?: {
+    limit: number;
+    hasMore: boolean;
+    nextCursor: string | null;
+  };
 };
 
 type OverlayType =
@@ -164,18 +217,19 @@ type OverlayType =
   | 'warning'
   | 'info';
 
-type OverlayAction = {
-  label: string;
-  onClick?: () => void;
-};
-
 type OverlayState = {
   open: boolean;
   type: OverlayType;
   title: string;
   message: string;
-  primaryAction?: OverlayAction;
-  secondaryAction?: OverlayAction;
+  primaryAction?: {
+    label: string;
+    onClick?: () => void;
+  };
+  secondaryAction?: {
+    label: string;
+    onClick?: () => void;
+  };
 };
 
 const DEFAULT_PREFERENCES: AdminPreferences = {
@@ -187,13 +241,15 @@ const DEFAULT_PREFERENCES: AdminPreferences = {
   firstDayOfWeek: 1,
 };
 
-const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+const MAX_AVATAR_BYTES =
+  5 * 1024 * 1024;
 
-const ACCEPTED_AVATAR_TYPES = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-]);
+const ACCEPTED_AVATAR_TYPES =
+  new Set([
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+  ]);
 
 const LOCALES = [
   {
@@ -243,138 +299,107 @@ async function readPayload(
   }
 }
 
-function normalizeName(value: string) {
+function normalizeName(
+  value: string
+) {
   return value
     .normalize('NFKC')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function validName(value: string) {
+function validName(
+  value: string
+) {
   return (
     value.length >= 1 &&
     value.length <= 100 &&
-    /^[\p{L}\p{M}'’ -]+$/u.test(value)
+    /^[\p{L}\p{M}'’ -]+$/u.test(
+      value
+    )
   );
 }
 
-function initials(account: AdminAccount) {
-  const first = account.firstName
-    ?.trim()
-    .charAt(0);
-
-  const last = account.lastName
-    ?.trim()
-    .charAt(0);
-
-  return (
-    `${first || ''}${last || ''}`.toUpperCase() ||
-    'SA'
-  );
-}
-
-function labelFromValue(value: string) {
-  return value
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, character =>
-      character.toUpperCase()
-    );
-}
-
-function themeLabel(theme: AdminTheme) {
-  if (theme === 'dark') return 'Dark';
-  if (theme === 'light') return 'Light';
-  return 'System';
-}
-
-function applyTheme(theme: AdminTheme) {
-  if (typeof document === 'undefined') {
+function applyTheme(
+  theme: AdminTheme
+) {
+  if (
+    typeof document ===
+    'undefined'
+  ) {
     return;
   }
 
-  const root = document.documentElement;
+  const root =
+    document.documentElement;
 
   if (theme === 'dark') {
-    root.classList.add('dark');
+    root.classList.add(
+      'dark'
+    );
     return;
   }
 
   if (theme === 'light') {
-    root.classList.remove('dark');
+    root.classList.remove(
+      'dark'
+    );
     return;
   }
 
-  const dark = window.matchMedia(
-    '(prefers-color-scheme: dark)'
-  ).matches;
-
-  root.classList.toggle('dark', dark);
+  root.classList.toggle(
+    'dark',
+    window.matchMedia(
+      '(prefers-color-scheme: dark)'
+    ).matches
+  );
 }
 
-function formatSecurityDate(
+function initials(
+  account: AdminAccount
+) {
+  return (
+    `${account.firstName
+      ?.trim()
+      .charAt(0) || ''}${account.lastName
+      ?.trim()
+      .charAt(0) || ''}`
+      .toUpperCase() ||
+    'SA'
+  );
+}
+
+function labelFromValue(
+  value: string
+) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      character =>
+        character.toUpperCase()
+    );
+}
+
+function formatDate(
   value: string | null
 ) {
-  if (!value) return 'Not yet';
+  if (!value) {
+    return 'Not yet';
+  }
 
-  const date = new Date(value);
+  const date =
+    new Date(value);
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
     return 'Not yet';
   }
 
   return date.toLocaleString();
-}
-
-function formatAccountDate(
-  value: string | null
-) {
-  if (!value) return 'Unknown';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return 'Unknown';
-  }
-
-  return date.toLocaleString();
-}
-
-function securityActivityTitle(
-  item: SecurityActivityItem
-) {
-  if (item.source === 'login') {
-    return item.successful
-      ? 'Administrator sign-in'
-      : 'Failed administrator sign-in';
-  }
-
-  const labels: Record<string, string> = {
-    'admin.password.changed':
-      'Password changed',
-    'admin.two_factor.enabled':
-      'Two-factor authentication enabled',
-    'admin.two_factor.disabled':
-      'Two-factor authentication disabled',
-    'admin.two_factor.recovery_codes_regenerated':
-      'Recovery codes replaced',
-    'admin.sessions.others_revoked':
-      'Other sessions signed out',
-  };
-
-  if (labels[item.eventType]) {
-    return labels[item.eventType];
-  }
-
-  return (
-    item.eventType
-      .replace(/^admin[._-]/i, '')
-      .replace(/[._-]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .replace(/\b\w/g, character =>
-        character.toUpperCase()
-      ) || 'Security activity'
-  );
 }
 
 function sessionDeviceLabel(
@@ -395,25 +420,67 @@ function sessionDeviceLabel(
   );
 }
 
+function primaryButton() {
+  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200';
+}
+
+function secondaryButton() {
+  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-white px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800';
+}
+
+function dangerButton() {
+  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50';
+}
+
+function inputClass(
+  error = false
+) {
+  return `mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm font-medium outline-none transition dark:bg-zinc-950 ${
+    error
+      ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10'
+      : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
+  }`;
+}
+
+function selectClass() {
+  return 'mt-2 h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-950';
+}
+
 export default function AdminMyAccountPage() {
-  const router = useRouter();
+  const router =
+    useRouter();
 
   const avatarInputRef =
-    useRef<HTMLInputElement>(null);
+    useRef<HTMLInputElement>(
+      null
+    );
 
-  const [view, setView] =
-    useState<View>('overview');
+  const [
+    view,
+    setView,
+  ] =
+    useState<View>(
+      'overview'
+    );
 
-  const [loading, setLoading] =
+  const [
+    loading,
+    setLoading,
+  ] =
     useState(true);
 
-  const [loadError, setLoadError] =
-    useState<string | null>(null);
+  const [
+    account,
+    setAccount,
+  ] =
+    useState<AdminAccount | null>(
+      null
+    );
 
-  const [account, setAccount] =
-    useState<AdminAccount | null>(null);
-
-  const [preferences, setPreferences] =
+  const [
+    preferences,
+    setPreferences,
+  ] =
     useState<AdminPreferences>(
       DEFAULT_PREFERENCES
     );
@@ -421,159 +488,297 @@ export default function AdminMyAccountPage() {
   const [
     draftPreferences,
     setDraftPreferences,
-  ] = useState<AdminPreferences>(
-    DEFAULT_PREFERENCES
-  );
+  ] =
+    useState<AdminPreferences>(
+      DEFAULT_PREFERENCES
+    );
 
-  const [firstName, setFirstName] =
+  const [
+    firstName,
+    setFirstName,
+  ] =
     useState('');
 
-  const [lastName, setLastName] =
+  const [
+    lastName,
+    setLastName,
+  ] =
     useState('');
 
   const [
     firstNameError,
     setFirstNameError,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     lastNameError,
     setLastNameError,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     savingProfile,
     setSavingProfile,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
-    savingAvatar,
-    setSavingAvatar,
-  ] = useState(false);
-
-  const [
-    removingAvatar,
-    setRemovingAvatar,
-  ] = useState(false);
-
-  const avatarBusy =
-    savingAvatar || removingAvatar;
+    avatarBusy,
+    setAvatarBusy,
+  ] =
+    useState(false);
 
   const [
     savingPreferences,
     setSavingPreferences,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     currentPassword,
     setCurrentPassword,
-  ] = useState('');
+  ] =
+    useState('');
 
-  const [newPassword, setNewPassword] =
+  const [
+    newPassword,
+    setNewPassword,
+  ] =
     useState('');
 
   const [
     confirmPassword,
     setConfirmPassword,
-  ] = useState('');
+  ] =
+    useState('');
 
   const [
     showCurrentPassword,
     setShowCurrentPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     showNewPassword,
     setShowNewPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     showConfirmPassword,
     setShowConfirmPassword,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
     currentPasswordError,
     setCurrentPasswordError,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     newPasswordError,
     setNewPasswordError,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     confirmPasswordError,
     setConfirmPasswordError,
-  ] = useState<string | null>(null);
+  ] =
+    useState<string | null>(
+      null
+    );
 
   const [
     savingPassword,
     setSavingPassword,
-  ] = useState(false);
-
-  const [twoFactor, setTwoFactor] =
-    useState<TwoFactorState | null>(null);
+  ] =
+    useState(false);
 
   const [
-    loadingTwoFactor,
-    setLoadingTwoFactor,
-  ] = useState(false);
-
-  const [
-    twoFactorBusy,
-    setTwoFactorBusy,
-  ] = useState(false);
+    twoFactor,
+    setTwoFactor,
+  ] =
+    useState<TwoFactorState | null>(
+      null
+    );
 
   const [
     twoFactorSetup,
     setTwoFactorSetup,
-  ] = useState<TwoFactorSetup | null>(
-    null
-  );
+  ] =
+    useState<TwoFactorSetup | null>(
+      null
+    );
 
   const [
     twoFactorCode,
     setTwoFactorCode,
-  ] = useState('');
+  ] =
+    useState('');
 
   const [
-    twoFactorCodeError,
-    setTwoFactorCodeError,
-  ] = useState<string | null>(null);
+    twoFactorError,
+    setTwoFactorError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    twoFactorBusy,
+    setTwoFactorBusy,
+  ] =
+    useState(false);
+
+  const [
+    loadingTwoFactor,
+    setLoadingTwoFactor,
+  ] =
+    useState(false);
 
   const [
     recoveryCodes,
     setRecoveryCodes,
-  ] = useState<string[]>([]);
+  ] =
+    useState<string[]>([]);
 
   const [
-    recoveryCopied,
-    setRecoveryCopied,
-  ] = useState(false);
+    emailTwoFactor,
+    setEmailTwoFactor,
+  ] =
+    useState<EmailTwoFactorState | null>(
+      null
+    );
 
-  const [sessions, setSessions] =
-    useState<AdminSessionItem[]>([]);
+  const [
+    emailAction,
+    setEmailAction,
+  ] =
+    useState<
+      'enable' |
+      'disable' |
+      null
+    >(null);
+
+  const [
+    emailContextToken,
+    setEmailContextToken,
+  ] =
+    useState('');
+
+  const [
+    emailCode,
+    setEmailCode,
+  ] =
+    useState('');
+
+  const [
+    emailCodeError,
+    setEmailCodeError,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    emailBusy,
+    setEmailBusy,
+  ] =
+    useState(false);
+
+  const [
+    sessions,
+    setSessions,
+  ] =
+    useState<AdminSessionItem[]>(
+      []
+    );
 
   const [
     loadingSessions,
     setLoadingSessions,
-  ] = useState(false);
+  ] =
+    useState(false);
 
   const [
-    sessionsBusy,
-    setSessionsBusy,
-  ] = useState(false);
+    sessionBusyId,
+    setSessionBusyId,
+  ] =
+    useState<string | null>(
+      null
+    );
 
-  const [activity, setActivity] =
-    useState<SecurityActivityItem[]>([]);
+  const [
+    revokingOthers,
+    setRevokingOthers,
+  ] =
+    useState(false);
+
+  const [
+    securityActivity,
+    setSecurityActivity,
+  ] =
+    useState<SecurityActivityItem[]>(
+      []
+    );
 
   const [
     loadingActivity,
     setLoadingActivity,
-  ] = useState(false);
+  ] =
+    useState(false);
 
-  const [overlay, setOverlay] =
+  const [
+    loadingMoreActivity,
+    setLoadingMoreActivity,
+  ] =
+    useState(false);
+
+  const [
+    activityFilter,
+    setActivityFilter,
+  ] =
+    useState<ActivityFilter>(
+      'all'
+    );
+
+  const [
+    activityStatus,
+    setActivityStatus,
+  ] =
+    useState<ActivityStatusFilter>(
+      'all'
+    );
+
+  const [
+    activityCursor,
+    setActivityCursor,
+  ] =
+    useState<string | null>(
+      null
+    );
+
+  const [
+    activityHasMore,
+    setActivityHasMore,
+  ] =
+    useState(false);
+
+  const [
+    overlay,
+    setOverlay,
+  ] =
     useState<OverlayState>({
       open: false,
       type: 'info',
@@ -581,34 +786,30 @@ export default function AdminMyAccountPage() {
       message: '',
     });
 
+  function closeOverlay() {
+    setOverlay(
+      current => ({
+        ...current,
+        open: false,
+      })
+    );
+  }
+
   function showOverlay(
     type: OverlayType,
     title: string,
     message: string,
-    actions?: {
-      primaryAction?: OverlayAction;
-      secondaryAction?: OverlayAction;
-    }
+    primaryAction?: OverlayState['primaryAction'],
+    secondaryAction?: OverlayState['secondaryAction']
   ) {
     setOverlay({
       open: true,
       type,
       title,
       message,
-      primaryAction:
-        actions?.primaryAction,
-      secondaryAction:
-        actions?.secondaryAction,
+      primaryAction,
+      secondaryAction,
     });
-  }
-
-  function closeOverlay() {
-    setOverlay(current => ({
-      ...current,
-      open: false,
-      primaryAction: undefined,
-      secondaryAction: undefined,
-    }));
   }
 
   function sessionExpired() {
@@ -617,221 +818,230 @@ export default function AdminMyAccountPage() {
       'Administrator session expired',
       'Your administrator session is no longer active. Sign in again to continue.',
       {
-        primaryAction: {
-          label: 'Sign in again',
-          onClick: () => {
-            router.replace('/admin/login');
-          },
-        },
+        label: 'Sign in again',
+        onClick: () =>
+          router.replace(
+            '/admin/login'
+          ),
       }
     );
   }
 
-  const loadData = useCallback(
-    async () => {
-      setLoading(true);
-      setLoadError(null);
+  const loadData =
+    useCallback(
+      async () => {
+        setLoading(true);
 
-      try {
-        const [
-          accountResponse,
-          preferencesResponse,
-        ] = await Promise.all([
-          fetch('/api/admin/account', {
-            method: 'GET',
-            cache: 'no-store',
-            credentials: 'same-origin',
-            headers: {
-              Accept: 'application/json',
-            },
-          }),
+        try {
+          const [
+            accountResponse,
+            preferencesResponse,
+          ] =
+            await Promise.all([
+              fetch(
+                '/api/admin/account',
+                {
+                  cache:
+                    'no-store',
+                  credentials:
+                    'same-origin',
+                }
+              ),
 
-          fetch(
-            '/api/admin/account/preferences',
-            {
-              method: 'GET',
-              cache: 'no-store',
-              credentials: 'same-origin',
-              headers: {
-                Accept: 'application/json',
-              },
-            }
-          ),
-        ]);
+              fetch(
+                '/api/admin/account/preferences',
+                {
+                  cache:
+                    'no-store',
+                  credentials:
+                    'same-origin',
+                }
+              ),
+            ]);
 
-        const [
-          accountPayload,
-          preferencesPayload,
-        ] = await Promise.all([
-          readPayload(accountResponse),
-          readPayload(
-            preferencesResponse
-          ),
-        ]);
+          const [
+            accountPayload,
+            preferencesPayload,
+          ] =
+            await Promise.all([
+              readPayload(
+                accountResponse
+              ),
+              readPayload(
+                preferencesResponse
+              ),
+            ]);
 
-        if (
-          accountResponse.status === 401 ||
-          preferencesResponse.status ===
-            401
-        ) {
-          sessionExpired();
-          return;
-        }
+          if (
+            accountResponse.status ===
+              401 ||
+            preferencesResponse.status ===
+              401
+          ) {
+            sessionExpired();
+            return;
+          }
 
-        if (
-          !accountResponse.ok ||
-          !accountPayload.account
-        ) {
-          throw new Error(
-            accountPayload.error ||
-              'SaMi could not load your administrator account.'
+          if (
+            !accountResponse.ok ||
+            !accountPayload.account
+          ) {
+            throw new Error(
+              accountPayload.error ||
+                'SaMi could not load your account.'
+            );
+          }
+
+          if (
+            !preferencesResponse.ok ||
+            !preferencesPayload.preferences
+          ) {
+            throw new Error(
+              preferencesPayload.error ||
+                'SaMi could not load your preferences.'
+            );
+          }
+
+          const loadedAccount = {
+            ...accountPayload.account,
+            avatarFileId:
+              accountPayload.account
+                .avatarFileId ??
+              null,
+          };
+
+          setAccount(
+            loadedAccount
           );
-        }
 
-        if (
-          !preferencesResponse.ok ||
-          !preferencesPayload.preferences
-        ) {
-          throw new Error(
-            preferencesPayload.error ||
-              'SaMi could not load your preferences.'
+          setFirstName(
+            loadedAccount.firstName
           );
+
+          setLastName(
+            loadedAccount.lastName
+          );
+
+          setPreferences(
+            preferencesPayload.preferences
+          );
+
+          setDraftPreferences(
+            preferencesPayload.preferences
+          );
+
+          applyTheme(
+            preferencesPayload
+              .preferences.theme
+          );
+        } catch (error) {
+          showOverlay(
+            'error',
+            'Account unavailable',
+            error instanceof Error
+              ? error.message
+              : 'SaMi could not load your account.'
+          );
+        } finally {
+          setLoading(false);
         }
+      },
+      []
+    );
 
-        const loadedAccount = {
-          ...accountPayload.account,
-          avatarFileId:
-            accountPayload.account
-              .avatarFileId ?? null,
-        };
-
-        setAccount(loadedAccount);
-
-        setFirstName(
-          loadedAccount.firstName
-        );
-
-        setLastName(
-          loadedAccount.lastName
-        );
-
-        setPreferences(
-          preferencesPayload.preferences
-        );
-
-        setDraftPreferences(
-          preferencesPayload.preferences
-        );
-
-        applyTheme(
-          preferencesPayload.preferences
-            .theme
-        );
-      } catch (error) {
-        setLoadError(
-          error instanceof Error
-            ? error.message
-            : 'SaMi could not load your administrator account.'
-        );
-      } finally {
-        setLoading(false);
-      }
+  useEffect(
+    () => {
+      void loadData();
     },
-    []
+    [loadData]
   );
 
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const profileChanged = useMemo(
-    () =>
-      Boolean(
-        account &&
-          (normalizeName(firstName) !==
+  const profileChanged =
+    Boolean(
+      account &&
+        (
+          normalizeName(
+            firstName
+          ) !==
             account.firstName ||
-            normalizeName(lastName) !==
-              account.lastName)
-      ),
-    [account, firstName, lastName]
-  );
-
-  function openProfile() {
-    if (!account) return;
-
-    setFirstName(account.firstName);
-    setLastName(account.lastName);
-
-    setFirstNameError(null);
-    setLastNameError(null);
-
-    setView('profile');
-  }
+          normalizeName(
+            lastName
+          ) !==
+            account.lastName
+        )
+    );
 
   async function saveProfile(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
     if (
-      savingProfile ||
-      !account
+      !account ||
+      savingProfile
     ) {
       return;
     }
 
-    const normalizedFirst =
-      normalizeName(firstName);
+    const first =
+      normalizeName(
+        firstName
+      );
 
-    const normalizedLast =
-      normalizeName(lastName);
+    const last =
+      normalizeName(
+        lastName
+      );
 
     setFirstNameError(null);
     setLastNameError(null);
 
-    let invalid = false;
-
-    if (!validName(normalizedFirst)) {
+    if (!validName(first)) {
       setFirstNameError(
         'Enter a valid first name.'
       );
-      invalid = true;
+      return;
     }
 
-    if (!validName(normalizedLast)) {
+    if (!validName(last)) {
       setLastNameError(
         'Enter a valid last name.'
       );
-      invalid = true;
+      return;
     }
-
-    if (invalid) return;
 
     setSavingProfile(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/profile',
-        {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            firstName: normalizedFirst,
-            lastName: normalizedLast,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/profile',
+          {
+            method: 'PATCH',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                firstName: first,
+                lastName: last,
+              }),
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
@@ -840,53 +1050,26 @@ export default function AdminMyAccountPage() {
         !response.ok ||
         !payload.account
       ) {
-        if (
-          payload.field === 'firstName'
-        ) {
-          setFirstNameError(
-            payload.error ||
-              'First name is invalid.'
-          );
-          return;
-        }
-
-        if (
-          payload.field === 'lastName'
-        ) {
-          setLastNameError(
-            payload.error ||
-              'Last name is invalid.'
-          );
-          return;
-        }
-
         throw new Error(
           payload.error ||
             'SaMi could not update your profile.'
         );
       }
 
-      const nextAccount: AdminAccount =
-        {
-          ...account,
-          ...payload.account,
-          avatarFileId:
-            payload.account
-              .avatarFileId ??
-            account.avatarFileId,
-          twoFactorRequired:
-            account.twoFactorRequired,
-          twoFactorEnabled:
-            account.twoFactorEnabled,
-        };
-
-      setAccount(nextAccount);
-      setFirstName(
-        nextAccount.firstName
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                ...payload.account,
+              }
+            : current
       );
-      setLastName(nextAccount.lastName);
 
-      setView('overview');
+      setView(
+        'overview'
+      );
+
       router.refresh();
 
       showOverlay(
@@ -907,14 +1090,9 @@ export default function AdminMyAccountPage() {
     }
   }
 
-  function openAvatarPicker() {
-    if (!avatarBusy) {
-      avatarInputRef.current?.click();
-    }
-  }
-
   async function uploadAvatar(
-    event: ChangeEvent<HTMLInputElement>
+    event:
+      ChangeEvent<HTMLInputElement>
   ) {
     const file =
       event.target.files?.[0];
@@ -944,7 +1122,8 @@ export default function AdminMyAccountPage() {
 
     if (
       file.size <= 0 ||
-      file.size > MAX_AVATAR_BYTES
+      file.size >
+        MAX_AVATAR_BYTES
     ) {
       showOverlay(
         'warning',
@@ -954,56 +1133,65 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setSavingAvatar(true);
+    setAvatarBusy(true);
 
     try {
       const formData =
         new FormData();
 
-      formData.append('avatar', file);
-
-      const response = await fetch(
-        '/api/admin/account/avatar',
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-          body: formData,
-        }
+      formData.append(
+        'avatar',
+        file
       );
 
-      const payload =
-        await readPayload(response);
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            body: formData,
+          }
+        );
 
-      if (response.status === 401) {
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !payload.avatar
+      ) {
         throw new Error(
           payload.error ||
             'SaMi could not update your profile photo.'
         );
       }
 
-      if (payload.avatarFileId) {
-        setAccount(current =>
+      setAccount(
+        current =>
           current
             ? {
                 ...current,
                 avatarFileId:
-                  payload.avatarFileId ??
-                  null,
+                  payload.avatar!
+                    .id,
+                avatarUrl:
+                  payload.avatar!
+                    .url,
               }
             : current
-        );
-      } else {
-        await loadData();
-      }
+      );
 
       router.refresh();
 
@@ -1021,11 +1209,11 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not update your profile photo.'
       );
     } finally {
-      setSavingAvatar(false);
+      setAvatarBusy(false);
     }
   }
 
-  async function removeAvatar() {
+  function confirmRemoveAvatar() {
     if (
       !account?.avatarFileId ||
       avatarBusy
@@ -1033,25 +1221,48 @@ export default function AdminMyAccountPage() {
       return;
     }
 
-    setRemovingAvatar(true);
+    showOverlay(
+      'warning',
+      'Remove profile photo?',
+      'Your current profile photo will be removed.',
+      {
+        label: 'Remove photo',
+        onClick: () => {
+          closeOverlay();
+          void removeAvatar();
+        },
+      },
+      {
+        label: 'Cancel',
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  async function removeAvatar() {
+    setAvatarBusy(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/avatar',
-        {
-          method: 'DELETE',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/avatar',
+          {
+            method: 'DELETE',
+            credentials:
+              'same-origin',
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
@@ -1063,14 +1274,17 @@ export default function AdminMyAccountPage() {
         );
       }
 
-      setAccount(current =>
-        current
-          ? {
-              ...current,
-              avatarFileId: null,
-              avatarUrl: null,
-            }
-          : current
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                avatarFileId:
+                  null,
+                avatarUrl:
+                  null,
+              }
+            : current
       );
 
       router.refresh();
@@ -1089,33 +1303,31 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not remove your profile photo.'
       );
     } finally {
-      setRemovingAvatar(false);
+      setAvatarBusy(false);
     }
   }
 
   const preferencesChanged =
-    useMemo(
-      () =>
-        JSON.stringify(preferences) !==
-        JSON.stringify(
-          draftPreferences
-        ),
-      [
-        preferences,
-        draftPreferences,
-      ]
+    JSON.stringify(
+      preferences
+    ) !==
+    JSON.stringify(
+      draftPreferences
     );
 
   function updatePreference<
-    K extends keyof AdminPreferences,
+    K extends keyof AdminPreferences
   >(
     key: K,
-    value: AdminPreferences[K]
+    value:
+      AdminPreferences[K]
   ) {
-    setDraftPreferences(current => ({
-      ...current,
-      [key]: value,
-    }));
+    setDraftPreferences(
+      current => ({
+        ...current,
+        [key]: value,
+      })
+    );
 
     if (key === 'theme') {
       applyTheme(
@@ -1125,7 +1337,8 @@ export default function AdminMyAccountPage() {
   }
 
   async function savePreferences(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
@@ -1139,27 +1352,33 @@ export default function AdminMyAccountPage() {
     setSavingPreferences(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/preferences',
-        {
-          method: 'PATCH',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify(
-            draftPreferences
-          ),
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/preferences',
+          {
+            method: 'PATCH',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify(
+                draftPreferences
+              ),
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
@@ -1170,7 +1389,7 @@ export default function AdminMyAccountPage() {
       ) {
         throw new Error(
           payload.error ||
-            'SaMi could not update your preferences.'
+            'SaMi could not save your preferences.'
         );
       }
 
@@ -1183,10 +1402,13 @@ export default function AdminMyAccountPage() {
       );
 
       applyTheme(
-        payload.preferences.theme
+        payload.preferences
+          .theme
       );
 
-      setView('overview');
+      setView(
+        'overview'
+      );
 
       showOverlay(
         'success',
@@ -1194,160 +1416,133 @@ export default function AdminMyAccountPage() {
         'Your preferences have been saved.'
       );
     } catch (error) {
-      applyTheme(preferences.theme);
+      applyTheme(
+        preferences.theme
+      );
 
       showOverlay(
         'error',
         'Preferences update failed',
         error instanceof Error
           ? error.message
-          : 'SaMi could not update your preferences.'
+          : 'SaMi could not save your preferences.'
       );
     } finally {
       setSavingPreferences(false);
     }
   }
 
-  const passwordRules = useMemo(
-    () => ({
-      length:
-        newPassword.length >= 8 &&
-        newPassword.length <= 128,
+  const passwordRules =
+    useMemo(
+      () => ({
+        length:
+          newPassword.length >=
+            8 &&
+          newPassword.length <=
+            128,
 
-      uppercase:
-        /[A-Z]/.test(newPassword),
+        uppercase:
+          /[A-Z]/.test(
+            newPassword
+          ),
 
-      lowercase:
-        /[a-z]/.test(newPassword),
+        lowercase:
+          /[a-z]/.test(
+            newPassword
+          ),
 
-      number:
-        /[0-9]/.test(newPassword),
-    }),
-    [newPassword]
-  );
-
-  const passwordValid =
-    Object.values(
-      passwordRules
-    ).every(Boolean);
-
-  const passwordChanged = Boolean(
-    currentPassword ||
-      newPassword ||
-      confirmPassword
-  );
-
-  function clearPasswordForm() {
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
-
-    setCurrentPasswordError(null);
-    setNewPasswordError(null);
-    setConfirmPasswordError(null);
-
-    setShowCurrentPassword(false);
-    setShowNewPassword(false);
-    setShowConfirmPassword(false);
-  }
-
-  function openPassword() {
-    clearPasswordForm();
-    setView('password');
-  }
-
-  function closePassword() {
-    if (savingPassword) return;
-
-    clearPasswordForm();
-    setView('security');
-  }
+        number:
+          /\d/.test(
+            newPassword
+          ),
+      }),
+      [newPassword]
+    );
 
   async function changePassword(
-    event: FormEvent<HTMLFormElement>
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    if (savingPassword) return;
-
-    setCurrentPasswordError(null);
+    setCurrentPasswordError(
+      null
+    );
     setNewPasswordError(null);
-    setConfirmPasswordError(null);
-
-    let invalid = false;
+    setConfirmPasswordError(
+      null
+    );
 
     if (!currentPassword) {
       setCurrentPasswordError(
         'Enter your current password.'
       );
-      invalid = true;
-    }
-
-    if (!newPassword) {
-      setNewPasswordError(
-        'Enter a new password.'
-      );
-      invalid = true;
-    } else if (!passwordValid) {
-      setNewPasswordError(
-        'Your new password does not meet the password requirements.'
-      );
-      invalid = true;
-    }
-
-    if (!confirmPassword) {
-      setConfirmPasswordError(
-        'Confirm your new password.'
-      );
-      invalid = true;
-    } else if (
-      newPassword !== confirmPassword
-    ) {
-      setConfirmPasswordError(
-        'The password confirmation does not match.'
-      );
-      invalid = true;
+      return;
     }
 
     if (
-      currentPassword &&
-      newPassword &&
-      currentPassword === newPassword
+      !Object.values(
+        passwordRules
+      ).every(Boolean)
     ) {
       setNewPasswordError(
-        'Your new password must be different from your current password.'
+        'Your new password does not meet the requirements.'
       );
-      invalid = true;
+      return;
     }
 
-    if (invalid) return;
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
+      setConfirmPasswordError(
+        'The passwords do not match.'
+      );
+      return;
+    }
+
+    if (
+      currentPassword ===
+      newPassword
+    ) {
+      setNewPasswordError(
+        'Choose a password different from your current password.'
+      );
+      return;
+    }
 
     setSavingPassword(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/change-password',
-        {
-          method: 'POST',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type':
-              'application/json',
-          },
-          body: JSON.stringify({
-            currentPassword,
-            newPassword,
-            confirmPassword,
-          }),
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/change-password',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                currentPassword,
+                newPassword,
+                confirmPassword,
+              }),
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
@@ -1375,36 +1570,25 @@ export default function AdminMyAccountPage() {
           return;
         }
 
-        if (
-          payload.field ===
-          'confirmPassword'
-        ) {
-          setConfirmPasswordError(
-            payload.error ||
-              'The password confirmation is invalid.'
-          );
-          return;
-        }
-
         throw new Error(
           payload.error ||
             'SaMi could not change your password.'
         );
       }
 
-      const revoked =
-        payload.otherSessionsRevoked ??
-        0;
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
 
-      clearPasswordForm();
-
-      setView('security');
+      setView(
+        'security'
+      );
 
       showOverlay(
         'success',
         'Password changed',
-        revoked > 0
-          ? `Your password has been changed. ${revoked} other signed-in session${revoked === 1 ? '' : 's'} were revoked.`
+        payload.otherSessionsRevoked
+          ? `Your password has been changed. ${payload.otherSessionsRevoked} other session${payload.otherSessionsRevoked === 1 ? '' : 's'} were signed out.`
           : 'Your password has been changed successfully.'
       );
     } catch (error) {
@@ -1420,64 +1604,103 @@ export default function AdminMyAccountPage() {
     }
   }
 
-  function clearTwoFactorAction() {
-    setTwoFactorSetup(null);
-    setTwoFactorCode('');
-    setTwoFactorCodeError(null);
-    setRecoveryCodes([]);
-    setRecoveryCopied(false);
-  }
-
   async function loadTwoFactor() {
     setLoadingTwoFactor(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/two-factor',
-        {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      const [
+        authenticatorResponse,
+        emailResponse,
+      ] =
+        await Promise.all([
+          fetch(
+            '/api/admin/account/two-factor',
+            {
+              cache:
+                'no-store',
+              credentials:
+                'same-origin',
+            }
+          ),
 
-      const payload =
-        await readPayload(response);
+          fetch(
+            '/api/admin/account/email-two-factor',
+            {
+              cache:
+                'no-store',
+              credentials:
+                'same-origin',
+            }
+          ),
+        ]);
 
-      if (response.status === 401) {
+      const [
+        authenticatorPayload,
+        emailPayload,
+      ] =
+        await Promise.all([
+          readPayload(
+            authenticatorResponse
+          ),
+          readPayload(
+            emailResponse
+          ),
+        ]);
+
+      if (
+        authenticatorResponse.status ===
+          401 ||
+        emailResponse.status ===
+          401
+      ) {
         sessionExpired();
         return;
       }
 
       if (
-        !response.ok ||
-        !payload.twoFactor
+        !authenticatorResponse.ok ||
+        !authenticatorPayload.twoFactor
       ) {
         throw new Error(
-          payload.error ||
-            'SaMi could not load your security settings.'
+          authenticatorPayload.error ||
+            'SaMi could not load authenticator settings.'
+        );
+      }
+
+      if (
+        !emailResponse.ok ||
+        !emailPayload.emailTwoFactor
+      ) {
+        throw new Error(
+          emailPayload.error ||
+            'SaMi could not load email verification settings.'
         );
       }
 
       setTwoFactor(
-        payload.twoFactor
+        authenticatorPayload.twoFactor
       );
 
-      setAccount(current =>
-        current
-          ? {
-              ...current,
-              twoFactorEnabled:
-                payload.twoFactor!
-                  .enabled,
-              twoFactorRequired:
-                payload.twoFactor!
-                  .required,
-            }
-          : current
+      setEmailTwoFactor(
+        emailPayload.emailTwoFactor
+      );
+
+      setAccount(
+        current =>
+          current
+            ? {
+                ...current,
+                twoFactorEnabled:
+                  Boolean(
+                    authenticatorPayload
+                      .twoFactor
+                      ?.enabled ||
+                    emailPayload
+                      .emailTwoFactor
+                      ?.enabled
+                  ),
+              }
+            : current
       );
     } catch (error) {
       showOverlay(
@@ -1485,7 +1708,7 @@ export default function AdminMyAccountPage() {
         'Security settings unavailable',
         error instanceof Error
           ? error.message
-          : 'SaMi could not load your security settings.'
+          : 'SaMi could not load two-factor authentication settings.'
       );
     } finally {
       setLoadingTwoFactor(false);
@@ -1493,35 +1716,55 @@ export default function AdminMyAccountPage() {
   }
 
   async function openTwoFactor() {
-    clearTwoFactorAction();
-    setView('two-factor');
+    setView(
+      'two-factor'
+    );
+
+    setTwoFactorSetup(null);
+    setTwoFactorCode('');
+    setTwoFactorError(null);
+    setEmailAction(null);
+    setEmailCode('');
+    setEmailCodeError(null);
+    setRecoveryCodes([]);
+
     await loadTwoFactor();
   }
 
-  async function twoFactorRequest(
-    body: Record<string, unknown>
+  async function authenticatorRequest(
+    body: Record<
+      string,
+      unknown
+    >
   ) {
-    const response = await fetch(
-      '/api/admin/account/two-factor',
-      {
-        method: 'POST',
-        credentials: 'same-origin',
-        cache: 'no-store',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type':
-            'application/json',
-        },
-        body: JSON.stringify(body),
-      }
-    );
+    const response =
+      await fetch(
+        '/api/admin/account/two-factor',
+        {
+          method: 'POST',
+          credentials:
+            'same-origin',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify(
+              body
+            ),
+        }
+      );
 
     const payload =
-      await readPayload(response);
+      await readPayload(
+        response
+      );
 
-    if (response.status === 401) {
+    if (
+      response.status ===
+      401
+    ) {
       sessionExpired();
-
       throw new Error(
         'SESSION_EXPIRED'
       );
@@ -1537,23 +1780,20 @@ export default function AdminMyAccountPage() {
     return payload;
   }
 
-  async function startTwoFactorSetup() {
-    if (twoFactorBusy) return;
-
+  async function startAuthenticator() {
     setTwoFactorBusy(true);
-    setTwoFactorCode('');
-    setTwoFactorCodeError(null);
-    setRecoveryCodes([]);
+    setTwoFactorError(null);
 
     try {
       const payload =
-        await twoFactorRequest({
-          action: 'start_setup',
+        await authenticatorRequest({
+          action:
+            'start_setup',
         });
 
       if (!payload.setup) {
         throw new Error(
-          'SaMi could not start authenticator setup.'
+          'Authenticator setup could not be started.'
         );
       }
 
@@ -1574,28 +1814,32 @@ export default function AdminMyAccountPage() {
         'Setup could not start',
         error instanceof Error
           ? error.message
-          : 'SaMi could not start authenticator setup.'
+          : 'Authenticator setup could not be started.'
       );
     } finally {
       setTwoFactorBusy(false);
     }
   }
 
-  async function confirmTwoFactorSetup(
-    event: FormEvent<HTMLFormElement>
+  async function confirmAuthenticator(
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    if (twoFactorBusy) return;
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
 
-    const code = twoFactorCode
-      .replace(/\s+/g, '')
-      .trim();
+    setTwoFactorError(null);
 
-    setTwoFactorCodeError(null);
-
-    if (!/^\d{6}$/.test(code)) {
-      setTwoFactorCodeError(
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorError(
         'Enter the 6-digit code from your authenticator app.'
       );
       return;
@@ -1605,32 +1849,25 @@ export default function AdminMyAccountPage() {
 
     try {
       const payload =
-        await twoFactorRequest({
-          action: 'confirm_setup',
+        await authenticatorRequest({
+          action:
+            'confirm_setup',
           code,
         });
 
-      const codes =
-        payload.recoveryCodes ?? [];
+      setRecoveryCodes(
+        payload.recoveryCodes ??
+          []
+      );
 
-      setRecoveryCodes(codes);
       setTwoFactorSetup(null);
       setTwoFactorCode('');
 
       await loadTwoFactor();
 
-      setAccount(current =>
-        current
-          ? {
-              ...current,
-              twoFactorEnabled: true,
-            }
-          : current
-      );
-
       showOverlay(
         'success',
-        'Two-factor authentication enabled',
+        'Authenticator enabled',
         'Your authenticator app is now protecting your administrator account.'
       );
     } catch (error) {
@@ -1642,33 +1879,70 @@ export default function AdminMyAccountPage() {
         return;
       }
 
-      const message =
+      setTwoFactorError(
         error instanceof Error
           ? error.message
-          : 'The verification code could not be confirmed.';
-
-      setTwoFactorCodeError(message);
-
-      showOverlay(
-        'error',
-        'Verification failed',
-        message
+          : 'The verification code could not be confirmed.'
       );
     } finally {
       setTwoFactorBusy(false);
     }
   }
 
-  async function performDisableTwoFactor(
-    code: string
-  ) {
-    if (twoFactorBusy) return;
+  function confirmDisableAuthenticator() {
+    if (
+      twoFactor?.required &&
+      !emailTwoFactor?.enabled
+    ) {
+      showOverlay(
+        'warning',
+        'Two-factor authentication required',
+        'Enable another verification method before removing the authenticator.'
+      );
+      return;
+    }
 
-    closeOverlay();
+    setTwoFactorCode('');
+    setTwoFactorError(null);
+
+    showOverlay(
+      'warning',
+      'Turn off authenticator?',
+      'Enter a current authenticator code in the form, then confirm the removal.',
+      {
+        label: 'Continue',
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  async function disableAuthenticator(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
+
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorError(
+        'Enter the 6-digit code from your authenticator app.'
+      );
+      return;
+    }
+
     setTwoFactorBusy(true);
 
     try {
-      await twoFactorRequest({
+      await authenticatorRequest({
         action: 'disable',
         code,
       });
@@ -1677,105 +1951,57 @@ export default function AdminMyAccountPage() {
 
       await loadTwoFactor();
 
-      setAccount(current =>
-        current
-          ? {
-              ...current,
-              twoFactorEnabled: false,
-            }
-          : current
-      );
-
       showOverlay(
         'success',
-        'Two-factor authentication disabled',
-        'Authenticator protection has been removed from your account.'
+        'Authenticator removed',
+        'Authenticator verification has been turned off.'
       );
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message ===
-          'SESSION_EXPIRED'
-      ) {
-        return;
-      }
-
-      const message =
+      setTwoFactorError(
         error instanceof Error
           ? error.message
-          : 'Two-factor authentication could not be disabled.';
-
-      setTwoFactorCodeError(message);
-
-      showOverlay(
-        'error',
-        'Could not turn off two-factor authentication',
-        message
+          : 'Authenticator verification could not be turned off.'
       );
     } finally {
       setTwoFactorBusy(false);
     }
   }
 
-  function disableTwoFactor(
-    event: FormEvent<HTMLFormElement>
+  async function regenerateRecoveryCodes(
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    if (twoFactorBusy) return;
+    const code =
+      twoFactorCode
+        .replace(/\s+/g, '')
+        .trim();
 
-    const code = twoFactorCode
-      .replace(/\s+/g, '')
-      .trim();
-
-    setTwoFactorCodeError(null);
-
-    if (!/^\d{6}$/.test(code)) {
-      setTwoFactorCodeError(
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setTwoFactorError(
         'Enter the 6-digit code from your authenticator app.'
       );
       return;
     }
 
-    showOverlay(
-      'warning',
-      'Turn off two-factor authentication?',
-      'Your administrator account will no longer require authenticator codes during sign-in.',
-      {
-        secondaryAction: {
-          label: 'Cancel',
-          onClick: closeOverlay,
-        },
-        primaryAction: {
-          label: 'Turn off',
-          onClick: () => {
-            void performDisableTwoFactor(
-              code
-            );
-          },
-        },
-      }
-    );
-  }
-
-  async function performRegenerateRecoveryCodes(
-    code: string
-  ) {
-    if (twoFactorBusy) return;
-
-    closeOverlay();
     setTwoFactorBusy(true);
 
     try {
       const payload =
-        await twoFactorRequest({
+        await authenticatorRequest({
           action:
             'regenerate_recovery_codes',
           code,
         });
 
       setRecoveryCodes(
-        payload.recoveryCodes ?? []
+        payload.recoveryCodes ??
+          []
       );
 
       setTwoFactorCode('');
@@ -1788,6 +2014,100 @@ export default function AdminMyAccountPage() {
         'Your previous recovery codes can no longer be used.'
       );
     } catch (error) {
+      setTwoFactorError(
+        error instanceof Error
+          ? error.message
+          : 'Recovery codes could not be replaced.'
+      );
+    } finally {
+      setTwoFactorBusy(false);
+    }
+  }
+
+  async function emailTwoFactorRequest(
+    body: Record<
+      string,
+      unknown
+    >
+  ) {
+    const response =
+      await fetch(
+        '/api/admin/account/email-two-factor',
+        {
+          method: 'POST',
+          credentials:
+            'same-origin',
+          headers: {
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify(
+              body
+            ),
+        }
+      );
+
+    const payload =
+      await readPayload(
+        response
+      );
+
+    if (
+      response.status ===
+      401
+    ) {
+      sessionExpired();
+      throw new Error(
+        'SESSION_EXPIRED'
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        payload.error ||
+          'SaMi could not complete email verification.'
+      );
+    }
+
+    return payload;
+  }
+
+  async function requestEmailEnable() {
+    setEmailBusy(true);
+    setEmailCodeError(null);
+
+    try {
+      const payload =
+        await emailTwoFactorRequest({
+          action:
+            'request_enable',
+        });
+
+      if (
+        !payload.contextToken
+      ) {
+        throw new Error(
+          'SaMi could not start email verification.'
+        );
+      }
+
+      setEmailAction(
+        'enable'
+      );
+
+      setEmailContextToken(
+        payload.contextToken
+      );
+
+      setEmailCode('');
+
+      showOverlay(
+        'info',
+        'Security code sent',
+        'A 6-digit security code has been sent to your administrator email.'
+      );
+    } catch (error) {
       if (
         error instanceof Error &&
         error.message ===
@@ -1796,86 +2116,164 @@ export default function AdminMyAccountPage() {
         return;
       }
 
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'New recovery codes could not be generated.';
-
-      setTwoFactorCodeError(message);
-
       showOverlay(
         'error',
-        'Recovery codes could not be replaced',
-        message
+        'Code could not be sent',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not send the security code.'
       );
     } finally {
-      setTwoFactorBusy(false);
+      setEmailBusy(false);
     }
   }
 
-  function regenerateRecoveryCodes(
-    event: FormEvent<HTMLFormElement>
+  async function requestEmailDisable() {
+    setEmailBusy(true);
+    setEmailCodeError(null);
+
+    try {
+      const payload =
+        await emailTwoFactorRequest({
+          action:
+            'request_disable',
+        });
+
+      if (
+        !payload.contextToken
+      ) {
+        throw new Error(
+          'SaMi could not start this verification.'
+        );
+      }
+
+      setEmailAction(
+        'disable'
+      );
+
+      setEmailContextToken(
+        payload.contextToken
+      );
+
+      setEmailCode('');
+
+      showOverlay(
+        'info',
+        'Security code sent',
+        'Confirm the security code sent to your administrator email.'
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Verification could not start',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not start this verification.'
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function confirmEmailAction(
+    event:
+      FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
 
-    if (twoFactorBusy) return;
+    const code =
+      emailCode
+        .replace(/\s+/g, '')
+        .trim();
 
-    const code = twoFactorCode
-      .replace(/\s+/g, '')
-      .trim();
+    setEmailCodeError(null);
 
-    setTwoFactorCodeError(null);
-
-    if (!/^\d{6}$/.test(code)) {
-      setTwoFactorCodeError(
-        'Enter the 6-digit code from your authenticator app.'
+    if (
+      !/^\d{6}$/.test(
+        code
+      )
+    ) {
+      setEmailCodeError(
+        'Enter the 6-digit security code.'
       );
       return;
     }
 
-    showOverlay(
-      'warning',
-      'Replace recovery codes?',
-      'Your current recovery codes will stop working immediately after the new set is created.',
-      {
-        secondaryAction: {
-          label: 'Cancel',
-          onClick: closeOverlay,
-        },
-        primaryAction: {
-          label: 'Replace codes',
-          onClick: () => {
-            void performRegenerateRecoveryCodes(
-              code
-            );
-          },
-        },
+    if (
+      !emailAction ||
+      !emailContextToken
+    ) {
+      return;
+    }
+
+    setEmailBusy(true);
+
+    try {
+      const payload =
+        await emailTwoFactorRequest({
+          action:
+            emailAction ===
+            'enable'
+              ? 'confirm_enable'
+              : 'confirm_disable',
+
+          code,
+
+          contextToken:
+            emailContextToken,
+        });
+
+      if (
+        payload.recoveryCodes
+          ?.length
+      ) {
+        setRecoveryCodes(
+          payload.recoveryCodes
+        );
       }
-    );
+
+      const enabled =
+        emailAction ===
+        'enable';
+
+      setEmailAction(null);
+      setEmailContextToken('');
+      setEmailCode('');
+
+      await loadTwoFactor();
+
+      showOverlay(
+        'success',
+        enabled
+          ? 'Email verification enabled'
+          : 'Email verification turned off',
+        enabled
+          ? 'Your administrator email can now be used as a two-factor verification method.'
+          : 'Email verification has been removed as a two-factor method.'
+      );
+    } catch (error) {
+      setEmailCodeError(
+        error instanceof Error
+          ? error.message
+          : 'The security code could not be verified.'
+      );
+    } finally {
+      setEmailBusy(false);
+    }
   }
 
   async function copyRecoveryCodes() {
-    if (recoveryCodes.length === 0) {
-      return;
-    }
-
     try {
       await navigator.clipboard.writeText(
-        recoveryCodes.join('\n')
+        recoveryCodes.join(
+          '\n'
+        )
       );
-
-      setRecoveryCopied(true);
 
       showOverlay(
         'success',
         'Recovery codes copied',
-        'Keep your recovery codes somewhere private and secure.'
-      );
-
-      window.setTimeout(
-        () =>
-          setRecoveryCopied(false),
-        2000
+        'Store your recovery codes somewhere safe.'
       );
     } catch {
       showOverlay(
@@ -1886,107 +2284,139 @@ export default function AdminMyAccountPage() {
     }
   }
 
-  async function openSessions() {
-    setView('sessions');
+  async function loadSessions() {
     setLoadingSessions(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/sessions',
-        {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/sessions',
+          {
+            cache:
+              'no-store',
+            credentials:
+              'same-origin',
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
 
       if (
         !response.ok ||
-        !payload.sessions
+        !Array.isArray(
+          payload.sessions
+        )
       ) {
         throw new Error(
           payload.error ||
-            'SaMi could not load your signed-in devices.'
+            'SaMi could not load your sessions.'
         );
       }
 
-      setSessions(payload.sessions);
+      setSessions(
+        payload.sessions
+      );
     } catch (error) {
       showOverlay(
         'error',
         'Sessions unavailable',
         error instanceof Error
           ? error.message
-          : 'SaMi could not load your signed-in devices.'
+          : 'SaMi could not load your sessions.'
       );
     } finally {
       setLoadingSessions(false);
     }
   }
 
-  function confirmRevokeOtherSessions() {
+  async function openSessions() {
+    setView(
+      'sessions'
+    );
+
+    await loadSessions();
+  }
+
+  function confirmRevokeSession(
+    session:
+      AdminSessionItem
+  ) {
     if (
-      sessionsBusy ||
-      sessions.filter(
-        session => !session.current
-      ).length === 0
+      session.current
     ) {
       return;
     }
 
     showOverlay(
       'warning',
-      'Sign out other sessions?',
-      'Every other active administrator session will be signed out. This device will stay signed in.',
+      'Sign out this device?',
+      `${sessionDeviceLabel(
+        session
+      )} will lose access to your administrator account.`,
       {
-        secondaryAction: {
-          label: 'Cancel',
-          onClick: closeOverlay,
+        label:
+          'Sign out device',
+        onClick: () => {
+          closeOverlay();
+          void revokeSession(
+            session.id
+          );
         },
-        primaryAction: {
-          label: 'Sign out others',
-          onClick: () => {
-            void revokeOtherSessions();
-          },
-        },
+      },
+      {
+        label: 'Cancel',
+        onClick:
+          closeOverlay,
       }
     );
   }
 
-  async function revokeOtherSessions() {
-    if (sessionsBusy) return;
-
-    closeOverlay();
-    setSessionsBusy(true);
+  async function revokeSession(
+    sessionId: string
+  ) {
+    setSessionBusyId(
+      sessionId
+    );
 
     try {
-      const response = await fetch(
-        '/api/admin/account/sessions',
-        {
-          method: 'DELETE',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/sessions',
+          {
+            method: 'DELETE',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                sessionId,
+              }),
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
@@ -1994,67 +2424,198 @@ export default function AdminMyAccountPage() {
       if (!response.ok) {
         throw new Error(
           payload.error ||
-            'SaMi could not sign out the other sessions.'
+            'SaMi could not sign out this device.'
         );
       }
 
-      setSessions(current =>
-        current.filter(
-          session => session.current
-        )
+      setSessions(
+        current =>
+          current.filter(
+            session =>
+              session.id !==
+              sessionId
+          )
       );
-
-      const revoked =
-        payload.revokedCount ?? 0;
 
       showOverlay(
         'success',
-        'Other sessions signed out',
-        revoked > 0
-          ? `${revoked} other administrator session${revoked === 1 ? '' : 's'} were signed out.`
-          : 'There were no other active sessions to sign out.'
+        'Device signed out',
+        'The selected administrator session has been revoked.'
       );
     } catch (error) {
       showOverlay(
         'error',
-        'Could not sign out sessions',
+        'Sign out failed',
         error instanceof Error
           ? error.message
-          : 'SaMi could not sign out the other sessions.'
+          : 'SaMi could not sign out this device.'
       );
     } finally {
-      setSessionsBusy(false);
+      setSessionBusyId(
+        null
+      );
     }
   }
 
-  async function openSecurityActivity() {
-    setView('activity');
-    setLoadingActivity(true);
+  function confirmRevokeOthers() {
+    const count =
+      sessions.filter(
+        session =>
+          !session.current
+      ).length;
+
+    if (!count) {
+      return;
+    }
+
+    showOverlay(
+      'warning',
+      'Sign out all other devices?',
+      `${count} other administrator session${count === 1 ? '' : 's'} will be signed out. This device will remain signed in.`,
+      {
+        label:
+          'Sign out all others',
+        onClick: () => {
+          closeOverlay();
+          void revokeOthers();
+        },
+      },
+      {
+        label: 'Cancel',
+        onClick:
+          closeOverlay,
+      }
+    );
+  }
+
+  async function revokeOthers() {
+    setRevokingOthers(true);
 
     try {
-      const response = await fetch(
-        '/api/admin/account/security-activity',
-        {
-          method: 'GET',
-          credentials: 'same-origin',
-          cache: 'no-store',
-          headers: {
-            Accept: 'application/json',
-          },
-        }
-      );
+      const response =
+        await fetch(
+          '/api/admin/account/sessions',
+          {
+            method: 'DELETE',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                allOthers: true,
+              }),
+          }
+        );
 
       const payload =
-        await readPayload(response);
+        await readPayload(
+          response
+        );
 
-      if (response.status === 401) {
+      if (
+        response.status ===
+        401
+      ) {
+        sessionExpired();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload.error ||
+            'SaMi could not sign out your other sessions.'
+        );
+      }
+
+      setSessions(
+        current =>
+          current.filter(
+            session =>
+              session.current
+          )
+      );
+
+      showOverlay(
+        'success',
+        'Other devices signed out',
+        `${payload.revokedCount ?? 0} other administrator session${payload.revokedCount === 1 ? '' : 's'} were signed out.`
+      );
+    } catch (error) {
+      showOverlay(
+        'error',
+        'Sign out failed',
+        error instanceof Error
+          ? error.message
+          : 'SaMi could not sign out your other sessions.'
+      );
+    } finally {
+      setRevokingOthers(false);
+    }
+  }
+
+  async function loadActivity(
+    reset = true
+  ) {
+    if (reset) {
+      setLoadingActivity(true);
+    } else {
+      setLoadingMoreActivity(
+        true
+      );
+    }
+
+    try {
+      const params =
+        new URLSearchParams({
+          limit: '20',
+          filter:
+            activityFilter,
+          status:
+            activityStatus,
+        });
+
+      if (
+        !reset &&
+        activityCursor
+      ) {
+        params.set(
+          'cursor',
+          activityCursor
+        );
+      }
+
+      const response =
+        await fetch(
+          `/api/admin/account/security-activity?${params.toString()}`,
+          {
+            cache:
+              'no-store',
+            credentials:
+              'same-origin',
+          }
+        );
+
+      const payload =
+        await readPayload(
+          response
+        );
+
+      if (
+        response.status ===
+        401
+      ) {
         sessionExpired();
         return;
       }
 
       if (
         !response.ok ||
-        !payload.activity
+        !Array.isArray(
+          payload.activity
+        )
       ) {
         throw new Error(
           payload.error ||
@@ -2062,7 +2623,28 @@ export default function AdminMyAccountPage() {
         );
       }
 
-      setActivity(payload.activity);
+      setSecurityActivity(
+        current =>
+          reset
+            ? payload.activity!
+            : [
+                ...current,
+                ...payload.activity!,
+              ]
+      );
+
+      setActivityCursor(
+        payload.pagination
+          ?.nextCursor ??
+          null
+      );
+
+      setActivityHasMore(
+        Boolean(
+          payload.pagination
+            ?.hasMore
+        )
+      );
     } catch (error) {
       showOverlay(
         'error',
@@ -2072,57 +2654,93 @@ export default function AdminMyAccountPage() {
           : 'SaMi could not load your security activity.'
       );
     } finally {
-      setLoadingActivity(false);
+      setLoadingActivity(
+        false
+      );
+
+      setLoadingMoreActivity(
+        false
+      );
     }
   }
 
+  async function openActivity() {
+    setView(
+      'activity'
+    );
+
+    setActivityCursor(null);
+    setSecurityActivity([]);
+
+    await loadActivity(
+      true
+    );
+  }
+
+  useEffect(
+    () => {
+      if (
+        view !==
+        'activity'
+      ) {
+        return;
+      }
+
+      setActivityCursor(null);
+
+      void loadActivity(
+        true
+      );
+    },
+    [
+      activityFilter,
+      activityStatus,
+    ]
+  );
+
   const overlayElement = (
     <SaMiOverlay
-      open={overlay.open}
-      type={overlay.type}
-      title={overlay.title}
-      message={overlay.message}
+      open={
+        overlay.open
+      }
+      type={
+        overlay.type
+      }
+      title={
+        overlay.title
+      }
+      message={
+        overlay.message
+      }
       primaryAction={
         overlay.primaryAction
       }
       secondaryAction={
         overlay.secondaryAction
       }
-      onClose={closeOverlay}
+      onClose={
+        closeOverlay
+      }
     />
   );
 
   if (loading) {
     return (
-      <div className="flex min-h-[55vh] items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="mx-auto h-7 w-7 animate-spin text-zinc-500" />
-
-          <p className="mt-4 text-sm font-semibold text-zinc-950 dark:text-white">
-            Loading your account
-          </p>
-
-          <p className="mt-1 text-sm text-zinc-500">
-            Preparing your settings.
-          </p>
-        </div>
-      </div>
+      <>
+        <LoadingState />
+        {overlayElement}
+      </>
     );
   }
 
-  if (loadError || !account) {
+  if (!account) {
     return (
       <>
-        <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-white p-8 shadow-sm dark:border-red-950 dark:bg-zinc-900">
+        <div className="mx-auto max-w-3xl rounded-3xl border border-zinc-200 bg-white p-8 dark:border-zinc-800 dark:bg-zinc-900">
           <AlertTriangle className="h-8 w-8 text-red-500" />
 
-          <h2 className="mt-5 text-xl font-bold">
+          <p className="mt-5 text-lg font-bold">
             Account unavailable
-          </h2>
-
-          <p className="mt-2 text-sm text-zinc-500">
-            {loadError ||
-              'SaMi could not load your account.'}
           </p>
 
           <button
@@ -2142,33 +2760,43 @@ export default function AdminMyAccountPage() {
     );
   }
 
-  if (view === 'security') {
+  if (
+    view ===
+    'security'
+  ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-4xl">
+        <Page>
           <BackButton
+            label="My Account"
             onClick={() =>
-              setView('overview')
+              setView(
+                'overview'
+              )
             }
           />
 
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <Card>
             <SectionHeader
               icon={
                 <ShieldCheck className="h-5 w-5" />
               }
               title="Password & security"
-              description="Manage sign-in protection, active devices and security activity."
+              description="Manage your password, two-factor authentication, devices and security activity."
             />
 
-            <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+            <Rows>
               <SettingsRow
                 icon={
                   <LockKeyhole className="h-5 w-5" />
                 }
                 title="Password"
-                description="Change the password you use to sign in."
-                onClick={openPassword}
+                description="Change your sign-in password."
+                onClick={() =>
+                  setView(
+                    'password'
+                  )
+                }
               />
 
               <SettingsRow
@@ -2176,22 +2804,18 @@ export default function AdminMyAccountPage() {
                   <ShieldCheck className="h-5 w-5" />
                 }
                 title="Two-factor authentication"
-                description={
-                  account.twoFactorEnabled
-                    ? 'Authenticator protection is enabled.'
-                    : account.twoFactorRequired
-                      ? 'Two-factor authentication is required.'
-                      : 'Add another layer of protection to your account.'
-                }
+                description="Authenticator app, email verification and recovery codes."
                 onClick={() =>
                   void openTwoFactor()
                 }
                 trailing={
-                  account.twoFactorEnabled ? (
-                    <span className="mr-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                      Enabled
-                    </span>
-                  ) : undefined
+                  account.twoFactorEnabled
+                    ? (
+                      <Badge>
+                        Protected
+                      </Badge>
+                    )
+                    : undefined
                 }
               />
 
@@ -2200,7 +2824,7 @@ export default function AdminMyAccountPage() {
                   <Monitor className="h-5 w-5" />
                 }
                 title="Sessions & devices"
-                description="Review devices currently signed in to your administrator account."
+                description="Review and sign out devices with access to your account."
                 onClick={() =>
                   void openSessions()
                 }
@@ -2213,67 +2837,646 @@ export default function AdminMyAccountPage() {
                 title="Security activity"
                 description="Review recent sign-ins and security changes."
                 onClick={() =>
-                  void openSecurityActivity()
+                  void openActivity()
                 }
               />
-            </div>
-          </section>
-        </div>
+            </Rows>
+          </Card>
+        </Page>
 
         {overlayElement}
       </>
     );
   }
 
-  if (view === 'sessions') {
+  if (
+    view ===
+    'password'
+  ) {
+    return (
+      <>
+        <Page>
+          <BackButton
+            label="Password & security"
+            disabled={
+              savingPassword
+            }
+            onClick={() =>
+              setView(
+                'security'
+              )
+            }
+          />
+
+          <Card>
+            <SectionHeader
+              icon={
+                <LockKeyhole className="h-5 w-5" />
+              }
+              title="Change password"
+              description="Choose a strong password you do not use elsewhere."
+            />
+
+            <form
+              onSubmit={
+                changePassword
+              }
+              className="space-y-5 p-6 sm:p-7"
+            >
+              <PasswordField
+                label="Current password"
+                value={
+                  currentPassword
+                }
+                visible={
+                  showCurrentPassword
+                }
+                error={
+                  currentPasswordError
+                }
+                onChange={
+                  setCurrentPassword
+                }
+                onToggle={() =>
+                  setShowCurrentPassword(
+                    value =>
+                      !value
+                  )
+                }
+              />
+
+              <PasswordField
+                label="New password"
+                value={
+                  newPassword
+                }
+                visible={
+                  showNewPassword
+                }
+                error={
+                  newPasswordError
+                }
+                onChange={
+                  setNewPassword
+                }
+                onToggle={() =>
+                  setShowNewPassword(
+                    value =>
+                      !value
+                  )
+                }
+              />
+
+              <div className="grid gap-2 rounded-2xl bg-zinc-50 p-4 text-sm dark:bg-zinc-950 sm:grid-cols-2">
+                <PasswordRule
+                  passed={
+                    passwordRules.length
+                  }
+                >
+                  8–128 characters
+                </PasswordRule>
+
+                <PasswordRule
+                  passed={
+                    passwordRules.uppercase
+                  }
+                >
+                  Uppercase letter
+                </PasswordRule>
+
+                <PasswordRule
+                  passed={
+                    passwordRules.lowercase
+                  }
+                >
+                  Lowercase letter
+                </PasswordRule>
+
+                <PasswordRule
+                  passed={
+                    passwordRules.number
+                  }
+                >
+                  Number
+                </PasswordRule>
+              </div>
+
+              <PasswordField
+                label="Confirm new password"
+                value={
+                  confirmPassword
+                }
+                visible={
+                  showConfirmPassword
+                }
+                error={
+                  confirmPasswordError
+                }
+                onChange={
+                  setConfirmPassword
+                }
+                onToggle={() =>
+                  setShowConfirmPassword(
+                    value =>
+                      !value
+                  )
+                }
+              />
+
+              <div className="flex justify-end pt-3">
+                <button
+                  type="submit"
+                  disabled={
+                    savingPassword
+                  }
+                  className={
+                    primaryButton()
+                  }
+                >
+                  {savingPassword ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <KeyRound className="h-4 w-4" />
+                  )}
+
+                  Change password
+                </button>
+              </div>
+            </form>
+          </Card>
+        </Page>
+
+        {overlayElement}
+      </>
+    );
+  }
+
+  if (
+    view ===
+    'two-factor'
+  ) {
+    return (
+      <>
+        <Page>
+          <BackButton
+            label="Password & security"
+            disabled={
+              twoFactorBusy ||
+              emailBusy
+            }
+            onClick={() =>
+              setView(
+                'security'
+              )
+            }
+          />
+
+          <Card>
+            <SectionHeader
+              icon={
+                <ShieldCheck className="h-5 w-5" />
+              }
+              title="Two-factor authentication"
+              description="Choose how SaMi verifies your identity when additional sign-in protection is required."
+            />
+
+            {loadingTwoFactor ? (
+              <LoadingBlock />
+            ) : (
+              <div className="space-y-6 p-6 sm:p-7">
+                <SecurityMethod
+                  icon={
+                    <Smartphone className="h-5 w-5" />
+                  }
+                  title="Authenticator app"
+                  description="Use time-based codes from Google Authenticator, Microsoft Authenticator, Authy or another compatible app."
+                  enabled={
+                    Boolean(
+                      twoFactor?.enabled
+                    )
+                  }
+                >
+                  {!twoFactor?.enabled &&
+                    !twoFactorSetup && (
+                      <button
+                        type="button"
+                        disabled={
+                          twoFactorBusy
+                        }
+                        onClick={() =>
+                          void startAuthenticator()
+                        }
+                        className={
+                          primaryButton()
+                        }
+                      >
+                        <Smartphone className="h-4 w-4" />
+                        Set up authenticator
+                      </button>
+                    )}
+
+                  {twoFactorSetup && (
+                    <form
+                      onSubmit={
+                        confirmAuthenticator
+                      }
+                      className="mt-5 space-y-5"
+                    >
+                      {twoFactorSetup.qrDataUrl ? (
+                        <div className="flex justify-center">
+                          <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                            <img
+                              src={
+                                twoFactorSetup.qrDataUrl
+                              }
+                              alt="Authenticator QR code"
+                              className="h-56 w-56"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="text-center">
+                        <p className="text-sm font-semibold">
+                          Scan this QR code with your authenticator app
+                        </p>
+
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Then enter the 6-digit code generated by the app.
+                        </p>
+                      </div>
+
+                      <details className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+                        <summary className="cursor-pointer text-sm font-semibold">
+                          Can&apos;t scan the QR code?
+                        </summary>
+
+                        <p className="mt-3 text-xs text-zinc-500">
+                          Enter this setup key manually:
+                        </p>
+
+                        <p className="mt-2 break-all rounded-lg bg-zinc-100 p-3 font-mono text-sm font-bold dark:bg-zinc-950">
+                          {twoFactorSetup.secret}
+                        </p>
+                      </details>
+
+                      <VerificationField
+                        value={
+                          twoFactorCode
+                        }
+                        error={
+                          twoFactorError
+                        }
+                        disabled={
+                          twoFactorBusy
+                        }
+                        onChange={
+                          setTwoFactorCode
+                        }
+                      />
+
+                      <button
+                        type="submit"
+                        disabled={
+                          twoFactorBusy
+                        }
+                        className={
+                          primaryButton()
+                        }
+                      >
+                        <Check className="h-4 w-4" />
+                        Verify and enable
+                      </button>
+                    </form>
+                  )}
+
+                  {twoFactor?.enabled && (
+                    <div className="mt-5 space-y-5">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Info
+                          label="Last used"
+                          value={
+                            formatDate(
+                              twoFactor.lastUsedAt
+                            )
+                          }
+                        />
+
+                        <Info
+                          label="Recovery codes"
+                          value={`${twoFactor.recoveryCodesRemaining} remaining`}
+                        />
+                      </div>
+
+                      <form
+                        onSubmit={
+                          regenerateRecoveryCodes
+                        }
+                        className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                      >
+                        <p className="text-sm font-semibold">
+                          Replace recovery codes
+                        </p>
+
+                        <VerificationField
+                          value={
+                            twoFactorCode
+                          }
+                          error={
+                            twoFactorError
+                          }
+                          disabled={
+                            twoFactorBusy
+                          }
+                          onChange={
+                            setTwoFactorCode
+                          }
+                        />
+
+                        <button
+                          type="submit"
+                          className={`${secondaryButton()} mt-4`}
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                          Generate new codes
+                        </button>
+                      </form>
+
+                      <form
+                        onSubmit={
+                          disableAuthenticator
+                        }
+                        className="rounded-xl border border-red-200 p-4 dark:border-red-950"
+                      >
+                        <p className="text-sm font-semibold text-red-600">
+                          Turn off authenticator
+                        </p>
+
+                        <VerificationField
+                          value={
+                            twoFactorCode
+                          }
+                          error={
+                            twoFactorError
+                          }
+                          disabled={
+                            twoFactorBusy
+                          }
+                          onChange={
+                            setTwoFactorCode
+                          }
+                        />
+
+                        <button
+                          type="button"
+                          onClick={
+                            confirmDisableAuthenticator
+                          }
+                          className="mt-4 text-xs font-semibold text-zinc-500"
+                        >
+                          Review removal
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            twoFactorBusy
+                          }
+                          className={`${dangerButton()} mt-4`}
+                        >
+                          Turn off authenticator
+                        </button>
+                      </form>
+                    </div>
+                  )}
+                </SecurityMethod>
+
+                <SecurityMethod
+                  icon={
+                    <Mail className="h-5 w-5" />
+                  }
+                  title="Email verification"
+                  description={`Receive a 6-digit security code at ${account.email}.`}
+                  enabled={
+                    Boolean(
+                      emailTwoFactor?.enabled
+                    )
+                  }
+                >
+                  {!emailTwoFactor?.enabled &&
+                    emailAction !==
+                      'enable' && (
+                      <button
+                        type="button"
+                        disabled={
+                          emailBusy ||
+                          !account.emailVerified
+                        }
+                        onClick={() =>
+                          void requestEmailEnable()
+                        }
+                        className={
+                          secondaryButton()
+                        }
+                      >
+                        <Mail className="h-4 w-4" />
+                        Enable email verification
+                      </button>
+                    )}
+
+                  {emailTwoFactor?.enabled &&
+                    emailAction !==
+                      'disable' && (
+                      <div className="mt-4">
+                        <Info
+                          label="Last used"
+                          value={
+                            formatDate(
+                              emailTwoFactor.lastUsedAt
+                            )
+                          }
+                        />
+
+                        <button
+                          type="button"
+                          disabled={
+                            emailBusy
+                          }
+                          onClick={() =>
+                            void requestEmailDisable()
+                          }
+                          className={`${dangerButton()} mt-4`}
+                        >
+                          Turn off email verification
+                        </button>
+                      </div>
+                    )}
+
+                  {emailAction && (
+                    <form
+                      onSubmit={
+                        confirmEmailAction
+                      }
+                      className="mt-5 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800"
+                    >
+                      <p className="text-sm font-semibold">
+                        Enter your security code
+                      </p>
+
+                      <p className="mt-1 text-xs text-zinc-500">
+                        We sent a 6-digit code to your administrator email.
+                      </p>
+
+                      <VerificationField
+                        value={
+                          emailCode
+                        }
+                        error={
+                          emailCodeError
+                        }
+                        disabled={
+                          emailBusy
+                        }
+                        onChange={
+                          setEmailCode
+                        }
+                      />
+
+                      <div className="mt-4 flex flex-wrap gap-3">
+                        <button
+                          type="submit"
+                          disabled={
+                            emailBusy
+                          }
+                          className={
+                            primaryButton()
+                          }
+                        >
+                          {emailBusy ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Check className="h-4 w-4" />
+                          )}
+                          Confirm
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            emailBusy
+                          }
+                          onClick={() => {
+                            setEmailAction(
+                              null
+                            );
+                            setEmailCode(
+                              ''
+                            );
+                            setEmailContextToken(
+                              ''
+                            );
+                          }}
+                          className={
+                            secondaryButton()
+                          }
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </SecurityMethod>
+
+                {recoveryCodes.length >
+                  0 && (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/20">
+                    <p className="font-semibold">
+                      Save your recovery codes
+                    </p>
+
+                    <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+                      Each code can be used once if you cannot access your normal verification method.
+                    </p>
+
+                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                      {recoveryCodes.map(
+                        code => (
+                          <div
+                            key={
+                              code
+                            }
+                            className="rounded-lg bg-white px-3 py-2 font-mono text-sm font-bold dark:bg-zinc-900"
+                          >
+                            {code}
+                          </div>
+                        )
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void copyRecoveryCodes()
+                      }
+                      className={`${secondaryButton()} mt-4`}
+                    >
+                      <Copy className="h-4 w-4" />
+                      Copy recovery codes
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        </Page>
+
+        {overlayElement}
+      </>
+    );
+  }
+
+  if (
+    view ===
+    'sessions'
+  ) {
     const otherSessions =
       sessions.filter(
-        session => !session.current
+        session =>
+          !session.current
       );
 
     return (
       <>
-        <div className="mx-auto w-full max-w-4xl">
+        <Page>
           <BackButton
             label="Password & security"
             onClick={() =>
-              setView('security')
+              setView(
+                'security'
+              )
             }
-            disabled={sessionsBusy}
           />
 
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <Card>
             <SectionHeader
               icon={
                 <Monitor className="h-5 w-5" />
               }
               title="Sessions & devices"
-              description="Review where your administrator account is currently signed in."
+              description="Review every device currently signed in to your administrator account."
             />
 
             {loadingSessions ? (
-              <div className="flex min-h-64 items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
-              </div>
-            ) : sessions.length === 0 ? (
-              <div className="p-8 text-center">
-                <Monitor className="mx-auto h-8 w-8 text-zinc-400" />
-
-                <p className="mt-4 font-semibold">
-                  No active sessions found
-                </p>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  No active administrator sessions are available to display.
-                </p>
-              </div>
+              <LoadingBlock />
             ) : (
-              <>
-                <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                  {sessions.map(session => (
+              <div className="space-y-4 p-6 sm:p-7">
+                {sessions.map(
+                  session => (
                     <div
-                      key={session.id}
-                      className="flex gap-4 px-6 py-5"
+                      key={
+                        session.id
+                      }
+                      className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800 sm:flex-row sm:items-center"
                     >
                       <IconBox>
                         {session.deviceType
@@ -2296,672 +3499,351 @@ export default function AdminMyAccountPage() {
                           </p>
 
                           {session.current && (
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                              This device
-                            </span>
+                            <Badge>
+                              Current device
+                            </Badge>
                           )}
                         </div>
 
-                        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
-                          <span>
-                            IP:{' '}
-                            {session.ipAddress ||
-                              'Unknown'}
-                          </span>
+                        <p className="mt-1 text-sm text-zinc-500">
+                          Last active{' '}
+                          {formatDate(
+                            session.lastActivityAt
+                          )}
+                        </p>
 
-                          <span>
-                            Last active:{' '}
-                            {formatAccountDate(
-                              session.lastActivityAt
-                            )}
-                          </span>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          {session.ipAddress
+                            ? `IP ${session.ipAddress} · `
+                            : ''}
+                          Signed in{' '}
+                          {formatDate(
+                            session.createdAt
+                          )}
+                        </p>
 
-                          <span>
-                            Signed in:{' '}
-                            {formatAccountDate(
-                              session.createdAt
-                            )}
-                          </span>
-                        </div>
+                        <p className="mt-1 text-xs text-zinc-400">
+                          Session expires{' '}
+                          {formatDate(
+                            session.expiresAt
+                          )}
+                        </p>
                       </div>
+
+                      {!session.current && (
+                        <button
+                          type="button"
+                          disabled={
+                            sessionBusyId ===
+                            session.id
+                          }
+                          onClick={() =>
+                            confirmRevokeSession(
+                              session
+                            )
+                          }
+                          className={
+                            secondaryButton()
+                          }
+                        >
+                          {sessionBusyId ===
+                          session.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <X className="h-4 w-4" />
+                          )}
+                          Sign out
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
+                  )
+                )}
+
+                {sessions.length ===
+                  0 && (
+                  <EmptyState>
+                    No active sessions were found.
+                  </EmptyState>
+                )}
 
                 {otherSessions.length >
                   0 && (
-                  <div className="flex justify-end border-t border-zinc-200 p-6 dark:border-zinc-800">
+                  <div className="flex justify-end border-t border-zinc-200 pt-5 dark:border-zinc-800">
                     <button
                       type="button"
-                      disabled={sessionsBusy}
-                      onClick={
-                        confirmRevokeOtherSessions
+                      disabled={
+                        revokingOthers
                       }
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
+                      onClick={
+                        confirmRevokeOthers
+                      }
+                      className={
+                        dangerButton()
+                      }
                     >
-                      {sessionsBusy ? (
+                      {revokingOthers ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
-                        <LockKeyhole className="h-4 w-4" />
+                        <Monitor className="h-4 w-4" />
                       )}
-
-                      Sign out other sessions
+                      Sign out all other devices
                     </button>
                   </div>
                 )}
-              </>
+              </div>
             )}
-          </section>
-        </div>
+          </Card>
+        </Page>
 
         {overlayElement}
       </>
     );
   }
 
-  if (view === 'activity') {
+  if (
+    view ===
+    'activity'
+  ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-4xl">
+        <Page>
           <BackButton
             label="Password & security"
             onClick={() =>
-              setView('security')
+              setView(
+                'security'
+              )
             }
           />
 
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <Card>
             <SectionHeader
               icon={
                 <BadgeCheck className="h-5 w-5" />
               }
               title="Security activity"
-              description="Review recent sign-ins and important security changes."
+              description="Review sign-ins and important security changes on your administrator account."
             />
+
+            <div className="grid gap-3 border-b border-zinc-200 p-5 dark:border-zinc-800 sm:grid-cols-2">
+              <select
+                value={
+                  activityFilter
+                }
+                onChange={
+                  event =>
+                    setActivityFilter(
+                      event.target
+                        .value as
+                        ActivityFilter
+                    )
+                }
+                className={
+                  selectClass()
+                }
+              >
+                <option value="all">
+                  All activity
+                </option>
+                <option value="sign_ins">
+                  Sign-ins
+                </option>
+                <option value="security_changes">
+                  Security changes
+                </option>
+              </select>
+
+              <select
+                value={
+                  activityStatus
+                }
+                onChange={
+                  event =>
+                    setActivityStatus(
+                      event.target
+                        .value as
+                        ActivityStatusFilter
+                    )
+                }
+                className={
+                  selectClass()
+                }
+              >
+                <option value="all">
+                  All statuses
+                </option>
+                <option value="success">
+                  Successful
+                </option>
+                <option value="failed">
+                  Failed
+                </option>
+                <option value="blocked">
+                  Blocked
+                </option>
+              </select>
+            </div>
 
             {loadingActivity ? (
-              <div className="flex min-h-64 items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
-              </div>
-            ) : activity.length === 0 ? (
-              <div className="p-8 text-center">
-                <BadgeCheck className="mx-auto h-8 w-8 text-zinc-400" />
-
-                <p className="mt-4 font-semibold">
-                  No recent activity
-                </p>
-
-                <p className="mt-1 text-sm text-zinc-500">
-                  Recent security events will appear here.
-                </p>
-              </div>
+              <LoadingBlock />
             ) : (
-              <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                {activity.map(item => (
-                  <div
-                    key={`${item.source}-${item.id}`}
-                    className="flex gap-4 px-6 py-5"
-                  >
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                        item.successful
-                          ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-300'
-                          : 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300'
-                      }`}
-                    >
-                      {item.successful ? (
-                        <ShieldCheck className="h-5 w-5" />
-                      ) : (
-                        <AlertTriangle className="h-5 w-5" />
-                      )}
-                    </div>
+              <>
+                <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
+                  {securityActivity.map(
+                    item => {
+                      const successful =
+                        item.status
+                          ? item.status ===
+                            'success'
+                          : item.successful !==
+                            false;
 
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold">
-                        {securityActivityTitle(
-                          item
-                        )}
-                      </p>
-
-                      {item.failureReason && (
-                        <p className="mt-1 text-sm text-red-600 dark:text-red-400">
-                          {
-                            item.failureReason
-                          }
-                        </p>
-                      )}
-
-                      <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
-                        <span>
-                          {formatAccountDate(
-                            item.createdAt
-                          )}
-                        </span>
-
-                        {item.ipAddress && (
-                          <span>
-                            IP:{' '}
-                            {
-                              item.ipAddress
-                            }
-                          </span>
-                        )}
-
-                        {(item.browser ||
-                          item.operatingSystem) && (
-                          <span>
-                            {[
-                              item.browser,
-                              item.operatingSystem,
-                            ]
-                              .filter(Boolean)
-                              .join(' on ')}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </div>
-
-        {overlayElement}
-      </>
-    );
-  }
-
-  if (view === 'two-factor') {
-    return (
-      <>
-        <div className="mx-auto w-full max-w-4xl">
-          <BackButton
-            label="Password & security"
-            onClick={() => {
-              clearTwoFactorAction();
-              setView('security');
-            }}
-            disabled={twoFactorBusy}
-          />
-
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <SectionHeader
-              icon={
-                <ShieldCheck className="h-5 w-5" />
-              }
-              title="Two-factor authentication"
-              description="Add an authenticator app as an extra layer of sign-in protection."
-            />
-
-            {loadingTwoFactor ? (
-              <div className="flex min-h-64 items-center justify-center">
-                <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
-              </div>
-            ) : (
-              <div className="p-6 sm:p-7">
-                <div className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800 sm:flex-row sm:items-center">
-                  <IconBox>
-                    <Smartphone className="h-5 w-5" />
-                  </IconBox>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-zinc-950 dark:text-white">
-                      Authenticator app
-                    </p>
-
-                    <p className="mt-1 text-sm text-zinc-500">
-                      {twoFactor?.enabled
-                        ? 'Use a verification code from your authenticator app when signing in.'
-                        : 'Use time-based verification codes from an authenticator app.'}
-                    </p>
-                  </div>
-
-                  <StatusBadge
-                    enabled={Boolean(
-                      twoFactor?.enabled
-                    )}
-                    required={Boolean(
-                      twoFactor?.required
-                    )}
-                  />
-                </div>
-
-                {twoFactor?.enabled && (
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <SecurityInfo
-                      label="Status"
-                      value="Enabled"
-                    />
-
-                    <SecurityInfo
-                      label="Recovery codes"
-                      value={`${twoFactor.recoveryCodesRemaining} remaining`}
-                    />
-
-                    <SecurityInfo
-                      label="Last used"
-                      value={formatSecurityDate(
-                        twoFactor.lastUsedAt
-                      )}
-                    />
-                  </div>
-                )}
-
-                {!twoFactor?.enabled &&
-                  !twoFactorSetup &&
-                  recoveryCodes.length ===
-                    0 && (
-                    <div className="mt-6">
-                      <button
-                        type="button"
-                        disabled={
-                          twoFactorBusy
-                        }
-                        onClick={() =>
-                          void startTwoFactorSetup()
-                        }
-                        className={
-                          primaryButton()
-                        }
-                      >
-                        {twoFactorBusy ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ShieldCheck className="h-4 w-4" />
-                        )}
-
-                        Set up authenticator
-                      </button>
-                    </div>
-                  )}
-
-                {twoFactorSetup && (
-  <div className="mt-6 rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
-    <p className="font-semibold text-zinc-950 dark:text-white">
-      Scan the QR code
-    </p>
-
-    <p className="mt-2 text-sm leading-6 text-zinc-500">
-      Open your authenticator app, add a new account and scan this QR code.
-    </p>
-
-    <div className="mt-5 flex justify-center">
-      <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-        <img
-          src={twoFactorSetup.qrDataUrl}
-          alt="Authenticator QR code"
-          width={280}
-          height={280}
-          className="h-[280px] w-[280px]"
-        />
-      </div>
-    </div>
-
-    <details className="mt-5 rounded-xl border border-zinc-200 dark:border-zinc-800">
-      <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
-        Can’t scan the QR code?
-      </summary>
-
-      <div className="border-t border-zinc-200 p-4 dark:border-zinc-800">
-        <p className="text-sm text-zinc-500">
-          Enter this setup key manually in your authenticator app.
-        </p>
-
-        <div className="mt-3 rounded-xl bg-zinc-100 p-4 dark:bg-zinc-950">
-          <p className="break-all font-mono text-sm font-bold tracking-wider text-zinc-950 dark:text-white">
-            {twoFactorSetup.secret}
-          </p>
-        </div>
-      </div>
-    </details>
-
-    <form
-      onSubmit={confirmTwoFactorSetup}
-      className="mt-5"
-    >
-      <VerificationField
-        value={twoFactorCode}
-        error={twoFactorCodeError}
-        disabled={twoFactorBusy}
-        onChange={setTwoFactorCode}
-      />
-
-      <div className="mt-5 flex flex-wrap justify-end gap-3">
-        <button
-          type="button"
-          disabled={twoFactorBusy}
-          onClick={clearTwoFactorAction}
-          className={secondaryButton()}
-        >
-          Cancel
-        </button>
-
-        <button
-          type="submit"
-          disabled={twoFactorBusy}
-          className={primaryButton()}
-        >
-          {twoFactorBusy ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Check className="h-4 w-4" />
-          )}
-
-          Verify and enable
-        </button>
-      </div>
-    </form>
-  </div>
-)}
-
-                {recoveryCodes.length >
-                  0 && (
-                  <RecoveryCodes
-                    codes={recoveryCodes}
-                    copied={
-                      recoveryCopied
-                    }
-                    onCopy={() =>
-                      void copyRecoveryCodes()
-                    }
-                    onDone={() => {
-                      setRecoveryCodes([]);
-                      setTwoFactorCode('');
-                      void loadTwoFactor();
-                    }}
-                  />
-                )}
-
-                {twoFactor?.enabled &&
-                  recoveryCodes.length ===
-                    0 && (
-                    <div className="mt-6 space-y-5">
-                      <section className="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
-                        <p className="font-semibold">
-                          Replace recovery codes
-                        </p>
-
-                        <p className="mt-1 text-sm leading-6 text-zinc-500">
-                          Generate a new set if your existing recovery codes are lost or exposed. Your old codes will stop working.
-                        </p>
-
-                        <form
-                          onSubmit={
-                            regenerateRecoveryCodes
-                          }
-                          className="mt-5"
+                      return (
+                        <div
+                          key={`${item.source}-${item.id}`}
+                          className="flex gap-4 px-6 py-5"
                         >
-                          <VerificationField
-                            value={
-                              twoFactorCode
-                            }
-                            error={
-                              twoFactorCodeError
-                            }
-                            disabled={
-                              twoFactorBusy
-                            }
-                            onChange={
-                              setTwoFactorCode
-                            }
-                          />
+                          <IconBox>
+                            {successful ? (
+                              <ShieldCheck className="h-5 w-5" />
+                            ) : (
+                              <AlertTriangle className="h-5 w-5 text-red-500" />
+                            )}
+                          </IconBox>
 
-                          <button
-                            type="submit"
-                            disabled={
-                              twoFactorBusy
-                            }
-                            className={`${secondaryButton()} mt-4`}
-                          >
-                            <KeyRound className="h-4 w-4" />
-                            Generate new recovery codes
-                          </button>
-                        </form>
-                      </section>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold">
+                                {item.title ||
+                                  labelFromValue(
+                                    item.eventType
+                                  )}
+                              </p>
 
-                      <section className="rounded-2xl border border-red-200 p-5 dark:border-red-950">
-                        <p className="font-semibold text-red-700 dark:text-red-400">
-                          Turn off two-factor authentication
-                        </p>
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                  successful
+                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                                    : 'bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300'
+                                }`}
+                              >
+                                {item.status
+                                  ? labelFromValue(
+                                      item.status
+                                    )
+                                  : successful
+                                    ? 'Successful'
+                                    : 'Failed'}
+                              </span>
+                            </div>
 
-                        <p className="mt-1 text-sm leading-6 text-zinc-500">
-                          Your account will no longer require authenticator codes when signing in.
-                        </p>
+                            {item.description && (
+                              <p className="mt-1 text-sm text-zinc-500">
+                                {item.description}
+                              </p>
+                            )}
 
-                        {twoFactor.required ? (
-                          <p className="mt-4 rounded-xl bg-zinc-100 p-4 text-sm font-medium text-zinc-600 dark:bg-zinc-950 dark:text-zinc-300">
-                            Two-factor authentication is required for this account and cannot be turned off.
-                          </p>
-                        ) : (
-                          <form
-                            onSubmit={
-                              disableTwoFactor
-                            }
-                            className="mt-5"
-                          >
-                            <VerificationField
-                              value={
-                                twoFactorCode
-                              }
-                              error={
-                                twoFactorCodeError
-                              }
-                              disabled={
-                                twoFactorBusy
-                              }
-                              onChange={
-                                setTwoFactorCode
-                              }
-                            />
+                            <p className="mt-2 text-xs text-zinc-400">
+                              {formatDate(
+                                item.createdAt
+                              )}
+                            </p>
 
-                            <button
-                              type="submit"
-                              disabled={
-                                twoFactorBusy
-                              }
-                              className="mt-4 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
-                            >
-                              <ShieldCheck className="h-4 w-4" />
-                              Turn off
-                            </button>
-                          </form>
-                        )}
-                      </section>
-                    </div>
+                            {(item.browser ||
+                              item.operatingSystem ||
+                              item.ipAddress) && (
+                              <p className="mt-1 text-xs text-zinc-400">
+                                {[
+                                  item.browser &&
+                                  item.operatingSystem
+                                    ? `${item.browser} on ${item.operatingSystem}`
+                                    : item.browser ||
+                                      item.operatingSystem,
+
+                                  item.ipAddress
+                                    ? `IP ${item.ipAddress}`
+                                    : null,
+                                ]
+                                  .filter(
+                                    Boolean
+                                  )
+                                  .join(
+                                    ' · '
+                                  )}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
                   )}
-              </div>
-            )}
-          </section>
-        </div>
-
-        {overlayElement}
-      </>
-    );
-  }
-
-  if (view === 'password') {
-    return (
-      <>
-        <div className="mx-auto w-full max-w-4xl">
-          <BackButton
-            label="Password & security"
-            onClick={closePassword}
-            disabled={savingPassword}
-          />
-
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-            <SectionHeader
-              icon={
-                <LockKeyhole className="h-5 w-5" />
-              }
-              title="Password"
-              description="Choose a strong password you do not use elsewhere."
-            />
-
-            <form
-              onSubmit={changePassword}
-              className="p-6 sm:p-7"
-            >
-              <div className="space-y-5">
-                <PasswordField
-                  label="Current password"
-                  value={currentPassword}
-                  visible={
-                    showCurrentPassword
-                  }
-                  error={
-                    currentPasswordError
-                  }
-                  autoComplete="current-password"
-                  disabled={savingPassword}
-                  onChange={
-                    setCurrentPassword
-                  }
-                  onToggle={() =>
-                    setShowCurrentPassword(
-                      current => !current
-                    )
-                  }
-                />
-
-                <PasswordField
-                  label="New password"
-                  value={newPassword}
-                  visible={
-                    showNewPassword
-                  }
-                  error={newPasswordError}
-                  autoComplete="new-password"
-                  disabled={savingPassword}
-                  onChange={setNewPassword}
-                  onToggle={() =>
-                    setShowNewPassword(
-                      current => !current
-                    )
-                  }
-                />
-
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-950/60">
-                  <p className="text-xs font-bold uppercase tracking-wide text-zinc-500">
-                    Password requirements
-                  </p>
-
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <PasswordRule
-                      passed={
-                        passwordRules.length
-                      }
-                    >
-                      8–128 characters
-                    </PasswordRule>
-
-                    <PasswordRule
-                      passed={
-                        passwordRules.uppercase
-                      }
-                    >
-                      One uppercase letter
-                    </PasswordRule>
-
-                    <PasswordRule
-                      passed={
-                        passwordRules.lowercase
-                      }
-                    >
-                      One lowercase letter
-                    </PasswordRule>
-
-                    <PasswordRule
-                      passed={
-                        passwordRules.number
-                      }
-                    >
-                      One number
-                    </PasswordRule>
-                  </div>
                 </div>
 
-                <PasswordField
-                  label="Confirm new password"
-                  value={confirmPassword}
-                  visible={
-                    showConfirmPassword
-                  }
-                  error={
-                    confirmPasswordError
-                  }
-                  autoComplete="new-password"
-                  disabled={savingPassword}
-                  onChange={
-                    setConfirmPassword
-                  }
-                  onToggle={() =>
-                    setShowConfirmPassword(
-                      current => !current
-                    )
-                  }
-                />
-              </div>
+                {securityActivity.length ===
+                  0 && (
+                  <div className="p-6">
+                    <EmptyState>
+                      No security activity matches these filters.
+                    </EmptyState>
+                  </div>
+                )}
 
-              <div className="mt-8 flex flex-col-reverse gap-3 border-t border-zinc-200 pt-6 dark:border-zinc-800 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={savingPassword}
-                  onClick={closePassword}
-                  className={
-                    secondaryButton()
-                  }
-                >
-                  <X className="h-4 w-4" />
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={
-                    savingPassword ||
-                    !passwordChanged
-                  }
-                  className={
-                    primaryButton()
-                  }
-                >
-                  {savingPassword ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <KeyRound className="h-4 w-4" />
-                  )}
-
-                  {savingPassword
-                    ? 'Changing password'
-                    : 'Change password'}
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
+                {activityHasMore && (
+                  <div className="flex justify-center border-t border-zinc-200 p-5 dark:border-zinc-800">
+                    <button
+                      type="button"
+                      disabled={
+                        loadingMoreActivity
+                      }
+                      onClick={() =>
+                        void loadActivity(
+                          false
+                        )
+                      }
+                      className={
+                        secondaryButton()
+                      }
+                    >
+                      {loadingMoreActivity ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4" />
+                      )}
+                      Load more
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        </Page>
 
         {overlayElement}
       </>
     );
   }
 
-  if (view === 'profile') {
+  if (
+    view ===
+    'profile'
+  ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-4xl">
+        <Page>
           <BackButton
-            onClick={() =>
-              setView('overview')
-            }
+            label="My Account"
             disabled={
               savingProfile ||
               avatarBusy
             }
+            onClick={() =>
+              setView(
+                'overview'
+              )
+            }
           />
 
-          <section className="mt-4 overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <Card>
             <SectionHeader
               icon={
                 <UserRound className="h-5 w-5" />
@@ -2970,470 +3852,423 @@ export default function AdminMyAccountPage() {
               description="Manage your name and profile photo."
             />
 
-            <div className="border-b border-zinc-200 p-6 dark:border-zinc-800 sm:p-7">
-              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                <UserAvatar
-                  avatarFileId={
-                    account.avatarFileId
-                  }
-                  displayName={
-                    account.fullName
-                  }
-                  initials={initials(
+            <div className="flex flex-col gap-5 border-b border-zinc-200 p-6 dark:border-zinc-800 sm:flex-row sm:items-center">
+              <UserAvatar
+                avatarFileId={
+                  account.avatarFileId
+                }
+                displayName={
+                  account.fullName
+                }
+                initials={
+                  initials(
                     account
-                  )}
-                  endpoint="/api/admin/account/avatar"
-                  size="lg"
-                  className="ring-4 ring-zinc-100 dark:ring-zinc-800"
+                  )
+                }
+                endpoint="/api/admin/account/avatar"
+                size="lg"
+              />
+
+              <div>
+                <p className="font-semibold">
+                  Profile photo
+                </p>
+
+                <p className="mt-1 text-xs text-zinc-500">
+                  JPEG, PNG or WebP. Maximum 5 MB.
+                </p>
+
+                <input
+                  ref={
+                    avatarInputRef
+                  }
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={
+                    uploadAvatar
+                  }
                 />
 
-                <div className="flex-1">
-                  <p className="text-sm font-bold">
-                    Profile photo
-                  </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={
+                      avatarBusy
+                    }
+                    onClick={() =>
+                      avatarInputRef.current?.click()
+                    }
+                    className={
+                      secondaryButton()
+                    }
+                  >
+                    {avatarBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Camera className="h-4 w-4" />
+                    )}
+                    {account.avatarFileId
+                      ? 'Change photo'
+                      : 'Upload photo'}
+                  </button>
 
-                  <p className="mt-1 text-xs text-zinc-500">
-                    JPEG, PNG or WebP. Maximum 5 MB.
-                  </p>
-
-                  <input
-                    ref={avatarInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    className="hidden"
-                    disabled={avatarBusy}
-                    onChange={uploadAvatar}
-                  />
-
-                  <div className="mt-4 flex flex-wrap gap-2">
+                  {account.avatarFileId && (
                     <button
                       type="button"
-                      disabled={avatarBusy}
+                      disabled={
+                        avatarBusy
+                      }
                       onClick={
-                        openAvatarPicker
+                        confirmRemoveAvatar
                       }
                       className={
-                        secondaryButton()
+                        dangerButton()
                       }
                     >
-                      {savingAvatar ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : account.avatarFileId ? (
-                        <Camera className="h-4 w-4" />
-                      ) : (
-                        <Upload className="h-4 w-4" />
-                      )}
-
-                      {account.avatarFileId
-                        ? 'Change photo'
-                        : 'Upload photo'}
+                      <Trash2 className="h-4 w-4" />
+                      Remove
                     </button>
-
-                    {account.avatarFileId && (
-                      <button
-                        type="button"
-                        disabled={avatarBusy}
-                        onClick={() =>
-                          void removeAvatar()
-                        }
-                        className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-200 px-5 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Remove
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
 
             <form
-              onSubmit={saveProfile}
+              onSubmit={
+                saveProfile
+              }
               className="p-6 sm:p-7"
             >
               <div className="grid gap-5 sm:grid-cols-2">
-                <Field>
-                  <label className="text-sm font-semibold">
-                    First name
-                  </label>
+                <Field
+                  label="First name"
+                  value={
+                    firstName
+                  }
+                  error={
+                    firstNameError
+                  }
+                  onChange={
+                    setFirstName
+                  }
+                />
 
-                  <input
-                    value={firstName}
-                    disabled={
-                      savingProfile
-                    }
-                    onChange={event =>
-                      setFirstName(
-                        event.target.value
-                      )
-                    }
-                    className={inputClass(
-                      Boolean(
-                        firstNameError
-                      )
-                    )}
-                  />
-
-                  {firstNameError && (
-                    <FieldError>
-                      {firstNameError}
-                    </FieldError>
-                  )}
-                </Field>
-
-                <Field>
-                  <label className="text-sm font-semibold">
-                    Last name
-                  </label>
-
-                  <input
-                    value={lastName}
-                    disabled={
-                      savingProfile
-                    }
-                    onChange={event =>
-                      setLastName(
-                        event.target.value
-                      )
-                    }
-                    className={inputClass(
-                      Boolean(
-                        lastNameError
-                      )
-                    )}
-                  />
-
-                  {lastNameError && (
-                    <FieldError>
-                      {lastNameError}
-                    </FieldError>
-                  )}
-                </Field>
+                <Field
+                  label="Last name"
+                  value={
+                    lastName
+                  }
+                  error={
+                    lastNameError
+                  }
+                  onChange={
+                    setLastName
+                  }
+                />
               </div>
 
-              <div className="mt-6 rounded-2xl border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-950/60">
-                <div className="flex gap-3">
-                  <Mail className="mt-0.5 h-5 w-5 text-zinc-400" />
-
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {account.email}
-                    </p>
-
-                    <p className="mt-1 text-xs text-zinc-500">
-                      Your sign-in email uses a separate verification process.
-                    </p>
-                  </div>
-                </div>
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="submit"
+                  disabled={
+                    savingProfile ||
+                    !profileChanged
+                  }
+                  className={
+                    primaryButton()
+                  }
+                >
+                  {savingProfile ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save changes
+                </button>
               </div>
-
-              <FormActions
-                saving={savingProfile}
-                changed={profileChanged}
-                onCancel={() =>
-                  setView('overview')
-                }
-              />
             </form>
-          </section>
-        </div>
+          </Card>
+        </Page>
 
         {overlayElement}
       </>
     );
   }
 
-  if (view === 'preferences') {
+  if (
+    view ===
+    'preferences'
+  ) {
     return (
       <>
-        <div className="mx-auto w-full max-w-5xl">
+        <Page>
           <BackButton
-            onClick={() => {
-              setDraftPreferences({
-                ...preferences,
-              });
-
-              applyTheme(
-                preferences.theme
-              );
-
-              setView('overview');
-            }}
+            label="My Account"
             disabled={
               savingPreferences
             }
+            onClick={() => {
+              setDraftPreferences(
+                preferences
+              );
+              applyTheme(
+                preferences.theme
+              );
+              setView(
+                'overview'
+              );
+            }}
           />
 
-          <form
-            onSubmit={savePreferences}
-            className="mt-4 space-y-5"
-          >
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <SectionHeader
-                icon={
-                  <Settings2 className="h-5 w-5" />
-                }
-                title="Preferences"
-                description="Personalize your workspace."
-              />
+          <Card>
+            <SectionHeader
+              icon={
+                <Settings2 className="h-5 w-5" />
+              }
+              title="Preferences"
+              description="Personalize how your administrator workspace behaves."
+            />
 
-              <div className="p-6 sm:p-7">
+            <form
+              onSubmit={
+                savePreferences
+              }
+              className="space-y-7 p-6 sm:p-7"
+            >
+              <div>
                 <p className="text-sm font-semibold">
                   Appearance
                 </p>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'system'
-                    }
-                    icon={
-                      <Monitor className="h-5 w-5" />
-                    }
-                    title="System"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
-                        'system'
-                      )
-                    }
-                  />
-
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'light'
-                    }
-                    icon={
-                      <Sun className="h-5 w-5" />
-                    }
-                    title="Light"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
-                        'light'
-                      )
-                    }
-                  />
-
-                  <ThemeOption
-                    active={
-                      draftPreferences.theme ===
-                      'dark'
-                    }
-                    icon={
-                      <Moon className="h-5 w-5" />
-                    }
-                    title="Dark"
-                    onClick={() =>
-                      updatePreference(
-                        'theme',
-                        'dark'
-                      )
-                    }
-                  />
+                <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      value:
+                        'system' as const,
+                      label:
+                        'System',
+                      icon:
+                        <Monitor className="h-5 w-5" />,
+                    },
+                    {
+                      value:
+                        'light' as const,
+                      label:
+                        'Light',
+                      icon:
+                        <Sun className="h-5 w-5" />,
+                    },
+                    {
+                      value:
+                        'dark' as const,
+                      label:
+                        'Dark',
+                      icon:
+                        <Moon className="h-5 w-5" />,
+                    },
+                  ].map(
+                    option => (
+                      <button
+                        key={
+                          option.value
+                        }
+                        type="button"
+                        onClick={() =>
+                          updatePreference(
+                            'theme',
+                            option.value
+                          )
+                        }
+                        className={`flex items-center gap-3 rounded-xl border p-4 text-left ${
+                          draftPreferences.theme ===
+                          option.value
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+                            : 'border-zinc-200 dark:border-zinc-800'
+                        }`}
+                      >
+                        {option.icon}
+                        <span className="font-semibold">
+                          {option.label}
+                        </span>
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
-            </section>
 
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="grid divide-y divide-zinc-200 dark:divide-zinc-800 lg:grid-cols-2 lg:divide-x lg:divide-y-0">
-                <PreferenceBlock
+              <div className="grid gap-5 sm:grid-cols-2">
+                <SelectField
+                  label="Language & locale"
                   icon={
-                    <Languages className="h-5 w-5" />
+                    <Languages className="h-4 w-4" />
                   }
-                  title="Language & locale"
-                >
-                  <select
-                    value={
-                      draftPreferences.locale
-                    }
-                    onChange={event =>
+                  value={
+                    draftPreferences.locale
+                  }
+                  onChange={
+                    value =>
                       updatePreference(
                         'locale',
-                        event.target.value
+                        value
                       )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {LOCALES.map(item => (
-                      <option
-                        key={item.value}
-                        value={item.value}
-                      >
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </PreferenceBlock>
-
-                <PreferenceBlock
-                  icon={
-                    <Globe2 className="h-5 w-5" />
                   }
-                  title="Time zone"
                 >
-                  <select
-                    value={
-                      draftPreferences.timezone
-                    }
-                    onChange={event =>
+                  {LOCALES.map(
+                    locale => (
+                      <option
+                        key={
+                          locale.value
+                        }
+                        value={
+                          locale.value
+                        }
+                      >
+                        {locale.label}
+                      </option>
+                    )
+                  )}
+                </SelectField>
+
+                <SelectField
+                  label="Time zone"
+                  icon={
+                    <Globe2 className="h-4 w-4" />
+                  }
+                  value={
+                    draftPreferences.timezone
+                  }
+                  onChange={
+                    value =>
                       updatePreference(
                         'timezone',
-                        event.target.value
+                        value
                       )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {TIMEZONES.map(
-                      timezone => (
-                        <option
-                          key={timezone}
-                          value={timezone}
-                        >
-                          {timezone.replace(
-                            /_/g,
-                            ' '
-                          )}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </PreferenceBlock>
-              </div>
-            </section>
-
-            <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-              <div className="grid divide-y divide-zinc-200 dark:divide-zinc-800 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
-                <PreferenceBlock
-                  icon={
-                    <CalendarDays className="h-5 w-5" />
                   }
-                  title="Date format"
                 >
-                  <select
-                    value={
-                      draftPreferences.dateFormat
-                    }
-                    onChange={event =>
+                  {TIMEZONES.map(
+                    timezone => (
+                      <option
+                        key={
+                          timezone
+                        }
+                        value={
+                          timezone
+                        }
+                      >
+                        {timezone}
+                      </option>
+                    )
+                  )}
+                </SelectField>
+
+                <SelectField
+                  label="Date format"
+                  icon={
+                    <CalendarDays className="h-4 w-4" />
+                  }
+                  value={
+                    draftPreferences.dateFormat
+                  }
+                  onChange={
+                    value =>
                       updatePreference(
                         'dateFormat',
-                        event.target
-                          .value as AdminDateFormat
+                        value as
+                          AdminDateFormat
                       )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    <option value="DD/MM/YYYY">
-                      DD/MM/YYYY
-                    </option>
-
-                    <option value="MM/DD/YYYY">
-                      MM/DD/YYYY
-                    </option>
-
-                    <option value="YYYY-MM-DD">
-                      YYYY-MM-DD
-                    </option>
-                  </select>
-                </PreferenceBlock>
-
-                <PreferenceBlock
-                  icon={
-                    <Monitor className="h-5 w-5" />
                   }
-                  title="Time format"
                 >
-                  <select
-                    value={
-                      draftPreferences.timeFormat
-                    }
-                    onChange={event =>
+                  <option value="DD/MM/YYYY">
+                    DD/MM/YYYY
+                  </option>
+                  <option value="MM/DD/YYYY">
+                    MM/DD/YYYY
+                  </option>
+                  <option value="YYYY-MM-DD">
+                    YYYY-MM-DD
+                  </option>
+                </SelectField>
+
+                <SelectField
+                  label="Time format"
+                  value={
+                    draftPreferences.timeFormat
+                  }
+                  onChange={
+                    value =>
                       updatePreference(
                         'timeFormat',
-                        event.target
-                          .value as AdminTimeFormat
+                        value as
+                          AdminTimeFormat
                       )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    <option value="12h">
-                      12-hour
-                    </option>
-
-                    <option value="24h">
-                      24-hour
-                    </option>
-                  </select>
-                </PreferenceBlock>
-
-                <PreferenceBlock
-                  icon={
-                    <CalendarDays className="h-5 w-5" />
                   }
-                  title="First day of week"
                 >
-                  <select
-                    value={
-                      draftPreferences.firstDayOfWeek
-                    }
-                    onChange={event =>
+                  <option value="12h">
+                    12-hour
+                  </option>
+                  <option value="24h">
+                    24-hour
+                  </option>
+                </SelectField>
+
+                <SelectField
+                  label="First day of week"
+                  value={String(
+                    draftPreferences.firstDayOfWeek
+                  )}
+                  onChange={
+                    value =>
                       updatePreference(
                         'firstDayOfWeek',
                         Number(
-                          event.target.value
+                          value
                         )
                       )
-                    }
-                    className={
-                      selectClass()
-                    }
-                  >
-                    {DAYS.map(
-                      (day, index) => (
-                        <option
-                          key={day}
-                          value={index}
-                        >
-                          {day}
-                        </option>
-                      )
-                    )}
-                  </select>
-                </PreferenceBlock>
+                  }
+                >
+                  {DAYS.map(
+                    (
+                      day,
+                      index
+                    ) => (
+                      <option
+                        key={
+                          day
+                        }
+                        value={
+                          index
+                        }
+                      >
+                        {day}
+                      </option>
+                    )
+                  )}
+                </SelectField>
               </div>
-            </section>
 
-            <FormActions
-              saving={
-                savingPreferences
-              }
-              changed={
-                preferencesChanged
-              }
-              onCancel={() => {
-                setDraftPreferences({
-                  ...preferences,
-                });
-
-                applyTheme(
-                  preferences.theme
-                );
-
-                setView('overview');
-              }}
-            />
-          </form>
-        </div>
+              <div className="flex justify-end border-t border-zinc-200 pt-6 dark:border-zinc-800">
+                <button
+                  type="submit"
+                  disabled={
+                    savingPreferences ||
+                    !preferencesChanged
+                  }
+                  className={
+                    primaryButton()
+                  }
+                >
+                  {savingPreferences ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  Save preferences
+                </button>
+              </div>
+            </form>
+          </Card>
+        </Page>
 
         {overlayElement}
       </>
@@ -3442,10 +4277,10 @@ export default function AdminMyAccountPage() {
 
   return (
     <>
-      <div className="mx-auto w-full max-w-5xl">
-        <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="p-6 sm:p-8">
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+      <Page>
+        <Card>
+          <div className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+            <div className="flex min-w-0 items-center gap-4">
               <UserAvatar
                 avatarFileId={
                   account.avatarFileId
@@ -3453,54 +4288,75 @@ export default function AdminMyAccountPage() {
                 displayName={
                   account.fullName
                 }
-                initials={initials(
-                  account
-                )}
+                initials={
+                  initials(
+                    account
+                  )
+                }
                 endpoint="/api/admin/account/avatar"
                 size="lg"
-                className="ring-4 ring-zinc-100 dark:ring-zinc-800"
               />
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-xl font-bold text-zinc-950 dark:text-white">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="truncate text-lg font-bold">
                     {account.fullName}
                   </p>
 
                   {account.emailVerified && (
-                    <BadgeCheck className="h-5 w-5 text-blue-500" />
+                    <BadgeCheck className="h-5 w-5 text-emerald-500" />
                   )}
                 </div>
 
                 <p className="mt-1 truncate text-sm text-zinc-500">
                   {account.email}
                 </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                    {labelFromValue(
-                      account.role
-                    )}
-                  </span>
-
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    {labelFromValue(
-                      account.status
-                    )}
-                  </span>
-                </div>
               </div>
             </div>
-          </div>
 
-          <div className="divide-y divide-zinc-200 border-t border-zinc-200 dark:divide-zinc-800 dark:border-zinc-800">
+            <div className="flex flex-wrap gap-2">
+              <Badge>
+                {labelFromValue(
+                  account.role
+                )}
+              </Badge>
+
+              <Badge>
+                {labelFromValue(
+                  account.status
+                )}
+              </Badge>
+            </div>
+          </div>
+        </Card>
+
+        <Card>
+          <SectionHeader
+            icon={
+              <Settings2 className="h-5 w-5" />
+            }
+            title="Account settings"
+            description="Manage your personal administrator account."
+          />
+
+          <Rows>
             <SettingsRow
               icon={
                 <UserRound className="h-5 w-5" />
               }
               title="Personal information"
-              description="Name and profile photo"
-              onClick={openProfile}
+              description={`${account.firstName} ${account.lastName}`}
+              onClick={() => {
+                setFirstName(
+                  account.firstName
+                );
+                setLastName(
+                  account.lastName
+                );
+                setView(
+                  'profile'
+                );
+              }}
             />
 
             <SettingsRow
@@ -3508,18 +4364,22 @@ export default function AdminMyAccountPage() {
                 <Mail className="h-5 w-5" />
               }
               title="Email"
-              description={account.email}
-              onClick={() => {
+              description={
+                account.email
+              }
+              onClick={() =>
                 router.push(
                   '/admin/settings/account/email'
-                );
-              }}
+                )
+              }
               trailing={
-                account.emailVerified ? (
-                  <span className="mr-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    Verified
-                  </span>
-                ) : undefined
+                account.emailVerified
+                  ? (
+                    <Badge>
+                      Verified
+                    </Badge>
+                  )
+                  : undefined
               }
             />
 
@@ -3528,17 +4388,13 @@ export default function AdminMyAccountPage() {
                 <Settings2 className="h-5 w-5" />
               }
               title="Preferences"
-              description={`${themeLabel(
+              description={`${labelFromValue(
                 preferences.theme
-              )} · ${preferences.timezone.replace(
-                /_/g,
-                ' '
-              )}`}
+              )} · ${preferences.timezone}`}
               onClick={() => {
                 setDraftPreferences({
                   ...preferences,
                 });
-
                 setView(
                   'preferences'
                 );
@@ -3547,338 +4403,68 @@ export default function AdminMyAccountPage() {
 
             <SettingsRow
               icon={
-                <ShieldCheck className="h-5 w-5" />
+                <KeyRound className="h-5 w-5" />
               }
               title="Password & security"
-              description={
-                account.twoFactorEnabled
-                  ? 'Password, two-factor authentication, sessions and security activity'
-                  : 'Password, sign-in protection, sessions and security activity'
-              }
+              description="Password, two-factor authentication, devices and security activity."
               onClick={() =>
-                setView('security')
+                setView(
+                  'security'
+                )
               }
               trailing={
-                account.twoFactorEnabled ? (
-                  <span className="mr-2 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                    2FA on
-                  </span>
-                ) : undefined
+                account.twoFactorEnabled
+                  ? (
+                    <Badge>
+                      Protected
+                    </Badge>
+                  )
+                  : undefined
               }
             />
-          </div>
-        </section>
-      </div>
+          </Rows>
+        </Card>
+      </Page>
 
       {overlayElement}
     </>
   );
 }
 
-function PasswordField({
-  label,
-  value,
-  visible,
-  error,
-  autoComplete,
-  disabled,
-  onChange,
-  onToggle,
-}: {
-  label: string;
-  value: string;
-  visible: boolean;
-  error: string | null;
-  autoComplete: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-  onToggle: () => void;
-}) {
-  return (
-    <Field>
-      <label className="text-sm font-semibold">
-        {label}
-      </label>
-
-      <div className="relative">
-        <input
-          type={
-            visible
-              ? 'text'
-              : 'password'
-          }
-          value={value}
-          disabled={disabled}
-          autoComplete={autoComplete}
-          onChange={event =>
-            onChange(event.target.value)
-          }
-          className={`${inputClass(
-            Boolean(error)
-          )} pr-12`}
-        />
-
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={onToggle}
-          className="absolute right-3 top-1/2 mt-1 -translate-y-1/2 rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-        >
-          {visible ? (
-            <EyeOff className="h-4 w-4" />
-          ) : (
-            <Eye className="h-4 w-4" />
-          )}
-        </button>
-      </div>
-
-      {error && (
-        <FieldError>
-          {error}
-        </FieldError>
-      )}
-    </Field>
-  );
-}
-
-function VerificationField({
-  value,
-  error,
-  disabled,
-  onChange,
-}: {
-  value: string;
-  error: string | null;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <Field>
-      <label className="text-sm font-semibold">
-        Verification code
-      </label>
-
-      <input
-        value={value}
-        disabled={disabled}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        placeholder="000000"
-        onChange={event =>
-          onChange(
-            event.target.value
-              .replace(/\D/g, '')
-              .slice(0, 6)
-          )
-        }
-        className={`${inputClass(
-          Boolean(error)
-        )} font-mono tracking-[0.35em]`}
-      />
-
-      {error && (
-        <FieldError>
-          {error}
-        </FieldError>
-      )}
-    </Field>
-  );
-}
-
-function RecoveryCodes({
-  codes,
-  copied,
-  onCopy,
-  onDone,
-}: {
-  codes: string[];
-  copied: boolean;
-  onCopy: () => void;
-  onDone: () => void;
-}) {
-  return (
-    <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-950 dark:bg-amber-950/20">
-      <div className="flex gap-3">
-        <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-
-        <div>
-          <p className="font-bold">
-            Save your recovery codes
-          </p>
-
-          <p className="mt-1 text-sm leading-6 text-zinc-600 dark:text-zinc-300">
-            Keep these codes somewhere safe. Each code can be used once if you cannot access your authenticator app.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-2 rounded-2xl border border-amber-200 bg-white p-4 font-mono text-sm font-semibold dark:border-amber-950 dark:bg-zinc-950 sm:grid-cols-2">
-        {codes.map(code => (
-          <div
-            key={code}
-            className="rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-900"
-          >
-            {code}
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-5 flex flex-wrap justify-end gap-3">
-        <button
-          type="button"
-          onClick={onCopy}
-          className={
-            secondaryButton()
-          }
-        >
-          {copied ? (
-            <Check className="h-4 w-4" />
-          ) : (
-            <Copy className="h-4 w-4" />
-          )}
-
-          {copied
-            ? 'Copied'
-            : 'Copy codes'}
-        </button>
-
-        <button
-          type="button"
-          onClick={onDone}
-          className={
-            primaryButton()
-          }
-        >
-          I saved my codes
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function SecurityInfo({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <p className="text-xs font-semibold text-zinc-500">
-        {label}
-      </p>
-
-      <p className="mt-2 text-sm font-semibold">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function StatusBadge({
-  enabled,
-  required,
-}: {
-  enabled: boolean;
-  required: boolean;
-}) {
-  return (
-    <span
-      className={`rounded-full px-3 py-1.5 text-xs font-bold ${
-        enabled
-          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-          : required
-            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-            : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-300'
-      }`}
-    >
-      {enabled
-        ? 'Enabled'
-        : required
-          ? 'Required'
-          : 'Not enabled'}
-    </span>
-  );
-}
-
-function PasswordRule({
-  passed,
+function Page({
   children,
 }: {
-  passed: boolean;
-  children: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <div
-      className={`flex items-center gap-2 text-xs ${
-        passed
-          ? 'text-emerald-600 dark:text-emerald-400'
-          : 'text-zinc-500'
-      }`}
-    >
-      <span
-        className={`flex h-4 w-4 items-center justify-center rounded-full ${
-          passed
-            ? 'bg-emerald-100 dark:bg-emerald-950'
-            : 'bg-zinc-200 dark:bg-zinc-800'
-        }`}
-      >
-        {passed && (
-          <Check className="h-3 w-3" />
-        )}
-      </span>
-
+    <div className="mx-auto w-full max-w-5xl space-y-5">
       {children}
     </div>
   );
 }
 
-function SettingsRow({
-  icon,
-  title,
-  description,
-  onClick,
-  trailing,
+function Card({
+  children,
 }: {
-  icon: ReactNode;
-  title: string;
-  description: string;
-  onClick: () => void;
-  trailing?: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="group flex w-full items-center gap-4 px-6 py-5 text-left transition hover:bg-zinc-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 dark:hover:bg-zinc-950"
-    >
-      <IconBox>{icon}</IconBox>
-
-      <div className="min-w-0 flex-1">
-        <p className="font-semibold">
-          {title}
-        </p>
-
-        <p className="mt-1 truncate text-sm text-zinc-500">
-          {description}
-        </p>
-      </div>
-
-      {trailing}
-
-      <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400 transition group-hover:translate-x-0.5" />
-    </button>
+    <section className="overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+      {children}
+    </section>
   );
 }
 
-function IconBox({
+function Rows({
   children,
 }: {
-  children: ReactNode;
+  children:
+    ReactNode;
 }) {
   return (
-    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
       {children}
     </div>
   );
@@ -3894,39 +4480,112 @@ function SectionHeader({
   description: string;
 }) {
   return (
-    <div className="border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
-      <div className="flex items-start gap-3">
-        <IconBox>{icon}</IconBox>
+    <div className="flex gap-4 border-b border-zinc-200 px-6 py-5 dark:border-zinc-800">
+      <IconBox>
+        {icon}
+      </IconBox>
 
-        <div>
-          <p className="font-bold">
-            {title}
-          </p>
+      <div>
+        <p className="font-bold">
+          {title}
+        </p>
 
-          <p className="mt-1 text-sm text-zinc-500">
-            {description}
-          </p>
-        </div>
+        <p className="mt-1 text-sm text-zinc-500">
+          {description}
+        </p>
       </div>
     </div>
   );
 }
 
-function BackButton({
+function SettingsRow({
+  icon,
+  title,
+  description,
+  trailing,
   onClick,
-  disabled,
-  label = 'My Account',
 }: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  trailing?:
+    ReactNode;
   onClick: () => void;
-  disabled?: boolean;
-  label?: string;
 }) {
   return (
     <button
       type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="inline-flex h-10 items-center gap-2 rounded-xl px-3 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
+      onClick={
+        onClick
+      }
+      className="flex w-full items-center gap-4 px-6 py-5 text-left transition hover:bg-zinc-50 dark:hover:bg-zinc-950"
+    >
+      <IconBox>
+        {icon}
+      </IconBox>
+
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold">
+          {title}
+        </p>
+
+        <p className="mt-1 truncate text-sm text-zinc-500">
+          {description}
+        </p>
+      </div>
+
+      {trailing}
+
+      <ChevronRight className="h-5 w-5 shrink-0 text-zinc-400" />
+    </button>
+  );
+}
+
+function IconBox({
+  children,
+}: {
+  children:
+    ReactNode;
+}) {
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+      {children}
+    </div>
+  );
+}
+
+function Badge({
+  children,
+}: {
+  children:
+    ReactNode;
+}) {
+  return (
+    <span className="mr-1 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+      {children}
+    </span>
+  );
+}
+
+function BackButton({
+  label = 'Back',
+  disabled = false,
+  onClick,
+}: {
+  label?: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={
+        disabled
+      }
+      onClick={
+        onClick
+      }
+      className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-zinc-600 transition hover:bg-zinc-100 disabled:opacity-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
     >
       <ArrowLeft className="h-4 w-4" />
       {label}
@@ -3935,147 +4594,357 @@ function BackButton({
 }
 
 function Field({
-  children,
+  label,
+  value,
+  error,
+  onChange,
 }: {
-  children: ReactNode;
-}) {
-  return <div>{children}</div>;
-}
-
-function FieldError({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  return (
-    <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
-      {children}
-    </p>
-  );
-}
-
-function PreferenceBlock({
-  icon,
-  title,
-  children,
-}: {
-  icon: ReactNode;
-  title: string;
-  children: ReactNode;
+  label: string;
+  value: string;
+  error:
+    string | null;
+  onChange:
+    (value: string) =>
+      void;
 }) {
   return (
-    <div className="p-6 sm:p-7">
-      <div className="mb-5 flex items-center gap-3">
-        {icon}
-
-        <p className="font-semibold">
-          {title}
-        </p>
-      </div>
-
-      {children}
-    </div>
-  );
-}
-
-function ThemeOption({
-  active,
-  icon,
-  title,
-  onClick,
-}: {
-  active: boolean;
-  icon: ReactNode;
-  title: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
-        active
-          ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-500/10 dark:bg-blue-950/30 dark:text-blue-300'
-          : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800'
-      }`}
-    >
-      {icon}
-
-      <span className="font-semibold">
-        {title}
+    <label className="block">
+      <span className="text-sm font-semibold">
+        {label}
       </span>
 
-      {active && (
-        <Check className="ml-auto h-4 w-4" />
+      <input
+        value={
+          value
+        }
+        onChange={
+          event =>
+            onChange(
+              event.target
+                .value
+            )
+        }
+        className={
+          inputClass(
+            Boolean(error)
+          )
+        }
+      />
+
+      {error && (
+        <p className="mt-2 text-xs font-medium text-red-600">
+          {error}
+        </p>
       )}
-    </button>
+    </label>
   );
 }
 
-function FormActions({
-  saving,
-  changed,
-  onCancel,
+function SelectField({
+  label,
+  icon,
+  value,
+  children,
+  onChange,
 }: {
-  saving: boolean;
-  changed: boolean;
-  onCancel: () => void;
+  label: string;
+  icon?: ReactNode;
+  value: string;
+  children:
+    ReactNode;
+  onChange:
+    (value: string) =>
+      void;
 }) {
   return (
-    <div className="mt-8 flex flex-col-reverse gap-3 border-t border-zinc-200 pt-6 dark:border-zinc-800 sm:flex-row sm:justify-end">
-      <button
-        type="button"
-        disabled={saving}
-        onClick={onCancel}
+    <label className="block">
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        {icon}
+        {label}
+      </span>
+
+      <select
+        value={
+          value
+        }
+        onChange={
+          event =>
+            onChange(
+              event.target
+                .value
+            )
+        }
         className={
-          secondaryButton()
+          selectClass()
         }
       >
-        <X className="h-4 w-4" />
-        Cancel
-      </button>
+        {children}
+      </select>
+    </label>
+  );
+}
 
-      <button
-        type="submit"
-        disabled={
-          saving || !changed
-        }
-        className={
-          primaryButton()
-        }
-      >
-        {saving ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <Save className="h-4 w-4" />
-        )}
+function PasswordField({
+  label,
+  value,
+  visible,
+  error,
+  onChange,
+  onToggle,
+}: {
+  label: string;
+  value: string;
+  visible: boolean;
+  error:
+    string | null;
+  onChange:
+    (value: string) =>
+      void;
+  onToggle:
+    () => void;
+}) {
+  return (
+    <label className="block">
+      <span className="text-sm font-semibold">
+        {label}
+      </span>
 
-        {saving
-          ? 'Saving'
-          : 'Save changes'}
-      </button>
+      <div className="relative">
+        <input
+          type={
+            visible
+              ? 'text'
+              : 'password'
+          }
+          value={
+            value
+          }
+          maxLength={
+            128
+          }
+          onChange={
+            event =>
+              onChange(
+                event.target
+                  .value
+              )
+          }
+          className={`${inputClass(
+            Boolean(error)
+          )} pr-12`}
+        />
+
+        <button
+          type="button"
+          onClick={
+            onToggle
+          }
+          className="absolute right-3 top-[22px] rounded-lg p-1 text-zinc-400"
+        >
+          {visible ? (
+            <EyeOff className="h-5 w-5" />
+          ) : (
+            <Eye className="h-5 w-5" />
+          )}
+        </button>
+      </div>
+
+      {error && (
+        <p className="mt-2 text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </label>
+  );
+}
+
+function PasswordRule({
+  passed,
+  children,
+}: {
+  passed: boolean;
+  children:
+    ReactNode;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 ${
+        passed
+          ? 'text-emerald-600'
+          : 'text-zinc-500'
+      }`}
+    >
+      <Check className="h-4 w-4" />
+      {children}
     </div>
   );
 }
 
-function inputClass(
-  error = false
-) {
-  return `mt-2 h-12 w-full rounded-xl border bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950 dark:text-white ${
-    error
-      ? 'border-red-400 focus:border-red-500 focus:ring-4 focus:ring-red-500/10 dark:border-red-700'
-      : 'border-zinc-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700'
-  }`;
+function VerificationField({
+  value,
+  error,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  error:
+    string | null;
+  disabled: boolean;
+  onChange:
+    (value: string) =>
+      void;
+}) {
+  return (
+    <label className="mt-4 block">
+      <span className="text-sm font-semibold">
+        Verification code
+      </span>
+
+      <input
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        maxLength={
+          6
+        }
+        disabled={
+          disabled
+        }
+        value={
+          value
+        }
+        onChange={
+          event =>
+            onChange(
+              event.target.value
+                .replace(
+                  /\D/g,
+                  ''
+                )
+                .slice(
+                  0,
+                  6
+                )
+            )
+        }
+        placeholder="000000"
+        className={`${inputClass(
+          Boolean(error)
+        )} font-mono text-lg tracking-[0.3em]`}
+      />
+
+      {error && (
+        <p className="mt-2 text-xs font-medium text-red-600">
+          {error}
+        </p>
+      )}
+    </label>
+  );
 }
 
-function selectClass() {
-  return 'mt-2 h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-950 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white';
+function SecurityMethod({
+  icon,
+  title,
+  description,
+  enabled,
+  children,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  enabled: boolean;
+  children:
+    ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-zinc-200 p-5 dark:border-zinc-800">
+      <div className="flex items-start gap-4">
+        <IconBox>
+          {icon}
+        </IconBox>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold">
+              {title}
+            </p>
+
+            <span
+              className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                enabled
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'bg-zinc-100 text-zinc-500 dark:bg-zinc-800'
+              }`}
+            >
+              {enabled
+                ? 'Enabled'
+                : 'Not enabled'}
+            </span>
+          </div>
+
+          <p className="mt-1 text-sm leading-6 text-zinc-500">
+            {description}
+          </p>
+
+          <div className="mt-4">
+            {children}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
 }
 
-function primaryButton() {
-  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200';
+function Info({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-zinc-50 p-4 dark:bg-zinc-950">
+      <p className="text-xs font-semibold text-zinc-500">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-semibold">
+        {value}
+      </p>
+    </div>
+  );
 }
 
-function secondaryButton() {
-  return 'inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 text-sm font-semibold text-zinc-700 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800';
+function LoadingState() {
+  return (
+    <div className="flex min-h-[55vh] items-center justify-center">
+      <div className="text-center">
+        <Loader2 className="mx-auto h-7 w-7 animate-spin text-zinc-500" />
+
+        <p className="mt-4 text-sm font-semibold">
+          Loading your account
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function LoadingBlock() {
+  return (
+    <div className="flex min-h-64 items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+    </div>
+  );
+}
+
+function EmptyState({
+  children,
+}: {
+  children:
+    ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+      {children}
+    </div>
+  );
 }
