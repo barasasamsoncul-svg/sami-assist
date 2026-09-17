@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
   ArrowRightLeft,
   Building2,
   CalendarClock,
@@ -25,6 +26,7 @@ import {
 
 import {
   useRouter,
+  useSearchParams,
 } from 'next/navigation';
 
 import SaMiOverlay, {
@@ -110,8 +112,12 @@ type WorkspaceResponse = {
   error?: string;
 
   workspace?: WorkspaceRecord;
+
   access?: WorkspaceAccess;
-  owner?: WorkspaceOwner | null;
+
+  owner?:
+    | WorkspaceOwner
+    | null;
 
   ownershipTransfer?:
     | OwnershipTransfer
@@ -147,8 +153,15 @@ type OverlayState = {
 };
 
 
+type WorkspaceView =
+  | 'overview'
+  | 'details'
+  | 'ownership'
+  | 'lifecycle';
+
+
 /* ============================================================
-   DEFAULTS
+   CONSTANTS
    ============================================================ */
 
 const CLOSED_OVERLAY:
@@ -158,6 +171,15 @@ const CLOSED_OVERLAY:
   title: '',
   message: '',
 };
+
+
+const VALID_VIEWS =
+  new Set<WorkspaceView>([
+    'overview',
+    'details',
+    'ownership',
+    'lifecycle',
+  ]);
 
 
 /* ============================================================
@@ -207,8 +229,11 @@ function formatDateTime(
   return new Intl.DateTimeFormat(
     undefined,
     {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+      dateStyle:
+        'medium',
+
+      timeStyle:
+        'short',
     },
   ).format(
     date,
@@ -224,7 +249,9 @@ function getPersonName(
   const fullName =
     person.fullName?.trim();
 
-  if (fullName) {
+  if (
+    fullName
+  ) {
     return fullName;
   }
 
@@ -241,8 +268,26 @@ function getPersonName(
 }
 
 
+function normalizeView(
+  value:
+    string | null,
+): WorkspaceView {
+  if (
+    value &&
+    VALID_VIEWS.has(
+      value as WorkspaceView,
+    )
+  ) {
+    return value as WorkspaceView;
+  }
+
+  return 'overview';
+}
+
+
 async function readResponse(
-  response: Response,
+  response:
+    Response,
 ): Promise<WorkspaceResponse> {
   try {
     return (
@@ -250,9 +295,12 @@ async function readResponse(
     ) as WorkspaceResponse;
   } catch {
     return {
-      success: false,
+      success:
+        false,
+
       code:
         'INVALID_SERVER_RESPONSE',
+
       error:
         'SaMi returned an invalid response.',
     };
@@ -268,23 +316,45 @@ export default function WorkspaceSettings() {
   const router =
     useRouter();
 
+  const searchParams =
+    useSearchParams();
+
+
+  const [
+    view,
+    setView,
+  ] =
+    useState<WorkspaceView>(
+      'overview',
+    );
+
+
   const [
     loading,
     setLoading,
   ] =
-    useState(true);
+    useState(
+      true,
+    );
+
 
   const [
     refreshing,
     setRefreshing,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
+
 
   const [
     savingDetails,
     setSavingDetails,
   ] =
-    useState(false);
+    useState(
+      false,
+    );
+
 
   const [
     actionLoading,
@@ -294,6 +364,7 @@ export default function WorkspaceSettings() {
       string | null
     >(null);
 
+
   const [
     workspace,
     setWorkspace,
@@ -301,6 +372,7 @@ export default function WorkspaceSettings() {
     useState<
       WorkspaceRecord | null
     >(null);
+
 
   const [
     access,
@@ -310,6 +382,7 @@ export default function WorkspaceSettings() {
       WorkspaceAccess | null
     >(null);
 
+
   const [
     owner,
     setOwner,
@@ -317,6 +390,7 @@ export default function WorkspaceSettings() {
     useState<
       WorkspaceOwner | null
     >(null);
+
 
   const [
     ownershipTransfer,
@@ -326,6 +400,7 @@ export default function WorkspaceSettings() {
       OwnershipTransfer | null
     >(null);
 
+
   const [
     transferCandidates,
     setTransferCandidates,
@@ -334,23 +409,33 @@ export default function WorkspaceSettings() {
       TransferCandidate[]
     >([]);
 
+
   const [
     name,
     setName,
   ] =
-    useState('');
+    useState(
+      '',
+    );
+
 
   const [
     slug,
     setSlug,
   ] =
-    useState('');
+    useState(
+      '',
+    );
+
 
   const [
     selectedTransferUserId,
     setSelectedTransferUserId,
   ] =
-    useState('');
+    useState(
+      '',
+    );
+
 
   const [
     overlay,
@@ -358,6 +443,71 @@ export default function WorkspaceSettings() {
   ] =
     useState<OverlayState>(
       CLOSED_OVERLAY,
+    );
+
+
+  /* ==========================================================
+     VIEW ROUTING
+     ========================================================== */
+
+  useEffect(
+    () => {
+      setView(
+        normalizeView(
+          searchParams.get(
+            'workspace',
+          ),
+        ),
+      );
+    },
+    [
+      searchParams,
+    ],
+  );
+
+
+  const navigate =
+    useCallback(
+      (
+        nextView:
+          WorkspaceView,
+      ) => {
+        const params =
+          new URLSearchParams(
+            searchParams.toString(),
+          );
+
+        params.set(
+          'tab',
+          'workspace',
+        );
+
+        if (
+          nextView ===
+          'overview'
+        ) {
+          params.delete(
+            'workspace',
+          );
+        } else {
+          params.set(
+            'workspace',
+            nextView,
+          );
+        }
+
+        router.push(
+          `/settings?${params.toString()}`,
+          {
+            scroll:
+              false,
+          },
+        );
+      },
+      [
+        router,
+        searchParams,
+      ],
     );
 
 
@@ -381,19 +531,27 @@ export default function WorkspaceSettings() {
       (
         type:
           SaMiOverlayType,
+
         title:
           string,
+
         message:
           string,
       ) => {
         setOverlay({
-          open: true,
+          open:
+            true,
+
           type,
+
           title,
+
           message,
 
           primaryAction: {
-            label: 'OK',
+            label:
+              'OK',
+
             onClick:
               closeOverlay,
           },
@@ -412,16 +570,17 @@ export default function WorkspaceSettings() {
   const loadWorkspace =
     useCallback(
       async (
-        silent = false,
+        silent =
+          false,
       ) => {
         if (
-          !silent
+          silent
         ) {
-          setLoading(
+          setRefreshing(
             true,
           );
         } else {
-          setRefreshing(
+          setLoading(
             true,
           );
         }
@@ -447,10 +606,12 @@ export default function WorkspaceSettings() {
               },
             );
 
+
           const data =
             await readResponse(
               response,
             );
+
 
           if (
             !response.ok ||
@@ -464,23 +625,28 @@ export default function WorkspaceSettings() {
             );
           }
 
+
           setWorkspace(
             data.workspace,
           );
 
+
           setAccess(
             data.access,
           );
+
 
           setOwner(
             data.owner ||
               null,
           );
 
+
           setOwnershipTransfer(
             data.ownershipTransfer ||
               null,
           );
+
 
           setTransferCandidates(
             Array.isArray(
@@ -490,24 +656,28 @@ export default function WorkspaceSettings() {
               : [],
           );
 
+
           setName(
-            data.workspace.name,
+            data.workspace
+              .name,
           );
 
+
           setSlug(
-            data.workspace.slug,
+            data.workspace
+              .slug,
           );
+
 
           setSelectedTransferUserId(
             current => {
               if (
                 current &&
-                data.transferCandidates
-                  ?.some(
-                    candidate =>
-                      candidate.id ===
-                      current,
-                  )
+                data.transferCandidates?.some(
+                  candidate =>
+                    candidate.id ===
+                    current,
+                )
               ) {
                 return current;
               }
@@ -559,12 +729,15 @@ export default function WorkspaceSettings() {
   const detailsChanged =
     useMemo(
       () => {
-        if (!workspace) {
+        if (
+          !workspace
+        ) {
           return false;
         }
 
         return (
-          name.trim() !==
+          name
+            .trim() !==
             workspace.name ||
           slug
             .trim()
@@ -597,7 +770,7 @@ export default function WorkspaceSettings() {
 
 
   /* ==========================================================
-     SAVE WORKSPACE DETAILS
+     SAVE DETAILS
      ========================================================== */
 
   async function saveWorkspaceDetails() {
@@ -610,6 +783,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     const nextName =
       name
         .trim()
@@ -618,10 +792,12 @@ export default function WorkspaceSettings() {
           ' ',
         );
 
+
     const nextSlug =
       slug
         .trim()
         .toLowerCase();
+
 
     if (
       nextName.length <
@@ -636,6 +812,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     if (
       nextSlug.length <
       3
@@ -649,9 +826,11 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setSavingDetails(
       true,
     );
+
 
     try {
       const response =
@@ -686,10 +865,12 @@ export default function WorkspaceSettings() {
           },
         );
 
+
       const data =
         await readResponse(
           response,
         );
+
 
       if (
         !response.ok ||
@@ -701,11 +882,14 @@ export default function WorkspaceSettings() {
         );
       }
 
+
       await loadWorkspace(
         true,
       );
 
+
       router.refresh();
+
 
       showMessage(
         'success',
@@ -733,12 +917,13 @@ export default function WorkspaceSettings() {
 
 
   /* ==========================================================
-     GENERIC ACTION
+     ACTION REQUEST
      ========================================================== */
 
   async function runWorkspaceAction(
     action:
       string,
+
     payload:
       Record<
         string,
@@ -748,12 +933,14 @@ export default function WorkspaceSettings() {
     if (
       actionLoading
     ) {
-      return;
+      return null;
     }
+
 
     setActionLoading(
       action,
     );
+
 
     try {
       const response =
@@ -785,10 +972,12 @@ export default function WorkspaceSettings() {
           },
         );
 
+
       const data =
         await readResponse(
           response,
         );
+
 
       if (
         !response.ok ||
@@ -800,11 +989,14 @@ export default function WorkspaceSettings() {
         );
       }
 
+
       await loadWorkspace(
         true,
       );
 
+
       router.refresh();
+
 
       return data;
     } finally {
@@ -816,7 +1008,7 @@ export default function WorkspaceSettings() {
 
 
   /* ==========================================================
-     DELETION
+     CLOSE WORKSPACE
      ========================================================== */
 
   function confirmWorkspaceClosure() {
@@ -828,8 +1020,10 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'warning',
@@ -838,7 +1032,7 @@ export default function WorkspaceSettings() {
         'Close workspace?',
 
       message:
-        'The workspace will be scheduled for closure. You will have a grace period to cancel before permanent deletion.',
+        'The workspace will be scheduled for closure. You can cancel the closure during the grace period before permanent deletion.',
 
       primaryAction: {
         label:
@@ -870,9 +1064,13 @@ export default function WorkspaceSettings() {
           'request_deletion',
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -903,7 +1101,8 @@ export default function WorkspaceSettings() {
 
   function confirmCancelClosure() {
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'info',
@@ -944,9 +1143,13 @@ export default function WorkspaceSettings() {
           'cancel_deletion',
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -970,7 +1173,7 @@ export default function WorkspaceSettings() {
 
 
   /* ==========================================================
-     REQUEST OWNERSHIP TRANSFER
+     OWNERSHIP TRANSFER
      ========================================================== */
 
   function confirmOwnershipTransfer() {
@@ -986,8 +1189,10 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'warning',
@@ -998,7 +1203,7 @@ export default function WorkspaceSettings() {
       message:
         `Ownership will be offered to ${getPersonName(
           selectedCandidate,
-        )}. You will remain the owner until they accept the transfer.`,
+        )}. You remain the owner until they accept.`,
 
       primaryAction: {
         label:
@@ -1030,6 +1235,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     try {
       const data =
         await runWorkspaceAction(
@@ -1040,9 +1246,13 @@ export default function WorkspaceSettings() {
           },
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -1065,10 +1275,6 @@ export default function WorkspaceSettings() {
   }
 
 
-  /* ==========================================================
-     CANCEL TRANSFER
-     ========================================================== */
-
   function confirmCancelTransfer() {
     if (
       !ownershipTransfer
@@ -1076,8 +1282,10 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'warning',
@@ -1118,6 +1326,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     try {
       const data =
         await runWorkspaceAction(
@@ -1128,9 +1337,13 @@ export default function WorkspaceSettings() {
           },
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -1153,10 +1366,6 @@ export default function WorkspaceSettings() {
   }
 
 
-  /* ==========================================================
-     ACCEPT TRANSFER
-     ========================================================== */
-
   function confirmAcceptTransfer() {
     if (
       !ownershipTransfer
@@ -1164,8 +1373,10 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'warning',
@@ -1174,7 +1385,7 @@ export default function WorkspaceSettings() {
         'Accept workspace ownership?',
 
       message:
-        'You will become the workspace owner and receive ultimate control of workspace management.',
+        'You will become the workspace owner and receive final control of workspace management.',
 
       primaryAction: {
         label:
@@ -1206,6 +1417,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     try {
       const data =
         await runWorkspaceAction(
@@ -1216,9 +1428,13 @@ export default function WorkspaceSettings() {
           },
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -1241,10 +1457,6 @@ export default function WorkspaceSettings() {
   }
 
 
-  /* ==========================================================
-     REJECT TRANSFER
-     ========================================================== */
-
   function confirmRejectTransfer() {
     if (
       !ownershipTransfer
@@ -1252,8 +1464,10 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     setOverlay({
-      open: true,
+      open:
+        true,
 
       type:
         'warning',
@@ -1294,6 +1508,7 @@ export default function WorkspaceSettings() {
       return;
     }
 
+
     try {
       const data =
         await runWorkspaceAction(
@@ -1304,9 +1519,13 @@ export default function WorkspaceSettings() {
           },
         );
 
-      if (!data) {
+
+      if (
+        !data
+      ) {
         return;
       }
+
 
       showMessage(
         'success',
@@ -1376,24 +1595,9 @@ export default function WorkspaceSettings() {
           </div>
         </section>
 
-        <SaMiOverlay
-          open={
-            overlay.open
-          }
-          type={
-            overlay.type
-          }
-          title={
-            overlay.title
-          }
-          message={
-            overlay.message
-          }
-          primaryAction={
-            overlay.primaryAction
-          }
-          secondaryAction={
-            overlay.secondaryAction
+        <Overlay
+          state={
+            overlay
           }
           onClose={
             closeOverlay
@@ -1405,598 +1609,785 @@ export default function WorkspaceSettings() {
 
 
   /* ==========================================================
-     RENDER
+     OVERVIEW
+     ========================================================== */
+
+  if (
+    view ===
+    'overview'
+  ) {
+    return (
+      <>
+        <div className="space-y-5">
+          <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+            <div className="p-5 sm:p-7">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
+                  <Building2 className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h2 className="truncate text-base font-black text-slate-950 dark:text-white">
+                    {workspace.name}
+                  </h2>
+
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {workspace.slug}
+                    </span>
+
+                    <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-700" />
+
+                    <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      {formatStatus(
+                        workspace.status,
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {refreshing && (
+                  <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                )}
+              </div>
+            </div>
+          </section>
+
+
+          {ownershipTransfer
+            ?.isIncoming && (
+            <button
+              type="button"
+              onClick={
+                () =>
+                  navigate(
+                    'ownership',
+                  )
+              }
+              className="flex w-full items-center gap-4 rounded-[22px] border border-violet-200 bg-violet-50/70 p-5 text-left transition hover:border-violet-300 dark:border-violet-900/60 dark:bg-violet-950/20"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-600 text-white">
+                <Crown className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-slate-950 dark:text-white">
+                  Ownership offered to you
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-300">
+                  Review the pending ownership transfer.
+                </p>
+              </div>
+
+              <ChevronRight className="h-5 w-5 shrink-0 text-violet-500" />
+            </button>
+          )}
+
+
+          {workspace.lifecycle
+            .deletionPending && (
+            <button
+              type="button"
+              onClick={
+                () =>
+                  navigate(
+                    'lifecycle',
+                  )
+              }
+              className="flex w-full items-center gap-4 rounded-[22px] border border-red-200 bg-red-50/70 p-5 text-left transition hover:border-red-300 dark:border-red-900/60 dark:bg-red-950/20"
+            >
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-600 text-white">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-black text-red-700 dark:text-red-300">
+                  Workspace closure scheduled
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-red-700/70 dark:text-red-200/70">
+                  Scheduled for{' '}
+                  {formatDateTime(
+                    workspace.lifecycle
+                      .deletionScheduledFor,
+                  )}
+                </p>
+              </div>
+
+              <ChevronRight className="h-5 w-5 shrink-0 text-red-500" />
+            </button>
+          )}
+
+
+          <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+            <WorkspaceMenuRow
+              icon={
+                Building2
+              }
+              title="Workspace details"
+              description="Name, workspace address and workspace information."
+              value={
+                access.canManageWorkspace
+                  ? 'Manage'
+                  : 'View'
+              }
+              onClick={
+                () =>
+                  navigate(
+                    'details',
+                  )
+              }
+            />
+
+            <WorkspaceMenuRow
+              icon={
+                Crown
+              }
+              title="Ownership"
+              description="Workspace owner and ownership transfer."
+              value={
+                ownershipTransfer
+                  ? ownershipTransfer.isIncoming
+                    ? 'Action required'
+                    : 'Transfer pending'
+                  : access.isOwner
+                    ? 'You are owner'
+                    : owner
+                      ? getPersonName(
+                          owner,
+                        )
+                      : 'Owner'
+              }
+              onClick={
+                () =>
+                  navigate(
+                    'ownership',
+                  )
+              }
+            />
+
+            <WorkspaceMenuRow
+              icon={
+                ShieldCheck
+              }
+              title="Workspace status"
+              description="Workspace availability, closure and lifecycle controls."
+              value={
+                workspace.lifecycle
+                  .deletionPending
+                  ? 'Closure pending'
+                  : formatStatus(
+                      workspace.status,
+                    )
+              }
+              onClick={
+                () =>
+                  navigate(
+                    'lifecycle',
+                  )
+              }
+              last
+            />
+          </section>
+        </div>
+
+
+        <Overlay
+          state={
+            overlay
+          }
+          onClose={
+            closeOverlay
+          }
+        />
+      </>
+    );
+  }
+
+
+  /* ==========================================================
+     WORKSPACE DETAILS
+     ========================================================== */
+
+  if (
+    view ===
+    'details'
+  ) {
+    return (
+      <>
+        <DetailShell
+          title="Workspace details"
+          description="Manage the identity of this workspace."
+          onBack={
+            () =>
+              navigate(
+                'overview',
+              )
+          }
+        >
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Field>
+              <FieldLabel>
+                Workspace name
+              </FieldLabel>
+
+              <input
+                value={
+                  name
+                }
+                onChange={
+                  event =>
+                    setName(
+                      event.target
+                        .value,
+                    )
+                }
+                disabled={
+                  !access.canManageWorkspace ||
+                  savingDetails
+                }
+                maxLength={
+                  200
+                }
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
+              />
+            </Field>
+
+
+            <Field>
+              <FieldLabel>
+                Workspace address
+              </FieldLabel>
+
+              <input
+                value={
+                  slug
+                }
+                onChange={
+                  event =>
+                    setSlug(
+                      event.target
+                        .value,
+                    )
+                }
+                disabled={
+                  !access.canManageWorkspace ||
+                  savingDetails
+                }
+                maxLength={
+                  200
+                }
+                spellCheck={
+                  false
+                }
+                autoCapitalize="none"
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
+              />
+            </Field>
+          </div>
+
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <InfoCard
+              label="Workspace status"
+              value={formatStatus(
+                workspace.status,
+              )}
+            />
+
+            <InfoCard
+              label="Created"
+              value={formatDateTime(
+                workspace.createdAt,
+              )}
+            />
+
+            <InfoCard
+              label="Last updated"
+              value={formatDateTime(
+                workspace.updatedAt,
+              )}
+            />
+
+            <InfoCard
+              label="Your access"
+              value={
+                access.isOwner
+                  ? 'Workspace Owner'
+                  : 'Workspace Member'
+              }
+            />
+          </div>
+
+
+          {access.canManageWorkspace ? (
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={
+                  () =>
+                    void saveWorkspaceDetails()
+                }
+                disabled={
+                  !detailsChanged ||
+                  savingDetails
+                }
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {savingDetails ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+
+                Save changes
+              </button>
+            </div>
+          ) : (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Workspace identity is controlled by the workspace owner.
+              </p>
+            </div>
+          )}
+        </DetailShell>
+
+
+        <Overlay
+          state={
+            overlay
+          }
+          onClose={
+            closeOverlay
+          }
+        />
+      </>
+    );
+  }
+
+
+  /* ==========================================================
+     OWNERSHIP
+     ========================================================== */
+
+  if (
+    view ===
+    'ownership'
+  ) {
+    return (
+      <>
+        <DetailShell
+          title="Ownership"
+          description="Review workspace ownership and transfer control when required."
+          onBack={
+            () =>
+              navigate(
+                'overview',
+              )
+          }
+        >
+          {owner ? (
+            <div className="flex flex-col gap-4 rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-950/40">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+                  <UserRound className="h-[18px] w-[18px]" />
+                </div>
+
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-slate-950 dark:text-white">
+                    {getPersonName(
+                      owner,
+                    )}
+                  </p>
+
+                  <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    {owner.email}
+                  </p>
+                </div>
+              </div>
+
+              <div className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-black text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                <Crown className="h-3.5 w-3.5" />
+
+                Workspace Owner
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+              <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
+                Workspace ownership information is unavailable.
+              </p>
+            </div>
+          )}
+
+
+          {ownershipTransfer
+            ?.isOutgoing && (
+            <div className="mt-5 rounded-[20px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                  <ArrowRightLeft className="h-[18px] w-[18px]" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-slate-950 dark:text-white">
+                    Ownership transfer pending
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    Waiting for{' '}
+                    <strong>
+                      {ownershipTransfer.toName ||
+                        ownershipTransfer.toEmail}
+                    </strong>{' '}
+                    to accept.
+                  </p>
+
+                  <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                    Expires{' '}
+                    {formatDateTime(
+                      ownershipTransfer.expiresAt,
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    confirmCancelTransfer
+                  }
+                  disabled={
+                    actionLoading !==
+                    null
+                  }
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  {actionLoading ===
+                  'cancel_ownership_transfer' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+
+                  Cancel transfer
+                </button>
+              </div>
+            </div>
+          )}
+
+
+          {ownershipTransfer
+            ?.isIncoming && (
+            <div className="mt-5 rounded-[20px] border border-violet-200 bg-violet-50/60 p-5 dark:border-violet-900/50 dark:bg-violet-950/20">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white">
+                  <Crown className="h-[18px] w-[18px]" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-slate-950 dark:text-white">
+                    Ownership offered to you
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                    {ownershipTransfer.fromName ||
+                      ownershipTransfer.fromEmail}{' '}
+                    has offered you ownership of this workspace.
+                  </p>
+
+                  <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                    Expires{' '}
+                    {formatDateTime(
+                      ownershipTransfer.expiresAt,
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={
+                    confirmRejectTransfer
+                  }
+                  disabled={
+                    actionLoading !==
+                    null
+                  }
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                >
+                  <X className="h-4 w-4" />
+
+                  Decline
+                </button>
+
+                <button
+                  type="button"
+                  onClick={
+                    confirmAcceptTransfer
+                  }
+                  disabled={
+                    actionLoading !==
+                    null
+                  }
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {actionLoading ===
+                  'accept_ownership_transfer' ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+
+                  Accept ownership
+                </button>
+              </div>
+            </div>
+          )}
+
+
+          {access.canTransferOwnership &&
+            !ownershipTransfer && (
+              <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
+                <div className="mb-4">
+                  <p className="text-xs font-black text-slate-950 dark:text-white">
+                    Transfer ownership
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Ownership can be transferred to an active workspace member.
+                  </p>
+                </div>
+
+
+                {transferCandidates.length >
+                0 ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="min-w-0 flex-1">
+                      <FieldLabel>
+                        New owner
+                      </FieldLabel>
+
+                      <select
+                        value={
+                          selectedTransferUserId
+                        }
+                        onChange={
+                          event =>
+                            setSelectedTransferUserId(
+                              event.target
+                                .value,
+                            )
+                        }
+                        disabled={
+                          actionLoading !==
+                          null
+                        }
+                        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      >
+                        <option value="">
+                          Select a member
+                        </option>
+
+                        {transferCandidates.map(
+                          candidate => (
+                            <option
+                              key={
+                                candidate.id
+                              }
+                              value={
+                                candidate.id
+                              }
+                            >
+                              {getPersonName(
+                                candidate,
+                              )}{' '}
+                              —{' '}
+                              {candidate.email}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={
+                        confirmOwnershipTransfer
+                      }
+                      disabled={
+                        !selectedTransferUserId ||
+                        actionLoading !==
+                          null
+                      }
+                      className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <ArrowRightLeft className="h-4 w-4" />
+
+                      Transfer ownership
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+                    <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      There are no other active workspace members available for ownership transfer.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+        </DetailShell>
+
+
+        <Overlay
+          state={
+            overlay
+          }
+          onClose={
+            closeOverlay
+          }
+        />
+      </>
+    );
+  }
+
+
+  /* ==========================================================
+     LIFECYCLE
      ========================================================== */
 
   return (
     <>
-      <div className="space-y-5">
-        {/* ====================================================
-            WORKSPACE IDENTITY
-            ==================================================== */}
+      <DetailShell
+        title="Workspace status"
+        description="Review workspace availability and protected lifecycle controls."
+        onBack={
+          () =>
+            navigate(
+              'overview',
+            )
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <InfoCard
+            label="Current status"
+            value={formatStatus(
+              workspace.status,
+            )}
+          />
 
-        <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-          <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-7 dark:border-slate-800">
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
-                <Building2 className="h-5 w-5" />
-              </div>
+          <InfoCard
+            label="Created"
+            value={formatDateTime(
+              workspace.createdAt,
+            )}
+          />
+
+          <InfoCard
+            label="Last updated"
+            value={formatDateTime(
+              workspace.updatedAt,
+            )}
+          />
+
+          <InfoCard
+            label="Closure"
+            value={
+              workspace.lifecycle
+                .deletionPending
+                ? 'Scheduled'
+                : 'Not scheduled'
+            }
+          />
+        </div>
+
+
+        {workspace.lifecycle
+          .deletionPending && (
+          <div className="mt-5 rounded-[20px] border border-red-200 bg-red-50/70 p-5 dark:border-red-900/50 dark:bg-red-950/20">
+            <div className="flex items-start gap-3">
+              <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-300" />
 
               <div className="min-w-0">
-                <h2 className="truncate text-base font-black text-slate-950 dark:text-white">
-                  {workspace.name}
-                </h2>
+                <p className="text-sm font-black text-red-700 dark:text-red-300">
+                  Workspace closure scheduled
+                </p>
 
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {workspace.slug}
-                  </span>
-
-                  <span className="h-1 w-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-
-                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                    {formatStatus(
-                      workspace.status,
+                <p className="mt-2 text-xs leading-5 text-red-700/80 dark:text-red-200/80">
+                  Closure is scheduled for{' '}
+                  <strong>
+                    {formatDateTime(
+                      workspace.lifecycle
+                        .deletionScheduledFor,
                     )}
-                  </span>
-                </div>
+                  </strong>
+                  .
+                </p>
+
+                <p className="mt-2 text-xs leading-5 text-red-700/70 dark:text-red-200/70">
+                  Requested{' '}
+                  {formatDateTime(
+                    workspace.lifecycle
+                      .deletionRequestedAt,
+                  )}
+                </p>
               </div>
             </div>
 
-            {refreshing && (
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-400">
-                <Loader2 className="h-4 w-4 animate-spin" />
 
-                Updating
-              </div>
-            )}
-          </div>
-
-          <div className="p-5 sm:p-7">
-            <div className="mb-5">
-              <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                Workspace details
-              </h3>
-
-              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                Basic details used to identify this workspace.
-              </p>
-            </div>
-
-            <div className="grid gap-5 lg:grid-cols-2">
-              <Field>
-                <FieldLabel>
-                  Workspace name
-                </FieldLabel>
-
-                <input
-                  value={
-                    name
-                  }
-                  onChange={
-                    event =>
-                      setName(
-                        event.target
-                          .value,
-                      )
-                  }
-                  disabled={
-                    !access.canManageWorkspace ||
-                    savingDetails
-                  }
-                  maxLength={
-                    200
-                  }
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
-                />
-              </Field>
-
-              <Field>
-                <FieldLabel>
-                  Workspace address
-                </FieldLabel>
-
-                <input
-                  value={
-                    slug
-                  }
-                  onChange={
-                    event =>
-                      setSlug(
-                        event.target
-                          .value,
-                      )
-                  }
-                  disabled={
-                    !access.canManageWorkspace ||
-                    savingDetails
-                  }
-                  maxLength={
-                    200
-                  }
-                  spellCheck={
-                    false
-                  }
-                  autoCapitalize="none"
-                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white dark:disabled:bg-slate-900"
-                />
-              </Field>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <InfoCard
-                label="Workspace status"
-                value={formatStatus(
-                  workspace.status,
-                )}
-              />
-
-              <InfoCard
-                label="Created"
-                value={formatDateTime(
-                  workspace.createdAt,
-                )}
-              />
-            </div>
-
-            {access.canManageWorkspace ? (
-              <div className="mt-6 flex justify-end">
+            {access.canManageLifecycle && (
+              <div className="mt-5 flex justify-end">
                 <button
                   type="button"
                   onClick={
-                    () =>
-                      void saveWorkspaceDetails()
+                    confirmCancelClosure
                   }
                   disabled={
-                    !detailsChanged ||
-                    savingDetails
+                    actionLoading !==
+                    null
                   }
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-xs font-black text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
                 >
-                  {savingDetails ? (
+                  {actionLoading ===
+                  'cancel_deletion' ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Save className="h-4 w-4" />
+                    <X className="h-4 w-4" />
                   )}
 
-                  Save changes
+                  Cancel closure
                 </button>
               </div>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
-                <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Workspace details are managed by the workspace owner.
-                </p>
-              </div>
             )}
           </div>
-        </section>
+        )}
 
 
-        {/* ====================================================
-            OWNERSHIP
-            ==================================================== */}
-
-        <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-          <div className="border-b border-slate-200 px-5 py-5 sm:px-7 dark:border-slate-800">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300">
-                <Crown className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                  Ownership
-                </h3>
-
-                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  The owner has ultimate control of workspace management.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-5 sm:p-7">
-            {owner ? (
-              <div className="flex flex-col gap-4 rounded-[20px] border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-950/40">
-                <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-                    <UserRound className="h-[18px] w-[18px]" />
-                  </div>
-
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black text-slate-950 dark:text-white">
-                      {getPersonName(
-                        owner,
-                      )}
-                    </p>
-
-                    <p className="mt-1 truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                      {owner.email}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="inline-flex w-fit items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1.5 text-[10px] font-black text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
-                  <Crown className="h-3.5 w-3.5" />
-
-                  Workspace Owner
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-900/50 dark:bg-amber-950/20">
-                <p className="text-xs font-bold text-amber-700 dark:text-amber-300">
-                  Workspace ownership information is unavailable.
-                </p>
-              </div>
-            )}
-
-
-            {/* OUTGOING TRANSFER */}
-
-            {ownershipTransfer
-              ?.isOutgoing && (
-              <div className="mt-5 rounded-[20px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
+        {!workspace.lifecycle
+          .deletionPending &&
+          access.canManageLifecycle && (
+            <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
+              <div className="rounded-[20px] border border-red-200 bg-red-50/40 p-5 dark:border-red-950/60 dark:bg-red-950/10">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
-                    <ArrowRightLeft className="h-[18px] w-[18px]" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                    <AlertTriangle className="h-[18px] w-[18px]" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-slate-950 dark:text-white">
-                      Ownership transfer pending
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                      Waiting for{' '}
-                      <strong>
-                        {ownershipTransfer.toName ||
-                          ownershipTransfer.toEmail}
-                      </strong>{' '}
-                      to accept the transfer.
-                    </p>
-
-                    <p className="mt-2 text-[11px] font-semibold text-slate-400">
-                      Expires{' '}
-                      {formatDateTime(
-                        ownershipTransfer.expiresAt,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={
-                      confirmCancelTransfer
-                    }
-                    disabled={
-                      actionLoading !==
-                      null
-                    }
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    {actionLoading ===
-                    'cancel_ownership_transfer' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <X className="h-4 w-4" />
-                    )}
-
-                    Cancel transfer
-                  </button>
-                </div>
-              </div>
-            )}
-
-
-            {/* INCOMING TRANSFER */}
-
-            {ownershipTransfer
-              ?.isIncoming && (
-              <div className="mt-5 rounded-[20px] border border-violet-200 bg-violet-50/60 p-5 dark:border-violet-900/50 dark:bg-violet-950/20">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white">
-                    <Crown className="h-[18px] w-[18px]" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-black text-slate-950 dark:text-white">
-                      Ownership offered to you
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                      {ownershipTransfer.fromName ||
-                        ownershipTransfer.fromEmail}{' '}
-                      has offered you ownership of this workspace.
-                    </p>
-
-                    <p className="mt-2 text-[11px] font-semibold text-slate-400">
-                      Expires{' '}
-                      {formatDateTime(
-                        ownershipTransfer.expiresAt,
-                      )}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={
-                      confirmRejectTransfer
-                    }
-                    disabled={
-                      actionLoading !==
-                      null
-                    }
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  >
-                    <X className="h-4 w-4" />
-
-                    Decline
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      confirmAcceptTransfer
-                    }
-                    disabled={
-                      actionLoading !==
-                      null
-                    }
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-xs font-black text-white transition hover:bg-violet-700 disabled:opacity-50"
-                  >
-                    {actionLoading ===
-                    'accept_ownership_transfer' ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="h-4 w-4" />
-                    )}
-
-                    Accept ownership
-                  </button>
-                </div>
-              </div>
-            )}
-
-
-            {/* NEW TRANSFER */}
-
-            {access.canTransferOwnership &&
-              !ownershipTransfer && (
-                <div className="mt-6 border-t border-slate-200 pt-6 dark:border-slate-800">
-                  <div className="mb-4">
-                    <p className="text-xs font-black text-slate-950 dark:text-white">
-                      Transfer ownership
-                    </p>
-
-                    <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Ownership can be transferred to an active member of this workspace.
-                    </p>
-                  </div>
-
-                  {transferCandidates.length >
-                  0 ? (
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                      <div className="min-w-0 flex-1">
-                        <FieldLabel>
-                          New owner
-                        </FieldLabel>
-
-                        <select
-                          value={
-                            selectedTransferUserId
-                          }
-                          onChange={
-                            event =>
-                              setSelectedTransferUserId(
-                                event.target
-                                  .value,
-                              )
-                          }
-                          disabled={
-                            actionLoading !==
-                            null
-                          }
-                          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
-                        >
-                          <option value="">
-                            Select a member
-                          </option>
-
-                          {transferCandidates.map(
-                            candidate => (
-                              <option
-                                key={
-                                  candidate.id
-                                }
-                                value={
-                                  candidate.id
-                                }
-                              >
-                                {getPersonName(
-                                  candidate,
-                                )}{' '}
-                                —{' '}
-                                {candidate.email}
-                              </option>
-                            ),
-                          )}
-                        </select>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={
-                          confirmOwnershipTransfer
-                        }
-                        disabled={
-                          !selectedTransferUserId ||
-                          actionLoading !==
-                            null
-                        }
-                        className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      >
-                        <ArrowRightLeft className="h-4 w-4" />
-
-                        Transfer ownership
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
-                      <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                        Add an active workspace member before transferring ownership.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-          </div>
-        </section>
-
-
-        {/* ====================================================
-            OWNER AUTHORITY
-            ==================================================== */}
-
-        <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-          <div className="border-b border-slate-200 px-5 py-5 sm:px-7 dark:border-slate-800">
-            <div className="flex items-start gap-4">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-300">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                  Workspace control
-                </h3>
-
-                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Ownership determines who has final authority over this workspace.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="divide-y divide-slate-200 dark:divide-slate-800">
-            <ControlRow
-              title="Workspace owner"
-              value={
-                access.isOwner
-                  ? 'You are the workspace owner'
-                  : 'Managed by the workspace owner'
-              }
-            />
-
-            <ControlRow
-              title="Workspace management"
-              value={
-                access.canManageWorkspace
-                  ? 'You can manage workspace details'
-                  : 'Owner controlled'
-              }
-            />
-
-            <ControlRow
-              title="Ownership transfer"
-              value={
-                access.canTransferOwnership
-                  ? 'Available'
-                  : ownershipTransfer
-                      ?.isIncoming
-                    ? 'Awaiting your decision'
-                    : 'Owner controlled'
-              }
-            />
-          </div>
-        </section>
-
-
-        {/* ====================================================
-            WORKSPACE LIFECYCLE
-            ==================================================== */}
-
-        {access.canManageLifecycle && (
-          <section className="overflow-hidden rounded-[26px] border border-red-200 bg-white shadow-sm dark:border-red-950/60 dark:bg-[#0d121b]">
-            <div className="border-b border-red-100 px-5 py-5 sm:px-7 dark:border-red-950/60">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                    Close workspace
-                  </h3>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    Closing a workspace is protected by a cancellation period.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 sm:p-7">
-              {workspace.lifecycle
-                .deletionPending ? (
-                <div className="rounded-[20px] border border-red-200 bg-red-50/70 p-5 dark:border-red-900/50 dark:bg-red-950/20">
-                  <div className="flex items-start gap-3">
-                    <CalendarClock className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-300" />
-
-                    <div>
-                      <p className="text-sm font-black text-red-700 dark:text-red-300">
-                        Workspace closure scheduled
-                      </p>
-
-                      <p className="mt-2 text-xs leading-5 text-red-700/80 dark:text-red-200/80">
-                        Scheduled for{' '}
-                        <strong>
-                          {formatDateTime(
-                            workspace.lifecycle
-                              .deletionScheduledFor,
-                          )}
-                        </strong>
-                        .
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-5 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={
-                        confirmCancelClosure
-                      }
-                      disabled={
-                        actionLoading !==
-                        null
-                      }
-                      className="inline-flex h-10 items-center justify-center rounded-xl border border-red-200 bg-white px-4 text-xs font-black text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
-                    >
-                      {actionLoading ===
-                      'cancel_deletion' ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : null}
-
-                      Cancel closure
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="max-w-xl">
                     <p className="text-sm font-black text-slate-950 dark:text-white">
                       Close this workspace
                     </p>
 
                     <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Schedule the workspace for closure. You can cancel during the grace period.
+                      Schedule the workspace for closure. The workspace owner can cancel during the grace period.
                     </p>
                   </div>
+                </div>
 
+                <div className="mt-5 flex justify-end">
                   <button
                     type="button"
                     onClick={
@@ -2006,7 +2397,7 @@ export default function WorkspaceSettings() {
                       actionLoading !==
                       null
                     }
-                    className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-xs font-black text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-xs font-black text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300"
                   >
                     {actionLoading ===
                     'request_deletion' ? (
@@ -2018,31 +2409,24 @@ export default function WorkspaceSettings() {
                     Close workspace
                   </button>
                 </div>
-              )}
+              </div>
             </div>
-          </section>
+          )}
+
+
+        {!access.canManageLifecycle && (
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/40">
+            <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Workspace lifecycle controls are available to the workspace owner.
+            </p>
+          </div>
         )}
-      </div>
+      </DetailShell>
 
 
-      <SaMiOverlay
-        open={
-          overlay.open
-        }
-        type={
-          overlay.type
-        }
-        title={
-          overlay.title
-        }
-        message={
-          overlay.message
-        }
-        primaryAction={
-          overlay.primaryAction
-        }
-        secondaryAction={
-          overlay.secondaryAction
+      <Overlay
+        state={
+          overlay
         }
         onClose={
           closeOverlay
@@ -2054,7 +2438,134 @@ export default function WorkspaceSettings() {
 
 
 /* ============================================================
-   SMALL COMPONENTS
+   DETAIL SHELL
+   ============================================================ */
+
+function DetailShell({
+  title,
+  description,
+  onBack,
+  children,
+}: {
+  title:
+    string;
+
+  description:
+    string;
+
+  onBack:
+    () => void;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+      <div className="border-b border-slate-200 px-5 py-5 sm:px-7 dark:border-slate-800">
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={
+              onBack
+            }
+            aria-label="Back to workspace settings"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <ArrowLeft className="h-[18px] w-[18px]" />
+          </button>
+
+          <div className="min-w-0 pt-1">
+            <h2 className="text-sm font-black text-slate-950 dark:text-white">
+              {title}
+            </h2>
+
+            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {description}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-5 sm:p-7">
+        {children}
+      </div>
+    </section>
+  );
+}
+
+
+/* ============================================================
+   MENU ROW
+   ============================================================ */
+
+function WorkspaceMenuRow({
+  icon:
+    Icon,
+  title,
+  description,
+  value,
+  onClick,
+  last =
+    false,
+}: {
+  icon:
+    typeof Building2;
+
+  title:
+    string;
+
+  description:
+    string;
+
+  value:
+    string;
+
+  onClick:
+    () => void;
+
+  last?:
+    boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className={`flex w-full items-center gap-4 px-5 py-5 text-left transition hover:bg-slate-50 sm:px-7 dark:hover:bg-slate-900/60 ${
+        last
+          ? ''
+          : 'border-b border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+        <Icon className="h-[18px] w-[18px]" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-black text-slate-950 dark:text-white">
+          {title}
+        </p>
+
+        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          {description}
+        </p>
+      </div>
+
+      <div className="hidden shrink-0 text-right sm:block">
+        <p className="max-w-[180px] truncate text-[11px] font-bold text-slate-400">
+          {value}
+        </p>
+      </div>
+
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-700" />
+    </button>
+  );
+}
+
+
+/* ============================================================
+   FIELD
    ============================================================ */
 
 function Field({
@@ -2085,12 +2596,19 @@ function FieldLabel({
 }
 
 
+/* ============================================================
+   INFO CARD
+   ============================================================ */
+
 function InfoCard({
   label,
   value,
 }: {
-  label: string;
-  value: string;
+  label:
+    string;
+
+  value:
+    string;
 }) {
   return (
     <div className="rounded-[18px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
@@ -2106,26 +2624,43 @@ function InfoCard({
 }
 
 
-function ControlRow({
-  title,
-  value,
+/* ============================================================
+   OVERLAY
+   ============================================================ */
+
+function Overlay({
+  state,
+  onClose,
 }: {
-  title: string;
-  value: string;
+  state:
+    OverlayState;
+
+  onClose:
+    () => void;
 }) {
   return (
-    <div className="flex items-center gap-4 px-5 py-4 sm:px-7">
-      <div className="min-w-0 flex-1">
-        <p className="text-xs font-black text-slate-950 dark:text-white">
-          {title}
-        </p>
-
-        <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-          {value}
-        </p>
-      </div>
-
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-700" />
-    </div>
+    <SaMiOverlay
+      open={
+        state.open
+      }
+      type={
+        state.type
+      }
+      title={
+        state.title
+      }
+      message={
+        state.message
+      }
+      primaryAction={
+        state.primaryAction
+      }
+      secondaryAction={
+        state.secondaryAction
+      }
+      onClose={
+        onClose
+      }
+    />
   );
 }
