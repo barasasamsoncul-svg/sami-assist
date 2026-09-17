@@ -1,4 +1,7 @@
-import { queryControl } from '@/lib/db/control';
+import {
+  queryControl,
+} from '@/lib/db/control';
+
 
 /* ============================================================
    TYPES
@@ -16,12 +19,23 @@ export interface AuthUserRecord {
   emailVerified: boolean;
 }
 
+
 export interface TenantContext {
   id: string;
   name: string;
   slug: string;
   status: string;
+
+  deletionRequestedAt:
+    string | null;
+
+  deletionScheduledFor:
+    string | null;
+
+  deletionCancelledAt:
+    string | null;
 }
+
 
 export interface TenantOwnerContext {
   id: string;
@@ -33,15 +47,22 @@ export interface TenantOwnerContext {
   roleName: string | null;
 }
 
+
 export interface MembershipContext {
   userId: string;
   tenantId: string;
   status: string;
-  accessLevel: 'owner' | 'admin' | 'member';
+
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+
   isOwner: boolean;
   isAdmin: boolean;
   label: string;
 }
+
 
 export interface SubscriptionContext {
   id: string;
@@ -55,17 +76,20 @@ export interface SubscriptionContext {
   planName: string | null;
 }
 
+
 export interface RoleContext {
   id: string;
   key: string | null;
   name: string;
 }
 
+
 export interface ModuleContext {
   key: string;
   name: string;
   status: string;
 }
+
 
 export interface TenantDatabaseContext {
   id: string;
@@ -76,15 +100,30 @@ export interface TenantDatabaseContext {
   provisionedAt: string | null;
 }
 
+
 export interface AccountContext {
-  tenant: TenantContext | null;
-  owner: TenantOwnerContext | null;
-  membership: MembershipContext | null;
-  subscription: SubscriptionContext | null;
-  role: RoleContext | null;
-  modules: ModuleContext[];
-  database: TenantDatabaseContext | null;
+  tenant:
+    TenantContext | null;
+
+  owner:
+    TenantOwnerContext | null;
+
+  membership:
+    MembershipContext | null;
+
+  subscription:
+    SubscriptionContext | null;
+
+  role:
+    RoleContext | null;
+
+  modules:
+    ModuleContext[];
+
+  database:
+    TenantDatabaseContext | null;
 }
+
 
 export interface LoginValidationResult {
   allowed: boolean;
@@ -94,40 +133,72 @@ export interface LoginValidationResult {
   next?: string;
 }
 
+
 type PrimaryTenantSelection = {
-  tenant: TenantContext;
-  membershipStatus: string;
-  membershipIsOwner: boolean;
+  tenant:
+    TenantContext;
+
+  membershipStatus:
+    string;
+
+  membershipIsOwner:
+    boolean;
 };
+
 
 /* ============================================================
    HELPERS
    ============================================================ */
 
-function normalizeStatus(value: unknown): string {
-  return typeof value === 'string'
-    ? value.trim().toLowerCase()
+function normalizeStatus(
+  value:
+    unknown,
+): string {
+  return typeof value ===
+    'string'
+    ? value
+        .trim()
+        .toLowerCase()
     : '';
 }
 
-function toIsoString(value: unknown): string | null {
-  if (!value) {
+
+function toIsoString(
+  value:
+    unknown,
+): string | null {
+  if (
+    !value
+  ) {
     return null;
   }
 
   const date =
-    value instanceof Date
+    value instanceof
+      Date
       ? value
-      : new Date(String(value));
+      : new Date(
+          String(
+            value,
+          ),
+        );
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return null;
   }
 
   return date.toISOString();
 }
 
-function toNullablePort(value: unknown): number | null {
+
+function toNullablePort(
+  value:
+    unknown,
+): number | null {
   if (
     value === null ||
     value === undefined ||
@@ -136,10 +207,15 @@ function toNullablePort(value: unknown): number | null {
     return null;
   }
 
-  const port = Number(value);
+  const port =
+    Number(
+      value,
+    );
 
   if (
-    !Number.isInteger(port) ||
+    !Number.isInteger(
+      port,
+    ) ||
     port < 1 ||
     port > 65535
   ) {
@@ -149,250 +225,557 @@ function toNullablePort(value: unknown): number | null {
   return port;
 }
 
+
+/* ============================================================
+   WORKSPACE LIFECYCLE FINALIZATION
+
+   Scheduled workspace closure is soft deletion.
+
+   The first authenticated access after the grace deadline
+   atomically:
+
+   - marks the workspace deleted
+   - records deleted_at
+   - writes a system audit event
+
+   Physical tenant-data destruction is deliberately NOT done
+   here.
+   ============================================================ */
+
+async function finalizeDueWorkspaceClosuresForUser(
+  userId:
+    string,
+): Promise<void> {
+  await queryControl(
+    `
+      WITH due_workspaces AS (
+        SELECT DISTINCT
+          t.id
+        FROM tenants t
+
+        INNER JOIN tenant_users tu
+          ON tu.tenant_id =
+             t.id
+
+        WHERE tu.user_id = $1
+          AND tu.deleted_at IS NULL
+          AND t.deleted_at IS NULL
+
+          AND t.deletion_requested_at
+              IS NOT NULL
+
+          AND t.deletion_scheduled_for
+              IS NOT NULL
+
+          AND t.deletion_scheduled_for
+              <= NOW()
+
+          AND t.deletion_cancelled_at
+              IS NULL
+
+          AND LOWER(
+            COALESCE(
+              t.status,
+              ''
+            )
+          ) IN (
+            'active',
+            'deletion_pending'
+          )
+      ),
+
+      closed_workspaces AS (
+        UPDATE tenants t
+
+        SET
+          status =
+            'deleted',
+
+          deleted_at =
+            NOW(),
+
+          updated_at =
+            NOW()
+
+        FROM due_workspaces due
+
+        WHERE t.id =
+              due.id
+
+          AND t.deleted_at
+              IS NULL
+
+        RETURNING
+          t.id,
+          t.deletion_requested_by,
+          t.deletion_requested_at,
+          t.deletion_scheduled_for
+      )
+
+      INSERT INTO audit_logs (
+        tenant_id,
+        user_id,
+        actor_type,
+        action,
+        resource_type,
+        resource_id,
+        module,
+        result,
+        metadata,
+        correlation_id,
+        event_type,
+        entity_type,
+        entity_id,
+        created_at
+      )
+
+      SELECT
+        closed.id,
+
+        closed.deletion_requested_by,
+
+        'system',
+
+        'workspace.closed',
+
+        'workspace',
+
+        closed.id,
+
+        'workspace',
+
+        'success',
+
+        jsonb_build_object(
+          'reason',
+          'scheduled_workspace_closure',
+
+          'requestedAt',
+          closed.deletion_requested_at,
+
+          'scheduledFor',
+          closed.deletion_scheduled_for,
+
+          'closedAt',
+          NOW()
+        ),
+
+        gen_random_uuid(),
+
+        'workspace.closed',
+
+        'workspace',
+
+        closed.id,
+
+        NOW()
+
+      FROM closed_workspaces
+        AS closed
+    `,
+    [
+      userId,
+    ],
+  );
+}
+
+
 /* ============================================================
    USER LOOKUP
    ============================================================ */
 
 export async function findUserForLogin(
-  email: string
+  email:
+    string,
 ): Promise<AuthUserRecord | null> {
   const normalizedEmail =
     email
       .trim()
       .toLowerCase();
 
-  if (!normalizedEmail) {
+  if (
+    !normalizedEmail
+  ) {
     return null;
   }
 
-  const result = await queryControl(
-    `
-      SELECT
-        id,
-        email,
-        password_hash,
-        full_name,
-        first_name,
-        last_name,
-        avatar_file_id,
-        status,
-        email_verified,
-        email_verified_at
-      FROM users
-      WHERE LOWER(email) = $1
-        AND deleted_at IS NULL
-      LIMIT 1
-    `,
-    [normalizedEmail]
-  );
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          email,
+          password_hash,
+          full_name,
+          first_name,
+          last_name,
+          avatar_file_id,
+          status,
+          email_verified,
+          email_verified_at
 
-  if (result.rows.length === 0) {
+        FROM users
+
+        WHERE LOWER(email) = $1
+          AND deleted_at IS NULL
+
+        LIMIT 1
+      `,
+      [
+        normalizedEmail,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
 
-  const row = result.rows[0];
+
+  const row =
+    result.rows[0];
+
 
   return {
-    id: row.id,
-    email: row.email,
+    id:
+      row.id,
+
+    email:
+      row.email,
+
     passwordHash:
-      row.password_hash || null,
+      row.password_hash ||
+      null,
+
     fullName:
-      row.full_name || '',
+      row.full_name ||
+      '',
+
     firstName:
-      row.first_name || '',
+      row.first_name ||
+      '',
+
     lastName:
-      row.last_name || '',
+      row.last_name ||
+      '',
+
     avatarFileId:
-      row.avatar_file_id || null,
+      row.avatar_file_id ||
+      null,
+
     status:
-      row.status || 'unknown',
+      row.status ||
+      'unknown',
+
     emailVerified:
-      row.email_verified === true ||
-      Boolean(row.email_verified_at),
+      row.email_verified ===
+        true ||
+      Boolean(
+        row.email_verified_at,
+      ),
   };
 }
+
 
 /* ============================================================
    MAIN ACCOUNT CONTEXT
    ============================================================ */
 
 export async function getAccountContextForUser(
-  userId: string
+  userId:
+    string,
 ): Promise<AccountContext> {
+  /*
+   * Enforce due workspace closures before choosing the
+   * workspace that will become the user's current context.
+   */
+  await finalizeDueWorkspaceClosuresForUser(
+    userId,
+  );
+
+
   const primary =
     await getPrimaryTenant(
-      userId
+      userId,
     );
 
-  if (!primary) {
+
+  if (
+    !primary
+  ) {
     return {
-      tenant: null,
-      owner: null,
-      membership: null,
-      subscription: null,
-      role: null,
-      modules: [],
-      database: null,
+      tenant:
+        null,
+
+      owner:
+        null,
+
+      membership:
+        null,
+
+      subscription:
+        null,
+
+      role:
+        null,
+
+      modules:
+        [],
+
+      database:
+        null,
     };
   }
+
 
   const tenant =
     primary.tenant;
 
-  /*
-   * These records are all part of the login/account context.
-   *
-   * We intentionally let database/query failures propagate to
-   * the caller rather than silently converting an authorization
-   * failure into "member", "no subscription" or "no modules".
-   *
-   * The login route already catches unexpected failures and
-   * returns a generic authentication error.
-   */
+
   const [
     subscription,
     role,
     modules,
     database,
     owner,
-  ] = await Promise.all([
-    getTenantSubscription(
-      tenant.id
-    ),
+  ] =
+    await Promise.all([
+      getTenantSubscription(
+        tenant.id,
+      ),
 
-    getUserRole(
-      userId,
-      tenant.id
-    ),
+      getUserRole(
+        userId,
+        tenant.id,
+      ),
 
-    getTenantModules(
-      tenant.id
-    ),
+      getTenantModules(
+        tenant.id,
+      ),
 
-    getTenantDatabase(
-      tenant.id
-    ),
+      getTenantDatabase(
+        tenant.id,
+      ),
 
-    getTenantOwner(
-      tenant.id
-    ),
-  ]);
+      getTenantOwner(
+        tenant.id,
+      ),
+    ]);
+
 
   const membership =
     buildMembershipContext({
       userId,
+
       tenant,
+
       role,
+
       membershipStatus:
-        primary.membershipStatus,
+        primary
+          .membershipStatus,
+
       membershipIsOwner:
-        primary.membershipIsOwner,
+        primary
+          .membershipIsOwner,
     });
+
 
   return {
     tenant,
+
     owner,
+
     membership,
+
     subscription,
+
     role,
+
     modules,
+
     database,
   };
 }
+
 
 /* ============================================================
    PRIMARY TENANT / MEMBERSHIP
    ============================================================ */
 
-/**
- * SaMi will support users belonging to multiple workspaces.
- *
- * Until a dedicated workspace-selection context is introduced,
- * this function deterministically chooses the most appropriate
- * membership:
- *
- * 1. active membership
- * 2. owner membership
- * 3. admin membership
- * 4. earliest membership
- *
- * Ownership comes from tenant_users.is_owner, not from a role
- * name.
- */
 async function getPrimaryTenant(
-  userId: string
+  userId:
+    string,
 ): Promise<PrimaryTenantSelection | null> {
-  const result = await queryControl(
-    `
-      SELECT
-        t.id,
-        t.name,
-        t.slug,
-        t.status,
+  const result =
+    await queryControl(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.slug,
+          t.status,
 
-        tu.status AS membership_status,
-        tu.is_owner AS membership_is_owner
+          t.deletion_requested_at,
+          t.deletion_scheduled_for,
+          t.deletion_cancelled_at,
 
-      FROM tenant_users tu
+          tu.status
+            AS membership_status,
 
-      INNER JOIN tenants t
-        ON t.id = tu.tenant_id
+          tu.is_owner
+            AS membership_is_owner
 
-      LEFT JOIN user_roles ur
-        ON ur.user_id = tu.user_id
-       AND ur.tenant_id = tu.tenant_id
-       AND ur.deleted_at IS NULL
+        FROM tenant_users tu
 
-      LEFT JOIN roles r
-        ON r.id = ur.role_id
-       AND r.deleted_at IS NULL
+        INNER JOIN tenants t
+          ON t.id =
+             tu.tenant_id
 
-      WHERE tu.user_id = $1
-        AND tu.deleted_at IS NULL
-        AND t.deleted_at IS NULL
+        LEFT JOIN user_roles ur
+          ON ur.user_id =
+             tu.user_id
 
-      ORDER BY
-        CASE
-          WHEN LOWER(COALESCE(tu.status, '')) = 'active'
-          THEN 0
-          ELSE 1
-        END ASC,
+         AND ur.tenant_id =
+             tu.tenant_id
 
-        CASE
-          WHEN tu.is_owner = TRUE
-          THEN 0
+         AND ur.deleted_at
+             IS NULL
 
-          WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
-          THEN 1
+        LEFT JOIN roles r
+          ON r.id =
+             ur.role_id
 
-          ELSE 2
-        END ASC,
+         AND r.deleted_at
+             IS NULL
 
-        tu.created_at ASC
+        WHERE tu.user_id = $1
 
-      LIMIT 1
-    `,
-    [userId]
-  );
+          AND tu.deleted_at
+              IS NULL
 
-  if (result.rows.length === 0) {
+          AND t.deleted_at
+              IS NULL
+
+        ORDER BY
+
+          /*
+           * Prefer a usable active workspace before a workspace
+           * that is provisioning, suspended or otherwise
+           * unavailable.
+           */
+          CASE
+            WHEN LOWER(
+              COALESCE(
+                t.status,
+                ''
+              )
+            ) = 'active'
+            THEN 0
+
+            WHEN LOWER(
+              COALESCE(
+                t.status,
+                ''
+              )
+            ) = 'provisioning'
+            THEN 1
+
+            ELSE 2
+          END ASC,
+
+          /*
+           * Prefer an active membership.
+           */
+          CASE
+            WHEN LOWER(
+              COALESCE(
+                tu.status,
+                ''
+              )
+            ) = 'active'
+            THEN 0
+
+            ELSE 1
+          END ASC,
+
+          /*
+           * Ownership is authoritative from is_owner.
+           */
+          CASE
+            WHEN tu.is_owner =
+                 TRUE
+            THEN 0
+
+            WHEN LOWER(
+              COALESCE(
+                r.key,
+                r.name,
+                ''
+              )
+            ) LIKE '%admin%'
+            THEN 1
+
+            ELSE 2
+          END ASC,
+
+          tu.created_at
+            ASC
+
+        LIMIT 1
+      `,
+      [
+        userId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
+
 
   const row =
     result.rows[0];
 
+
   return {
     tenant: {
-      id: row.id,
+      id:
+        row.id,
+
       name:
-        row.name || '',
+        row.name ||
+        '',
+
       slug:
-        row.slug || '',
+        row.slug ||
+        '',
+
       status:
         row.status ||
         'unknown',
+
+      deletionRequestedAt:
+        toIsoString(
+          row.deletion_requested_at,
+        ),
+
+      deletionScheduledFor:
+        toIsoString(
+          row.deletion_scheduled_for,
+        ),
+
+      deletionCancelledAt:
+        toIsoString(
+          row.deletion_cancelled_at,
+        ),
     },
 
     membershipStatus:
@@ -405,125 +788,182 @@ async function getPrimaryTenant(
   };
 }
 
+
 /* ============================================================
    OWNER
    ============================================================ */
 
-/**
- * Workspace ownership is authoritative from:
- *
- *   tenant_users.is_owner = TRUE
- *
- * Do not infer the owner from:
- *
- * - role names
- * - first admin
- * - earliest user
- *
- * Registration currently creates the owner membership with
- * is_owner = TRUE even though the initial role may be "admin".
- */
 async function getTenantOwner(
-  tenantId: string
+  tenantId:
+    string,
 ): Promise<TenantOwnerContext | null> {
-  const result = await queryControl(
-    `
-      SELECT
-        u.id,
-        u.email,
-        u.full_name,
-        u.first_name,
-        u.last_name,
+  const result =
+    await queryControl(
+      `
+        SELECT
+          u.id,
+          u.email,
+          u.full_name,
+          u.first_name,
+          u.last_name,
 
-        r.key AS role_key,
-        r.name AS role_name
+          r.key
+            AS role_key,
 
-      FROM tenant_users tu
+          r.name
+            AS role_name
 
-      INNER JOIN users u
-        ON u.id = tu.user_id
+        FROM tenant_users tu
 
-      LEFT JOIN user_roles ur
-        ON ur.user_id = tu.user_id
-       AND ur.tenant_id = tu.tenant_id
-       AND ur.deleted_at IS NULL
+        INNER JOIN users u
+          ON u.id =
+             tu.user_id
 
-      LEFT JOIN roles r
-        ON r.id = ur.role_id
-       AND r.deleted_at IS NULL
+        LEFT JOIN user_roles ur
+          ON ur.user_id =
+             tu.user_id
 
-      WHERE tu.tenant_id = $1
-        AND tu.is_owner = TRUE
-        AND tu.deleted_at IS NULL
-        AND u.deleted_at IS NULL
+         AND ur.tenant_id =
+             tu.tenant_id
 
-      ORDER BY
-        CASE
-          WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
-          THEN 0
-          ELSE 1
-        END ASC,
+         AND ur.deleted_at
+             IS NULL
 
-        tu.created_at ASC
+        LEFT JOIN roles r
+          ON r.id =
+             ur.role_id
 
-      LIMIT 1
-    `,
-    [tenantId]
-  );
+         AND r.deleted_at
+             IS NULL
 
-  if (result.rows.length === 0) {
+        WHERE tu.tenant_id = $1
+
+          AND tu.is_owner =
+              TRUE
+
+          AND LOWER(
+            COALESCE(
+              tu.status,
+              ''
+            )
+          ) = 'active'
+
+          AND tu.deleted_at
+              IS NULL
+
+          AND u.deleted_at
+              IS NULL
+
+        ORDER BY
+          CASE
+            WHEN LOWER(
+              COALESCE(
+                r.key,
+                r.name,
+                ''
+              )
+            ) LIKE '%admin%'
+            THEN 0
+
+            ELSE 1
+          END ASC,
+
+          tu.created_at
+            ASC
+
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
+
 
   const row =
     result.rows[0];
 
+
   return {
-    id: row.id,
-    email: row.email,
+    id:
+      row.id,
+
+    email:
+      row.email,
+
     fullName:
-      row.full_name || '',
+      row.full_name ||
+      '',
+
     firstName:
-      row.first_name || '',
+      row.first_name ||
+      '',
+
     lastName:
-      row.last_name || '',
+      row.last_name ||
+      '',
+
     roleKey:
-      row.role_key || null,
+      row.role_key ||
+      null,
+
     roleName:
-      row.role_name || null,
+      row.role_name ||
+      null,
   };
 }
+
 
 /* ============================================================
    MEMBERSHIP / ACCESS LEVEL
    ============================================================ */
 
-function buildMembershipContext(params: {
-  userId: string;
-  tenant: TenantContext;
-  role: RoleContext | null;
-  membershipStatus: string;
-  membershipIsOwner: boolean;
-}): MembershipContext {
-  const roleText = [
-    params.role?.key || '',
-    params.role?.name || '',
-  ]
-    .join(' ')
-    .toLowerCase();
+function buildMembershipContext(
+  params: {
+    userId: string;
+    tenant: TenantContext;
+    role: RoleContext | null;
+    membershipStatus: string;
+    membershipIsOwner: boolean;
+  },
+): MembershipContext {
+  const roleText =
+    [
+      params.role?.key ||
+        '',
+
+      params.role?.name ||
+        '',
+    ]
+      .join(
+        ' ',
+      )
+      .toLowerCase();
+
 
   const isOwner =
-    params.membershipIsOwner ===
+    params
+      .membershipIsOwner ===
     true;
+
 
   const roleSaysAdmin =
     roleText.includes(
-      'admin'
+      'admin',
     );
+
 
   const isAdmin =
     isOwner ||
     roleSaysAdmin;
+
 
   const accessLevel:
     | 'owner'
@@ -535,6 +975,7 @@ function buildMembershipContext(params: {
         ? 'admin'
         : 'member';
 
+
   const label =
     accessLevel ===
       'owner'
@@ -543,6 +984,7 @@ function buildMembershipContext(params: {
           'admin'
         ? 'Workspace Admin'
         : 'Workspace Member';
+
 
   return {
     userId:
@@ -565,53 +1007,71 @@ function buildMembershipContext(params: {
   };
 }
 
+
 /* ============================================================
    SUBSCRIPTION
    ============================================================ */
 
 async function getTenantSubscription(
-  tenantId: string
+  tenantId:
+    string,
 ): Promise<SubscriptionContext | null> {
-  const result = await queryControl(
-    `
-      SELECT
-        s.id,
-        s.status,
-        s.billing_cycle,
-        s.started_at,
-        s.trial_ends_at,
-        s.current_period_start,
-        s.current_period_end,
+  const result =
+    await queryControl(
+      `
+        SELECT
+          s.id,
+          s.status,
+          s.billing_cycle,
+          s.started_at,
+          s.trial_ends_at,
+          s.current_period_start,
+          s.current_period_end,
 
-        p.key AS plan_key,
-        p.name AS plan_name
+          p.key
+            AS plan_key,
 
-      FROM subscriptions s
+          p.name
+            AS plan_name
 
-      LEFT JOIN plans p
-        ON p.id = s.plan_id
-       AND p.deleted_at IS NULL
+        FROM subscriptions s
 
-      WHERE s.tenant_id = $1
-        AND s.deleted_at IS NULL
+        LEFT JOIN plans p
+          ON p.id =
+             s.plan_id
 
-      ORDER BY
-        s.created_at DESC
+         AND p.deleted_at
+             IS NULL
 
-      LIMIT 1
-    `,
-    [tenantId]
-  );
+        WHERE s.tenant_id = $1
+          AND s.deleted_at IS NULL
 
-  if (result.rows.length === 0) {
+        ORDER BY
+          s.created_at DESC
+
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
+
 
   const row =
     result.rows[0];
 
+
   return {
-    id: row.id,
+    id:
+      row.id,
 
     status:
       row.status ||
@@ -623,22 +1083,22 @@ async function getTenantSubscription(
 
     startedAt:
       toIsoString(
-        row.started_at
+        row.started_at,
       ),
 
     trialEndsAt:
       toIsoString(
-        row.trial_ends_at
+        row.trial_ends_at,
       ),
 
     currentPeriodStart:
       toIsoString(
-        row.current_period_start
+        row.current_period_start,
       ),
 
     currentPeriodEnd:
       toIsoString(
-        row.current_period_end
+        row.current_period_end,
       ),
 
     planKey:
@@ -651,103 +1111,156 @@ async function getTenantSubscription(
   };
 }
 
+
 /* ============================================================
    ROLE
    ============================================================ */
 
 async function getUserRole(
-  userId: string,
-  tenantId: string
+  userId:
+    string,
+
+  tenantId:
+    string,
 ): Promise<RoleContext | null> {
-  const result = await queryControl(
-    `
-      SELECT
-        r.id,
-        r.key,
-        r.name
+  const result =
+    await queryControl(
+      `
+        SELECT
+          r.id,
+          r.key,
+          r.name
 
-      FROM user_roles ur
+        FROM user_roles ur
 
-      INNER JOIN roles r
-        ON r.id = ur.role_id
+        INNER JOIN roles r
+          ON r.id =
+             ur.role_id
 
-      WHERE ur.user_id = $1
-        AND ur.tenant_id = $2
-        AND ur.deleted_at IS NULL
-        AND r.deleted_at IS NULL
+        WHERE ur.user_id = $1
 
-      ORDER BY
-        CASE
-          WHEN LOWER(COALESCE(r.key, r.name, '')) IN (
-            'owner',
-            'business_owner',
-            'workspace_owner',
-            'founder'
-          ) THEN 0
+          AND ur.tenant_id = $2
 
-          WHEN LOWER(COALESCE(r.key, r.name, '')) LIKE '%admin%'
-          THEN 1
+          AND ur.deleted_at
+              IS NULL
 
-          ELSE 2
-        END ASC,
+          AND r.deleted_at
+              IS NULL
 
-        ur.created_at ASC
+        ORDER BY
+          CASE
+            WHEN LOWER(
+              COALESCE(
+                r.key,
+                r.name,
+                ''
+              )
+            ) IN (
+              'owner',
+              'business_owner',
+              'workspace_owner',
+              'founder'
+            )
+            THEN 0
 
-      LIMIT 1
-    `,
-    [
-      userId,
-      tenantId,
-    ]
-  );
+            WHEN LOWER(
+              COALESCE(
+                r.key,
+                r.name,
+                ''
+              )
+            ) LIKE '%admin%'
+            THEN 1
 
-  if (result.rows.length === 0) {
+            ELSE 2
+          END ASC,
+
+          ur.created_at
+            ASC
+
+        LIMIT 1
+      `,
+      [
+        userId,
+        tenantId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
+
 
   const row =
     result.rows[0];
 
+
   return {
-    id: row.id,
+    id:
+      row.id,
+
     key:
-      row.key || null,
+      row.key ||
+      null,
+
     name:
-      row.name || '',
+      row.name ||
+      '',
   };
 }
+
 
 /* ============================================================
    MODULES
    ============================================================ */
 
 async function getTenantModules(
-  tenantId: string
+  tenantId:
+    string,
 ): Promise<ModuleContext[]> {
-  const result = await queryControl(
-    `
-      SELECT
-        m.key,
-        m.name,
-        tm.status
+  const result =
+    await queryControl(
+      `
+        SELECT
+          m.key,
+          m.name,
+          tm.status
 
-      FROM tenant_modules tm
+        FROM tenant_modules tm
 
-      INNER JOIN modules m
-        ON m.id = tm.module_id
+        INNER JOIN modules m
+          ON m.id =
+             tm.module_id
 
-      WHERE tm.tenant_id = $1
-        AND tm.deleted_at IS NULL
-        AND m.deleted_at IS NULL
+        WHERE tm.tenant_id = $1
 
-      ORDER BY
-        m.name ASC
-    `,
-    [tenantId]
-  );
+          AND tm.deleted_at
+              IS NULL
+
+          AND m.deleted_at
+              IS NULL
+
+        ORDER BY
+          m.name ASC
+      `,
+      [
+        tenantId,
+      ],
+    );
+
 
   return result.rows.map(
-    (row: Record<string, unknown>) => ({
+    (
+      row:
+        Record<
+          string,
+          unknown
+        >,
+    ) => ({
       key:
         typeof row.key ===
           'string'
@@ -769,48 +1282,60 @@ async function getTenantModules(
           'string'
           ? row.status
           : 'unknown',
-    })
+    }),
   );
 }
+
 
 /* ============================================================
    DATABASE
    ============================================================ */
 
 async function getTenantDatabase(
-  tenantId: string
+  tenantId:
+    string,
 ): Promise<TenantDatabaseContext | null> {
-  const result = await queryControl(
-    `
-      SELECT
-        id,
-        database_name,
-        database_host,
-        database_port,
-        status,
-        provisioned_at
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          database_name,
+          database_host,
+          database_port,
+          status,
+          provisioned_at
 
-      FROM tenant_databases
+        FROM tenant_databases
 
-      WHERE tenant_id = $1
+        WHERE tenant_id = $1
 
-      ORDER BY
-        created_at DESC
+        ORDER BY
+          created_at DESC
 
-      LIMIT 1
-    `,
-    [tenantId]
-  );
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
 
-  if (result.rows.length === 0) {
+
+  if (
+    result.rows.length ===
+    0
+  ) {
     return null;
   }
+
 
   const row =
     result.rows[0];
 
+
   return {
-    id: row.id,
+    id:
+      row.id,
 
     databaseName:
       row.database_name ||
@@ -822,7 +1347,7 @@ async function getTenantDatabase(
 
     databasePort:
       toNullablePort(
-        row.database_port
+        row.database_port,
       ),
 
     status:
@@ -831,48 +1356,31 @@ async function getTenantDatabase(
 
     provisionedAt:
       toIsoString(
-        row.provisioned_at
+        row.provisioned_at,
       ),
   };
 }
+
 
 /* ============================================================
    LOGIN VALIDATION
    ============================================================ */
 
-/**
- * This validation determines whether login may proceed into the
- * normal SaMi workspace.
- *
- * Billing policy:
- *
- * - Free plan:
- *     active subscription
- *
- * - Standard / Custom:
- *     trialing during the first free calendar month
- *
- * - KES 0 is due at signup
- *
- * - No PesaPal transaction is required during signup
- *
- * - past_due may still be allowed during billing grace handling
- *
- * Billing/entitlement enforcement remains authoritative in the
- * billing and entitlement layers. Login must not reintroduce the
- * old "pay before workspace access" signup model.
- */
 export function validateAccountCanLogin(
-  user: AuthUserRecord,
-  context: AccountContext
+  user:
+    AuthUserRecord,
+
+  context:
+    AccountContext,
 ): LoginValidationResult {
   const userStatus =
     normalizeStatus(
-      user.status
+      user.status,
     );
 
+
   /* ----------------------------------------------------------
-     Email verification
+     EMAIL VERIFICATION
      ---------------------------------------------------------- */
 
   if (
@@ -881,19 +1389,26 @@ export function validateAccountCanLogin(
     !user.emailVerified
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'EMAIL_NOT_VERIFIED',
+
       message:
         'Please verify your email address before signing in.',
+
       next:
         'verify-email',
     };
   }
 
+
   /* ----------------------------------------------------------
-     User status
+     USER STATUS
      ---------------------------------------------------------- */
 
   if (
@@ -901,14 +1416,20 @@ export function validateAccountCanLogin(
     'locked'
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'ACCOUNT_LOCKED',
+
       message:
         'This account is locked. Please reset your password or contact support.',
     };
   }
+
 
   if (
     [
@@ -918,258 +1439,400 @@ export function validateAccountCanLogin(
       'cancelled',
       'banned',
     ].includes(
-      userStatus
+      userStatus,
     )
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'ACCOUNT_UNAVAILABLE',
+
       message:
         'This account is not currently available for sign in.',
     };
   }
+
 
   if (
     userStatus !==
     'active'
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'ACCOUNT_NOT_ACTIVE',
+
       message:
         'Your account is not active yet.',
     };
   }
 
+
   /* ----------------------------------------------------------
-     Tenant
+     TENANT
      ---------------------------------------------------------- */
 
-  if (!context.tenant) {
+  if (
+    !context.tenant
+  ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'TENANT_NOT_FOUND',
+
       message:
-        'Your account is not linked to a business workspace yet.',
+        'Your account is not linked to an available workspace.',
     };
   }
 
+
   /* ----------------------------------------------------------
-     Membership
+     MEMBERSHIP
      ---------------------------------------------------------- */
 
-  if (!context.membership) {
+  if (
+    !context.membership
+  ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'MEMBERSHIP_NOT_FOUND',
+
       message:
         'Your account does not have access to this workspace.',
     };
   }
 
+
   const membershipStatus =
     normalizeStatus(
       context.membership
-        .status
+        .status,
     );
+
 
   if (
     membershipStatus !==
     'active'
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'MEMBERSHIP_NOT_ACTIVE',
+
       message:
         'Your workspace access is not currently active.',
     };
   }
 
+
   /* ----------------------------------------------------------
-     Tenant lifecycle
+     TENANT LIFECYCLE
      ---------------------------------------------------------- */
 
   const tenantStatus =
     normalizeStatus(
-      context.tenant.status
+      context.tenant
+        .status,
     );
+
+
+  /*
+   * Defensive closure deadline check.
+   *
+   * Normally getAccountContextForUser() already finalizes the
+   * closure before this function runs.
+   */
+  if (
+    context.tenant
+      .deletionScheduledFor &&
+    !context.tenant
+      .deletionCancelledAt
+  ) {
+    const scheduledFor =
+      new Date(
+        context.tenant
+          .deletionScheduledFor,
+      );
+
+    if (
+      !Number.isNaN(
+        scheduledFor.getTime(),
+      ) &&
+      scheduledFor.getTime() <=
+        Date.now()
+    ) {
+      return {
+        allowed:
+          false,
+
+        httpStatus:
+          403,
+
+        code:
+          'WORKSPACE_CLOSED',
+
+        message:
+          'This workspace is no longer available.',
+      };
+    }
+  }
+
 
   if (
     tenantStatus ===
     'provisioning'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'TENANT_PROVISIONING',
+
       message:
         'Your workspace is still being prepared. Please try again shortly.',
     };
   }
+
 
   if (
     tenantStatus ===
     'provisioning_failed'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'TENANT_PROVISIONING_FAILED',
+
       message:
         'Your workspace setup could not be completed. Please contact support.',
     };
   }
 
-  /*
-   * pending_payment belongs to the old registration flow.
-   *
-   * New paid SaMi registrations are trialing immediately and do
-   * not require payment before workspace access.
-   *
-   * A legacy tenant still carrying this status is therefore
-   * treated as an unavailable/incomplete workspace rather than
-   * redirecting the user into a fake signup-payment route.
-   */
+
   if (
     tenantStatus ===
     'pending_payment'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'TENANT_NOT_ACTIVE',
+
       message:
         'This workspace is not ready for access yet.',
     };
   }
+
+
+  if (
+    [
+      'deleted',
+      'cancelled',
+      'disabled',
+      'suspended',
+      'archived',
+    ].includes(
+      tenantStatus,
+    )
+  ) {
+    return {
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
+      code:
+        'TENANT_NOT_ACTIVE',
+
+      message:
+        'This workspace is not currently available.',
+    };
+  }
+
 
   if (
     tenantStatus !==
     'active'
   ) {
     return {
-      allowed: false,
-      httpStatus: 403,
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
       code:
         'TENANT_NOT_ACTIVE',
+
       message:
         'This workspace is not active.',
     };
   }
 
+
   /* ----------------------------------------------------------
-     Physical workspace database
+     PHYSICAL WORKSPACE DATABASE
      ---------------------------------------------------------- */
 
   if (
     !context.database ||
     normalizeStatus(
-      context.database.status
-    ) !== 'active'
+      context.database
+        .status,
+    ) !==
+      'active'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'WORKSPACE_NOT_READY',
+
       message:
         'Your workspace is not ready yet. Please try again shortly.',
     };
   }
 
+
   /* ----------------------------------------------------------
-     Subscription
+     SUBSCRIPTION
      ---------------------------------------------------------- */
 
   if (
     !context.subscription
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'SUBSCRIPTION_NOT_FOUND',
+
       message:
         'Your workspace subscription is not configured yet.',
     };
   }
 
+
   const subscriptionStatus =
     normalizeStatus(
       context.subscription
-        .status
+        .status,
     );
 
-  /*
-   * trialing:
-   *   Standard / Custom first calendar month free.
-   *
-   * active:
-   *   Free plan or successfully paid subscription.
-   *
-   * past_due:
-   *   Login remains possible so the billing/grace layer can
-   *   handle recovery without immediately locking the user out
-   *   of the entire SaMi account.
-   */
+
   if (
     [
       'trialing',
       'active',
       'past_due',
     ].includes(
-      subscriptionStatus
+      subscriptionStatus,
     )
   ) {
     return {
-      allowed: true,
-      httpStatus: 200,
-      code: 'OK',
+      allowed:
+        true,
+
+      httpStatus:
+        200,
+
+      code:
+        'OK',
+
       message:
         'Login allowed.',
     };
   }
+
 
   if (
     subscriptionStatus ===
     'pending'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'SUBSCRIPTION_PENDING',
+
       message:
         'Your workspace subscription is still being prepared.',
     };
   }
+
 
   if (
     subscriptionStatus ===
     'provisioning_failed'
   ) {
     return {
-      allowed: false,
-      httpStatus: 409,
+      allowed:
+        false,
+
+      httpStatus:
+        409,
+
       code:
         'SUBSCRIPTION_SETUP_FAILED',
+
       message:
         'Your workspace subscription setup could not be completed.',
     };
   }
+
 
   if (
     [
@@ -1179,27 +1842,35 @@ export function validateAccountCanLogin(
       'failed',
       'unpaid',
     ].includes(
-      subscriptionStatus
+      subscriptionStatus,
     )
   ) {
     return {
-      allowed: false,
-      httpStatus: 402,
+      allowed:
+        false,
+
+      httpStatus:
+        402,
+
       code:
         'SUBSCRIPTION_NOT_ACTIVE',
+
       message:
         'Your workspace subscription is not currently active.',
     };
   }
 
-  /*
-   * Unknown subscription states fail closed.
-   */
+
   return {
-    allowed: false,
-    httpStatus: 403,
+    allowed:
+      false,
+
+    httpStatus:
+      403,
+
     code:
       'SUBSCRIPTION_NOT_ACTIVE',
+
     message:
       'Your workspace subscription is not currently active.',
   };

@@ -97,10 +97,7 @@ const RESERVED_SLUGS =
    ============================================================ */
 
 type JsonObject =
-  Record<
-    string,
-    unknown
-  >;
+  Record<string, unknown>;
 
 
 type WorkspaceAction =
@@ -112,9 +109,16 @@ type WorkspaceAction =
   | 'reject_ownership_transfer';
 
 
+type WorkspaceManagementPolicy = {
+  adminsCanViewWorkspaceSettings: boolean;
+  adminsCanEditWorkspaceDetails: boolean;
+};
+
+
 type WorkspacePatchBody = {
   name?: unknown;
   slug?: unknown;
+  workspaceManagement?: unknown;
 };
 
 
@@ -128,7 +132,26 @@ type WorkspaceActionBody = {
 type WorkspaceIdentity = {
   tenantId: string;
   userId: string;
+
   isOwner: boolean;
+  isAdmin: boolean;
+
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+};
+
+
+type WorkspaceAccess = {
+  isOwner: boolean;
+  isAdmin: boolean;
+
+  canViewWorkspaceSettings: boolean;
+  canManageWorkspace: boolean;
+  canManageWorkspaceAccess: boolean;
+  canManageLifecycle: boolean;
+  canTransferOwnership: boolean;
 };
 
 
@@ -153,14 +176,28 @@ type AuditInput = {
 };
 
 
+type ActionContext = {
+  identity: WorkspaceIdentity;
+
+  requestMetadata:
+    ReturnType<
+      typeof getSessionRequestMetadata
+    >;
+
+  correlationId: string;
+};
+
+
 /* ============================================================
-   ERRORS
+   ERROR
    ============================================================ */
 
-class WorkspaceApiError
-  extends Error {
+class WorkspaceApiError extends Error {
   status: number;
   code: string;
+
+  retryAfterSeconds?:
+    number | null;
 
   constructor(
     status: number,
@@ -186,15 +223,14 @@ class WorkspaceApiError
    ============================================================ */
 
 function json(
-  body: Record<
-    string,
-    unknown
-  >,
-  status = 200,
-  headers?: Record<
-    string,
-    string
-  >,
+  body:
+    Record<string, unknown>,
+
+  status =
+    200,
+
+  headers?:
+    Record<string, string>,
 ) {
   return NextResponse.json(
     body,
@@ -220,12 +256,14 @@ function json(
    ============================================================ */
 
 function isObject(
-  value: unknown,
+  value:
+    unknown,
 ): value is JsonObject {
   return (
     typeof value ===
       'object' &&
-    value !== null &&
+    value !==
+      null &&
     !Array.isArray(
       value,
     )
@@ -234,9 +272,12 @@ function isObject(
 
 
 function hasOwn(
-  value: object,
-  key: string,
-): boolean {
+  value:
+    object,
+
+  key:
+    string,
+) {
   return Object.prototype
     .hasOwnProperty.call(
       value,
@@ -246,8 +287,11 @@ function hasOwn(
 
 
 function rejectUnsupportedFields(
-  body: JsonObject,
-  allowedFields: string[],
+  body:
+    JsonObject,
+
+  allowedFields:
+    string[],
 ) {
   const allowed =
     new Set(
@@ -258,7 +302,7 @@ function rejectUnsupportedFields(
     Object.keys(
       body,
     ).filter(
-      (key) =>
+      key =>
         !allowed.has(
           key,
         ),
@@ -282,14 +326,18 @@ function rejectUnsupportedFields(
    ============================================================ */
 
 function toIso(
-  value: unknown,
+  value:
+    unknown,
 ): string | null {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 
   const date =
-    value instanceof Date
+    value instanceof
+      Date
       ? value
       : new Date(
           String(
@@ -314,7 +362,8 @@ function toIso(
    ============================================================ */
 
 function isUuid(
-  value: unknown,
+  value:
+    unknown,
 ): value is string {
   return (
     typeof value ===
@@ -327,11 +376,12 @@ function isUuid(
 
 
 /* ============================================================
-   REQUEST ORIGIN
+   ORIGIN
    ============================================================ */
 
 function requireSameOrigin(
-  request: NextRequest,
+  request:
+    NextRequest,
 ) {
   const secFetchSite =
     request.headers
@@ -340,6 +390,7 @@ function requireSameOrigin(
       )
       ?.trim()
       .toLowerCase();
+
 
   if (
     secFetchSite ===
@@ -353,25 +404,25 @@ function requireSameOrigin(
   }
 
 
-  const requestOrigin =
+  const expectedOrigin =
     request.nextUrl.origin;
 
 
-  const originHeader =
+  const origin =
     request.headers.get(
       'origin',
     );
 
-  if (originHeader) {
-    try {
-      const origin =
-        new URL(
-          originHeader,
-        ).origin;
 
+  if (
+    origin
+  ) {
+    try {
       if (
-        origin !==
-        requestOrigin
+        new URL(
+          origin,
+        ).origin !==
+        expectedOrigin
       ) {
         throw new WorkspaceApiError(
           403,
@@ -395,27 +446,26 @@ function requireSameOrigin(
         'This request could not be verified.',
       );
     }
+
+    return;
   }
 
 
-  const refererHeader =
+  const referer =
     request.headers.get(
       'referer',
     );
 
+
   if (
-    !originHeader &&
-    refererHeader
+    referer
   ) {
     try {
-      const refererOrigin =
-        new URL(
-          refererHeader,
-        ).origin;
-
       if (
-        refererOrigin !==
-        requestOrigin
+        new URL(
+          referer,
+        ).origin !==
+        expectedOrigin
       ) {
         throw new WorkspaceApiError(
           403,
@@ -448,7 +498,8 @@ function requireSameOrigin(
    ============================================================ */
 
 async function readJsonBody(
-  request: NextRequest,
+  request:
+    NextRequest,
 ): Promise<JsonObject> {
   const contentType =
     request.headers
@@ -457,6 +508,7 @@ async function readJsonBody(
       )
       ?.toLowerCase() ||
     '';
+
 
   if (
     !contentType.includes(
@@ -471,37 +523,32 @@ async function readJsonBody(
   }
 
 
-  const contentLengthHeader =
-    request.headers.get(
-      'content-length',
+  const contentLength =
+    Number(
+      request.headers.get(
+        'content-length',
+      ),
     );
 
-  if (
-    contentLengthHeader
-  ) {
-    const contentLength =
-      Number(
-        contentLengthHeader,
-      );
 
-    if (
-      Number.isFinite(
-        contentLength,
-      ) &&
-      contentLength >
-        MAX_BODY_BYTES
-    ) {
-      throw new WorkspaceApiError(
-        413,
-        'REQUEST_TOO_LARGE',
-        'The request is too large.',
-      );
-    }
+  if (
+    Number.isFinite(
+      contentLength,
+    ) &&
+    contentLength >
+      MAX_BODY_BYTES
+  ) {
+    throw new WorkspaceApiError(
+      413,
+      'REQUEST_TOO_LARGE',
+      'The request is too large.',
+    );
   }
 
 
   const raw =
     await request.text();
+
 
   if (
     Buffer.byteLength(
@@ -531,6 +578,7 @@ async function readJsonBody(
 
   let parsed:
     unknown;
+
 
   try {
     parsed =
@@ -564,12 +612,13 @@ async function readJsonBody(
 
 
 /* ============================================================
-   WORKSPACE NAME
+   VALIDATION
    ============================================================ */
 
 function normalizeWorkspaceName(
-  value: unknown,
-): string {
+  value:
+    unknown,
+) {
   if (
     typeof value !==
     'string'
@@ -593,24 +642,14 @@ function normalizeWorkspaceName(
 
   if (
     normalized.length <
-    WORKSPACE_NAME_MIN_LENGTH
-  ) {
-    throw new WorkspaceApiError(
-      400,
-      'INVALID_WORKSPACE_NAME',
-      'Workspace name is too short.',
-    );
-  }
-
-
-  if (
+      WORKSPACE_NAME_MIN_LENGTH ||
     normalized.length >
-    WORKSPACE_NAME_MAX_LENGTH
+      WORKSPACE_NAME_MAX_LENGTH
   ) {
     throw new WorkspaceApiError(
       400,
       'INVALID_WORKSPACE_NAME',
-      'Workspace name is too long.',
+      `Workspace name must be between ${WORKSPACE_NAME_MIN_LENGTH} and ${WORKSPACE_NAME_MAX_LENGTH} characters.`,
     );
   }
 
@@ -619,13 +658,10 @@ function normalizeWorkspaceName(
 }
 
 
-/* ============================================================
-   WORKSPACE SLUG
-   ============================================================ */
-
 function normalizeWorkspaceSlug(
-  value: unknown,
-): string {
+  value:
+    unknown,
+) {
   if (
     typeof value !==
     'string'
@@ -653,7 +689,7 @@ function normalizeWorkspaceSlug(
     throw new WorkspaceApiError(
       400,
       'INVALID_WORKSPACE_SLUG',
-      'Workspace address must be between 3 and 200 characters.',
+      `Workspace address must be between ${WORKSPACE_SLUG_MIN_LENGTH} and ${WORKSPACE_SLUG_MAX_LENGTH} characters.`,
     );
   }
 
@@ -689,14 +725,364 @@ function normalizeWorkspaceSlug(
 
 
 /* ============================================================
+   POLICY
+   ============================================================ */
+
+function defaultWorkspaceManagementPolicy():
+  WorkspaceManagementPolicy {
+  return {
+    adminsCanViewWorkspaceSettings:
+      false,
+
+    adminsCanEditWorkspaceDetails:
+      false,
+  };
+}
+
+
+function booleanFromUnknown(
+  value:
+    unknown,
+
+  fallback:
+    boolean,
+) {
+  return typeof value ===
+    'boolean'
+    ? value
+    : fallback;
+}
+
+
+function parseWorkspaceManagementPolicy(
+  value:
+    unknown,
+): WorkspaceManagementPolicy {
+  const defaults =
+    defaultWorkspaceManagementPolicy();
+
+
+  if (
+    !isObject(
+      value,
+    )
+  ) {
+    return defaults;
+  }
+
+
+  const canView =
+    booleanFromUnknown(
+      value
+        .adminsCanViewWorkspaceSettings,
+
+      defaults
+        .adminsCanViewWorkspaceSettings,
+    );
+
+
+  const canEdit =
+    booleanFromUnknown(
+      value
+        .adminsCanEditWorkspaceDetails,
+
+      defaults
+        .adminsCanEditWorkspaceDetails,
+    );
+
+
+  return {
+    adminsCanViewWorkspaceSettings:
+      canView ||
+      canEdit,
+
+    adminsCanEditWorkspaceDetails:
+      canEdit,
+  };
+}
+
+
+function normalizeWorkspaceManagementPatch(
+  value:
+    unknown,
+
+  current:
+    WorkspaceManagementPolicy,
+): WorkspaceManagementPolicy {
+  if (
+    !isObject(
+      value,
+    )
+  ) {
+    throw new WorkspaceApiError(
+      400,
+      'INVALID_WORKSPACE_ACCESS',
+      'Workspace access settings are invalid.',
+    );
+  }
+
+
+  rejectUnsupportedFields(
+    value,
+    [
+      'adminsCanViewWorkspaceSettings',
+      'adminsCanEditWorkspaceDetails',
+    ],
+  );
+
+
+  const hasView =
+    hasOwn(
+      value,
+      'adminsCanViewWorkspaceSettings',
+    );
+
+
+  const hasEdit =
+    hasOwn(
+      value,
+      'adminsCanEditWorkspaceDetails',
+    );
+
+
+  if (
+    !hasView &&
+    !hasEdit
+  ) {
+    throw new WorkspaceApiError(
+      400,
+      'NO_WORKSPACE_ACCESS_CHANGES',
+      'No workspace access changes were provided.',
+    );
+  }
+
+
+  if (
+    hasView &&
+    typeof value
+      .adminsCanViewWorkspaceSettings !==
+      'boolean'
+  ) {
+    throw new WorkspaceApiError(
+      400,
+      'INVALID_WORKSPACE_ACCESS',
+      'Workspace access settings are invalid.',
+    );
+  }
+
+
+  if (
+    hasEdit &&
+    typeof value
+      .adminsCanEditWorkspaceDetails !==
+      'boolean'
+  ) {
+    throw new WorkspaceApiError(
+      400,
+      'INVALID_WORKSPACE_ACCESS',
+      'Workspace access settings are invalid.',
+    );
+  }
+
+
+  let canView =
+    hasView
+      ? value
+          .adminsCanViewWorkspaceSettings as boolean
+      : current
+          .adminsCanViewWorkspaceSettings;
+
+
+  let canEdit =
+    hasEdit
+      ? value
+          .adminsCanEditWorkspaceDetails as boolean
+      : current
+          .adminsCanEditWorkspaceDetails;
+
+
+  if (
+    canEdit
+  ) {
+    canView =
+      true;
+  }
+
+
+  if (
+    !canView
+  ) {
+    canEdit =
+      false;
+  }
+
+
+  return {
+    adminsCanViewWorkspaceSettings:
+      canView,
+
+    adminsCanEditWorkspaceDetails:
+      canEdit,
+  };
+}
+
+
+async function loadWorkspaceManagementPolicy(
+  tenantId:
+    string,
+): Promise<WorkspaceManagementPolicy> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          settings -> 'workspaceManagement'
+            AS workspace_management
+
+        FROM tenant_settings
+
+        WHERE tenant_id = $1
+
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
+    return defaultWorkspaceManagementPolicy();
+  }
+
+
+  return parseWorkspaceManagementPolicy(
+    result.rows[0]
+      .workspace_management,
+  );
+}
+
+
+async function loadWorkspaceManagementPolicyForUpdate(
+  client:
+    PoolClient,
+
+  tenantId:
+    string,
+) {
+  await client.query(
+    `
+      INSERT INTO tenant_settings (
+        tenant_id,
+        settings,
+        created_at,
+        updated_at
+      )
+
+      VALUES (
+        $1,
+        '{}'::jsonb,
+        NOW(),
+        NOW()
+      )
+
+      ON CONFLICT (tenant_id)
+      DO NOTHING
+    `,
+    [
+      tenantId,
+    ],
+  );
+
+
+  const result =
+    await client.query(
+      `
+        SELECT
+          settings -> 'workspaceManagement'
+            AS workspace_management
+
+        FROM tenant_settings
+
+        WHERE tenant_id = $1
+
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+
+  return parseWorkspaceManagementPolicy(
+    result.rows[0]
+      ?.workspace_management,
+  );
+}
+
+
+function buildWorkspaceAccess(
+  identity:
+    WorkspaceIdentity,
+
+  policy:
+    WorkspaceManagementPolicy,
+): WorkspaceAccess {
+  const adminCanView =
+    identity.isAdmin &&
+    policy
+      .adminsCanViewWorkspaceSettings;
+
+
+  const adminCanEdit =
+    adminCanView &&
+    policy
+      .adminsCanEditWorkspaceDetails;
+
+
+  return {
+    isOwner:
+      identity.isOwner,
+
+    isAdmin:
+      identity.isAdmin,
+
+    canViewWorkspaceSettings:
+      identity.isOwner ||
+      adminCanView,
+
+    canManageWorkspace:
+      identity.isOwner ||
+      adminCanEdit,
+
+    canManageWorkspaceAccess:
+      identity.isOwner,
+
+    canManageLifecycle:
+      identity.isOwner,
+
+    canTransferOwnership:
+      identity.isOwner,
+  };
+}
+
+
+/* ============================================================
    AUTHENTICATED WORKSPACE
    ============================================================ */
 
-async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
+async function requireWorkspaceIdentity():
+  Promise<WorkspaceIdentity> {
   const session =
     await getSession();
 
-  if (!session) {
+
+  if (
+    !session
+  ) {
     throw new WorkspaceApiError(
       401,
       'UNAUTHENTICATED',
@@ -724,7 +1110,8 @@ async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
 
 
   if (
-    context.membership.status
+    context.membership
+      .status
       .trim()
       .toLowerCase() !==
     'active'
@@ -746,7 +1133,17 @@ async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
 
     isOwner:
       context.membership
-        .isOwner === true,
+        .isOwner ===
+      true,
+
+    isAdmin:
+      context.membership
+        .isAdmin ===
+      true,
+
+    accessLevel:
+      context.membership
+        .accessLevel,
   };
 }
 
@@ -756,22 +1153,35 @@ async function requireWorkspaceIdentity(): Promise<WorkspaceIdentity> {
    ============================================================ */
 
 async function requireOwnerInTransaction(
-  client: PoolClient,
-  tenantId: string,
-  userId: string,
+  client:
+    PoolClient,
+
+  tenantId:
+    string,
+
+  userId:
+    string,
 ) {
   const result =
     await client.query(
       `
-        SELECT
-          id
+        SELECT id
+
         FROM tenant_users
+
         WHERE tenant_id = $1
           AND user_id = $2
           AND is_owner = TRUE
-          AND LOWER(COALESCE(status, '')) = 'active'
+          AND LOWER(
+            COALESCE(
+              status,
+              ''
+            )
+          ) = 'active'
           AND deleted_at IS NULL
+
         LIMIT 1
+
         FOR UPDATE
       `,
       [
@@ -799,11 +1209,20 @@ async function requireOwnerInTransaction(
    ============================================================ */
 
 async function requireRateLimit(
-  identifier: string,
-  action: string,
-  maxAttempts: number,
-  windowMs: number,
-  blockMs: number,
+  identifier:
+    string,
+
+  action:
+    string,
+
+  maxAttempts:
+    number,
+
+  windowMs:
+    number,
+
+  blockMs:
+    number,
 ) {
   const result =
     await checkRateLimit({
@@ -825,12 +1244,10 @@ async function requireRateLimit(
         'Too many requests. Please try again later.',
       );
 
-    (
-      error as WorkspaceApiError & {
-        retryAfterSeconds?: number | null;
-      }
-    ).retryAfterSeconds =
+
+    error.retryAfterSeconds =
       result.retryAfterSeconds;
+
 
     throw error;
   }
@@ -842,7 +1259,8 @@ async function requireRateLimit(
    ============================================================ */
 
 async function insertAudit(
-  input: AuditInput,
+  input:
+    AuditInput,
 ) {
   await input.client.query(
     `
@@ -863,6 +1281,7 @@ async function insertAudit(
         entity_type,
         entity_id
       )
+
       VALUES (
         $1,
         $2,
@@ -885,17 +1304,22 @@ async function insertAudit(
       input.tenantId,
       input.userId,
       input.action,
+
       JSON.stringify(
         input.metadata ||
-          {},
+        {},
       ),
+
       input.ipAddress
         .slice(
           0,
           45,
         ),
+
       input.userAgent,
+
       input.correlationId,
+
       input.eventType,
     ],
   );
@@ -903,19 +1327,24 @@ async function insertAudit(
 
 
 /* ============================================================
-   EXPIRED OWNERSHIP TRANSFERS
+   EXPIRE OWNERSHIP TRANSFERS
    ============================================================ */
 
 async function expireOldTransfers(
-  client: PoolClient,
-  tenantId: string,
+  client:
+    PoolClient,
+
+  tenantId:
+    string,
 ) {
   await client.query(
     `
       UPDATE tenant_ownership_transfers
+
       SET
         status = 'expired',
         updated_at = NOW()
+
       WHERE tenant_id = $1
         AND status = 'pending'
         AND expires_at <= NOW()
@@ -937,10 +1366,106 @@ export async function GET() {
       await requireWorkspaceIdentity();
 
 
+    const policy =
+      await loadWorkspaceManagementPolicy(
+        identity.tenantId,
+      );
+
+
+    const access =
+      buildWorkspaceAccess(
+        identity,
+        policy,
+      );
+
+
+    const pendingTransferResult =
+      await queryControl(
+        `
+          SELECT
+            transfer.id,
+            transfer.from_user_id,
+            transfer.to_user_id,
+            transfer.status,
+            transfer.requested_at,
+            transfer.expires_at,
+
+            from_user.email
+              AS from_email,
+
+            from_user.full_name
+              AS from_full_name,
+
+            to_user.email
+              AS to_email,
+
+            to_user.full_name
+              AS to_full_name
+
+          FROM tenant_ownership_transfers
+            transfer
+
+          INNER JOIN users
+            from_user
+            ON from_user.id =
+               transfer.from_user_id
+
+          INNER JOIN users
+            to_user
+            ON to_user.id =
+               transfer.to_user_id
+
+          WHERE transfer.tenant_id = $1
+            AND transfer.status = 'pending'
+            AND transfer.expires_at > NOW()
+
+            AND (
+              transfer.from_user_id = $2
+              OR transfer.to_user_id = $2
+            )
+
+          ORDER BY
+            transfer.requested_at DESC
+
+          LIMIT 1
+        `,
+        [
+          identity.tenantId,
+          identity.userId,
+        ],
+      );
+
+
+    const transfer =
+      pendingTransferResult
+        .rows[0] ||
+      null;
+
+
+    const hasIncomingTransfer =
+      Boolean(
+        transfer &&
+        transfer.to_user_id ===
+          identity.userId,
+      );
+
+
+    if (
+      !access
+        .canViewWorkspaceSettings &&
+      !hasIncomingTransfer
+    ) {
+      throw new WorkspaceApiError(
+        403,
+        'WORKSPACE_SETTINGS_ACCESS_DENIED',
+        'Workspace settings are managed by the workspace owner.',
+      );
+    }
+
+
     const [
       workspaceResult,
       ownerResult,
-      pendingTransferResult,
       transferCandidatesResult,
     ] =
       await Promise.all([
@@ -961,15 +1486,19 @@ export async function GET() {
               deletion_scheduled_for,
               deletion_cancelled_at,
               deletion_cancelled_by
+
             FROM tenants
+
             WHERE id = $1
               AND deleted_at IS NULL
+
             LIMIT 1
           `,
           [
             identity.tenantId,
           ],
         ),
+
 
         queryControl(
           `
@@ -979,16 +1508,28 @@ export async function GET() {
               u.first_name,
               u.last_name,
               u.full_name
+
             FROM tenant_users tu
 
             INNER JOIN users u
-              ON u.id = tu.user_id
+              ON u.id =
+                 tu.user_id
 
             WHERE tu.tenant_id = $1
               AND tu.is_owner = TRUE
-              AND LOWER(COALESCE(tu.status, '')) = 'active'
-              AND tu.deleted_at IS NULL
-              AND u.deleted_at IS NULL
+
+              AND LOWER(
+                COALESCE(
+                  tu.status,
+                  ''
+                )
+              ) = 'active'
+
+              AND tu.deleted_at
+                  IS NULL
+
+              AND u.deleted_at
+                  IS NULL
 
             LIMIT 1
           `,
@@ -997,56 +1538,6 @@ export async function GET() {
           ],
         ),
 
-        queryControl(
-          `
-            SELECT
-              transfer.id,
-              transfer.from_user_id,
-              transfer.to_user_id,
-              transfer.status,
-              transfer.requested_at,
-              transfer.expires_at,
-
-              from_user.email
-                AS from_email,
-
-              from_user.full_name
-                AS from_full_name,
-
-              to_user.email
-                AS to_email,
-
-              to_user.full_name
-                AS to_full_name
-
-            FROM tenant_ownership_transfers transfer
-
-            INNER JOIN users from_user
-              ON from_user.id =
-                 transfer.from_user_id
-
-            INNER JOIN users to_user
-              ON to_user.id =
-                 transfer.to_user_id
-
-            WHERE transfer.tenant_id = $1
-              AND transfer.status = 'pending'
-              AND transfer.expires_at > NOW()
-              AND (
-                transfer.from_user_id = $2
-                OR transfer.to_user_id = $2
-              )
-
-            ORDER BY
-              transfer.requested_at DESC
-
-            LIMIT 1
-          `,
-          [
-            identity.tenantId,
-            identity.userId,
-          ],
-        ),
 
         identity.isOwner
           ? queryControl(
@@ -1057,17 +1548,35 @@ export async function GET() {
                   u.first_name,
                   u.last_name,
                   u.full_name
+
                 FROM tenant_users tu
 
                 INNER JOIN users u
-                  ON u.id = tu.user_id
+                  ON u.id =
+                     tu.user_id
 
                 WHERE tu.tenant_id = $1
                   AND tu.is_owner = FALSE
-                  AND LOWER(COALESCE(tu.status, '')) = 'active'
-                  AND tu.deleted_at IS NULL
-                  AND u.deleted_at IS NULL
-                  AND LOWER(COALESCE(u.status, '')) = 'active'
+
+                  AND LOWER(
+                    COALESCE(
+                      tu.status,
+                      ''
+                    )
+                  ) = 'active'
+
+                  AND tu.deleted_at
+                      IS NULL
+
+                  AND u.deleted_at
+                      IS NULL
+
+                  AND LOWER(
+                    COALESCE(
+                      u.status,
+                      ''
+                    )
+                  ) = 'active'
 
                 ORDER BY
                   COALESCE(
@@ -1091,21 +1600,14 @@ export async function GET() {
 
 
     if (
-      workspaceResult.rows.length ===
+      workspaceResult
+        .rows.length ===
       0
     ) {
-      return json(
-        {
-          success:
-            false,
-
-          code:
-            'WORKSPACE_NOT_FOUND',
-
-          error:
-            'The workspace could not be found.',
-        },
+      throw new WorkspaceApiError(
         404,
+        'WORKSPACE_NOT_FOUND',
+        'The workspace could not be found.',
       );
     }
 
@@ -1113,13 +1615,9 @@ export async function GET() {
     const workspace =
       workspaceResult.rows[0];
 
+
     const owner =
       ownerResult.rows[0] ||
-      null;
-
-    const transfer =
-      pendingTransferResult
-        .rows[0] ||
       null;
 
 
@@ -1173,7 +1671,8 @@ export async function GET() {
         lifecycle: {
           archivedAt:
             toIso(
-              workspace.archived_at,
+              workspace
+                .archived_at,
             ),
 
           deletionPending,
@@ -1198,19 +1697,13 @@ export async function GET() {
         },
       },
 
-      access: {
-        isOwner:
-          identity.isOwner,
 
-        canManageWorkspace:
-          identity.isOwner,
+      access,
 
-        canManageLifecycle:
-          identity.isOwner,
 
-        canTransferOwnership:
-          identity.isOwner,
-      },
+      workspaceManagement:
+        policy,
+
 
       owner:
         owner
@@ -1234,6 +1727,7 @@ export async function GET() {
                 '',
             }
           : null,
+
 
       ownershipTransfer:
         transfer
@@ -1294,32 +1788,44 @@ export async function GET() {
             }
           : null,
 
+
       transferCandidates:
         transferCandidatesResult
-          .rows.map(
+          .rows
+          .map(
             (
-              row: Record<
-                string,
-                any
-              >,
+              row:
+                Record<string, unknown>,
             ) => ({
               id:
-                row.id,
+                String(
+                  row.id ||
+                  '',
+                ),
 
               email:
-                row.email,
+                String(
+                  row.email ||
+                  '',
+                ),
 
               firstName:
-                row.first_name ||
-                '',
+                String(
+                  row.first_name ||
+                  '',
+                ),
 
               lastName:
-                row.last_name ||
-                '',
+                String(
+                  row.last_name ||
+                  '',
+                ),
 
               fullName:
-                row.full_name ||
-                '',
+                String(
+                  row.full_name ||
+                  '',
+                ),
             }),
           ),
     });
@@ -1336,11 +1842,12 @@ export async function GET() {
 
 /* ============================================================
    PATCH
-   Workspace identity
+   DETAILS + OWNER-CONTROLLED MANAGEMENT ACCESS
    ============================================================ */
 
 export async function PATCH(
-  request: NextRequest,
+  request:
+    NextRequest,
 ) {
   try {
     requireSameOrigin(
@@ -1350,17 +1857,6 @@ export async function PATCH(
 
     const identity =
       await requireWorkspaceIdentity();
-
-
-    if (
-      !identity.isOwner
-    ) {
-      throw new WorkspaceApiError(
-        403,
-        'OWNER_REQUIRED',
-        'Only the workspace owner can change workspace details.',
-      );
-    }
 
 
     await requireRateLimit(
@@ -1383,6 +1879,7 @@ export async function PATCH(
       [
         'name',
         'slug',
+        'workspaceManagement',
       ],
     );
 
@@ -1397,6 +1894,7 @@ export async function PATCH(
         'name',
       );
 
+
     const hasSlug =
       hasOwn(
         body,
@@ -1404,9 +1902,17 @@ export async function PATCH(
       );
 
 
+    const hasManagement =
+      hasOwn(
+        body,
+        'workspaceManagement',
+      );
+
+
     if (
       !hasName &&
-      !hasSlug
+      !hasSlug &&
+      !hasManagement
     ) {
       throw new WorkspaceApiError(
         400,
@@ -1416,14 +1922,15 @@ export async function PATCH(
     }
 
 
-    const name =
+    const nextRequestedName =
       hasName
         ? normalizeWorkspaceName(
             body.name,
           )
         : null;
 
-    const slug =
+
+    const nextRequestedSlug =
       hasSlug
         ? normalizeWorkspaceSlug(
             body.slug,
@@ -1436,37 +1943,33 @@ export async function PATCH(
         request,
       );
 
+
     const correlationId =
       crypto.randomUUID();
 
 
-    const workspace =
+    const result =
       await withControlTransaction(
-        async (
-          client,
-        ) => {
-          await requireOwnerInTransaction(
-            client,
-            identity.tenantId,
-            identity.userId,
-          );
-
-
-          const currentResult =
+        async client => {
+          const workspaceResult =
             await client.query(
               `
                 SELECT
                   id,
                   name,
                   slug,
+                  logo_url,
                   status,
-                  deletion_requested_at,
-                  deletion_scheduled_for,
-                  deletion_cancelled_at
+                  created_at,
+                  updated_at
+
                 FROM tenants
+
                 WHERE id = $1
                   AND deleted_at IS NULL
+
                 LIMIT 1
+
                 FOR UPDATE
               `,
               [
@@ -1476,8 +1979,8 @@ export async function PATCH(
 
 
           if (
-            currentResult.rows
-              .length ===
+            workspaceResult
+              .rows.length ===
             0
           ) {
             throw new WorkspaceApiError(
@@ -1488,136 +1991,274 @@ export async function PATCH(
           }
 
 
-          const current =
-            currentResult.rows[0];
+          const workspace =
+            workspaceResult.rows[0];
 
 
           if (
             String(
-              current.status ||
-                '',
+              workspace.status ||
+              '',
             )
+              .trim()
               .toLowerCase() !==
             'active'
           ) {
             throw new WorkspaceApiError(
               409,
               'WORKSPACE_NOT_ACTIVE',
-              'Workspace details cannot be changed while the workspace is unavailable.',
+              'Workspace settings cannot be changed while the workspace is unavailable.',
+            );
+          }
+
+
+          const currentPolicy =
+            await loadWorkspaceManagementPolicyForUpdate(
+              client,
+              identity.tenantId,
+            );
+
+
+          const currentAccess =
+            buildWorkspaceAccess(
+              identity,
+              currentPolicy,
+            );
+
+
+          if (
+            (
+              hasName ||
+              hasSlug
+            ) &&
+            !currentAccess
+              .canManageWorkspace
+          ) {
+            throw new WorkspaceApiError(
+              403,
+              'WORKSPACE_EDIT_ACCESS_DENIED',
+              'You do not have permission to change workspace details.',
+            );
+          }
+
+
+          if (
+            hasManagement &&
+            !identity.isOwner
+          ) {
+            throw new WorkspaceApiError(
+              403,
+              'OWNER_REQUIRED',
+              'Only the workspace owner can change workspace management access.',
             );
           }
 
 
           const nextName =
-            name ??
-            current.name;
+            nextRequestedName ??
+            workspace.name;
+
 
           const nextSlug =
-            slug ??
-            current.slug;
+            nextRequestedSlug ??
+            workspace.slug;
+
+
+          let nextPolicy =
+            currentPolicy;
 
 
           if (
-            nextName ===
-              current.name &&
-            nextSlug ===
-              current.slug
+            hasManagement
           ) {
-            return {
-              id:
-                current.id,
-
-              name:
-                current.name,
-
-              slug:
-                current.slug,
-
-              status:
-                current.status,
-
-              unchanged:
-                true,
-            };
+            nextPolicy =
+              normalizeWorkspaceManagementPatch(
+                body.workspaceManagement,
+                currentPolicy,
+              );
           }
 
 
-          const updated =
+          const detailsChanged =
+            nextName !==
+              workspace.name ||
+            nextSlug !==
+              workspace.slug;
+
+
+          const policyChanged =
+            nextPolicy
+              .adminsCanViewWorkspaceSettings !==
+              currentPolicy
+                .adminsCanViewWorkspaceSettings ||
+            nextPolicy
+              .adminsCanEditWorkspaceDetails !==
+              currentPolicy
+                .adminsCanEditWorkspaceDetails;
+
+
+          let finalWorkspace =
+            workspace;
+
+
+          if (
+            detailsChanged
+          ) {
+            const updated =
+              await client.query(
+                `
+                  UPDATE tenants
+
+                  SET
+                    name = $2,
+                    slug = $3,
+                    updated_at = NOW()
+
+                  WHERE id = $1
+                    AND deleted_at IS NULL
+
+                  RETURNING
+                    id,
+                    name,
+                    slug,
+                    logo_url,
+                    status,
+                    created_at,
+                    updated_at
+                `,
+                [
+                  identity.tenantId,
+                  nextName,
+                  nextSlug,
+                ],
+              );
+
+
+            finalWorkspace =
+              updated.rows[0];
+          }
+
+
+          if (
+            policyChanged
+          ) {
             await client.query(
               `
-                UPDATE tenants
+                UPDATE tenant_settings
+
                 SET
-                  name = $2,
-                  slug = $3
-                WHERE id = $1
-                  AND deleted_at IS NULL
-                RETURNING
-                  id,
-                  name,
-                  slug,
-                  logo_url,
-                  status,
-                  created_at,
-                  updated_at
+                  settings =
+                    jsonb_set(
+                      settings,
+                      '{workspaceManagement}',
+                      $2::jsonb,
+                      TRUE
+                    ),
+
+                  updated_at =
+                    NOW()
+
+                WHERE tenant_id = $1
               `,
               [
                 identity.tenantId,
-                nextName,
-                nextSlug,
+
+                JSON.stringify(
+                  nextPolicy,
+                ),
               ],
             );
+          }
 
 
-          await insertAudit({
-            client,
+          if (
+            detailsChanged ||
+            policyChanged
+          ) {
+            await insertAudit({
+              client,
 
-            tenantId:
-              identity.tenantId,
+              tenantId:
+                identity.tenantId,
 
-            userId:
-              identity.userId,
+              userId:
+                identity.userId,
 
-            action:
-              'workspace.updated',
+              action:
+                policyChanged &&
+                !detailsChanged
+                  ? 'workspace.management_access_updated'
+                  : 'workspace.updated',
 
-            eventType:
-              'workspace.updated',
+              eventType:
+                policyChanged &&
+                !detailsChanged
+                  ? 'workspace.management_access_updated'
+                  : 'workspace.updated',
 
-            metadata: {
-              before: {
-                name:
-                  current.name,
+              metadata: {
+                details:
+                  detailsChanged
+                    ? {
+                        before: {
+                          name:
+                            workspace.name,
 
-                slug:
-                  current.slug,
+                          slug:
+                            workspace.slug,
+                        },
+
+                        after: {
+                          name:
+                            nextName,
+
+                          slug:
+                            nextSlug,
+                        },
+                      }
+                    : undefined,
+
+                workspaceManagement:
+                  policyChanged
+                    ? {
+                        before:
+                          currentPolicy,
+
+                        after:
+                          nextPolicy,
+                      }
+                    : undefined,
               },
 
-              after: {
-                name:
-                  nextName,
+              ipAddress:
+                requestMetadata
+                  .ipAddress,
 
-                slug:
-                  nextSlug,
-              },
-            },
+              userAgent:
+                requestMetadata
+                  .userAgent,
 
-            ipAddress:
-              requestMetadata
-                .ipAddress,
-
-            userAgent:
-              requestMetadata
-                .userAgent,
-
-            correlationId,
-          });
+              correlationId,
+            });
+          }
 
 
           return {
-            ...updated.rows[0],
+            workspace:
+              finalWorkspace,
+
+            workspaceManagement:
+              nextPolicy,
+
+            access:
+              buildWorkspaceAccess(
+                identity,
+                nextPolicy,
+              ),
 
             unchanged:
-              false,
+              !detailsChanged &&
+              !policyChanged,
           };
         },
       );
@@ -1628,84 +2269,55 @@ export async function PATCH(
         true,
 
       code:
-        workspace.unchanged
+        result.unchanged
           ? 'WORKSPACE_UNCHANGED'
           : 'WORKSPACE_UPDATED',
 
       message:
-        workspace.unchanged
-          ? 'Workspace details are already up to date.'
-          : 'Workspace details were updated.',
+        result.unchanged
+          ? 'Workspace settings are already up to date.'
+          : 'Workspace settings were updated.',
 
       workspace: {
         id:
-          workspace.id,
+          result.workspace.id,
 
         name:
-          workspace.name,
+          result.workspace.name,
 
         slug:
-          workspace.slug,
+          result.workspace.slug,
 
         logoUrl:
-          workspace.logo_url ||
+          result.workspace
+            .logo_url ||
           null,
 
         status:
-          workspace.status,
+          result.workspace.status,
 
         createdAt:
           toIso(
-            workspace.created_at,
+            result.workspace
+              .created_at,
           ),
 
         updatedAt:
           toIso(
-            workspace.updated_at,
+            result.workspace
+              .updated_at,
           ),
       },
+
+      workspaceManagement:
+        result.workspaceManagement,
+
+      access:
+        result.access,
     });
   } catch (
     error
   ) {
-    const databaseError =
-      error as {
-        code?: string;
-        constraint?: string;
-      };
-
-
-    if (
-      databaseError.code ===
-        '23505' &&
-      (
-        databaseError
-          .constraint ===
-          'tenants_slug_key' ||
-        databaseError
-          .constraint ===
-          'idx_tenants_active_slug' ||
-        databaseError
-          .constraint ===
-          'idx_tenants_slug'
-      )
-    ) {
-      return json(
-        {
-          success:
-            false,
-
-          code:
-            'WORKSPACE_SLUG_TAKEN',
-
-          error:
-            'That workspace address is already in use.',
-        },
-        409,
-      );
-    }
-
-
     return handleError(
       error,
       '[Workspace PATCH]',
@@ -1716,11 +2328,11 @@ export async function PATCH(
 
 /* ============================================================
    POST
-   Workspace lifecycle + ownership
    ============================================================ */
 
 export async function POST(
-  request: NextRequest,
+  request:
+    NextRequest,
 ) {
   try {
     requireSameOrigin(
@@ -1772,8 +2384,7 @@ export async function POST(
 
 
     const supportedActions:
-      WorkspaceAction[] =
-      [
+      WorkspaceAction[] = [
         'request_deletion',
         'cancel_deletion',
         'request_ownership_transfer',
@@ -1796,76 +2407,77 @@ export async function POST(
     }
 
 
-    const requestMetadata =
-      getSessionRequestMetadata(
-        request,
-      );
+    const context:
+      ActionContext = {
+      identity,
 
-    const correlationId =
-      crypto.randomUUID();
+      requestMetadata:
+        getSessionRequestMetadata(
+          request,
+        ),
+
+      correlationId:
+        crypto.randomUUID(),
+    };
 
 
     switch (
       action
     ) {
       case 'request_deletion':
-        return await requestDeletion({
-          identity,
-          requestMetadata,
-          correlationId,
-        });
+        return requestDeletion(
+          context,
+        );
 
 
       case 'cancel_deletion':
-        return await cancelDeletion({
-          identity,
-          requestMetadata,
-          correlationId,
-        });
+        return cancelDeletion(
+          context,
+        );
 
 
       case 'request_ownership_transfer':
-        return await requestOwnershipTransfer({
-          identity,
-          targetUserId:
-            body.targetUserId,
+        return requestOwnershipTransfer(
+          {
+            ...context,
 
-          requestMetadata,
-          correlationId,
-        });
+            targetUserId:
+              body.targetUserId,
+          },
+        );
 
 
       case 'cancel_ownership_transfer':
-        return await cancelOwnershipTransfer({
-          identity,
-          transferId:
-            body.transferId,
+        return cancelOwnershipTransfer(
+          {
+            ...context,
 
-          requestMetadata,
-          correlationId,
-        });
+            transferId:
+              body.transferId,
+          },
+        );
 
 
       case 'accept_ownership_transfer':
-        return await acceptOwnershipTransfer({
-          identity,
-          transferId:
-            body.transferId,
+        return acceptOwnershipTransfer(
+          {
+            ...context,
 
-          requestMetadata,
-          correlationId,
-        });
+            transferId:
+              body.transferId,
+          },
+        );
 
 
       case 'reject_ownership_transfer':
-        return await rejectOwnershipTransfer({
-          identity,
-          transferId:
-            body.transferId,
+        return rejectOwnershipTransfer(
+          {
+            ...context,
 
-          requestMetadata,
-          correlationId,
-        });
+            transferId:
+              body.transferId,
+          },
+        );
     }
   } catch (
     error
@@ -1879,22 +2491,12 @@ export async function POST(
 
 
 /* ============================================================
-   REQUEST DELETION
+   REQUEST WORKSPACE CLOSURE
    ============================================================ */
 
 async function requestDeletion(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext,
 ) {
   if (
     !input.identity
@@ -1919,9 +2521,7 @@ async function requestDeletion(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await requireOwnerInTransaction(
           client,
           input.identity
@@ -1936,15 +2536,18 @@ async function requestDeletion(
             `
               SELECT
                 id,
-                name,
                 status,
                 deletion_requested_at,
                 deletion_scheduled_for,
                 deletion_cancelled_at
+
               FROM tenants
+
               WHERE id = $1
                 AND deleted_at IS NULL
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -1955,8 +2558,8 @@ async function requestDeletion(
 
 
         if (
-          workspaceResult.rows
-            .length ===
+          workspaceResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -1968,13 +2571,14 @@ async function requestDeletion(
 
 
         const workspace =
-          workspaceResult.rows[0];
+          workspaceResult
+            .rows[0];
 
 
         if (
           String(
             workspace.status ||
-              '',
+            '',
           )
             .trim()
             .toLowerCase() !==
@@ -2019,6 +2623,7 @@ async function requestDeletion(
           await client.query(
             `
               UPDATE tenants
+
               SET
                 deletion_requested_at =
                   NOW(),
@@ -2028,13 +2633,19 @@ async function requestDeletion(
 
                 deletion_scheduled_for =
                   NOW()
-                  + ($3::integer * INTERVAL '1 day'),
+                  + (
+                    $3::integer
+                    * INTERVAL '1 day'
+                  ),
 
                 deletion_cancelled_at =
                   NULL,
 
                 deletion_cancelled_by =
-                  NULL
+                  NULL,
+
+                updated_at =
+                  NOW()
 
               WHERE id = $1
                 AND deleted_at IS NULL
@@ -2139,22 +2750,12 @@ async function requestDeletion(
 
 
 /* ============================================================
-   CANCEL DELETION
+   CANCEL WORKSPACE CLOSURE
    ============================================================ */
 
 async function cancelDeletion(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext,
 ) {
   if (
     !input.identity
@@ -2179,13 +2780,12 @@ async function cancelDeletion(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await requireOwnerInTransaction(
           client,
           input.identity
             .tenantId,
+
           input.identity
             .userId,
         );
@@ -2198,10 +2798,14 @@ async function cancelDeletion(
                 deletion_requested_at,
                 deletion_scheduled_for,
                 deletion_cancelled_at
+
               FROM tenants
+
               WHERE id = $1
                 AND deleted_at IS NULL
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -2212,8 +2816,8 @@ async function cancelDeletion(
 
 
         if (
-          workspaceResult.rows
-            .length ===
+          workspaceResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -2225,7 +2829,8 @@ async function cancelDeletion(
 
 
         const workspace =
-          workspaceResult.rows[0];
+          workspaceResult
+            .rows[0];
 
 
         const deletionPending =
@@ -2254,6 +2859,7 @@ async function cancelDeletion(
         await client.query(
           `
             UPDATE tenants
+
             SET
               deletion_scheduled_for =
                 NULL,
@@ -2262,7 +2868,10 @@ async function cancelDeletion(
                 NOW(),
 
               deletion_cancelled_by =
-                $2
+                $2,
+
+              updated_at =
+                NOW()
 
             WHERE id = $1
               AND deleted_at IS NULL
@@ -2294,7 +2903,8 @@ async function cancelDeletion(
           eventType:
             'workspace.deletion_cancelled',
 
-          metadata: {},
+          metadata:
+            {},
 
           ipAddress:
             input.requestMetadata
@@ -2344,21 +2954,11 @@ async function cancelDeletion(
    ============================================================ */
 
 async function requestOwnershipTransfer(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    targetUserId:
-      unknown;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext & {
+      targetUserId:
+        unknown;
+    },
 ) {
   if (
     !input.identity
@@ -2413,9 +3013,7 @@ async function requestOwnershipTransfer(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await expireOldTransfers(
           client,
           input.identity
@@ -2427,6 +3025,7 @@ async function requestOwnershipTransfer(
           client,
           input.identity
             .tenantId,
+
           input.identity
             .userId,
         );
@@ -2439,6 +3038,7 @@ async function requestOwnershipTransfer(
                 tu.user_id,
                 u.email,
                 u.full_name
+
               FROM tenant_users tu
 
               INNER JOIN users u
@@ -2448,12 +3048,29 @@ async function requestOwnershipTransfer(
               WHERE tu.tenant_id = $1
                 AND tu.user_id = $2
                 AND tu.is_owner = FALSE
-                AND LOWER(COALESCE(tu.status, '')) = 'active'
-                AND tu.deleted_at IS NULL
-                AND u.deleted_at IS NULL
-                AND LOWER(COALESCE(u.status, '')) = 'active'
+
+                AND LOWER(
+                  COALESCE(
+                    tu.status,
+                    ''
+                  )
+                ) = 'active'
+
+                AND tu.deleted_at
+                    IS NULL
+
+                AND u.deleted_at
+                    IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    u.status,
+                    ''
+                  )
+                ) = 'active'
 
               LIMIT 1
+
               FOR UPDATE OF tu
             `,
             [
@@ -2466,8 +3083,8 @@ async function requestOwnershipTransfer(
 
 
         if (
-          targetResult.rows
-            .length ===
+          targetResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -2485,13 +3102,18 @@ async function requestOwnershipTransfer(
                 id,
                 from_user_id,
                 to_user_id,
+                status,
                 requested_at,
                 expires_at
+
               FROM tenant_ownership_transfers
+
               WHERE tenant_id = $1
                 AND status = 'pending'
                 AND expires_at > NOW()
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -2520,6 +3142,7 @@ async function requestOwnershipTransfer(
           ) {
             return {
               transfer,
+
               alreadyPending:
                 true,
             };
@@ -2543,12 +3166,14 @@ async function requestOwnershipTransfer(
                 to_user_id,
                 requested_by
               )
+
               VALUES (
                 $1,
                 $2,
                 $3,
                 $2
               )
+
               RETURNING
                 id,
                 from_user_id,
@@ -2617,6 +3242,7 @@ async function requestOwnershipTransfer(
 
         return {
           transfer,
+
           alreadyPending:
             false,
         };
@@ -2651,7 +3277,8 @@ async function requestOwnershipTransfer(
           .to_user_id,
 
       status:
-        result.transfer.status ||
+        result.transfer
+          .status ||
         'pending',
 
       requestedAt:
@@ -2675,8 +3302,9 @@ async function requestOwnershipTransfer(
    ============================================================ */
 
 function requireTransferId(
-  value: unknown,
-): string {
+  value:
+    unknown,
+) {
   if (
     !isUuid(
       value,
@@ -2699,21 +3327,11 @@ function requireTransferId(
    ============================================================ */
 
 async function cancelOwnershipTransfer(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    transferId:
-      unknown;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext & {
+      transferId:
+        unknown;
+    },
 ) {
   if (
     !input.identity
@@ -2744,9 +3362,7 @@ async function cancelOwnershipTransfer(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await expireOldTransfers(
           client,
           input.identity
@@ -2758,6 +3374,7 @@ async function cancelOwnershipTransfer(
           client,
           input.identity
             .tenantId,
+
           input.identity
             .userId,
         );
@@ -2771,10 +3388,14 @@ async function cancelOwnershipTransfer(
                 from_user_id,
                 to_user_id,
                 status
+
               FROM tenant_ownership_transfers
+
               WHERE id = $1
                 AND tenant_id = $2
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -2787,8 +3408,8 @@ async function cancelOwnershipTransfer(
 
 
         if (
-          transferResult.rows
-            .length ===
+          transferResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -2806,7 +3427,8 @@ async function cancelOwnershipTransfer(
         if (
           transfer
             .from_user_id !==
-          input.identity.userId
+          input.identity
+            .userId
         ) {
           throw new WorkspaceApiError(
             403,
@@ -2842,6 +3464,7 @@ async function cancelOwnershipTransfer(
         await client.query(
           `
             UPDATE tenant_ownership_transfers
+
             SET
               status =
                 'cancelled',
@@ -2850,7 +3473,10 @@ async function cancelOwnershipTransfer(
                 NOW(),
 
               cancelled_by =
-                $2
+                $2,
+
+              updated_at =
+                NOW()
 
             WHERE id = $1
           `,
@@ -2931,21 +3557,11 @@ async function cancelOwnershipTransfer(
    ============================================================ */
 
 async function acceptOwnershipTransfer(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    transferId:
-      unknown;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext & {
+      transferId:
+        unknown;
+    },
 ) {
   const transferId =
     requireTransferId(
@@ -2964,9 +3580,7 @@ async function acceptOwnershipTransfer(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await expireOldTransfers(
           client,
           input.identity
@@ -2983,10 +3597,14 @@ async function acceptOwnershipTransfer(
                 to_user_id,
                 status,
                 expires_at
+
               FROM tenant_ownership_transfers
+
               WHERE id = $1
                 AND tenant_id = $2
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -2999,8 +3617,8 @@ async function acceptOwnershipTransfer(
 
 
         if (
-          transferResult.rows
-            .length ===
+          transferResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -3018,7 +3636,8 @@ async function acceptOwnershipTransfer(
         if (
           transfer
             .to_user_id !==
-          input.identity.userId
+          input.identity
+            .userId
         ) {
           throw new WorkspaceApiError(
             403,
@@ -3063,19 +3682,27 @@ async function acceptOwnershipTransfer(
 
 
         if (
+          Number.isNaN(
+            expiresAt.getTime(),
+          ) ||
           expiresAt.getTime() <=
-          Date.now()
+            Date.now()
         ) {
           await client.query(
             `
               UPDATE tenant_ownership_transfers
-              SET status = 'expired'
+
+              SET
+                status = 'expired',
+                updated_at = NOW()
+
               WHERE id = $1
             `,
             [
               transferId,
             ],
           );
+
 
           throw new WorkspaceApiError(
             410,
@@ -3093,12 +3720,16 @@ async function acceptOwnershipTransfer(
                 is_owner,
                 status,
                 deleted_at
+
               FROM tenant_users
+
               WHERE tenant_id = $1
+
                 AND user_id IN (
                   $2,
                   $3
                 )
+
               FOR UPDATE
             `,
             [
@@ -3116,12 +3747,7 @@ async function acceptOwnershipTransfer(
 
         const source =
           memberships.rows.find(
-            (
-              row: Record<
-                string,
-                any
-              >,
-            ) =>
+            row =>
               row.user_id ===
               transfer
                 .from_user_id,
@@ -3130,12 +3756,7 @@ async function acceptOwnershipTransfer(
 
         const target =
           memberships.rows.find(
-            (
-              row: Record<
-                string,
-                any
-              >,
-            ) =>
+            row =>
               row.user_id ===
               transfer
                 .to_user_id,
@@ -3149,8 +3770,10 @@ async function acceptOwnershipTransfer(
           source.deleted_at ||
           String(
             source.status ||
-              '',
-          ).toLowerCase() !==
+            '',
+          )
+            .trim()
+            .toLowerCase() !==
             'active'
         ) {
           throw new WorkspaceApiError(
@@ -3166,8 +3789,10 @@ async function acceptOwnershipTransfer(
           target.deleted_at ||
           String(
             target.status ||
-              '',
-          ).toLowerCase() !==
+            '',
+          )
+            .trim()
+            .toLowerCase() !==
             'active'
         ) {
           throw new WorkspaceApiError(
@@ -3181,7 +3806,11 @@ async function acceptOwnershipTransfer(
         await client.query(
           `
             UPDATE tenant_users
-            SET is_owner = FALSE
+
+            SET
+              is_owner = FALSE,
+              updated_at = NOW()
+
             WHERE tenant_id = $1
               AND user_id = $2
               AND is_owner = TRUE
@@ -3197,28 +3826,54 @@ async function acceptOwnershipTransfer(
         );
 
 
-        await client.query(
-          `
-            UPDATE tenant_users
-            SET is_owner = TRUE
-            WHERE tenant_id = $1
-              AND user_id = $2
-              AND deleted_at IS NULL
-              AND LOWER(COALESCE(status, '')) = 'active'
-          `,
-          [
-            input.identity
-              .tenantId,
+        const promoted =
+          await client.query(
+            `
+              UPDATE tenant_users
 
-            transfer
-              .to_user_id,
-          ],
-        );
+              SET
+                is_owner = TRUE,
+                updated_at = NOW()
+
+              WHERE tenant_id = $1
+                AND user_id = $2
+                AND deleted_at IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    status,
+                    ''
+                  )
+                ) = 'active'
+
+              RETURNING user_id
+            `,
+            [
+              input.identity
+                .tenantId,
+
+              transfer
+                .to_user_id,
+            ],
+          );
+
+
+        if (
+          promoted.rows.length !==
+          1
+        ) {
+          throw new WorkspaceApiError(
+            409,
+            'TRANSFER_TARGET_UNAVAILABLE',
+            'The new owner is no longer available.',
+          );
+        }
 
 
         await client.query(
           `
             UPDATE tenant_ownership_transfers
+
             SET
               status =
                 'completed',
@@ -3227,7 +3882,10 @@ async function acceptOwnershipTransfer(
                 NOW(),
 
               completed_by =
-                $2
+                $2,
+
+              updated_at =
+                NOW()
 
             WHERE id = $1
           `,
@@ -3325,21 +3983,11 @@ async function acceptOwnershipTransfer(
    ============================================================ */
 
 async function rejectOwnershipTransfer(
-  input: {
-    identity:
-      WorkspaceIdentity;
-
-    transferId:
-      unknown;
-
-    requestMetadata:
-      ReturnType<
-        typeof getSessionRequestMetadata
-      >;
-
-    correlationId:
-      string;
-  },
+  input:
+    ActionContext & {
+      transferId:
+        unknown;
+    },
 ) {
   const transferId =
     requireTransferId(
@@ -3358,9 +4006,7 @@ async function rejectOwnershipTransfer(
 
   const result =
     await withControlTransaction(
-      async (
-        client,
-      ) => {
+      async client => {
         await expireOldTransfers(
           client,
           input.identity
@@ -3376,10 +4022,14 @@ async function rejectOwnershipTransfer(
                 from_user_id,
                 to_user_id,
                 status
+
               FROM tenant_ownership_transfers
+
               WHERE id = $1
                 AND tenant_id = $2
+
               LIMIT 1
+
               FOR UPDATE
             `,
             [
@@ -3392,8 +4042,8 @@ async function rejectOwnershipTransfer(
 
 
         if (
-          transferResult.rows
-            .length ===
+          transferResult
+            .rows.length ===
           0
         ) {
           throw new WorkspaceApiError(
@@ -3411,7 +4061,8 @@ async function rejectOwnershipTransfer(
         if (
           transfer
             .to_user_id !==
-          input.identity.userId
+          input.identity
+            .userId
         ) {
           throw new WorkspaceApiError(
             403,
@@ -3447,6 +4098,7 @@ async function rejectOwnershipTransfer(
         await client.query(
           `
             UPDATE tenant_ownership_transfers
+
             SET
               status =
                 'rejected',
@@ -3455,7 +4107,10 @@ async function rejectOwnershipTransfer(
                 NOW(),
 
               rejected_by =
-                $2
+                $2,
+
+              updated_at =
+                NOW()
 
             WHERE id = $1
           `,
@@ -3536,22 +4191,16 @@ async function rejectOwnershipTransfer(
    ============================================================ */
 
 function handleError(
-  error: unknown,
-  logPrefix: string,
+  error:
+    unknown,
+
+  logPrefix:
+    string,
 ) {
   if (
     error instanceof
     WorkspaceApiError
   ) {
-    const retryAfter =
-      (
-        error as WorkspaceApiError & {
-          retryAfterSeconds?:
-            number | null;
-        }
-      ).retryAfterSeconds;
-
-
     return json(
       {
         success:
@@ -3563,12 +4212,16 @@ function handleError(
         error:
           error.message,
       },
+
       error.status,
-      retryAfter
+
+      error
+        .retryAfterSeconds
         ? {
             'Retry-After':
               String(
-                retryAfter,
+                error
+                  .retryAfterSeconds,
               ),
           }
         : undefined,
