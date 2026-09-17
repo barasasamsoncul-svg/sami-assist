@@ -8,14 +8,20 @@ import {
 
 import {
   getAccountContextForUser,
+  listAccessibleWorkspaces,
 } from '@/lib/auth/account-context';
 
 import {
   queryControl,
 } from '@/lib/db/control';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+
+export const runtime =
+  'nodejs';
+
+export const dynamic =
+  'force-dynamic';
+
 
 /* ============================================================
    TYPES
@@ -48,19 +54,24 @@ type SessionDeviceRow = {
     | string;
 };
 
+
 /* ============================================================
    RESPONSE
    ============================================================ */
 
 function jsonResponse(
-  body: Record<
-    string,
-    unknown
-  >,
-  status = 200
+  body:
+    Record<
+      string,
+      unknown
+    >,
+
+  status =
+    200,
 ) {
   return NextResponse.json(
     body,
+
     {
       status,
 
@@ -71,9 +82,10 @@ function jsonResponse(
         Pragma:
           'no-cache',
       },
-    }
+    },
   );
 }
+
 
 /* ============================================================
    DATE
@@ -84,35 +96,47 @@ function toIsoString(
     | Date
     | string
     | null
-    | undefined
+    | undefined,
 ): string | null {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 
+
   const date =
-    value instanceof Date
+    value instanceof
+      Date
       ? value
-      : new Date(value);
+      : new Date(
+          value,
+        );
+
 
   if (
     Number.isNaN(
-      date.getTime()
+      date.getTime(),
     )
   ) {
     return null;
   }
 
+
   return date.toISOString();
 }
 
+
 /* ============================================================
-   CURRENT SESSION DEVICE
+   SESSION DEVICE
    ============================================================ */
 
 async function getCurrentSessionDevice(
-  sessionId: string,
-  userId: string
+  sessionId:
+    string,
+
+  userId:
+    string,
 ): Promise<
   SessionDeviceRow | null
 > {
@@ -131,17 +155,24 @@ async function getCurrentSessionDevice(
 
         WHERE id = $1
           AND user_id = $2
-          AND is_current = TRUE
-          AND revoked_at IS NULL
-          AND expires_at > NOW()
+
+          AND is_current =
+              TRUE
+
+          AND revoked_at
+              IS NULL
+
+          AND expires_at >
+              NOW()
 
         LIMIT 1
       `,
       [
         sessionId,
         userId,
-      ]
+      ],
     );
+
 
   return (
     result.rows[0] ||
@@ -149,27 +180,24 @@ async function getCurrentSessionDevice(
   );
 }
 
+
 /* ============================================================
-   GET /api/auth/refresh
+   GET
    ============================================================ */
 
 export async function GET() {
   try {
-    /* ========================================================
-       1. CURRENT SESSION
-
-       getSession() remains authoritative for authentication
-       and also performs the normal SaMi session-activity
-       refresh logic.
-       ======================================================== */
-
     const session =
       await getSession();
 
-    if (!session) {
+
+    if (
+      !session
+    ) {
       return jsonResponse(
         {
-          success: false,
+          success:
+            false,
 
           authenticated:
             false,
@@ -182,6 +210,12 @@ export async function GET() {
 
           tenant:
             null,
+
+          currentWorkspaceId:
+            null,
+
+          workspaces:
+            [],
 
           owner:
             null,
@@ -201,53 +235,43 @@ export async function GET() {
           session:
             null,
         },
-        401
+
+        401,
       );
     }
 
-    /* ========================================================
-       2. REFRESH AUTHENTICATED CONTEXT
-       ======================================================== */
 
     const [
       accountContext,
+      workspaces,
       sessionDevice,
     ] =
       await Promise.all([
         getAccountContextForUser(
-          session.user.id
+          session.user.id,
+          session.currentTenantId,
+        ),
+
+        listAccessibleWorkspaces(
+          session.user.id,
         ),
 
         getCurrentSessionDevice(
           session.sessionId,
-          session.user.id
+          session.user.id,
         ),
       ]);
 
-    /* ========================================================
-       3. RESPONSE
 
-       IMPORTANT BILLING RULE:
+    const currentWorkspaceId =
+      accountContext.tenant?.id ||
+      session.currentTenantId ||
+      null;
 
-       accountContext.subscription is authoritative.
-
-       Therefore, during the first free month this endpoint
-       should naturally return:
-
-         status = trialing
-
-       It must NOT:
-       - charge the customer
-       - activate the subscription
-       - alter trial dates
-       - calculate a new billing period
-
-       Billing state is controlled by the subscription /
-       PesaPal backend.
-       ======================================================== */
 
     return jsonResponse({
-      success: true,
+      success:
+        true,
 
       authenticated:
         true,
@@ -257,6 +281,10 @@ export async function GET() {
 
       user:
         session.user,
+
+      currentWorkspaceId,
+
+      workspaces,
 
       tenant:
         accountContext.tenant,
@@ -280,6 +308,8 @@ export async function GET() {
         id:
           session.sessionId,
 
+        currentWorkspaceId,
+
         expiresAt:
           session.expiresAt.toISOString(),
 
@@ -287,42 +317,41 @@ export async function GET() {
           sessionDevice
             ? {
                 ipAddress:
-                  sessionDevice
-                    .ip_address,
+                  sessionDevice.ip_address,
 
                 deviceType:
-                  sessionDevice
-                    .device_type ||
+                  sessionDevice.device_type ||
                   'unknown',
 
                 browser:
-                  sessionDevice
-                    .browser ||
+                  sessionDevice.browser ||
                   'Unknown',
 
                 operatingSystem:
-                  sessionDevice
-                    .operating_system ||
+                  sessionDevice.operating_system ||
                   'Unknown',
 
                 lastActiveAt:
                   toIsoString(
-                    sessionDevice
-                      .last_active_at
+                    sessionDevice.last_active_at,
                   ),
               }
             : null,
       },
     });
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       '[Auth] Refresh session failed:',
-      error
+      error,
     );
+
 
     return jsonResponse(
       {
-        success: false,
+        success:
+          false,
 
         authenticated:
           false,
@@ -333,7 +362,8 @@ export async function GET() {
         error:
           'Could not refresh the current session.',
       },
-      500
+
+      500,
     );
   }
 }
