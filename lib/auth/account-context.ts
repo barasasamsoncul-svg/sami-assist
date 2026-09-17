@@ -60,6 +60,7 @@ export interface MembershipContext {
 
   isOwner: boolean;
   isAdmin: boolean;
+
   label: string;
 }
 
@@ -98,6 +99,22 @@ export interface TenantDatabaseContext {
   databasePort: number | null;
   status: string;
   provisionedAt: string | null;
+}
+
+
+export interface WorkspaceListItem {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+
+  isOwner: boolean;
+  isAdmin: boolean;
 }
 
 
@@ -173,6 +190,7 @@ function toIsoString(
     return null;
   }
 
+
   const date =
     value instanceof
       Date
@@ -183,6 +201,7 @@ function toIsoString(
           ),
         );
 
+
   if (
     Number.isNaN(
       date.getTime(),
@@ -190,6 +209,7 @@ function toIsoString(
   ) {
     return null;
   }
+
 
   return date.toISOString();
 }
@@ -200,17 +220,22 @@ function toNullablePort(
     unknown,
 ): number | null {
   if (
-    value === null ||
-    value === undefined ||
-    value === ''
+    value ===
+      null ||
+    value ===
+      undefined ||
+    value ===
+      ''
   ) {
     return null;
   }
+
 
   const port =
     Number(
       value,
     );
+
 
   if (
     !Number.isInteger(
@@ -222,24 +247,60 @@ function toNullablePort(
     return null;
   }
 
+
   return port;
+}
+
+
+function buildTenantContext(
+  row:
+    Record<string, unknown>,
+): TenantContext {
+  return {
+    id:
+      String(
+        row.id ||
+        '',
+      ),
+
+    name:
+      typeof row.name ===
+        'string'
+        ? row.name
+        : '',
+
+    slug:
+      typeof row.slug ===
+        'string'
+        ? row.slug
+        : '',
+
+    status:
+      typeof row.status ===
+        'string'
+        ? row.status
+        : 'unknown',
+
+    deletionRequestedAt:
+      toIsoString(
+        row.deletion_requested_at,
+      ),
+
+    deletionScheduledFor:
+      toIsoString(
+        row.deletion_scheduled_for,
+      ),
+
+    deletionCancelledAt:
+      toIsoString(
+        row.deletion_cancelled_at,
+      ),
+  };
 }
 
 
 /* ============================================================
    WORKSPACE LIFECYCLE FINALIZATION
-
-   Scheduled workspace closure is soft deletion.
-
-   The first authenticated access after the grace deadline
-   atomically:
-
-   - marks the workspace deleted
-   - records deleted_at
-   - writes a system audit event
-
-   Physical tenant-data destruction is deliberately NOT done
-   here.
    ============================================================ */
 
 async function finalizeDueWorkspaceClosuresForUser(
@@ -251,6 +312,7 @@ async function finalizeDueWorkspaceClosuresForUser(
       WITH due_workspaces AS (
         SELECT DISTINCT
           t.id
+
         FROM tenants t
 
         INNER JOIN tenant_users tu
@@ -258,8 +320,12 @@ async function finalizeDueWorkspaceClosuresForUser(
              t.id
 
         WHERE tu.user_id = $1
-          AND tu.deleted_at IS NULL
-          AND t.deleted_at IS NULL
+
+          AND tu.deleted_at
+              IS NULL
+
+          AND t.deleted_at
+              IS NULL
 
           AND t.deletion_requested_at
               IS NOT NULL
@@ -310,6 +376,25 @@ async function finalizeDueWorkspaceClosuresForUser(
           t.deletion_requested_by,
           t.deletion_requested_at,
           t.deletion_scheduled_for
+      ),
+
+      cleared_sessions AS (
+        UPDATE sessions s
+
+        SET
+          current_tenant_id =
+            NULL,
+
+          updated_at =
+            NOW()
+
+        FROM closed_workspaces closed
+
+        WHERE s.current_tenant_id =
+              closed.id
+
+        RETURNING
+          s.id
       )
 
       INSERT INTO audit_logs (
@@ -371,7 +456,7 @@ async function finalizeDueWorkspaceClosuresForUser(
         NOW()
 
       FROM closed_workspaces
-        AS closed
+        closed
     `,
     [
       userId,
@@ -393,11 +478,13 @@ export async function findUserForLogin(
       .trim()
       .toLowerCase();
 
+
   if (
     !normalizedEmail
   ) {
     return null;
   }
+
 
   const result =
     await queryControl(
@@ -481,26 +568,242 @@ export async function findUserForLogin(
 
 
 /* ============================================================
+   AVAILABLE WORKSPACES
+   ============================================================ */
+
+export async function listAccessibleWorkspaces(
+  userId:
+    string,
+): Promise<WorkspaceListItem[]> {
+  await finalizeDueWorkspaceClosuresForUser(
+    userId,
+  );
+
+
+  const result =
+    await queryControl(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.slug,
+          t.status,
+
+          tu.is_owner,
+
+          EXISTS (
+            SELECT 1
+
+            FROM user_roles ur
+
+            INNER JOIN roles r
+              ON r.id =
+                 ur.role_id
+
+            WHERE ur.user_id =
+                  tu.user_id
+
+              AND ur.tenant_id =
+                  tu.tenant_id
+
+              AND ur.deleted_at
+                  IS NULL
+
+              AND r.deleted_at
+                  IS NULL
+
+              AND LOWER(
+                COALESCE(
+                  r.key,
+                  r.name,
+                  ''
+                )
+              ) LIKE '%admin%'
+          ) AS role_is_admin
+
+        FROM tenant_users tu
+
+        INNER JOIN tenants t
+          ON t.id =
+             tu.tenant_id
+
+        WHERE tu.user_id = $1
+
+          AND LOWER(
+            COALESCE(
+              tu.status,
+              ''
+            )
+          ) = 'active'
+
+          AND tu.deleted_at
+              IS NULL
+
+          AND t.deleted_at
+              IS NULL
+
+          AND LOWER(
+            COALESCE(
+              t.status,
+              ''
+            )
+          ) = 'active'
+
+        ORDER BY
+          CASE
+            WHEN tu.is_owner =
+                 TRUE
+            THEN 0
+
+            WHEN EXISTS (
+              SELECT 1
+
+              FROM user_roles ur
+
+              INNER JOIN roles r
+                ON r.id =
+                   ur.role_id
+
+              WHERE ur.user_id =
+                    tu.user_id
+
+                AND ur.tenant_id =
+                    tu.tenant_id
+
+                AND ur.deleted_at
+                    IS NULL
+
+                AND r.deleted_at
+                    IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    r.key,
+                    r.name,
+                    ''
+                  )
+                ) LIKE '%admin%'
+            )
+            THEN 1
+
+            ELSE 2
+          END ASC,
+
+          LOWER(
+            t.name
+          ) ASC,
+
+          t.id ASC
+      `,
+      [
+        userId,
+      ],
+    );
+
+
+  return result.rows.map(
+    (
+      row:
+        Record<string, unknown>,
+    ) => {
+      const isOwner =
+        row.is_owner ===
+        true;
+
+
+      const isAdmin =
+        isOwner ||
+        row.role_is_admin ===
+          true;
+
+
+      const accessLevel:
+        | 'owner'
+        | 'admin'
+        | 'member' =
+        isOwner
+          ? 'owner'
+          : isAdmin
+            ? 'admin'
+            : 'member';
+
+
+      return {
+        id:
+          String(
+            row.id ||
+            '',
+          ),
+
+        name:
+          typeof row.name ===
+            'string'
+            ? row.name
+            : '',
+
+        slug:
+          typeof row.slug ===
+            'string'
+            ? row.slug
+            : '',
+
+        status:
+          typeof row.status ===
+            'string'
+            ? row.status
+            : 'unknown',
+
+        accessLevel,
+
+        isOwner,
+
+        isAdmin,
+      };
+    },
+  );
+}
+
+
+/* ============================================================
    MAIN ACCOUNT CONTEXT
    ============================================================ */
 
 export async function getAccountContextForUser(
   userId:
     string,
+
+  preferredTenantId?:
+    string | null,
 ): Promise<AccountContext> {
-  /*
-   * Enforce due workspace closures before choosing the
-   * workspace that will become the user's current context.
-   */
   await finalizeDueWorkspaceClosuresForUser(
     userId,
   );
 
 
-  const primary =
-    await getPrimaryTenant(
-      userId,
-    );
+  let primary:
+    PrimaryTenantSelection | null =
+    null;
+
+
+  if (
+    preferredTenantId
+  ) {
+    primary =
+      await getTenantSelection(
+        userId,
+        preferredTenantId,
+      );
+  }
+
+
+  if (
+    !primary
+  ) {
+    primary =
+      await getPrimaryTenant(
+        userId,
+      );
+  }
 
 
   if (
@@ -603,7 +906,90 @@ export async function getAccountContextForUser(
 
 
 /* ============================================================
-   PRIMARY TENANT / MEMBERSHIP
+   SPECIFIC WORKSPACE SELECTION
+   ============================================================ */
+
+async function getTenantSelection(
+  userId:
+    string,
+
+  tenantId:
+    string,
+): Promise<PrimaryTenantSelection | null> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.slug,
+          t.status,
+
+          t.deletion_requested_at,
+          t.deletion_scheduled_for,
+          t.deletion_cancelled_at,
+
+          tu.status
+            AS membership_status,
+
+          tu.is_owner
+            AS membership_is_owner
+
+        FROM tenant_users tu
+
+        INNER JOIN tenants t
+          ON t.id =
+             tu.tenant_id
+
+        WHERE tu.user_id = $1
+          AND tu.tenant_id = $2
+
+          AND tu.deleted_at
+              IS NULL
+
+          AND t.deleted_at
+              IS NULL
+
+        LIMIT 1
+      `,
+      [
+        userId,
+        tenantId,
+      ],
+    );
+
+
+  if (
+    result.rows.length ===
+    0
+  ) {
+    return null;
+  }
+
+
+  const row =
+    result.rows[0];
+
+
+  return {
+    tenant:
+      buildTenantContext(
+        row,
+      ),
+
+    membershipStatus:
+      row.membership_status ||
+      'unknown',
+
+    membershipIsOwner:
+      row.membership_is_owner ===
+      true,
+  };
+}
+
+
+/* ============================================================
+   PRIMARY WORKSPACE FALLBACK
    ============================================================ */
 
 async function getPrimaryTenant(
@@ -635,23 +1021,6 @@ async function getPrimaryTenant(
           ON t.id =
              tu.tenant_id
 
-        LEFT JOIN user_roles ur
-          ON ur.user_id =
-             tu.user_id
-
-         AND ur.tenant_id =
-             tu.tenant_id
-
-         AND ur.deleted_at
-             IS NULL
-
-        LEFT JOIN roles r
-          ON r.id =
-             ur.role_id
-
-         AND r.deleted_at
-             IS NULL
-
         WHERE tu.user_id = $1
 
           AND tu.deleted_at
@@ -661,12 +1030,6 @@ async function getPrimaryTenant(
               IS NULL
 
         ORDER BY
-
-          /*
-           * Prefer a usable active workspace before a workspace
-           * that is provisioning, suspended or otherwise
-           * unavailable.
-           */
           CASE
             WHEN LOWER(
               COALESCE(
@@ -687,9 +1050,6 @@ async function getPrimaryTenant(
             ELSE 2
           END ASC,
 
-          /*
-           * Prefer an active membership.
-           */
           CASE
             WHEN LOWER(
               COALESCE(
@@ -702,28 +1062,47 @@ async function getPrimaryTenant(
             ELSE 1
           END ASC,
 
-          /*
-           * Ownership is authoritative from is_owner.
-           */
           CASE
             WHEN tu.is_owner =
                  TRUE
             THEN 0
 
-            WHEN LOWER(
-              COALESCE(
-                r.key,
-                r.name,
-                ''
-              )
-            ) LIKE '%admin%'
+            WHEN EXISTS (
+              SELECT 1
+
+              FROM user_roles ur
+
+              INNER JOIN roles r
+                ON r.id =
+                   ur.role_id
+
+              WHERE ur.user_id =
+                    tu.user_id
+
+                AND ur.tenant_id =
+                    tu.tenant_id
+
+                AND ur.deleted_at
+                    IS NULL
+
+                AND r.deleted_at
+                    IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    r.key,
+                    r.name,
+                    ''
+                  )
+                ) LIKE '%admin%'
+            )
             THEN 1
 
             ELSE 2
           END ASC,
 
-          tu.created_at
-            ASC
+          tu.created_at ASC,
+          t.id ASC
 
         LIMIT 1
       `,
@@ -746,37 +1125,10 @@ async function getPrimaryTenant(
 
 
   return {
-    tenant: {
-      id:
-        row.id,
-
-      name:
-        row.name ||
-        '',
-
-      slug:
-        row.slug ||
-        '',
-
-      status:
-        row.status ||
-        'unknown',
-
-      deletionRequestedAt:
-        toIsoString(
-          row.deletion_requested_at,
-        ),
-
-      deletionScheduledFor:
-        toIsoString(
-          row.deletion_scheduled_for,
-        ),
-
-      deletionCancelledAt:
-        toIsoString(
-          row.deletion_cancelled_at,
-        ),
-    },
+    tenant:
+      buildTenantContext(
+        row,
+      ),
 
     membershipStatus:
       row.membership_status ||
@@ -868,8 +1220,7 @@ async function getTenantOwner(
             ELSE 1
           END ASC,
 
-          tu.created_at
-            ASC
+          tu.created_at ASC
 
         LIMIT 1
       `,
@@ -922,7 +1273,7 @@ async function getTenantOwner(
 
 
 /* ============================================================
-   MEMBERSHIP / ACCESS LEVEL
+   MEMBERSHIP
    ============================================================ */
 
 function buildMembershipContext(
@@ -976,16 +1327,6 @@ function buildMembershipContext(
         : 'member';
 
 
-  const label =
-    accessLevel ===
-      'owner'
-      ? 'Workspace Owner'
-      : accessLevel ===
-          'admin'
-        ? 'Workspace Admin'
-        : 'Workspace Member';
-
-
   return {
     userId:
       params.userId,
@@ -1003,7 +1344,14 @@ function buildMembershipContext(
 
     isAdmin,
 
-    label,
+    label:
+      accessLevel ===
+        'owner'
+        ? 'Workspace Owner'
+        : accessLevel ===
+            'admin'
+          ? 'Workspace Admin'
+          : 'Workspace Member',
   };
 }
 
@@ -1138,7 +1486,6 @@ async function getUserRole(
              ur.role_id
 
         WHERE ur.user_id = $1
-
           AND ur.tenant_id = $2
 
           AND ur.deleted_at
@@ -1175,8 +1522,7 @@ async function getUserRole(
             ELSE 2
           END ASC,
 
-          ur.created_at
-            ASC
+          ur.created_at ASC
 
         LIMIT 1
       `,
@@ -1256,10 +1602,7 @@ async function getTenantModules(
   return result.rows.map(
     (
       row:
-        Record<
-          string,
-          unknown
-        >,
+        Record<string, unknown>,
     ) => ({
       key:
         typeof row.key ===
@@ -1379,10 +1722,6 @@ export function validateAccountCanLogin(
     );
 
 
-  /* ----------------------------------------------------------
-     EMAIL VERIFICATION
-     ---------------------------------------------------------- */
-
   if (
     userStatus ===
       'pending_verification' ||
@@ -1406,10 +1745,6 @@ export function validateAccountCanLogin(
     };
   }
 
-
-  /* ----------------------------------------------------------
-     USER STATUS
-     ---------------------------------------------------------- */
 
   if (
     userStatus ===
@@ -1478,10 +1813,6 @@ export function validateAccountCanLogin(
   }
 
 
-  /* ----------------------------------------------------------
-     TENANT
-     ---------------------------------------------------------- */
-
   if (
     !context.tenant
   ) {
@@ -1500,10 +1831,6 @@ export function validateAccountCanLogin(
     };
   }
 
-
-  /* ----------------------------------------------------------
-     MEMBERSHIP
-     ---------------------------------------------------------- */
 
   if (
     !context.membership
@@ -1551,10 +1878,6 @@ export function validateAccountCanLogin(
   }
 
 
-  /* ----------------------------------------------------------
-     TENANT LIFECYCLE
-     ---------------------------------------------------------- */
-
   const tenantStatus =
     normalizeStatus(
       context.tenant
@@ -1562,12 +1885,6 @@ export function validateAccountCanLogin(
     );
 
 
-  /*
-   * Defensive closure deadline check.
-   *
-   * Normally getAccountContextForUser() already finalizes the
-   * closure before this function runs.
-   */
   if (
     context.tenant
       .deletionScheduledFor &&
@@ -1579,6 +1896,7 @@ export function validateAccountCanLogin(
         context.tenant
           .deletionScheduledFor,
       );
+
 
     if (
       !Number.isNaN(
@@ -1711,10 +2029,6 @@ export function validateAccountCanLogin(
   }
 
 
-  /* ----------------------------------------------------------
-     PHYSICAL WORKSPACE DATABASE
-     ---------------------------------------------------------- */
-
   if (
     !context.database ||
     normalizeStatus(
@@ -1738,10 +2052,6 @@ export function validateAccountCanLogin(
     };
   }
 
-
-  /* ----------------------------------------------------------
-     SUBSCRIPTION
-     ---------------------------------------------------------- */
 
   if (
     !context.subscription

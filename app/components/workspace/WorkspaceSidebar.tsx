@@ -1,8 +1,10 @@
 'use client';
 
 import Link from 'next/link';
+
 import {
   usePathname,
+  useRouter,
   useSearchParams,
 } from 'next/navigation';
 
@@ -12,6 +14,7 @@ import {
   Bot,
   Boxes,
   Calculator,
+  Check,
   ChevronDown,
   CircleHelp,
   ContactRound,
@@ -20,6 +23,7 @@ import {
   FolderKanban,
   Home,
   LayoutGrid,
+  Loader2,
   PackageSearch,
   ReceiptText,
   Settings,
@@ -32,13 +36,24 @@ import {
 } from 'lucide-react';
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+
 import UserAvatar from '@/app/components/account/UserAvatar';
+
+import SaMiOverlay, {
+  type SaMiOverlayType,
+} from '@/app/components/SaMiOverlay';
+
+
+/* ============================================================
+   TYPES
+   ============================================================ */
 
 type UserData = {
   id: string;
@@ -49,6 +64,7 @@ type UserData = {
   avatarFileId: string | null;
 };
 
+
 type TenantData =
   | {
       id: string;
@@ -58,17 +74,20 @@ type TenantData =
     }
   | null;
 
+
 type MembershipData =
   | {
       accessLevel:
         | 'owner'
         | 'admin'
         | 'member';
+
       isOwner: boolean;
       isAdmin: boolean;
       label: string;
     }
   | null;
+
 
 type SubscriptionData =
   | {
@@ -78,6 +97,7 @@ type SubscriptionData =
     }
   | null;
 
+
 type ModuleData = {
   key: string;
   name: string;
@@ -86,11 +106,54 @@ type ModuleData = {
   description?: string | null;
 };
 
+
+type WorkspaceListItem = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+
+  isOwner: boolean;
+  isAdmin: boolean;
+};
+
+
+type CurrentAccountResponse = {
+  success?: boolean;
+  authenticated?: boolean;
+  code?: string;
+  error?: string;
+
+  currentWorkspaceId?:
+    string | null;
+
+  workspaces?:
+    WorkspaceListItem[];
+};
+
+
+type WorkspaceActionResponse = {
+  success?: boolean;
+  code?: string;
+  error?: string;
+  message?: string;
+
+  currentWorkspaceId?:
+    string | null;
+};
+
+
 type Capabilities = {
   aiEnabled?: boolean;
   filesEnabled?: boolean;
   notificationsEnabled?: boolean;
 };
+
 
 type Props = {
   user: UserData;
@@ -104,12 +167,14 @@ type Props = {
   onClose: () => void;
 };
 
+
 type SettingsTab =
   | 'personal'
   | 'workspace'
   | 'apps'
   | 'ai'
   | 'billing';
+
 
 type SettingsChild = {
   key: SettingsTab;
@@ -120,12 +185,26 @@ type SettingsChild = {
   adminOnly?: boolean;
 };
 
+
 type AppChild = {
   key: string;
   label: string;
   href: string;
   icon: LucideIcon;
 };
+
+
+type OverlayState = {
+  open: boolean;
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
+};
+
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
 
 const DISABLED_MODULE_STATUSES =
   new Set([
@@ -136,107 +215,214 @@ const DISABLED_MODULE_STATUSES =
     'inactive',
   ]);
 
+
 const APP_ROUTE_ALIASES:
-  Record<string, string> = {
-    invoice: '/invoices',
-    invoices: '/invoices',
-    invoicing: '/invoices',
+  Record<
+    string,
+    string
+  > = {
+  invoice:
+    '/invoices',
 
-    accounting: '/accounting',
-    finance: '/accounting',
+  invoices:
+    '/invoices',
 
-    crm: '/crm',
+  invoicing:
+    '/invoices',
 
-    sale: '/sales',
-    sales: '/sales',
+  accounting:
+    '/accounting',
 
-    pos: '/pos',
-    'point-of-sale': '/pos',
-    point_of_sale: '/pos',
+  finance:
+    '/accounting',
 
-    inventory: '/inventory',
-    stock: '/inventory',
+  crm:
+    '/crm',
 
-    hr: '/hr',
-    'human-resources': '/hr',
-    human_resources: '/hr',
+  sale:
+    '/sales',
 
-    project: '/projects',
-    projects: '/projects',
+  sales:
+    '/sales',
 
-    ecommerce: '/ecommerce',
-    'e-commerce': '/ecommerce',
-    e_commerce: '/ecommerce',
-  };
+  pos:
+    '/pos',
+
+  'point-of-sale':
+    '/pos',
+
+  point_of_sale:
+    '/pos',
+
+  inventory:
+    '/inventory',
+
+  stock:
+    '/inventory',
+
+  hr:
+    '/hr',
+
+  'human-resources':
+    '/hr',
+
+  human_resources:
+    '/hr',
+
+  project:
+    '/projects',
+
+  projects:
+    '/projects',
+
+  ecommerce:
+    '/ecommerce',
+
+  'e-commerce':
+    '/ecommerce',
+
+  e_commerce:
+    '/ecommerce',
+};
+
 
 const SETTINGS_CHILDREN:
   SettingsChild[] = [
     {
-      key: 'personal',
-      label: 'My Account',
+      key:
+        'personal',
+
+      label:
+        'My Account',
+
       href:
         '/settings?tab=personal',
-      icon: User,
+
+      icon:
+        User,
     },
+
     {
-      key: 'workspace',
-      label: 'Workspace',
+      key:
+        'workspace',
+
+      label:
+        'Workspace',
+
       href:
         '/settings?tab=workspace',
-      icon: LayoutGrid,
-      adminOnly: true,
+
+      icon:
+        LayoutGrid,
+
+      adminOnly:
+        true,
     },
+
     {
-      key: 'apps',
-      label: 'Apps',
+      key:
+        'apps',
+
+      label:
+        'Apps',
+
       href:
         '/settings?tab=apps',
-      icon: AppWindow,
-      adminOnly: true,
+
+      icon:
+        AppWindow,
+
+      adminOnly:
+        true,
     },
+
     {
-      key: 'ai',
-      label: 'SaMi AI',
+      key:
+        'ai',
+
+      label:
+        'SaMi AI',
+
       href:
         '/settings?tab=ai',
-      icon: Bot,
+
+      icon:
+        Bot,
     },
+
     {
-      key: 'billing',
-      label: 'Billing',
+      key:
+        'billing',
+
+      label:
+        'Billing',
+
       href:
         '/settings?tab=billing',
-      icon: CreditCard,
-      ownerOnly: true,
+
+      icon:
+        CreditCard,
+
+      ownerOnly:
+        true,
     },
   ];
 
+
+const CLOSED_OVERLAY:
+  OverlayState = {
+  open:
+    false,
+
+  type:
+    'info',
+
+  title:
+    '',
+
+  message:
+    '',
+};
+
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
 function normalizeKey(
-  value: string
+  value:
+    string,
 ) {
   return value
     .trim()
     .toLowerCase()
     .replace(
       /\s+/g,
-      '-'
+      '-',
     );
 }
 
+
 function getModuleHref(
-  module: ModuleData
+  module:
+    ModuleData,
 ) {
   const suppliedHref =
     module.href?.trim();
 
-  if (suppliedHref) {
+
+  if (
+    suppliedHref
+  ) {
     return suppliedHref;
   }
 
+
   const normalized =
     normalizeKey(
-      module.key
+      module.key,
     );
+
 
   if (
     APP_ROUTE_ALIASES[
@@ -248,16 +434,22 @@ function getModuleHref(
     ];
   }
 
+
   return `/apps/${encodeURIComponent(
-    normalized
+    normalized,
   )}`;
 }
 
+
 function getModuleIcon(
-  key: string
+  key:
+    string,
 ): LucideIcon {
   const normalized =
-    normalizeKey(key);
+    normalizeKey(
+      key,
+    );
+
 
   if (
     normalized ===
@@ -270,6 +462,7 @@ function getModuleIcon(
     return ReceiptText;
   }
 
+
   if (
     normalized ===
       'accounting' ||
@@ -279,11 +472,14 @@ function getModuleIcon(
     return Calculator;
   }
 
+
   if (
-    normalized === 'crm'
+    normalized ===
+    'crm'
   ) {
     return ContactRound;
   }
+
 
   if (
     normalized ===
@@ -294,6 +490,7 @@ function getModuleIcon(
     return ShoppingCart;
   }
 
+
   if (
     normalized ===
       'inventory' ||
@@ -303,8 +500,10 @@ function getModuleIcon(
     return Boxes;
   }
 
+
   if (
-    normalized === 'hr' ||
+    normalized ===
+      'hr' ||
     normalized ===
       'human-resources' ||
     normalized ===
@@ -312,6 +511,7 @@ function getModuleIcon(
   ) {
     return UsersRound;
   }
+
 
   if (
     normalized ===
@@ -321,6 +521,7 @@ function getModuleIcon(
   ) {
     return FolderKanban;
   }
+
 
   if (
     normalized ===
@@ -333,8 +534,10 @@ function getModuleIcon(
     return Store;
   }
 
+
   if (
-    normalized === 'pos' ||
+    normalized ===
+      'pos' ||
     normalized ===
       'point-of-sale' ||
     normalized ===
@@ -343,54 +546,83 @@ function getModuleIcon(
     return PackageSearch;
   }
 
+
   return AppWindow;
 }
 
+
 function getInitials(
-  user: UserData
+  user:
+    UserData,
 ) {
   const first =
     user.firstName
       ?.trim()
-      .charAt(0);
+      .charAt(
+        0,
+      );
+
 
   const last =
     user.lastName
       ?.trim()
-      .charAt(0);
+      .charAt(
+        0,
+      );
+
 
   const value =
     `${first || ''}${last || ''}`
       .trim();
 
-  if (value) {
+
+  if (
+    value
+  ) {
     return value.toUpperCase();
   }
 
+
   if (
-    user.fullName?.trim()
+    user.fullName
+      ?.trim()
   ) {
     return user.fullName
       .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map(part =>
-        part.charAt(0)
+      .split(
+        /\s+/,
       )
-      .join('')
+      .slice(
+        0,
+        2,
+      )
+      .map(
+        part =>
+          part.charAt(
+            0,
+          ),
+      )
+      .join(
+        '',
+      )
       .toUpperCase();
   }
 
+
   return (
     user.email
-      .charAt(0)
+      .charAt(
+        0,
+      )
       .toUpperCase() ||
     'S'
   );
 }
 
+
 function getDisplayName(
-  user: UserData
+  user:
+    UserData,
 ) {
   return (
     user.fullName?.trim() ||
@@ -401,14 +633,63 @@ function getDisplayName(
   );
 }
 
+
 function hrefPath(
-  href: string
+  href:
+    string,
 ) {
   return (
-    href.split('?')[0] ||
+    href.split(
+      '?',
+    )[0] ||
     href
   );
 }
+
+
+async function readAccountResponse(
+  response:
+    Response,
+): Promise<CurrentAccountResponse> {
+  try {
+    return (
+      await response.json()
+    ) as CurrentAccountResponse;
+  } catch {
+    return {
+      success:
+        false,
+
+      error:
+        'SaMi returned an invalid response.',
+    };
+  }
+}
+
+
+async function readWorkspaceActionResponse(
+  response:
+    Response,
+): Promise<WorkspaceActionResponse> {
+  try {
+    return (
+      await response.json()
+    ) as WorkspaceActionResponse;
+  } catch {
+    return {
+      success:
+        false,
+
+      error:
+        'SaMi returned an invalid response.',
+    };
+  }
+}
+
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
 
 export default function WorkspaceSidebar({
   user,
@@ -417,20 +698,87 @@ export default function WorkspaceSidebar({
   subscription,
   modules,
   capabilities,
-  unreadNotifications = 0,
+  unreadNotifications =
+    0,
   open,
   onClose,
 }: Props) {
   const pathname =
     usePathname();
 
+
+  const router =
+    useRouter();
+
+
   const searchParams =
     useSearchParams();
 
+
+  const [
+    workspaces,
+    setWorkspaces,
+  ] =
+    useState<
+      WorkspaceListItem[]
+    >([]);
+
+
+  const [
+    currentWorkspaceId,
+    setCurrentWorkspaceId,
+  ] =
+    useState<
+      string | null
+    >(
+      tenant?.id ||
+      null,
+    );
+
+
+  const [
+    workspaceMenuOpen,
+    setWorkspaceMenuOpen,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const [
+    workspacesLoading,
+    setWorkspacesLoading,
+  ] =
+    useState(
+      true,
+    );
+
+
+  const [
+    switchingWorkspaceId,
+    setSwitchingWorkspaceId,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+
+  const [
+    overlay,
+    setOverlay,
+  ] =
+    useState<OverlayState>(
+      CLOSED_OVERLAY,
+    );
+
+
   const rawSettingsTab =
     searchParams.get(
-      'tab'
+      'tab',
     );
+
 
   const settingsTab:
     SettingsTab =
@@ -445,14 +793,17 @@ export default function WorkspaceSidebar({
       ? rawSettingsTab
       : 'personal';
 
+
   const canAdminWorkspace =
     Boolean(
       membership?.isAdmin ||
-        membership?.isOwner
+      membership?.isOwner,
     );
+
 
   const canManageApps =
     canAdminWorkspace;
+
 
   const installedApps =
     useMemo(
@@ -462,39 +813,50 @@ export default function WorkspaceSidebar({
             const status =
               String(
                 module.status ||
-                  ''
+                  '',
               )
                 .trim()
                 .toLowerCase();
 
+
             return !DISABLED_MODULE_STATUSES.has(
-              status
+              status,
             );
-          }
+          },
         ),
-      [modules]
+      [
+        modules,
+      ],
     );
+
 
   const appChildren =
     useMemo<AppChild[]>(
       () =>
         installedApps.map(
           module => ({
-            key: module.key,
+            key:
+              module.key,
+
             label:
               module.name,
+
             href:
               getModuleHref(
-                module
+                module,
               ),
+
             icon:
               getModuleIcon(
-                module.key
+                module.key,
               ),
-          })
+          }),
         ),
-      [installedApps]
+      [
+        installedApps,
+      ],
     );
+
 
   const settingsChildren =
     useMemo(
@@ -508,12 +870,14 @@ export default function WorkspaceSidebar({
               return false;
             }
 
+
             if (
               item.adminOnly &&
               !canAdminWorkspace
             ) {
               return false;
             }
+
 
             if (
               item.key ===
@@ -525,116 +889,391 @@ export default function WorkspaceSidebar({
               return false;
             }
 
+
             return true;
-          }
+          },
         ),
       [
         membership?.isOwner,
         canAdminWorkspace,
         capabilities
           ?.aiEnabled,
-      ]
+      ],
     );
+
 
   const appRouteActive =
     appChildren.some(
       item => {
         const path =
           hrefPath(
-            item.href
+            item.href,
           );
 
+
         return (
-          pathname === path ||
+          pathname ===
+            path ||
           pathname.startsWith(
-            `${path}/`
+            `${path}/`,
           )
         );
-      }
+      },
     );
+
 
   const settingsRouteActive =
     pathname ===
       '/settings' ||
     pathname.startsWith(
-      '/settings/'
+      '/settings/',
     );
+
 
   const coreRouteActive =
     pathname ===
       '/files' ||
     pathname.startsWith(
-      '/files/'
+      '/files/',
     ) ||
     pathname ===
       '/notifications' ||
     pathname.startsWith(
-      '/notifications/'
+      '/notifications/',
     );
+
 
   const [
     appsExpanded,
     setAppsExpanded,
-  ] = useState(
-    appRouteActive
-  );
+  ] =
+    useState(
+      appRouteActive,
+    );
+
 
   const [
     coreExpanded,
     setCoreExpanded,
-  ] = useState(
-    coreRouteActive
-  );
+  ] =
+    useState(
+      coreRouteActive,
+    );
 
-  /*
-   * Settings is deliberately NOT opened
-   * just because the current URL is /settings.
-   *
-   * Clicking Settings is the action that
-   * expands/collapses its children.
-   */
+
   const [
     settingsExpanded,
     setSettingsExpanded,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
 
-  useEffect(() => {
-    if (appRouteActive) {
-      setAppsExpanded(true);
+
+  /* ==========================================================
+     LOAD WORKSPACES
+     ========================================================== */
+
+  const loadWorkspaces =
+    useCallback(
+      async () => {
+        setWorkspacesLoading(
+          true,
+        );
+
+
+        try {
+          const response =
+            await fetch(
+              '/api/auth/me',
+              {
+                method:
+                  'GET',
+
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+
+                credentials:
+                  'same-origin',
+
+                cache:
+                  'no-store',
+              },
+            );
+
+
+          const data =
+            await readAccountResponse(
+              response,
+            );
+
+
+          if (
+            !response.ok ||
+            !data.success
+          ) {
+            return;
+          }
+
+
+          setWorkspaces(
+            Array.isArray(
+              data.workspaces,
+            )
+              ? data.workspaces
+              : [],
+          );
+
+
+          setCurrentWorkspaceId(
+            data.currentWorkspaceId ||
+            tenant?.id ||
+            null,
+          );
+        } catch {
+          // Current workspace remains usable.
+        } finally {
+          setWorkspacesLoading(
+            false,
+          );
+        }
+      },
+      [
+        tenant?.id,
+      ],
+    );
+
+
+  useEffect(
+    () => {
+      void loadWorkspaces();
+    },
+    [
+      loadWorkspaces,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      setCurrentWorkspaceId(
+        tenant?.id ||
+        null,
+      );
+    },
+    [
+      tenant?.id,
+    ],
+  );
+
+
+  /* ==========================================================
+     ROUTE STATE
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        appRouteActive
+      ) {
+        setAppsExpanded(
+          true,
+        );
+      }
+    },
+    [
+      appRouteActive,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      if (
+        coreRouteActive
+      ) {
+        setCoreExpanded(
+          true,
+        );
+      }
+    },
+    [
+      coreRouteActive,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      if (
+        open
+      ) {
+        onClose();
+      }
+
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      pathname,
+      searchParams,
+    ],
+  );
+
+
+  /* ==========================================================
+     SWITCH WORKSPACE
+     ========================================================== */
+
+  async function switchWorkspace(
+    workspace:
+      WorkspaceListItem,
+  ) {
+    if (
+      switchingWorkspaceId ||
+      workspace.id ===
+        currentWorkspaceId
+    ) {
+      setWorkspaceMenuOpen(
+        false,
+      );
+
+      return;
     }
-  }, [
-    appRouteActive,
-  ]);
 
-  useEffect(() => {
-    if (coreRouteActive) {
-      setCoreExpanded(true);
+
+    setSwitchingWorkspaceId(
+      workspace.id,
+    );
+
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace',
+          {
+            method:
+              'POST',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Accept:
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            body:
+              JSON.stringify({
+                action:
+                  'switch_workspace',
+
+                tenantId:
+                  workspace.id,
+              }),
+          },
+        );
+
+
+      const data =
+        await readWorkspaceActionResponse(
+          response,
+        );
+
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'The workspace could not be selected.',
+        );
+      }
+
+
+      setCurrentWorkspaceId(
+        workspace.id,
+      );
+
+
+      setWorkspaceMenuOpen(
+        false,
+      );
+
+
+      router.refresh();
+
+
+      setOverlay({
+        open:
+          true,
+
+        type:
+          'success',
+
+        title:
+          'Workspace changed',
+
+        message:
+          data.message ||
+          `Switched to ${workspace.name}.`,
+      });
+    } catch (
+      error
+    ) {
+      setOverlay({
+        open:
+          true,
+
+        type:
+          'error',
+
+        title:
+          'Workspace switch failed',
+
+        message:
+          error instanceof
+            Error
+            ? error.message
+            : 'The workspace could not be selected.',
+      });
+    } finally {
+      setSwitchingWorkspaceId(
+        null,
+      );
     }
-  }, [
-    coreRouteActive,
-  ]);
+  }
 
-  useEffect(() => {
-    if (open) {
-      onClose();
-    }
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    pathname,
-    searchParams,
-  ]);
+  /* ==========================================================
+     DISPLAY
+     ========================================================== */
 
   const displayName =
-    getDisplayName(user);
+    getDisplayName(
+      user,
+    );
+
 
   const avatarInitials =
-    getInitials(user);
+    getInitials(
+      user,
+    );
+
 
   const planName =
     subscription?.planName ||
     subscription?.planKey ||
     'Free';
+
 
   const roleName =
     membership?.label ||
@@ -642,16 +1281,25 @@ export default function WorkspaceSidebar({
       ?.accessLevel ||
     'Member';
 
+
+  const hasMultipleWorkspaces =
+    workspaces.length >
+    1;
+
+
   return (
     <>
       {open && (
         <button
           type="button"
           aria-label="Close navigation"
-          onClick={onClose}
+          onClick={
+            onClose
+          }
           className="fixed inset-0 z-40 bg-slate-950/45 backdrop-blur-[2px] lg:hidden"
         />
       )}
+
 
       <aside
         aria-label="Workspace navigation"
@@ -664,7 +1312,9 @@ export default function WorkspaceSidebar({
         <div className="flex h-[76px] shrink-0 items-center border-b border-slate-100 px-5 dark:border-slate-800">
           <Link
             href="/dashboard"
-            onClick={onClose}
+            onClick={
+              onClose
+            }
             className="min-w-0 flex-1"
           >
             <SaMiLogo
@@ -673,25 +1323,58 @@ export default function WorkspaceSidebar({
             />
           </Link>
 
+
           <button
             type="button"
             aria-label="Close navigation"
-            onClick={onClose}
+            onClick={
+              onClose
+            }
             className="ml-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="border-b border-slate-100 px-4 py-4 dark:border-slate-800">
-          <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-900">
+
+        {/* ====================================================
+            CURRENT WORKSPACE
+            ==================================================== */}
+
+        <div className="relative border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={
+              () => {
+                if (
+                  hasMultipleWorkspaces
+                ) {
+                  setWorkspaceMenuOpen(
+                    current =>
+                      !current,
+                  );
+                }
+              }
+            }
+            disabled={
+              workspacesLoading ||
+              !hasMultipleWorkspaces
+            }
+            aria-expanded={
+              workspaceMenuOpen
+            }
+            className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-left transition enabled:hover:bg-slate-100 disabled:cursor-default dark:bg-slate-900 dark:enabled:hover:bg-slate-800"
+          >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-xs font-black text-white">
               {tenant?.name
                 ?.trim()
-                .charAt(0)
+                .charAt(
+                  0,
+                )
                 .toUpperCase() ||
                 'S'}
             </div>
+
 
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-black text-slate-900 dark:text-white">
@@ -705,24 +1388,136 @@ export default function WorkspaceSidebar({
                 {planName}
               </p>
             </div>
-          </div>
+
+
+            {workspacesLoading ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+            ) : hasMultipleWorkspaces ? (
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                  workspaceMenuOpen
+                    ? 'rotate-180'
+                    : ''
+                }`}
+              />
+            ) : null}
+          </button>
+
+
+          {workspaceMenuOpen &&
+            hasMultipleWorkspaces && (
+              <div className="absolute left-4 right-4 top-[74px] z-[70] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+                <p className="px-2 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Switch workspace
+                </p>
+
+
+                <div className="max-h-[260px] space-y-1 overflow-y-auto">
+                  {workspaces.map(
+                    workspace => {
+                      const selected =
+                        workspace.id ===
+                        currentWorkspaceId;
+
+
+                      const switching =
+                        switchingWorkspaceId ===
+                        workspace.id;
+
+
+                      return (
+                        <button
+                          key={
+                            workspace.id
+                          }
+                          type="button"
+                          disabled={
+                            switchingWorkspaceId !==
+                            null
+                          }
+                          onClick={
+                            () =>
+                              void switchWorkspace(
+                                workspace,
+                              )
+                          }
+                          className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait ${
+                            selected
+                              ? 'bg-blue-50 dark:bg-blue-950/30'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <div
+                            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-black ${
+                              selected
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                            }`}
+                          >
+                            {workspace.name
+                              .trim()
+                              .charAt(
+                                0,
+                              )
+                              .toUpperCase() ||
+                              'S'}
+                          </div>
+
+
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-black text-slate-900 dark:text-white">
+                              {workspace.name}
+                            </p>
+
+                            <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
+                              {workspace.accessLevel ===
+                              'owner'
+                                ? 'Workspace Owner'
+                                : workspace.accessLevel ===
+                                    'admin'
+                                  ? 'Workspace Admin'
+                                  : 'Workspace Member'}
+                            </p>
+                          </div>
+
+
+                          {switching ? (
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600" />
+                          ) : selected ? (
+                            <Check className="h-4 w-4 shrink-0 text-blue-600" />
+                          ) : null}
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+              </div>
+            )}
         </div>
+
+
+        {/* ====================================================
+            NAVIGATION
+            ==================================================== */}
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
           <NavSectionLabel>
             Workspace
           </NavSectionLabel>
 
+
           <div className="space-y-1">
             <NavLink
               href="/dashboard"
-              icon={Home}
+              icon={
+                Home
+              }
               label="Dashboard"
               active={
                 pathname ===
                   '/dashboard' ||
                 pathname.startsWith(
-                  '/dashboard/'
+                  '/dashboard/',
                 )
               }
               onNavigate={
@@ -730,18 +1525,21 @@ export default function WorkspaceSidebar({
               }
             />
 
+
             {capabilities
               ?.aiEnabled !==
               false && (
               <NavLink
                 href="/ai"
-                icon={Bot}
+                icon={
+                  Bot
+                }
                 label="SaMi AI"
                 active={
                   pathname ===
                     '/ai' ||
                   pathname.startsWith(
-                    '/ai/'
+                    '/ai/',
                   )
                 }
                 onNavigate={
@@ -751,13 +1549,17 @@ export default function WorkspaceSidebar({
             )}
           </div>
 
+
           <div className="mt-6">
             <NavSectionLabel>
               Business
             </NavSectionLabel>
 
+
             <DropdownButton
-              icon={LayoutGrid}
+              icon={
+                LayoutGrid
+              }
               label="Apps"
               expanded={
                 appsExpanded
@@ -769,17 +1571,19 @@ export default function WorkspaceSidebar({
                 installedApps.length >
                 0
                   ? String(
-                      installedApps.length
+                      installedApps.length,
                     )
                   : undefined
               }
-              onClick={() =>
-                setAppsExpanded(
-                  current =>
-                    !current
-                )
+              onClick={
+                () =>
+                  setAppsExpanded(
+                    current =>
+                      !current,
+                  )
               }
             />
+
 
             {appsExpanded && (
               <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
@@ -803,19 +1607,19 @@ export default function WorkspaceSidebar({
                         active={
                           pathname ===
                             hrefPath(
-                              item.href
+                              item.href,
                             ) ||
                           pathname.startsWith(
                             `${hrefPath(
-                              item.href
-                            )}/`
+                              item.href,
+                            )}/`,
                           )
                         }
                         onNavigate={
                           onClose
                         }
                       />
-                    )
+                    ),
                   )
                 ) : (
                   <div className="px-3 py-2 text-[10px] font-semibold leading-4 text-slate-400">
@@ -823,10 +1627,13 @@ export default function WorkspaceSidebar({
                   </div>
                 )}
 
+
                 {canManageApps && (
                   <ChildNavLink
                     href="/settings?tab=apps"
-                    icon={AppWindow}
+                    icon={
+                      AppWindow
+                    }
                     label="Manage Apps"
                     active={
                       settingsRouteActive &&
@@ -842,6 +1649,7 @@ export default function WorkspaceSidebar({
             )}
           </div>
 
+
           {(capabilities
             ?.filesEnabled ||
             capabilities
@@ -851,8 +1659,11 @@ export default function WorkspaceSidebar({
                 Core
               </NavSectionLabel>
 
+
               <DropdownButton
-                icon={Folder}
+                icon={
+                  Folder
+                }
                 label="Workspace Tools"
                 expanded={
                   coreExpanded
@@ -860,13 +1671,15 @@ export default function WorkspaceSidebar({
                 active={
                   coreRouteActive
                 }
-                onClick={() =>
-                  setCoreExpanded(
-                    current =>
-                      !current
-                  )
+                onClick={
+                  () =>
+                    setCoreExpanded(
+                      current =>
+                        !current,
+                    )
                 }
               />
+
 
               {coreExpanded && (
                 <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
@@ -874,13 +1687,15 @@ export default function WorkspaceSidebar({
                     ?.filesEnabled && (
                     <ChildNavLink
                       href="/files"
-                      icon={Folder}
+                      icon={
+                        Folder
+                      }
                       label="Files"
                       active={
                         pathname ===
                           '/files' ||
                         pathname.startsWith(
-                          '/files/'
+                          '/files/',
                         )
                       }
                       onNavigate={
@@ -889,11 +1704,14 @@ export default function WorkspaceSidebar({
                     />
                   )}
 
+
                   {capabilities
                     ?.notificationsEnabled && (
                     <ChildNavLink
                       href="/notifications"
-                      icon={Bell}
+                      icon={
+                        Bell
+                      }
                       label="Notifications"
                       badge={
                         unreadNotifications >
@@ -902,7 +1720,7 @@ export default function WorkspaceSidebar({
                             99
                             ? '99+'
                             : String(
-                                unreadNotifications
+                                unreadNotifications,
                               )
                           : undefined
                       }
@@ -910,7 +1728,7 @@ export default function WorkspaceSidebar({
                         pathname ===
                           '/notifications' ||
                         pathname.startsWith(
-                          '/notifications/'
+                          '/notifications/',
                         )
                       }
                       onNavigate={
@@ -923,13 +1741,17 @@ export default function WorkspaceSidebar({
             </div>
           )}
 
+
           <div className="mt-6">
             <NavSectionLabel>
               Account
             </NavSectionLabel>
 
+
             <DropdownButton
-              icon={Settings}
+              icon={
+                Settings
+              }
               label="Settings"
               expanded={
                 settingsExpanded
@@ -937,13 +1759,15 @@ export default function WorkspaceSidebar({
               active={
                 settingsRouteActive
               }
-              onClick={() =>
-                setSettingsExpanded(
-                  current =>
-                    !current
-                )
+              onClick={
+                () =>
+                  setSettingsExpanded(
+                    current =>
+                      !current,
+                  )
               }
             />
+
 
             {settingsExpanded && (
               <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
@@ -971,10 +1795,11 @@ export default function WorkspaceSidebar({
                         onClose
                       }
                     />
-                  )
+                  ),
                 )}
               </div>
             )}
+
 
             <div className="mt-1">
               <NavLink
@@ -987,7 +1812,7 @@ export default function WorkspaceSidebar({
                   pathname ===
                     '/help' ||
                   pathname.startsWith(
-                    '/help/'
+                    '/help/',
                   )
                 }
                 onNavigate={
@@ -998,10 +1823,17 @@ export default function WorkspaceSidebar({
           </div>
         </nav>
 
+
+        {/* ====================================================
+            USER
+            ==================================================== */}
+
         <div className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800">
           <Link
             href="/settings?tab=personal"
-            onClick={onClose}
+            onClick={
+              onClose
+            }
             className="flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-900"
           >
             <UserAvatar
@@ -1017,6 +1849,7 @@ export default function WorkspaceSidebar({
               size="md"
             />
 
+
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-black text-slate-900 dark:text-white">
                 {displayName}
@@ -1029,9 +1862,46 @@ export default function WorkspaceSidebar({
           </Link>
         </div>
       </aside>
+
+
+      <SaMiOverlay
+        open={
+          overlay.open
+        }
+        type={
+          overlay.type
+        }
+        title={
+          overlay.title
+        }
+        message={
+          overlay.message
+        }
+        primaryAction={{
+          label:
+            'OK',
+
+          onClick:
+            () =>
+              setOverlay(
+                CLOSED_OVERLAY,
+              ),
+        }}
+        onClose={
+          () =>
+            setOverlay(
+              CLOSED_OVERLAY,
+            )
+        }
+      />
     </>
   );
 }
+
+
+/* ============================================================
+   SECTION LABEL
+   ============================================================ */
 
 function NavSectionLabel({
   children,
@@ -1046,9 +1916,15 @@ function NavSectionLabel({
   );
 }
 
+
+/* ============================================================
+   NAV LINK
+   ============================================================ */
+
 function NavLink({
   href,
-  icon: Icon,
+  icon:
+    Icon,
   label,
   active,
   badge,
@@ -1059,12 +1935,13 @@ function NavLink({
   label: string;
   active: boolean;
   badge?: string;
-  onNavigate:
-    () => void;
+  onNavigate: () => void;
 }) {
   return (
     <Link
-      href={href}
+      href={
+        href
+      }
       onClick={
         onNavigate
       }
@@ -1091,6 +1968,7 @@ function NavLink({
         {label}
       </span>
 
+
       {badge && (
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
           {badge}
@@ -1100,8 +1978,14 @@ function NavLink({
   );
 }
 
+
+/* ============================================================
+   DROPDOWN
+   ============================================================ */
+
 function DropdownButton({
-  icon: Icon,
+  icon:
+    Icon,
   label,
   expanded,
   active,
@@ -1113,8 +1997,7 @@ function DropdownButton({
   expanded: boolean;
   active: boolean;
   badge?: string;
-  onClick:
-    () => void;
+  onClick: () => void;
 }) {
   return (
     <button
@@ -1143,11 +2026,13 @@ function DropdownButton({
         {label}
       </span>
 
+
       {badge && (
         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
           {badge}
         </span>
       )}
+
 
       <ChevronDown
         className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
@@ -1160,9 +2045,15 @@ function DropdownButton({
   );
 }
 
+
+/* ============================================================
+   CHILD LINK
+   ============================================================ */
+
 function ChildNavLink({
   href,
-  icon: Icon,
+  icon:
+    Icon,
   label,
   active,
   badge,
@@ -1173,12 +2064,13 @@ function ChildNavLink({
   label: string;
   active: boolean;
   badge?: string;
-  onNavigate:
-    () => void;
+  onNavigate: () => void;
 }) {
   return (
     <Link
-      href={href}
+      href={
+        href
+      }
       onClick={
         onNavigate
       }
@@ -1204,6 +2096,7 @@ function ChildNavLink({
       <span className="min-w-0 flex-1 truncate">
         {label}
       </span>
+
 
       {badge && (
         <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
