@@ -9,18 +9,20 @@ import {
 } from 'react';
 
 import {
-  AlertCircle,
+  ArrowLeft,
   AtSign,
   CalendarDays,
   Camera,
   Check,
-  CheckCircle2,
+  ChevronRight,
   Clock3,
   Globe2,
   Info,
+  KeyRound,
   Loader2,
+  LockKeyhole,
   Mail,
-  Pencil,
+  MonitorSmartphone,
   Phone,
   RefreshCw,
   Save,
@@ -28,8 +30,11 @@ import {
   SunMoon,
   Trash2,
   UserRound,
-  X,
 } from 'lucide-react';
+
+import SaMiOverlay, {
+  type SaMiOverlayType,
+} from '@/app/components/SaMiOverlay';
 
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
@@ -42,10 +47,6 @@ import {
   type UserTheme,
   type UserTimeFormat,
 } from '@/lib/account/user-formatting';
-
-/* ============================================================
-   TYPES
-   ============================================================ */
 
 type UserAccount = {
   id: string;
@@ -75,43 +76,32 @@ type AccountResponse = {
   code?: string;
   error?: string;
   message?: string;
-
   account?: UserAccount;
-
-  preferences?:
-    UserDisplayPreferences;
+  preferences?: UserDisplayPreferences;
 
   emailChange?: {
-    pending:
-      PendingEmailChange | null;
+    pending: PendingEmailChange | null;
   };
 
-  pending?:
-    PendingEmailChange | null;
+  pending?: PendingEmailChange | null;
 
-  retryAfterSeconds?:
-    number | null;
+  retryAfterSeconds?: number | null;
 };
 
-type NoticeState = {
-  type:
-    | 'success'
-    | 'error'
-    | 'warning';
+type AccountView =
+  | 'overview'
+  | 'personal'
+  | 'email'
+  | 'preferences';
 
+type OverlayState = {
+  type: SaMiOverlayType;
+  title: string;
   message: string;
 };
 
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
-
 const THEME_STORAGE_KEY =
   'sami_theme';
-
-/* ============================================================
-   HELPERS
-   ============================================================ */
 
 function normalizeEmail(
   value: string
@@ -164,8 +154,7 @@ function formatFallbackDateTime(
     return '—';
   }
 
-  return date
-    .toLocaleString();
+  return date.toLocaleString();
 }
 
 function initials(
@@ -211,8 +200,7 @@ function getSystemDarkMode() {
 }
 
 function applyTheme(
-  theme:
-    UserTheme
+  theme: UserTheme
 ) {
   if (
     typeof document ===
@@ -222,11 +210,9 @@ function applyTheme(
   }
 
   const dark =
-    theme ===
-      'dark' ||
+    theme === 'dark' ||
     (
-      theme ===
-        'system' &&
+      theme === 'system' &&
       getSystemDarkMode()
     );
 
@@ -249,8 +235,7 @@ function applyTheme(
 }
 
 async function readJson(
-  response:
-    Response
+  response: Response
 ): Promise<AccountResponse> {
   try {
     return (
@@ -258,12 +243,9 @@ async function readJson(
     ) as AccountResponse;
   } catch {
     return {
-      success:
-        false,
-
+      success: false,
       code:
         'INVALID_SERVER_RESPONSE',
-
       error:
         'SaMi returned an invalid response.',
     };
@@ -271,8 +253,7 @@ async function readJson(
 }
 
 function getTimezoneOptions(
-  currentTimezone:
-    string
+  currentTimezone: string
 ) {
   const fallback = [
     'UTC',
@@ -300,8 +281,7 @@ function getTimezoneOptions(
     const intlWithZones =
       Intl as typeof Intl & {
         supportedValuesOf?: (
-          key:
-            'timeZone'
+          key: 'timeZone'
         ) => string[];
       };
 
@@ -369,14 +349,14 @@ function preferencesEqual(
   );
 }
 
-/* ============================================================
-   COMPONENT
-   ============================================================ */
-
 export default function MyAccountSettings() {
-  /* ==========================================================
-     MAIN DATA
-     ========================================================== */
+  const [
+    view,
+    setView,
+  ] =
+    useState<AccountView>(
+      'overview'
+    );
 
   const [
     account,
@@ -390,21 +370,17 @@ export default function MyAccountSettings() {
     preferences,
     setPreferences,
   ] =
-    useState<UserDisplayPreferences>(
-      {
-        ...DEFAULT_USER_DISPLAY_PREFERENCES,
-      }
-    );
+    useState<UserDisplayPreferences>({
+      ...DEFAULT_USER_DISPLAY_PREFERENCES,
+    });
 
   const [
     savedPreferences,
     setSavedPreferences,
   ] =
-    useState<UserDisplayPreferences>(
-      {
-        ...DEFAULT_USER_DISPLAY_PREFERENCES,
-      }
-    );
+    useState<UserDisplayPreferences>({
+      ...DEFAULT_USER_DISPLAY_PREFERENCES,
+    });
 
   const [
     pendingEmailChange,
@@ -414,22 +390,13 @@ export default function MyAccountSettings() {
       PendingEmailChange | null
     >(null);
 
-  /* ==========================================================
-     LIVE PREFERENCE PREVIEW
-     ========================================================== */
-
   const [
     previewNow,
     setPreviewNow,
   ] =
     useState(
-      () =>
-        new Date()
+      () => new Date()
     );
-
-  /* ==========================================================
-     PROFILE FORM
-     ========================================================== */
 
   const [
     firstName,
@@ -448,10 +415,6 @@ export default function MyAccountSettings() {
     setPhone,
   ] =
     useState('');
-
-  /* ==========================================================
-     EMAIL CHANGE
-     ========================================================== */
 
   const [
     emailEditing,
@@ -482,10 +445,6 @@ export default function MyAccountSettings() {
     setVerifyRetrySeconds,
   ] =
     useState(0);
-
-  /* ==========================================================
-     UI STATE
-     ========================================================== */
 
   const [
     loading,
@@ -536,16 +495,12 @@ export default function MyAccountSettings() {
     useState(false);
 
   const [
-    notice,
-    setNotice,
+    overlay,
+    setOverlay,
   ] =
-    useState<
-      NoticeState | null
-    >(null);
-
-  /* ==========================================================
-     COMPUTED
-     ========================================================== */
+    useState<OverlayState | null>(
+      null
+    );
 
   const timezoneOptions =
     useMemo(
@@ -603,9 +558,20 @@ export default function MyAccountSettings() {
     verifyingEmail ||
     cancellingEmail;
 
-  /* ==========================================================
-     LIVE CLOCK
-     ========================================================== */
+  function showOverlay(
+    type:
+      SaMiOverlayType,
+    title:
+      string,
+    message:
+      string
+  ) {
+    setOverlay({
+      type,
+      title,
+      message,
+    });
+  }
 
   useEffect(
     () => {
@@ -627,13 +593,6 @@ export default function MyAccountSettings() {
     },
     []
   );
-
-  /* ==========================================================
-     SYSTEM THEME LISTENER
-
-     When theme = system, SaMi should follow the operating
-     system automatically if the system theme changes.
-     ========================================================== */
 
   useEffect(
     () => {
@@ -675,19 +634,11 @@ export default function MyAccountSettings() {
     ]
   );
 
-  /* ==========================================================
-     LOAD ACCOUNT
-     ========================================================== */
-
   const loadAccount =
     useCallback(
       async () => {
         setLoading(
           true
-        );
-
-        setNotice(
-          null
         );
 
         try {
@@ -787,16 +738,18 @@ export default function MyAccountSettings() {
         } catch (
           error
         ) {
-          setNotice({
-            type:
-              'error',
+          setAccount(
+            null
+          );
 
-            message:
-              error instanceof
+          showOverlay(
+            'error',
+            'Account unavailable',
+            error instanceof
               Error
-                ? error.message
-                : 'SaMi could not load your account.',
-          });
+              ? error.message
+              : 'SaMi could not load your account.'
+          );
         } finally {
           setLoading(
             false
@@ -815,10 +768,6 @@ export default function MyAccountSettings() {
     ]
   );
 
-  /* ==========================================================
-     RESEND COUNTDOWN
-     ========================================================== */
-
   useEffect(
     () => {
       if (
@@ -832,9 +781,7 @@ export default function MyAccountSettings() {
         window.setInterval(
           () => {
             setResendSeconds(
-              (
-                current
-              ) =>
+              current =>
                 Math.max(
                   0,
                   current - 1
@@ -855,10 +802,6 @@ export default function MyAccountSettings() {
     ]
   );
 
-  /* ==========================================================
-     VERIFY RATE-LIMIT COUNTDOWN
-     ========================================================== */
-
   useEffect(
     () => {
       if (
@@ -872,9 +815,7 @@ export default function MyAccountSettings() {
         window.setInterval(
           () => {
             setVerifyRetrySeconds(
-              (
-                current
-              ) =>
+              current =>
                 Math.max(
                   0,
                   current - 1
@@ -894,10 +835,6 @@ export default function MyAccountSettings() {
       verifyRetrySeconds,
     ]
   );
-
-  /* ==========================================================
-     AVATAR
-     ========================================================== */
 
   async function uploadAvatar(
     file:
@@ -923,13 +860,11 @@ export default function MyAccountSettings() {
         file.type
       )
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Choose a JPEG, PNG, or WebP image.',
-      });
+      showOverlay(
+        'warning',
+        'Unsupported image',
+        'Choose a JPEG, PNG, or WebP image.'
+      );
 
       return;
     }
@@ -938,23 +873,17 @@ export default function MyAccountSettings() {
       file.size >
       5 * 1024 * 1024
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Your profile image must be 5 MB or smaller.',
-      });
+      showOverlay(
+        'warning',
+        'Image too large',
+        'Your profile image must be 5 MB or smaller.'
+      );
 
       return;
     }
 
     setAvatarSaving(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1006,27 +935,23 @@ export default function MyAccountSettings() {
 
       await loadAccount();
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your profile image has been updated.',
-      });
+      showOverlay(
+        'success',
+        'Profile image updated',
+        data.message ||
+          'Your profile image has been updated.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-            ? error.message
-            : 'SaMi could not update your profile image.',
-      });
+      showOverlay(
+        'error',
+        'Image update failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not update your profile image.'
+      );
     } finally {
       setAvatarSaving(
         false
@@ -1035,21 +960,17 @@ export default function MyAccountSettings() {
   }
 
   async function removeAvatar() {
-  if (
-    avatarSaving ||
-    avatarRemoving ||
-    !account ||
-    !account.avatarFileId
-  ) {
-    return;
-  }
+    if (
+      avatarSaving ||
+      avatarRemoving ||
+      !account ||
+      !account.avatarFileId
+    ) {
+      return;
+    }
 
     setAvatarRemoving(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1090,37 +1011,29 @@ export default function MyAccountSettings() {
 
       await loadAccount();
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your profile image has been removed.',
-      });
+      showOverlay(
+        'success',
+        'Profile image removed',
+        data.message ||
+          'Your profile image has been removed.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-            ? error.message
-            : 'SaMi could not remove your profile image.',
-      });
+      showOverlay(
+        'error',
+        'Image removal failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not remove your profile image.'
+      );
     } finally {
       setAvatarRemoving(
         false
       );
     }
   }
-
-  /* ==========================================================
-     PROFILE SAVE
-     ========================================================== */
 
   async function saveProfile(
     event:
@@ -1154,13 +1067,11 @@ export default function MyAccountSettings() {
     if (
       !cleanFirstName
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Enter your first name.',
-      });
+      showOverlay(
+        'warning',
+        'First name required',
+        'Enter your first name.'
+      );
 
       return;
     }
@@ -1168,23 +1079,17 @@ export default function MyAccountSettings() {
     if (
       !cleanLastName
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Enter your last name.',
-      });
+      showOverlay(
+        'warning',
+        'Last name required',
+        'Enter your last name.'
+      );
 
       return;
     }
 
     setProfileSaving(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1260,37 +1165,29 @@ export default function MyAccountSettings() {
           ''
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your profile has been updated.',
-      });
+      showOverlay(
+        'success',
+        'Profile updated',
+        data.message ||
+          'Your personal information has been updated.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not update your profile.',
-      });
+      showOverlay(
+        'error',
+        'Profile update failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not update your profile.'
+      );
     } finally {
       setProfileSaving(
         false
       );
     }
   }
-
-  /* ==========================================================
-     PREFERENCES SAVE
-     ========================================================== */
 
   async function savePreferences() {
     if (
@@ -1302,10 +1199,6 @@ export default function MyAccountSettings() {
 
     setPreferencesSaving(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1366,37 +1259,29 @@ export default function MyAccountSettings() {
           .theme
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your preferences have been updated.',
-      });
+      showOverlay(
+        'success',
+        'Preferences saved',
+        data.message ||
+          'Your preferences have been updated.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not update your preferences.',
-      });
+      showOverlay(
+        'error',
+        'Preferences not saved',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not update your preferences.'
+      );
     } finally {
       setPreferencesSaving(
         false
       );
     }
   }
-
-  /* ==========================================================
-     DISCARD UNSAVED PREFERENCES
-     ========================================================== */
 
   function discardPreferences() {
     setPreferences(
@@ -1407,15 +1292,7 @@ export default function MyAccountSettings() {
       savedPreferences
         .theme
     );
-
-    setNotice(
-      null
-    );
   }
-
-  /* ==========================================================
-     REQUEST EMAIL CHANGE
-     ========================================================== */
 
   async function requestNewEmail() {
     if (
@@ -1435,13 +1312,11 @@ export default function MyAccountSettings() {
         email
       )
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Enter a valid new email address.',
-      });
+      showOverlay(
+        'warning',
+        'Invalid email',
+        'Enter a valid new email address.'
+      );
 
       return;
     }
@@ -1452,23 +1327,17 @@ export default function MyAccountSettings() {
         account.email
       )
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'This is already your current email address.',
-      });
+      showOverlay(
+        'warning',
+        'Email unchanged',
+        'This is already your current email address.'
+      );
 
       return;
     }
 
     setRequestingEmail(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1551,37 +1420,29 @@ export default function MyAccountSettings() {
         false
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'A verification code has been sent to your new email address.',
-      });
+      showOverlay(
+        'success',
+        'Verification code sent',
+        data.message ||
+          'A verification code has been sent to your new email address.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not send the verification code.',
-      });
+      showOverlay(
+        'error',
+        'Code not sent',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not send the verification code.'
+      );
     } finally {
       setRequestingEmail(
         false
       );
     }
   }
-
-  /* ==========================================================
-     RESEND EMAIL CODE
-     ========================================================== */
 
   async function resendEmailCode() {
     if (
@@ -1595,10 +1456,6 @@ export default function MyAccountSettings() {
 
     setRequestingEmail(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1679,37 +1536,29 @@ export default function MyAccountSettings() {
         ''
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'A new verification code has been sent.',
-      });
+      showOverlay(
+        'success',
+        'New code sent',
+        data.message ||
+          'A new verification code has been sent.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not resend the verification code.',
-      });
+      showOverlay(
+        'error',
+        'Code not sent',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not resend the verification code.'
+      );
     } finally {
       setRequestingEmail(
         false
       );
     }
   }
-
-  /* ==========================================================
-     VERIFY EMAIL CHANGE
-     ========================================================== */
 
   async function verifyNewEmail() {
     if (
@@ -1731,23 +1580,17 @@ export default function MyAccountSettings() {
         code
       )
     ) {
-      setNotice({
-        type:
-          'warning',
-
-        message:
-          'Enter the complete 6-digit verification code.',
-      });
+      showOverlay(
+        'warning',
+        'Verification code required',
+        'Enter the complete 6-digit verification code.'
+      );
 
       return;
     }
 
     setVerifyingEmail(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1837,37 +1680,29 @@ export default function MyAccountSettings() {
         false
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your email address has been updated successfully.',
-      });
+      showOverlay(
+        'success',
+        'Email updated',
+        data.message ||
+          'Your email address has been updated successfully.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not verify your new email.',
-      });
+      showOverlay(
+        'error',
+        'Email verification failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not verify your new email.'
+      );
     } finally {
       setVerifyingEmail(
         false
       );
     }
   }
-
-  /* ==========================================================
-     CANCEL EMAIL CHANGE
-     ========================================================== */
 
   async function cancelPendingEmailChange() {
     if (
@@ -1878,10 +1713,6 @@ export default function MyAccountSettings() {
 
     setCancellingEmail(
       true
-    );
-
-    setNotice(
-      null
     );
 
     try {
@@ -1940,27 +1771,23 @@ export default function MyAccountSettings() {
         0
       );
 
-      setNotice({
-        type:
-          'success',
-
-        message:
-          data.message ||
-          'Your pending email change has been cancelled.',
-      });
+      showOverlay(
+        'success',
+        'Email change cancelled',
+        data.message ||
+          'Your pending email change has been cancelled.'
+      );
     } catch (
       error
     ) {
-      setNotice({
-        type:
-          'error',
-
-        message:
-          error instanceof
-            Error
-              ? error.message
-              : 'SaMi could not cancel the email change.',
-      });
+      showOverlay(
+        'error',
+        'Cancellation failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not cancel the email change.'
+      );
     } finally {
       setCancellingEmail(
         false
@@ -1968,145 +1795,359 @@ export default function MyAccountSettings() {
     }
   }
 
-  /* ==========================================================
-     LOADING
-     ========================================================== */
+  function openSecurity() {
+    window.location.assign(
+      '/settings?tab=security'
+    );
+  }
 
   if (
     loading
   ) {
     return (
-      <div className="space-y-6">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-
+      <div className="space-y-4">
+        <div className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
           <div className="flex items-center gap-4">
-
-            <div className="h-14 w-14 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
+            <div className="h-16 w-16 rounded-2xl bg-slate-100 dark:bg-slate-800" />
 
             <div className="flex-1">
+              <div className="h-5 w-48 rounded bg-slate-100 dark:bg-slate-800" />
 
-              <div className="h-5 w-48 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
-
-              <div className="mt-2 h-4 w-64 max-w-full animate-pulse rounded bg-slate-100 dark:bg-slate-800" />
+              <div className="mt-2 h-4 w-64 max-w-full rounded bg-slate-100 dark:bg-slate-800" />
             </div>
           </div>
+        </div>
 
-          <div className="mt-7 grid gap-4 sm:grid-cols-2">
+        <div className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+          <div className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
 
-            <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+          <div className="mt-3 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
 
-            <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
-
-            <div className="h-12 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800 sm:col-span-2" />
-          </div>
+          <div className="mt-3 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
         </div>
       </div>
     );
   }
-
-  /* ==========================================================
-     ACCOUNT LOAD FAILED
-     ========================================================== */
 
   if (
     !account
   ) {
     return (
-      <div className="rounded-3xl border border-red-200 bg-red-50 p-6 dark:border-red-900/50 dark:bg-red-950/20">
-
-        <div className="flex items-start gap-3">
-
-          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
-
-          <div>
-
-            <h3 className="font-bold text-red-900 dark:text-red-200">
-              Account unavailable
-            </h3>
-
-            <p className="mt-1 text-sm text-red-700 dark:text-red-300">
-              {notice?.message ||
-                'SaMi could not load your account.'}
-            </p>
-
-            <button
-              type="button"
-              onClick={() =>
-                void loadAccount()
-              }
-              className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-red-600 px-4 text-sm font-bold text-white transition hover:bg-red-700"
-            >
-              <RefreshCw className="h-4 w-4" />
-
-              Try again
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ==========================================================
-     RENDER
-     ========================================================== */
-
-  return (
-    <div className="space-y-6">
-
-      {/* ======================================================
-          NOTICE
-          ====================================================== */}
-
-      {notice && (
-        <div
-          className={`flex items-start gap-3 rounded-2xl border px-4 py-3 ${
-            notice.type ===
-              'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300'
-              : notice.type ===
-                  'warning'
-                ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300'
-                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'
-          }`}
-        >
-          {notice.type ===
-          'success' ? (
-            <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-          ) : (
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-          )}
-
-          <p className="min-w-0 flex-1 text-sm font-medium">
-            {notice.message}
-          </p>
-
+      <>
+        <div className="flex min-h-[320px] items-center justify-center">
           <button
             type="button"
             onClick={() =>
-              setNotice(
-                null
-              )
+              void loadAccount()
             }
-            aria-label="Dismiss message"
-            className="shrink-0 opacity-60 transition hover:opacity-100"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
-            <X className="h-4 w-4" />
+            <RefreshCw className="h-4 w-4" />
+            Try again
           </button>
         </div>
-      )}
 
-      {/* ======================================================
-          ACCOUNT IDENTITY
-          ====================================================== */}
+        <SaMiOverlay
+          open={
+            Boolean(
+              overlay
+            )
+          }
+          type={
+            overlay?.type ||
+            'error'
+          }
+          title={
+            overlay?.title ||
+            'Account unavailable'
+          }
+          message={
+            overlay?.message ||
+            'SaMi could not load your account.'
+          }
+          onClose={() =>
+            setOverlay(
+              null
+            )
+          }
+        />
+      </>
+    );
+  }
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+  return (
+    <>
+      <div className="mx-auto w-full max-w-5xl">
+        {view !==
+          'overview' && (
+          <button
+            type="button"
+            onClick={() =>
+              setView(
+                'overview'
+              )
+            }
+            className="mb-5 inline-flex h-9 items-center gap-2 rounded-xl px-2 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        )}
 
+        {view ===
+          'overview' && (
+          <AccountOverview
+            account={
+              account
+            }
+            preferences={
+              preferences
+            }
+            avatarSaving={
+              avatarSaving
+            }
+            avatarRemoving={
+              avatarRemoving
+            }
+            onAvatar={
+              uploadAvatar
+            }
+            onRemoveAvatar={
+              removeAvatar
+            }
+            onPersonal={() =>
+              setView(
+                'personal'
+              )
+            }
+            onEmail={() =>
+              setView(
+                'email'
+              )
+            }
+            onPreferences={() =>
+              setView(
+                'preferences'
+              )
+            }
+            onSecurity={
+              openSecurity
+            }
+          />
+        )}
+
+        {view ===
+          'personal' && (
+          <PersonalInformationView
+            firstName={
+              firstName
+            }
+            lastName={
+              lastName
+            }
+            phone={
+              phone
+            }
+            busy={
+              busy
+            }
+            profileSaving={
+              profileSaving
+            }
+            profileChanged={
+              profileChanged
+            }
+            onFirstName={
+              setFirstName
+            }
+            onLastName={
+              setLastName
+            }
+            onPhone={
+              setPhone
+            }
+            onSubmit={
+              saveProfile
+            }
+          />
+        )}
+
+        {view ===
+          'email' && (
+          <EmailView
+            account={
+              account
+            }
+            preferences={
+              preferences
+            }
+            pendingEmailChange={
+              pendingEmailChange
+            }
+            emailEditing={
+              emailEditing
+            }
+            newEmail={
+              newEmail
+            }
+            emailCode={
+              emailCode
+            }
+            resendSeconds={
+              resendSeconds
+            }
+            verifyRetrySeconds={
+              verifyRetrySeconds
+            }
+            requestingEmail={
+              requestingEmail
+            }
+            verifyingEmail={
+              verifyingEmail
+            }
+            cancellingEmail={
+              cancellingEmail
+            }
+            busy={
+              busy
+            }
+            onEditing={
+              setEmailEditing
+            }
+            onNewEmail={
+              setNewEmail
+            }
+            onCode={
+              setEmailCode
+            }
+            onRequest={
+              requestNewEmail
+            }
+            onResend={
+              resendEmailCode
+            }
+            onVerify={
+              verifyNewEmail
+            }
+            onCancelPending={
+              cancelPendingEmailChange
+            }
+          />
+        )}
+
+        {view ===
+          'preferences' && (
+          <PreferencesView
+            preferences={
+              preferences
+            }
+            previewNow={
+              previewNow
+            }
+            preferencePreview={
+              preferencePreview
+            }
+            timezoneOptions={
+              timezoneOptions
+            }
+            preferencesChanged={
+              preferencesChanged
+            }
+            preferencesSaving={
+              preferencesSaving
+            }
+            onChange={
+              setPreferences
+            }
+            onSave={
+              savePreferences
+            }
+            onDiscard={
+              discardPreferences
+            }
+          />
+        )}
+      </div>
+
+      <SaMiOverlay
+        open={
+          Boolean(
+            overlay
+          )
+        }
+        type={
+          overlay?.type ||
+          'info'
+        }
+        title={
+          overlay?.title ||
+          ''
+        }
+        message={
+          overlay?.message ||
+          ''
+        }
+        onClose={() =>
+          setOverlay(
+            null
+          )
+        }
+      />
+    </>
+  );
+}
+
+function AccountOverview({
+  account,
+  preferences,
+  avatarSaving,
+  avatarRemoving,
+  onAvatar,
+  onRemoveAvatar,
+  onPersonal,
+  onEmail,
+  onPreferences,
+  onSecurity,
+}: {
+  account:
+    UserAccount;
+
+  preferences:
+    UserDisplayPreferences;
+
+  avatarSaving:
+    boolean;
+
+  avatarRemoving:
+    boolean;
+
+  onAvatar:
+    (
+      file:
+        File | null
+    ) => void;
+
+  onRemoveAvatar:
+    () => void;
+
+  onPersonal:
+    () => void;
+
+  onEmail:
+    () => void;
+
+  onPreferences:
+    () => void;
+
+  onSecurity:
+    () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-
           <div className="relative h-20 w-20 shrink-0">
-
-            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-xl font-black text-white shadow-sm">
-
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-xl font-black text-white">
               {account.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -2133,17 +2174,17 @@ export default function MyAccountSettings() {
 
             <label
               htmlFor="account-avatar"
+              title={
+                account.avatarFileId
+                  ? 'Replace profile image'
+                  : 'Upload profile image'
+              }
               className={`absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-xl border-4 border-white bg-blue-600 text-white shadow-sm transition dark:border-slate-900 ${
                 avatarSaving ||
                 avatarRemoving
                   ? 'cursor-not-allowed opacity-60'
                   : 'cursor-pointer hover:bg-blue-700'
               }`}
-              title={
-                account.avatarFileId
-                  ? 'Replace profile image'
-                  : 'Upload profile image'
-              }
             >
               {avatarSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -2159,9 +2200,7 @@ export default function MyAccountSettings() {
                   avatarSaving ||
                   avatarRemoving
                 }
-                onChange={(
-                  event
-                ) => {
+                onChange={event => {
                   const file =
                     event.target
                       .files?.[0] ||
@@ -2170,7 +2209,7 @@ export default function MyAccountSettings() {
                   event.currentTarget.value =
                     '';
 
-                  void uploadAvatar(
+                  onAvatar(
                     file
                   );
                 }}
@@ -2180,19 +2219,15 @@ export default function MyAccountSettings() {
           </div>
 
           <div className="min-w-0 flex-1">
-
             <div className="flex flex-wrap items-center gap-2">
-
-              <h2 className="truncate text-xl font-black tracking-[-0.025em] text-slate-950 dark:text-white">
+              <p className="truncate text-xl font-black tracking-[-0.025em] text-slate-950 dark:text-white">
                 {account.fullName ||
                   account.email}
-              </h2>
+              </p>
 
               {account.emailVerified && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-
                   <Check className="h-3 w-3" />
-
                   Verified
                 </span>
               )}
@@ -2202,12 +2237,7 @@ export default function MyAccountSettings() {
               {account.email}
             </p>
 
-            <p className="mt-2 text-xs text-slate-400">
-              Your personal SaMi account follows you across every workspace you belong to.
-            </p>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-
+            <div className="mt-4 flex flex-wrap gap-2">
               <label
                 htmlFor="account-avatar"
                 className={`inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 transition dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 ${
@@ -2217,30 +2247,24 @@ export default function MyAccountSettings() {
                     : 'cursor-pointer hover:border-blue-300 hover:text-blue-600'
                 }`}
               >
-                {avatarSaving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Camera className="h-3.5 w-3.5" />
-                )}
+                <Camera className="h-3.5 w-3.5" />
 
-                {avatarSaving
-                  ? 'Uploading...'
-                  : account.avatarFileId
-                    ? 'Replace photo'
-                    : 'Add photo'}
+                {account.avatarFileId
+                  ? 'Replace photo'
+                  : 'Add photo'}
               </label>
 
               {account.avatarFileId && (
                 <button
                   type="button"
-                  onClick={() =>
-                    void removeAvatar()
+                  onClick={
+                    onRemoveAvatar
                   }
                   disabled={
                     avatarSaving ||
                     avatarRemoving
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-600 transition hover:border-red-200 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
+                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3.5 text-xs font-black text-slate-600 transition hover:border-red-200 hover:text-red-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
                 >
                   {avatarRemoving ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -2248,764 +2272,899 @@ export default function MyAccountSettings() {
                     <Trash2 className="h-3.5 w-3.5" />
                   )}
 
-                  {avatarRemoving
-                    ? 'Removing...'
-                    : 'Remove photo'}
+                  Remove photo
                 </button>
               )}
-
-              <span className="text-[10px] leading-4 text-slate-400">
-                JPEG, PNG or WebP · max 5 MB
-              </span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ======================================================
-          PERSONAL PROFILE
-          ====================================================== */}
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-            <UserRound className="h-5 w-5" />
-          </div>
-
-          <div>
-
-            <h3 className="text-base font-black text-slate-950 dark:text-white">
-              Personal information
-            </h3>
-
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Your global identity across SaMi. Workspace roles and permissions are managed separately.
-            </p>
-          </div>
-        </div>
-
-        <form
-          onSubmit={
-            saveProfile
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <SettingsRow
+          icon={
+            UserRound
           }
-          className="mt-6"
-        >
-          <div className="grid gap-5 sm:grid-cols-2">
+          title="Personal information"
+          description={`${account.firstName} ${account.lastName}${account.phone ? ` · ${account.phone}` : ''}`}
+          onClick={
+            onPersonal
+          }
+        />
 
-            <div>
+        <SettingsRow
+          icon={
+            AtSign
+          }
+          title="Email"
+          description={
+            account.email
+          }
+          badge={
+            account.emailVerified
+              ? 'Verified'
+              : 'Verification required'
+          }
+          onClick={
+            onEmail
+          }
+        />
 
-              <label
-                htmlFor="account-first-name"
-                className="text-xs font-bold text-slate-700 dark:text-slate-200"
-              >
-                First name
-              </label>
+        <SettingsRow
+          icon={
+            SunMoon
+          }
+          title="Preferences"
+          description={`${preferences.timezone} · ${preferences.dateFormat} · ${preferences.timeFormat === '24h' ? '24-hour' : '12-hour'}`}
+          onClick={
+            onPreferences
+          }
+        />
 
-              <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
-
-                <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-
-                <input
-                  id="account-first-name"
-                  value={
-                    firstName
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setFirstName(
-                      event.target
-                        .value
-                    )
-                  }
-                  maxLength={100}
-                  autoComplete="given-name"
-                  disabled={
-                    busy
-                  }
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            <div>
-
-              <label
-                htmlFor="account-last-name"
-                className="text-xs font-bold text-slate-700 dark:text-slate-200"
-              >
-                Last name
-              </label>
-
-              <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
-
-                <UserRound className="h-4 w-4 shrink-0 text-slate-400" />
-
-                <input
-                  id="account-last-name"
-                  value={
-                    lastName
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setLastName(
-                      event.target
-                        .value
-                    )
-                  }
-                  maxLength={100}
-                  autoComplete="family-name"
-                  disabled={
-                    busy
-                  }
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
-                />
-              </div>
-            </div>
-
-            <div className="sm:col-span-2">
-
-              <label
-                htmlFor="account-phone"
-                className="text-xs font-bold text-slate-700 dark:text-slate-200"
-              >
-                Phone
-              </label>
-
-              <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
-
-                <Phone className="h-4 w-4 shrink-0 text-slate-400" />
-
-                <input
-                  id="account-phone"
-                  type="tel"
-                  value={
-                    phone
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPhone(
-                      event.target
-                        .value
-                    )
-                  }
-                  maxLength={50}
-                  autoComplete="tel"
-                  placeholder="+254..."
-                  disabled={
-                    busy
-                  }
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-end">
-
-            <button
-              type="submit"
-              disabled={
-                profileSaving ||
-                !profileChanged
-              }
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {profileSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-
-              {profileSaving
-                ? 'Saving...'
-                : 'Save profile'}
-            </button>
-          </div>
-        </form>
+        <SettingsRow
+          icon={
+            ShieldCheck
+          }
+          title="Password & security"
+          description="Password, two-factor authentication, sessions and security activity"
+          onClick={
+            onSecurity
+          }
+          last
+        />
       </section>
 
-      {/* ======================================================
-          EMAIL
-          ====================================================== */}
+      <section className="rounded-3xl border border-slate-200 bg-white px-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <dl className="divide-y divide-slate-100 dark:divide-slate-800">
+          <AccountDetail
+            label="Account status"
+            value={
+              account.status
+                .replace(
+                  /_/g,
+                  ' '
+                )
+            }
+          />
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
+          <AccountDetail
+            label="Account created"
+            value={
+              account.createdAt
+                ? formatUserDateTime(
+                    account.createdAt,
+                    preferences
+                  )
+                : formatFallbackDateTime(
+                    account.createdAt
+                  )
+            }
+          />
+        </dl>
+      </section>
+    </div>
+  );
+}
 
-        <div className="flex items-start gap-3">
+function SettingsRow({
+  icon:
+    Icon,
+  title,
+  description,
+  badge,
+  onClick,
+  last = false,
+}: {
+  icon:
+    typeof UserRound;
 
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-950/40 dark:text-violet-300">
-            <AtSign className="h-5 w-5" />
-          </div>
+  title:
+    string;
 
-          <div className="min-w-0">
+  description:
+    string;
 
-            <h3 className="text-base font-black text-slate-950 dark:text-white">
-              Email address
-            </h3>
+  badge?:
+    string;
 
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Your email is part of your global SaMi identity and is used to sign in.
-            </p>
-          </div>
+  onClick:
+    () => void;
+
+  last?:
+    boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={
+        onClick
+      }
+      className={`flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+        last
+          ? ''
+          : 'border-b border-slate-100 dark:border-slate-800'
+      }`}
+    >
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+        <Icon className="h-[18px] w-[18px]" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm font-black text-slate-950 dark:text-white">
+            {title}
+          </p>
+
+          {badge && (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+              {badge}
+            </span>
+          )}
         </div>
 
-        {!pendingEmailChange ? (
-          <>
-            <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
+        <p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
+          {description}
+        </p>
+      </div>
 
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-                <Mail className="h-4 w-4" />
-              </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+    </button>
+  );
+}
 
-              <div className="min-w-0 flex-1">
+function AccountDetail({
+  label,
+  value,
+}: {
+  label:
+    string;
 
-                <p className="truncate text-sm font-black text-slate-900 dark:text-white">
-                  {account.email}
-                </p>
+  value:
+    string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <dt className="text-xs font-bold text-slate-500">
+        {label}
+      </dt>
 
-                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                  {account.emailVerified
-                    ? 'Verified email'
-                    : 'Email verification required'}
-                </p>
-              </div>
+      <dd className="text-sm font-bold capitalize text-slate-900 dark:text-white">
+        {value}
+      </dd>
+    </div>
+  );
+}
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEmailEditing(
-                    true
-                  );
+function PersonalInformationView({
+  firstName,
+  lastName,
+  phone,
+  busy,
+  profileSaving,
+  profileChanged,
+  onFirstName,
+  onLastName,
+  onPhone,
+  onSubmit,
+}: {
+  firstName:
+    string;
 
-                  setNewEmail(
-                    ''
-                  );
+  lastName:
+    string;
 
-                  setEmailCode(
-                    ''
-                  );
+  phone:
+    string;
 
-                  setNotice(
-                    null
-                  );
-                }}
+  busy:
+    boolean;
+
+  profileSaving:
+    boolean;
+
+  profileChanged:
+    boolean;
+
+  onFirstName:
+    (
+      value:
+        string
+    ) => void;
+
+  onLastName:
+    (
+      value:
+        string
+    ) => void;
+
+  onPhone:
+    (
+      value:
+        string
+    ) => void;
+
+  onSubmit:
+    (
+      event:
+        FormEvent<HTMLFormElement>
+    ) => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      <form
+        onSubmit={
+          onSubmit
+        }
+      >
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field
+            label="First name"
+            icon={
+              UserRound
+            }
+          >
+            <input
+              value={
+                firstName
+              }
+              onChange={
+                event =>
+                  onFirstName(
+                    event.target
+                      .value
+                  )
+              }
+              maxLength={100}
+              autoComplete="given-name"
+              disabled={
+                busy
+              }
+              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
+            />
+          </Field>
+
+          <Field
+            label="Last name"
+            icon={
+              UserRound
+            }
+          >
+            <input
+              value={
+                lastName
+              }
+              onChange={
+                event =>
+                  onLastName(
+                    event.target
+                      .value
+                  )
+              }
+              maxLength={100}
+              autoComplete="family-name"
+              disabled={
+                busy
+              }
+              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
+            />
+          </Field>
+
+          <div className="sm:col-span-2">
+            <Field
+              label="Phone"
+              icon={
+                Phone
+              }
+            >
+              <input
+                type="tel"
+                value={
+                  phone
+                }
+                onChange={
+                  event =>
+                    onPhone(
+                      event.target
+                        .value
+                    )
+                }
+                maxLength={50}
+                autoComplete="tel"
+                placeholder="+254..."
                 disabled={
                   busy
                 }
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              >
-                <Pencil className="h-3.5 w-3.5" />
+                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
+              />
+            </Field>
+          </div>
+        </div>
 
-                Change email
-              </button>
+        <div className="mt-6 flex justify-end">
+          <button
+            type="submit"
+            disabled={
+              profileSaving ||
+              !profileChanged
+            }
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {profileSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+
+            {profileSaving
+              ? 'Saving...'
+              : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  icon:
+    Icon,
+  children,
+}: {
+  label:
+    string;
+
+  icon:
+    typeof UserRound;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+        {label}
+      </p>
+
+      <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+        <Icon className="h-4 w-4 shrink-0 text-slate-400" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EmailView({
+  account,
+  preferences,
+  pendingEmailChange,
+  emailEditing,
+  newEmail,
+  emailCode,
+  resendSeconds,
+  verifyRetrySeconds,
+  requestingEmail,
+  verifyingEmail,
+  cancellingEmail,
+  busy,
+  onEditing,
+  onNewEmail,
+  onCode,
+  onRequest,
+  onResend,
+  onVerify,
+  onCancelPending,
+}: {
+  account:
+    UserAccount;
+
+  preferences:
+    UserDisplayPreferences;
+
+  pendingEmailChange:
+    PendingEmailChange | null;
+
+  emailEditing:
+    boolean;
+
+  newEmail:
+    string;
+
+  emailCode:
+    string;
+
+  resendSeconds:
+    number;
+
+  verifyRetrySeconds:
+    number;
+
+  requestingEmail:
+    boolean;
+
+  verifyingEmail:
+    boolean;
+
+  cancellingEmail:
+    boolean;
+
+  busy:
+    boolean;
+
+  onEditing:
+    (
+      value:
+        boolean
+    ) => void;
+
+  onNewEmail:
+    (
+      value:
+        string
+    ) => void;
+
+  onCode:
+    (
+      value:
+        string
+    ) => void;
+
+  onRequest:
+    () => void;
+
+  onResend:
+    () => void;
+
+  onVerify:
+    () => void;
+
+  onCancelPending:
+    () => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      {!pendingEmailChange ? (
+        <>
+          <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
+              <Mail className="h-4 w-4" />
             </div>
 
-            {emailEditing && (
-              <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+                {account.email}
+              </p>
 
-                <label
-                  htmlFor="new-account-email"
-                  className="text-xs font-bold text-slate-700 dark:text-slate-200"
-                >
-                  New email address
-                </label>
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                {account.emailVerified
+                  ? 'Verified email'
+                  : 'Email verification required'}
+              </p>
+            </div>
 
-                <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+            <button
+              type="button"
+              onClick={() => {
+                onEditing(
+                  true
+                );
 
-                  <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+                onNewEmail(
+                  ''
+                );
 
-                  <input
-                    id="new-account-email"
-                    type="email"
-                    value={
-                      newEmail
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      setNewEmail(
+                onCode(
+                  ''
+                );
+              }}
+              disabled={
+                busy
+              }
+              className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              Change email
+            </button>
+          </div>
+
+          {emailEditing && (
+            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                New email address
+              </label>
+
+              <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
+                <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+
+                <input
+                  type="email"
+                  value={
+                    newEmail
+                  }
+                  onChange={
+                    event =>
+                      onNewEmail(
                         event.target
                           .value
                       )
-                    }
-                    autoComplete="email"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    placeholder="new@example.com"
-                    disabled={
-                      requestingEmail
-                    }
-                    className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  />
-                </div>
-
-                <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                  SaMi will send a 6-digit confirmation code to the new address. Your current email remains active until verification succeeds.
-                </p>
-
-                <div className="mt-4 flex flex-wrap justify-end gap-2">
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmailEditing(
-                        false
-                      );
-
-                      setNewEmail(
-                        ''
-                      );
-                    }}
-                    disabled={
-                      requestingEmail
-                    }
-                    className="h-10 rounded-xl px-4 text-xs font-black text-slate-500 transition hover:text-slate-900 disabled:opacity-50 dark:text-slate-400 dark:hover:text-white"
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      requestNewEmail
-                    }
-                    disabled={
-                      requestingEmail
-                    }
-                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {requestingEmail ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Mail className="h-4 w-4" />
-                    )}
-
-                    {requestingEmail
-                      ? 'Sending...'
-                      : 'Send verification code'}
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/70 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
-
-            <div className="flex items-start gap-3">
-
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm dark:bg-slate-900 dark:text-blue-300">
-                <ShieldCheck className="h-5 w-5" />
+                  }
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="new@example.com"
+                  disabled={
+                    requestingEmail
+                  }
+                  className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
+                />
               </div>
 
-              <div className="min-w-0 flex-1">
+              <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                A 6-digit verification code will be sent to the new address. Your current email remains active until verification succeeds.
+              </p>
 
-                <p className="text-sm font-black text-slate-900 dark:text-white">
-                  Verify your new email
-                </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onEditing(
+                      false
+                    );
 
-                <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
-                  Code sent to{' '}
-                  <span className="font-bold text-slate-700 dark:text-slate-200">
-                    {pendingEmailChange.email}
-                  </span>
-                </p>
+                    onNewEmail(
+                      ''
+                    );
+                  }}
+                  disabled={
+                    requestingEmail
+                  }
+                  className="h-10 rounded-xl px-4 text-xs font-black text-slate-500"
+                >
+                  Cancel
+                </button>
 
-                <p className="mt-1 text-[10px] text-slate-400">
-                  Expires{' '}
-                  {formatUserDateTime(
-                    pendingEmailChange
-                      .expiresAt,
-                    preferences
+                <button
+                  type="button"
+                  onClick={
+                    onRequest
+                  }
+                  disabled={
+                    requestingEmail
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-50"
+                >
+                  {requestingEmail ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Mail className="h-4 w-4" />
                   )}
-                </p>
+
+                  {requestingEmail
+                    ? 'Sending...'
+                    : 'Send verification code'}
+                </button>
               </div>
             </div>
+          )}
+        </>
+      ) : (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 dark:bg-slate-900 dark:text-blue-300">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
 
-            <div className="mt-5">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-black text-slate-900 dark:text-white">
+                Verify your new email
+              </p>
 
-              <label
-                htmlFor="account-email-code"
-                className="text-xs font-bold text-slate-700 dark:text-slate-200"
-              >
-                6-digit code
-              </label>
+              <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
+                Code sent to{' '}
+                <span className="font-bold text-slate-700 dark:text-slate-200">
+                  {pendingEmailChange.email}
+                </span>
+              </p>
 
-              <input
-                id="account-email-code"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={
-                  emailCode
+              <p className="mt-1 text-[10px] text-slate-400">
+                Expires{' '}
+                {formatUserDateTime(
+                  pendingEmailChange
+                    .expiresAt,
+                  preferences
+                )}
+              </p>
+            </div>
+          </div>
+
+          <input
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]*"
+            maxLength={6}
+            value={
+              emailCode
+            }
+            onChange={event => {
+              const value =
+                event.target
+                  .value;
+
+              if (
+                /^\d{0,6}$/.test(
+                  value
+                )
+              ) {
+                onCode(
+                  value
+                );
+              }
+            }}
+            disabled={
+              verifyingEmail
+            }
+            placeholder="000000"
+            className="mt-5 h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+          />
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={
+                onResend
+              }
+              disabled={
+                requestingEmail ||
+                resendSeconds >
+                  0
+              }
+              className="inline-flex items-center gap-2 text-xs font-black text-blue-600 disabled:text-slate-400 dark:text-blue-400"
+            >
+              {requestingEmail ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : resendSeconds >
+                0 ? (
+                <Clock3 className="h-3.5 w-3.5" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+
+              {requestingEmail
+                ? 'Sending...'
+                : resendSeconds >
+                    0
+                  ? `Resend in ${resendSeconds}s`
+                  : 'Send another code'}
+            </button>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={
+                  onCancelPending
                 }
-                onChange={(
-                  event
-                ) => {
-                  const value =
-                    event.target
-                      .value;
-
-                  if (
-                    /^\d{0,6}$/.test(
-                      value
-                    )
-                  ) {
-                    setEmailCode(
-                      value
-                    );
-                  }
-                }}
                 disabled={
+                  cancellingEmail ||
                   verifyingEmail
                 }
-                placeholder="000000"
-                className="mt-2 h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-              />
-            </div>
-
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              >
+                {cancellingEmail
+                  ? 'Cancelling...'
+                  : 'Cancel change'}
+              </button>
 
               <button
                 type="button"
                 onClick={
-                  resendEmailCode
+                  onVerify
                 }
                 disabled={
-                  requestingEmail ||
-                  resendSeconds >
-                    0
-                }
-                className="inline-flex items-center gap-2 text-xs font-black text-blue-600 transition hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-400 dark:text-blue-400"
-              >
-                {requestingEmail ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : resendSeconds >
-                  0 ? (
-                  <Clock3 className="h-3.5 w-3.5" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                )}
-
-                {requestingEmail
-                  ? 'Sending...'
-                  : resendSeconds >
-                      0
-                    ? `Resend in ${resendSeconds}s`
-                    : 'Send another code'}
-              </button>
-
-              <div className="flex flex-wrap gap-2">
-
-                <button
-                  type="button"
-                  onClick={
-                    cancelPendingEmailChange
-                  }
-                  disabled={
-                    cancellingEmail ||
-                    verifyingEmail
-                  }
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-600 transition hover:border-red-200 hover:text-red-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                >
-                  {cancellingEmail
-                    ? 'Cancelling...'
-                    : 'Cancel change'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    verifyNewEmail
-                  }
-                  disabled={
-                    verifyingEmail ||
-                    verifyRetrySeconds >
-                      0 ||
-                    !validCode(
-                      emailCode
-                    )
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {verifyingEmail ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : verifyRetrySeconds >
-                    0 ? (
-                    <Clock3 className="h-4 w-4" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-
-                  {verifyingEmail
-                    ? 'Verifying...'
-                    : verifyRetrySeconds >
-                        0
-                      ? `Try again in ${verifyRetrySeconds}s`
-                      : 'Confirm email'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* ======================================================
-          PERSONAL PREFERENCES
-          ====================================================== */}
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
-            <SunMoon className="h-5 w-5" />
-          </div>
-
-          <div>
-
-            <h3 className="text-base font-black text-slate-950 dark:text-white">
-              Personal preferences
-            </h3>
-
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              These settings control how SaMi is displayed to you across the platform.
-            </p>
-          </div>
-        </div>
-
-        {/* ====================================================
-            LIVE PREVIEW
-            ==================================================== */}
-
-        <div className="mt-6 overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-blue-900/50 dark:from-blue-950/25 dark:to-indigo-950/20">
-
-          <div className="border-b border-blue-100 px-5 py-4 dark:border-blue-900/40">
-
-            <div className="flex items-start gap-3">
-
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
-                <Clock3 className="h-4 w-4" />
-              </div>
-
-              <div>
-
-                <p className="text-sm font-black text-slate-950 dark:text-white">
-                  Live preference preview
-                </p>
-
-                <p className="mt-1 text-[11px] leading-5 text-slate-600 dark:text-slate-400">
-                  Change the options below and you can immediately see how dates and times will appear to you in SaMi.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-px bg-blue-100 dark:bg-blue-900/30 sm:grid-cols-2 lg:grid-cols-4">
-
-            <PreferencePreviewCard
-              label="Your date"
-              value={
-                preferencePreview
-                  .date
-              }
-              icon={
-                CalendarDays
-              }
-            />
-
-            <PreferencePreviewCard
-              label="Your time"
-              value={
-                preferencePreview
-                  .time
-              }
-              icon={
-                Clock3
-              }
-            />
-
-            <PreferencePreviewCard
-              label="Date & time"
-              value={
-                preferencePreview
-                  .dateTime
-              }
-              icon={
-                CalendarDays
-              }
-            />
-
-            <PreferencePreviewCard
-              label="Active timezone"
-              value={
-                preferencePreview
-                  .timezone
-              }
-              icon={
-                Globe2
-              }
-            />
-          </div>
-
-          <div className="border-t border-blue-100 bg-white/60 px-5 py-4 dark:border-blue-900/40 dark:bg-slate-950/30">
-
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
-              Your week
-            </p>
-
-            <div className="mt-3 grid grid-cols-7 gap-1.5">
-
-              {preferencePreview
-                .weekdays
-                .map(
-                  (
-                    weekday,
-                    index
-                  ) => (
-                    <div
-                      key={`${weekday}-${index}`}
-                      className={`rounded-lg px-1 py-2 text-center text-[9px] font-bold ${
-                        index === 0
-                          ? 'bg-blue-600 text-white'
-                          : 'border border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'
-                      }`}
-                    >
-                      {weekday}
-                    </div>
+                  verifyingEmail ||
+                  verifyRetrySeconds >
+                    0 ||
+                  !validCode(
+                    emailCode
                   )
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-50"
+              >
+                {verifyingEmail ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" />
                 )}
-            </div>
 
-            <p className="mt-3 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-              The highlighted day is the first day of your week. This will later control SaMi calendars, schedules, timesheets and weekly reports.
-            </p>
-          </div>
-        </div>
-
-        {/* ====================================================
-            WHERE PREFERENCES APPLY
-            ==================================================== */}
-
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
-
-          <div className="flex items-start gap-3">
-
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-
-            <div>
-
-              <p className="text-xs font-black text-slate-900 dark:text-white">
-                Where these settings apply
-              </p>
-
-              <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-                Your preferences will be used when SaMi displays dashboard activity, sessions, audit events, notifications, tasks, AI history and timestamps from business apps.
-              </p>
-
-              <p className="mt-2 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-                They do not change the actual timestamp stored in the database and do not override company settings on customer-facing documents such as invoices.
-              </p>
+                {verifyingEmail
+                  ? 'Verifying...'
+                  : verifyRetrySeconds >
+                      0
+                    ? `Try again in ${verifyRetrySeconds}s`
+                    : 'Confirm email'}
+              </button>
             </div>
           </div>
         </div>
+      )}
+    </section>
+  );
+}
 
-        {/* ====================================================
-            PREFERENCE FORM
-            ==================================================== */}
+function PreferencesView({
+  preferences,
+  previewNow,
+  preferencePreview,
+  timezoneOptions,
+  preferencesChanged,
+  preferencesSaving,
+  onChange,
+  onSave,
+  onDiscard,
+}: {
+  preferences:
+    UserDisplayPreferences;
 
-        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+  previewNow:
+    Date;
 
-          {/* THEME */}
+  preferencePreview:
+    ReturnType<
+      typeof getUserFormattingPreview
+    >;
 
-          <div>
+  timezoneOptions:
+    string[];
 
-            <label
-              htmlFor="account-theme"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              Theme
-            </label>
+  preferencesChanged:
+    boolean;
+
+  preferencesSaving:
+    boolean;
+
+  onChange:
+    React.Dispatch<
+      React.SetStateAction<UserDisplayPreferences>
+    >;
+
+  onSave:
+    () => void;
+
+  onDiscard:
+    () => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-blue-900/50 dark:from-blue-950/25 dark:to-indigo-950/20">
+        <div className="grid gap-px bg-blue-100 dark:bg-blue-900/30 sm:grid-cols-2 lg:grid-cols-4">
+          <PreferencePreviewCard
+            label="Date"
+            value={
+              preferencePreview
+                .date
+            }
+            icon={
+              CalendarDays
+            }
+          />
+
+          <PreferencePreviewCard
+            label="Time"
+            value={
+              preferencePreview
+                .time
+            }
+            icon={
+              Clock3
+            }
+          />
+
+          <PreferencePreviewCard
+            label="Date & time"
+            value={
+              preferencePreview
+                .dateTime
+            }
+            icon={
+              CalendarDays
+            }
+          />
+
+          <PreferencePreviewCard
+            label="Timezone"
+            value={
+              preferencePreview
+                .timezone
+            }
+            icon={
+              Globe2
+            }
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+
+        <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+          These preferences control how SaMi displays dates, times and appearance to you. They do not change stored timestamps or company settings used on customer-facing documents.
+        </p>
+      </div>
+
+      <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <SelectField
+          label="Theme"
+          value={
+            preferences.theme
+          }
+          disabled={
+            preferencesSaving
+          }
+          onChange={
+            value => {
+              const theme =
+                value as UserTheme;
+
+              onChange(
+                current => ({
+                  ...current,
+                  theme,
+                })
+              );
+
+              applyTheme(
+                theme
+              );
+            }
+          }
+        >
+          <option value="system">
+            Follow system
+          </option>
+
+          <option value="light">
+            Light
+          </option>
+
+          <option value="dark">
+            Dark
+          </option>
+        </SelectField>
+
+        <div>
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+            Timezone
+          </label>
+
+          <div className="relative mt-2">
+            <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
             <select
-              id="account-theme"
               value={
-                preferences.theme
+                preferences.timezone
               }
-              onChange={(
-                event
-              ) => {
-                const theme =
-                  event.target
-                    .value as UserTheme;
-
-                setPreferences(
-                  (
-                    current
-                  ) => ({
-                    ...current,
-                    theme,
-                  })
-                );
-
-                applyTheme(
-                  theme
-                );
-              }}
-              disabled={
-                preferencesSaving
-              }
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-            >
-              <option value="system">
-                Follow system
-              </option>
-
-              <option value="light">
-                Light
-              </option>
-
-              <option value="dark">
-                Dark
-              </option>
-            </select>
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Controls the appearance of your SaMi interface.
-            </p>
-          </div>
-
-          {/* TIMEZONE */}
-
-          <div>
-
-            <label
-              htmlFor="account-timezone"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              Timezone
-            </label>
-
-            <div className="relative mt-2">
-
-              <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <select
-                id="account-timezone"
-                value={
-                  preferences.timezone
-                }
-                onChange={(
-                  event
-                ) =>
-                  setPreferences(
-                    (
-                      current
-                    ) => ({
+              onChange={
+                event =>
+                  onChange(
+                    current => ({
                       ...current,
 
                       timezone:
@@ -3013,235 +3172,150 @@ export default function MyAccountSettings() {
                           .value,
                     })
                   )
-                }
-                disabled={
-                  preferencesSaving
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-              >
-                {timezoneOptions.map(
-                  (
-                    timezone
-                  ) => (
-                    <option
-                      key={
-                        timezone
-                      }
-                      value={
-                        timezone
-                      }
-                    >
-                      {timezone}
-                    </option>
-                  )
-                )}
-              </select>
-            </div>
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Converts stored timestamps into the time you should see.
-            </p>
-          </div>
-
-          {/* DATE FORMAT */}
-
-          <div>
-
-            <label
-              htmlFor="account-date-format"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              Date format
-            </label>
-
-            <div className="relative mt-2">
-
-              <CalendarDays className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <select
-                id="account-date-format"
-                value={
-                  preferences.dateFormat
-                }
-                onChange={(
-                  event
-                ) =>
-                  setPreferences(
-                    (
-                      current
-                    ) => ({
-                      ...current,
-
-                      dateFormat:
-                        event.target
-                          .value as UserDateFormat,
-                    })
-                  )
-                }
-                disabled={
-                  preferencesSaving
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-              >
-                <option value="DD/MM/YYYY">
-                  DD/MM/YYYY
-                </option>
-
-                <option value="MM/DD/YYYY">
-                  MM/DD/YYYY
-                </option>
-
-                <option value="YYYY-MM-DD">
-                  YYYY-MM-DD
-                </option>
-              </select>
-            </div>
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Example: {formatUserDate(
-                previewNow,
-                preferences
-              )}
-            </p>
-          </div>
-
-          {/* TIME FORMAT */}
-
-          <div>
-
-            <label
-              htmlFor="account-time-format"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              Time format
-            </label>
-
-            <div className="relative mt-2">
-
-              <Clock3 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-              <select
-                id="account-time-format"
-                value={
-                  preferences.timeFormat
-                }
-                onChange={(
-                  event
-                ) =>
-                  setPreferences(
-                    (
-                      current
-                    ) => ({
-                      ...current,
-
-                      timeFormat:
-                        event.target
-                          .value as UserTimeFormat,
-                    })
-                  )
-                }
-                disabled={
-                  preferencesSaving
-                }
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-              >
-                <option value="24h">
-                  24-hour
-                </option>
-
-                <option value="12h">
-                  12-hour
-                </option>
-              </select>
-            </div>
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Example: {formatUserTime(
-                previewNow,
-                preferences
-              )}
-            </p>
-          </div>
-
-          {/* FIRST DAY */}
-
-          <div>
-
-            <label
-              htmlFor="account-first-day"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              First day of week
-            </label>
-
-            <select
-              id="account-first-day"
-              value={
-                preferences.firstDayOfWeek
-              }
-              onChange={(
-                event
-              ) =>
-                setPreferences(
-                  (
-                    current
-                  ) => ({
-                    ...current,
-
-                    firstDayOfWeek:
-                      Number(
-                        event.target
-                          .value
-                      ),
-                  })
-                )
               }
               disabled={
                 preferencesSaving
               }
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
             >
-              <option value={0}>
-                Sunday
-              </option>
-
-              <option value={1}>
-                Monday
-              </option>
-
-              <option value={6}>
-                Saturday
-              </option>
+              {timezoneOptions.map(
+                timezone => (
+                  <option
+                    key={
+                      timezone
+                    }
+                    value={
+                      timezone
+                    }
+                  >
+                    {timezone}
+                  </option>
+                )
+              )}
             </select>
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Used by calendars, schedules and weekly views.
-            </p>
           </div>
+        </div>
 
-          {/* LOCALE */}
+        <SelectField
+          label="Date format"
+          value={
+            preferences.dateFormat
+          }
+          disabled={
+            preferencesSaving
+          }
+          onChange={
+            value =>
+              onChange(
+                current => ({
+                  ...current,
 
-          <div>
+                  dateFormat:
+                    value as UserDateFormat,
+                })
+              )
+          }
+          help={`Example: ${formatUserDate(
+            previewNow,
+            preferences
+          )}`}
+        >
+          <option value="DD/MM/YYYY">
+            DD/MM/YYYY
+          </option>
 
-            <label
-              htmlFor="account-locale"
-              className="text-xs font-bold text-slate-700 dark:text-slate-200"
-            >
-              Locale
-            </label>
+          <option value="MM/DD/YYYY">
+            MM/DD/YYYY
+          </option>
 
-            <input
-              id="account-locale"
-              value={
-                preferences.locale
-              }
-              onChange={(
-                event
-              ) =>
-                setPreferences(
-                  (
-                    current
-                  ) => ({
+          <option value="YYYY-MM-DD">
+            YYYY-MM-DD
+          </option>
+        </SelectField>
+
+        <SelectField
+          label="Time format"
+          value={
+            preferences.timeFormat
+          }
+          disabled={
+            preferencesSaving
+          }
+          onChange={
+            value =>
+              onChange(
+                current => ({
+                  ...current,
+
+                  timeFormat:
+                    value as UserTimeFormat,
+                })
+              )
+          }
+          help={`Example: ${formatUserTime(
+            previewNow,
+            preferences
+          )}`}
+        >
+          <option value="24h">
+            24-hour
+          </option>
+
+          <option value="12h">
+            12-hour
+          </option>
+        </SelectField>
+
+        <SelectField
+          label="First day of week"
+          value={
+            String(
+              preferences.firstDayOfWeek
+            )
+          }
+          disabled={
+            preferencesSaving
+          }
+          onChange={
+            value =>
+              onChange(
+                current => ({
+                  ...current,
+
+                  firstDayOfWeek:
+                    Number(
+                      value
+                    ),
+                })
+              )
+          }
+        >
+          <option value="0">
+            Sunday
+          </option>
+
+          <option value="1">
+            Monday
+          </option>
+
+          <option value="6">
+            Saturday
+          </option>
+        </SelectField>
+
+        <div>
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+            Locale
+          </label>
+
+          <input
+            value={
+              preferences.locale
+            }
+            onChange={
+              event =>
+                onChange(
+                  current => ({
                     ...current,
 
                     locale:
@@ -3249,172 +3323,135 @@ export default function MyAccountSettings() {
                         .value,
                   })
                 )
-              }
-              maxLength={20}
-              disabled={
-                preferencesSaving
-              }
-              placeholder="en"
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-            />
-
-            <p className="mt-2 text-[10px] leading-4 text-slate-400">
-              Controls locale-aware number and language formatting.
-            </p>
-          </div>
+            }
+            maxLength={20}
+            disabled={
+              preferencesSaving
+            }
+            placeholder="en"
+            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+          />
         </div>
+      </div>
 
-        {/* ====================================================
-            SAVE / DISCARD
-            ==================================================== */}
+      <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+        <p
+          className={`text-xs ${
+            preferencesChanged
+              ? 'font-bold text-amber-600 dark:text-amber-400'
+              : 'text-slate-400'
+          }`}
+        >
+          {preferencesChanged
+            ? 'You have unsaved changes.'
+            : 'Your preferences are saved.'}
+        </p>
 
-        <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-
-          <div>
-
-            {preferencesChanged ? (
-              <p className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                You have unsaved preference changes.
-              </p>
-            ) : (
-              <p className="text-xs text-slate-400">
-                Your displayed preferences are saved.
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-2">
-
-            {preferencesChanged && (
-              <button
-                type="button"
-                onClick={
-                  discardPreferences
-                }
-                disabled={
-                  preferencesSaving
-                }
-                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Discard
-              </button>
-            )}
-
+        <div className="flex gap-2">
+          {preferencesChanged && (
             <button
               type="button"
               onClick={
-                savePreferences
+                onDiscard
               }
               disabled={
-                preferencesSaving ||
-                !preferencesChanged
+                preferencesSaving
               }
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
             >
-              {preferencesSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="h-4 w-4" />
-              )}
-
-              {preferencesSaving
-                ? 'Saving...'
-                : 'Save preferences'}
+              Discard
             </button>
-          </div>
+          )}
+
+          <button
+            type="button"
+            onClick={
+              onSave
+            }
+            disabled={
+              preferencesSaving ||
+              !preferencesChanged
+            }
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white disabled:opacity-50"
+          >
+            {preferencesSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+
+            {preferencesSaving
+              ? 'Saving...'
+              : 'Save preferences'}
+          </button>
         </div>
-      </section>
-
-      {/* ======================================================
-          ACCOUNT DETAILS
-          ====================================================== */}
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-7">
-
-        <div className="flex items-start gap-3">
-
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
-
-          <div>
-
-            <h3 className="text-base font-black text-slate-950 dark:text-white">
-              Account details
-            </h3>
-
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Identity information maintained by SaMi.
-            </p>
-          </div>
-        </div>
-
-        <dl className="mt-6 divide-y divide-slate-100 dark:divide-slate-800">
-
-          <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-
-            <dt className="text-xs font-bold text-slate-500">
-              Account status
-            </dt>
-
-            <dd className="text-sm font-bold capitalize text-slate-900 dark:text-white">
-              {account.status.replace(
-                /_/g,
-                ' '
-              )}
-            </dd>
-          </div>
-
-          <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-
-            <dt className="text-xs font-bold text-slate-500">
-              Email verified
-            </dt>
-
-            <dd className="text-sm font-bold text-slate-900 dark:text-white">
-              {account.emailVerified
-                ? 'Yes'
-                : 'No'}
-            </dd>
-          </div>
-
-          <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-
-            <dt className="text-xs font-bold text-slate-500">
-              Account created
-            </dt>
-
-            <dd className="text-sm font-bold text-slate-900 dark:text-white">
-              {account.createdAt
-                ? formatUserDateTime(
-                    account.createdAt,
-                    preferences
-                  )
-                : formatFallbackDateTime(
-                    account.createdAt
-                  )}
-            </dd>
-          </div>
-
-          <div className="flex flex-col gap-1 py-3 sm:flex-row sm:items-center sm:justify-between">
-
-            <dt className="text-xs font-bold text-slate-500">
-              Current display timezone
-            </dt>
-
-            <dd className="text-sm font-bold text-slate-900 dark:text-white">
-              {preferencePreview.timezone}
-            </dd>
-          </div>
-        </dl>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
-/* ============================================================
-   PREFERENCE PREVIEW CARD
-   ============================================================ */
+function SelectField({
+  label,
+  value,
+  disabled,
+  onChange,
+  help,
+  children,
+}: {
+  label:
+    string;
+
+  value:
+    string;
+
+  disabled:
+    boolean;
+
+  onChange:
+    (
+      value:
+        string
+    ) => void;
+
+  help?:
+    string;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <div>
+      <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+        {label}
+      </label>
+
+      <select
+        value={
+          value
+        }
+        onChange={
+          event =>
+            onChange(
+              event.target
+                .value
+            )
+        }
+        disabled={
+          disabled
+        }
+        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+      >
+        {children}
+      </select>
+
+      {help && (
+        <p className="mt-2 text-[10px] text-slate-400">
+          {help}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function PreferencePreviewCard({
   label,
@@ -3433,9 +3470,7 @@ function PreferencePreviewCard({
 }) {
   return (
     <div className="bg-white/90 p-4 dark:bg-slate-900/80">
-
       <div className="flex items-center gap-2 text-slate-400">
-
         <Icon className="h-3.5 w-3.5" />
 
         <span className="text-[9px] font-black uppercase tracking-[0.1em]">
