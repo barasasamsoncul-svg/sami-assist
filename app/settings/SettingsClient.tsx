@@ -3,12 +3,12 @@
 import {
   AppWindow,
   Bot,
-  Building2,
   CreditCard,
   Loader2,
   Menu,
   Moon,
   Sun,
+  type LucideIcon,
 } from 'lucide-react';
 
 import {
@@ -24,6 +24,7 @@ import {
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import MyAccountSettings from './components/MyAccountSettings';
+import WorkspaceSettings from './components/WorkspaceSettings';
 
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
@@ -32,6 +33,7 @@ import {
   type UserDisplayPreferences,
   type UserTheme,
 } from '@/lib/account/user-formatting';
+
 
 type UserData = {
   id: string;
@@ -42,12 +44,14 @@ type UserData = {
   avatarFileId: string | null;
 };
 
+
 type TenantData = {
   id: string;
   name: string;
   slug: string;
   status: string;
 } | null;
+
 
 type MembershipData = {
   accessLevel:
@@ -60,6 +64,7 @@ type MembershipData = {
   label: string;
 } | null;
 
+
 type SubscriptionData = {
   status: string;
   billingCycle: string | null;
@@ -68,6 +73,7 @@ type SubscriptionData = {
   planName: string | null;
 } | null;
 
+
 type ModuleData = {
   key: string;
   name: string;
@@ -75,6 +81,7 @@ type ModuleData = {
   href?: string | null;
   description?: string | null;
 };
+
 
 type SessionData = {
   id: string;
@@ -88,6 +95,7 @@ type SessionData = {
   };
 };
 
+
 type Props = {
   user: UserData;
   tenant: TenantData;
@@ -97,12 +105,14 @@ type Props = {
   session: SessionData;
 };
 
+
 type Section =
   | 'account'
   | 'workspace'
   | 'apps'
   | 'ai'
   | 'billing';
+
 
 type PreferencesResponse = {
   success?: boolean;
@@ -112,8 +122,10 @@ type PreferencesResponse = {
   preferences?: UserDisplayPreferences;
 };
 
+
 const THEME_STORAGE_KEY =
   'sami_theme';
+
 
 const VALID_SECTIONS =
   new Set<Section>([
@@ -124,24 +136,33 @@ const VALID_SECTIONS =
     'billing',
   ]);
 
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+
 function formatLabel(
-  value?: string | null
+  value?: string | null,
 ) {
   if (!value) {
     return 'Not available';
   }
 
   return value
-    .replace(/[_-]+/g, ' ')
+    .replace(
+      /[_-]+/g,
+      ' ',
+    )
     .replace(
       /\b\w/g,
       character =>
-        character.toUpperCase()
+        character.toUpperCase(),
     );
 }
 
+
 function normalizeStatus(
-  value?: string | null
+  value?: string | null,
 ) {
   return (
     value
@@ -150,6 +171,7 @@ function normalizeStatus(
     'unknown'
   );
 }
+
 
 function getSystemPrefersDark() {
   if (
@@ -161,22 +183,25 @@ function getSystemPrefersDark() {
 
   return (
     window.matchMedia?.(
-      '(prefers-color-scheme: dark)'
-    ).matches ?? false
+      '(prefers-color-scheme: dark)',
+    ).matches ??
+    false
   );
 }
 
+
 function applyThemeToDocument(
-  theme: UserTheme
+  theme: UserTheme,
 ) {
   const resolved =
     resolveUserTheme(
       theme,
-      getSystemPrefersDark()
+      getSystemPrefersDark(),
     );
 
   const dark =
-    resolved === 'dark';
+    resolved ===
+    'dark';
 
   if (
     typeof document !==
@@ -185,14 +210,14 @@ function applyThemeToDocument(
     document.documentElement
       .classList.toggle(
         'dark',
-        dark
+        dark,
       );
   }
 
   try {
     localStorage.setItem(
       THEME_STORAGE_KEY,
-      theme
+      theme,
     );
   } catch {
     // Optional local cache.
@@ -201,8 +226,9 @@ function applyThemeToDocument(
   return dark;
 }
 
+
 async function readPreferencesResponse(
-  response: Response
+  response: Response,
 ): Promise<PreferencesResponse> {
   try {
     return (
@@ -211,27 +237,30 @@ async function readPreferencesResponse(
   } catch {
     return {
       success: false,
+
       code:
         'INVALID_SERVER_RESPONSE',
+
       error:
         'SaMi returned an invalid response.',
     };
   }
 }
 
+
 function normalizeSection(
-  value: string | null
+  value:
+    string | null,
 ): Section {
-  /*
-   * Old links remain safe.
-   * Security and sessions now belong
-   * inside My Account.
-   */
   if (
-    value === 'personal' ||
-    value === 'security' ||
-    value === 'sessions' ||
-    value === 'account'
+    value ===
+      'personal' ||
+    value ===
+      'security' ||
+    value ===
+      'sessions' ||
+    value ===
+      'account'
   ) {
     return 'account';
   }
@@ -239,7 +268,7 @@ function normalizeSection(
   if (
     value &&
     VALID_SECTIONS.has(
-      value as Section
+      value as Section,
     )
   ) {
     return value as Section;
@@ -248,10 +277,14 @@ function normalizeSection(
   return 'account';
 }
 
+
 function getSectionLabel(
-  section: Section
+  section:
+    Section,
 ) {
-  switch (section) {
+  switch (
+    section
+  ) {
     case 'account':
       return 'My Account';
 
@@ -272,6 +305,11 @@ function getSectionLabel(
   }
 }
 
+
+/* ============================================================
+   CLIENT
+   ============================================================ */
+
 export default function SettingsClient({
   user,
   tenant,
@@ -282,18 +320,24 @@ export default function SettingsClient({
   const searchParams =
     useSearchParams();
 
+
   const [
     sidebarOpen,
     setSidebarOpen,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
+
 
   const [
     active,
     setActive,
   ] =
     useState<Section>(
-      'account'
+      'account',
     );
+
 
   const [
     displayPreferences,
@@ -303,218 +347,290 @@ export default function SettingsClient({
       ...DEFAULT_USER_DISPLAY_PREFERENCES,
     });
 
+
   const [
     darkMode,
     setDarkMode,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
+
 
   const [
     themeSaving,
     setThemeSaving,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
+
 
   const canAdminWorkspace =
     Boolean(
       membership?.isAdmin ||
-        membership?.isOwner
+      membership?.isOwner,
     );
+
+
+  const hasWorkspaceAccess =
+    Boolean(
+      tenant &&
+      membership,
+    );
+
 
   const allowedSections =
-    useMemo(() => {
-      const sections =
-        new Set<Section>([
-          'account',
-          'ai',
-        ]);
-
-      if (
-        canAdminWorkspace
-      ) {
-        sections.add(
-          'workspace'
-        );
-
-        sections.add(
-          'apps'
-        );
-      }
-
-      if (
-        membership?.isOwner
-      ) {
-        sections.add(
-          'billing'
-        );
-      }
-
-      return sections;
-    }, [
-      canAdminWorkspace,
-      membership?.isOwner,
-    ]);
-
-  useEffect(() => {
-    const requested =
-      normalizeSection(
-        searchParams.get(
-          'tab'
-        )
-      );
-
-    if (
-      allowedSections.has(
-        requested
-      )
-    ) {
-      setActive(
-        requested
-      );
-
-      return;
-    }
-
-    setActive(
-      'account'
-    );
-  }, [
-    searchParams,
-    allowedSections,
-  ]);
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const theme:
-        UserTheme =
-        stored === 'dark' ||
-        stored === 'light' ||
-        stored === 'system'
-          ? stored
-          : 'system';
-
-      setDarkMode(
-        applyThemeToDocument(
-          theme
-        )
-      );
-    } catch {
-      const dark =
-        getSystemPrefersDark();
-
-      setDarkMode(
-        dark
-      );
-
-      document.documentElement
-        .classList.toggle(
-          'dark',
-          dark
-        );
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled =
-      false;
-
-    async function loadPreferences() {
-      try {
-        const response =
-          await fetch(
-            '/api/account/preferences',
-            {
-              method: 'GET',
-              headers: {
-                Accept:
-                  'application/json',
-              },
-              credentials:
-                'same-origin',
-              cache:
-                'no-store',
-            }
-          );
-
-        const data =
-          await readPreferencesResponse(
-            response
-          );
+    useMemo(
+      () => {
+        const sections =
+          new Set<Section>([
+            'account',
+            'ai',
+          ]);
 
         if (
-          cancelled ||
-          !response.ok ||
-          !data.success ||
-          !data.preferences
+          hasWorkspaceAccess
         ) {
-          return;
+          sections.add(
+            'workspace',
+          );
         }
 
-        setDisplayPreferences(
-          data.preferences
-        );
+        if (
+          canAdminWorkspace
+        ) {
+          sections.add(
+            'apps',
+          );
+        }
 
-        setDarkMode(
-          applyThemeToDocument(
-            data.preferences
-              .theme
-          )
-        );
-      } catch {
-        // Defaults remain usable.
-      }
-    }
+        if (
+          membership?.isOwner
+        ) {
+          sections.add(
+            'billing',
+          );
+        }
 
-    void loadPreferences();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (
-      displayPreferences
-        .theme !==
-      'system'
-    ) {
-      return;
-    }
-
-    const media =
-      window.matchMedia(
-        '(prefers-color-scheme: dark)'
-      );
-
-    const syncTheme =
-      () => {
-        setDarkMode(
-          applyThemeToDocument(
-            'system'
-          )
-        );
-      };
-
-    media.addEventListener?.(
-      'change',
-      syncTheme
+        return sections;
+      },
+      [
+        canAdminWorkspace,
+        hasWorkspaceAccess,
+        membership?.isOwner,
+      ],
     );
 
-    return () => {
-      media.removeEventListener?.(
-        'change',
-        syncTheme
+
+  /* ==========================================================
+     ACTIVE SETTINGS SECTION
+     ========================================================== */
+
+  useEffect(
+    () => {
+      const requested =
+        normalizeSection(
+          searchParams.get(
+            'tab',
+          ),
+        );
+
+      if (
+        allowedSections.has(
+          requested,
+        )
+      ) {
+        setActive(
+          requested,
+        );
+
+        return;
+      }
+
+      setActive(
+        'account',
       );
-    };
-  }, [
-    displayPreferences.theme,
-  ]);
+    },
+    [
+      searchParams,
+      allowedSections,
+    ],
+  );
+
+
+  /* ==========================================================
+     INITIAL THEME
+     ========================================================== */
+
+  useEffect(
+    () => {
+      try {
+        const stored =
+          localStorage.getItem(
+            THEME_STORAGE_KEY,
+          );
+
+        const theme:
+          UserTheme =
+          stored ===
+            'dark' ||
+          stored ===
+            'light' ||
+          stored ===
+            'system'
+            ? stored
+            : 'system';
+
+        setDarkMode(
+          applyThemeToDocument(
+            theme,
+          ),
+        );
+      } catch {
+        const dark =
+          getSystemPrefersDark();
+
+        setDarkMode(
+          dark,
+        );
+
+        document.documentElement
+          .classList.toggle(
+            'dark',
+            dark,
+          );
+      }
+    },
+    [],
+  );
+
+
+  /* ==========================================================
+     LOAD PREFERENCES
+     ========================================================== */
+
+  useEffect(
+    () => {
+      let cancelled =
+        false;
+
+      async function loadPreferences() {
+        try {
+          const response =
+            await fetch(
+              '/api/account/preferences',
+              {
+                method:
+                  'GET',
+
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+
+                credentials:
+                  'same-origin',
+
+                cache:
+                  'no-store',
+              },
+            );
+
+          const data =
+            await readPreferencesResponse(
+              response,
+            );
+
+          if (
+            cancelled ||
+            !response.ok ||
+            !data.success ||
+            !data.preferences
+          ) {
+            return;
+          }
+
+          setDisplayPreferences(
+            data.preferences,
+          );
+
+          setDarkMode(
+            applyThemeToDocument(
+              data.preferences
+                .theme,
+            ),
+          );
+        } catch {
+          // Defaults remain usable.
+        }
+      }
+
+      void loadPreferences();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    [],
+  );
+
+
+  /* ==========================================================
+     SYSTEM THEME
+     ========================================================== */
+
+  useEffect(
+    () => {
+      if (
+        displayPreferences
+          .theme !==
+        'system'
+      ) {
+        return;
+      }
+
+      const media =
+        window.matchMedia(
+          '(prefers-color-scheme: dark)',
+        );
+
+      const syncTheme =
+        () => {
+          setDarkMode(
+            applyThemeToDocument(
+              'system',
+            ),
+          );
+        };
+
+      media.addEventListener?.(
+        'change',
+        syncTheme,
+      );
+
+      return () => {
+        media.removeEventListener?.(
+          'change',
+          syncTheme,
+        );
+      };
+    },
+    [
+      displayPreferences.theme,
+    ],
+  );
+
+
+  /* ==========================================================
+     THEME TOGGLE
+     ========================================================== */
 
   async function toggleTheme() {
-    if (themeSaving) {
+    if (
+      themeSaving
+    ) {
       return;
     }
 
@@ -529,19 +645,22 @@ export default function SettingsClient({
 
     const optimistic = {
       ...displayPreferences,
-      theme: nextTheme,
+      theme:
+        nextTheme,
     };
 
-    setThemeSaving(true);
+    setThemeSaving(
+      true,
+    );
 
     setDisplayPreferences(
-      optimistic
+      optimistic,
     );
 
     setDarkMode(
       applyThemeToDocument(
-        nextTheme
-      )
+        nextTheme,
+      ),
     );
 
     try {
@@ -549,11 +668,13 @@ export default function SettingsClient({
         await fetch(
           '/api/account/preferences',
           {
-            method: 'PATCH',
+            method:
+              'PATCH',
 
             headers: {
               'Content-Type':
                 'application/json',
+
               Accept:
                 'application/json',
             },
@@ -569,12 +690,12 @@ export default function SettingsClient({
                 theme:
                   nextTheme,
               }),
-          }
+          },
         );
 
       const data =
         await readPreferencesResponse(
-          response
+          response,
         );
 
       if (
@@ -584,66 +705,85 @@ export default function SettingsClient({
       ) {
         throw new Error(
           data.error ||
-            'Theme could not be saved.'
+          'Theme could not be saved.',
         );
       }
 
       setDisplayPreferences(
-        data.preferences
+        data.preferences,
       );
 
       setDarkMode(
         applyThemeToDocument(
           data.preferences
-            .theme
-        )
+            .theme,
+        ),
       );
     } catch {
       setDisplayPreferences(
-        previous
+        previous,
       );
 
       setDarkMode(
         applyThemeToDocument(
-          previous.theme
-        )
+          previous.theme,
+        ),
       );
     } finally {
-      setThemeSaving(false);
+      setThemeSaving(
+        false,
+      );
     }
   }
+
 
   const currentPlan =
     subscription?.planName ||
     (
       subscription?.planKey
         ? formatLabel(
-            subscription.planKey
+            subscription.planKey,
           )
         : 'Free'
     );
 
+
   const pageLabel =
     getSectionLabel(
-      active
+      active,
     );
+
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
 
   return (
     <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
       <div className="flex min-h-screen">
         <WorkspaceSidebar
-          user={user}
-          tenant={tenant}
+          user={
+            user
+          }
+          tenant={
+            tenant
+          }
           membership={
             membership
           }
           subscription={
             subscription
           }
-          modules={modules}
+          modules={
+            modules
+          }
           capabilities={{
-            aiEnabled: true,
-            filesEnabled: false,
+            aiEnabled:
+              true,
+
+            filesEnabled:
+              false,
+
             notificationsEnabled:
               false,
           }}
@@ -653,12 +793,14 @@ export default function SettingsClient({
           open={
             sidebarOpen
           }
-          onClose={() =>
-            setSidebarOpen(
-              false
-            )
+          onClose={
+            () =>
+              setSidebarOpen(
+                false,
+              )
           }
         />
+
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/88">
@@ -666,21 +808,24 @@ export default function SettingsClient({
               <button
                 type="button"
                 aria-label="Open navigation"
-                onClick={() =>
-                  setSidebarOpen(
-                    true
-                  )
+                onClick={
+                  () =>
+                    setSidebarOpen(
+                      true,
+                    )
                 }
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
               >
                 <Menu className="h-5 w-5" />
               </button>
 
+
               <div className="min-w-0">
                 <p className="truncate text-sm font-extrabold text-slate-900 dark:text-white">
                   {pageLabel}
                 </p>
               </div>
+
 
               <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-slate-800">
                 <p className="max-w-[260px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
@@ -689,11 +834,13 @@ export default function SettingsClient({
                 </p>
               </div>
 
+
               <div className="ml-auto">
                 <button
                   type="button"
-                  onClick={() =>
-                    void toggleTheme()
+                  onClick={
+                    () =>
+                      void toggleTheme()
                   }
                   disabled={
                     themeSaving
@@ -717,26 +864,20 @@ export default function SettingsClient({
             </div>
           </header>
 
+
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             {active ===
               'account' && (
               <MyAccountSettings />
             )}
 
+
             {active ===
               'workspace' &&
-              canAdminWorkspace && (
-                <SettingsSurface>
-                  <WorkspaceSection
-                    tenant={
-                      tenant
-                    }
-                    membership={
-                      membership
-                    }
-                  />
-                </SettingsSurface>
+              hasWorkspaceAccess && (
+                <WorkspaceSettings />
               )}
+
 
             {active ===
               'apps' &&
@@ -750,6 +891,7 @@ export default function SettingsClient({
                 </SettingsSurface>
               )}
 
+
             {active ===
               'ai' && (
               <SettingsSurface>
@@ -760,6 +902,7 @@ export default function SettingsClient({
                 />
               </SettingsSurface>
             )}
+
 
             {active ===
               'billing' &&
@@ -786,6 +929,11 @@ export default function SettingsClient({
   );
 }
 
+
+/* ============================================================
+   SURFACE
+   ============================================================ */
+
 function SettingsSurface({
   children,
 }: {
@@ -799,92 +947,26 @@ function SettingsSurface({
   );
 }
 
-function WorkspaceSection({
-  tenant,
-  membership,
-}: {
-  tenant: TenantData;
-  membership:
-    MembershipData;
-}) {
-  if (!tenant) {
-    return (
-      <EmptyState
-        icon={Building2}
-        title="No workspace available"
-        description="SaMi could not find an active workspace for this account."
-      />
-    );
-  }
 
-  return (
-    <div className="max-w-4xl">
-      <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50">
-        <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
-            <Building2 className="h-5 w-5" />
-          </div>
-
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-black">
-              {tenant.name}
-            </h2>
-
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {membership?.label ||
-                formatLabel(
-                  membership
-                    ?.accessLevel
-                )}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <InfoCard
-          label="Workspace name"
-          value={tenant.name}
-        />
-
-        <InfoCard
-          label="Workspace identifier"
-          value={tenant.slug}
-        />
-
-        <InfoCard
-          label="Workspace status"
-          value={formatLabel(
-            tenant.status
-          )}
-        />
-
-        <InfoCard
-          label="Your access"
-          value={
-            membership?.label ||
-            formatLabel(
-              membership
-                ?.accessLevel
-            )
-          }
-        />
-      </div>
-    </div>
-  );
-}
+/* ============================================================
+   APPS
+   ============================================================ */
 
 function AppsSection({
   modules,
 }: {
-  modules: ModuleData[];
+  modules:
+    ModuleData[];
 }) {
   if (
-    modules.length === 0
+    modules.length ===
+    0
   ) {
     return (
       <EmptyState
-        icon={AppWindow}
+        icon={
+          AppWindow
+        }
         title="No business apps installed"
         description="There are currently no installed business apps available to this workspace."
       />
@@ -900,19 +982,22 @@ function AppsSection({
 
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {modules.length}{' '}
-          {modules.length === 1
+          {modules.length ===
+          1
             ? 'business app'
             : 'business apps'}
         </p>
       </div>
+
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {modules.map(
           module => {
             const activeModule =
               normalizeStatus(
-                module.status
-              ) === 'active';
+                module.status,
+              ) ===
+              'active';
 
             return (
               <div
@@ -939,24 +1024,30 @@ function AppsSection({
                       }`}
                     >
                       {formatLabel(
-                        module.status
+                        module.status,
                       )}
                     </span>
                   </div>
                 </div>
               </div>
             );
-          }
+          },
         )}
       </div>
     </div>
   );
 }
 
+
+/* ============================================================
+   SAMI AI
+   ============================================================ */
+
 function AiSection({
   planName,
 }: {
-  planName: string;
+  planName:
+    string;
 }) {
   return (
     <div className="max-w-4xl">
@@ -981,12 +1072,19 @@ function AiSection({
       <div className="mt-5">
         <InfoCard
           label="Current plan"
-          value={planName}
+          value={
+            planName
+          }
         />
       </div>
     </div>
   );
 }
+
+
+/* ============================================================
+   BILLING
+   ============================================================ */
 
 function BillingSection({
   subscription,
@@ -995,7 +1093,10 @@ function BillingSection({
 }: {
   subscription:
     SubscriptionData;
-  currentPlan: string;
+
+  currentPlan:
+    string;
+
   preferences:
     UserDisplayPreferences;
 }) {
@@ -1019,16 +1120,19 @@ function BillingSection({
         </div>
       </div>
 
+
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <InfoCard
           label="Plan"
-          value={currentPlan}
+          value={
+            currentPlan
+          }
         />
 
         <InfoCard
           label="Subscription status"
           value={formatLabel(
-            subscription?.status
+            subscription?.status,
           )}
         />
 
@@ -1036,7 +1140,7 @@ function BillingSection({
           label="Billing cycle"
           value={formatLabel(
             subscription
-              ?.billingCycle
+              ?.billingCycle,
           )}
         />
 
@@ -1048,7 +1152,7 @@ function BillingSection({
               ? formatUserDateTime(
                   subscription
                     .currentPeriodEnd,
-                  preferences
+                  preferences,
                 )
               : 'Not available'
           }
@@ -1058,12 +1162,20 @@ function BillingSection({
   );
 }
 
+
+/* ============================================================
+   INFO CARD
+   ============================================================ */
+
 function InfoCard({
   label,
   value,
 }: {
-  label: string;
-  value: string;
+  label:
+    string;
+
+  value:
+    string;
 }) {
   return (
     <div className="rounded-[18px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -1078,15 +1190,25 @@ function InfoCard({
   );
 }
 
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+
 function EmptyState({
-  icon: Icon,
+  icon:
+    Icon,
   title,
   description,
 }: {
   icon:
-    typeof Building2;
-  title: string;
-  description: string;
+    LucideIcon;
+
+  title:
+    string;
+
+  description:
+    string;
 }) {
   return (
     <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
