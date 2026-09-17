@@ -2,8 +2,7 @@
 
 import {
   type FormEvent,
-  useCallback,
-  useEffect,
+  type ReactNode,
   useMemo,
   useState,
 } from 'react';
@@ -16,6 +15,7 @@ import {
   EyeOff,
   History,
   KeyRound,
+  Laptop,
   Loader2,
   LockKeyhole,
   Mail,
@@ -23,171 +23,50 @@ import {
   Smartphone,
 } from 'lucide-react';
 
-import SaMiOverlay from '@/app/components/SaMiOverlay';
+import SaMiOverlay, {
+  type SaMiOverlayType,
+} from '@/app/components/SaMiOverlay';
 
 import TwoFactorSettings from './TwoFactorSettings';
 import EmailTwoFactorSettings from './EmailTwoFactorSettings';
+import SessionsSettings from './SessionsSettings';
 import SecurityActivitySettings from './SecurityActivitySettings';
 
-/* ============================================================
-   TYPES
-   ============================================================ */
-
 type SecurityView =
-  | 'home'
+  | 'overview'
   | 'password'
-  | 'verification'
+  | 'two-factor'
   | 'authenticator'
   | 'email'
+  | 'sessions'
   | 'activity';
 
 type OverlayState = {
-  type:
-    | 'success'
-    | 'warning'
-    | 'error';
-
-  title:
-    string;
-
-  message:
-    string;
-
-  primaryAction?: {
-    label:
-      string;
-
-    onClick:
-      () => void;
-  };
-
-  secondaryAction?: {
-    label:
-      string;
-
-    onClick:
-      () => void;
-  };
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
 };
 
 type PasswordResponse = {
   success?: boolean;
-
   code?: string;
-
   error?: string;
-
   message?: string;
+  retryAfterSeconds?: number | null;
 };
 
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
+type SecuritySettingsProps = {
+  onBack?: () => void;
+};
 
 const CHANGE_PASSWORD_ENDPOINT =
   '/api/auth/change-password';
 
-const MIN_PASSWORD_LENGTH =
-  8;
-
-const MAX_PASSWORD_LENGTH =
-  128;
-
-/* ============================================================
-   URL STATE
-   ============================================================ */
-
-function getSecurityViewFromUrl():
-  SecurityView {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return 'home';
-  }
-
-  const params =
-    new URLSearchParams(
-      window.location.search
-    );
-
-  const value =
-    params.get(
-      'security'
-    );
-
-  switch (
-    value
-  ) {
-    case 'password':
-      return 'password';
-
-    case 'verification':
-      return 'verification';
-
-    case 'authenticator':
-      return 'authenticator';
-
-    case 'email':
-      return 'email';
-
-    case 'activity':
-      return 'activity';
-
-    default:
-      return 'home';
-  }
-}
-
-function updateSecurityUrl(
-  view:
-    SecurityView
-) {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return;
-  }
-
-  const url =
-    new URL(
-      window.location.href
-    );
-
-  url.searchParams.set(
-    'tab',
-    'security'
-  );
-
-  if (
-    view ===
-    'home'
-  ) {
-    url.searchParams.delete(
-      'security'
-    );
-  } else {
-    url.searchParams.set(
-      'security',
-      view
-    );
-  }
-
-  window.history.pushState(
-    {},
-    '',
-    url
-  );
-}
-
-/* ============================================================
-   PASSWORD VALIDATION
-   ============================================================ */
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_PASSWORD_LENGTH = 128;
 
 function getPasswordRequirements(
-  password:
-    string
+  password: string
 ) {
   return {
     length:
@@ -197,25 +76,18 @@ function getPasswordRequirements(
         MAX_PASSWORD_LENGTH,
 
     uppercase:
-      /[A-Z]/.test(
-        password
-      ),
+      /[A-Z]/.test(password),
 
     lowercase:
-      /[a-z]/.test(
-        password
-      ),
+      /[a-z]/.test(password),
 
     number:
-      /\d/.test(
-        password
-      ),
+      /\d/.test(password),
   };
 }
 
 function isPasswordValid(
-  password:
-    string
+  password: string
 ) {
   const requirements =
     getPasswordRequirements(
@@ -230,15 +102,11 @@ function isPasswordValid(
   );
 }
 
-/* ============================================================
-   API MESSAGE
-   ============================================================ */
-
 function getApiMessage(
   payload:
-    PasswordResponse | null,
-  fallback:
-    string
+    | PasswordResponse
+    | null,
+  fallback: string
 ) {
   if (
     payload?.error &&
@@ -259,188 +127,66 @@ function getApiMessage(
   return fallback;
 }
 
-/* ============================================================
-   COMPONENT
-   ============================================================ */
-
-export default function SecuritySettings() {
-  /* ==========================================================
-     VIEW
-     ========================================================== */
-
+export default function SecuritySettings({
+  onBack,
+}: SecuritySettingsProps) {
   const [
     view,
     setView,
   ] =
     useState<SecurityView>(
-      'home'
+      'overview'
     );
-
-  /* ==========================================================
-     PASSWORD
-     ========================================================== */
 
   const [
     currentPassword,
     setCurrentPassword,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     newPassword,
     setNewPassword,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     confirmPassword,
     setConfirmPassword,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     showCurrentPassword,
     setShowCurrentPassword,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     showNewPassword,
     setShowNewPassword,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     showConfirmPassword,
     setShowConfirmPassword,
-  ] =
-    useState(
-      false
-    );
+  ] = useState(false);
 
   const [
     confirmPasswordError,
     setConfirmPasswordError,
-  ] =
-    useState<
-      string | null
-    >(null);
+  ] = useState<
+    string | null
+  >(null);
 
   const [
     submittingPassword,
     setSubmittingPassword,
-  ] =
-    useState(
-      false
-    );
-
-  /* ==========================================================
-     OVERLAY
-     ========================================================== */
+  ] = useState(false);
 
   const [
     overlay,
     setOverlay,
   ] =
-    useState<
-      OverlayState | null
-    >(null);
-
-  /* ==========================================================
-     URL INITIALIZATION
-     ========================================================== */
-
-  useEffect(
-    () => {
-      const syncFromUrl =
-        () => {
-          setView(
-            getSecurityViewFromUrl()
-          );
-        };
-
-      syncFromUrl();
-
-      window.addEventListener(
-        'popstate',
-        syncFromUrl
-      );
-
-      return () => {
-        window.removeEventListener(
-          'popstate',
-          syncFromUrl
-        );
-      };
-    },
-    []
-  );
-
-  /* ==========================================================
-     NAVIGATION
-     ========================================================== */
-
-  const navigate =
-    useCallback(
-      (
-        next:
-          SecurityView
-      ) => {
-        updateSecurityUrl(
-          next
-        );
-
-        setView(
-          next
-        );
-
-        window.scrollTo({
-          top: 0,
-          behavior:
-            'smooth',
-        });
-      },
-      []
+    useState<OverlayState | null>(
+      null
     );
-
-  const goBack =
-    useCallback(
-      () => {
-        switch (
-          view
-        ) {
-          case 'authenticator':
-          case 'email':
-            navigate(
-              'verification'
-            );
-            return;
-
-          case 'password':
-          case 'verification':
-          case 'activity':
-            navigate(
-              'home'
-            );
-            return;
-
-          default:
-            return;
-        }
-      },
-      [
-        navigate,
-        view,
-      ]
-    );
-
-  /* ==========================================================
-     PASSWORD REQUIREMENTS
-     ========================================================== */
 
   const passwordRequirements =
     useMemo(
@@ -448,20 +194,59 @@ export default function SecuritySettings() {
         getPasswordRequirements(
           newPassword
         ),
-      [
-        newPassword,
-      ]
+      [newPassword]
     );
 
-  /* ==========================================================
-     CHANGE PASSWORD
-     ========================================================== */
+  function navigate(
+    next: SecurityView
+  ) {
+    setView(next);
+
+    if (
+      typeof window !==
+      'undefined'
+    ) {
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth',
+      });
+    }
+  }
+
+  function goBack() {
+    switch (view) {
+      case 'authenticator':
+      case 'email':
+        navigate(
+          'two-factor'
+        );
+        return;
+
+      case 'password':
+      case 'two-factor':
+      case 'sessions':
+      case 'activity':
+        navigate(
+          'overview'
+        );
+        return;
+
+      case 'overview':
+      default:
+        onBack?.();
+    }
+  }
 
   async function changePassword(
-    event:
-      FormEvent<HTMLFormElement>
+    event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+
+    if (
+      submittingPassword
+    ) {
+      return;
+    }
 
     setConfirmPasswordError(
       null
@@ -471,12 +256,9 @@ export default function SecuritySettings() {
       !currentPassword
     ) {
       setOverlay({
-        type:
-          'warning',
-
+        type: 'warning',
         title:
           'Current password required',
-
         message:
           'Enter your current password before changing it.',
       });
@@ -488,12 +270,9 @@ export default function SecuritySettings() {
       !newPassword
     ) {
       setOverlay({
-        type:
-          'warning',
-
+        type: 'warning',
         title:
           'New password required',
-
         message:
           'Enter the new password you want to use for your SaMi account.',
       });
@@ -506,12 +285,9 @@ export default function SecuritySettings() {
       MAX_PASSWORD_LENGTH
     ) {
       setOverlay({
-        type:
-          'warning',
-
+        type: 'warning',
         title:
           'Password too long',
-
         message:
           `Your password must contain no more than ${MAX_PASSWORD_LENGTH} characters.`,
       });
@@ -525,14 +301,11 @@ export default function SecuritySettings() {
       )
     ) {
       setOverlay({
-        type:
-          'warning',
-
+        type: 'warning',
         title:
           'Password requirements not met',
-
         message:
-          'Your new password must contain at least 8 characters, an uppercase letter, a lowercase letter, and a number.',
+          'Your new password must contain 8–128 characters, an uppercase letter, a lowercase letter, and a number.',
       });
 
       return;
@@ -564,12 +337,9 @@ export default function SecuritySettings() {
       newPassword
     ) {
       setOverlay({
-        type:
-          'warning',
-
+        type: 'warning',
         title:
           'Choose a different password',
-
         message:
           'Your new password must be different from your current password.',
       });
@@ -586,11 +356,10 @@ export default function SecuritySettings() {
         await fetch(
           CHANGE_PASSWORD_ENDPOINT,
           {
-            method:
-              'POST',
+            method: 'POST',
 
             credentials:
-              'include',
+              'same-origin',
 
             cache:
               'no-store',
@@ -606,9 +375,7 @@ export default function SecuritySettings() {
             body:
               JSON.stringify({
                 currentPassword,
-
                 newPassword,
-
                 confirmPassword,
               }),
           }
@@ -619,8 +386,7 @@ export default function SecuritySettings() {
           await response
             .json()
             .catch(
-              () =>
-                null
+              () => null
             )
         ) as
           | PasswordResponse
@@ -633,24 +399,29 @@ export default function SecuritySettings() {
           'UNAUTHENTICATED'
       ) {
         setOverlay({
-          type:
-            'warning',
-
+          type: 'warning',
           title:
             'Session expired',
-
           message:
             'Your SaMi session has expired. Sign in again to continue.',
+        });
 
-          primaryAction: {
-            label:
-              'Sign in',
+        return;
+      }
 
-            onClick: () => {
-              window.location.href =
-                '/login?reason=session_expired';
-            },
-          },
+      if (
+        response.status ===
+        429
+      ) {
+        setOverlay({
+          type: 'warning',
+          title:
+            'Too many attempts',
+          message:
+            getApiMessage(
+              payload,
+              'Too many password attempts. Wait before trying again.'
+            ),
         });
 
         return;
@@ -661,57 +432,52 @@ export default function SecuritySettings() {
         !payload?.success
       ) {
         setOverlay({
-          type:
-            'error',
-
+          type: 'error',
           title:
             'Password not changed',
-
           message:
             getApiMessage(
               payload,
-              'SaMi could not change your password. Check your current password and try again.'
+              'SaMi could not change your password.'
             ),
         });
 
         return;
       }
 
-      setCurrentPassword(
-        ''
-      );
-
-      setNewPassword(
-        ''
-      );
-
-      setConfirmPassword(
-        ''
-      );
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
 
       setConfirmPasswordError(
         null
       );
 
-      setOverlay({
-        type:
-          'success',
+      setShowCurrentPassword(
+        false
+      );
 
+      setShowNewPassword(
+        false
+      );
+
+      setShowConfirmPassword(
+        false
+      );
+
+      setOverlay({
+        type: 'success',
         title:
           'Password changed',
-
         message:
           payload.message ||
-          'Your SaMi password has been changed successfully.',
+          'Your password has been changed successfully. Other signed-in sessions have been secured according to your account security policy.',
       });
     } catch {
       setOverlay({
-        type:
-          'error',
-
+        type: 'error',
         title:
           'Connection problem',
-
         message:
           'SaMi could not connect to the server. Check your connection and try again.',
       });
@@ -722,524 +488,296 @@ export default function SecuritySettings() {
     }
   }
 
-  /* ==========================================================
-     SCREEN TITLE
-     ========================================================== */
-
-  const header =
-    useMemo(
-      () => {
-        switch (
-          view
-        ) {
-          case 'password':
-            return {
-              title:
-                'Password',
-
-              description:
-                'Change the password used to sign in to your SaMi account.',
-            };
-
-          case 'verification':
-            return {
-              title:
-                'Verification',
-
-              description:
-                'Manage the methods SaMi can use to verify that a sign-in is really you.',
-            };
-
-          case 'authenticator':
-            return {
-              title:
-                'Authenticator app',
-
-              description:
-                'Use time-based verification codes from your authenticator app.',
-            };
-
-          case 'email':
-            return {
-              title:
-                'Email login codes',
-
-              description:
-                'Use one-time verification codes sent to your verified SaMi email.',
-            };
-
-          case 'activity':
-            return {
-              title:
-                'Security activity',
-
-              description:
-                'Review sign-ins and important security changes made to your SaMi account.',
-            };
-
-          default:
-            return {
-              title:
-                'Security',
-
-              description:
-                'Protect your SaMi account and manage how your identity is verified.',
-            };
-        }
-      },
-      [
-        view,
-      ]
-    );
-
-  /* ==========================================================
-     RENDER
-     ========================================================== */
-
   return (
     <>
-      {overlay && (
-        <SaMiOverlay
-          open
-          type={
-            overlay.type
-          }
-          title={
-            overlay.title
-          }
-          message={
-            overlay.message
-          }
-          primaryAction={
-            overlay.primaryAction
-          }
-          secondaryAction={
-            overlay.secondaryAction
-          }
-          onClose={() =>
-            setOverlay(
-              null
-            )
-          }
-        />
-      )}
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="mb-5">
+          <button
+            type="button"
+            onClick={
+              goBack
+            }
+            className="inline-flex h-9 items-center gap-2 rounded-xl px-2 text-xs font-black text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            <ArrowLeft className="h-4 w-4" />
 
-      <div className="mx-auto max-w-5xl">
-        {/* ====================================================
-            HEADER
-           ==================================================== */}
-
-        <div className="mb-6">
-          <div className="flex items-start gap-3">
-            {view !==
-              'home' && (
-              <button
-                type="button"
-                onClick={
-                  goBack
-                }
-                aria-label="Back"
-                className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </button>
-            )}
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {view ===
-                'home' ? (
-                  <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                ) : null}
-
-                <h1 className="text-xl font-black tracking-tight text-slate-950 dark:text-white">
-                  {header.title}
-                </h1>
-              </div>
-
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {header.description}
-              </p>
-            </div>
-          </div>
+            Back
+          </button>
         </div>
 
-        {/* ====================================================
-            SECURITY HOME
-           ==================================================== */}
-
         {view ===
-          'home' && (
-          <div className="grid gap-4 md:grid-cols-2">
-            <NavigationCard
-              title="Password"
-              description="Change your account password and review the password requirements SaMi enforces."
-              icon={
-                LockKeyhole
-              }
-              onClick={() =>
-                navigate(
-                  'password'
-                )
-              }
-            />
-
-            <NavigationCard
-              title="Verification"
-              description="Manage authenticator apps, email login codes, and your sign-in verification methods."
-              icon={
-                ShieldCheck
-              }
-              onClick={() =>
-                navigate(
-                  'verification'
-                )
-              }
-            />
-
-            <NavigationCard
-              title="Security activity"
-              description="Review your recent sign-ins, unsuccessful attempts, devices, and account security changes."
-              icon={
-                History
-              }
-              onClick={() =>
-                navigate(
-                  'activity'
-                )
-              }
-            />
-          </div>
+          'overview' && (
+          <SecurityOverview
+            onPassword={() =>
+              navigate(
+                'password'
+              )
+            }
+            onTwoFactor={() =>
+              navigate(
+                'two-factor'
+              )
+            }
+            onSessions={() =>
+              navigate(
+                'sessions'
+              )
+            }
+            onActivity={() =>
+              navigate(
+                'activity'
+              )
+            }
+          />
         )}
-
-        {/* ====================================================
-            PASSWORD SCREEN
-           ==================================================== */}
 
         {view ===
           'password' && (
-          <div className="space-y-5">
-            <section className="rounded-[22px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-950 sm:p-6">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                  <LockKeyhole className="h-5 w-5" />
-                </div>
+          <PasswordView
+            currentPassword={
+              currentPassword
+            }
+            newPassword={
+              newPassword
+            }
+            confirmPassword={
+              confirmPassword
+            }
+            showCurrentPassword={
+              showCurrentPassword
+            }
+            showNewPassword={
+              showNewPassword
+            }
+            showConfirmPassword={
+              showConfirmPassword
+            }
+            confirmPasswordError={
+              confirmPasswordError
+            }
+            passwordRequirements={
+              passwordRequirements
+            }
+            submitting={
+              submittingPassword
+            }
+            onCurrentPassword={
+              setCurrentPassword
+            }
+            onNewPassword={
+              value => {
+                setNewPassword(
+                  value
+                );
 
-                <div>
-                  <h2 className="text-base font-black text-slate-950 dark:text-white">
-                    Change password
-                  </h2>
-
-                  <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                    You will need your current password before SaMi can replace it.
-                  </p>
-                </div>
-              </div>
-
-              <form
-                onSubmit={
-                  changePassword
-                }
-                className="mt-6 max-w-xl space-y-5"
-              >
-                <PasswordField
-                  label="Current password"
-                  value={
-                    currentPassword
-                  }
-                  onChange={
-                    setCurrentPassword
-                  }
-                  visible={
-                    showCurrentPassword
-                  }
-                  onToggleVisibility={() =>
-                    setShowCurrentPassword(
-                      (
-                        current
-                      ) =>
-                        !current
-                    )
-                  }
-                  autoComplete="current-password"
-                  placeholder="Enter your current password"
-                />
-
-                <PasswordField
-                  label="New password"
-                  value={
-                    newPassword
-                  }
-                  onChange={(
-                    value
-                  ) => {
-                    setNewPassword(
-                      value
-                    );
-
-                    if (
+                if (
+                  confirmPassword
+                ) {
+                  setConfirmPasswordError(
+                    value ===
                       confirmPassword
-                    ) {
-                      setConfirmPasswordError(
-                        value ===
-                        confirmPassword
-                          ? null
-                          : 'The passwords do not match.'
-                      );
-                    }
-                  }}
-                  visible={
-                    showNewPassword
-                  }
-                  onToggleVisibility={() =>
-                    setShowNewPassword(
-                      (
-                        current
-                      ) =>
-                        !current
-                    )
-                  }
-                  autoComplete="new-password"
-                  placeholder="Create a new password"
-                />
+                      ? null
+                      : 'The passwords do not match.'
+                  );
+                }
+              }
+            }
+            onConfirmPassword={
+              value => {
+                setConfirmPassword(
+                  value
+                );
 
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                  <p className="text-xs font-black text-slate-700 dark:text-slate-300">
-                    Password requirements
-                  </p>
+                if (
+                  !value
+                ) {
+                  setConfirmPasswordError(
+                    null
+                  );
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <Requirement
-                      met={
-                        passwordRequirements
-                          .length
-                      }
-                    >
-                      8–128 characters
-                    </Requirement>
+                  return;
+                }
 
-                    <Requirement
-                      met={
-                        passwordRequirements
-                          .uppercase
-                      }
-                    >
-                      Uppercase letter
-                    </Requirement>
-
-                    <Requirement
-                      met={
-                        passwordRequirements
-                          .lowercase
-                      }
-                    >
-                      Lowercase letter
-                    </Requirement>
-
-                    <Requirement
-                      met={
-                        passwordRequirements
-                          .number
-                      }
-                    >
-                      Number
-                    </Requirement>
-                  </div>
-                </div>
-
-                <PasswordField
-                  label="Confirm new password"
-                  value={
-                    confirmPassword
-                  }
-                  onChange={(
-                    value
-                  ) => {
-                    setConfirmPassword(
-                      value
-                    );
-
-                    if (
-                      !value
-                    ) {
-                      setConfirmPasswordError(
-                        null
-                      );
-
-                      return;
-                    }
-
-                    setConfirmPasswordError(
-                      value ===
-                      newPassword
-                        ? null
-                        : 'The passwords do not match.'
-                    );
-                  }}
-                  visible={
-                    showConfirmPassword
-                  }
-                  onToggleVisibility={() =>
-                    setShowConfirmPassword(
-                      (
-                        current
-                      ) =>
-                        !current
-                    )
-                  }
-                  autoComplete="new-password"
-                  placeholder="Repeat your new password"
-                  error={
-                    confirmPasswordError
-                  }
-                />
-
-                <div className="pt-1">
-                  <button
-                    type="submit"
-                    disabled={
-                      submittingPassword
-                    }
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submittingPassword ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <LockKeyhole className="h-4 w-4" />
-                    )}
-
-                    {submittingPassword
-                      ? 'Changing password…'
-                      : 'Change password'}
-                  </button>
-                </div>
-              </form>
-            </section>
-
-            <section className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/50">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
-
-                <div>
-                  <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                    Password security
-                  </h3>
-
-                  <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">
-                    Use a password you do not reuse on another service. SaMi never displays your stored password and password verification remains server-side.
-                  </p>
-                </div>
-              </div>
-            </section>
-          </div>
+                setConfirmPasswordError(
+                  value ===
+                    newPassword
+                    ? null
+                    : 'The passwords do not match.'
+                );
+              }
+            }
+            onToggleCurrent={() =>
+              setShowCurrentPassword(
+                current =>
+                  !current
+              )
+            }
+            onToggleNew={() =>
+              setShowNewPassword(
+                current =>
+                  !current
+              )
+            }
+            onToggleConfirm={() =>
+              setShowConfirmPassword(
+                current =>
+                  !current
+              )
+            }
+            onSubmit={
+              changePassword
+            }
+          />
         )}
-
-        {/* ====================================================
-            VERIFICATION INDEX
-           ==================================================== */}
 
         {view ===
-          'verification' && (
-          <div className="space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <NavigationCard
-                title="Authenticator app"
-                description="Use six-digit time-based codes generated by an authenticator app."
-                icon={
-                  Smartphone
-                }
-                onClick={() =>
-                  navigate(
-                    'authenticator'
-                  )
-                }
-              />
-
-              <NavigationCard
-                title="Email login codes"
-                description="Receive a one-time six-digit verification code at your verified SaMi email."
-                icon={
-                  Mail
-                }
-                onClick={() =>
-                  navigate(
-                    'email'
-                  )
-                }
-              />
-            </div>
-
-            <section className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/50">
-              <div className="flex items-start gap-3">
-                <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
-
-                <div>
-                  <h3 className="text-sm font-black text-slate-950 dark:text-white">
-                    Sign-in verification
-                  </h3>
-
-                  <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">
-                    You can enable more than one verification method. When both Authenticator and Email are active, SaMi can use your preferred method first while keeping the other available.
-                  </p>
-                </div>
-              </div>
-            </section>
-          </div>
+          'two-factor' && (
+          <TwoFactorOverview
+            onAuthenticator={() =>
+              navigate(
+                'authenticator'
+              )
+            }
+            onEmail={() =>
+              navigate(
+                'email'
+              )
+            }
+          />
         )}
-
-        {/* ====================================================
-            AUTHENTICATOR SCREEN
-           ==================================================== */}
 
         {view ===
           'authenticator' && (
           <TwoFactorSettings />
         )}
 
-        {/* ====================================================
-            EMAIL LOGIN CODE SCREEN
-           ==================================================== */}
-
         {view ===
           'email' && (
           <EmailTwoFactorSettings />
         )}
 
-        {/* ====================================================
-            SECURITY ACTIVITY SCREEN
-           ==================================================== */}
+        {view ===
+          'sessions' && (
+          <SessionsSettings />
+        )}
 
         {view ===
           'activity' && (
           <SecurityActivitySettings />
         )}
       </div>
+
+      <SaMiOverlay
+        open={
+          Boolean(
+            overlay
+          )
+        }
+        type={
+          overlay?.type ||
+          'info'
+        }
+        title={
+          overlay?.title ||
+          ''
+        }
+        message={
+          overlay?.message ||
+          ''
+        }
+        onClose={() =>
+          setOverlay(
+            null
+          )
+        }
+      />
     </>
   );
 }
 
-/* ============================================================
-   NAVIGATION CARD
-   ============================================================ */
+function SecurityOverview({
+  onPassword,
+  onTwoFactor,
+  onSessions,
+  onActivity,
+}: {
+  onPassword:
+    () => void;
 
-function NavigationCard({
+  onTwoFactor:
+    () => void;
+
+  onSessions:
+    () => void;
+
+  onActivity:
+    () => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <SecurityRow
+        title="Password"
+        description="Change the password used to sign in to your account"
+        icon={
+          LockKeyhole
+        }
+        onClick={
+          onPassword
+        }
+      />
+
+      <SecurityRow
+        title="Two-factor authentication"
+        description="Protect sign-ins with an authenticator app or email verification"
+        icon={
+          ShieldCheck
+        }
+        onClick={
+          onTwoFactor
+        }
+      />
+
+      <SecurityRow
+        title="Sessions & devices"
+        description="Review devices signed in to your account and revoke access"
+        icon={
+          Laptop
+        }
+        onClick={
+          onSessions
+        }
+      />
+
+      <SecurityRow
+        title="Security activity"
+        description="Review sign-ins and important security changes"
+        icon={
+          History
+        }
+        onClick={
+          onActivity
+        }
+        last
+      />
+    </section>
+  );
+}
+
+function SecurityRow({
   title,
   description,
   icon:
     Icon,
   onClick,
+  last = false,
 }: {
-  title:
-    string;
-
-  description:
-    string;
-
+  title: string;
+  description: string;
   icon:
     typeof ShieldCheck;
-
   onClick:
     () => void;
+  last?: boolean;
 }) {
   return (
     <button
@@ -1247,32 +785,286 @@ function NavigationCard({
       onClick={
         onClick
       }
-      className="group flex min-h-[150px] w-full items-start gap-4 rounded-[22px] border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:border-slate-800 dark:bg-slate-950 dark:hover:border-blue-900 sm:p-6"
+      className={`group flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+        last
+          ? ''
+          : 'border-b border-slate-100 dark:border-slate-800'
+      }`}
     >
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition group-hover:bg-blue-50 group-hover:text-blue-700 dark:bg-slate-900 dark:text-slate-400 dark:group-hover:bg-blue-950/40 dark:group-hover:text-blue-300">
-        <Icon className="h-5 w-5" />
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition group-hover:bg-blue-50 group-hover:text-blue-600 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-blue-950/40 dark:group-hover:text-blue-300">
+        <Icon className="h-[18px] w-[18px]" />
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-black text-slate-950 dark:text-white">
-            {title}
-          </h2>
+        <p className="text-sm font-black text-slate-950 dark:text-white">
+          {title}
+        </p>
 
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600 dark:text-slate-700 dark:group-hover:text-blue-400" />
-        </div>
-
-        <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
           {description}
         </p>
       </div>
+
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
     </button>
   );
 }
 
-/* ============================================================
-   PASSWORD FIELD
-   ============================================================ */
+function TwoFactorOverview({
+  onAuthenticator,
+  onEmail,
+}: {
+  onAuthenticator:
+    () => void;
+
+  onEmail:
+    () => void;
+}) {
+  return (
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <SecurityRow
+          title="Authenticator app"
+          description="Scan a QR code with an authenticator app and use rotating verification codes"
+          icon={
+            Smartphone
+          }
+          onClick={
+            onAuthenticator
+          }
+        />
+
+        <SecurityRow
+          title="Email verification"
+          description="Receive one-time verification codes at your verified email address"
+          icon={
+            Mail
+          }
+          onClick={
+            onEmail
+          }
+          last
+        />
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/50">
+        <div className="flex items-start gap-3">
+          <KeyRound className="mt-0.5 h-5 w-5 shrink-0 text-blue-600 dark:text-blue-400" />
+
+          <div>
+            <p className="text-sm font-black text-slate-950 dark:text-white">
+              Sign-in verification
+            </p>
+
+            <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">
+              You can configure supported verification methods for stronger account protection. Recovery options are managed with your authenticator security setup.
+            </p>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function PasswordView({
+  currentPassword,
+  newPassword,
+  confirmPassword,
+  showCurrentPassword,
+  showNewPassword,
+  showConfirmPassword,
+  confirmPasswordError,
+  passwordRequirements,
+  submitting,
+  onCurrentPassword,
+  onNewPassword,
+  onConfirmPassword,
+  onToggleCurrent,
+  onToggleNew,
+  onToggleConfirm,
+  onSubmit,
+}: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+
+  showCurrentPassword:
+    boolean;
+
+  showNewPassword:
+    boolean;
+
+  showConfirmPassword:
+    boolean;
+
+  confirmPasswordError:
+    string | null;
+
+  passwordRequirements:
+    ReturnType<
+      typeof getPasswordRequirements
+    >;
+
+  submitting:
+    boolean;
+
+  onCurrentPassword:
+    (
+      value: string
+    ) => void;
+
+  onNewPassword:
+    (
+      value: string
+    ) => void;
+
+  onConfirmPassword:
+    (
+      value: string
+    ) => void;
+
+  onToggleCurrent:
+    () => void;
+
+  onToggleNew:
+    () => void;
+
+  onToggleConfirm:
+    () => void;
+
+  onSubmit:
+    (
+      event: FormEvent<HTMLFormElement>
+    ) => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      <form
+        onSubmit={
+          onSubmit
+        }
+        className="max-w-xl space-y-5"
+      >
+        <PasswordField
+          label="Current password"
+          value={
+            currentPassword
+          }
+          onChange={
+            onCurrentPassword
+          }
+          visible={
+            showCurrentPassword
+          }
+          onToggleVisibility={
+            onToggleCurrent
+          }
+          autoComplete="current-password"
+          placeholder="Enter your current password"
+        />
+
+        <PasswordField
+          label="New password"
+          value={
+            newPassword
+          }
+          onChange={
+            onNewPassword
+          }
+          visible={
+            showNewPassword
+          }
+          onToggleVisibility={
+            onToggleNew
+          }
+          autoComplete="new-password"
+          placeholder="Create a new password"
+        />
+
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
+          <p className="text-xs font-black text-slate-700 dark:text-slate-300">
+            Password requirements
+          </p>
+
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <Requirement
+              met={
+                passwordRequirements.length
+              }
+            >
+              8–128 characters
+            </Requirement>
+
+            <Requirement
+              met={
+                passwordRequirements.uppercase
+              }
+            >
+              Uppercase letter
+            </Requirement>
+
+            <Requirement
+              met={
+                passwordRequirements.lowercase
+              }
+            >
+              Lowercase letter
+            </Requirement>
+
+            <Requirement
+              met={
+                passwordRequirements.number
+              }
+            >
+              Number
+            </Requirement>
+          </div>
+        </div>
+
+        <PasswordField
+          label="Confirm new password"
+          value={
+            confirmPassword
+          }
+          onChange={
+            onConfirmPassword
+          }
+          visible={
+            showConfirmPassword
+          }
+          onToggleVisibility={
+            onToggleConfirm
+          }
+          autoComplete="new-password"
+          placeholder="Repeat your new password"
+          error={
+            confirmPasswordError
+          }
+        />
+
+        <div className="pt-1">
+          <button
+            type="submit"
+            disabled={
+              submitting
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {submitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <LockKeyhole className="h-4 w-4" />
+            )}
+
+            {submitting
+              ? 'Changing password...'
+              : 'Change password'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
 
 function PasswordField({
   label,
@@ -1284,29 +1076,21 @@ function PasswordField({
   placeholder,
   error,
 }: {
-  label:
-    string;
-
-  value:
-    string;
+  label: string;
+  value: string;
 
   onChange:
     (
-      value:
-        string
+      value: string
     ) => void;
 
-  visible:
-    boolean;
+  visible: boolean;
 
   onToggleVisibility:
     () => void;
 
-  autoComplete:
-    string;
-
-  placeholder:
-    string;
+  autoComplete: string;
+  placeholder: string;
 
   error?:
     string | null;
@@ -1327,13 +1111,12 @@ function PasswordField({
           value={
             value
           }
-          onChange={(
-            event
-          ) =>
-            onChange(
-              event.target
-                .value
-            )
+          onChange={
+            event =>
+              onChange(
+                event.target
+                  .value
+              )
           }
           autoComplete={
             autoComplete
@@ -1341,10 +1124,11 @@ function PasswordField({
           placeholder={
             placeholder
           }
+          maxLength={
+            MAX_PASSWORD_LENGTH
+          }
           aria-invalid={
-            Boolean(
-              error
-            )
+            Boolean(error)
           }
           className={`h-12 w-full rounded-xl border bg-white px-4 pr-12 text-sm font-semibold text-slate-950 outline-none transition placeholder:text-slate-400 focus:ring-4 dark:bg-slate-950 dark:text-white ${
             error
@@ -1382,19 +1166,12 @@ function PasswordField({
   );
 }
 
-/* ============================================================
-   PASSWORD REQUIREMENT
-   ============================================================ */
-
 function Requirement({
   met,
   children,
 }: {
-  met:
-    boolean;
-
-  children:
-    React.ReactNode;
+  met: boolean;
+  children: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-2">
