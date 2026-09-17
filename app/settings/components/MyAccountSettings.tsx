@@ -17,12 +17,9 @@ import {
   ChevronRight,
   Clock3,
   Globe2,
-  Info,
-  KeyRound,
   Loader2,
   LockKeyhole,
   Mail,
-  MonitorSmartphone,
   Phone,
   RefreshCw,
   Save,
@@ -36,11 +33,10 @@ import SaMiOverlay, {
   type SaMiOverlayType,
 } from '@/app/components/SaMiOverlay';
 
+import SecuritySettings from './SecuritySettings';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
-  formatUserDate,
-  formatUserDateTime,
-  formatUserTime,
   getUserFormattingPreview,
   type UserDateFormat,
   type UserDisplayPreferences,
@@ -76,23 +72,30 @@ type AccountResponse = {
   code?: string;
   error?: string;
   message?: string;
+
   account?: UserAccount;
-  preferences?: UserDisplayPreferences;
+
+  preferences?:
+    UserDisplayPreferences;
 
   emailChange?: {
-    pending: PendingEmailChange | null;
+    pending:
+      PendingEmailChange | null;
   };
 
-  pending?: PendingEmailChange | null;
+  pending?:
+    PendingEmailChange | null;
 
-  retryAfterSeconds?: number | null;
+  retryAfterSeconds?:
+    number | null;
 };
 
 type AccountView =
   | 'overview'
   | 'personal'
   | 'email'
-  | 'preferences';
+  | 'preferences'
+  | 'security';
 
 type OverlayState = {
   type: SaMiOverlayType;
@@ -122,45 +125,22 @@ function validEmail(
 function normalizeCode(
   value: string
 ) {
-  return value.trim();
+  return value
+    .replace(/\D/g, '')
+    .slice(0, 6);
 }
 
 function validCode(
   value: string
 ) {
   return /^\d{6}$/.test(
-    normalizeCode(value)
+    value
   );
-}
-
-function formatFallbackDateTime(
-  value:
-    | string
-    | null
-    | undefined
-) {
-  if (!value) {
-    return '—';
-  }
-
-  const date =
-    new Date(value);
-
-  if (
-    Number.isNaN(
-      date.getTime()
-    )
-  ) {
-    return '—';
-  }
-
-  return date.toLocaleString();
 }
 
 function initials(
   account:
-    | UserAccount
-    | null
+    UserAccount | null
 ) {
   if (!account) {
     return 'SM';
@@ -176,11 +156,11 @@ function initials(
       ?.trim()
       .charAt(0);
 
-  const value =
+  const result =
     `${first || ''}${last || ''}`
       .toUpperCase();
 
-  return value || 'SM';
+  return result || 'SM';
 }
 
 function getSystemDarkMode() {
@@ -194,8 +174,7 @@ function getSystemDarkMode() {
   return (
     window.matchMedia?.(
       '(prefers-color-scheme: dark)'
-    ).matches ??
-    false
+    ).matches ?? false
   );
 }
 
@@ -212,14 +191,13 @@ function applyTheme(
   const dark =
     theme === 'dark' ||
     (
-      theme === 'system' &&
+      theme ===
+        'system' &&
       getSystemDarkMode()
     );
 
-  document
-    .documentElement
-    .classList
-    .toggle(
+  document.documentElement
+    .classList.toggle(
       'dark',
       dark
     );
@@ -230,7 +208,7 @@ function applyTheme(
       theme
     );
   } catch {
-    // Theme still applies for the current page.
+    // Optional local cache.
   }
 }
 
@@ -273,12 +251,11 @@ function getTimezoneOptions(
     'Asia/Singapore',
   ];
 
-  let zones:
-    string[] =
+  let zones =
     fallback;
 
   try {
-    const intlWithZones =
+    const intl =
       Intl as typeof Intl & {
         supportedValuesOf?: (
           key: 'timeZone'
@@ -286,19 +263,17 @@ function getTimezoneOptions(
       };
 
     if (
-      typeof intlWithZones
+      typeof intl
         .supportedValuesOf ===
       'function'
     ) {
       zones =
-        intlWithZones
-          .supportedValuesOf(
-            'timeZone'
-          );
+        intl.supportedValuesOf(
+          'timeZone'
+        );
     }
   } catch {
-    zones =
-      fallback;
+    zones = fallback;
   }
 
   if (
@@ -314,9 +289,7 @@ function getTimezoneOptions(
   }
 
   if (
-    !zones.includes(
-      'UTC'
-    )
+    !zones.includes('UTC')
   ) {
     zones = [
       'UTC',
@@ -386,113 +359,84 @@ export default function MyAccountSettings() {
     pendingEmailChange,
     setPendingEmailChange,
   ] =
-    useState<
-      PendingEmailChange | null
-    >(null);
-
-  const [
-    previewNow,
-    setPreviewNow,
-  ] =
-    useState(
-      () => new Date()
+    useState<PendingEmailChange | null>(
+      null
     );
 
   const [
     firstName,
     setFirstName,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     lastName,
     setLastName,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     phone,
     setPhone,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     emailEditing,
     setEmailEditing,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     newEmail,
     setNewEmail,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     emailCode,
     setEmailCode,
-  ] =
-    useState('');
+  ] = useState('');
 
   const [
     resendSeconds,
     setResendSeconds,
-  ] =
-    useState(0);
-
-  const [
-    verifyRetrySeconds,
-    setVerifyRetrySeconds,
-  ] =
-    useState(0);
+  ] = useState(0);
 
   const [
     loading,
     setLoading,
-  ] =
-    useState(true);
+  ] = useState(true);
 
   const [
     profileSaving,
     setProfileSaving,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     avatarSaving,
     setAvatarSaving,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     avatarRemoving,
     setAvatarRemoving,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     preferencesSaving,
     setPreferencesSaving,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     requestingEmail,
     setRequestingEmail,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     verifyingEmail,
     setVerifyingEmail,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     cancellingEmail,
     setCancellingEmail,
-  ] =
-    useState(false);
+  ] = useState(false);
 
   const [
     overlay,
@@ -518,12 +462,9 @@ export default function MyAccountSettings() {
       () =>
         getUserFormattingPreview(
           preferences,
-          previewNow
+          new Date()
         ),
-      [
-        preferences,
-        previewNow,
-      ]
+      [preferences]
     );
 
   const profileChanged =
@@ -535,10 +476,7 @@ export default function MyAccountSettings() {
         lastName.trim() !==
           account.lastName ||
         phone.trim() !==
-          (
-            account.phone ||
-            ''
-          )
+          (account.phone || '')
       )
     );
 
@@ -548,23 +486,10 @@ export default function MyAccountSettings() {
       savedPreferences
     );
 
-  const busy =
-    loading ||
-    profileSaving ||
-    avatarSaving ||
-    avatarRemoving ||
-    preferencesSaving ||
-    requestingEmail ||
-    verifyingEmail ||
-    cancellingEmail;
-
   function showOverlay(
-    type:
-      SaMiOverlayType,
-    title:
-      string,
-    message:
-      string
+    type: SaMiOverlayType,
+    title: string,
+    message: string
   ) {
     setOverlay({
       type,
@@ -573,90 +498,23 @@ export default function MyAccountSettings() {
     });
   }
 
-  useEffect(
-    () => {
-      const timer =
-        window.setInterval(
-          () => {
-            setPreviewNow(
-              new Date()
-            );
-          },
-          1000
-        );
-
-      return () => {
-        window.clearInterval(
-          timer
-        );
-      };
-    },
-    []
-  );
-
-  useEffect(
-    () => {
-      if (
-        preferences.theme !==
-        'system'
-      ) {
-        return;
-      }
-
-      const media =
-        window.matchMedia(
-          '(prefers-color-scheme: dark)'
-        );
-
-      const sync =
-        () => {
-          applyTheme(
-            'system'
-          );
-        };
-
-      sync();
-
-      media.addEventListener?.(
-        'change',
-        sync
-      );
-
-      return () => {
-        media.removeEventListener?.(
-          'change',
-          sync
-        );
-      };
-    },
-    [
-      preferences.theme,
-    ]
-  );
-
   const loadAccount =
     useCallback(
       async () => {
-        setLoading(
-          true
-        );
+        setLoading(true);
 
         try {
           const response =
             await fetch(
               '/api/account',
               {
-                method:
-                  'GET',
-
+                method: 'GET',
                 headers: {
                   Accept:
                     'application/json',
                 },
-
                 credentials:
                   'same-origin',
-
                 cache:
                   'no-store',
               }
@@ -678,17 +536,29 @@ export default function MyAccountSettings() {
             );
           }
 
-          const loadedAccount =
-            data.account;
+          setAccount(
+            data.account
+          );
+
+          setFirstName(
+            data.account
+              .firstName || ''
+          );
+
+          setLastName(
+            data.account
+              .lastName || ''
+          );
+
+          setPhone(
+            data.account
+              .phone || ''
+          );
 
           const loadedPreferences =
             data.preferences || {
               ...DEFAULT_USER_DISPLAY_PREFERENCES,
             };
-
-          setAccount(
-            loadedAccount
-          );
 
           setPreferences(
             loadedPreferences
@@ -698,27 +568,15 @@ export default function MyAccountSettings() {
             loadedPreferences
           );
 
-          setFirstName(
-            loadedAccount
-              .firstName ||
-              ''
-          );
-
-          setLastName(
-            loadedAccount
-              .lastName ||
-              ''
-          );
-
-          setPhone(
-            loadedAccount
-              .phone ||
-              ''
+          applyTheme(
+            loadedPreferences
+              .theme
           );
 
           const pending =
             data.emailChange
               ?.pending ||
+            data.pending ||
             null;
 
           setPendingEmailChange(
@@ -730,115 +588,89 @@ export default function MyAccountSettings() {
               ?.canResendInSeconds ||
               0
           );
-
-          applyTheme(
-            loadedPreferences
-              .theme
-          );
-        } catch (
-          error
-        ) {
-          setAccount(
-            null
-          );
+        } catch (error) {
+          setAccount(null);
 
           showOverlay(
             'error',
             'Account unavailable',
-            error instanceof
-              Error
+            error instanceof Error
               ? error.message
               : 'SaMi could not load your account.'
           );
         } finally {
-          setLoading(
-            false
-          );
+          setLoading(false);
         }
       },
       []
     );
 
-  useEffect(
-    () => {
-      void loadAccount();
-    },
-    [
-      loadAccount,
-    ]
-  );
+  useEffect(() => {
+    void loadAccount();
+  }, [loadAccount]);
 
-  useEffect(
-    () => {
-      if (
-        resendSeconds <=
-        0
-      ) {
-        return;
-      }
+  useEffect(() => {
+    if (
+      resendSeconds <= 0
+    ) {
+      return;
+    }
 
-      const timer =
-        window.setInterval(
-          () => {
-            setResendSeconds(
-              current =>
-                Math.max(
-                  0,
-                  current - 1
-                )
-            );
-          },
-          1000
+    const timer =
+      window.setInterval(
+        () => {
+          setResendSeconds(
+            current =>
+              Math.max(
+                0,
+                current - 1
+              )
+          );
+        },
+        1000
+      );
+
+    return () =>
+      window.clearInterval(
+        timer
+      );
+  }, [resendSeconds]);
+
+  useEffect(() => {
+    if (
+      preferences.theme !==
+      'system'
+    ) {
+      return;
+    }
+
+    const media =
+      window.matchMedia(
+        '(prefers-color-scheme: dark)'
+      );
+
+    const sync =
+      () =>
+        applyTheme(
+          'system'
         );
 
-      return () => {
-        window.clearInterval(
-          timer
-        );
-      };
-    },
-    [
-      resendSeconds,
-    ]
-  );
+    media.addEventListener?.(
+      'change',
+      sync
+    );
 
-  useEffect(
-    () => {
-      if (
-        verifyRetrySeconds <=
-        0
-      ) {
-        return;
-      }
-
-      const timer =
-        window.setInterval(
-          () => {
-            setVerifyRetrySeconds(
-              current =>
-                Math.max(
-                  0,
-                  current - 1
-                )
-            );
-          },
-          1000
-        );
-
-      return () => {
-        window.clearInterval(
-          timer
-        );
-      };
-    },
-    [
-      verifyRetrySeconds,
-    ]
-  );
+    return () =>
+      media.removeEventListener?.(
+        'change',
+        sync
+      );
+  }, [
+    preferences.theme,
+  ]);
 
   async function uploadAvatar(
-    file:
-      File | null
+    file: File | null
   ) {
     if (
       !file ||
@@ -882,9 +714,7 @@ export default function MyAccountSettings() {
       return;
     }
 
-    setAvatarSaving(
-      true
-    );
+    setAvatarSaving(true);
 
     try {
       const formData =
@@ -899,22 +729,16 @@ export default function MyAccountSettings() {
         await fetch(
           '/api/account/avatar',
           {
-            method:
-              'POST',
-
+            method: 'POST',
             headers: {
               Accept:
                 'application/json',
             },
-
             credentials:
               'same-origin',
-
             cache:
               'no-store',
-
-            body:
-              formData,
+            body: formData,
           }
         );
 
@@ -941,54 +765,42 @@ export default function MyAccountSettings() {
         data.message ||
           'Your profile image has been updated.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Image update failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not update your profile image.'
       );
     } finally {
-      setAvatarSaving(
-        false
-      );
+      setAvatarSaving(false);
     }
   }
 
   async function removeAvatar() {
     if (
-      avatarSaving ||
+      !account?.avatarFileId ||
       avatarRemoving ||
-      !account ||
-      !account.avatarFileId
+      avatarSaving
     ) {
       return;
     }
 
-    setAvatarRemoving(
-      true
-    );
+    setAvatarRemoving(true);
 
     try {
       const response =
         await fetch(
           '/api/account/avatar',
           {
-            method:
-              'DELETE',
-
+            method: 'DELETE',
             headers: {
               Accept:
                 'application/json',
             },
-
             credentials:
               'same-origin',
-
             cache:
               'no-store',
           }
@@ -1017,21 +829,16 @@ export default function MyAccountSettings() {
         data.message ||
           'Your profile image has been removed.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Image removal failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not remove your profile image.'
       );
     } finally {
-      setAvatarRemoving(
-        false
-      );
+      setAvatarRemoving(false);
     }
   }
 
@@ -1051,22 +858,14 @@ export default function MyAccountSettings() {
     const cleanFirstName =
       firstName
         .trim()
-        .replace(
-          /\s+/g,
-          ' '
-        );
+        .replace(/\s+/g, ' ');
 
     const cleanLastName =
       lastName
         .trim()
-        .replace(
-          /\s+/g,
-          ' '
-        );
+        .replace(/\s+/g, ' ');
 
-    if (
-      !cleanFirstName
-    ) {
+    if (!cleanFirstName) {
       showOverlay(
         'warning',
         'First name required',
@@ -1076,9 +875,7 @@ export default function MyAccountSettings() {
       return;
     }
 
-    if (
-      !cleanLastName
-    ) {
+    if (!cleanLastName) {
       showOverlay(
         'warning',
         'Last name required',
@@ -1088,22 +885,18 @@ export default function MyAccountSettings() {
       return;
     }
 
-    setProfileSaving(
-      true
-    );
+    setProfileSaving(true);
 
     try {
       const response =
         await fetch(
           '/api/account/profile',
           {
-            method:
-              'PATCH',
+            method: 'PATCH',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -1118,10 +911,8 @@ export default function MyAccountSettings() {
               JSON.stringify({
                 firstName:
                   cleanFirstName,
-
                 lastName:
                   cleanLastName,
-
                 phone:
                   phone.trim() ||
                   null,
@@ -1150,18 +941,15 @@ export default function MyAccountSettings() {
       );
 
       setFirstName(
-        data.account
-          .firstName
+        data.account.firstName
       );
 
       setLastName(
-        data.account
-          .lastName
+        data.account.lastName
       );
 
       setPhone(
-        data.account
-          .phone ||
+        data.account.phone ||
           ''
       );
 
@@ -1171,21 +959,16 @@ export default function MyAccountSettings() {
         data.message ||
           'Your personal information has been updated.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Profile update failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not update your profile.'
       );
     } finally {
-      setProfileSaving(
-        false
-      );
+      setProfileSaving(false);
     }
   }
 
@@ -1206,13 +989,11 @@ export default function MyAccountSettings() {
         await fetch(
           '/api/account/preferences',
           {
-            method:
-              'PATCH',
+            method: 'PATCH',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -1255,8 +1036,7 @@ export default function MyAccountSettings() {
       );
 
       applyTheme(
-        data.preferences
-          .theme
+        data.preferences.theme
       );
 
       showOverlay(
@@ -1265,14 +1045,11 @@ export default function MyAccountSettings() {
         data.message ||
           'Your preferences have been updated.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Preferences not saved',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not update your preferences.'
       );
@@ -1289,8 +1066,7 @@ export default function MyAccountSettings() {
     );
 
     applyTheme(
-      savedPreferences
-        .theme
+      savedPreferences.theme
     );
   }
 
@@ -1307,11 +1083,7 @@ export default function MyAccountSettings() {
         newEmail
       );
 
-    if (
-      !validEmail(
-        email
-      )
-    ) {
+    if (!validEmail(email)) {
       showOverlay(
         'warning',
         'Invalid email',
@@ -1336,22 +1108,18 @@ export default function MyAccountSettings() {
       return;
     }
 
-    setRequestingEmail(
-      true
-    );
+    setRequestingEmail(true);
 
     try {
       const response =
         await fetch(
           '/api/account/email-change/request',
           {
-            method:
-              'POST',
+            method: 'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -1379,9 +1147,7 @@ export default function MyAccountSettings() {
         !data.success
       ) {
         if (
-          data.retryAfterSeconds &&
-          data.retryAfterSeconds >
-            0
+          data.retryAfterSeconds
         ) {
           setResendSeconds(
             Math.ceil(
@@ -1399,8 +1165,12 @@ export default function MyAccountSettings() {
       const pending =
         data.pending ||
         data.emailChange
-          ?.pending ||
-        null;
+          ?.pending || {
+          email,
+          expiresAt: '',
+          canResendInSeconds:
+            60,
+        };
 
       setPendingEmailChange(
         pending
@@ -1408,34 +1178,25 @@ export default function MyAccountSettings() {
 
       setResendSeconds(
         pending
-          ?.canResendInSeconds ||
+          .canResendInSeconds ||
           60
       );
 
-      setEmailCode(
-        ''
-      );
-
-      setEmailEditing(
-        false
-      );
+      setEmailCode('');
 
       showOverlay(
         'success',
         'Verification code sent',
         data.message ||
-          'A verification code has been sent to your new email address.'
+          `A verification code has been sent to ${email}.`
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
-        'Code not sent',
-        error instanceof
-          Error
+        'Email change not started',
+        error instanceof Error
           ? error.message
-          : 'SaMi could not send the verification code.'
+          : 'SaMi could not start the email change.'
       );
     } finally {
       setRequestingEmail(
@@ -1446,30 +1207,29 @@ export default function MyAccountSettings() {
 
   async function resendEmailCode() {
     if (
-      requestingEmail ||
-      resendSeconds >
-        0 ||
-      !pendingEmailChange
+      !pendingEmailChange ||
+      resendSeconds > 0 ||
+      requestingEmail
     ) {
       return;
     }
 
-    setRequestingEmail(
-      true
+    setNewEmail(
+      pendingEmailChange.email
     );
+
+    setRequestingEmail(true);
 
     try {
       const response =
         await fetch(
           '/api/account/email-change/request',
           {
-            method:
-              'POST',
+            method: 'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -1499,9 +1259,7 @@ export default function MyAccountSettings() {
         !data.success
       ) {
         if (
-          data.retryAfterSeconds &&
-          data.retryAfterSeconds >
-            0
+          data.retryAfterSeconds
         ) {
           setResendSeconds(
             Math.ceil(
@@ -1512,7 +1270,7 @@ export default function MyAccountSettings() {
 
         throw new Error(
           data.error ||
-            'SaMi could not resend the verification code.'
+            'SaMi could not resend the code.'
         );
       }
 
@@ -1528,12 +1286,8 @@ export default function MyAccountSettings() {
 
       setResendSeconds(
         pending
-          ?.canResendInSeconds ||
+          .canResendInSeconds ||
           60
-      );
-
-      setEmailCode(
-        ''
       );
 
       showOverlay(
@@ -1542,14 +1296,11 @@ export default function MyAccountSettings() {
         data.message ||
           'A new verification code has been sent.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Code not sent',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not resend the verification code.'
       );
@@ -1563,48 +1314,37 @@ export default function MyAccountSettings() {
   async function verifyNewEmail() {
     if (
       verifyingEmail ||
-      verifyRetrySeconds >
-        0 ||
       !pendingEmailChange
     ) {
       return;
     }
 
-    const code =
-      normalizeCode(
-        emailCode
-      );
-
     if (
       !validCode(
-        code
+        emailCode
       )
     ) {
       showOverlay(
         'warning',
-        'Verification code required',
-        'Enter the complete 6-digit verification code.'
+        'Invalid code',
+        'Enter the 6-digit verification code.'
       );
 
       return;
     }
 
-    setVerifyingEmail(
-      true
-    );
+    setVerifyingEmail(true);
 
     try {
       const response =
         await fetch(
           '/api/account/email-change/verify',
           {
-            method:
-              'POST',
+            method: 'POST',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -1617,7 +1357,8 @@ export default function MyAccountSettings() {
 
             body:
               JSON.stringify({
-                code,
+                code:
+                  emailCode,
               }),
           }
         );
@@ -1629,73 +1370,37 @@ export default function MyAccountSettings() {
 
       if (
         !response.ok ||
-        !data.success ||
-        !data.account
+        !data.success
       ) {
-        if (
-          data.code ===
-            'EMAIL_CHANGE_VERIFICATION_RATE_LIMITED' &&
-          data.retryAfterSeconds &&
-          data.retryAfterSeconds >
-            0
-        ) {
-          setVerifyRetrySeconds(
-            Math.ceil(
-              data.retryAfterSeconds
-            )
-          );
-        }
-
         throw new Error(
           data.error ||
-            'SaMi could not verify your new email.'
+            'SaMi could not verify the new email address.'
         );
       }
-
-      setAccount(
-        data.account
-      );
 
       setPendingEmailChange(
         null
       );
 
-      setNewEmail(
-        ''
-      );
+      setEmailCode('');
+      setNewEmail('');
+      setEmailEditing(false);
 
-      setEmailCode(
-        ''
-      );
-
-      setResendSeconds(
-        0
-      );
-
-      setVerifyRetrySeconds(
-        0
-      );
-
-      setEmailEditing(
-        false
-      );
+      await loadAccount();
 
       showOverlay(
         'success',
         'Email updated',
         data.message ||
-          'Your email address has been updated successfully.'
+          'Your email address has been changed successfully.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
-        'Email verification failed',
-        error instanceof
-          Error
+        'Verification failed',
+        error instanceof Error
           ? error.message
-          : 'SaMi could not verify your new email.'
+          : 'SaMi could not verify the code.'
       );
     } finally {
       setVerifyingEmail(
@@ -1704,24 +1409,22 @@ export default function MyAccountSettings() {
     }
   }
 
-  async function cancelPendingEmailChange() {
+  async function cancelEmailChange() {
     if (
-      cancellingEmail
+      cancellingEmail ||
+      !pendingEmailChange
     ) {
       return;
     }
 
-    setCancellingEmail(
-      true
-    );
+    setCancellingEmail(true);
 
     try {
       const response =
         await fetch(
-          '/api/account/email-change',
+          '/api/account/email-change/cancel',
           {
-            method:
-              'DELETE',
+            method: 'POST',
 
             headers: {
               Accept:
@@ -1755,36 +1458,21 @@ export default function MyAccountSettings() {
         null
       );
 
-      setNewEmail(
-        ''
-      );
-
-      setEmailCode(
-        ''
-      );
-
-      setResendSeconds(
-        0
-      );
-
-      setVerifyRetrySeconds(
-        0
-      );
+      setEmailCode('');
+      setNewEmail('');
+      setEmailEditing(false);
 
       showOverlay(
         'success',
         'Email change cancelled',
         data.message ||
-          'Your pending email change has been cancelled.'
+          'The pending email change has been cancelled.'
       );
-    } catch (
-      error
-    ) {
+    } catch (error) {
       showOverlay(
         'error',
         'Cancellation failed',
-        error instanceof
-          Error
+        error instanceof Error
           ? error.message
           : 'SaMi could not cancel the email change.'
       );
@@ -1795,80 +1483,74 @@ export default function MyAccountSettings() {
     }
   }
 
-  function openSecurity() {
-    window.location.assign(
-      '/settings?tab=security'
-    );
+  function navigate(
+    next: AccountView
+  ) {
+    setView(next);
+
+    window.scrollTo({
+      top: 0,
+      behavior: 'smooth',
+    });
   }
 
-  if (
-    loading
-  ) {
+  if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-          <div className="flex items-center gap-4">
-            <div className="h-16 w-16 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-
-            <div className="flex-1">
-              <div className="h-5 w-48 rounded bg-slate-100 dark:bg-slate-800" />
-
-              <div className="mt-2 h-4 w-64 max-w-full rounded bg-slate-100 dark:bg-slate-800" />
-            </div>
-          </div>
-        </div>
-
-        <div className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-          <div className="h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-
-          <div className="mt-3 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-
-          <div className="mt-3 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800" />
-        </div>
+      <div className="flex min-h-[420px] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
       </div>
     );
   }
 
-  if (
-    !account
-  ) {
+  if (!account) {
     return (
       <>
-        <div className="flex min-h-[320px] items-center justify-center">
+        <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
+          <UserRound className="h-8 w-8 text-slate-400" />
+
+          <p className="mt-4 text-sm font-black">
+            Account unavailable
+          </p>
+
           <button
             type="button"
             onClick={() =>
               void loadAccount()
             }
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
+            className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
           >
             <RefreshCw className="h-4 w-4" />
             Try again
           </button>
         </div>
 
-        <SaMiOverlay
-          open={
-            Boolean(
-              overlay
-            )
-          }
-          type={
-            overlay?.type ||
-            'error'
-          }
-          title={
-            overlay?.title ||
-            'Account unavailable'
-          }
-          message={
-            overlay?.message ||
-            'SaMi could not load your account.'
-          }
+        <Overlay
+          state={overlay}
           onClose={() =>
-            setOverlay(
-              null
+            setOverlay(null)
+          }
+        />
+      </>
+    );
+  }
+
+  if (
+    view === 'security'
+  ) {
+    return (
+      <>
+        <SecuritySettings
+          onBack={() =>
+            navigate(
+              'overview'
             )
+          }
+        />
+
+        <Overlay
+          state={overlay}
+          onClose={() =>
+            setOverlay(null)
           }
         />
       </>
@@ -1883,7 +1565,7 @@ export default function MyAccountSettings() {
           <button
             type="button"
             onClick={() =>
-              setView(
+              navigate(
                 'overview'
               )
             }
@@ -1897,11 +1579,32 @@ export default function MyAccountSettings() {
         {view ===
           'overview' && (
           <AccountOverview
-            account={
-              account
+            account={account}
+            onPersonal={() =>
+              navigate(
+                'personal'
+              )
             }
-            preferences={
-              preferences
+            onEmail={() =>
+              navigate(
+                'email'
+              )
+            }
+            onPreferences={() =>
+              navigate(
+                'preferences'
+              )
+            }
+            onSecurity={() =>
+              navigate(
+                'security'
+              )
+            }
+            onUploadAvatar={
+              uploadAvatar
+            }
+            onRemoveAvatar={
+              removeAvatar
             }
             avatarSaving={
               avatarSaving
@@ -1909,53 +1612,24 @@ export default function MyAccountSettings() {
             avatarRemoving={
               avatarRemoving
             }
-            onAvatar={
-              uploadAvatar
-            }
-            onRemoveAvatar={
-              removeAvatar
-            }
-            onPersonal={() =>
-              setView(
-                'personal'
-              )
-            }
-            onEmail={() =>
-              setView(
-                'email'
-              )
-            }
-            onPreferences={() =>
-              setView(
-                'preferences'
-              )
-            }
-            onSecurity={
-              openSecurity
-            }
           />
         )}
 
         {view ===
           'personal' && (
-          <PersonalInformationView
+          <PersonalView
             firstName={
               firstName
             }
             lastName={
               lastName
             }
-            phone={
-              phone
-            }
-            busy={
-              busy
-            }
-            profileSaving={
-              profileSaving
-            }
-            profileChanged={
+            phone={phone}
+            changed={
               profileChanged
+            }
+            saving={
+              profileSaving
             }
             onFirstName={
               setFirstName
@@ -1975,41 +1649,30 @@ export default function MyAccountSettings() {
         {view ===
           'email' && (
           <EmailView
-            account={
-              account
-            }
-            preferences={
-              preferences
-            }
-            pendingEmailChange={
+            account={account}
+            pending={
               pendingEmailChange
             }
-            emailEditing={
+            editing={
               emailEditing
             }
             newEmail={
               newEmail
             }
-            emailCode={
+            code={
               emailCode
             }
             resendSeconds={
               resendSeconds
             }
-            verifyRetrySeconds={
-              verifyRetrySeconds
-            }
-            requestingEmail={
+            requesting={
               requestingEmail
             }
-            verifyingEmail={
+            verifying={
               verifyingEmail
             }
-            cancellingEmail={
+            cancelling={
               cancellingEmail
-            }
-            busy={
-              busy
             }
             onEditing={
               setEmailEditing
@@ -2017,8 +1680,12 @@ export default function MyAccountSettings() {
             onNewEmail={
               setNewEmail
             }
-            onCode={
-              setEmailCode
+            onCode={value =>
+              setEmailCode(
+                normalizeCode(
+                  value
+                )
+              )
             }
             onRequest={
               requestNewEmail
@@ -2029,8 +1696,8 @@ export default function MyAccountSettings() {
             onVerify={
               verifyNewEmail
             }
-            onCancelPending={
-              cancelPendingEmailChange
+            onCancel={
+              cancelEmailChange
             }
           />
         )}
@@ -2041,23 +1708,28 @@ export default function MyAccountSettings() {
             preferences={
               preferences
             }
-            previewNow={
-              previewNow
-            }
-            preferencePreview={
-              preferencePreview
-            }
             timezoneOptions={
               timezoneOptions
             }
-            preferencesChanged={
+            preview={
+              preferencePreview
+            }
+            changed={
               preferencesChanged
             }
-            preferencesSaving={
+            saving={
               preferencesSaving
             }
             onChange={
-              setPreferences
+              next => {
+                setPreferences(
+                  next
+                );
+
+                applyTheme(
+                  next.theme
+                );
+              }
             }
             onSave={
               savePreferences
@@ -2069,28 +1741,10 @@ export default function MyAccountSettings() {
         )}
       </div>
 
-      <SaMiOverlay
-        open={
-          Boolean(
-            overlay
-          )
-        }
-        type={
-          overlay?.type ||
-          'info'
-        }
-        title={
-          overlay?.title ||
-          ''
-        }
-        message={
-          overlay?.message ||
-          ''
-        }
+      <Overlay
+        state={overlay}
         onClose={() =>
-          setOverlay(
-            null
-          )
+          setOverlay(null)
         }
       />
     </>
@@ -2099,70 +1753,42 @@ export default function MyAccountSettings() {
 
 function AccountOverview({
   account,
-  preferences,
-  avatarSaving,
-  avatarRemoving,
-  onAvatar,
-  onRemoveAvatar,
   onPersonal,
   onEmail,
   onPreferences,
   onSecurity,
+  onUploadAvatar,
+  onRemoveAvatar,
+  avatarSaving,
+  avatarRemoving,
 }: {
-  account:
-    UserAccount;
-
-  preferences:
-    UserDisplayPreferences;
-
-  avatarSaving:
-    boolean;
-
-  avatarRemoving:
-    boolean;
-
-  onAvatar:
-    (
-      file:
-        File | null
-    ) => void;
-
-  onRemoveAvatar:
-    () => void;
-
-  onPersonal:
-    () => void;
-
-  onEmail:
-    () => void;
-
+  account: UserAccount;
+  onPersonal: () => void;
+  onEmail: () => void;
   onPreferences:
     () => void;
-
-  onSecurity:
+  onSecurity: () => void;
+  onUploadAvatar:
+    (file: File | null) =>
+      void;
+  onRemoveAvatar:
     () => void;
+  avatarSaving: boolean;
+  avatarRemoving: boolean;
 }) {
   return (
     <div className="space-y-5">
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-          <div className="relative h-20 w-20 shrink-0">
-            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-blue-600 text-xl font-black text-white">
-              {account.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
+          <div className="relative">
+            <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 text-xl font-black text-white">
+              {account.avatarFileId ? (
                 <img
-                  key={
-                    account.avatarFileId ||
-                    account.avatarUrl
-                  }
                   src={
-                    account.avatarFileId
-                      ? `${account.avatarUrl}?v=${encodeURIComponent(
-                          account.avatarFileId
-                        )}`
-                      : account.avatarUrl
+                    account.avatarUrl ||
+                    '/api/account/avatar'
                   }
-                  alt={`${account.fullName || 'SaMi user'} profile`}
+                  alt=""
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -2172,20 +1798,7 @@ function AccountOverview({
               )}
             </div>
 
-            <label
-              htmlFor="account-avatar"
-              title={
-                account.avatarFileId
-                  ? 'Replace profile image'
-                  : 'Upload profile image'
-              }
-              className={`absolute -bottom-2 -right-2 flex h-9 w-9 items-center justify-center rounded-xl border-4 border-white bg-blue-600 text-white shadow-sm transition dark:border-slate-900 ${
-                avatarSaving ||
-                avatarRemoving
-                  ? 'cursor-not-allowed opacity-60'
-                  : 'cursor-pointer hover:bg-blue-700'
-              }`}
-            >
+            <label className="absolute -bottom-2 -right-2 flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border-4 border-white bg-blue-600 text-white shadow-sm dark:border-[#0d121b]">
               {avatarSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -2193,86 +1806,92 @@ function AccountOverview({
               )}
 
               <input
-                id="account-avatar"
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 disabled={
                   avatarSaving ||
                   avatarRemoving
                 }
-                onChange={event => {
-                  const file =
-                    event.target
-                      .files?.[0] ||
-                    null;
+                onChange={
+                  event => {
+                    const file =
+                      event.target
+                        .files?.[0] ||
+                      null;
 
-                  event.currentTarget.value =
-                    '';
+                    void onUploadAvatar(
+                      file
+                    );
 
-                  onAvatar(
-                    file
-                  );
-                }}
-                className="sr-only"
+                    event.target.value =
+                      '';
+                  }
+                }
+                className="hidden"
               />
             </label>
           </div>
 
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate text-xl font-black tracking-[-0.025em] text-slate-950 dark:text-white">
-                {account.fullName ||
-                  account.email}
-              </p>
-
-              {account.emailVerified && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  <Check className="h-3 w-3" />
-                  Verified
-                </span>
-              )}
-            </div>
+            <h2 className="truncate text-xl font-black text-slate-950 dark:text-white">
+              {account.fullName ||
+                `${account.firstName} ${account.lastName}`.trim()}
+            </h2>
 
             <p className="mt-1 truncate text-sm text-slate-500 dark:text-slate-400">
               {account.email}
             </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <label
-                htmlFor="account-avatar"
-                className={`inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-black text-slate-700 transition dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 ${
-                  avatarSaving ||
-                  avatarRemoving
-                    ? 'cursor-not-allowed opacity-50'
-                    : 'cursor-pointer hover:border-blue-300 hover:text-blue-600'
-                }`}
-              >
-                <Camera className="h-3.5 w-3.5" />
+            <div className="mt-3 flex flex-wrap gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                <Camera className="h-4 w-4" />
+                Change photo
 
-                {account.avatarFileId
-                  ? 'Replace photo'
-                  : 'Add photo'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={
+                    avatarSaving ||
+                    avatarRemoving
+                  }
+                  onChange={
+                    event => {
+                      const file =
+                        event.target
+                          .files?.[0] ||
+                        null;
+
+                      void onUploadAvatar(
+                        file
+                      );
+
+                      event.target.value =
+                        '';
+                    }
+                  }
+                  className="hidden"
+                />
               </label>
 
               {account.avatarFileId && (
                 <button
                   type="button"
-                  onClick={
-                    onRemoveAvatar
-                  }
                   disabled={
-                    avatarSaving ||
-                    avatarRemoving
+                    avatarRemoving ||
+                    avatarSaving
                   }
-                  className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 px-3.5 text-xs font-black text-slate-600 transition hover:border-red-200 hover:text-red-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+                  onClick={() =>
+                    void onRemoveAvatar()
+                  }
+                  className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-50 disabled:opacity-60 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/30"
                 >
                   {avatarRemoving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                   )}
 
-                  Remove photo
+                  Remove
                 </button>
               )}
             </div>
@@ -2280,51 +1899,42 @@ function AccountOverview({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <SettingsRow
-          icon={
-            UserRound
-          }
+      <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+        <AccountRow
+          icon={UserRound}
           title="Personal information"
-          description={`${account.firstName} ${account.lastName}${account.phone ? ` · ${account.phone}` : ''}`}
+          description="Name and phone number"
+          value={
+            account.fullName
+          }
           onClick={
             onPersonal
           }
         />
 
-        <SettingsRow
-          icon={
-            AtSign
-          }
+        <AccountRow
+          icon={Mail}
           title="Email"
-          description={
+          description="Sign-in and account email"
+          value={
             account.email
-          }
-          badge={
-            account.emailVerified
-              ? 'Verified'
-              : 'Verification required'
           }
           onClick={
             onEmail
           }
         />
 
-        <SettingsRow
-          icon={
-            SunMoon
-          }
+        <AccountRow
+          icon={SunMoon}
           title="Preferences"
-          description={`${preferences.timezone} · ${preferences.dateFormat} · ${preferences.timeFormat === '24h' ? '24-hour' : '12-hour'}`}
+          description="Theme, timezone and date formats"
           onClick={
             onPreferences
           }
         />
 
-        <SettingsRow
-          icon={
-            ShieldCheck
-          }
+        <AccountRow
+          icon={ShieldCheck}
           title="Password & security"
           description="Password, two-factor authentication, sessions and security activity"
           onClick={
@@ -2333,65 +1943,25 @@ function AccountOverview({
           last
         />
       </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white px-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-        <dl className="divide-y divide-slate-100 dark:divide-slate-800">
-          <AccountDetail
-            label="Account status"
-            value={
-              account.status
-                .replace(
-                  /_/g,
-                  ' '
-                )
-            }
-          />
-
-          <AccountDetail
-            label="Account created"
-            value={
-              account.createdAt
-                ? formatUserDateTime(
-                    account.createdAt,
-                    preferences
-                  )
-                : formatFallbackDateTime(
-                    account.createdAt
-                  )
-            }
-          />
-        </dl>
-      </section>
     </div>
   );
 }
 
-function SettingsRow({
-  icon:
-    Icon,
+function AccountRow({
+  icon: Icon,
   title,
   description,
-  badge,
+  value,
   onClick,
   last = false,
 }: {
   icon:
     typeof UserRound;
-
-  title:
-    string;
-
-  description:
-    string;
-
-  badge?:
-    string;
-
-  onClick:
-    () => void;
-
-  last?:
-    boolean;
+  title: string;
+  description: string;
+  value?: string | null;
+  onClick: () => void;
+  last?: boolean;
 }) {
   return (
     <button
@@ -2399,110 +1969,62 @@ function SettingsRow({
       onClick={
         onClick
       }
-      className={`flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
+      className={`group flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
         last
           ? ''
           : 'border-b border-slate-100 dark:border-slate-800'
       }`}
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-blue-950/40 dark:group-hover:text-blue-300">
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-black text-slate-950 dark:text-white">
-            {title}
-          </p>
+        <p className="text-sm font-black text-slate-950 dark:text-white">
+          {title}
+        </p>
 
-          {badge && (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-black text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-              {badge}
-            </span>
-          )}
-        </div>
-
-        <p className="mt-1 truncate text-[11px] text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {description}
         </p>
       </div>
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+      {value && (
+        <span className="hidden max-w-[240px] truncate text-xs font-semibold text-slate-400 md:block">
+          {value}
+        </span>
+      )}
+
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-blue-600" />
     </button>
   );
 }
 
-function AccountDetail({
-  label,
-  value,
-}: {
-  label:
-    string;
-
-  value:
-    string;
-}) {
-  return (
-    <div className="flex flex-col gap-1 py-4 sm:flex-row sm:items-center sm:justify-between">
-      <dt className="text-xs font-bold text-slate-500">
-        {label}
-      </dt>
-
-      <dd className="text-sm font-bold capitalize text-slate-900 dark:text-white">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function PersonalInformationView({
+function PersonalView({
   firstName,
   lastName,
   phone,
-  busy,
-  profileSaving,
-  profileChanged,
+  changed,
+  saving,
   onFirstName,
   onLastName,
   onPhone,
   onSubmit,
 }: {
-  firstName:
-    string;
-
-  lastName:
-    string;
-
-  phone:
-    string;
-
-  busy:
-    boolean;
-
-  profileSaving:
-    boolean;
-
-  profileChanged:
-    boolean;
-
+  firstName: string;
+  lastName: string;
+  phone: string;
+  changed: boolean;
+  saving: boolean;
   onFirstName:
-    (
-      value:
-        string
-    ) => void;
-
+    (value: string) =>
+      void;
   onLastName:
-    (
-      value:
-        string
-    ) => void;
-
+    (value: string) =>
+      void;
   onPhone:
-    (
-      value:
-        string
-    ) => void;
-
+    (value: string) =>
+      void;
   onSubmit:
     (
       event:
@@ -2510,116 +2032,80 @@ function PersonalInformationView({
     ) => void;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
+    <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
       <form
         onSubmit={
           onSubmit
         }
+        className="max-w-2xl space-y-5"
       >
-        <div className="grid gap-5 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label="First name"
-            icon={
-              UserRound
+            value={
+              firstName
             }
-          >
-            <input
-              value={
-                firstName
-              }
-              onChange={
-                event =>
-                  onFirstName(
-                    event.target
-                      .value
-                  )
-              }
-              maxLength={100}
-              autoComplete="given-name"
-              disabled={
-                busy
-              }
-              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
-            />
-          </Field>
+            onChange={
+              onFirstName
+            }
+            autoComplete="given-name"
+          />
 
           <Field
             label="Last name"
-            icon={
-              UserRound
+            value={
+              lastName
             }
-          >
+            onChange={
+              onLastName
+            }
+            autoComplete="family-name"
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-xs font-black text-slate-700 dark:text-slate-300">
+            Phone number
+          </label>
+
+          <div className="relative">
+            <Phone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
             <input
-              value={
-                lastName
-              }
+              type="tel"
+              value={phone}
               onChange={
                 event =>
-                  onLastName(
+                  onPhone(
                     event.target
                       .value
                   )
               }
-              maxLength={100}
-              autoComplete="family-name"
-              disabled={
-                busy
-              }
-              className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
+              autoComplete="tel"
+              placeholder="Phone number"
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
             />
-          </Field>
-
-          <div className="sm:col-span-2">
-            <Field
-              label="Phone"
-              icon={
-                Phone
-              }
-            >
-              <input
-                type="tel"
-                value={
-                  phone
-                }
-                onChange={
-                  event =>
-                    onPhone(
-                      event.target
-                        .value
-                    )
-                }
-                maxLength={50}
-                autoComplete="tel"
-                placeholder="+254..."
-                disabled={
-                  busy
-                }
-                className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none disabled:opacity-60"
-              />
-            </Field>
           </div>
         </div>
 
-        <div className="mt-6 flex justify-end">
-          <button
-            type="submit"
-            disabled={
-              profileSaving ||
-              !profileChanged
-            }
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {profileSaving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="h-4 w-4" />
-            )}
+        <button
+          type="submit"
+          disabled={
+            saving ||
+            !changed
+          }
+          className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4" />
+          )}
 
-            {profileSaving
-              ? 'Saving...'
-              : 'Save changes'}
-          </button>
-        </div>
+          {saving
+            ? 'Saving...'
+            : 'Save changes'}
+        </button>
       </form>
     </section>
   );
@@ -2627,535 +2113,371 @@ function PersonalInformationView({
 
 function Field({
   label,
-  icon:
-    Icon,
-  children,
+  value,
+  onChange,
+  autoComplete,
 }: {
-  label:
-    string;
-
-  icon:
-    typeof UserRound;
-
-  children:
-    React.ReactNode;
+  label: string;
+  value: string;
+  onChange:
+    (value: string) =>
+      void;
+  autoComplete?: string;
 }) {
   return (
     <div>
-      <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+      <label className="mb-2 block text-xs font-black text-slate-700 dark:text-slate-300">
         {label}
-      </p>
+      </label>
 
-      <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 transition focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
-        <Icon className="h-4 w-4 shrink-0 text-slate-400" />
-        {children}
-      </div>
+      <input
+        type="text"
+        value={value}
+        onChange={
+          event =>
+            onChange(
+              event.target.value
+            )
+        }
+        autoComplete={
+          autoComplete
+        }
+        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+      />
     </div>
   );
 }
 
 function EmailView({
   account,
-  preferences,
-  pendingEmailChange,
-  emailEditing,
+  pending,
+  editing,
   newEmail,
-  emailCode,
+  code,
   resendSeconds,
-  verifyRetrySeconds,
-  requestingEmail,
-  verifyingEmail,
-  cancellingEmail,
-  busy,
+  requesting,
+  verifying,
+  cancelling,
   onEditing,
   onNewEmail,
   onCode,
   onRequest,
   onResend,
   onVerify,
-  onCancelPending,
+  onCancel,
 }: {
-  account:
-    UserAccount;
-
-  preferences:
-    UserDisplayPreferences;
-
-  pendingEmailChange:
+  account: UserAccount;
+  pending:
     PendingEmailChange | null;
-
-  emailEditing:
-    boolean;
-
-  newEmail:
-    string;
-
-  emailCode:
-    string;
-
-  resendSeconds:
-    number;
-
-  verifyRetrySeconds:
-    number;
-
-  requestingEmail:
-    boolean;
-
-  verifyingEmail:
-    boolean;
-
-  cancellingEmail:
-    boolean;
-
-  busy:
-    boolean;
-
+  editing: boolean;
+  newEmail: string;
+  code: string;
+  resendSeconds: number;
+  requesting: boolean;
+  verifying: boolean;
+  cancelling: boolean;
   onEditing:
-    (
-      value:
-        boolean
-    ) => void;
-
+    (value: boolean) =>
+      void;
   onNewEmail:
-    (
-      value:
-        string
-    ) => void;
-
+    (value: string) =>
+      void;
   onCode:
-    (
-      value:
-        string
-    ) => void;
-
-  onRequest:
-    () => void;
-
-  onResend:
-    () => void;
-
-  onVerify:
-    () => void;
-
-  onCancelPending:
-    () => void;
+    (value: string) =>
+      void;
+  onRequest: () => void;
+  onResend: () => void;
+  onVerify: () => void;
+  onCancel: () => void;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      {!pendingEmailChange ? (
-        <>
-          <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-500 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-              <Mail className="h-4 w-4" />
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-black text-slate-900 dark:text-white">
-                {account.email}
-              </p>
-
-              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                {account.emailVerified
-                  ? 'Verified email'
-                  : 'Email verification required'}
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                onEditing(
-                  true
-                );
-
-                onNewEmail(
-                  ''
-                );
-
-                onCode(
-                  ''
-                );
-              }}
-              disabled={
-                busy
-              }
-              className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            >
-              Change email
-            </button>
+    <div className="space-y-5">
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+            <AtSign className="h-5 w-5" />
           </div>
 
-          {emailEditing && (
-            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 dark:border-blue-900/40 dark:bg-blue-950/20">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-black text-slate-500 dark:text-slate-400">
+              Current email
+            </p>
+
+            <p className="mt-1 break-all text-sm font-black text-slate-950 dark:text-white">
+              {account.email}
+            </p>
+
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              {account.emailVerified ? (
+                <>
+                  <Check className="h-4 w-4 text-emerald-600" />
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    Verified
+                  </span>
+                </>
+              ) : (
+                <span className="font-bold text-amber-600">
+                  Verification required
+                </span>
+              )}
+            </div>
+          </div>
+
+          {!pending &&
+            !editing && (
+              <button
+                type="button"
+                onClick={() =>
+                  onEditing(true)
+                }
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Change email
+              </button>
+            )}
+        </div>
+      </section>
+
+      {editing &&
+        !pending && (
+          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+            <div className="max-w-xl">
+              <label className="mb-2 block text-xs font-black text-slate-700 dark:text-slate-300">
                 New email address
               </label>
 
-              <div className="mt-2 flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950">
-                <Mail className="h-4 w-4 shrink-0 text-slate-400" />
+              <input
+                type="email"
+                value={newEmail}
+                onChange={
+                  event =>
+                    onNewEmail(
+                      event.target
+                        .value
+                    )
+                }
+                autoComplete="email"
+                placeholder="name@example.com"
+                className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+              />
 
-                <input
-                  type="email"
-                  value={
-                    newEmail
-                  }
-                  onChange={
-                    event =>
-                      onNewEmail(
-                        event.target
-                          .value
-                      )
-                  }
-                  autoComplete="email"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  placeholder="new@example.com"
-                  disabled={
-                    requestingEmail
-                  }
-                  className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none"
-                />
-              </div>
-
-              <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                A 6-digit verification code will be sent to the new address. Your current email remains active until verification succeeds.
-              </p>
-
-              <div className="mt-4 flex justify-end gap-2">
+              <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    onEditing(
-                      false
-                    );
-
-                    onNewEmail(
-                      ''
-                    );
-                  }}
                   disabled={
-                    requestingEmail
+                    requesting
                   }
-                  className="h-10 rounded-xl px-4 text-xs font-black text-slate-500"
+                  onClick={() =>
+                    void onRequest()
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
+                >
+                  {requesting && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+
+                  Send verification code
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    requesting
+                  }
+                  onClick={() =>
+                    onEditing(false)
+                  }
+                  className="h-10 rounded-xl border border-slate-200 px-4 text-xs font-black text-slate-600 dark:border-slate-700 dark:text-slate-300"
                 >
                   Cancel
                 </button>
-
-                <button
-                  type="button"
-                  onClick={
-                    onRequest
-                  }
-                  disabled={
-                    requestingEmail
-                  }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-50"
-                >
-                  {requestingEmail ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Mail className="h-4 w-4" />
-                  )}
-
-                  {requestingEmail
-                    ? 'Sending...'
-                    : 'Send verification code'}
-                </button>
               </div>
             </div>
-          )}
-        </>
-      ) : (
-        <div className="rounded-2xl border border-blue-200 bg-blue-50/70 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 dark:bg-slate-900 dark:text-blue-300">
-              <ShieldCheck className="h-5 w-5" />
+          </section>
+        )}
+
+      {pending && (
+        <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+          <div className="max-w-xl">
+            <div className="flex items-start gap-3">
+              <Mail className="mt-0.5 h-5 w-5 text-blue-600" />
+
+              <div>
+                <p className="text-sm font-black">
+                  Verify new email
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  Enter the 6-digit code sent to{' '}
+                  <span className="font-black">
+                    {pending.email}
+                  </span>
+                  .
+                </p>
+              </div>
             </div>
 
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-black text-slate-900 dark:text-white">
-                Verify your new email
-              </p>
-
-              <p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">
-                Code sent to{' '}
-                <span className="font-bold text-slate-700 dark:text-slate-200">
-                  {pendingEmailChange.email}
-                </span>
-              </p>
-
-              <p className="mt-1 text-[10px] text-slate-400">
-                Expires{' '}
-                {formatUserDateTime(
-                  pendingEmailChange
-                    .expiresAt,
-                  preferences
-                )}
-              </p>
-            </div>
-          </div>
-
-          <input
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]*"
-            maxLength={6}
-            value={
-              emailCode
-            }
-            onChange={event => {
-              const value =
-                event.target
-                  .value;
-
-              if (
-                /^\d{0,6}$/.test(
-                  value
-                )
-              ) {
-                onCode(
-                  value
-                );
-              }
-            }}
-            disabled={
-              verifyingEmail
-            }
-            placeholder="000000"
-            className="mt-5 h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center text-2xl font-black tracking-[0.35em] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
-          />
-
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              type="button"
-              onClick={
-                onResend
-              }
-              disabled={
-                requestingEmail ||
-                resendSeconds >
-                  0
-              }
-              className="inline-flex items-center gap-2 text-xs font-black text-blue-600 disabled:text-slate-400 dark:text-blue-400"
-            >
-              {requestingEmail ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : resendSeconds >
-                0 ? (
-                <Clock3 className="h-3.5 w-3.5" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-
-              {requestingEmail
-                ? 'Sending...'
-                : resendSeconds >
-                    0
-                  ? `Resend in ${resendSeconds}s`
-                  : 'Send another code'}
-            </button>
-
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={
-                  onCancelPending
-                }
-                disabled={
-                  cancellingEmail ||
-                  verifyingEmail
-                }
-                className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              >
-                {cancellingEmail
-                  ? 'Cancelling...'
-                  : 'Cancel change'}
-              </button>
-
-              <button
-                type="button"
-                onClick={
-                  onVerify
-                }
-                disabled={
-                  verifyingEmail ||
-                  verifyRetrySeconds >
-                    0 ||
-                  !validCode(
-                    emailCode
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={
+                event =>
+                  onCode(
+                    event.target.value
                   )
+              }
+              placeholder="000000"
+              className="mt-5 h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-center text-lg font-black tracking-[0.35em] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+            />
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={
+                  verifying ||
+                  !validCode(code)
                 }
-                className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-50"
+                onClick={() =>
+                  void onVerify()
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
               >
-                {verifyingEmail ? (
+                {verifying && (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4" />
                 )}
 
-                {verifyingEmail
-                  ? 'Verifying...'
-                  : verifyRetrySeconds >
-                      0
-                    ? `Try again in ${verifyRetrySeconds}s`
-                    : 'Confirm email'}
+                Verify email
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  requesting ||
+                  resendSeconds > 0
+                }
+                onClick={() =>
+                  void onResend()
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+              >
+                <RefreshCw className="h-4 w-4" />
+
+                {resendSeconds > 0
+                  ? `Resend in ${resendSeconds}s`
+                  : 'Resend code'}
+              </button>
+
+              <button
+                type="button"
+                disabled={
+                  cancelling
+                }
+                onClick={() =>
+                  void onCancel()
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 px-4 text-xs font-black text-red-600 disabled:opacity-50 dark:border-red-900 dark:text-red-400"
+              >
+                {cancelling && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+
+                Cancel change
               </button>
             </div>
           </div>
-        </div>
+        </section>
       )}
-    </section>
+    </div>
   );
 }
 
 function PreferencesView({
   preferences,
-  previewNow,
-  preferencePreview,
   timezoneOptions,
-  preferencesChanged,
-  preferencesSaving,
+  preview,
+  changed,
+  saving,
   onChange,
   onSave,
   onDiscard,
 }: {
   preferences:
     UserDisplayPreferences;
-
-  previewNow:
-    Date;
-
-  preferencePreview:
+  timezoneOptions:
+    string[];
+  preview:
     ReturnType<
       typeof getUserFormattingPreview
     >;
-
-  timezoneOptions:
-    string[];
-
-  preferencesChanged:
-    boolean;
-
-  preferencesSaving:
-    boolean;
-
+  changed: boolean;
+  saving: boolean;
   onChange:
-    React.Dispatch<
-      React.SetStateAction<UserDisplayPreferences>
-    >;
-
-  onSave:
-    () => void;
-
-  onDiscard:
-    () => void;
+    (
+      value:
+        UserDisplayPreferences
+    ) => void;
+  onSave: () => void;
+  onDiscard: () => void;
 }) {
+  function update<
+    K extends keyof UserDisplayPreferences,
+  >(
+    key: K,
+    value:
+      UserDisplayPreferences[K]
+  ) {
+    onChange({
+      ...preferences,
+      [key]: value,
+    });
+  }
+
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
-      <div className="overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 dark:border-blue-900/50 dark:from-blue-950/25 dark:to-indigo-950/20">
-        <div className="grid gap-px bg-blue-100 dark:bg-blue-900/30 sm:grid-cols-2 lg:grid-cols-4">
-          <PreferencePreviewCard
-            label="Date"
+    <div className="space-y-5">
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+        <div className="grid gap-5 lg:grid-cols-2">
+          <SelectField
+            icon={SunMoon}
+            label="Theme"
             value={
-              preferencePreview
-                .date
+              preferences.theme
             }
-            icon={
-              CalendarDays
+            onChange={
+              value =>
+                update(
+                  'theme',
+                  value as UserTheme
+                )
             }
+            options={[
+              {
+                value:
+                  'system',
+                label:
+                  'Use system setting',
+              },
+              {
+                value:
+                  'light',
+                label:
+                  'Light',
+              },
+              {
+                value:
+                  'dark',
+                label:
+                  'Dark',
+              },
+            ]}
           />
 
-          <PreferencePreviewCard
-            label="Time"
-            value={
-              preferencePreview
-                .time
-            }
-            icon={
-              Clock3
-            }
-          />
-
-          <PreferencePreviewCard
-            label="Date & time"
-            value={
-              preferencePreview
-                .dateTime
-            }
-            icon={
-              CalendarDays
-            }
-          />
-
-          <PreferencePreviewCard
-            label="Timezone"
-            value={
-              preferencePreview
-                .timezone
-            }
-            icon={
-              Globe2
-            }
-          />
-        </div>
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/50">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-
-        <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-          These preferences control how SaMi displays dates, times and appearance to you. They do not change stored timestamps or company settings used on customer-facing documents.
-        </p>
-      </div>
-
-      <div className="mt-6 grid gap-5 sm:grid-cols-2">
-        <SelectField
-          label="Theme"
-          value={
-            preferences.theme
-          }
-          disabled={
-            preferencesSaving
-          }
-          onChange={
-            value => {
-              const theme =
-                value as UserTheme;
-
-              onChange(
-                current => ({
-                  ...current,
-                  theme,
-                })
-              );
-
-              applyTheme(
-                theme
-              );
-            }
-          }
-        >
-          <option value="system">
-            Follow system
-          </option>
-
-          <option value="light">
-            Light
-          </option>
-
-          <option value="dark">
-            Dark
-          </option>
-        </SelectField>
-
-        <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
-            Timezone
-          </label>
-
-          <div className="relative mt-2">
-            <Globe2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div>
+            <label className="mb-2 flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-300">
+              <Globe2 className="h-4 w-4" />
+              Timezone
+            </label>
 
             <select
               value={
@@ -3163,20 +2485,13 @@ function PreferencesView({
               }
               onChange={
                 event =>
-                  onChange(
-                    current => ({
-                      ...current,
-
-                      timezone:
-                        event.target
-                          .value,
-                    })
+                  update(
+                    'timezone',
+                    event.target
+                      .value
                   )
               }
-              disabled={
-                preferencesSaving
-              }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
             >
               {timezoneOptions.map(
                 timezone => (
@@ -3194,293 +2509,276 @@ function PreferencesView({
               )}
             </select>
           </div>
-        </div>
 
-        <SelectField
-          label="Date format"
-          value={
-            preferences.dateFormat
-          }
-          disabled={
-            preferencesSaving
-          }
-          onChange={
-            value =>
-              onChange(
-                current => ({
-                  ...current,
-
-                  dateFormat:
-                    value as UserDateFormat,
-                })
-              )
-          }
-          help={`Example: ${formatUserDate(
-            previewNow,
-            preferences
-          )}`}
-        >
-          <option value="DD/MM/YYYY">
-            DD/MM/YYYY
-          </option>
-
-          <option value="MM/DD/YYYY">
-            MM/DD/YYYY
-          </option>
-
-          <option value="YYYY-MM-DD">
-            YYYY-MM-DD
-          </option>
-        </SelectField>
-
-        <SelectField
-          label="Time format"
-          value={
-            preferences.timeFormat
-          }
-          disabled={
-            preferencesSaving
-          }
-          onChange={
-            value =>
-              onChange(
-                current => ({
-                  ...current,
-
-                  timeFormat:
-                    value as UserTimeFormat,
-                })
-              )
-          }
-          help={`Example: ${formatUserTime(
-            previewNow,
-            preferences
-          )}`}
-        >
-          <option value="24h">
-            24-hour
-          </option>
-
-          <option value="12h">
-            12-hour
-          </option>
-        </SelectField>
-
-        <SelectField
-          label="First day of week"
-          value={
-            String(
-              preferences.firstDayOfWeek
-            )
-          }
-          disabled={
-            preferencesSaving
-          }
-          onChange={
-            value =>
-              onChange(
-                current => ({
-                  ...current,
-
-                  firstDayOfWeek:
-                    Number(
-                      value
-                    ),
-                })
-              )
-          }
-        >
-          <option value="0">
-            Sunday
-          </option>
-
-          <option value="1">
-            Monday
-          </option>
-
-          <option value="6">
-            Saturday
-          </option>
-        </SelectField>
-
-        <div>
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
-            Locale
-          </label>
-
-          <input
+          <SelectField
+            icon={CalendarDays}
+            label="Date format"
             value={
-              preferences.locale
+              preferences.dateFormat
             }
             onChange={
-              event =>
-                onChange(
-                  current => ({
-                    ...current,
-
-                    locale:
-                      event.target
-                        .value,
-                  })
+              value =>
+                update(
+                  'dateFormat',
+                  value as UserDateFormat
                 )
             }
-            maxLength={20}
-            disabled={
-              preferencesSaving
+            options={[
+              {
+                value:
+                  'DD/MM/YYYY',
+                label:
+                  'DD/MM/YYYY',
+              },
+              {
+                value:
+                  'MM/DD/YYYY',
+                label:
+                  'MM/DD/YYYY',
+              },
+              {
+                value:
+                  'YYYY-MM-DD',
+                label:
+                  'YYYY-MM-DD',
+              },
+            ]}
+          />
+
+          <SelectField
+            icon={Clock3}
+            label="Time format"
+            value={
+              preferences.timeFormat
             }
-            placeholder="en"
-            className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3.5 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+            onChange={
+              value =>
+                update(
+                  'timeFormat',
+                  value as UserTimeFormat
+                )
+            }
+            options={[
+              {
+                value: '12h',
+                label:
+                  '12-hour',
+              },
+              {
+                value: '24h',
+                label:
+                  '24-hour',
+              },
+            ]}
+          />
+
+          <SelectField
+            icon={CalendarDays}
+            label="First day of week"
+            value={String(
+              preferences.firstDayOfWeek
+            )}
+            onChange={
+              value =>
+                update(
+                  'firstDayOfWeek',
+                  Number(
+                    value
+                  ) as UserDisplayPreferences['firstDayOfWeek']
+                )
+            }
+            options={[
+              {
+                value: '0',
+                label:
+                  'Sunday',
+              },
+              {
+                value: '1',
+                label:
+                  'Monday',
+              },
+              {
+                value: '6',
+                label:
+                  'Saturday',
+              },
+            ]}
           />
         </div>
-      </div>
 
-      <div className="mt-6 flex flex-col gap-3 border-t border-slate-100 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
-        <p
-          className={`text-xs ${
-            preferencesChanged
-              ? 'font-bold text-amber-600 dark:text-amber-400'
-              : 'text-slate-400'
-          }`}
-        >
-          {preferencesChanged
-            ? 'You have unsaved changes.'
-            : 'Your preferences are saved.'}
-        </p>
-
-        <div className="flex gap-2">
-          {preferencesChanged && (
-            <button
-              type="button"
-              onClick={
-                onDiscard
-              }
-              disabled={
-                preferencesSaving
-              }
-              className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
-            >
-              Discard
-            </button>
-          )}
-
+        <div className="mt-6 flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={
-              onSave
-            }
             disabled={
-              preferencesSaving ||
-              !preferencesChanged
+              saving ||
+              !changed
+            }
+            onClick={() =>
+              void onSave()
             }
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white disabled:opacity-50"
           >
-            {preferencesSaving ? (
+            {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <Save className="h-4 w-4" />
             )}
 
-            {preferencesSaving
-              ? 'Saving...'
-              : 'Save preferences'}
+            Save preferences
+          </button>
+
+          <button
+            type="button"
+            disabled={
+              saving ||
+              !changed
+            }
+            onClick={
+              onDiscard
+            }
+            className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-black text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+          >
+            Discard
           </button>
         </div>
-      </div>
-    </section>
+      </section>
+
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+        <p className="text-xs font-black text-slate-500 dark:text-slate-400">
+          Preview
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <PreviewCard
+            label="Date"
+            value={
+              preview.date
+            }
+          />
+
+          <PreviewCard
+            label="Time"
+            value={
+              preview.time
+            }
+          />
+
+          <PreviewCard
+            label="Date & time"
+            value={
+              preview.dateTime
+            }
+          />
+        </div>
+      </section>
+    </div>
   );
 }
 
 function SelectField({
+  icon: Icon,
   label,
   value,
-  disabled,
   onChange,
-  help,
-  children,
+  options,
 }: {
-  label:
-    string;
-
-  value:
-    string;
-
-  disabled:
-    boolean;
-
+  icon:
+    typeof SunMoon;
+  label: string;
+  value: string;
   onChange:
-    (
-      value:
-        string
-    ) => void;
-
-  help?:
-    string;
-
-  children:
-    React.ReactNode;
+    (value: string) =>
+      void;
+  options: Array<{
+    value: string;
+    label: string;
+  }>;
 }) {
   return (
     <div>
-      <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+      <label className="mb-2 flex items-center gap-2 text-xs font-black text-slate-700 dark:text-slate-300">
+        <Icon className="h-4 w-4" />
         {label}
       </label>
 
       <select
-        value={
-          value
-        }
+        value={value}
         onChange={
           event =>
             onChange(
-              event.target
-                .value
+              event.target.value
             )
         }
-        disabled={
-          disabled
-        }
-        className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-700 dark:bg-slate-950"
+        className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       >
-        {children}
+        {options.map(
+          option => (
+            <option
+              key={
+                option.value
+              }
+              value={
+                option.value
+              }
+            >
+              {option.label}
+            </option>
+          )
+        )}
       </select>
-
-      {help && (
-        <p className="mt-2 text-[10px] text-slate-400">
-          {help}
-        </p>
-      )}
     </div>
   );
 }
 
-function PreferencePreviewCard({
+function PreviewCard({
   label,
   value,
-  icon:
-    Icon,
 }: {
-  label:
-    string;
-
-  value:
-    string;
-
-  icon:
-    typeof Clock3;
+  label: string;
+  value: string;
 }) {
   return (
-    <div className="bg-white/90 p-4 dark:bg-slate-900/80">
-      <div className="flex items-center gap-2 text-slate-400">
-        <Icon className="h-3.5 w-3.5" />
+    <div className="rounded-2xl bg-slate-50 p-4 dark:bg-slate-950/60">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </p>
 
-        <span className="text-[9px] font-black uppercase tracking-[0.1em]">
-          {label}
-        </span>
-      </div>
-
-      <p className="mt-2 break-words text-sm font-black text-slate-950 dark:text-white">
+      <p className="mt-2 text-sm font-black text-slate-900 dark:text-white">
         {value}
       </p>
     </div>
+  );
+}
+
+function Overlay({
+  state,
+  onClose,
+}: {
+  state:
+    OverlayState | null;
+  onClose: () => void;
+}) {
+  return (
+    <SaMiOverlay
+      open={
+        Boolean(state)
+      }
+      type={
+        state?.type ||
+        'info'
+      }
+      title={
+        state?.title ||
+        ''
+      }
+      message={
+        state?.message ||
+        ''
+      }
+      onClose={
+        onClose
+      }
+    />
   );
 }

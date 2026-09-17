@@ -11,7 +11,6 @@ import {
   Bell,
   Bot,
   Boxes,
-  Building2,
   Calculator,
   ChevronDown,
   CircleHelp,
@@ -21,11 +20,9 @@ import {
   FolderKanban,
   Home,
   LayoutGrid,
-  LockKeyhole,
   PackageSearch,
   ReceiptText,
   Settings,
-  ShieldCheck,
   ShoppingCart,
   Store,
   User,
@@ -42,10 +39,6 @@ import {
 
 import SaMiLogo from '@/app/components/SaMiLogo';
 import UserAvatar from '@/app/components/account/UserAvatar';
-
-/* ============================================================
-   TYPES
-   ============================================================ */
 
 type UserData = {
   id: string;
@@ -71,7 +64,6 @@ type MembershipData =
         | 'owner'
         | 'admin'
         | 'member';
-
       isOwner: boolean;
       isAdmin: boolean;
       label: string;
@@ -114,8 +106,6 @@ type Props = {
 
 type SettingsTab =
   | 'personal'
-  | 'security'
-  | 'sessions'
   | 'workspace'
   | 'apps'
   | 'ai'
@@ -136,10 +126,6 @@ type AppChild = {
   href: string;
   icon: LucideIcon;
 };
-
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
 
 const DISABLED_MODULE_STATUSES =
   new Set([
@@ -193,26 +179,11 @@ const SETTINGS_CHILDREN:
       icon: User,
     },
     {
-      key: 'security',
-      label: 'Security',
-      href:
-        '/settings?tab=security',
-      icon: ShieldCheck,
-    },
-    {
-      key: 'sessions',
-      label:
-        'Sessions & Devices',
-      href:
-        '/settings?tab=sessions',
-      icon: LockKeyhole,
-    },
-    {
       key: 'workspace',
       label: 'Workspace',
       href:
         '/settings?tab=workspace',
-      icon: Building2,
+      icon: LayoutGrid,
       adminOnly: true,
     },
     {
@@ -220,7 +191,7 @@ const SETTINGS_CHILDREN:
       label: 'Apps',
       href:
         '/settings?tab=apps',
-      icon: LayoutGrid,
+      icon: AppWindow,
       adminOnly: true,
     },
     {
@@ -239,10 +210,6 @@ const SETTINGS_CHILDREN:
       ownerOnly: true,
     },
   ];
-
-/* ============================================================
-   HELPERS
-   ============================================================ */
 
 function normalizeKey(
   value: string
@@ -392,12 +359,12 @@ function getInitials(
       ?.trim()
       .charAt(0);
 
-  const initials =
+  const value =
     `${first || ''}${last || ''}`
       .trim();
 
-  if (initials) {
-    return initials.toUpperCase();
+  if (value) {
+    return value.toUpperCase();
   }
 
   if (
@@ -443,10 +410,6 @@ function hrefPath(
   );
 }
 
-/* ============================================================
-   WORKSPACE SIDEBAR
-   ============================================================ */
-
 export default function WorkspaceSidebar({
   user,
   tenant,
@@ -464,13 +427,23 @@ export default function WorkspaceSidebar({
   const searchParams =
     useSearchParams();
 
-  const settingsTab =
-    (
-      searchParams.get(
-        'tab'
-      ) ||
-      'personal'
-    ) as SettingsTab;
+  const rawSettingsTab =
+    searchParams.get(
+      'tab'
+    );
+
+  const settingsTab:
+    SettingsTab =
+    rawSettingsTab ===
+      'workspace' ||
+    rawSettingsTab ===
+      'apps' ||
+    rawSettingsTab ===
+      'ai' ||
+    rawSettingsTab ===
+      'billing'
+      ? rawSettingsTab
+      : 'personal';
 
   const canAdminWorkspace =
     Boolean(
@@ -543,7 +516,8 @@ export default function WorkspaceSidebar({
             }
 
             if (
-              item.key === 'ai' &&
+              item.key ===
+                'ai' &&
               capabilities
                 ?.aiEnabled ===
                 false
@@ -612,18 +586,21 @@ export default function WorkspaceSidebar({
     coreRouteActive
   );
 
+  /*
+   * Settings is deliberately NOT opened
+   * just because the current URL is /settings.
+   *
+   * Clicking Settings is the action that
+   * expands/collapses its children.
+   */
   const [
     settingsExpanded,
     setSettingsExpanded,
-  ] = useState(
-    settingsRouteActive
-  );
+  ] = useState(false);
 
   useEffect(() => {
     if (appRouteActive) {
-      setAppsExpanded(
-        true
-      );
+      setAppsExpanded(true);
     }
   }, [
     appRouteActive,
@@ -631,24 +608,10 @@ export default function WorkspaceSidebar({
 
   useEffect(() => {
     if (coreRouteActive) {
-      setCoreExpanded(
-        true
-      );
+      setCoreExpanded(true);
     }
   }, [
     coreRouteActive,
-  ]);
-
-  useEffect(() => {
-    if (
-      settingsRouteActive
-    ) {
-      setSettingsExpanded(
-        true
-      );
-    }
-  }, [
-    settingsRouteActive,
   ]);
 
   useEffect(() => {
@@ -656,7 +619,6 @@ export default function WorkspaceSidebar({
       onClose();
     }
 
-    // Intentionally tied to URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     pathname,
@@ -666,7 +628,7 @@ export default function WorkspaceSidebar({
   const displayName =
     getDisplayName(user);
 
-  const initials =
+  const avatarInitials =
     getInitials(user);
 
   const planName =
@@ -682,10 +644,6 @@ export default function WorkspaceSidebar({
 
   return (
     <>
-      {/* ======================================================
-          MOBILE BACKDROP
-          ====================================================== */}
-
       {open && (
         <button
           type="button"
@@ -695,10 +653,6 @@ export default function WorkspaceSidebar({
         />
       )}
 
-      {/* ======================================================
-          SIDEBAR
-          ====================================================== */}
-
       <aside
         aria-label="Workspace navigation"
         className={`fixed inset-y-0 left-0 z-50 flex w-[286px] flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-[#090d15] lg:translate-x-0 ${
@@ -707,8 +661,6 @@ export default function WorkspaceSidebar({
             : '-translate-x-full'
         }`}
       >
-        {/* BRAND */}
-
         <div className="flex h-[76px] shrink-0 items-center border-b border-slate-100 px-5 dark:border-slate-800">
           <Link
             href="/dashboard"
@@ -730,8 +682,6 @@ export default function WorkspaceSidebar({
             <X className="h-5 w-5" />
           </button>
         </div>
-
-        {/* WORKSPACE IDENTITY */}
 
         <div className="border-b border-slate-100 px-4 py-4 dark:border-slate-800">
           <div className="flex items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 dark:bg-slate-900">
@@ -757,8 +707,6 @@ export default function WorkspaceSidebar({
             </div>
           </div>
         </div>
-
-        {/* NAVIGATION */}
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
           <NavSectionLabel>
@@ -802,8 +750,6 @@ export default function WorkspaceSidebar({
               />
             )}
           </div>
-
-          {/* APPS */}
 
           <div className="mt-6">
             <NavSectionLabel>
@@ -896,8 +842,6 @@ export default function WorkspaceSidebar({
             )}
           </div>
 
-          {/* CORE */}
-
           {(capabilities
             ?.filesEnabled ||
             capabilities
@@ -979,8 +923,6 @@ export default function WorkspaceSidebar({
             </div>
           )}
 
-          {/* SETTINGS */}
-
           <div className="mt-6">
             <NavSectionLabel>
               Account
@@ -1056,8 +998,6 @@ export default function WorkspaceSidebar({
           </div>
         </nav>
 
-        {/* USER */}
-
         <div className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800">
           <Link
             href="/settings?tab=personal"
@@ -1072,7 +1012,7 @@ export default function WorkspaceSidebar({
                 displayName
               }
               initials={
-                initials
+                avatarInitials
               }
               size="md"
             />
@@ -1093,14 +1033,11 @@ export default function WorkspaceSidebar({
   );
 }
 
-/* ============================================================
-   SECTION LABEL
-   ============================================================ */
-
 function NavSectionLabel({
   children,
 }: {
-  children: React.ReactNode;
+  children:
+    React.ReactNode;
 }) {
   return (
     <p className="mb-2 px-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
@@ -1108,10 +1045,6 @@ function NavSectionLabel({
     </p>
   );
 }
-
-/* ============================================================
-   PRIMARY NAV LINK
-   ============================================================ */
 
 function NavLink({
   href,
@@ -1126,12 +1059,15 @@ function NavLink({
   label: string;
   active: boolean;
   badge?: string;
-  onNavigate: () => void;
+  onNavigate:
+    () => void;
 }) {
   return (
     <Link
       href={href}
-      onClick={onNavigate}
+      onClick={
+        onNavigate
+      }
       aria-current={
         active
           ? 'page'
@@ -1164,10 +1100,6 @@ function NavLink({
   );
 }
 
-/* ============================================================
-   DROPDOWN PARENT
-   ============================================================ */
-
 function DropdownButton({
   icon: Icon,
   label,
@@ -1181,12 +1113,15 @@ function DropdownButton({
   expanded: boolean;
   active: boolean;
   badge?: string;
-  onClick: () => void;
+  onClick:
+    () => void;
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={
+        onClick
+      }
       aria-expanded={
         expanded
       }
@@ -1225,10 +1160,6 @@ function DropdownButton({
   );
 }
 
-/* ============================================================
-   CHILD NAV LINK
-   ============================================================ */
-
 function ChildNavLink({
   href,
   icon: Icon,
@@ -1242,12 +1173,15 @@ function ChildNavLink({
   label: string;
   active: boolean;
   badge?: string;
-  onNavigate: () => void;
+  onNavigate:
+    () => void;
 }) {
   return (
     <Link
       href={href}
-      onClick={onNavigate}
+      onClick={
+        onNavigate
+      }
       aria-current={
         active
           ? 'page'

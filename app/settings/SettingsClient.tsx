@@ -9,8 +9,6 @@ import {
   Menu,
   Moon,
   Sun,
-  Users,
-  type LucideIcon,
 } from 'lucide-react';
 
 import {
@@ -34,10 +32,6 @@ import {
   type UserDisplayPreferences,
   type UserTheme,
 } from '@/lib/account/user-formatting';
-
-/* ============================================================
-   TYPES
-   ============================================================ */
 
 type UserData = {
   id: string;
@@ -118,10 +112,6 @@ type PreferencesResponse = {
   preferences?: UserDisplayPreferences;
 };
 
-/* ============================================================
-   CONSTANTS
-   ============================================================ */
-
 const THEME_STORAGE_KEY =
   'sami_theme';
 
@@ -134,10 +124,6 @@ const VALID_SECTIONS =
     'billing',
   ]);
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
-
 function formatLabel(
   value?: string | null
 ) {
@@ -146,10 +132,7 @@ function formatLabel(
   }
 
   return value
-    .replace(
-      /[_-]+/g,
-      ' '
-    )
+    .replace(/[_-]+/g, ' ')
     .replace(
       /\b\w/g,
       character =>
@@ -168,8 +151,7 @@ function normalizeStatus(
   );
 }
 
-function getSystemPrefersDark():
-  boolean {
+function getSystemPrefersDark() {
   if (
     typeof window ===
     'undefined'
@@ -180,14 +162,13 @@ function getSystemPrefersDark():
   return (
     window.matchMedia?.(
       '(prefers-color-scheme: dark)'
-    ).matches ??
-    false
+    ).matches ?? false
   );
 }
 
 function applyThemeToDocument(
   theme: UserTheme
-): boolean {
+) {
   const resolved =
     resolveUserTheme(
       theme,
@@ -201,10 +182,8 @@ function applyThemeToDocument(
     typeof document !==
     'undefined'
   ) {
-    document
-      .documentElement
-      .classList
-      .toggle(
+    document.documentElement
+      .classList.toggle(
         'dark',
         dark
       );
@@ -216,7 +195,7 @@ function applyThemeToDocument(
       theme
     );
   } catch {
-    // Local theme cache is optional.
+    // Optional local cache.
   }
 
   return dark;
@@ -244,13 +223,15 @@ function normalizeSection(
   value: string | null
 ): Section {
   /*
-   * Legacy URLs are deliberately mapped
-   * into the consolidated My Account area.
+   * Old links remain safe.
+   * Security and sessions now belong
+   * inside My Account.
    */
   if (
     value === 'personal' ||
     value === 'security' ||
-    value === 'sessions'
+    value === 'sessions' ||
+    value === 'account'
   ) {
     return 'account';
   }
@@ -290,10 +271,6 @@ function getSectionLabel(
       return 'Settings';
   }
 }
-
-/* ============================================================
-   SETTINGS
-   ============================================================ */
 
 export default function SettingsClient({
   user,
@@ -336,10 +313,6 @@ export default function SettingsClient({
     setThemeSaving,
   ] = useState(false);
 
-  /* ==========================================================
-     ACCESS
-     ========================================================== */
-
   const canAdminWorkspace =
     Boolean(
       membership?.isAdmin ||
@@ -380,10 +353,6 @@ export default function SettingsClient({
       membership?.isOwner,
     ]);
 
-  /* ==========================================================
-     URL → SECTION
-     ========================================================== */
-
   useEffect(() => {
     const requested =
       normalizeSection(
@@ -412,10 +381,6 @@ export default function SettingsClient({
     allowedSections,
   ]);
 
-  /* ==========================================================
-     INITIAL LOCAL THEME
-     ========================================================== */
-
   useEffect(() => {
     try {
       const stored =
@@ -431,13 +396,10 @@ export default function SettingsClient({
           ? stored
           : 'system';
 
-      const dark =
+      setDarkMode(
         applyThemeToDocument(
           theme
-        );
-
-      setDarkMode(
-        dark
+        )
       );
     } catch {
       const dark =
@@ -447,19 +409,13 @@ export default function SettingsClient({
         dark
       );
 
-      document
-        .documentElement
-        .classList
-        .toggle(
+      document.documentElement
+        .classList.toggle(
           'dark',
           dark
         );
     }
   }, []);
-
-  /* ==========================================================
-     LOAD SAVED PREFERENCES
-     ========================================================== */
 
   useEffect(() => {
     let cancelled =
@@ -472,15 +428,12 @@ export default function SettingsClient({
             '/api/account/preferences',
             {
               method: 'GET',
-
               headers: {
                 Accept:
                   'application/json',
               },
-
               credentials:
                 'same-origin',
-
               cache:
                 'no-store',
             }
@@ -492,10 +445,10 @@ export default function SettingsClient({
           );
 
         if (
+          cancelled ||
           !response.ok ||
           !data.success ||
-          !data.preferences ||
-          cancelled
+          !data.preferences
         ) {
           return;
         }
@@ -504,34 +457,23 @@ export default function SettingsClient({
           data.preferences
         );
 
-        const dark =
+        setDarkMode(
           applyThemeToDocument(
             data.preferences
               .theme
-          );
-
-        setDarkMode(
-          dark
+          )
         );
       } catch {
-        /*
-         * Settings remain usable
-         * with safe defaults.
-         */
+        // Defaults remain usable.
       }
     }
 
     void loadPreferences();
 
     return () => {
-      cancelled =
-        true;
+      cancelled = true;
     };
   }, []);
-
-  /* ==========================================================
-     SYSTEM THEME CHANGES
-     ========================================================== */
 
   useEffect(() => {
     if (
@@ -549,17 +491,12 @@ export default function SettingsClient({
 
     const syncTheme =
       () => {
-        const dark =
+        setDarkMode(
           applyThemeToDocument(
             'system'
-          );
-
-        setDarkMode(
-          dark
+          )
         );
       };
-
-    syncTheme();
 
     media.addEventListener?.(
       'change',
@@ -576,22 +513,13 @@ export default function SettingsClient({
     displayPreferences.theme,
   ]);
 
-  /* ==========================================================
-     THEME TOGGLE
-     ========================================================== */
-
   async function toggleTheme() {
-    if (
-      themeSaving
-    ) {
+    if (themeSaving) {
       return;
     }
 
-    const previousPreferences =
+    const previous =
       displayPreferences;
-
-    const previousDark =
-      darkMode;
 
     const nextTheme:
       UserTheme =
@@ -599,27 +527,21 @@ export default function SettingsClient({
         ? 'light'
         : 'dark';
 
-    const optimisticPreferences:
-      UserDisplayPreferences = {
-        ...displayPreferences,
-        theme: nextTheme,
-      };
+    const optimistic = {
+      ...displayPreferences,
+      theme: nextTheme,
+    };
 
-    setThemeSaving(
-      true
-    );
+    setThemeSaving(true);
 
     setDisplayPreferences(
-      optimisticPreferences
+      optimistic
     );
 
-    const nextDark =
+    setDarkMode(
       applyThemeToDocument(
         nextTheme
-      );
-
-    setDarkMode(
-      nextDark
+      )
     );
 
     try {
@@ -627,13 +549,11 @@ export default function SettingsClient({
         await fetch(
           '/api/account/preferences',
           {
-            method:
-              'PATCH',
+            method: 'PATCH',
 
             headers: {
               'Content-Type':
                 'application/json',
-
               Accept:
                 'application/json',
             },
@@ -664,7 +584,7 @@ export default function SettingsClient({
       ) {
         throw new Error(
           data.error ||
-            'Theme preference could not be saved.'
+            'Theme could not be saved.'
         );
       }
 
@@ -672,45 +592,26 @@ export default function SettingsClient({
         data.preferences
       );
 
-      const savedDark =
+      setDarkMode(
         applyThemeToDocument(
           data.preferences
             .theme
-        );
-
-      setDarkMode(
-        savedDark
+        )
       );
-    } catch (
-      error
-    ) {
+    } catch {
       setDisplayPreferences(
-        previousPreferences
-      );
-
-      applyThemeToDocument(
-        previousPreferences
-          .theme
+        previous
       );
 
       setDarkMode(
-        previousDark
-      );
-
-      console.error(
-        '[Settings] Failed to save theme preference:',
-        error
+        applyThemeToDocument(
+          previous.theme
+        )
       );
     } finally {
-      setThemeSaving(
-        false
-      );
+      setThemeSaving(false);
     }
   }
-
-  /* ==========================================================
-     DERIVED
-     ========================================================== */
 
   const currentPlan =
     subscription?.planName ||
@@ -727,14 +628,9 @@ export default function SettingsClient({
       active
     );
 
-  /* ==========================================================
-     RENDER
-     ========================================================== */
-
   return (
     <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
       <div className="flex min-h-screen">
-
         <WorkspaceSidebar
           user={user}
           tenant={tenant}
@@ -765,14 +661,8 @@ export default function SettingsClient({
         />
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
-
-          {/* ==================================================
-              TOP BAR
-              ================================================== */}
-
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/88">
             <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:px-8">
-
               <button
                 type="button"
                 aria-label="Open navigation"
@@ -787,11 +677,7 @@ export default function SettingsClient({
               </button>
 
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
-                  Settings
-                </p>
-
-                <p className="mt-0.5 truncate text-sm font-extrabold text-slate-900 dark:text-white">
+                <p className="truncate text-sm font-extrabold text-slate-900 dark:text-white">
                   {pageLabel}
                 </p>
               </div>
@@ -817,13 +703,6 @@ export default function SettingsClient({
                       ? 'Switch to light theme'
                       : 'Switch to dark theme'
                   }
-                  title={
-                    displayPreferences
-                      .theme ===
-                    'system'
-                      ? 'Theme currently follows your system'
-                      : `Theme: ${displayPreferences.theme}`
-                  }
                   className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
                 >
                   {themeSaving ? (
@@ -838,12 +717,7 @@ export default function SettingsClient({
             </div>
           </header>
 
-          {/* ==================================================
-              CONTENT
-              ================================================== */}
-
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-
             {active ===
               'account' && (
               <MyAccountSettings />
@@ -912,10 +786,6 @@ export default function SettingsClient({
   );
 }
 
-/* ============================================================
-   SETTINGS SURFACE
-   ============================================================ */
-
 function SettingsSurface({
   children,
 }: {
@@ -928,10 +798,6 @@ function SettingsSurface({
     </section>
   );
 }
-
-/* ============================================================
-   WORKSPACE
-   ============================================================ */
 
 function WorkspaceSection({
   tenant,
@@ -955,7 +821,7 @@ function WorkspaceSection({
     <div className="max-w-4xl">
       <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950/50">
         <div className="flex items-center gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
             <Building2 className="h-5 w-5" />
           </div>
 
@@ -964,11 +830,12 @@ function WorkspaceSection({
               {tenant.name}
             </h2>
 
-            <p className="mt-1 text-[10px] capitalize text-slate-500 dark:text-slate-400">
-              {formatLabel(
-                membership
-                  ?.accessLevel
-              )}
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {membership?.label ||
+                formatLabel(
+                  membership
+                    ?.accessLevel
+                )}
             </p>
           </div>
         </div>
@@ -1007,10 +874,6 @@ function WorkspaceSection({
   );
 }
 
-/* ============================================================
-   APPS
-   ============================================================ */
-
 function AppsSection({
   modules,
 }: {
@@ -1035,12 +898,11 @@ function AppsSection({
           Installed apps
         </h2>
 
-        <p className="mt-1 text-[10px] text-slate-500 dark:text-slate-400">
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           {modules.length}{' '}
           {modules.length === 1
             ? 'business app'
-            : 'business apps'}{' '}
-          registered for this workspace.
+            : 'business apps'}
         </p>
       </div>
 
@@ -1057,31 +919,29 @@ function AppsSection({
                 key={
                   module.key
                 }
-                className="rounded-[18px] border border-slate-200 p-4 transition dark:border-slate-800"
+                className="rounded-[18px] border border-slate-200 p-4 dark:border-slate-800"
               >
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
                     <AppWindow className="h-[18px] w-[18px]" />
                   </div>
 
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0">
                     <p className="truncate text-xs font-black">
                       {module.name}
                     </p>
 
-                    <div className="mt-2">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${
-                          activeModule
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                            : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                        }`}
-                      >
-                        {formatLabel(
-                          module.status
-                        )}
-                      </span>
-                    </div>
+                    <span
+                      className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-black ${
+                        activeModule
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
+                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                      }`}
+                    >
+                      {formatLabel(
+                        module.status
+                      )}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1093,10 +953,6 @@ function AppsSection({
   );
 }
 
-/* ============================================================
-   SAMI AI
-   ============================================================ */
-
 function AiSection({
   planName,
 }: {
@@ -1104,61 +960,33 @@ function AiSection({
 }) {
   return (
     <div className="max-w-4xl">
-      <div className="relative overflow-hidden rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:via-indigo-950/20 dark:to-violet-950/25">
-        <div
-          aria-hidden="true"
-          className="absolute -right-16 -top-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl"
-        />
-
-        <div className="relative flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white shadow-lg shadow-blue-500/20">
+      <div className="rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:to-violet-950/25">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white">
             <Bot className="h-5 w-5" />
           </div>
 
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-black">
-                SaMi AI
-              </h2>
-
-              <span className="rounded-full bg-white/80 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.1em] text-violet-700 dark:bg-white/10 dark:text-violet-300">
-                Core platform
-              </span>
-            </div>
+            <h2 className="text-base font-black">
+              SaMi AI
+            </h2>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              SaMi AI is part of the core workspace rather than an installed business app. Installed apps can provide additional tools and context to AI when permitted.
+              Manage your SaMi AI workspace preferences and availability.
             </p>
           </div>
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+      <div className="mt-5">
         <InfoCard
           label="Current plan"
           value={planName}
         />
-
-        <InfoCard
-          label="AI allowance"
-          value="Applied per user"
-        />
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-        <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-
-        <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          SaMi AI query allowances are assigned per user according to the active subscription plan. This page does not invent usage totals that have not been supplied by the platform usage service.
-        </p>
       </div>
     </div>
   );
 }
-
-/* ============================================================
-   BILLING
-   ============================================================ */
 
 function BillingSection({
   subscription,
@@ -1167,10 +995,7 @@ function BillingSection({
 }: {
   subscription:
     SubscriptionData;
-
-  currentPlan:
-    string;
-
+  currentPlan: string;
   preferences:
     UserDisplayPreferences;
 }) {
@@ -1183,17 +1008,13 @@ function BillingSection({
           </div>
 
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
+            <p className="text-xs font-black text-blue-600 dark:text-blue-400">
               Current subscription
             </p>
 
             <h2 className="mt-1 text-xl font-black">
               {currentPlan}
             </h2>
-
-            <p className="mt-1 text-[10px] text-blue-700 dark:text-blue-300">
-              Subscription pricing is calculated per billable workspace user.
-            </p>
           </div>
         </div>
       </div>
@@ -1233,27 +1054,9 @@ function BillingSection({
           }
         />
       </div>
-
-      <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 dark:border-blue-900/40 dark:bg-blue-950/20">
-        <p className="text-[10px] leading-5 text-blue-700 dark:text-blue-300">
-          Subscription dates are displayed using your personal timezone and date/time format. The billing period itself remains an authoritative server-side subscription value.
-        </p>
-      </div>
-
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/50">
-        <Users className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-
-        <p className="text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-          SaMi subscriptions are charged per user, and AI allowances are also assigned per user. Final billable user counts, entitlement limits and payment totals remain server-side subscription data.
-        </p>
-      </div>
     </div>
   );
 }
-
-/* ============================================================
-   INFO CARD
-   ============================================================ */
 
 function InfoCard({
   label,
@@ -1263,42 +1066,39 @@ function InfoCard({
   value: string;
 }) {
   return (
-    <div className="rounded-[18px] border border-slate-200 p-4 dark:border-slate-800">
-      <p className="text-[9px] font-black uppercase tracking-[0.1em] text-slate-400">
+    <div className="rounded-[18px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
         {label}
       </p>
 
-      <p className="mt-2 break-words text-xs font-black text-slate-900 dark:text-white">
+      <p className="mt-2 break-words text-sm font-extrabold text-slate-900 dark:text-white">
         {value}
       </p>
     </div>
   );
 }
 
-/* ============================================================
-   EMPTY STATE
-   ============================================================ */
-
 function EmptyState({
   icon: Icon,
   title,
   description,
 }: {
-  icon: LucideIcon;
+  icon:
+    typeof Building2;
   title: string;
   description: string;
 }) {
   return (
-    <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-slate-800">
-        <Icon className="h-6 w-6" />
+    <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+        <Icon className="h-5 w-5" />
       </div>
 
       <h2 className="mt-4 text-sm font-black">
         {title}
       </h2>
 
-      <p className="mt-1 max-w-md text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+      <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
         {description}
       </p>
     </div>
