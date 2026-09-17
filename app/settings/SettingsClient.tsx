@@ -26,8 +26,6 @@ import {
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import MyAccountSettings from './components/MyAccountSettings';
-import SecuritySettings from './components/SecuritySettings';
-import SessionsSettings from './components/SessionsSettings';
 
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
@@ -106,9 +104,7 @@ type Props = {
 };
 
 type Section =
-  | 'personal'
-  | 'security'
-  | 'sessions'
+  | 'account'
   | 'workspace'
   | 'apps'
   | 'ai'
@@ -131,9 +127,7 @@ const THEME_STORAGE_KEY =
 
 const VALID_SECTIONS =
   new Set<Section>([
-    'personal',
-    'security',
-    'sessions',
+    'account',
     'workspace',
     'apps',
     'ai',
@@ -246,18 +240,39 @@ async function readPreferencesResponse(
   }
 }
 
+function normalizeSection(
+  value: string | null
+): Section {
+  /*
+   * Legacy URLs are deliberately mapped
+   * into the consolidated My Account area.
+   */
+  if (
+    value === 'personal' ||
+    value === 'security' ||
+    value === 'sessions'
+  ) {
+    return 'account';
+  }
+
+  if (
+    value &&
+    VALID_SECTIONS.has(
+      value as Section
+    )
+  ) {
+    return value as Section;
+  }
+
+  return 'account';
+}
+
 function getSectionLabel(
   section: Section
 ) {
   switch (section) {
-    case 'personal':
+    case 'account':
       return 'My Account';
-
-    case 'security':
-      return 'Security';
-
-    case 'sessions':
-      return 'Sessions & Devices';
 
     case 'workspace':
       return 'Workspace';
@@ -300,7 +315,7 @@ export default function SettingsClient({
     setActive,
   ] =
     useState<Section>(
-      'personal'
+      'account'
     );
 
   const [
@@ -335,9 +350,7 @@ export default function SettingsClient({
     useMemo(() => {
       const sections =
         new Set<Section>([
-          'personal',
-          'security',
-          'sessions',
+          'account',
           'ai',
         ]);
 
@@ -369,31 +382,15 @@ export default function SettingsClient({
 
   /* ==========================================================
      URL → SECTION
-
-     useSearchParams is authoritative.
-
-     This reacts to:
-     - sidebar navigation
-     - browser back
-     - browser forward
-     - direct URLs
-     - refresh
      ========================================================== */
 
   useEffect(() => {
-    const tab =
-      searchParams.get(
-        'tab'
+    const requested =
+      normalizeSection(
+        searchParams.get(
+          'tab'
+        )
       );
-
-    const requested:
-      Section =
-      tab &&
-      VALID_SECTIONS.has(
-        tab as Section
-      )
-        ? (tab as Section)
-        : 'personal';
 
     if (
       allowedSections.has(
@@ -408,7 +405,7 @@ export default function SettingsClient({
     }
 
     setActive(
-      'personal'
+      'account'
     );
   }, [
     searchParams,
@@ -846,26 +843,16 @@ export default function SettingsClient({
               ================================================== */}
 
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-            <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-[#0d121b]">
 
-              {active ===
-                'personal' && (
-                <MyAccountSettings />
-              )}
+            {active ===
+              'account' && (
+              <MyAccountSettings />
+            )}
 
-              {active ===
-                'security' && (
-                <SecuritySettings />
-              )}
-
-              {active ===
-                'sessions' && (
-                <SessionsSettings />
-              )}
-
-              {active ===
-                'workspace' &&
-                canAdminWorkspace && (
+            {active ===
+              'workspace' &&
+              canAdminWorkspace && (
+                <SettingsSurface>
                   <WorkspaceSection
                     tenant={
                       tenant
@@ -874,31 +861,37 @@ export default function SettingsClient({
                       membership
                     }
                   />
-                )}
+                </SettingsSurface>
+              )}
 
-              {active ===
-                'apps' &&
-                canAdminWorkspace && (
+            {active ===
+              'apps' &&
+              canAdminWorkspace && (
+                <SettingsSurface>
                   <AppsSection
                     modules={
                       modules
                     }
                   />
-                )}
+                </SettingsSurface>
+              )}
 
-              {active ===
-                'ai' && (
+            {active ===
+              'ai' && (
+              <SettingsSurface>
                 <AiSection
                   planName={
                     currentPlan
                   }
                 />
-              )}
+              </SettingsSurface>
+            )}
 
-              {active ===
-                'billing' &&
-                membership
-                  ?.isOwner && (
+            {active ===
+              'billing' &&
+              membership
+                ?.isOwner && (
+                <SettingsSurface>
                   <BillingSection
                     subscription={
                       subscription
@@ -910,12 +903,29 @@ export default function SettingsClient({
                       displayPreferences
                     }
                   />
-                )}
-            </section>
+                </SettingsSurface>
+              )}
           </div>
         </div>
       </div>
     </main>
+  );
+}
+
+/* ============================================================
+   SETTINGS SURFACE
+   ============================================================ */
+
+function SettingsSurface({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-[#0d121b]">
+      {children}
+    </section>
   );
 }
 
@@ -1037,7 +1047,7 @@ function AppsSection({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {modules.map(
           module => {
-            const active =
+            const activeModule =
               normalizeStatus(
                 module.status
               ) === 'active';
@@ -1056,15 +1066,13 @@ function AppsSection({
 
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-black">
-                      {
-                        module.name
-                      }
+                      {module.name}
                     </p>
 
                     <div className="mt-2">
                       <span
                         className={`inline-flex rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] ${
-                          active
+                          activeModule
                             ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
                             : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                         }`}
