@@ -13,6 +13,7 @@ import {
   Bell,
   Bot,
   Boxes,
+  Building2,
   Calculator,
   Check,
   ChevronDown,
@@ -28,6 +29,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  Star,
   Store,
   User,
   UsersRound,
@@ -40,6 +42,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -148,6 +151,61 @@ type WorkspaceActionResponse = {
 };
 
 
+type CompanySelectorCompany = {
+  id: string;
+  name: string;
+
+  legalName:
+    string | null;
+
+  logoUrl:
+    string | null;
+
+  currency:
+    string;
+
+  timezone:
+    string;
+
+  country:
+    string | null;
+
+  isCurrent:
+    boolean;
+
+  isDefault:
+    boolean;
+
+  isSelected:
+    boolean;
+};
+
+
+type CompanySelectorState = {
+  currentCompanyId:
+    string;
+
+  defaultCompanyId:
+    string;
+
+  selectedCompanyIds:
+    string[];
+
+  companies:
+    CompanySelectorCompany[];
+};
+
+
+type CompanyContextResponse = {
+  success?: boolean;
+  code?: string;
+  error?: string;
+
+  selector?:
+    CompanySelectorState;
+};
+
+
 type Capabilities = {
   aiEnabled?: boolean;
   filesEnabled?: boolean;
@@ -161,9 +219,13 @@ type Props = {
   membership: MembershipData;
   subscription: SubscriptionData;
   modules: ModuleData[];
+
   capabilities?: Capabilities;
+
   unreadNotifications?: number;
+
   open: boolean;
+
   onClose: () => void;
 };
 
@@ -176,13 +238,29 @@ type SettingsTab =
   | 'billing';
 
 
+type SettingsKey =
+  | SettingsTab
+  | 'users';
+
+
 type SettingsChild = {
-  key: SettingsTab;
-  label: string;
-  href: string;
-  icon: LucideIcon;
-  ownerOnly?: boolean;
-  adminOnly?: boolean;
+  key:
+    SettingsKey;
+
+  label:
+    string;
+
+  href:
+    string;
+
+  icon:
+    LucideIcon;
+
+  ownerOnly?:
+    boolean;
+
+  adminOnly?:
+    boolean;
 };
 
 
@@ -314,6 +392,23 @@ const SETTINGS_CHILDREN:
 
       icon:
         LayoutGrid,
+
+      adminOnly:
+        true,
+    },
+
+    {
+      key:
+        'users',
+
+      label:
+        'Users',
+
+      href:
+        '/settings/users',
+
+      icon:
+        UsersRound,
 
       adminOnly:
         true,
@@ -687,6 +782,26 @@ async function readWorkspaceActionResponse(
 }
 
 
+async function readCompanyContextResponse(
+  response:
+    Response,
+): Promise<CompanyContextResponse> {
+  try {
+    return (
+      await response.json()
+    ) as CompanyContextResponse;
+  } catch {
+    return {
+      success:
+        false,
+
+      error:
+        'SaMi returned an invalid company-context response.',
+    };
+  }
+}
+
+
 /* ============================================================
    SIDEBAR
    ============================================================ */
@@ -714,6 +829,10 @@ export default function WorkspaceSidebar({
   const searchParams =
     useSearchParams();
 
+
+  /* ==========================================================
+     WORKSPACE STATE
+     ========================================================== */
 
   const [
     workspaces,
@@ -764,6 +883,65 @@ export default function WorkspaceSidebar({
       null,
     );
 
+
+  /* ==========================================================
+     COMPANY STATE
+     ========================================================== */
+
+  const [
+    companySelector,
+    setCompanySelector,
+  ] =
+    useState<
+      CompanySelectorState | null
+    >(
+      null,
+    );
+
+
+  const [
+    companyMenuOpen,
+    setCompanyMenuOpen,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const [
+    companyLoading,
+    setCompanyLoading,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const [
+    companyAction,
+    setCompanyAction,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+
+  const [
+    companyError,
+    setCompanyError,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+
+  /* ==========================================================
+     GENERAL STATE
+     ========================================================== */
 
   const [
     overlay,
@@ -966,8 +1144,61 @@ export default function WorkspaceSidebar({
     setSettingsExpanded,
   ] =
     useState(
-      false,
+      settingsRouteActive,
     );
+
+
+  /* ==========================================================
+     CURRENT COMPANY
+     ========================================================== */
+
+  const currentCompany =
+    useMemo(
+      () =>
+        companySelector
+          ?.companies
+          .find(
+            company =>
+              company.id ===
+              companySelector
+                .currentCompanyId,
+          ) ||
+        null,
+      [
+        companySelector,
+      ],
+    );
+
+
+  /* ==========================================================
+     SETTINGS ACTIVE STATE
+     ========================================================== */
+
+  function isSettingsChildActive(
+    item:
+      SettingsChild,
+  ) {
+    if (
+      item.key ===
+      'users'
+    ) {
+      return (
+        pathname ===
+          '/settings/users' ||
+        pathname.startsWith(
+          '/settings/users/',
+        )
+      );
+    }
+
+
+    return (
+      pathname ===
+        '/settings' &&
+      settingsTab ===
+        item.key
+    );
+  }
 
 
   /* ==========================================================
@@ -1033,7 +1264,9 @@ export default function WorkspaceSidebar({
             null,
           );
         } catch {
-          // Current workspace remains usable.
+          /*
+           * Current workspace remains usable.
+           */
         } finally {
           setWorkspacesLoading(
             false,
@@ -1045,6 +1278,113 @@ export default function WorkspaceSidebar({
       ],
     );
 
+
+  /* ==========================================================
+     LOAD COMPANY CONTEXT
+     ========================================================== */
+
+  const loadCompanyContext =
+    useCallback(
+      async () => {
+        if (
+          !tenant?.id ||
+          !membership
+        ) {
+          setCompanySelector(
+            null,
+          );
+
+          setCompanyError(
+            null,
+          );
+
+          return;
+        }
+
+
+        setCompanyLoading(
+          true,
+        );
+
+
+        setCompanyError(
+          null,
+        );
+
+
+        try {
+          const response =
+            await fetch(
+              '/api/workspace/company-context',
+              {
+                method:
+                  'GET',
+
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+
+                credentials:
+                  'same-origin',
+
+                cache:
+                  'no-store',
+              },
+            );
+
+
+          const data =
+            await readCompanyContextResponse(
+              response,
+            );
+
+
+          if (
+            !response.ok ||
+            !data.success ||
+            !data.selector
+          ) {
+            throw new Error(
+              data.error ||
+              'Company context could not be loaded.',
+            );
+          }
+
+
+          setCompanySelector(
+            data.selector,
+          );
+        } catch (
+          error
+        ) {
+          setCompanySelector(
+            null,
+          );
+
+
+          setCompanyError(
+            error instanceof
+              Error
+              ? error.message
+              : 'Company context could not be loaded.',
+          );
+        } finally {
+          setCompanyLoading(
+            false,
+          );
+        }
+      },
+      [
+        tenant?.id,
+        membership,
+      ],
+    );
+
+
+  /* ==========================================================
+     INITIAL LOAD
+     ========================================================== */
 
   useEffect(
     () => {
@@ -1058,9 +1398,24 @@ export default function WorkspaceSidebar({
 
   useEffect(
     () => {
+      void loadCompanyContext();
+    },
+    [
+      loadCompanyContext,
+    ],
+  );
+
+
+  useEffect(
+    () => {
       setCurrentWorkspaceId(
         tenant?.id ||
         null,
+      );
+
+
+      setCompanyMenuOpen(
+        false,
       );
     },
     [
@@ -1108,6 +1463,22 @@ export default function WorkspaceSidebar({
   useEffect(
     () => {
       if (
+        settingsRouteActive
+      ) {
+        setSettingsExpanded(
+          true,
+        );
+      }
+    },
+    [
+      settingsRouteActive,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      if (
         open
       ) {
         onClose();
@@ -1145,6 +1516,11 @@ export default function WorkspaceSidebar({
 
     setSwitchingWorkspaceId(
       workspace.id,
+    );
+
+
+    setCompanyMenuOpen(
+      false,
     );
 
 
@@ -1204,6 +1580,21 @@ export default function WorkspaceSidebar({
       );
 
 
+      /*
+       * Company IDs belong to the previous physical tenant DB.
+       *
+       * Clear browser representation immediately.
+       */
+      setCompanySelector(
+        null,
+      );
+
+
+      setCompanyError(
+        null,
+      );
+
+
       setWorkspaceMenuOpen(
         false,
       );
@@ -1254,6 +1645,273 @@ export default function WorkspaceSidebar({
 
 
   /* ==========================================================
+     MUTATE COMPANY CONTEXT
+     ========================================================== */
+
+  async function updateCompanyContext(
+    body:
+      Record<
+        string,
+        unknown
+      >,
+
+    actionKey:
+      string,
+  ) {
+    if (
+      companyAction
+    ) {
+      return;
+    }
+
+
+    setCompanyAction(
+      actionKey,
+    );
+
+
+    setCompanyError(
+      null,
+    );
+
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/company-context',
+          {
+            method:
+              'PATCH',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Accept:
+                'application/json',
+            },
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            body:
+              JSON.stringify(
+                body,
+              ),
+          },
+        );
+
+
+      const data =
+        await readCompanyContextResponse(
+          response,
+        );
+
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.selector
+      ) {
+        throw new Error(
+          data.error ||
+          'Company context could not be updated.',
+        );
+      }
+
+
+      setCompanySelector(
+        data.selector,
+      );
+
+
+      /*
+       * Refresh server components.
+       *
+       * Any dashboard/module that resolves requireCompanyContext()
+       * now receives the new company state.
+       */
+      router.refresh();
+    } catch (
+      error
+    ) {
+      const message =
+        error instanceof
+          Error
+          ? error.message
+          : 'Company context could not be updated.';
+
+
+      setCompanyError(
+        message,
+      );
+
+
+      setOverlay({
+        open:
+          true,
+
+        type:
+          'error',
+
+        title:
+          'Company update failed',
+
+        message,
+      });
+    } finally {
+      setCompanyAction(
+        null,
+      );
+    }
+  }
+
+
+  /* ==========================================================
+     SET CURRENT COMPANY
+     ========================================================== */
+
+  async function switchCurrentCompany(
+    company:
+      CompanySelectorCompany,
+  ) {
+    if (
+      company.isCurrent
+    ) {
+      return;
+    }
+
+
+    await updateCompanyContext(
+      {
+        action:
+          'set_current',
+
+        companyId:
+          company.id,
+      },
+
+      `current:${company.id}`,
+    );
+  }
+
+
+  /* ==========================================================
+     TOGGLE SELECTED COMPANY
+     ========================================================== */
+
+  async function toggleSelectedCompany(
+    company:
+      CompanySelectorCompany,
+  ) {
+    if (
+      !companySelector
+    ) {
+      return;
+    }
+
+
+    let nextCompanyIds =
+      [
+        ...companySelector
+          .selectedCompanyIds,
+      ];
+
+
+    if (
+      company.isSelected
+    ) {
+      nextCompanyIds =
+        nextCompanyIds.filter(
+          id =>
+            id !==
+            company.id,
+        );
+    } else {
+      nextCompanyIds.push(
+        company.id,
+      );
+    }
+
+
+    nextCompanyIds =
+      [
+        ...new Set(
+          nextCompanyIds,
+        ),
+      ];
+
+
+    if (
+      nextCompanyIds.length ===
+      0
+    ) {
+      setOverlay({
+        open:
+          true,
+
+        type:
+          'warning',
+
+        title:
+          'One company is required',
+
+        message:
+          'At least one company must remain selected in the working context.',
+      });
+
+
+      return;
+    }
+
+
+    await updateCompanyContext(
+      {
+        action:
+          'set_selected',
+
+        companyIds:
+          nextCompanyIds,
+      },
+
+      `selected:${company.id}`,
+    );
+  }
+
+
+  /* ==========================================================
+     SET DEFAULT COMPANY
+     ========================================================== */
+
+  async function makeDefaultCompany(
+    company:
+      CompanySelectorCompany,
+  ) {
+    if (
+      company.isDefault
+    ) {
+      return;
+    }
+
+
+    await updateCompanyContext(
+      {
+        action:
+          'set_default',
+
+        companyId:
+          company.id,
+      },
+
+      `default:${company.id}`,
+    );
+  }
+
+
+  /* ==========================================================
      DISPLAY
      ========================================================== */
 
@@ -1287,6 +1945,24 @@ export default function WorkspaceSidebar({
     1;
 
 
+  const selectedCompanyCount =
+    companySelector
+      ?.selectedCompanyIds
+      .length ||
+    0;
+
+
+  const companyCount =
+    companySelector
+      ?.companies
+      .length ||
+    0;
+
+
+  /* ==========================================================
+     RENDER
+     ========================================================== */
+
   return (
     <>
       {open && (
@@ -1309,6 +1985,10 @@ export default function WorkspaceSidebar({
             : '-translate-x-full'
         }`}
       >
+        {/* ====================================================
+            LOGO
+            ==================================================== */}
+
         <div className="flex h-[76px] shrink-0 items-center border-b border-slate-100 px-5 dark:border-slate-800">
           <Link
             href="/dashboard"
@@ -1341,7 +2021,7 @@ export default function WorkspaceSidebar({
             CURRENT WORKSPACE
             ==================================================== */}
 
-        <div className="relative border-b border-slate-100 px-4 py-4 dark:border-slate-800">
+        <div className="relative px-4 pt-4">
           <button
             type="button"
             onClick={
@@ -1349,6 +2029,11 @@ export default function WorkspaceSidebar({
                 if (
                   hasMultipleWorkspaces
                 ) {
+                  setCompanyMenuOpen(
+                    false,
+                  );
+
+
                   setWorkspaceMenuOpen(
                     current =>
                       !current,
@@ -1406,7 +2091,7 @@ export default function WorkspaceSidebar({
 
           {workspaceMenuOpen &&
             hasMultipleWorkspaces && (
-              <div className="absolute left-4 right-4 top-[74px] z-[70] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <div className="absolute left-4 right-4 top-[72px] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-slate-700 dark:bg-slate-900">
                 <p className="px-2 pb-2 pt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
                   Switch workspace
                 </p>
@@ -1497,6 +2182,281 @@ export default function WorkspaceSidebar({
 
 
         {/* ====================================================
+            COMPANY SELECTOR
+            ==================================================== */}
+
+        <div className="relative border-b border-slate-100 px-4 pb-4 pt-2 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={
+              () => {
+                setWorkspaceMenuOpen(
+                  false,
+                );
+
+
+                setCompanyMenuOpen(
+                  current =>
+                    !current,
+                );
+              }
+            }
+            disabled={
+              companyLoading ||
+              (
+                !companySelector &&
+                !companyError
+              )
+            }
+            aria-expanded={
+              companyMenuOpen
+            }
+            className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition enabled:hover:bg-slate-50 disabled:cursor-default dark:border-slate-800 dark:bg-[#0d121b] dark:enabled:hover:bg-slate-900"
+          >
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+              <Building2 className="h-4 w-4" />
+            </div>
+
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[11px] font-black text-slate-900 dark:text-white">
+                {companyLoading
+                  ? 'Loading company…'
+                  : currentCompany
+                    ?.name ||
+                    'Company'}
+              </p>
+
+              <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
+                {companySelector
+                  ? `${selectedCompanyCount} of ${companyCount} selected`
+                  : companyError
+                    ? 'Company context unavailable'
+                    : 'Working company'}
+              </p>
+            </div>
+
+
+            {companyLoading ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
+            ) : (
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${
+                  companyMenuOpen
+                    ? 'rotate-180'
+                    : ''
+                }`}
+              />
+            )}
+          </button>
+
+
+          {companyMenuOpen && (
+            <div className="absolute left-4 right-4 top-[60px] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+              <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
+                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Companies
+                </p>
+
+                <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                  Select companies for your working context. The highlighted company is current.
+                </p>
+              </div>
+
+
+              {companyError ? (
+                <div className="p-3">
+                  <p className="text-[10px] leading-4 text-red-600 dark:text-red-300">
+                    {companyError}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={
+                      () =>
+                        void loadCompanyContext()
+                    }
+                    className="mt-2 text-[10px] font-black text-blue-600"
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : companySelector &&
+                companySelector
+                  .companies
+                  .length >
+                  0 ? (
+                <div className="max-h-[320px] overflow-y-auto p-2">
+                  {companySelector
+                    .companies
+                    .map(
+                      company => {
+                        const switching =
+                          companyAction ===
+                          `current:${company.id}`;
+
+
+                        const toggling =
+                          companyAction ===
+                          `selected:${company.id}`;
+
+
+                        const defaulting =
+                          companyAction ===
+                          `default:${company.id}`;
+
+
+                        return (
+                          <div
+                            key={
+                              company.id
+                            }
+                            className={`mb-1 flex items-center gap-1 rounded-xl p-1 ${
+                              company.isCurrent
+                                ? 'bg-blue-50 dark:bg-blue-950/30'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              title={
+                                company.isSelected
+                                  ? 'Remove from selected companies'
+                                  : 'Add to selected companies'
+                              }
+                              disabled={
+                                companyAction !==
+                                null
+                              }
+                              onClick={
+                                () =>
+                                  void toggleSelectedCompany(
+                                    company,
+                                  )
+                              }
+                              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                            >
+                              <span
+                                className={`flex h-4 w-4 items-center justify-center rounded border ${
+                                  company.isSelected
+                                    ? 'border-blue-600 bg-blue-600 text-white'
+                                    : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950'
+                                }`}
+                              >
+                                {toggling ? (
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                ) : company.isSelected ? (
+                                  <Check className="h-2.5 w-2.5" />
+                                ) : null}
+                              </span>
+                            </button>
+
+
+                            <button
+                              type="button"
+                              disabled={
+                                companyAction !==
+                                null
+                              }
+                              onClick={
+                                () =>
+                                  void switchCurrentCompany(
+                                    company,
+                                  )
+                              }
+                              className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left disabled:opacity-60"
+                            >
+                              <div className="flex items-center gap-2">
+                                <p
+                                  className={`min-w-0 flex-1 truncate text-[11px] font-black ${
+                                    company.isCurrent
+                                      ? 'text-blue-700 dark:text-blue-300'
+                                      : 'text-slate-800 dark:text-slate-100'
+                                  }`}
+                                >
+                                  {company.name}
+                                </p>
+
+
+                                {switching ? (
+                                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+                                ) : company.isCurrent ? (
+                                  <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wide text-white">
+                                    Current
+                                  </span>
+                                ) : null}
+                              </div>
+
+
+                              <div className="mt-1 flex items-center gap-1.5">
+                                {company.isDefault && (
+                                  <span className="text-[8px] font-black text-amber-600 dark:text-amber-300">
+                                    Default
+                                  </span>
+                                )}
+
+                                <span className="truncate text-[8px] font-semibold text-slate-400">
+                                  {company.currency}
+                                  {' · '}
+                                  {company.timezone}
+                                </span>
+                              </div>
+                            </button>
+
+
+                            <button
+                              type="button"
+                              title={
+                                company.isDefault
+                                  ? 'Default company'
+                                  : 'Make default company'
+                              }
+                              disabled={
+                                companyAction !==
+                                  null ||
+                                company.isDefault
+                              }
+                              onClick={
+                                () =>
+                                  void makeDefaultCompany(
+                                    company,
+                                  )
+                              }
+                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default ${
+                                company.isDefault
+                                  ? 'text-amber-500'
+                                  : 'text-slate-300 hover:bg-white hover:text-amber-500 dark:text-slate-600 dark:hover:bg-slate-900'
+                              }`}
+                            >
+                              {defaulting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Star
+                                  className="h-3.5 w-3.5"
+                                  fill={
+                                    company.isDefault
+                                      ? 'currentColor'
+                                      : 'none'
+                                  }
+                                />
+                              )}
+                            </button>
+                          </div>
+                        );
+                      },
+                    )}
+                </div>
+              ) : (
+                <div className="p-4 text-[10px] text-slate-400">
+                  No active company access is available.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+
+        {/* ====================================================
             NAVIGATION
             ==================================================== */}
 
@@ -1549,6 +2509,10 @@ export default function WorkspaceSidebar({
             )}
           </div>
 
+
+          {/* ==================================================
+              APPS
+              ================================================== */}
 
           <div className="mt-6">
             <NavSectionLabel>
@@ -1636,7 +2600,8 @@ export default function WorkspaceSidebar({
                     }
                     label="Manage Apps"
                     active={
-                      settingsRouteActive &&
+                      pathname ===
+                        '/settings' &&
                       settingsTab ===
                         'apps'
                     }
@@ -1649,6 +2614,10 @@ export default function WorkspaceSidebar({
             )}
           </div>
 
+
+          {/* ==================================================
+              CORE
+              ================================================== */}
 
           {(capabilities
             ?.filesEnabled ||
@@ -1742,6 +2711,10 @@ export default function WorkspaceSidebar({
           )}
 
 
+          {/* ==================================================
+              SETTINGS
+              ================================================== */}
+
           <div className="mt-6">
             <NavSectionLabel>
               Account
@@ -1787,9 +2760,9 @@ export default function WorkspaceSidebar({
                         item.label
                       }
                       active={
-                        settingsRouteActive &&
-                        settingsTab ===
-                          item.key
+                        isSettingsChildActive(
+                          item,
+                        )
                       }
                       onNavigate={
                         onClose
@@ -1864,6 +2837,10 @@ export default function WorkspaceSidebar({
       </aside>
 
 
+      {/* ======================================================
+          OVERLAY
+          ====================================================== */}
+
       <SaMiOverlay
         open={
           overlay.open
@@ -1907,7 +2884,7 @@ function NavSectionLabel({
   children,
 }: {
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <p className="mb-2 px-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
@@ -1931,11 +2908,21 @@ function NavLink({
   onNavigate,
 }: {
   href: string;
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-  badge?: string;
-  onNavigate: () => void;
+
+  icon:
+    LucideIcon;
+
+  label:
+    string;
+
+  active:
+    boolean;
+
+  badge?:
+    string;
+
+  onNavigate:
+    () => void;
 }) {
   return (
     <Link
@@ -1992,12 +2979,23 @@ function DropdownButton({
   badge,
   onClick,
 }: {
-  icon: LucideIcon;
-  label: string;
-  expanded: boolean;
-  active: boolean;
-  badge?: string;
-  onClick: () => void;
+  icon:
+    LucideIcon;
+
+  label:
+    string;
+
+  expanded:
+    boolean;
+
+  active:
+    boolean;
+
+  badge?:
+    string;
+
+  onClick:
+    () => void;
 }) {
   return (
     <button
@@ -2059,12 +3057,23 @@ function ChildNavLink({
   badge,
   onNavigate,
 }: {
-  href: string;
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-  badge?: string;
-  onNavigate: () => void;
+  href:
+    string;
+
+  icon:
+    LucideIcon;
+
+  label:
+    string;
+
+  active:
+    boolean;
+
+  badge?:
+    string;
+
+  onNavigate:
+    () => void;
 }) {
   return (
     <Link

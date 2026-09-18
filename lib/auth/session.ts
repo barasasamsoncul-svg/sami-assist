@@ -3,6 +3,10 @@ import {
 } from '@/lib/db/control';
 
 import {
+  touchMembershipActivity,
+} from '@/lib/services/membership';
+
+import {
   cookies,
 } from 'next/headers';
 
@@ -43,11 +47,6 @@ export interface Session {
   currentTenantId:
     string | null;
 
-  /**
-   * Category 7.6
-   *
-   * Physical company IDs live inside the current tenant DB.
-   */
   currentCompanyId:
     string | null;
 
@@ -1066,7 +1065,7 @@ export async function createSession(
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     throw new Error(
       'Failed to create session.',
@@ -1090,6 +1089,25 @@ export async function createSession(
     result.rows[0]
       .current_tenant_id ||
     null;
+
+
+  if (
+    databaseTenantId
+  ) {
+    try {
+      await touchMembershipActivity(
+        databaseTenantId,
+        userId,
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[Session] Failed to synchronize membership activity during session creation:',
+        error,
+      );
+    }
+  }
 
 
   const cookieStore =
@@ -1157,12 +1175,6 @@ async function repairSessionTenant(
   }
 
 
-  /*
-   * Changing workspace invalidates tenant-local company IDs.
-   *
-   * Company UUIDs belong to a particular physical tenant DB
-   * and must never survive a workspace switch.
-   */
   await queryControl(
     `
       UPDATE sessions
@@ -1340,7 +1352,7 @@ export async function getSession():
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     return null;
   }
@@ -1367,19 +1379,36 @@ export async function getSession():
     );
 
 
-  /*
-   * If repairSessionTenant changed the workspace, the company
-   * context has been cleared in the database.
-   */
   const tenantChanged =
     currentTenantId !==
     originalTenantId;
 
 
-  await refreshSessionActivityIfNeeded(
-    row.session_id,
-    row.last_active_at,
-  );
+  const activityRefreshed =
+    await refreshSessionActivityIfNeeded(
+      row.session_id,
+      row.last_active_at,
+    );
+
+
+  if (
+    activityRefreshed &&
+    currentTenantId
+  ) {
+    try {
+      await touchMembershipActivity(
+        currentTenantId,
+        row.user_id,
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[Session] Failed to synchronize workspace membership activity:',
+        error,
+      );
+    }
+  }
 
 
   return {
@@ -1474,7 +1503,7 @@ async function refreshSessionActivityIfNeeded(
 
   lastActiveAtValue:
     unknown,
-): Promise<void> {
+): Promise<boolean> {
   const lastActiveAt =
     lastActiveAtValue
       ? new Date(
@@ -1501,7 +1530,7 @@ async function refreshSessionActivityIfNeeded(
   if (
     !shouldRefreshActivity
   ) {
-    return;
+    return false;
   }
 
 
@@ -1532,6 +1561,9 @@ async function refreshSessionActivityIfNeeded(
         sessionId,
       ],
     );
+
+
+    return true;
   } catch (
     error
   ) {
@@ -1539,6 +1571,9 @@ async function refreshSessionActivityIfNeeded(
       '[Session] Failed to refresh session activity:',
       error,
     );
+
+
+    return false;
   }
 }
 
@@ -1687,8 +1722,31 @@ export async function setCurrentTenantForSession(
     );
 
 
-  return result.rows.length ===
+  const changed =
+    result.rows.length ===
     1;
+
+
+  if (
+    changed
+  ) {
+    try {
+      await touchMembershipActivity(
+        tenantId,
+        userId,
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[Session] Failed to synchronize workspace membership activity after workspace switch:',
+        error,
+      );
+    }
+  }
+
+
+  return changed;
 }
 
 

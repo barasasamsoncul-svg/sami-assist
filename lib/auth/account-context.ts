@@ -426,6 +426,12 @@ async function finalizeDueWorkspaceClosuresForUser(
           current_tenant_id =
             NULL,
 
+          current_company_id =
+            NULL,
+
+          selected_company_ids =
+            '{}'::UUID[],
+
           updated_at =
             NOW()
 

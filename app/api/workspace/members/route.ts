@@ -3,9 +3,13 @@ import {
 } from 'next/server';
 
 import {
-  requireTenantContext,
   TenantContextError,
 } from '@/lib/auth/tenant-context';
+
+import {
+  requireWorkspaceAdmin,
+  WorkspaceGuardError,
+} from '@/lib/auth/workspace-guards';
 
 import {
   buildWorkspaceMemberDirectory,
@@ -54,42 +58,20 @@ function json(
 export async function GET() {
   try {
     /*
-     * No tenantId is accepted from the browser.
+     * No tenant ID is accepted from the browser.
      *
-     * Workspace identity comes only from the authenticated
-     * trusted session.
+     * requireWorkspaceAdmin() resolves:
+     *
+     * session
+     *      ↓
+     * active internal workspace
+     *      ↓
+     * membership
+     *      ↓
+     * administrator / owner access
      */
     const context =
-      await requireTenantContext();
-
-
-    /*
-     * Category 8 will eventually replace this with a granular
-     * permission such as:
-     *
-     *     users.view
-     *
-     * Until then, owner/admin is the safest temporary boundary.
-     */
-    if (
-      !context.isOwner &&
-      !context.isAdmin
-    ) {
-      return json(
-        {
-          success:
-            false,
-
-          code:
-            'MEMBER_DIRECTORY_ACCESS_DENIED',
-
-          error:
-            'You do not have permission to view workspace users.',
-        },
-
-        403,
-      );
-    }
+      await requireWorkspaceAdmin();
 
 
     const directory =
@@ -107,6 +89,10 @@ export async function GET() {
   } catch (
     error
   ) {
+    /* ============================================================
+       AUTHENTICATION / TENANT
+       ============================================================ */
+
     if (
       error instanceof
         TenantContextError
@@ -167,6 +153,35 @@ export async function GET() {
       }
     }
 
+
+    /* ============================================================
+       MEMBERSHIP AUTHORIZATION
+       ============================================================ */
+
+    if (
+      error instanceof
+        WorkspaceGuardError
+    ) {
+      return json(
+        {
+          success:
+            false,
+
+          code:
+            error.code,
+
+          error:
+            error.message,
+        },
+
+        403,
+      );
+    }
+
+
+    /* ============================================================
+       UNKNOWN
+       ============================================================ */
 
     console.error(
       '[SaMi] Member directory request failed:',

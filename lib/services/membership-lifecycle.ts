@@ -15,7 +15,7 @@ import {
    SaMi WORKSPACE MEMBERSHIP LIFECYCLE
    ================================================================
 
-   Category 7.3 — Membership Lifecycle
+   Category 7.3 / 7.9
 
    Responsibilities:
 
@@ -24,19 +24,8 @@ import {
    - soft-remove a workspace member
    - restore a previously removed member
    - protect workspace ownership
-   - clear invalid current workspace sessions
+   - invalidate affected session workspace/company context
    - write lifecycle audit events
-
-   This service deliberately DOES NOT:
-
-   - assign or remove roles
-   - evaluate Category 8 permissions
-   - create invitations
-   - manage company access
-   - manage Platform Admin users
-   - delete SaMi user accounts
-
-   Membership lifecycle and authorization remain separate concepts.
 
    ================================================================ */
 
@@ -553,15 +542,6 @@ async function requireActiveWorkspace(
 
 /* ================================================================
    REQUIRE ACTING OWNER
-   ================================================================
-
-   Category 8 will eventually replace this owner-only authorization
-   with detailed workspace permissions.
-
-   Until then the secure rule is:
-
-       only the workspace owner can manage membership lifecycle.
-
    ================================================================ */
 
 async function requireActingOwner(
@@ -786,27 +766,7 @@ function protectOwner(
 
 
 /* ================================================================
-   CLEAR INVALID CURRENT WORKSPACE
-   ================================================================
-
-   IMPORTANT:
-
-   We do NOT revoke all user sessions.
-
-   The user may belong to:
-
-       Workspace A
-       Workspace B
-       Workspace C
-
-   Removing access to Workspace A must not sign them out of B/C.
-
-   Instead we clear current_tenant_id only on sessions currently
-   pointing to the affected workspace.
-
-   session.ts can then repair the workspace selection to another
-   valid membership.
-
+   INVALIDATE SESSION WORKSPACE CONTEXT
    ================================================================ */
 
 async function clearCurrentWorkspaceSessions(
@@ -827,6 +787,12 @@ async function clearCurrentWorkspaceSessions(
         SET
           current_tenant_id =
             NULL,
+
+          current_company_id =
+            NULL,
+
+          selected_company_ids =
+            '{}'::UUID[],
 
           updated_at =
             NOW()
@@ -1218,20 +1184,14 @@ export async function suspendWorkspaceMember(
               id,
               tenant_id,
               user_id,
-
               member_type,
               status,
-
               is_owner,
-
               default_company_id,
-
               suspended_at,
               suspended_by,
               suspension_reason,
-
               deleted_at,
-
               removed_by,
               removal_reason
           `,
@@ -1436,20 +1396,14 @@ export async function reactivateWorkspaceMember(
               id,
               tenant_id,
               user_id,
-
               member_type,
               status,
-
               is_owner,
-
               default_company_id,
-
               suspended_at,
               suspended_by,
               suspension_reason,
-
               deleted_at,
-
               removed_by,
               removal_reason
           `,
@@ -1525,19 +1479,6 @@ export async function reactivateWorkspaceMember(
 
 /* ================================================================
    REMOVE MEMBER
-   ================================================================
-
-   Removal is a SOFT DELETE.
-
-   We do not delete:
-
-       users
-       user_roles
-       history
-       audit records
-
-   tenant_users remains as the canonical historical membership.
-
    ================================================================ */
 
 export async function removeWorkspaceMember(
@@ -1664,20 +1605,14 @@ export async function removeWorkspaceMember(
               id,
               tenant_id,
               user_id,
-
               member_type,
               status,
-
               is_owner,
-
               default_company_id,
-
               suspended_at,
               suspended_by,
               suspension_reason,
-
               deleted_at,
-
               removed_by,
               removal_reason
           `,
@@ -1764,21 +1699,6 @@ export async function removeWorkspaceMember(
 
 /* ================================================================
    RESTORE REMOVED MEMBER
-   ================================================================
-
-   Restoring a member:
-
-   - reuses the SAME tenant_users row
-   - preserves joined_at/history
-   - preserves member_type
-   - clears removal metadata
-   - clears suspension metadata
-   - returns membership to active
-
-   It does NOT modify user_roles.
-
-   Category 8 will own role lifecycle.
-
    ================================================================ */
 
 export async function restoreWorkspaceMember(
@@ -1900,20 +1820,14 @@ export async function restoreWorkspaceMember(
               id,
               tenant_id,
               user_id,
-
               member_type,
               status,
-
               is_owner,
-
               default_company_id,
-
               suspended_at,
               suspended_by,
               suspension_reason,
-
               deleted_at,
-
               removed_by,
               removal_reason
           `,
