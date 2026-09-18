@@ -378,6 +378,40 @@ async function finalizeDueWorkspaceClosuresForUser(
           t.deletion_scheduled_for
       ),
 
+      closed_databases AS (
+        UPDATE tenant_databases td
+
+        SET
+          status =
+            'deleted',
+
+          deletion_requested_at =
+            COALESCE(
+              td.deletion_requested_at,
+              closed.deletion_requested_at
+            ),
+
+          deleted_at =
+            COALESCE(
+              td.deleted_at,
+              NOW()
+            ),
+
+          updated_at =
+            NOW()
+
+        FROM closed_workspaces closed
+
+        WHERE td.tenant_id =
+              closed.id
+
+          AND td.status <>
+              'deleted'
+
+        RETURNING
+          td.tenant_id
+      ),
+
       cleared_sessions AS (
         UPDATE sessions s
 
@@ -442,7 +476,13 @@ async function finalizeDueWorkspaceClosuresForUser(
           closed.deletion_scheduled_for,
 
           'closedAt',
-          NOW()
+          NOW(),
+
+          'databaseAccessClosed',
+          TRUE,
+
+          'physicalDatabaseRetained',
+          TRUE
         ),
 
         gen_random_uuid(),

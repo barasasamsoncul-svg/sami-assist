@@ -10,6 +10,11 @@ import type {
 } from 'pg';
 
 import {
+  cancelTenantDatabaseDeletionRequest,
+  markTenantDatabaseDeletionRequested,
+} from '@/lib/services/tenant-lifecycle';
+
+import {
   getAccountContextForUser,
   listAccessibleWorkspaces,
 } from '@/lib/auth/account-context';
@@ -2902,17 +2907,26 @@ async function requestDeletion(
 
 
         if (
-          alreadyPending
-        ) {
-          return {
-            alreadyPending:
-              true,
+  alreadyPending
+) {
+  await markTenantDatabaseDeletionRequested(
+    client,
+    input.identity
+      .tenantId,
+    workspace
+      .deletion_requested_at,
+  );
 
-            scheduledFor:
-              workspace
-                .deletion_scheduled_for,
-          };
-        }
+
+  return {
+    alreadyPending:
+      true,
+
+    scheduledFor:
+      workspace
+        .deletion_scheduled_for,
+  };
+}
 
 
         const updated =
@@ -2961,6 +2975,13 @@ async function requestDeletion(
             ],
           );
 
+          await markTenantDatabaseDeletionRequested(
+  client,
+  input.identity
+    .tenantId,
+  updated.rows[0]
+    .deletion_requested_at,
+);
 
         await insertAudit({
           client,
@@ -3141,13 +3162,20 @@ async function cancelDeletion(
 
 
         if (
-          !deletionPending
-        ) {
-          return {
-            alreadyCancelled:
-              true,
-          };
-        }
+  !deletionPending
+) {
+  await cancelTenantDatabaseDeletionRequest(
+    client,
+    input.identity
+      .tenantId,
+  );
+
+
+  return {
+    alreadyCancelled:
+      true,
+  };
+}
 
 
         await client.query(
@@ -3179,6 +3207,11 @@ async function cancelDeletion(
           ],
         );
 
+        await cancelTenantDatabaseDeletionRequest(
+  client,
+  input.identity
+    .tenantId,
+);
 
         await insertAudit({
           client,
