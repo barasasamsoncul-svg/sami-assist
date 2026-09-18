@@ -8,35 +8,51 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+
 /**
  * ================================================================
  * SaMi TRUSTED TENANT CONTEXT
  * ================================================================
  *
- * Purpose:
+ * Category 7.4
  *
- * Convert the authenticated SaMi session into a trusted tenant
- * identity for server-side application code.
+ * This context represents an INTERNAL SaMi workspace.
  *
- * IMPORTANT:
+ * Portal memberships are deliberately rejected here.
  *
- * Normal module/API code must NOT select a tenant from:
+ * Future customer/vendor/client portal surfaces must use a
+ * separate restricted context instead of this internal context.
+ *
+ * Normal module/API code must NEVER select a tenant from:
  *
  * - request.body.tenantId
  * - request.query.tenantId
  * - request headers
  * - browser localStorage
- * - browser cookies other than the authenticated SaMi session
+ * - arbitrary browser state
  *
- * The current tenant must come from the authenticated session and
- * must still be validated against tenant_users + tenants.
+ * The current tenant comes from the authenticated SaMi session
+ * and is revalidated against:
+ *
+ * - tenant_users
+ * - membership status
+ * - member_type
+ * - tenants
+ * - tenant_databases
+ *
  * ================================================================
  */
+
 
 export type TenantAccessLevel =
   | 'owner'
   | 'admin'
   | 'member';
+
+
+export type TrustedWorkspaceMemberType =
+  'internal';
+
 
 export interface TrustedTenantContext {
   sessionId: string;
@@ -45,6 +61,9 @@ export interface TrustedTenantContext {
   tenantId: string;
 
   membershipId: string;
+
+  memberType:
+    TrustedWorkspaceMemberType;
 
   tenantName: string;
   tenantSlug: string;
@@ -62,12 +81,19 @@ export interface TrustedTenantContext {
     string | null;
 }
 
-export class TenantContextError extends Error {
+
+/* ================================================================
+   ERROR
+   ================================================================ */
+
+export class TenantContextError
+  extends Error {
   readonly code:
     | 'UNAUTHENTICATED'
     | 'NO_WORKSPACE_SELECTED'
     | 'WORKSPACE_ACCESS_DENIED'
     | 'WORKSPACE_DATABASE_UNAVAILABLE';
+
 
   constructor(
     code:
@@ -91,21 +117,21 @@ export class TenantContextError extends Error {
   }
 }
 
+
+/* ================================================================
+   REQUIRE INTERNAL TENANT CONTEXT
+   ================================================================ */
+
 /**
- * Resolve the current authenticated workspace.
+ * Resolve the current authenticated INTERNAL workspace.
  *
- * This function intentionally accepts NO tenantId parameter.
- *
- * That design prevents application routes from accidentally doing:
- *
- *     requireTenantContext(request.body.tenantId)
- *
- * The tenant comes from the authenticated server session only.
+ * This intentionally accepts NO tenantId argument.
  */
 export async function requireTenantContext():
   Promise<TrustedTenantContext> {
   const session =
     await getSession();
+
 
   if (
     !session
@@ -116,6 +142,7 @@ export async function requireTenantContext():
     );
   }
 
+
   if (
     !session.currentTenantId
   ) {
@@ -125,12 +152,15 @@ export async function requireTenantContext():
     );
   }
 
+
   const result =
     await queryControl(
       `
         SELECT
           tu.id
             AS membership_id,
+
+          tu.member_type,
 
           tu.is_owner,
 
@@ -211,6 +241,13 @@ export async function requireTenantContext():
             )
           ) = 'active'
 
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
+
           AND tu.deleted_at
               IS NULL
 
@@ -232,9 +269,10 @@ export async function requireTenantContext():
       ],
     );
 
+
   if (
     result.rows.length ===
-    0
+      0
   ) {
     throw new TenantContextError(
       'WORKSPACE_ACCESS_DENIED',
@@ -242,8 +280,10 @@ export async function requireTenantContext():
     );
   }
 
+
   const row =
     result.rows[0];
+
 
   if (
     !row.database_id ||
@@ -255,14 +295,17 @@ export async function requireTenantContext():
     );
   }
 
+
   const isOwner =
     row.is_owner ===
     true;
+
 
   const isAdmin =
     isOwner ||
     row.role_is_admin ===
       true;
+
 
   const accessLevel:
     TenantAccessLevel =
@@ -271,6 +314,7 @@ export async function requireTenantContext():
       : isAdmin
         ? 'admin'
         : 'member';
+
 
   return {
     sessionId:
@@ -288,6 +332,9 @@ export async function requireTenantContext():
       String(
         row.membership_id,
       ),
+
+    memberType:
+      'internal',
 
     tenantName:
       typeof row.tenant_name ===
@@ -325,22 +372,25 @@ export async function requireTenantContext():
   };
 }
 
-/**
- * Optional convenience helper for routes that only need the
- * trusted current tenant ID.
- */
+
+/* ================================================================
+   CURRENT TENANT ID
+   ================================================================ */
+
 export async function requireCurrentTenantId():
   Promise<string> {
   const context =
     await requireTenantContext();
 
+
   return context.tenantId;
 }
 
-/**
- * Optional convenience helper for routes that need both user
- * and tenant identity.
- */
+
+/* ================================================================
+   CURRENT TENANT IDENTITY
+   ================================================================ */
+
 export async function requireTenantIdentity():
   Promise<{
     userId: string;
@@ -349,6 +399,7 @@ export async function requireTenantIdentity():
   }> {
   const context =
     await requireTenantContext();
+
 
   return {
     userId:

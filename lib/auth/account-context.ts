@@ -51,6 +51,10 @@ export interface TenantOwnerContext {
 export interface MembershipContext {
   userId: string;
   tenantId: string;
+
+  memberType:
+    'internal';
+
   status: string;
 
   accessLevel:
@@ -157,6 +161,9 @@ type PrimaryTenantSelection = {
 
   membershipStatus:
     string;
+
+  membershipMemberType:
+    'internal';
 
   membershipIsOwner:
     boolean;
@@ -556,7 +563,7 @@ export async function findUserForLogin(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -608,7 +615,7 @@ export async function findUserForLogin(
 
 
 /* ============================================================
-   AVAILABLE WORKSPACES
+   AVAILABLE INTERNAL WORKSPACES
    ============================================================ */
 
 export async function listAccessibleWorkspaces(
@@ -675,6 +682,13 @@ export async function listAccessibleWorkspaces(
               ''
             )
           ) = 'active'
+
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
 
           AND tu.deleted_at
               IS NULL
@@ -805,7 +819,7 @@ export async function listAccessibleWorkspaces(
 
 
 /* ============================================================
-   MAIN ACCOUNT CONTEXT
+   MAIN INTERNAL ACCOUNT CONTEXT
    ============================================================ */
 
 export async function getAccountContextForUser(
@@ -921,6 +935,10 @@ export async function getAccountContextForUser(
         primary
           .membershipStatus,
 
+      membershipMemberType:
+        primary
+          .membershipMemberType,
+
       membershipIsOwner:
         primary
           .membershipIsOwner,
@@ -946,7 +964,7 @@ export async function getAccountContextForUser(
 
 
 /* ============================================================
-   SPECIFIC WORKSPACE SELECTION
+   SPECIFIC INTERNAL WORKSPACE SELECTION
    ============================================================ */
 
 async function getTenantSelection(
@@ -972,6 +990,9 @@ async function getTenantSelection(
           tu.status
             AS membership_status,
 
+          tu.member_type
+            AS membership_member_type,
+
           tu.is_owner
             AS membership_is_owner
 
@@ -983,6 +1004,13 @@ async function getTenantSelection(
 
         WHERE tu.user_id = $1
           AND tu.tenant_id = $2
+
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
 
           AND tu.deleted_at
               IS NULL
@@ -1001,7 +1029,7 @@ async function getTenantSelection(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1021,6 +1049,9 @@ async function getTenantSelection(
       row.membership_status ||
       'unknown',
 
+    membershipMemberType:
+      'internal',
+
     membershipIsOwner:
       row.membership_is_owner ===
       true,
@@ -1029,7 +1060,7 @@ async function getTenantSelection(
 
 
 /* ============================================================
-   PRIMARY WORKSPACE FALLBACK
+   PRIMARY INTERNAL WORKSPACE FALLBACK
    ============================================================ */
 
 async function getPrimaryTenant(
@@ -1052,6 +1083,9 @@ async function getPrimaryTenant(
           tu.status
             AS membership_status,
 
+          tu.member_type
+            AS membership_member_type,
+
           tu.is_owner
             AS membership_is_owner
 
@@ -1062,6 +1096,13 @@ async function getPrimaryTenant(
              tu.tenant_id
 
         WHERE tu.user_id = $1
+
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
 
           AND tu.deleted_at
               IS NULL
@@ -1154,7 +1195,7 @@ async function getPrimaryTenant(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1173,6 +1214,9 @@ async function getPrimaryTenant(
     membershipStatus:
       row.membership_status ||
       'unknown',
+
+    membershipMemberType:
+      'internal',
 
     membershipIsOwner:
       row.membership_is_owner ===
@@ -1240,6 +1284,13 @@ async function getTenantOwner(
             )
           ) = 'active'
 
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
+
           AND tu.deleted_at
               IS NULL
 
@@ -1272,7 +1323,7 @@ async function getTenantOwner(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1319,10 +1370,21 @@ async function getTenantOwner(
 function buildMembershipContext(
   params: {
     userId: string;
-    tenant: TenantContext;
-    role: RoleContext | null;
-    membershipStatus: string;
-    membershipIsOwner: boolean;
+
+    tenant:
+      TenantContext;
+
+    role:
+      RoleContext | null;
+
+    membershipStatus:
+      string;
+
+    membershipMemberType:
+      'internal';
+
+    membershipIsOwner:
+      boolean;
   },
 ): MembershipContext {
   const roleText =
@@ -1373,6 +1435,10 @@ function buildMembershipContext(
 
     tenantId:
       params.tenant.id,
+
+    memberType:
+      params
+        .membershipMemberType,
 
     status:
       params.membershipStatus ||
@@ -1447,7 +1513,7 @@ async function getTenantSubscription(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1575,7 +1641,7 @@ async function getUserRole(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1706,7 +1772,7 @@ async function getTenantDatabase(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1867,7 +1933,7 @@ export function validateAccountCanLogin(
         'TENANT_NOT_FOUND',
 
       message:
-        'Your account is not linked to an available workspace.',
+        'Your account is not linked to an available internal workspace.',
     };
   }
 
@@ -1887,6 +1953,27 @@ export function validateAccountCanLogin(
 
       message:
         'Your account does not have access to this workspace.',
+    };
+  }
+
+
+  if (
+    context.membership
+      .memberType !==
+      'internal'
+  ) {
+    return {
+      allowed:
+        false,
+
+      httpStatus:
+        403,
+
+      code:
+        'INTERNAL_WORKSPACE_ACCESS_DENIED',
+
+      message:
+        'This account does not have internal workspace access.',
     };
   }
 
@@ -1964,7 +2051,7 @@ export function validateAccountCanLogin(
 
   if (
     tenantStatus ===
-    'provisioning'
+      'provisioning'
   ) {
     return {
       allowed:
@@ -1984,7 +2071,7 @@ export function validateAccountCanLogin(
 
   if (
     tenantStatus ===
-    'provisioning_failed'
+      'provisioning_failed'
   ) {
     return {
       allowed:
@@ -2004,7 +2091,7 @@ export function validateAccountCanLogin(
 
   if (
     tenantStatus ===
-    'pending_payment'
+      'pending_payment'
   ) {
     return {
       allowed:
@@ -2051,7 +2138,7 @@ export function validateAccountCanLogin(
 
   if (
     tenantStatus !==
-    'active'
+      'active'
   ) {
     return {
       allowed:
@@ -2146,7 +2233,7 @@ export function validateAccountCanLogin(
 
   if (
     subscriptionStatus ===
-    'pending'
+      'pending'
   ) {
     return {
       allowed:
@@ -2166,7 +2253,7 @@ export function validateAccountCanLogin(
 
   if (
     subscriptionStatus ===
-    'provisioning_failed'
+      'provisioning_failed'
   ) {
     return {
       allowed:

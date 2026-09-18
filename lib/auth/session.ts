@@ -43,6 +43,17 @@ export interface Session {
   currentTenantId:
     string | null;
 
+  /**
+   * Category 7.6
+   *
+   * Physical company IDs live inside the current tenant DB.
+   */
+  currentCompanyId:
+    string | null;
+
+  selectedCompanyIds:
+    string[];
+
   expiresAt: Date;
 }
 
@@ -78,6 +89,12 @@ export interface UserSessionListItem {
 
   currentTenantId:
     string | null;
+
+  currentCompanyId:
+    string | null;
+
+  selectedCompanyIds:
+    string[];
 
   isCurrent: boolean;
 
@@ -171,6 +188,45 @@ function isValidSessionToken(
     token.length <=
       200
   );
+}
+
+
+/* ============================================================
+   ARRAY NORMALIZATION
+   ============================================================ */
+
+function normalizeUuidArray(
+  value:
+    unknown,
+): string[] {
+  if (
+    !Array.isArray(
+      value,
+    )
+  ) {
+    return [];
+  }
+
+
+  return [
+    ...new Set(
+      value
+        .filter(
+          (
+            item,
+          ): item is string =>
+            typeof item ===
+            'string',
+        )
+        .map(
+          item =>
+            item.trim(),
+        )
+        .filter(
+          Boolean,
+        ),
+    ),
+  ];
 }
 
 
@@ -680,7 +736,7 @@ async function getSessionTokenHashFromCookie():
 
 
 /* ============================================================
-   DEFAULT WORKSPACE
+   DEFAULT INTERNAL WORKSPACE
    ============================================================ */
 
 async function resolveDefaultTenantId(
@@ -714,6 +770,13 @@ async function resolveDefaultTenantId(
                 ''
               )
             ) = 'active'
+
+            AND LOWER(
+              COALESCE(
+                tu.member_type,
+                ''
+              )
+            ) = 'internal'
 
             AND tu.deleted_at
                 IS NULL
@@ -768,6 +831,13 @@ async function resolveDefaultTenantId(
             )
           ) = 'active'
 
+          AND LOWER(
+            COALESCE(
+              tu.member_type,
+              ''
+            )
+          ) = 'internal'
+
           AND tu.deleted_at
               IS NULL
 
@@ -782,7 +852,6 @@ async function resolveDefaultTenantId(
           ) = 'active'
 
         ORDER BY
-
           CASE
             WHEN tu.is_owner =
                  TRUE
@@ -939,12 +1008,17 @@ export async function createSession(
         INSERT INTO sessions (
           user_id,
           session_token_hash,
+
           current_tenant_id,
+          current_company_id,
+          selected_company_ids,
+
           ip_address,
           user_agent,
           device_type,
           browser,
           operating_system,
+
           is_current,
           last_active_at,
           expires_at
@@ -953,12 +1027,17 @@ export async function createSession(
         VALUES (
           $1,
           $2,
+
           $3,
+          NULL,
+          '{}'::UUID[],
+
           $4,
           $5,
           $6,
           $7,
           $8,
+
           TRUE,
           NOW(),
           $9
@@ -987,7 +1066,7 @@ export async function createSession(
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     throw new Error(
       'Failed to create session.',
@@ -1040,7 +1119,7 @@ export async function createSession(
 
 
 /* ============================================================
-   REPAIR CURRENT WORKSPACE
+   REPAIR CURRENT INTERNAL WORKSPACE
    ============================================================ */
 
 async function repairSessionTenant(
@@ -1078,6 +1157,12 @@ async function repairSessionTenant(
   }
 
 
+  /*
+   * Changing workspace invalidates tenant-local company IDs.
+   *
+   * Company UUIDs belong to a particular physical tenant DB
+   * and must never survive a workspace switch.
+   */
   await queryControl(
     `
       UPDATE sessions
@@ -1085,6 +1170,12 @@ async function repairSessionTenant(
       SET
         current_tenant_id =
           $3,
+
+        current_company_id =
+          NULL,
+
+        selected_company_ids =
+          '{}'::UUID[],
 
         updated_at =
           NOW()
@@ -1138,6 +1229,8 @@ export async function getSession():
             AS session_id,
 
           s.current_tenant_id,
+          s.current_company_id,
+          s.selected_company_ids,
 
           s.expires_at,
           s.last_active_at,
@@ -1183,6 +1276,13 @@ export async function getSession():
                     ''
                   )
                 ) = 'active'
+
+                AND LOWER(
+                  COALESCE(
+                    tu.member_type,
+                    ''
+                  )
+                ) = 'internal'
 
                 AND tu.deleted_at
                     IS NULL
@@ -1240,7 +1340,7 @@ export async function getSession():
 
   if (
     result.rows.length ===
-    0
+      0
   ) {
     return null;
   }
@@ -1250,17 +1350,30 @@ export async function getSession():
     result.rows[0];
 
 
+  const originalTenantId =
+    row.current_tenant_id ||
+    null;
+
+
   const currentTenantId =
     await repairSessionTenant(
       row.session_id,
       row.user_id,
 
-      row.current_tenant_id ||
-        null,
+      originalTenantId,
 
       row.current_tenant_valid ===
         true,
     );
+
+
+  /*
+   * If repairSessionTenant changed the workspace, the company
+   * context has been cleared in the database.
+   */
+  const tenantChanged =
+    currentTenantId !==
+    originalTenantId;
 
 
   await refreshSessionActivityIfNeeded(
@@ -1274,6 +1387,21 @@ export async function getSession():
       row.session_id,
 
     currentTenantId,
+
+    currentCompanyId:
+      tenantChanged
+        ? null
+        : typeof row.current_company_id ===
+            'string'
+          ? row.current_company_id
+          : null,
+
+    selectedCompanyIds:
+      tenantChanged
+        ? []
+        : normalizeUuidArray(
+            row.selected_company_ids,
+          ),
 
     user: {
       id:
@@ -1439,7 +1567,7 @@ export async function requireSession():
 
 
 /* ============================================================
-   CURRENT WORKSPACE
+   CURRENT INTERNAL WORKSPACE
    ============================================================ */
 
 export async function setCurrentTenantForSession(
@@ -1467,6 +1595,26 @@ export async function setCurrentTenantForSession(
         UPDATE sessions s
 
         SET
+          current_company_id =
+            CASE
+              WHEN s.current_tenant_id
+                   IS DISTINCT FROM $3
+              THEN NULL
+
+              ELSE
+                s.current_company_id
+            END,
+
+          selected_company_ids =
+            CASE
+              WHEN s.current_tenant_id
+                   IS DISTINCT FROM $3
+              THEN '{}'::UUID[]
+
+              ELSE
+                s.selected_company_ids
+            END,
+
           current_tenant_id =
             $3,
 
@@ -1506,6 +1654,13 @@ export async function setCurrentTenantForSession(
                   ''
                 )
               ) = 'active'
+
+              AND LOWER(
+                COALESCE(
+                  tu.member_type,
+                  ''
+                )
+              ) = 'internal'
 
               AND tu.deleted_at
                   IS NULL
@@ -1559,6 +1714,12 @@ export async function clearCurrentTenantForSession(
       SET
         current_tenant_id =
           NULL,
+
+        current_company_id =
+          NULL,
+
+        selected_company_ids =
+          '{}'::UUID[],
 
         updated_at =
           NOW()
@@ -1659,12 +1820,17 @@ export async function listActiveSessions(
       `
         SELECT
           id,
+
           current_tenant_id,
+          current_company_id,
+          selected_company_ids,
+
           ip_address,
           user_agent,
           device_type,
           browser,
           operating_system,
+
           last_active_at,
           expires_at,
           created_at,
@@ -1748,6 +1914,17 @@ export async function listActiveSessions(
           'string'
           ? row.current_tenant_id
           : null,
+
+      currentCompanyId:
+        typeof row.current_company_id ===
+          'string'
+          ? row.current_company_id
+          : null,
+
+      selectedCompanyIds:
+        normalizeUuidArray(
+          row.selected_company_ids,
+        ),
 
       isCurrent:
         row.is_current_browser ===
