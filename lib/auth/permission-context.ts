@@ -12,49 +12,28 @@ import {
 
 /* ================================================================
    SaMi PERMISSION RESOLUTION ENGINE
-   ================================================================
 
-   Category 8.2 / 8.9
+   Categories:
+   - 8.2 Permission Resolution
+   - 8.9 Module Permission Registration
 
    TRUST CHAIN
 
        session
           ↓
-       active global account
-          ↓
-       active INTERNAL membership
+       active internal membership
           ↓
        active workspace
           ↓
-       active tenant database
-          ↓
        trusted tenant context
           ↓
-       valid roles
+       active assigned roles
           ↓
-       active role permissions
+       active permissions
           ↓
-       installed module check
+       installed module validation
           ↓
        effective permissions
-
-
-   CORE PERMISSIONS
-
-       permissions.module_key IS NULL
-
-   are available independently of business apps.
-
-
-   MODULE PERMISSIONS
-
-       permissions.module_key = 'invoicing'
-
-   only become effective when that module is installed/enabled
-   for the current workspace.
-
-   This prevents stale role_permissions from keeping access to
-   an app after that app has been removed from a workspace.
 
    ================================================================ */
 
@@ -368,29 +347,87 @@ function mapPermission(
 
 
 /* ================================================================
-   INSTALLED MODULE CONDITION
-   ================================================================
+   INSTALLED MODULE CONDITIONS
 
-   IMPORTANT
+   IMPORTANT:
 
-   This SQL fragment is used inside queries where:
+   We intentionally maintain two versions because the queries have
+   different parameter lists.
 
-       p = permissions
+   OWNER:
+       $1 = tenantId
 
-   Parameters:
+   ROLE USER:
+       $1 = userId
+       $2 = tenantId
 
-       $1 = user ID
-       $2 = tenant/workspace ID
-
-   Core permission:
-       p.module_key IS NULL
-
-   Module permission:
-       requires matching active module + installed tenant_module.
-
+   This prevents PostgreSQL 42P18 caused by referencing $2 without
+   a type-resolvable $1.
    ================================================================ */
 
-const INSTALLED_MODULE_PERMISSION_CONDITION = `
+const OWNER_INSTALLED_MODULE_CONDITION = `
+  (
+    p.module_key
+      IS NULL
+
+    OR
+
+    EXISTS (
+      SELECT
+        1
+
+      FROM tenant_modules tm
+
+      INNER JOIN modules m
+        ON m.id =
+           tm.module_id
+
+      WHERE tm.tenant_id =
+            $1
+
+        AND tm.deleted_at
+            IS NULL
+
+        AND m.deleted_at
+            IS NULL
+
+        AND LOWER(
+          COALESCE(
+            m.status,
+            ''
+          )
+        ) =
+        'active'
+
+        AND LOWER(
+          COALESCE(
+            m.key,
+            ''
+          )
+        ) =
+        LOWER(
+          COALESCE(
+            p.module_key,
+            ''
+          )
+        )
+
+        AND LOWER(
+          COALESCE(
+            tm.status,
+            ''
+          )
+        ) IN (
+          'installed',
+          'active',
+          'enabled'
+        )
+    )
+  )
+`;
+
+
+const ROLE_INSTALLED_MODULE_CONDITION = `
   (
     p.module_key
       IS NULL
@@ -454,20 +491,6 @@ const INSTALLED_MODULE_PERMISSION_CONDITION = `
 
 /* ================================================================
    LOAD ASSIGNED ROLES
-   ================================================================
-
-   PostgreSQL note:
-
-   ORDER BY expressions cannot be used directly with SELECT DISTINCT
-   unless those exact expressions appear in the SELECT list.
-
-   We therefore:
-
-       1. DISTINCT inside
-       2. ORDER outside
-
-   This fixes PostgreSQL 42P10.
-
    ================================================================ */
 
 async function loadAssignedRoles(
@@ -573,20 +596,19 @@ async function loadAssignedRoles(
    LOAD OWNER PERMISSIONS
    ================================================================
 
-   Workspace owner receives every ACTIVE permission available to
-   the workspace.
+   Owner receives every active permission AVAILABLE to the current
+   workspace.
 
-   That means:
+   Core permissions:
+       available
 
-       active core permissions
+   Module permissions:
+       available only when module installed/enabled
 
-   plus:
+   IMPORTANT:
+       this query has ONLY ONE parameter
 
-       active permissions belonging to installed modules
-
-   It does NOT mean:
-
-       every module permission registered anywhere in SaMi.
+       $1 = tenantId
 
    ================================================================ */
 
@@ -621,7 +643,7 @@ async function loadOwnerPermissions(
           ) =
           'active'
 
-          AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
+          AND ${OWNER_INSTALLED_MODULE_CONDITION}
 
         ORDER BY
           CASE
@@ -646,7 +668,6 @@ async function loadOwnerPermissions(
           p.id ASC
       `,
       [
-        context.userId,
         context.tenantId,
       ],
     );
@@ -669,27 +690,6 @@ async function loadOwnerPermissions(
 
 /* ================================================================
    LOAD ROLE PERMISSIONS
-   ================================================================
-
-   A user may receive the same permission through several roles.
-
-   Example:
-
-       Sales Manager
-           └── customers.view
-
-       Accountant
-           └── customers.view
-
-   We therefore need DISTINCT.
-
-   Again:
-
-       DISTINCT happens in the inner query
-       sorting happens in the outer query
-
-   This fixes PostgreSQL 42P10 without losing deduplication.
-
    ================================================================ */
 
 async function loadRolePermissions(
@@ -790,7 +790,7 @@ async function loadRolePermissions(
             ) =
             'active'
 
-            AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
+            AND ${ROLE_INSTALLED_MODULE_CONDITION}
         )
           AS resolved_permissions
 
@@ -814,7 +814,8 @@ async function loadRolePermissions(
             resolved_permissions.key
           ) ASC,
 
-          resolved_permissions.id ASC
+          resolved_permissions.id
+            ASC
       `,
       [
         context.userId,
@@ -840,14 +841,6 @@ async function loadRolePermissions(
 
 /* ================================================================
    DEDUPLICATE PERMISSIONS
-   ================================================================
-
-   SQL already removes duplicate permission rows for ordinary users.
-
-   Keep this application-level deduplication as a defensive boundary,
-   especially because the owner permission path does not require
-   SQL DISTINCT.
-
    ================================================================ */
 
 function uniquePermissions(
@@ -907,11 +900,6 @@ export async function resolvePermissionContext(
   tenantContext:
     TrustedTenantContext,
 ): Promise<PermissionContext> {
-  /*
-   * Both queries use an already trusted TenantContext.
-   *
-   * No tenant ID comes from the browser.
-   */
   const [
     roles,
     rawPermissions,
@@ -978,7 +966,7 @@ export async function resolvePermissionContext(
 
 
 /* ================================================================
-   GET CURRENT USER PERMISSION CONTEXT
+   CURRENT USER PERMISSION CONTEXT
    ================================================================ */
 
 export async function getPermissionContext():
@@ -1010,7 +998,7 @@ export async function getEffectivePermissionKeys():
 
 
 /* ================================================================
-   HAS ONE — EXISTING CONTEXT
+   HAS ONE
    ================================================================ */
 
 export function permissionContextHas(
@@ -1040,7 +1028,7 @@ export function permissionContextHas(
 
 
 /* ================================================================
-   HAS ANY — EXISTING CONTEXT
+   HAS ANY
    ================================================================ */
 
 export function permissionContextHasAny(
@@ -1069,7 +1057,7 @@ export function permissionContextHasAny(
 
 
 /* ================================================================
-   HAS ALL — EXISTING CONTEXT
+   HAS ALL
    ================================================================ */
 
 export function permissionContextHasAll(
@@ -1155,7 +1143,7 @@ export async function hasAllPermissions(
 
 
 /* ================================================================
-   GET PERMISSION FROM CONTEXT
+   PERMISSION LOOKUP
    ================================================================ */
 
 export function getPermissionFromContext(
