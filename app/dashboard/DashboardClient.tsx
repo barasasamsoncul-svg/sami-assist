@@ -10,7 +10,6 @@ import {
   AppWindow,
   BarChart3,
   Bell,
-  Bot,
   Boxes,
   Briefcase,
   Building2,
@@ -20,7 +19,6 @@ import {
   CalendarDays,
   CalendarOff,
   Car,
-  Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -48,6 +46,7 @@ import {
   Repeat,
   Search,
   Settings,
+  Shield,
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
@@ -356,135 +355,132 @@ const APP_METADATA =
 
 
 const ICONS:
-  Record<
-    string,
-    LucideIcon
-  > = {
-    calculator:
-      Calculator,
+  Record<string, LucideIcon> = {
+  calculator:
+    Calculator,
 
-    receipt:
-      Receipt,
+  receipt:
+    Receipt,
 
-    'file-text':
-      FileText,
+  'file-text':
+    FileText,
 
-    'bar-chart':
-      BarChart3,
+  'bar-chart':
+    BarChart3,
 
-    folder:
-      Folder,
+  folder:
+    Folder,
 
-    'pen-tool':
-      PenTool,
+  'pen-tool':
+    PenTool,
 
-    users:
-      Users,
+  users:
+    Users,
 
-    'shopping-cart':
-      ShoppingCart,
+  'shopping-cart':
+    ShoppingCart,
 
-    repeat:
-      Repeat,
+  repeat:
+    Repeat,
 
-    home:
-      Home,
+  home:
+    Home,
 
-    store:
-      Store,
+  store:
+    Store,
 
-    utensils:
-      Utensils,
+  utensils:
+    Utensils,
 
-    package:
-      Package,
+  package:
+    Package,
 
-    factory:
-      Factory,
+  factory:
+    Factory,
 
-    boxes:
-      Boxes,
+  boxes:
+    Boxes,
 
-    'shopping-bag':
-      ShoppingBag,
+  'shopping-bag':
+    ShoppingBag,
 
-    wrench:
-      Wrench,
+  wrench:
+    Wrench,
 
-    'shield-check':
-      ShieldCheck,
+  'shield-check':
+    ShieldCheck,
 
-    'user-round':
-      UserRound,
+  'user-round':
+    UserRound,
 
-    car:
-      Car,
+  car:
+    Car,
 
-    'user-plus':
-      UserPlus,
+  'user-plus':
+    UserPlus,
 
-    'clipboard-check':
-      ClipboardCheck,
+  'clipboard-check':
+    ClipboardCheck,
 
-    'calendar-off':
-      CalendarOff,
+  'calendar-off':
+    CalendarOff,
 
-    'user-search':
-      UserSearch,
+  'user-search':
+    UserSearch,
 
-    megaphone:
-      Megaphone,
+  megaphone:
+    Megaphone,
 
-    mail:
-      Mail,
+  mail:
+    Mail,
 
-    'message-square':
-      MessageSquare,
+  'message-square':
+    MessageSquare,
 
-    'calendar-days':
-      CalendarDays,
+  'calendar-days':
+    CalendarDays,
 
-    workflow:
-      Workflow,
+  workflow:
+    Workflow,
 
-    'clipboard-list':
-      ClipboardList,
+  'clipboard-list':
+    ClipboardList,
 
-    briefcase:
-      Briefcase,
+  briefcase:
+    Briefcase,
 
-    clock:
-      Clock,
+  clock:
+    Clock,
 
-    'map-pin':
-      MapPin,
+  'map-pin':
+    MapPin,
 
-    headphones:
-      Headphones,
+  headphones:
+    Headphones,
 
-    'calendar-clock':
-      CalendarClock,
+  'calendar-clock':
+    CalendarClock,
 
-    calendar:
-      Calendar,
-  };
+  calendar:
+    Calendar,
+};
 
 
 const APP_TONES = [
-  {
-    tile:
-      'bg-violet-600',
-
-    ring:
-      'group-hover:ring-violet-200 dark:group-hover:ring-violet-900',
-  },
-
   {
     tile:
       'bg-blue-600',
 
     ring:
       'group-hover:ring-blue-200 dark:group-hover:ring-blue-900',
+  },
+
+  {
+    tile:
+      'bg-cyan-600',
+
+    ring:
+      'group-hover:ring-cyan-200 dark:group-hover:ring-cyan-900',
   },
 
   {
@@ -513,14 +509,6 @@ const APP_TONES = [
 
   {
     tile:
-      'bg-cyan-600',
-
-    ring:
-      'group-hover:ring-cyan-200 dark:group-hover:ring-cyan-900',
-  },
-
-  {
-    tile:
       'bg-indigo-600',
 
     ring:
@@ -533,6 +521,14 @@ const APP_TONES = [
 
     ring:
       'group-hover:ring-teal-200 dark:group-hover:ring-teal-900',
+  },
+
+  {
+    tile:
+      'bg-sky-600',
+
+    ring:
+      'group-hover:ring-sky-200 dark:group-hover:ring-sky-900',
   },
 ];
 
@@ -595,7 +591,7 @@ function applyTheme(
       theme,
     );
   } catch {
-    // Optional local cache.
+    // Local theme cache is optional.
   }
 
 
@@ -1097,6 +1093,32 @@ export default function DashboardClient({
 
         if (
           capabilities
+            .rolesView
+        ) {
+          actions.push({
+            id:
+              'roles',
+
+            label:
+              'Roles',
+
+            description:
+              capabilities
+                .rolesManage
+                ? 'Manage roles and permissions'
+                : 'View access roles',
+
+            href:
+              '/settings/roles',
+
+            icon:
+              Shield,
+          });
+        }
+
+
+        if (
+          capabilities
             .appsView ||
           capabilities
             .appsManage
@@ -1164,7 +1186,8 @@ export default function DashboardClient({
     >(
       () => {
         const actions:
-          WorkspaceAction[] = [];
+          WorkspaceAction[] =
+          [];
 
 
         if (
@@ -1293,28 +1316,30 @@ export default function DashboardClient({
           );
 
 
-        quickAccess.forEach(
-          action => {
-            items.push({
-              ...action,
+        for (
+          const action
+          of quickAccess
+        ) {
+          items.push({
+            ...action,
 
-              keywords:
-                `${action.label} ${action.description}`,
-            });
-          },
-        );
+            keywords:
+              `${action.label} ${action.description}`,
+          });
+        }
 
 
-        managementActions.forEach(
-          action => {
-            items.push({
-              ...action,
+        for (
+          const action
+          of managementActions
+        ) {
+          items.push({
+            ...action,
 
-              keywords:
-                `${action.label} ${action.description} workspace administration`,
-            });
-          },
-        );
+            keywords:
+              `${action.label} ${action.description} workspace management`,
+          });
+        }
 
 
         items.push({
@@ -1424,10 +1449,9 @@ export default function DashboardClient({
 
       try {
         const saved =
-          localStorage
-            .getItem(
-              THEME_STORAGE_KEY,
-            );
+          localStorage.getItem(
+            THEME_STORAGE_KEY,
+          );
 
 
         const localTheme:
@@ -1479,8 +1503,7 @@ export default function DashboardClient({
 
 
             const data =
-              await response
-                .json();
+              await response.json();
 
 
             const theme =
@@ -1510,7 +1533,7 @@ export default function DashboardClient({
               ),
             );
           } catch {
-            // Local preference remains usable.
+            // Keep local theme.
           }
         }
       )();
@@ -1683,11 +1706,9 @@ export default function DashboardClient({
         ) {
           event.preventDefault();
 
-
           searchRef
             .current
             ?.focus();
-
 
           return;
         }
@@ -1820,7 +1841,7 @@ export default function DashboardClient({
      ========================================================== */
 
   return (
-    <main className="min-h-screen bg-[#f6f7f9] text-slate-950 transition-colors dark:bg-[#090b10] dark:text-white">
+    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
       <div className="flex min-h-screen">
 
         <WorkspaceSidebar
@@ -1873,11 +1894,9 @@ export default function DashboardClient({
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
 
-          {/* ==================================================
-              TOP BAR
-              ================================================== */}
+          {/* TOP BAR */}
 
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0d12]/95">
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
             <div className="flex h-16 items-center gap-2 px-3 sm:px-5 lg:px-7">
 
               <button
@@ -1946,7 +1965,7 @@ export default function DashboardClient({
                     }
                   }
 
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm outline-none transition placeholder:text-slate-400 hover:bg-white focus:border-slate-300 focus:bg-white focus:ring-4 focus:ring-slate-900/5 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/[0.07] dark:focus:border-white/20 dark:focus:bg-white/[0.07]"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm outline-none transition placeholder:text-slate-400 hover:bg-white focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/[0.07] dark:focus:border-blue-500/60 dark:focus:bg-white/[0.07]"
                 />
 
                 <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 sm:block dark:border-white/10 dark:bg-white/5">
@@ -1955,7 +1974,7 @@ export default function DashboardClient({
 
 
                 {searchOpen && (
-                  <div className="absolute left-0 right-0 top-[46px] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#15181f]">
+                  <div className="absolute left-0 right-0 top-[46px] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#15181F]">
 
                     <div className="max-h-[360px] overflow-y-auto p-2">
                       {searchResults.length >
@@ -1980,9 +1999,9 @@ export default function DashboardClient({
                                   )
                                 }
 
-                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50 dark:hover:bg-white/[0.06]"
+                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
                               >
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
                                   <Icon className="h-4 w-4" />
                                 </div>
 
@@ -2096,7 +2115,7 @@ export default function DashboardClient({
 
 
                   {profileOpen && (
-                    <div className="absolute right-0 top-[44px] z-50 w-[270px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#15181f]">
+                    <div className="absolute right-0 top-[44px] z-50 w-[270px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#15181F]">
 
                       <div className="border-b border-slate-100 px-4 py-3.5 dark:border-white/10">
                         <p className="truncate text-sm font-semibold">
@@ -2108,7 +2127,7 @@ export default function DashboardClient({
                         </p>
 
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                             {roleLabel}
                           </span>
 
@@ -2194,8 +2213,6 @@ export default function DashboardClient({
           </header>
 
 
-          {/* SEARCH BACKDROP */}
-
           {searchOpen && (
             <button
               type="button"
@@ -2210,9 +2227,7 @@ export default function DashboardClient({
           )}
 
 
-          {/* ==================================================
-              CONTENT
-              ================================================== */}
+          {/* CONTENT */}
 
           <div className="relative z-10 mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
 
@@ -2236,14 +2251,12 @@ export default function DashboardClient({
             )}
 
 
-            {/* ================================================
-                WORKSPACE HEADER
-                ================================================ */}
+            {/* WORKSPACE HEADER */}
 
             <section className="flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-white/10 sm:flex-row sm:items-end sm:justify-between">
 
               <div className="min-w-0">
-                <p className="text-xs font-medium text-slate-400">
+                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
                   {currentCompanyName}
                 </p>
 
@@ -2282,7 +2295,7 @@ export default function DashboardClient({
               {capabilities.ai && (
                 <Link
                   href="/ai"
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#714b67] px-4 text-sm font-semibold text-white transition hover:bg-[#62415a]"
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-cyan-600"
                 >
                   <Sparkles className="h-4 w-4" />
 
@@ -2292,9 +2305,7 @@ export default function DashboardClient({
             </section>
 
 
-            {/* ================================================
-                APP LAUNCHER
-                ================================================ */}
+            {/* APP LAUNCHER */}
 
             <section className="mt-6">
 
@@ -2312,7 +2323,7 @@ export default function DashboardClient({
                 {capabilities.appsManage && (
                   <Link
                     href="/settings?tab=apps"
-                    className="text-xs font-semibold text-[#714b67] hover:underline dark:text-purple-300"
+                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400"
                   >
                     Manage apps
                   </Link>
@@ -2322,16 +2333,6 @@ export default function DashboardClient({
 
               {installedApps.length >
               0 ? (
-                /*
-                 * MOBILE:
-                 *
-                 * Two horizontal rows instead of dozens of cards
-                 * running vertically down the page.
-                 *
-                 * DESKTOP:
-                 *
-                 * Normal Odoo-style application grid.
-                 */
                 <div className="grid grid-flow-col grid-rows-2 auto-cols-[76px] gap-x-4 gap-y-4 overflow-x-auto pb-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-4 sm:auto-cols-auto sm:overflow-visible md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
                   {installedApps.map(
                     module => (
@@ -2364,7 +2365,7 @@ export default function DashboardClient({
                   {capabilities.appsManage && (
                     <Link
                       href="/settings?tab=apps"
-                      className="mt-4 inline-flex h-9 items-center rounded-lg bg-slate-900 px-4 text-xs font-semibold text-white dark:bg-white dark:text-slate-900"
+                      className="mt-4 inline-flex h-9 items-center rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700"
                     >
                       Manage apps
                     </Link>
@@ -2374,9 +2375,7 @@ export default function DashboardClient({
             </section>
 
 
-            {/* ================================================
-                QUICK ACCESS
-                ================================================ */}
+            {/* QUICK ACCESS */}
 
             <section className="mt-7">
               <h2 className="mb-3 text-sm font-semibold">
@@ -2401,9 +2400,7 @@ export default function DashboardClient({
             </section>
 
 
-            {/* ================================================
-                MANAGEMENT
-                ================================================ */}
+            {/* MANAGEMENT */}
 
             {managementActions.length >
               0 && (
@@ -2422,7 +2419,7 @@ export default function DashboardClient({
 
                   {(membership?.isOwner ||
                     capabilities.billingView) && (
-                    <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                    <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                       {planName}
                     </span>
                   )}
@@ -2448,10 +2445,6 @@ export default function DashboardClient({
             )}
 
 
-            {/* ================================================
-                FOOTER LINE
-                ================================================ */}
-
             <div className="mt-7 flex items-center justify-between border-t border-slate-200 pt-4 text-[11px] text-slate-400 dark:border-white/10">
               <span>
                 {tenant?.name ||
@@ -2460,7 +2453,7 @@ export default function DashboardClient({
 
               <Link
                 href="/help"
-                className="hover:text-slate-700 dark:hover:text-slate-200"
+                className="hover:text-blue-600 dark:hover:text-blue-400"
               >
                 Help
               </Link>
@@ -2545,14 +2538,28 @@ function CompactAction({
     item.icon;
 
 
+  const isAi =
+    item.id ===
+    'ai';
+
+
   return (
     <Link
       href={
         item.href
       }
-      className="flex min-w-[155px] shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-slate-300 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:hover:bg-white/[0.06]"
+      className="flex min-w-[155px] shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.06]"
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300">
+      <div
+        className={[
+          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+          isAi
+            ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
+            : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
+        ].join(
+          ' ',
+        )}
+      >
         <Icon className="h-4 w-4" />
       </div>
 
@@ -2589,9 +2596,9 @@ function ManagementAction({
       href={
         item.href
       }
-      className="group flex min-w-[190px] items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-slate-50 dark:hover:bg-white/[0.05] sm:min-w-0"
+      className="group flex min-w-[190px] items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-blue-50/60 dark:hover:bg-blue-500/[0.07] sm:min-w-0"
     >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#714b67]/10 text-[#714b67] dark:bg-purple-400/10 dark:text-purple-300">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
         <Icon className="h-4 w-4" />
       </div>
 
@@ -2605,7 +2612,7 @@ function ManagementAction({
         </p>
       </div>
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5" />
+      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500" />
     </Link>
   );
 }
@@ -2642,7 +2649,7 @@ function ProfileLink({
       onClick={
         onClick
       }
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/[0.06]"
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-blue-50/60 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
     >
       <Icon className="h-4 w-4 text-slate-400" />
 
