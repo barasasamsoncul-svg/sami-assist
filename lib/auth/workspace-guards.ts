@@ -7,50 +7,36 @@ import {
 
 
 /* ================================================================
-   SaMi WORKSPACE ACCESS GUARDS
+   SaMi WORKSPACE STRUCTURAL GUARDS
    ================================================================
 
-   Category 7.8 — Membership Guards
+   Category 7.8 / Category 8.7
 
-   IMPORTANT
+   PURPOSE
 
-   This file does NOT resolve authentication, membership or tenant
-   database access itself.
-
-   That responsibility remains exclusively in:
-
-       lib/auth/tenant-context.ts
-
-   This layer only answers:
-
-       Is a valid internal workspace member enough?
-       Does this operation require workspace admin?
-       Does this operation require workspace owner?
-
-   Category 8 will later introduce granular permissions such as:
-
-       users.view
-       users.manage
-       roles.manage
-       companies.manage
-       billing.manage
-
-   Until then SaMi safely uses:
+   This file now deals with STRUCTURAL workspace relationships:
 
        member
-       admin
        owner
 
+   Granular authorization belongs to:
+
+       lib/auth/permission-guards.ts
+
+   Use:
+
+       requirePermission('users.view')
+       requirePermission('users.manage')
+       requirePermission('roles.manage')
+       ...
+
+   instead of broad Admin checks.
+
    ================================================================ */
 
-
-/* ================================================================
-   TYPES
-   ================================================================ */
 
 export type WorkspaceGuardLevel =
   | 'member'
-  | 'admin'
   | 'owner';
 
 
@@ -92,18 +78,6 @@ export class WorkspaceGuardError
 
 /* ================================================================
    MEMBER
-   ================================================================
-
-   requireTenantContext() already guarantees:
-
-   - valid authenticated session
-   - active account
-   - active internal membership
-   - active workspace
-   - active tenant database
-
-   Therefore no extra query is needed here.
-
    ================================================================ */
 
 export async function requireWorkspaceMember():
@@ -113,39 +87,14 @@ export async function requireWorkspaceMember():
 
 
 /* ================================================================
-   ADMIN
+   OWNER
    ================================================================
 
-   Workspace owner automatically satisfies admin access.
+   Ownership is structural:
 
-   Category 8 will eventually change this to permission-driven
-   authorization rather than the current broad admin role.
+       tenant_users.is_owner
 
-   ================================================================ */
-
-export async function requireWorkspaceAdmin():
-  Promise<WorkspaceGuardContext> {
-  const context =
-    await requireTenantContext();
-
-
-  if (
-    !context.isAdmin &&
-    !context.isOwner
-  ) {
-    throw new WorkspaceGuardError(
-      'WORKSPACE_ADMIN_REQUIRED',
-      'Workspace administrator access is required.',
-    );
-  }
-
-
-  return context;
-}
-
-
-/* ================================================================
-   OWNER
+   It is deliberately separate from RBAC.
    ================================================================ */
 
 export async function requireWorkspaceOwner():
@@ -169,29 +118,8 @@ export async function requireWorkspaceOwner():
 
 
 /* ================================================================
-   BOOLEAN HELPERS
-   ================================================================
-
-   These are useful when UI/server rendering needs capability
-   information without triggering authorization exceptions.
-
+   OWNER BOOLEAN
    ================================================================ */
-
-export function canAdminWorkspace(
-  context:
-    Pick<
-      TrustedTenantContext,
-      'isOwner' | 'isAdmin'
-    >,
-): boolean {
-  return (
-    context.isOwner ===
-      true ||
-    context.isAdmin ===
-      true
-  );
-}
-
 
 export function isWorkspaceOwner(
   context:
@@ -206,29 +134,8 @@ export function isWorkspaceOwner(
 
 
 /* ================================================================
-   ASSERT EXISTING CONTEXT
-   ================================================================
-
-   Use these when trusted context has already been resolved and we
-   do NOT want another requireTenantContext() call.
-
+   OWNER ASSERTION
    ================================================================ */
-
-export function assertWorkspaceAdmin(
-  context:
-    WorkspaceGuardContext,
-): void {
-  if (
-    !context.isAdmin &&
-    !context.isOwner
-  ) {
-    throw new WorkspaceGuardError(
-      'WORKSPACE_ADMIN_REQUIRED',
-      'Workspace administrator access is required.',
-    );
-  }
-}
-
 
 export function assertWorkspaceOwner(
   context:
@@ -240,6 +147,86 @@ export function assertWorkspaceOwner(
     throw new WorkspaceGuardError(
       'WORKSPACE_OWNER_REQUIRED',
       'Workspace owner access is required.',
+    );
+  }
+}
+
+
+/* ================================================================
+   LEGACY ADMIN COMPATIBILITY
+   ================================================================
+
+   DEPRECATED.
+
+   New feature authorization must NOT use these functions.
+
+   They remain temporarily to protect older call sites while
+   Category 8 migration completes.
+
+   isAdmin now means ONLY:
+
+       exact protected system Admin role
+       OR
+       structural workspace owner
+
+   There is no role-name guessing anymore.
+
+   ================================================================ */
+
+/**
+ * @deprecated
+ * Use requirePermission() from permission-guards.ts.
+ */
+export async function requireWorkspaceAdmin():
+  Promise<WorkspaceGuardContext> {
+  const context =
+    await requireTenantContext();
+
+
+  if (
+    !context.isAdmin
+  ) {
+    throw new WorkspaceGuardError(
+      'WORKSPACE_ADMIN_REQUIRED',
+      'Workspace administrator access is required.',
+    );
+  }
+
+
+  return context;
+}
+
+
+/**
+ * @deprecated
+ * Use can() from permission-guards.ts.
+ */
+export function canAdminWorkspace(
+  context:
+    Pick<
+      TrustedTenantContext,
+      'isAdmin'
+    >,
+): boolean {
+  return context.isAdmin ===
+    true;
+}
+
+
+/**
+ * @deprecated
+ * Use assertPermission() from permission-guards.ts.
+ */
+export function assertWorkspaceAdmin(
+  context:
+    WorkspaceGuardContext,
+): void {
+  if (
+    !context.isAdmin
+  ) {
+    throw new WorkspaceGuardError(
+      'WORKSPACE_ADMIN_REQUIRED',
+      'Workspace administrator access is required.',
     );
   }
 }

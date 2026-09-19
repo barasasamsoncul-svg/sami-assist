@@ -9,39 +9,36 @@ import {
 } from '@/lib/db/control';
 
 
-/**
- * ================================================================
- * SaMi TRUSTED TENANT CONTEXT
- * ================================================================
- *
- * Category 7.4
- *
- * This context represents an INTERNAL SaMi workspace.
- *
- * Portal memberships are deliberately rejected here.
- *
- * Future customer/vendor/client portal surfaces must use a
- * separate restricted context instead of this internal context.
- *
- * Normal module/API code must NEVER select a tenant from:
- *
- * - request.body.tenantId
- * - request.query.tenantId
- * - request headers
- * - browser localStorage
- * - arbitrary browser state
- *
- * The current tenant comes from the authenticated SaMi session
- * and is revalidated against:
- *
- * - tenant_users
- * - membership status
- * - member_type
- * - tenants
- * - tenant_databases
- *
- * ================================================================
- */
+/* ================================================================
+   SaMi TRUSTED TENANT CONTEXT
+   ================================================================
+
+   Category 7.4 / Category 8.7
+
+   This context establishes the trusted INTERNAL workspace boundary.
+
+   IMPORTANT
+
+   Authorization is NOT decided here.
+
+   This file answers:
+
+       who is the authenticated user?
+       which workspace is active?
+       does the user have active INTERNAL membership?
+       is the workspace active?
+       is the tenant database available?
+       is the user structurally the workspace owner?
+       does the user hold the exact protected SaMi Admin role?
+
+   Granular authorization belongs to:
+
+       permission-context.ts
+       permission-guards.ts
+
+   No role-name heuristics are allowed.
+
+   ================================================================ */
 
 
 export type TenantAccessLevel =
@@ -55,27 +52,51 @@ export type TrustedWorkspaceMemberType =
 
 
 export interface TrustedTenantContext {
-  sessionId: string;
+  sessionId:
+    string;
 
-  userId: string;
-  tenantId: string;
+  userId:
+    string;
 
-  membershipId: string;
+  tenantId:
+    string;
+
+  membershipId:
+    string;
 
   memberType:
     TrustedWorkspaceMemberType;
 
-  tenantName: string;
-  tenantSlug: string;
+  tenantName:
+    string;
 
+  tenantSlug:
+    string;
+
+  /*
+   * Compatibility/display classification.
+   *
+   * Do NOT use accessLevel for granular authorization.
+   */
   accessLevel:
     TenantAccessLevel;
 
-  isOwner: boolean;
-  isAdmin: boolean;
+  isOwner:
+    boolean;
 
-  databaseId: string;
-  databaseName: string;
+  /*
+   * Exact protected SaMi Admin identity only.
+   *
+   * This is NOT a substitute for permission checks.
+   */
+  isAdmin:
+    boolean;
+
+  databaseId:
+    string;
+
+  databaseName:
+    string;
 
   schemaVersion:
     string | null;
@@ -122,11 +143,6 @@ export class TenantContextError
    REQUIRE INTERNAL TENANT CONTEXT
    ================================================================ */
 
-/**
- * Resolve the current authenticated INTERNAL workspace.
- *
- * This intentionally accepts NO tenantId argument.
- */
 export async function requireTenantContext():
   Promise<TrustedTenantContext> {
   const session =
@@ -201,15 +217,29 @@ export async function requireTenantContext():
               AND r.deleted_at
                   IS NULL
 
+              AND r.is_system =
+                  TRUE
+
+              AND r.tenant_id
+                  IS NULL
+
               AND LOWER(
                 COALESCE(
                   r.key,
-                  r.name,
                   ''
                 )
-              ) LIKE '%admin%'
+              ) =
+              'admin'
+
+              AND LOWER(
+                COALESCE(
+                  r.status,
+                  'active'
+                )
+              ) =
+              'active'
           )
-            AS role_is_admin
+            AS has_system_admin_role
 
         FROM tenant_users tu
 
@@ -226,7 +256,8 @@ export async function requireTenantContext():
               td.status,
               ''
             )
-          ) = 'active'
+          ) =
+          'active'
 
         WHERE tu.user_id =
               $1
@@ -239,14 +270,16 @@ export async function requireTenantContext():
               tu.status,
               ''
             )
-          ) = 'active'
+          ) =
+          'active'
 
           AND LOWER(
             COALESCE(
               tu.member_type,
               ''
             )
-          ) = 'internal'
+          ) =
+          'internal'
 
           AND tu.deleted_at
               IS NULL
@@ -256,7 +289,8 @@ export async function requireTenantContext():
               t.status,
               ''
             )
-          ) = 'active'
+          ) =
+          'active'
 
           AND t.deleted_at
               IS NULL
@@ -301,17 +335,34 @@ export async function requireTenantContext():
     true;
 
 
+  /*
+   * Exact role identity.
+   *
+   * No:
+   *
+   *   LIKE '%admin%'
+   *   name.includes('admin')
+   *   role name guessing
+   */
+  const hasSystemAdminRole =
+    row.has_system_admin_role ===
+    true;
+
+
+  /*
+   * Owner satisfies the legacy/display "admin" classification,
+   * but granular authorization still comes from permissions.
+   */
   const isAdmin =
     isOwner ||
-    row.role_is_admin ===
-      true;
+    hasSystemAdminRole;
 
 
   const accessLevel:
     TenantAccessLevel =
     isOwner
       ? 'owner'
-      : isAdmin
+      : hasSystemAdminRole
         ? 'admin'
         : 'member';
 
@@ -393,9 +444,14 @@ export async function requireCurrentTenantId():
 
 export async function requireTenantIdentity():
   Promise<{
-    userId: string;
-    tenantId: string;
-    sessionId: string;
+    userId:
+      string;
+
+    tenantId:
+      string;
+
+    sessionId:
+      string;
   }> {
   const context =
     await requireTenantContext();

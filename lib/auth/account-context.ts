@@ -83,9 +83,20 @@ export interface SubscriptionContext {
 
 
 export interface RoleContext {
-  id: string;
-  key: string | null;
-  name: string;
+  id:
+    string;
+
+  key:
+    string | null;
+
+  name:
+    string;
+
+  isSystem:
+    boolean;
+
+  tenantId:
+    string | null;
 }
 
 
@@ -665,13 +676,27 @@ export async function listAccessibleWorkspaces(
               AND r.deleted_at
                   IS NULL
 
+              AND r.is_system =
+                  TRUE
+
+              AND r.tenant_id
+                  IS NULL
+
               AND LOWER(
                 COALESCE(
                   r.key,
-                  r.name,
                   ''
                 )
-              ) LIKE '%admin%'
+              ) =
+              'admin'
+
+              AND LOWER(
+                COALESCE(
+                  r.status,
+                  'active'
+                )
+              ) =
+              'active'
           ) AS role_is_admin
 
         FROM tenant_users tu
@@ -736,13 +761,27 @@ export async function listAccessibleWorkspaces(
                 AND r.deleted_at
                     IS NULL
 
-                AND LOWER(
-                  COALESCE(
-                    r.key,
-                    r.name,
-                    ''
-                  )
-                ) LIKE '%admin%'
+                AND r.is_system =
+    TRUE
+
+AND r.tenant_id
+    IS NULL
+
+AND LOWER(
+  COALESCE(
+    r.key,
+    ''
+  )
+) =
+'admin'
+
+AND LOWER(
+  COALESCE(
+    r.status,
+    'active'
+  )
+) =
+'active'
             )
             THEN 1
 
@@ -1175,13 +1214,27 @@ async function getPrimaryTenant(
                 AND r.deleted_at
                     IS NULL
 
-                AND LOWER(
-                  COALESCE(
-                    r.key,
-                    r.name,
-                    ''
-                  )
-                ) LIKE '%admin%'
+               AND r.is_system =
+    TRUE
+
+AND r.tenant_id
+    IS NULL
+
+AND LOWER(
+  COALESCE(
+    r.key,
+    ''
+  )
+) =
+'admin'
+
+AND LOWER(
+  COALESCE(
+    r.status,
+    'active'
+  )
+) =
+'active'
             )
             THEN 1
 
@@ -1305,13 +1358,28 @@ async function getTenantOwner(
 
         ORDER BY
           CASE
-            WHEN LOWER(
-              COALESCE(
-                r.key,
-                r.name,
-                ''
-              )
-            ) LIKE '%admin%'
+            WHEN r.is_system =
+                 TRUE
+
+             AND r.tenant_id
+                 IS NULL
+
+             AND LOWER(
+               COALESCE(
+                 r.key,
+                 ''
+               )
+             ) =
+             'admin'
+
+             AND LOWER(
+               COALESCE(
+                 r.status,
+                 'active'
+               )
+             ) =
+             'active'
+
             THEN 0
 
             ELSE 1
@@ -1393,35 +1461,37 @@ function buildMembershipContext(
       boolean;
   },
 ): MembershipContext {
-  const roleText =
-    [
-      params.role?.key ||
-        '',
-
-      params.role?.name ||
-        '',
-    ]
-      .join(
-        ' ',
-      )
-      .toLowerCase();
-
-
   const isOwner =
     params
       .membershipIsOwner ===
     true;
 
 
-  const roleSaysAdmin =
-    roleText.includes(
-      'admin',
-    );
+  /*
+   * Exact protected SaMi Admin role identity.
+   *
+   * Role names do not grant authority.
+   * Workspace ownership remains tenant_users.is_owner.
+   */
+  const hasSystemAdminRole =
+    params.role
+      ?.isSystem ===
+      true &&
+
+    params.role
+      ?.tenantId ===
+      null &&
+
+    params.role
+      ?.key
+      ?.trim()
+      .toLowerCase() ===
+      'admin';
 
 
   const isAdmin =
     isOwner ||
-    roleSaysAdmin;
+    hasSystemAdminRole;
 
 
   const accessLevel:
@@ -1430,7 +1500,7 @@ function buildMembershipContext(
     | 'member' =
     isOwner
       ? 'owner'
-      : isAdmin
+      : hasSystemAdminRole
         ? 'admin'
         : 'member';
 
@@ -1589,7 +1659,9 @@ async function getUserRole(
         SELECT
           r.id,
           r.key,
-          r.name
+          r.name,
+          r.is_system,
+          r.tenant_id
 
         FROM user_roles ur
 
@@ -1597,8 +1669,11 @@ async function getUserRole(
           ON r.id =
              ur.role_id
 
-        WHERE ur.user_id = $1
-          AND ur.tenant_id = $2
+        WHERE ur.user_id =
+              $1
+
+          AND ur.tenant_id =
+              $2
 
           AND ur.deleted_at
               IS NULL
@@ -1606,35 +1681,80 @@ async function getUserRole(
           AND r.deleted_at
               IS NULL
 
+          AND LOWER(
+            COALESCE(
+              r.status,
+              'active'
+            )
+          ) =
+          'active'
+
+          AND (
+            (
+              r.is_system =
+                TRUE
+
+              AND r.tenant_id
+                  IS NULL
+            )
+
+            OR
+
+            (
+              r.is_system =
+                FALSE
+
+              AND r.tenant_id =
+                  $2
+            )
+          )
+
         ORDER BY
           CASE
-            WHEN LOWER(
-              COALESCE(
-                r.key,
-                r.name,
-                ''
-              )
-            ) IN (
-              'owner',
-              'business_owner',
-              'workspace_owner',
-              'founder'
-            )
+            WHEN r.is_system =
+                 TRUE
+
+             AND r.tenant_id
+                 IS NULL
+
+             AND LOWER(
+               COALESCE(
+                 r.key,
+                 ''
+               )
+             ) =
+             'admin'
+
             THEN 0
 
-            WHEN LOWER(
-              COALESCE(
-                r.key,
-                r.name,
-                ''
-              )
-            ) LIKE '%admin%'
+
+            WHEN r.is_system =
+                 TRUE
+
+             AND r.tenant_id
+                 IS NULL
+
+             AND LOWER(
+               COALESCE(
+                 r.key,
+                 ''
+               )
+             ) =
+             'member'
+
             THEN 1
+
 
             ELSE 2
           END ASC,
 
-          ur.created_at ASC
+          LOWER(
+            r.name
+          ) ASC,
+
+          ur.created_at ASC,
+
+          r.id ASC
 
         LIMIT 1
       `,
@@ -1659,15 +1779,31 @@ async function getUserRole(
 
   return {
     id:
-      row.id,
+      String(
+        row.id,
+      ),
 
     key:
-      row.key ||
-      null,
+      typeof row.key ===
+        'string'
+        ? row.key
+        : null,
 
     name:
-      row.name ||
-      '',
+      typeof row.name ===
+        'string'
+        ? row.name
+        : '',
+
+    isSystem:
+      row.is_system ===
+        true,
+
+    tenantId:
+      typeof row.tenant_id ===
+        'string'
+        ? row.tenant_id
+        : null,
   };
 }
 

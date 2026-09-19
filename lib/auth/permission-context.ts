@@ -14,63 +14,50 @@ import {
    SaMi PERMISSION RESOLUTION ENGINE
    ================================================================
 
-   Category 8.2
+   Category 8.2 / 8.9
 
    TRUST CHAIN
 
-   session
-      ↓
-   active global account
-      ↓
-   active INTERNAL membership
-      ↓
-   active workspace
-      ↓
-   active tenant database
-      ↓
-   trusted tenant context
-      ↓
-   assigned roles
-      ↓
-   active role permissions
-      ↓
-   effective permissions
+       session
+          ↓
+       active global account
+          ↓
+       active INTERNAL membership
+          ↓
+       active workspace
+          ↓
+       active tenant database
+          ↓
+       trusted tenant context
+          ↓
+       valid roles
+          ↓
+       active role permissions
+          ↓
+       installed module check
+          ↓
+       effective permissions
 
 
-   IMPORTANT SECURITY RULES
+   IMPORTANT
 
-   1. This file NEVER accepts tenantId from the browser.
+   Core permission:
 
-   2. requireTenantContext() determines the workspace.
+       module_key IS NULL
+           ↓
+       may become effective normally
 
-   3. user_roles must belong to that exact tenant.
 
-   4. Custom roles from another tenant are rejected.
+   Module permission:
 
-   5. Deleted/disabled roles do not grant access.
+       module_key = 'invoicing'
+           ↓
+       requires invoicing to be installed/enabled
+       for the current workspace
 
-   6. Deleted/disabled permissions do not grant access.
 
-   7. Deleted role assignments do not grant access.
-
-   8. Deleted role-permission links do not grant access.
-
-   9. Workspace ownership is structural.
-
-      tenant_users.is_owner
-
-      remains authoritative.
-
-   10. An owner receives every ACTIVE REGISTERED permission.
-
-       We intentionally do NOT return true for arbitrary strings.
-
-       Therefore:
-
-           hasPermission('made.up.permission')
-
-       remains false even for an owner unless that permission exists
-       in the permissions registry.
+   Therefore a stale role assignment cannot keep access to an
+   application after that application is uninstalled.
 
    ================================================================ */
 
@@ -123,7 +110,7 @@ export interface EffectivePermission {
     string | null;
 
   scope:
-    'workspace'
+    | 'workspace'
     | 'company'
     | 'module'
     | 'record';
@@ -228,7 +215,7 @@ function normalizePermissionKey(
 ): string {
   if (
     typeof value !==
-    'string'
+      'string'
   ) {
     return '';
   }
@@ -249,7 +236,12 @@ function normalizeScope(
   | 'module'
   | 'record' {
   switch (
-    value
+    typeof value ===
+      'string'
+      ? value
+          .trim()
+          .toLowerCase()
+      : ''
   ) {
     case 'company':
       return 'company';
@@ -375,6 +367,78 @@ function mapPermission(
 
 
 /* ================================================================
+   INSTALLED MODULE CONDITION
+   ================================================================
+
+   Used by BOTH owners and ordinary role-based users.
+
+   Core permissions have module_key = NULL.
+
+   Module permissions are effective only when:
+
+       modules.key = permissions.module_key
+       tenant_modules.tenant_id = current workspace
+       module active
+       tenant module installed/enabled
+
+   ================================================================ */
+
+const INSTALLED_MODULE_PERMISSION_CONDITION = `
+  (
+    p.module_key
+      IS NULL
+
+    OR
+
+    EXISTS (
+      SELECT 1
+
+      FROM tenant_modules tm
+
+      INNER JOIN modules m
+        ON m.id =
+           tm.module_id
+
+      WHERE tm.tenant_id =
+            $2
+
+        AND tm.deleted_at
+            IS NULL
+
+        AND m.deleted_at
+            IS NULL
+
+        AND LOWER(
+          COALESCE(
+            m.status,
+            ''
+          )
+        ) =
+        'active'
+
+        AND LOWER(
+          m.key
+        ) =
+        LOWER(
+          p.module_key
+        )
+
+        AND LOWER(
+          COALESCE(
+            tm.status,
+            ''
+          )
+        ) IN (
+          'installed',
+          'active',
+          'enabled'
+        )
+    )
+  )
+`;
+
+
+/* ================================================================
    LOAD ASSIGNED ROLES
    ================================================================ */
 
@@ -399,8 +463,11 @@ async function loadAssignedRoles(
           ON r.id =
              ur.role_id
 
-        WHERE ur.user_id = $1
-          AND ur.tenant_id = $2
+        WHERE ur.user_id =
+              $1
+
+          AND ur.tenant_id =
+              $2
 
           AND ur.deleted_at
               IS NULL
@@ -413,15 +480,27 @@ async function loadAssignedRoles(
               r.status,
               'active'
             )
-          ) = 'active'
+          ) =
+          'active'
 
           AND (
-            r.tenant_id
-              IS NULL
+            (
+              r.is_system =
+                TRUE
+
+              AND r.tenant_id
+                  IS NULL
+            )
 
             OR
 
-            r.tenant_id = $2
+            (
+              r.is_system =
+                FALSE
+
+              AND r.tenant_id =
+                  $2
+            )
           )
 
         ORDER BY
@@ -452,15 +531,27 @@ async function loadAssignedRoles(
    LOAD OWNER PERMISSIONS
    ================================================================
 
-   Workspace owner receives every ACTIVE REGISTERED permission.
+   Owner receives every ACTIVE permission that is actually
+   AVAILABLE in the current workspace.
 
-   This means newly registered module permissions automatically
-   become available to the owner without adding a fake Owner role.
+   That means:
+
+       all active core permissions
+
+   plus:
+
+       permissions belonging to installed modules
+
+   NOT:
+
+       permissions belonging to apps this workspace does not have
 
    ================================================================ */
 
-async function loadOwnerPermissions():
-  Promise<EffectivePermission[]> {
+async function loadOwnerPermissions(
+  context:
+    TrustedTenantContext,
+): Promise<EffectivePermission[]> {
   const result =
     await queryControl(
       `
@@ -485,15 +576,37 @@ async function loadOwnerPermissions():
               p.status,
               'active'
             )
-          ) = 'active'
+          ) =
+          'active'
+
+          AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
 
         ORDER BY
+          CASE
+            WHEN p.module_key
+                 IS NULL
+            THEN 0
+
+            ELSE 1
+          END ASC,
+
+          LOWER(
+            COALESCE(
+              p.module_key,
+              ''
+            )
+          ) ASC,
+
           LOWER(
             p.key
           ) ASC,
 
           p.id ASC
       `,
+      [
+        context.userId,
+        context.tenantId,
+      ],
     );
 
 
@@ -548,8 +661,11 @@ async function loadRolePermissions(
           ON p.id =
              rp.permission_id
 
-        WHERE ur.user_id = $1
-          AND ur.tenant_id = $2
+        WHERE ur.user_id =
+              $1
+
+          AND ur.tenant_id =
+              $2
 
           AND ur.deleted_at
               IS NULL
@@ -562,15 +678,27 @@ async function loadRolePermissions(
               r.status,
               'active'
             )
-          ) = 'active'
+          ) =
+          'active'
 
           AND (
-            r.tenant_id
-              IS NULL
+            (
+              r.is_system =
+                TRUE
+
+              AND r.tenant_id
+                  IS NULL
+            )
 
             OR
 
-            r.tenant_id = $2
+            (
+              r.is_system =
+                FALSE
+
+              AND r.tenant_id =
+                  $2
+            )
           )
 
           AND rp.deleted_at
@@ -584,9 +712,27 @@ async function loadRolePermissions(
               p.status,
               'active'
             )
-          ) = 'active'
+          ) =
+          'active'
+
+          AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
 
         ORDER BY
+          CASE
+            WHEN p.module_key
+                 IS NULL
+            THEN 0
+
+            ELSE 1
+          END ASC,
+
+          LOWER(
+            COALESCE(
+              p.module_key,
+              ''
+            )
+          ) ASC,
+
           LOWER(
             p.key
           ) ASC,
@@ -617,13 +763,6 @@ async function loadRolePermissions(
 
 /* ================================================================
    DEDUPLICATE PERMISSIONS
-   ================================================================
-
-   Multiple roles may grant the same permission.
-
-   Effective authorization is additive, so the user receives the
-   permission once.
-
    ================================================================ */
 
 function uniquePermissions(
@@ -677,14 +816,6 @@ function uniquePermissions(
 
 /* ================================================================
    RESOLVE FROM TRUSTED TENANT CONTEXT
-   ================================================================
-
-   Use this when another server function already called:
-
-       requireTenantContext()
-
-   This avoids unnecessarily resolving membership twice.
-
    ================================================================ */
 
 export async function resolvePermissionContext(
@@ -701,7 +832,9 @@ export async function resolvePermissionContext(
       ),
 
       tenantContext.isOwner
-        ? loadOwnerPermissions()
+        ? loadOwnerPermissions(
+            tenantContext,
+          )
         : loadRolePermissions(
             tenantContext,
           ),
@@ -722,7 +855,7 @@ export async function resolvePermissionContext(
 
 
   const permissionSet =
-    new Set(
+    new Set<string>(
       permissionKeys,
     );
 
@@ -756,12 +889,6 @@ export async function resolvePermissionContext(
 
 /* ================================================================
    RESOLVE CURRENT USER
-   ================================================================
-
-   This is the normal entry point.
-
-   No tenant ID is accepted.
-
    ================================================================ */
 
 export async function getPermissionContext():
@@ -823,7 +950,7 @@ export function permissionContextHas(
 
 
 /* ================================================================
-   HAS ANY — EXISTING CONTEXT
+   HAS ANY
    ================================================================ */
 
 export function permissionContextHasAny(
@@ -852,7 +979,7 @@ export function permissionContextHasAny(
 
 
 /* ================================================================
-   HAS ALL — EXISTING CONTEXT
+   HAS ALL
    ================================================================ */
 
 export function permissionContextHasAll(
@@ -984,9 +1111,12 @@ export function hasRole(
     string,
 ): boolean {
   const normalized =
-    roleKey
-      .trim()
-      .toLowerCase();
+    typeof roleKey ===
+      'string'
+      ? roleKey
+          .trim()
+          .toLowerCase()
+      : '';
 
 
   if (

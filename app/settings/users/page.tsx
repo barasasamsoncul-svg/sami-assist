@@ -11,9 +11,13 @@ import {
 } from '@/lib/auth/require-page-session';
 
 import {
-  requireWorkspaceAdmin,
-  WorkspaceGuardError,
-} from '@/lib/auth/workspace-guards';
+  requirePermission,
+  PermissionGuardError,
+} from '@/lib/auth/permission-guards';
+
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
 
 import {
   TenantContextError,
@@ -31,9 +35,9 @@ export const dynamic =
 
 export default async function UsersSettingsPage() {
   /*
-   * First ensure a valid browser session.
+   * Browser authentication remains owned by requirePageSession().
    *
-   * requirePageSession() owns login redirection behavior.
+   * This keeps the normal login/redirection behavior unchanged.
    */
   const session =
     await requirePageSession(
@@ -43,21 +47,24 @@ export default async function UsersSettingsPage() {
 
   try {
     /*
-     * Category 7.8 canonical guard.
+     * Category 8.6
      *
-     * Today:
-     *   owner/admin
+     * Viewing the Users settings surface requires:
      *
-     * Category 8:
-     *   users.view permission
+     * users.view
+     *
+     * It no longer requires the broad admin role.
      */
-    await requireWorkspaceAdmin();
+    await requirePermission(
+      SAMI_PERMISSIONS
+        .USERS_VIEW,
+    );
   } catch (
     error
   ) {
     if (
       error instanceof
-        WorkspaceGuardError ||
+        PermissionGuardError ||
       error instanceof
         TenantContextError
     ) {
@@ -79,11 +86,11 @@ export default async function UsersSettingsPage() {
 
 
   /*
-   * Defensive check.
+   * Defensive consistency check.
    *
-   * Normally impossible after requireWorkspaceAdmin(), but this
-   * prevents rendering an incomplete workspace page if context
-   * changed between requests.
+   * The permission guard should already have guaranteed a valid
+   * workspace, but do not render an incomplete Users settings
+   * surface if account context changed concurrently.
    */
   if (
     !context.tenant ||

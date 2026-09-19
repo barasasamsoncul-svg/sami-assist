@@ -7,9 +7,13 @@ import {
 } from '@/lib/auth/tenant-context';
 
 import {
-  requireWorkspaceAdmin,
-  WorkspaceGuardError,
-} from '@/lib/auth/workspace-guards';
+  PermissionGuardError,
+  requirePermission,
+} from '@/lib/auth/permission-guards';
+
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
 
 import {
   buildWorkspaceMemberDirectory,
@@ -58,20 +62,27 @@ function json(
 export async function GET() {
   try {
     /*
+     * Category 8.6
+     *
      * No tenant ID is accepted from the browser.
      *
-     * requireWorkspaceAdmin() resolves:
+     * Permission resolution performs:
      *
      * session
-     *      ↓
-     * active internal workspace
-     *      ↓
-     * membership
-     *      ↓
-     * administrator / owner access
+     *    ↓
+     * active internal membership
+     *    ↓
+     * trusted workspace
+     *    ↓
+     * effective roles
+     *    ↓
+     * users.view
      */
     const context =
-      await requireWorkspaceAdmin();
+      await requirePermission(
+        SAMI_PERMISSIONS
+          .USERS_VIEW,
+      );
 
 
     const directory =
@@ -155,12 +166,12 @@ export async function GET() {
 
 
     /* ============================================================
-       MEMBERSHIP AUTHORIZATION
+       PERMISSION AUTHORIZATION
        ============================================================ */
 
     if (
       error instanceof
-        WorkspaceGuardError
+        PermissionGuardError
     ) {
       return json(
         {
