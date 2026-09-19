@@ -25,12 +25,12 @@ import {
   Home,
   LayoutGrid,
   Loader2,
-  Mail,
   PackageSearch,
   ReceiptText,
   Settings,
   ShieldCheck,
   ShoppingCart,
+  SlidersHorizontal,
   Star,
   Store,
   User,
@@ -57,7 +57,7 @@ import SaMiOverlay, {
 
 
 /* ================================================================
-   TYPES — ACCOUNT
+   ACCOUNT TYPES
    ================================================================ */
 
 type UserData = {
@@ -150,7 +150,7 @@ type ModuleData = {
 
 
 /* ================================================================
-   TYPES — WORKSPACE
+   WORKSPACE TYPES
    ================================================================ */
 
 type WorkspaceListItem = {
@@ -219,7 +219,7 @@ type WorkspaceActionResponse = {
 
 
 /* ================================================================
-   TYPES — COMPANY CONTEXT
+   COMPANY TYPES
    ================================================================ */
 
 type CompanySelectorCompany = {
@@ -286,7 +286,7 @@ type CompanyContextResponse = {
 
 
 /* ================================================================
-   TYPES — NAVIGATION PERMISSIONS
+   NAVIGATION PERMISSIONS
    ================================================================ */
 
 type NavigationPermissionState = {
@@ -384,7 +384,7 @@ type NavigationPermissionResponse = {
 
 
 /* ================================================================
-   TYPES — COMPONENT
+   COMPONENT TYPES
    ================================================================ */
 
 type Capabilities = {
@@ -409,9 +409,22 @@ type Props = {
   membership:
     MembershipData;
 
+  /*
+   * IMPORTANT:
+   *
+   * This must already be null unless the server resolved
+   * billing visibility for this user.
+   */
   subscription:
     SubscriptionData;
 
+  /*
+   * IMPORTANT:
+   *
+   * This is NOT the tenant's complete installed app list.
+   *
+   * This must be the user's Accessible Apps resolved server-side.
+   */
   modules:
     ModuleData[];
 
@@ -430,11 +443,13 @@ type Props = {
 
 
 /* ================================================================
-   SETTINGS
+   SETTINGS TYPES
    ================================================================ */
 
 type SettingsTab =
   | 'personal'
+  | 'preferences'
+  | 'security'
   | 'workspace'
   | 'apps'
   | 'ai'
@@ -444,12 +459,7 @@ type SettingsTab =
 type SettingsKey =
   | SettingsTab
   | 'users'
-  | 'roles'
-  | 'invitations';
-
-
-type NavigationPermissionKey =
-  keyof NavigationPermissionState;
+  | 'roles';
 
 
 type SettingsChild = {
@@ -464,9 +474,6 @@ type SettingsChild = {
 
   icon:
     LucideIcon;
-
-  requiredPermission?:
-    NavigationPermissionKey;
 };
 
 
@@ -504,7 +511,7 @@ type OverlayState = {
    CONSTANTS
    ================================================================ */
 
-const DISABLED_MODULE_STATUSES =
+const HIDDEN_MODULE_STATUSES =
   new Set([
     'disabled',
     'failed',
@@ -592,18 +599,14 @@ const APP_ROUTE_ALIASES:
 };
 
 
-/* ================================================================
-   SETTINGS NAVIGATION
-
-   IMPORTANT:
-
-   These are visibility requirements only.
-
-   Actual access is enforced again by each server page/API.
-
-   ================================================================ */
-
-const SETTINGS_CHILDREN:
+/*
+ * PERSONAL SETTINGS
+ *
+ * Every authenticated SaMi account owns these.
+ *
+ * They are NOT workspace administration.
+ */
+const PERSONAL_SETTINGS:
   SettingsChild[] = [
     {
       key:
@@ -619,130 +622,32 @@ const SETTINGS_CHILDREN:
         User,
     },
 
-
     {
       key:
-        'workspace',
+        'preferences',
 
       label:
-        'Workspace',
+        'Preferences',
 
       href:
-        '/settings?tab=workspace',
+        '/settings?tab=preferences',
 
       icon:
-        LayoutGrid,
-
-      requiredPermission:
-        'workspaceView',
+        SlidersHorizontal,
     },
-
 
     {
       key:
-        'users',
+        'security',
 
       label:
-        'Users',
+        'Security',
 
       href:
-        '/settings/users',
-
-      icon:
-        UsersRound,
-
-      requiredPermission:
-        'usersView',
-    },
-
-
-    {
-      key:
-        'roles',
-
-      label:
-        'Roles & Permissions',
-
-      href:
-        '/settings/roles',
+        '/settings?tab=security',
 
       icon:
         ShieldCheck,
-
-      requiredPermission:
-        'rolesView',
-    },
-
-
-    {
-      key:
-        'invitations',
-
-      label:
-        'Invitations',
-
-      href:
-        '/settings/invitations',
-
-      icon:
-        Mail,
-
-      requiredPermission:
-        'invitationsView',
-    },
-
-
-    {
-      key:
-        'apps',
-
-      label:
-        'Apps',
-
-      href:
-        '/settings?tab=apps',
-
-      icon:
-        AppWindow,
-
-      requiredPermission:
-        'appsView',
-    },
-
-
-    {
-      key:
-        'ai',
-
-      label:
-        'SaMi AI',
-
-      href:
-        '/settings?tab=ai',
-
-      icon:
-        Bot,
-
-      requiredPermission:
-        'aiUse',
-    },
-
-
-    {
-      key:
-        'billing',
-
-      label:
-        'Billing',
-
-      href:
-        '/settings?tab=billing',
-
-      icon:
-        CreditCard,
-
-      requiredPermission:
-        'billingView',
     },
   ];
 
@@ -778,6 +683,19 @@ function normalizeKey(
       /\s+/g,
       '-',
     );
+}
+
+
+function hrefPath(
+  href:
+    string,
+) {
+  return (
+    href.split(
+      '?',
+    )[0] ||
+    href
+  );
 }
 
 
@@ -1014,19 +932,6 @@ function getDisplayName(
 }
 
 
-function hrefPath(
-  href:
-    string,
-) {
-  return (
-    href.split(
-      '?',
-    )[0] ||
-    href
-  );
-}
-
-
 /* ================================================================
    RESPONSE READERS
    ================================================================ */
@@ -1149,9 +1054,7 @@ export default function WorkspaceSidebar({
   ] =
     useState<
       WorkspaceListItem[]
-    >(
-      [],
-    );
+    >([]);
 
 
   const [
@@ -1251,7 +1154,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     PERMISSION-DRIVEN NAVIGATION STATE
+     NAVIGATION AUTHORIZATION
      ============================================================ */
 
   const [
@@ -1275,7 +1178,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     GENERAL
+     UI STATE
      ============================================================ */
 
   const [
@@ -1296,22 +1199,31 @@ export default function WorkspaceSidebar({
   const settingsTab:
     SettingsTab =
     rawSettingsTab ===
-      'workspace' ||
-    rawSettingsTab ===
-      'apps' ||
-    rawSettingsTab ===
-      'ai' ||
-    rawSettingsTab ===
-      'billing'
+        'preferences' ||
+      rawSettingsTab ===
+        'security' ||
+      rawSettingsTab ===
+        'workspace' ||
+      rawSettingsTab ===
+        'apps' ||
+      rawSettingsTab ===
+        'ai' ||
+      rawSettingsTab ===
+        'billing'
       ? rawSettingsTab
       : 'personal';
 
 
   /* ============================================================
-     INSTALLED APPS
+     ACCESSIBLE BUSINESS APPS
+
+     `modules` is expected to already be resolved by
+     resolveWorkspaceShellAccess() on the server.
+
+     This additional status filter is defensive only.
      ============================================================ */
 
-  const installedApps =
+  const accessibleApps =
     useMemo(
       () =>
         modules.filter(
@@ -1325,7 +1237,7 @@ export default function WorkspaceSidebar({
                 .toLowerCase();
 
 
-            return !DISABLED_MODULE_STATUSES.has(
+            return !HIDDEN_MODULE_STATUSES.has(
               status,
             );
           },
@@ -1340,7 +1252,7 @@ export default function WorkspaceSidebar({
   const appChildren =
     useMemo<AppChild[]>(
       () =>
-        installedApps.map(
+        accessibleApps.map(
           module => ({
             key:
               module.key,
@@ -1361,65 +1273,202 @@ export default function WorkspaceSidebar({
         ),
 
       [
-        installedApps,
+        accessibleApps,
       ],
     );
 
 
   /* ============================================================
-     PERMISSION-DRIVEN SETTINGS CHILDREN
+     PERSONAL SETTINGS
+
+     Always available to authenticated users.
      ============================================================ */
 
-  const settingsChildren =
-    useMemo(
-      () =>
-        SETTINGS_CHILDREN.filter(
-          item => {
-            /*
-             * My Account is personal and does not depend on
-             * workspace authorization.
-             */
-            if (
-              !item.requiredPermission
-            ) {
-              return true;
-            }
+  const personalSettingsChildren =
+    PERSONAL_SETTINGS;
 
 
-            if (
-              !navigationPermissions
-            ) {
-              return false;
-            }
+  /* ============================================================
+     ADMINISTRATIVE SETTINGS
+
+     IMPORTANT:
+
+     These are administration/configuration surfaces.
+
+     Using something is NOT enough to expose its settings.
+
+     Examples:
+
+       workspace.view  != Workspace Settings
+       ai.use          != SaMi AI Settings
+       apps.view       != Apps Administration
+
+     ============================================================ */
+
+  const adminSettingsChildren =
+    useMemo<
+      SettingsChild[]
+    >(
+      () => {
+        if (
+          !navigationPermissions
+        ) {
+          return [];
+        }
 
 
-            if (
-              navigationPermissions[
-                item.requiredPermission
-              ] !==
-              true
-            ) {
-              return false;
-            }
+        const items:
+          SettingsChild[] =
+          [];
 
 
-            /*
-             * Product capability + authorization.
-             */
-            if (
-              item.key ===
-                'ai' &&
-              capabilities
-                ?.aiEnabled ===
-                false
-            ) {
-              return false;
-            }
+        /*
+         * Workspace configuration requires workspace.manage.
+         */
+        if (
+          navigationPermissions
+            .workspaceManage
+        ) {
+          items.push({
+            key:
+              'workspace',
+
+            label:
+              'Workspace',
+
+            href:
+              '/settings?tab=workspace',
+
+            icon:
+              Building2,
+          });
+        }
 
 
-            return true;
-          },
-        ),
+        /*
+         * Users is the unified member + invitation surface.
+         */
+        if (
+          navigationPermissions
+            .usersView ||
+          navigationPermissions
+            .invitationsView
+        ) {
+          items.push({
+            key:
+              'users',
+
+            label:
+              'Users',
+
+            href:
+              '/settings/users',
+
+            icon:
+              UsersRound,
+          });
+        }
+
+
+        if (
+          navigationPermissions
+            .rolesView
+        ) {
+          items.push({
+            key:
+              'roles',
+
+            label:
+              'Roles & Permissions',
+
+            href:
+              '/settings/roles',
+
+            icon:
+              ShieldCheck,
+          });
+        }
+
+
+        /*
+         * Complete installed-app administration is only shown to
+         * somebody permitted to MANAGE applications.
+         */
+        if (
+          navigationPermissions
+            .appsManage
+        ) {
+          items.push({
+            key:
+              'apps',
+
+            label:
+              'Apps',
+
+            href:
+              '/settings?tab=apps',
+
+            icon:
+              AppWindow,
+          });
+        }
+
+
+        /*
+         * ai.use places SaMi AI in the normal workspace.
+         *
+         * ai.manage is required for AI administration/settings.
+         */
+        if (
+          navigationPermissions
+            .aiManage &&
+          capabilities
+            ?.aiEnabled !==
+            false
+        ) {
+          items.push({
+            key:
+              'ai',
+
+            label:
+              'SaMi AI',
+
+            href:
+              '/settings?tab=ai',
+
+            icon:
+              Bot,
+          });
+        }
+
+
+        /*
+         * Billing is visible only through explicit billing access.
+         */
+        if (
+          navigationPermissions
+            .billingView ||
+          navigationPermissions
+            .billingManage
+        ) {
+          items.push({
+            key:
+              'billing',
+
+            label:
+              'Billing',
+
+            href:
+              '/settings?tab=billing',
+
+            icon:
+              CreditCard,
+          });
+        }
+
+
+        return items;
+      },
 
       [
         navigationPermissions,
@@ -1429,14 +1478,13 @@ export default function WorkspaceSidebar({
     );
 
 
-  const canManageApps =
-    navigationPermissions
-      ?.appsManage ===
-      true;
-
+  /* ============================================================
+     NORMAL WORKSPACE CAPABILITIES
+     ============================================================ */
 
   const canUseAi =
-    capabilities?.aiEnabled !==
+    capabilities
+      ?.aiEnabled !==
       false &&
     navigationPermissions
       ?.aiUse ===
@@ -1444,7 +1492,8 @@ export default function WorkspaceSidebar({
 
 
   const canUseFiles =
-    capabilities?.filesEnabled ===
+    capabilities
+      ?.filesEnabled ===
       true &&
     navigationPermissions
       ?.filesView ===
@@ -1461,7 +1510,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     ACTIVE ROUTES
+     ROUTE ACTIVITY
      ============================================================ */
 
   const appRouteActive =
@@ -1567,9 +1616,7 @@ export default function WorkspaceSidebar({
       item.key ===
         'users' ||
       item.key ===
-        'roles' ||
-      item.key ===
-        'invitations'
+        'roles'
     ) {
       const path =
         hrefPath(
@@ -1660,7 +1707,7 @@ export default function WorkspaceSidebar({
           );
         } catch {
           /*
-           * The currently rendered workspace can remain usable.
+           * The currently rendered workspace remains usable.
            */
         } finally {
           setWorkspacesLoading(
@@ -1690,11 +1737,9 @@ export default function WorkspaceSidebar({
             null,
           );
 
-
           setCompanyError(
             null,
           );
-
 
           return;
         }
@@ -1703,7 +1748,6 @@ export default function WorkspaceSidebar({
         setCompanyLoading(
           true,
         );
-
 
         setCompanyError(
           null,
@@ -1782,7 +1826,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     LOAD NAVIGATION PERMISSIONS
+     LOAD NAVIGATION AUTHORIZATION
      ============================================================ */
 
   const loadNavigationPermissions =
@@ -1796,11 +1840,9 @@ export default function WorkspaceSidebar({
             null,
           );
 
-
           setNavigationLoading(
             false,
           );
-
 
           return;
         }
@@ -1845,15 +1887,14 @@ export default function WorkspaceSidebar({
             !data.navigation
           ) {
             /*
-             * Fail closed:
+             * Fail closed.
              *
-             * protected navigation entries disappear if the
-             * trusted permission context cannot be resolved.
+             * Administrative navigation disappears if permission
+             * context cannot be resolved.
              */
             setNavigationPermissions(
               null,
             );
-
 
             return;
           }
@@ -1881,7 +1922,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     INITIAL / WORKSPACE LOAD
+     INITIAL LOAD
      ============================================================ */
 
   useEffect(
@@ -1942,7 +1983,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     ROUTE STATE
+     EXPANSION
      ============================================================ */
 
   useEffect(
@@ -1997,7 +2038,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     CLOSE MOBILE SIDEBAR ON NAVIGATION
+     MOBILE CLOSE AFTER NAVIGATION
      ============================================================ */
 
   const searchString =
@@ -2039,7 +2080,6 @@ export default function WorkspaceSidebar({
         false,
       );
 
-
       return;
     }
 
@@ -2055,8 +2095,7 @@ export default function WorkspaceSidebar({
 
 
     /*
-     * Remove permission-based links immediately while the new
-     * workspace context is being established.
+     * Immediately remove old workspace administrative links.
      */
     setNavigationPermissions(
       null,
@@ -2126,11 +2165,9 @@ export default function WorkspaceSidebar({
         null,
       );
 
-
       setCompanyError(
         null,
       );
-
 
       setWorkspaceMenuOpen(
         false,
@@ -2157,10 +2194,6 @@ export default function WorkspaceSidebar({
     } catch (
       error
     ) {
-      /*
-       * Restore navigation for the still-current workspace if
-       * switching failed.
-       */
       void loadNavigationPermissions();
 
 
@@ -2189,7 +2222,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     MUTATE COMPANY CONTEXT
+     COMPANY CONTEXT MUTATION
      ============================================================ */
 
   async function updateCompanyContext(
@@ -2212,7 +2245,6 @@ export default function WorkspaceSidebar({
     setCompanyAction(
       actionKey,
     );
-
 
     setCompanyError(
       null,
@@ -2308,10 +2340,6 @@ export default function WorkspaceSidebar({
   }
 
 
-  /* ============================================================
-     CURRENT COMPANY
-     ============================================================ */
-
   async function switchCurrentCompany(
     company:
       CompanySelectorCompany,
@@ -2336,10 +2364,6 @@ export default function WorkspaceSidebar({
     );
   }
 
-
-  /* ============================================================
-     SELECTED COMPANIES
-     ============================================================ */
 
   async function toggleSelectedCompany(
     company:
@@ -2383,7 +2407,7 @@ export default function WorkspaceSidebar({
 
     if (
       nextCompanyIds.length ===
-        0
+      0
     ) {
       setOverlay({
         open:
@@ -2396,9 +2420,8 @@ export default function WorkspaceSidebar({
           'One company is required',
 
         message:
-          'At least one company must remain selected in the working context.',
+          'At least one company must remain selected.',
       });
-
 
       return;
     }
@@ -2417,10 +2440,6 @@ export default function WorkspaceSidebar({
     );
   }
 
-
-  /* ============================================================
-     DEFAULT COMPANY
-     ============================================================ */
 
   async function makeDefaultCompany(
     company:
@@ -2448,7 +2467,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     DISPLAY VALUES
+     DISPLAY
      ============================================================ */
 
   const displayName =
@@ -2462,20 +2481,22 @@ export default function WorkspaceSidebar({
       user,
     );
 
-const planName =
-  subscription
-    ? (
-        subscription.planName ||
-        subscription.planKey ||
-        'Subscription'
-      )
-    : null;
 
   /*
-   * DISPLAY ONLY.
+   * If subscription is null, no plan should be displayed.
    *
-   * roleName does not control authorization.
+   * Never fall back to "Free".
    */
+  const planName =
+    subscription
+      ? (
+          subscription.planName ||
+          subscription.planKey ||
+          'Subscription'
+        )
+      : null;
+
+
   const roleName =
     membership?.label ||
     membership
@@ -2508,10 +2529,6 @@ const planName =
 
   return (
     <>
-      {/* ========================================================
-          MOBILE BACKDROP
-          ======================================================== */}
-
       {open && (
         <button
           type="button"
@@ -2523,10 +2540,6 @@ const planName =
         />
       )}
 
-
-      {/* ========================================================
-          SIDEBAR
-          ======================================================== */}
 
       <aside
         aria-label="Workspace navigation"
@@ -2541,9 +2554,7 @@ const planName =
         )}
       >
 
-        {/* ======================================================
-            LOGO
-            ====================================================== */}
+        {/* LOGO */}
 
         <div className="flex h-[76px] shrink-0 items-center border-b border-slate-100 px-5 dark:border-slate-800">
 
@@ -2575,9 +2586,7 @@ const planName =
         </div>
 
 
-        {/* ======================================================
-            WORKSPACE SELECTOR
-            ====================================================== */}
+        {/* WORKSPACE SELECTOR */}
 
         <div className="relative px-4 pt-4">
 
@@ -2590,23 +2599,20 @@ const planName =
             aria-expanded={
               workspaceMenuOpen
             }
-            onClick={
-              () => {
-                if (
-                  hasMultipleWorkspaces
-                ) {
-                  setCompanyMenuOpen(
-                    false,
-                  );
+            onClick={() => {
+              if (
+                hasMultipleWorkspaces
+              ) {
+                setCompanyMenuOpen(
+                  false,
+                );
 
-
-                  setWorkspaceMenuOpen(
-                    current =>
-                      !current,
-                  );
-                }
+                setWorkspaceMenuOpen(
+                  current =>
+                    !current,
+                );
               }
-            }
+            }}
             className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-left transition enabled:hover:bg-slate-100 disabled:cursor-default dark:bg-slate-900 dark:enabled:hover:bg-slate-800"
           >
 
@@ -2628,16 +2634,17 @@ const planName =
                   'SaMi Workspace'}
               </p>
 
-         <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
-  {roleName}
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
+                {roleName}
 
-  {planName && (
-    <>
-      {' · '}
-      {planName}
-    </>
-  )}
-</p>
+                {planName && (
+                  <>
+                    {' · '}
+                    {planName}
+                  </>
+                )}
+              </p>
+
             </div>
 
 
@@ -2693,11 +2700,10 @@ const planName =
                             switchingWorkspaceId !==
                             null
                           }
-                          onClick={
-                            () =>
-                              void switchWorkspace(
-                                workspace,
-                              )
+                          onClick={() =>
+                            void switchWorkspace(
+                              workspace,
+                            )
                           }
                           className={[
                             'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition disabled:cursor-wait',
@@ -2769,27 +2775,22 @@ const planName =
         </div>
 
 
-        {/* ======================================================
-            COMPANY SELECTOR
-            ====================================================== */}
+        {/* COMPANY SELECTOR */}
 
         <div className="relative border-b border-slate-100 px-4 pb-4 pt-2 dark:border-slate-800">
 
           <button
             type="button"
-            onClick={
-              () => {
-                setWorkspaceMenuOpen(
-                  false,
-                );
+            onClick={() => {
+              setWorkspaceMenuOpen(
+                false,
+              );
 
-
-                setCompanyMenuOpen(
-                  current =>
-                    !current,
-                );
-              }
-            }
+              setCompanyMenuOpen(
+                current =>
+                  !current,
+              );
+            }}
             disabled={
               companyLoading ||
               (
@@ -2820,7 +2821,10 @@ const planName =
 
               <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
                 {companySelector
-                  ? `${selectedCompanyCount} of ${companyCount} selected`
+                  ? companyCount >
+                      1
+                    ? `${selectedCompanyCount} of ${companyCount} selected`
+                    : 'Current company'
                   : companyError
                     ? 'Company context unavailable'
                     : 'Working company'}
@@ -2831,7 +2835,9 @@ const planName =
 
             {companyLoading ? (
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
-            ) : (
+            ) : companySelector &&
+              companySelector.companies.length >
+                1 ? (
               <ChevronDown
                 className={[
                   'h-4 w-4 shrink-0 text-slate-400 transition-transform',
@@ -2843,7 +2849,7 @@ const planName =
                   ' ',
                 )}
               />
-            )}
+            ) : null}
 
           </button>
 
@@ -2854,11 +2860,11 @@ const planName =
               <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
 
                 <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  Companies
+                  My companies
                 </p>
 
                 <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                  Select companies for your working context. The highlighted company is current.
+                  Only companies available to your account are shown.
                 </p>
 
               </div>
@@ -2873,9 +2879,8 @@ const planName =
 
                   <button
                     type="button"
-                    onClick={
-                      () =>
-                        void loadCompanyContext()
+                    onClick={() =>
+                      void loadCompanyContext()
                     }
                     className="mt-2 text-[10px] font-black text-blue-600"
                   >
@@ -2921,8 +2926,6 @@ const planName =
                           )}
                         >
 
-                          {/* SELECTED COMPANY */}
-
                           <button
                             type="button"
                             title={
@@ -2934,11 +2937,10 @@ const planName =
                               companyAction !==
                               null
                             }
-                            onClick={
-                              () =>
-                                void toggleSelectedCompany(
-                                  company,
-                                )
+                            onClick={() =>
+                              void toggleSelectedCompany(
+                                company,
+                              )
                             }
                             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
                           >
@@ -2964,19 +2966,16 @@ const planName =
                           </button>
 
 
-                          {/* CURRENT COMPANY */}
-
                           <button
                             type="button"
                             disabled={
                               companyAction !==
                               null
                             }
-                            onClick={
-                              () =>
-                                void switchCurrentCompany(
-                                  company,
-                                )
+                            onClick={() =>
+                              void switchCurrentCompany(
+                                company,
+                              )
                             }
                             className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left disabled:opacity-60"
                           >
@@ -3029,8 +3028,6 @@ const planName =
                           </button>
 
 
-                          {/* DEFAULT COMPANY */}
-
                           <button
                             type="button"
                             title={
@@ -3043,18 +3040,17 @@ const planName =
                                 null ||
                               company.isDefault
                             }
-                            onClick={
-                              () =>
-                                void makeDefaultCompany(
-                                  company,
-                                )
+                            onClick={() =>
+                              void makeDefaultCompany(
+                                company,
+                              )
                             }
                             className={[
                               'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default',
 
                               company.isDefault
                                 ? 'text-amber-500'
-                                : 'text-slate-300 hover:bg-white hover:text-amber-500 dark:text-slate-600 dark:hover:bg-slate-900',
+                                : 'text-slate-300 hover:text-amber-500 dark:text-slate-600',
                             ].join(
                               ' ',
                             )}
@@ -3091,15 +3087,9 @@ const planName =
         </div>
 
 
-        {/* ======================================================
-            NAVIGATION
-            ====================================================== */}
+        {/* NAVIGATION */}
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
-
-          {/* ====================================================
-              WORKSPACE
-              ==================================================== */}
 
           <NavSectionLabel>
             Workspace
@@ -3150,52 +3140,46 @@ const planName =
           </div>
 
 
-          {/* ====================================================
-              BUSINESS APPS
-              ==================================================== */}
+          {/* ACCESSIBLE BUSINESS APPS */}
 
-          <div className="mt-6">
+          {accessibleApps.length >
+            0 && (
+            <div className="mt-6">
 
-            <NavSectionLabel>
-              Business
-            </NavSectionLabel>
+              <NavSectionLabel>
+                My Apps
+              </NavSectionLabel>
 
 
-            <DropdownButton
-              icon={
-                LayoutGrid
-              }
-              label="Apps"
-              expanded={
-                appsExpanded
-              }
-              active={
-                appRouteActive
-              }
-              badge={
-                installedApps.length >
-                  0
-                  ? String(
-                      installedApps.length,
-                    )
-                  : undefined
-              }
-              onClick={
-                () =>
+              <DropdownButton
+                icon={
+                  LayoutGrid
+                }
+                label="Apps"
+                expanded={
+                  appsExpanded
+                }
+                active={
+                  appRouteActive
+                }
+                badge={
+                  String(
+                    accessibleApps.length,
+                  )
+                }
+                onClick={() =>
                   setAppsExpanded(
                     current =>
                       !current,
                   )
-              }
-            />
+                }
+              />
 
 
-            {appsExpanded && (
-              <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
+              {appsExpanded && (
+                <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
 
-                {appChildren.length >
-                  0 ? (
-                  appChildren.map(
+                  {appChildren.map(
                     item => (
                       <ChildNavLink
                         key={
@@ -3226,49 +3210,23 @@ const planName =
                         }
                       />
                     ),
-                  )
-                ) : (
-                  <div className="px-3 py-2 text-[10px] font-semibold leading-4 text-slate-400">
-                    No business apps installed.
-                  </div>
-                )}
+                  )}
+
+                </div>
+              )}
+
+            </div>
+          )}
 
 
-                {canManageApps && (
-                  <ChildNavLink
-                    href="/settings?tab=apps"
-                    icon={
-                      AppWindow
-                    }
-                    label="Manage Apps"
-                    active={
-                      pathname ===
-                        '/settings' &&
-                      settingsTab ===
-                        'apps'
-                    }
-                    onNavigate={
-                      onClose
-                    }
-                  />
-                )}
-
-              </div>
-            )}
-
-          </div>
-
-
-          {/* ====================================================
-              CORE
-              ==================================================== */}
+          {/* CORE TOOLS */}
 
           {(canUseFiles ||
             canUseNotifications) && (
             <div className="mt-6">
 
               <NavSectionLabel>
-                Core
+                Tools
               </NavSectionLabel>
 
 
@@ -3283,12 +3241,11 @@ const planName =
                 active={
                   coreRouteActive
                 }
-                onClick={
-                  () =>
-                    setCoreExpanded(
-                      current =>
-                        !current,
-                    )
+                onClick={() =>
+                  setCoreExpanded(
+                    current =>
+                      !current,
+                  )
                 }
               />
 
@@ -3355,9 +3312,7 @@ const planName =
           )}
 
 
-          {/* ====================================================
-              SETTINGS
-              ==================================================== */}
+          {/* SETTINGS */}
 
           <div className="mt-6">
 
@@ -3382,44 +3337,89 @@ const planName =
                   ? '…'
                   : undefined
               }
-              onClick={
-                () =>
-                  setSettingsExpanded(
-                    current =>
-                      !current,
-                  )
+              onClick={() =>
+                setSettingsExpanded(
+                  current =>
+                    !current,
+                )
               }
             />
 
 
             {settingsExpanded && (
-              <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
+              <div className="ml-[19px] mt-1 border-l border-slate-200 pl-3 dark:border-slate-800">
 
-                {settingsChildren.map(
-                  item => (
-                    <ChildNavLink
-                      key={
-                        item.key
-                      }
-                      href={
-                        item.href
-                      }
-                      icon={
-                        item.icon
-                      }
-                      label={
-                        item.label
-                      }
-                      active={
-                        isSettingsChildActive(
-                          item,
-                        )
-                      }
-                      onNavigate={
-                        onClose
-                      }
-                    />
-                  ),
+                <div className="space-y-1">
+
+                  {personalSettingsChildren.map(
+                    item => (
+                      <ChildNavLink
+                        key={
+                          item.key
+                        }
+                        href={
+                          item.href
+                        }
+                        icon={
+                          item.icon
+                        }
+                        label={
+                          item.label
+                        }
+                        active={
+                          isSettingsChildActive(
+                            item,
+                          )
+                        }
+                        onNavigate={
+                          onClose
+                        }
+                      />
+                    ),
+                  )}
+
+                </div>
+
+
+                {adminSettingsChildren.length >
+                  0 && (
+                  <>
+                    <p className="mb-1 mt-4 px-3 text-[8px] font-black uppercase tracking-[0.13em] text-slate-400">
+                      Administration
+                    </p>
+
+
+                    <div className="space-y-1">
+
+                      {adminSettingsChildren.map(
+                        item => (
+                          <ChildNavLink
+                            key={
+                              item.key
+                            }
+                            href={
+                              item.href
+                            }
+                            icon={
+                              item.icon
+                            }
+                            label={
+                              item.label
+                            }
+                            active={
+                              isSettingsChildActive(
+                                item,
+                              )
+                            }
+                            onNavigate={
+                              onClose
+                            }
+                          />
+                        ),
+                      )}
+
+                    </div>
+                  </>
                 )}
 
               </div>
@@ -3453,9 +3453,7 @@ const planName =
         </nav>
 
 
-        {/* ======================================================
-            USER
-            ====================================================== */}
+        {/* USER */}
 
         <div className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800">
 
@@ -3500,10 +3498,6 @@ const planName =
       </aside>
 
 
-      {/* ========================================================
-          OVERLAY
-          ======================================================== */}
-
       <SaMiOverlay
         open={
           overlay.open
@@ -3521,17 +3515,15 @@ const planName =
           label:
             'OK',
 
-          onClick:
-            () =>
-              setOverlay(
-                CLOSED_OVERLAY,
-              ),
-        }}
-        onClose={
-          () =>
+          onClick: () =>
             setOverlay(
               CLOSED_OVERLAY,
-            )
+            ),
+        }}
+        onClose={() =>
+          setOverlay(
+            CLOSED_OVERLAY,
+          )
         }
       />
     </>
@@ -3642,7 +3634,7 @@ function NavLink({
 
 
 /* ================================================================
-   DROPDOWN
+   DROPDOWN BUTTON
    ================================================================ */
 
 function DropdownButton({

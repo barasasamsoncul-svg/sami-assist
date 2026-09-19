@@ -7,25 +7,20 @@ import {
 } from '@/lib/auth/account-context';
 
 import {
-  requirePageSession,
-} from '@/lib/auth/require-page-session';
-
-import {
-  PermissionGuardError,
-  requirePermission,
-} from '@/lib/auth/permission-guards';
+  getPermissionContext,
+} from '@/lib/auth/permission-context';
 
 import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
 
 import {
-  resolveWorkspaceShellAccess,
-} from '@/lib/auth/workspace-shell';
+  requirePageSession,
+} from '@/lib/auth/require-page-session';
 
 import {
-  TenantContextError,
-} from '@/lib/auth/tenant-context';
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
 
 import UsersSettingsClient from './UsersSettingsClient';
 
@@ -45,34 +40,6 @@ export default async function UsersSettingsPage() {
     );
 
 
-  let permissions;
-
-
-  try {
-    permissions =
-      await requirePermission(
-        SAMI_PERMISSIONS
-          .USERS_VIEW,
-      );
-  } catch (
-    error
-  ) {
-    if (
-      error instanceof
-        PermissionGuardError ||
-      error instanceof
-        TenantContextError
-    ) {
-      redirect(
-        '/settings',
-      );
-    }
-
-
-    throw error;
-  }
-
-
   const context =
     await getAccountContextForUser(
       session.user.id,
@@ -83,6 +50,61 @@ export default async function UsersSettingsPage() {
   if (
     !context.tenant ||
     !context.membership
+  ) {
+    redirect(
+      '/settings',
+    );
+  }
+
+
+  let permissions;
+
+
+  try {
+    permissions =
+      await getPermissionContext();
+  } catch {
+    redirect(
+      '/settings',
+    );
+  }
+
+
+  const can =
+    (
+      permission:
+        string,
+    ) =>
+      permissions.permissionSet.has(
+        permission,
+      );
+
+
+  const canViewUsers =
+    can(
+      SAMI_PERMISSIONS
+        .USERS_VIEW,
+    );
+
+
+  const canViewInvitations =
+    can(
+      SAMI_PERMISSIONS
+        .INVITATIONS_VIEW,
+    );
+
+
+  /*
+   * Users becomes the unified access-management surface.
+   *
+   * Somebody must have at least one of:
+   *
+   * - users.view
+   * - invitations.view
+   */
+  if (
+    !canViewUsers &&
+    !canViewInvitations
   ) {
     redirect(
       '/settings',
@@ -124,22 +146,61 @@ export default async function UsersSettingsPage() {
         shell.accessibleModules
       }
 
+      canViewUsers={
+        canViewUsers
+      }
+
+      canManageUsers={
+        can(
+          SAMI_PERMISSIONS
+            .USERS_MANAGE,
+        )
+      }
+
       canViewRoles={
-        permissions
-          .permissionSet
-          .has(
-            SAMI_PERMISSIONS
-              .ROLES_VIEW,
-          )
+        can(
+          SAMI_PERMISSIONS
+            .ROLES_VIEW,
+        )
       }
 
       canManageRoles={
-        permissions
-          .permissionSet
-          .has(
-            SAMI_PERMISSIONS
-              .ROLES_MANAGE,
-          )
+        can(
+          SAMI_PERMISSIONS
+            .ROLES_MANAGE,
+        )
+      }
+
+      canViewInvitations={
+        canViewInvitations
+      }
+
+      canManageInvitations={
+        can(
+          SAMI_PERMISSIONS
+            .INVITATIONS_MANAGE,
+        )
+      }
+
+      canUseAi={
+        can(
+          SAMI_PERMISSIONS
+            .AI_USE,
+        )
+      }
+
+      canViewFiles={
+        can(
+          SAMI_PERMISSIONS
+            .FILES_VIEW,
+        )
+      }
+
+      canViewNotifications={
+        can(
+          SAMI_PERMISSIONS
+            .NOTIFICATIONS_VIEW,
+        )
       }
     />
   );

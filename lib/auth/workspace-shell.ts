@@ -14,40 +14,15 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 
-/* ================================================================
-   TYPES
-   ================================================================ */
-
 export interface WorkspaceShellAccess {
-  /**
-   * Apps THIS user may actually use.
-   *
-   * Used by:
-   * - Dashboard
-   * - Sidebar
-   * - Search
-   * - AI
-   * - Quick actions
-   */
   accessibleModules:
     ModuleContext[];
 
-  /**
-   * Complete installed-app set, but only supplied to somebody
-   * allowed to view/manage the Apps administration surface.
-   */
   managedModules:
     ModuleContext[];
 
-  /**
-   * Subscription information is withheld entirely unless the
-   * current user may view billing.
-   */
   subscription:
     SubscriptionContext | null;
-
-  canViewAppCatalog:
-    boolean;
 
   canManageApps:
     boolean;
@@ -60,10 +35,6 @@ export interface WorkspaceShellAccess {
 }
 
 
-/* ================================================================
-   CONSTANTS
-   ================================================================ */
-
 const HIDDEN_MODULE_STATUSES =
   new Set([
     'disabled',
@@ -74,14 +45,10 @@ const HIDDEN_MODULE_STATUSES =
   ]);
 
 
-/* ================================================================
-   HELPERS
-   ================================================================ */
-
 function normalizeKey(
   value:
     string | null | undefined,
-): string {
+) {
   return (
     value ||
     ''
@@ -91,31 +58,26 @@ function normalizeKey(
 }
 
 
-function getActiveInstalledModules(
+function activeInstalledModules(
   modules:
     ModuleContext[],
-): ModuleContext[] {
+) {
   return modules.filter(
-    module => {
-      const status =
+    module =>
+      !HIDDEN_MODULE_STATUSES.has(
         normalizeKey(
           module.status,
-        );
-
-
-      return !HIDDEN_MODULE_STATUSES.has(
-        status,
-      );
-    },
+        ),
+      ),
   );
 }
 
 
-function getEffectiveModuleKeys(
+function effectiveModuleKeys(
   permissions:
     PermissionContext,
-): Set<string> {
-  const result =
+) {
+  const keys =
     new Set<string>();
 
 
@@ -132,20 +94,16 @@ function getEffectiveModuleKeys(
     if (
       moduleKey
     ) {
-      result.add(
+      keys.add(
         moduleKey,
       );
     }
   }
 
 
-  return result;
+  return keys;
 }
 
-
-/* ================================================================
-   RESOLVER
-   ================================================================ */
 
 export function resolveWorkspaceShellAccess(
   input: {
@@ -159,94 +117,83 @@ export function resolveWorkspaceShellAccess(
       PermissionContext;
   },
 ): WorkspaceShellAccess {
-  const {
-    modules,
-    subscription,
-    permissions,
-  } =
-    input;
-
-
   const installedModules =
-    getActiveInstalledModules(
-      modules,
-    );
-
-
-  /*
-   * IMPORTANT:
-   *
-   * App access comes from MODULE permissions.
-   *
-   * apps.view / apps.manage do NOT automatically mean that app
-   * should appear in the person's My Apps launcher.
-   */
-  const permittedModuleKeys =
-    getEffectiveModuleKeys(
-      permissions,
-    );
-
-
-  const accessibleModules =
-    installedModules.filter(
-      module =>
-        permittedModuleKeys.has(
-          normalizeKey(
-            module.key,
-          ),
-        ),
-    );
-
-
-  /*
-   * App administration is separate from app usage.
-   */
-  const canViewAppCatalog =
-    permissions.isOwner ||
-    permissions.permissionSet.has(
-      SAMI_PERMISSIONS
-        .APPS_VIEW,
-    ) ||
-    permissions.permissionSet.has(
-      SAMI_PERMISSIONS
-        .APPS_MANAGE,
+    activeInstalledModules(
+      input.modules,
     );
 
 
   const canManageApps =
-    permissions.isOwner ||
-    permissions.permissionSet.has(
+    input.permissions.isOwner ||
+    input.permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .APPS_MANAGE,
     );
 
 
   const canViewBilling =
-    permissions.isOwner ||
-    permissions.permissionSet.has(
+    input.permissions.isOwner ||
+    input.permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .BILLING_VIEW,
     ) ||
-    permissions.permissionSet.has(
+    input.permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .BILLING_MANAGE,
     );
 
 
+  /*
+   * Owner has structural authority over the workspace.
+   *
+   * Everyone else gets only applications represented in their
+   * effective module permissions.
+   */
+  const accessibleModules =
+    input.permissions.isOwner
+      ? installedModules
+      : (() => {
+          const allowed =
+            effectiveModuleKeys(
+              input.permissions,
+            );
+
+
+          return installedModules.filter(
+            module =>
+              allowed.has(
+                normalizeKey(
+                  module.key,
+                ),
+              ),
+          );
+        })();
+
+
   return {
+    /*
+     * Personal working environment.
+     */
     accessibleModules,
 
+    /*
+     * Administration environment.
+     *
+     * apps.view alone does not expose the complete installed
+     * catalog through the normal shell.
+     */
     managedModules:
-      canViewAppCatalog
+      canManageApps
         ? installedModules
         : [],
 
+    /*
+     * Never send plan information without billing permission.
+     */
     subscription:
       canViewBilling
-        ? subscription
+        ? input.subscription
         : null,
-
-    canViewAppCatalog,
 
     canManageApps,
 

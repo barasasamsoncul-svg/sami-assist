@@ -3,31 +3,16 @@ import {
 } from 'next/navigation';
 
 import {
-  getAccountContextForUser,
-} from '@/lib/auth/account-context';
-
-import {
-  requirePageSession,
-} from '@/lib/auth/require-page-session';
-
-import {
-  PermissionGuardError,
-  requirePermission,
-} from '@/lib/auth/permission-guards';
+  getPermissionContext,
+} from '@/lib/auth/permission-context';
 
 import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
 
 import {
-  resolveWorkspaceShellAccess,
-} from '@/lib/auth/workspace-shell';
-
-import {
-  TenantContextError,
-} from '@/lib/auth/tenant-context';
-
-import InvitationsSettingsClient from './InvitationsSettingsClient';
+  requirePageSession,
+} from '@/lib/auth/require-page-session';
 
 
 export const runtime =
@@ -39,99 +24,32 @@ export const dynamic =
 
 
 export default async function InvitationsSettingsPage() {
-  const session =
-    await requirePageSession(
-      '/settings/invitations',
-    );
-
-
-  let permissions;
+  await requirePageSession(
+    '/settings/invitations',
+  );
 
 
   try {
-    permissions =
-      await requirePermission(
+    const permissions =
+      await getPermissionContext();
+
+
+    if (
+      permissions.permissionSet.has(
         SAMI_PERMISSIONS
           .INVITATIONS_VIEW,
-      );
-  } catch (
-    error
-  ) {
-    if (
-      error instanceof
-        PermissionGuardError ||
-      error instanceof
-        TenantContextError
+      )
     ) {
       redirect(
-        '/settings',
+        '/settings/users?view=invited',
       );
     }
-
-
-    throw error;
+  } catch {
+    // Fall through to Settings.
   }
 
 
-  const context =
-    await getAccountContextForUser(
-      session.user.id,
-      session.currentTenantId,
-    );
-
-
-  if (
-    !context.tenant ||
-    !context.membership
-  ) {
-    redirect(
-      '/settings',
-    );
-  }
-
-
-  const shell =
-    resolveWorkspaceShellAccess({
-      modules:
-        context.modules,
-
-      subscription:
-        context.subscription,
-
-      permissions,
-    });
-
-
-  return (
-    <InvitationsSettingsClient
-      user={
-        session.user
-      }
-
-      tenant={
-        context.tenant
-      }
-
-      membership={
-        context.membership
-      }
-
-      subscription={
-        shell.subscription
-      }
-
-      modules={
-        shell.accessibleModules
-      }
-
-      canManage={
-        permissions
-          .permissionSet
-          .has(
-            SAMI_PERMISSIONS
-              .INVITATIONS_MANAGE,
-          )
-      }
-    />
+  redirect(
+    '/settings',
   );
 }
