@@ -39,25 +39,22 @@ import {
        effective permissions
 
 
-   IMPORTANT
+   CORE PERMISSIONS
 
-   Core permission:
+       permissions.module_key IS NULL
 
-       module_key IS NULL
-           ↓
-       may become effective normally
+   are available independently of business apps.
 
 
-   Module permission:
+   MODULE PERMISSIONS
 
-       module_key = 'invoicing'
-           ↓
-       requires invoicing to be installed/enabled
-       for the current workspace
+       permissions.module_key = 'invoicing'
 
+   only become effective when that module is installed/enabled
+   for the current workspace.
 
-   Therefore a stale role assignment cannot keep access to an
-   application after that application is uninstalled.
+   This prevents stale role_permissions from keeping access to
+   an app after that app has been removed from a workspace.
 
    ================================================================ */
 
@@ -235,13 +232,17 @@ function normalizeScope(
   | 'company'
   | 'module'
   | 'record' {
-  switch (
+  const normalized =
     typeof value ===
       'string'
       ? value
           .trim()
           .toLowerCase()
-      : ''
+      : '';
+
+
+  switch (
+    normalized
   ) {
     case 'company':
       return 'company';
@@ -370,16 +371,22 @@ function mapPermission(
    INSTALLED MODULE CONDITION
    ================================================================
 
-   Used by BOTH owners and ordinary role-based users.
+   IMPORTANT
 
-   Core permissions have module_key = NULL.
+   This SQL fragment is used inside queries where:
 
-   Module permissions are effective only when:
+       p = permissions
 
-       modules.key = permissions.module_key
-       tenant_modules.tenant_id = current workspace
-       module active
-       tenant module installed/enabled
+   Parameters:
+
+       $1 = user ID
+       $2 = tenant/workspace ID
+
+   Core permission:
+       p.module_key IS NULL
+
+   Module permission:
+       requires matching active module + installed tenant_module.
 
    ================================================================ */
 
@@ -391,7 +398,8 @@ const INSTALLED_MODULE_PERMISSION_CONDITION = `
     OR
 
     EXISTS (
-      SELECT 1
+      SELECT
+        1
 
       FROM tenant_modules tm
 
@@ -417,10 +425,16 @@ const INSTALLED_MODULE_PERMISSION_CONDITION = `
         'active'
 
         AND LOWER(
-          m.key
+          COALESCE(
+            m.key,
+            ''
+          )
         ) =
         LOWER(
-          p.module_key
+          COALESCE(
+            p.module_key,
+            ''
+          )
         )
 
         AND LOWER(
@@ -440,6 +454,20 @@ const INSTALLED_MODULE_PERMISSION_CONDITION = `
 
 /* ================================================================
    LOAD ASSIGNED ROLES
+   ================================================================
+
+   PostgreSQL note:
+
+   ORDER BY expressions cannot be used directly with SELECT DISTINCT
+   unless those exact expressions appear in the SELECT list.
+
+   We therefore:
+
+       1. DISTINCT inside
+       2. ORDER outside
+
+   This fixes PostgreSQL 42P10.
+
    ================================================================ */
 
 async function loadAssignedRoles(
@@ -449,68 +477,82 @@ async function loadAssignedRoles(
   const result =
     await queryControl(
       `
-        SELECT DISTINCT
-          r.id,
-          r.key,
-          r.name,
-          r.description,
-          r.is_system,
-          r.tenant_id
+        SELECT
+          resolved_roles.id,
+          resolved_roles.key,
+          resolved_roles.name,
+          resolved_roles.description,
+          resolved_roles.is_system,
+          resolved_roles.tenant_id
 
-        FROM user_roles ur
+        FROM (
+          SELECT DISTINCT
+            r.id,
+            r.key,
+            r.name,
+            r.description,
+            r.is_system,
+            r.tenant_id
 
-        INNER JOIN roles r
-          ON r.id =
-             ur.role_id
+          FROM user_roles ur
 
-        WHERE ur.user_id =
-              $1
+          INNER JOIN roles r
+            ON r.id =
+               ur.role_id
 
-          AND ur.tenant_id =
-              $2
+          WHERE ur.user_id =
+                $1
 
-          AND ur.deleted_at
-              IS NULL
+            AND ur.tenant_id =
+                $2
 
-          AND r.deleted_at
-              IS NULL
+            AND ur.deleted_at
+                IS NULL
 
-          AND LOWER(
-            COALESCE(
-              r.status,
-              'active'
+            AND r.deleted_at
+                IS NULL
+
+            AND LOWER(
+              COALESCE(
+                r.status,
+                'active'
+              )
+            ) =
+            'active'
+
+            AND (
+              (
+                r.is_system =
+                  TRUE
+
+                AND r.tenant_id
+                    IS NULL
+              )
+
+              OR
+
+              (
+                r.is_system =
+                  FALSE
+
+                AND r.tenant_id =
+                    $2
+              )
             )
-          ) =
-          'active'
-
-          AND (
-            (
-              r.is_system =
-                TRUE
-
-              AND r.tenant_id
-                  IS NULL
-            )
-
-            OR
-
-            (
-              r.is_system =
-                FALSE
-
-              AND r.tenant_id =
-                  $2
-            )
-          )
+        )
+          AS resolved_roles
 
         ORDER BY
-          r.is_system DESC,
+          resolved_roles.is_system
+            DESC,
 
           LOWER(
-            r.name
-          ) ASC,
+            resolved_roles.name
+          )
+            ASC,
 
-          r.id ASC
+          resolved_roles.id
+            ASC
       `,
       [
         context.userId,
@@ -531,20 +573,20 @@ async function loadAssignedRoles(
    LOAD OWNER PERMISSIONS
    ================================================================
 
-   Owner receives every ACTIVE permission that is actually
-   AVAILABLE in the current workspace.
+   Workspace owner receives every ACTIVE permission available to
+   the workspace.
 
    That means:
 
-       all active core permissions
+       active core permissions
 
    plus:
 
-       permissions belonging to installed modules
+       active permissions belonging to installed modules
 
-   NOT:
+   It does NOT mean:
 
-       permissions belonging to apps this workspace does not have
+       every module permission registered anywhere in SaMi.
 
    ================================================================ */
 
@@ -627,6 +669,27 @@ async function loadOwnerPermissions(
 
 /* ================================================================
    LOAD ROLE PERMISSIONS
+   ================================================================
+
+   A user may receive the same permission through several roles.
+
+   Example:
+
+       Sales Manager
+           └── customers.view
+
+       Accountant
+           └── customers.view
+
+   We therefore need DISTINCT.
+
+   Again:
+
+       DISTINCT happens in the inner query
+       sorting happens in the outer query
+
+   This fixes PostgreSQL 42P10 without losing deduplication.
+
    ================================================================ */
 
 async function loadRolePermissions(
@@ -636,90 +699,104 @@ async function loadRolePermissions(
   const result =
     await queryControl(
       `
-        SELECT DISTINCT
-          p.id,
-          p.key,
-          p.name,
-          p.description,
-          p.resource,
-          p.action,
-          p.module_key,
-          p.scope,
-          p.is_system
+        SELECT
+          resolved_permissions.id,
+          resolved_permissions.key,
+          resolved_permissions.name,
+          resolved_permissions.description,
+          resolved_permissions.resource,
+          resolved_permissions.action,
+          resolved_permissions.module_key,
+          resolved_permissions.scope,
+          resolved_permissions.is_system
 
-        FROM user_roles ur
+        FROM (
+          SELECT DISTINCT
+            p.id,
+            p.key,
+            p.name,
+            p.description,
+            p.resource,
+            p.action,
+            p.module_key,
+            p.scope,
+            p.is_system
 
-        INNER JOIN roles r
-          ON r.id =
-             ur.role_id
+          FROM user_roles ur
 
-        INNER JOIN role_permissions rp
-          ON rp.role_id =
-             r.id
+          INNER JOIN roles r
+            ON r.id =
+               ur.role_id
 
-        INNER JOIN permissions p
-          ON p.id =
-             rp.permission_id
+          INNER JOIN role_permissions rp
+            ON rp.role_id =
+               r.id
 
-        WHERE ur.user_id =
-              $1
+          INNER JOIN permissions p
+            ON p.id =
+               rp.permission_id
 
-          AND ur.tenant_id =
-              $2
+          WHERE ur.user_id =
+                $1
 
-          AND ur.deleted_at
-              IS NULL
+            AND ur.tenant_id =
+                $2
 
-          AND r.deleted_at
-              IS NULL
+            AND ur.deleted_at
+                IS NULL
 
-          AND LOWER(
-            COALESCE(
-              r.status,
-              'active'
+            AND r.deleted_at
+                IS NULL
+
+            AND LOWER(
+              COALESCE(
+                r.status,
+                'active'
+              )
+            ) =
+            'active'
+
+            AND (
+              (
+                r.is_system =
+                  TRUE
+
+                AND r.tenant_id
+                    IS NULL
+              )
+
+              OR
+
+              (
+                r.is_system =
+                  FALSE
+
+                AND r.tenant_id =
+                    $2
+              )
             )
-          ) =
-          'active'
 
-          AND (
-            (
-              r.is_system =
-                TRUE
+            AND rp.deleted_at
+                IS NULL
 
-              AND r.tenant_id
-                  IS NULL
-            )
+            AND p.deleted_at
+                IS NULL
 
-            OR
+            AND LOWER(
+              COALESCE(
+                p.status,
+                'active'
+              )
+            ) =
+            'active'
 
-            (
-              r.is_system =
-                FALSE
-
-              AND r.tenant_id =
-                  $2
-            )
-          )
-
-          AND rp.deleted_at
-              IS NULL
-
-          AND p.deleted_at
-              IS NULL
-
-          AND LOWER(
-            COALESCE(
-              p.status,
-              'active'
-            )
-          ) =
-          'active'
-
-          AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
+            AND ${INSTALLED_MODULE_PERMISSION_CONDITION}
+        )
+          AS resolved_permissions
 
         ORDER BY
           CASE
-            WHEN p.module_key
+            WHEN resolved_permissions.module_key
                  IS NULL
             THEN 0
 
@@ -728,16 +805,16 @@ async function loadRolePermissions(
 
           LOWER(
             COALESCE(
-              p.module_key,
+              resolved_permissions.module_key,
               ''
             )
           ) ASC,
 
           LOWER(
-            p.key
+            resolved_permissions.key
           ) ASC,
 
-          p.id ASC
+          resolved_permissions.id ASC
       `,
       [
         context.userId,
@@ -763,6 +840,14 @@ async function loadRolePermissions(
 
 /* ================================================================
    DEDUPLICATE PERMISSIONS
+   ================================================================
+
+   SQL already removes duplicate permission rows for ordinary users.
+
+   Keep this application-level deduplication as a defensive boundary,
+   especially because the owner permission path does not require
+   SQL DISTINCT.
+
    ================================================================ */
 
 function uniquePermissions(
@@ -815,13 +900,18 @@ function uniquePermissions(
 
 
 /* ================================================================
-   RESOLVE FROM TRUSTED TENANT CONTEXT
+   RESOLVE PERMISSION CONTEXT
    ================================================================ */
 
 export async function resolvePermissionContext(
   tenantContext:
     TrustedTenantContext,
 ): Promise<PermissionContext> {
+  /*
+   * Both queries use an already trusted TenantContext.
+   *
+   * No tenant ID comes from the browser.
+   */
   const [
     roles,
     rawPermissions,
@@ -888,7 +978,7 @@ export async function resolvePermissionContext(
 
 
 /* ================================================================
-   RESOLVE CURRENT USER
+   GET CURRENT USER PERMISSION CONTEXT
    ================================================================ */
 
 export async function getPermissionContext():
@@ -920,7 +1010,7 @@ export async function getEffectivePermissionKeys():
 
 
 /* ================================================================
-   HAS PERMISSION — EXISTING CONTEXT
+   HAS ONE — EXISTING CONTEXT
    ================================================================ */
 
 export function permissionContextHas(
@@ -950,7 +1040,7 @@ export function permissionContextHas(
 
 
 /* ================================================================
-   HAS ANY
+   HAS ANY — EXISTING CONTEXT
    ================================================================ */
 
 export function permissionContextHasAny(
@@ -979,7 +1069,7 @@ export function permissionContextHasAny(
 
 
 /* ================================================================
-   HAS ALL
+   HAS ALL — EXISTING CONTEXT
    ================================================================ */
 
 export function permissionContextHasAll(
@@ -1008,7 +1098,7 @@ export function permissionContextHasAll(
 
 
 /* ================================================================
-   HAS PERMISSION — CURRENT USER
+   HAS ONE — CURRENT USER
    ================================================================ */
 
 export async function hasPermission(
@@ -1027,7 +1117,7 @@ export async function hasPermission(
 
 
 /* ================================================================
-   HAS ANY PERMISSION — CURRENT USER
+   HAS ANY — CURRENT USER
    ================================================================ */
 
 export async function hasAnyPermission(
@@ -1046,7 +1136,7 @@ export async function hasAnyPermission(
 
 
 /* ================================================================
-   HAS ALL PERMISSIONS — CURRENT USER
+   HAS ALL — CURRENT USER
    ================================================================ */
 
 export async function hasAllPermissions(
@@ -1065,7 +1155,7 @@ export async function hasAllPermissions(
 
 
 /* ================================================================
-   PERMISSION LOOKUP
+   GET PERMISSION FROM CONTEXT
    ================================================================ */
 
 export function getPermissionFromContext(
