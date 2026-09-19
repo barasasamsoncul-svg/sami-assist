@@ -136,21 +136,26 @@ type ModuleData = {
 
 
 type SettingsCapabilities = {
-  workspaceView:
+  /*
+   * Normal workspace capabilities.
+   */
+  aiUse:
     boolean;
 
+  filesView:
+    boolean;
+
+  notificationsView:
+    boolean;
+
+
+  /*
+   * Administration capabilities.
+   */
   workspaceManage:
     boolean;
 
-
-  appsView:
-    boolean;
-
   appsManage:
-    boolean;
-
-
-  aiUse:
     boolean;
 
   aiManage:
@@ -178,19 +183,9 @@ type Props = {
   subscription:
     SubscriptionData;
 
-  /*
-   * What THIS person can use.
-   *
-   * Used by WorkspaceSidebar.
-   */
   accessibleModules:
     ModuleData[];
 
-  /*
-   * Complete app administration set.
-   *
-   * Never passed to WorkspaceSidebar.
-   */
   managedModules:
     ModuleData[];
 
@@ -339,7 +334,7 @@ function applyThemeToDocument(
       theme,
     );
   } catch {
-    // Local preference cache is optional.
+    // Local cache is optional.
   }
 
 
@@ -370,23 +365,29 @@ async function readPreferencesResponse(
 }
 
 
+/*
+ * Personal profile, email, appearance/preferences, security and
+ * sessions remain owned by MyAccountSettings.
+ *
+ * Old direct links therefore resolve back into My Account.
+ */
 function normalizeSection(
   value:
     string | null,
 ): Section {
-  /*
-   * Existing account/security/session routes still resolve into
-   * the My Account settings component.
-   */
   if (
     value ===
       'personal' ||
     value ===
+      'account' ||
+    value ===
+      'preferences' ||
+    value ===
+      'appearance' ||
+    value ===
       'security' ||
     value ===
-      'sessions' ||
-    value ===
-      'account'
+      'sessions'
   ) {
     return 'account';
   }
@@ -506,16 +507,14 @@ export default function SettingsClient({
   /* ==============================================================
      ALLOWED SETTINGS
 
-     IMPORTANT
+     IMPORTANT:
 
-     Role names such as:
-       owner
-       admin
-       member
+     My Account is personal.
 
-     do NOT decide these sections.
+     Workspace / Apps / AI configuration are ADMINISTRATION and
+     therefore require their manage permissions.
 
-     Category 8 permissions do.
+     Being able to USE something does not expose its settings.
      ============================================================== */
 
   const allowedSections =
@@ -529,12 +528,8 @@ export default function SettingsClient({
 
         if (
           hasWorkspaceAccess &&
-          (
-            capabilities
-              .workspaceView ||
-            capabilities
-              .workspaceManage
-          )
+          capabilities
+            .workspaceManage
         ) {
           sections.add(
             'workspace',
@@ -543,8 +538,6 @@ export default function SettingsClient({
 
 
         if (
-          capabilities
-            .appsView ||
           capabilities
             .appsManage
         ) {
@@ -555,8 +548,6 @@ export default function SettingsClient({
 
 
         if (
-          capabilities
-            .aiUse ||
           capabilities
             .aiManage
         ) {
@@ -618,11 +609,8 @@ export default function SettingsClient({
       /*
        * Fail closed.
        *
-       * Someone manually typing:
-       *
-       * /settings?tab=billing
-       *
-       * without billing access returns to My Account.
+       * Manually typing a protected settings URL never creates
+       * access.
        */
       setActive(
         'account',
@@ -691,7 +679,7 @@ export default function SettingsClient({
 
 
   /* ==============================================================
-     LOAD PREFERENCES
+     LOAD PERSONAL PREFERENCES
      ============================================================== */
 
   useEffect(
@@ -751,7 +739,9 @@ export default function SettingsClient({
             ),
           );
         } catch {
-          // Defaults remain usable.
+          /*
+           * Personal settings remain usable with defaults.
+           */
         }
       }
 
@@ -948,7 +938,7 @@ export default function SettingsClient({
 
 
   /* ==============================================================
-     DISPLAY VALUES
+     DISPLAY
      ============================================================== */
 
   const currentPlan =
@@ -1003,9 +993,9 @@ export default function SettingsClient({
           }
 
           /*
-           * NEVER use managedModules here.
+           * Personal accessible apps only.
            *
-           * Sidebar = personal accessible applications.
+           * NEVER managedModules.
            */
           modules={
             accessibleModules
@@ -1017,10 +1007,12 @@ export default function SettingsClient({
                 .aiUse,
 
             filesEnabled:
-              false,
+              capabilities
+                .filesView,
 
             notificationsEnabled:
-              false,
+              capabilities
+                .notificationsView,
           }}
 
           unreadNotifications={
@@ -1117,10 +1109,12 @@ export default function SettingsClient({
 
 
           {/* ====================================================
-              CONTENT
+              SETTINGS CONTENT
               ==================================================== */}
 
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+
+            {/* PERSONAL ACCOUNT */}
 
             {active ===
               'account' && (
@@ -1128,64 +1122,50 @@ export default function SettingsClient({
             )}
 
 
+            {/* WORKSPACE ADMINISTRATION */}
+
             {active ===
               'workspace' &&
               hasWorkspaceAccess &&
-              (
-                capabilities
-                  .workspaceView ||
-                capabilities
-                  .workspaceManage
-              ) && (
+              capabilities
+                .workspaceManage && (
                 <WorkspaceSettings />
               )}
 
 
+            {/* APPS ADMINISTRATION */}
+
             {active ===
               'apps' &&
-              (
-                capabilities
-                  .appsView ||
-                capabilities
-                  .appsManage
-              ) && (
+              capabilities
+                .appsManage && (
                 <SettingsSurface>
 
                   <AppsSection
                     modules={
                       managedModules
                     }
-
-                    canManage={
-                      capabilities
-                        .appsManage
-                    }
                   />
 
                 </SettingsSurface>
               )}
 
+
+            {/* SAMI AI ADMINISTRATION */}
 
             {active ===
               'ai' &&
-              (
-                capabilities
-                  .aiUse ||
-                capabilities
-                  .aiManage
-              ) && (
+              capabilities
+                .aiManage && (
                 <SettingsSurface>
 
-                  <AiSection
-                    canManage={
-                      capabilities
-                        .aiManage
-                    }
-                  />
+                  <AiSection />
 
                 </SettingsSurface>
               )}
 
+
+            {/* BILLING */}
 
             {active ===
               'billing' &&
@@ -1231,7 +1211,7 @@ export default function SettingsClient({
 
 
 /* ================================================================
-   SURFACE
+   SETTINGS SURFACE
    ================================================================ */
 
 function SettingsSurface({
@@ -1249,18 +1229,14 @@ function SettingsSurface({
 
 
 /* ================================================================
-   APPS
+   APPS ADMINISTRATION
    ================================================================ */
 
 function AppsSection({
   modules,
-  canManage,
 }: {
   modules:
     ModuleData[];
-
-  canManage:
-    boolean;
 }) {
   if (
     modules.length ===
@@ -1271,12 +1247,8 @@ function AppsSection({
         icon={
           AppWindow
         }
-        title="No applications available"
-        description={
-          canManage
-            ? 'There are currently no installed business applications in this workspace.'
-            : 'There are no workspace applications available to your Apps administration access.'
-        }
+        title="No installed applications"
+        description="There are currently no active business applications available for workspace administration."
       />
     );
   }
@@ -1296,9 +1268,7 @@ function AppsSection({
             </h2>
 
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {canManage
-                ? 'Installed applications you are authorized to manage.'
-                : 'Installed applications you are authorized to review.'}
+              Installed business applications available to your Apps administration access.
             </p>
 
           </div>
@@ -1384,15 +1354,10 @@ function AppsSection({
 
 
 /* ================================================================
-   SAMI AI
+   SAMI AI ADMINISTRATION
    ================================================================ */
 
-function AiSection({
-  canManage,
-}: {
-  canManage:
-    boolean;
-}) {
+function AiSection() {
   return (
     <div className="max-w-4xl">
 
@@ -1407,21 +1372,18 @@ function AiSection({
 
           <div>
 
-            <h2 className="text-base font-bold">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
+              Administration
+            </p>
+
+            <h2 className="mt-1 text-base font-bold">
               SaMi AI
             </h2>
 
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              SaMi AI works only with applications, companies and records your current account is authorized to access.
+              Configure workspace-level SaMi AI behavior and governance. Ordinary users with ai.use can use SaMi AI but do not receive this administration page.
             </p>
-
-
-            {canManage && (
-              <p className="mt-3 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
-                You also have AI administration access.
-              </p>
-            )}
 
           </div>
 
@@ -1437,7 +1399,7 @@ function AiSection({
         </p>
 
         <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          AI context cannot exceed your normal SaMi access. Restricted apps and records are not exposed through AI.
+          SaMi AI must never access applications, companies or records beyond the effective permissions of the person making the request.
         </p>
 
       </div>
@@ -1574,7 +1536,7 @@ function BillingSection({
 
 
 /* ================================================================
-   INFO
+   INFO CARD
    ================================================================ */
 
 function InfoCard({
@@ -1604,7 +1566,7 @@ function InfoCard({
 
 
 /* ================================================================
-   EMPTY
+   EMPTY STATE
    ================================================================ */
 
 function EmptyState({

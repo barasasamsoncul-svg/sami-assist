@@ -14,13 +14,39 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 
+/* ================================================================
+   TYPES
+   ================================================================ */
+
 export interface WorkspaceShellAccess {
+  /**
+   * Applications the CURRENT USER is actually allowed to use.
+   *
+   * Used by:
+   * - Dashboard
+   * - Sidebar
+   * - Search
+   * - Recent work
+   * - Quick actions
+   * - SaMi AI context
+   */
   accessibleModules:
     ModuleContext[];
 
+  /**
+   * Complete installed application set exposed only to somebody
+   * authorized to administer workspace applications.
+   *
+   * IMPORTANT:
+   * managedModules must never be used for the user's My Apps list.
+   */
   managedModules:
     ModuleContext[];
 
+  /**
+   * Subscription information is withheld unless the current user
+   * has explicit billing visibility.
+   */
   subscription:
     SubscriptionContext | null;
 
@@ -35,6 +61,10 @@ export interface WorkspaceShellAccess {
 }
 
 
+/* ================================================================
+   CONSTANTS
+   ================================================================ */
+
 const HIDDEN_MODULE_STATUSES =
   new Set([
     'disabled',
@@ -45,10 +75,14 @@ const HIDDEN_MODULE_STATUSES =
   ]);
 
 
+/* ================================================================
+   HELPERS
+   ================================================================ */
+
 function normalizeKey(
   value:
     string | null | undefined,
-) {
+): string {
   return (
     value ||
     ''
@@ -58,26 +92,31 @@ function normalizeKey(
 }
 
 
-function activeInstalledModules(
+function getActiveInstalledModules(
   modules:
     ModuleContext[],
-) {
+): ModuleContext[] {
   return modules.filter(
-    module =>
-      !HIDDEN_MODULE_STATUSES.has(
+    module => {
+      const status =
         normalizeKey(
           module.status,
-        ),
-      ),
+        );
+
+
+      return !HIDDEN_MODULE_STATUSES.has(
+        status,
+      );
+    },
   );
 }
 
 
-function effectiveModuleKeys(
+function getEffectiveModuleKeys(
   permissions:
     PermissionContext,
-) {
-  const keys =
+): Set<string> {
+  const result =
     new Set<string>();
 
 
@@ -94,16 +133,20 @@ function effectiveModuleKeys(
     if (
       moduleKey
     ) {
-      keys.add(
+      result.add(
         moduleKey,
       );
     }
   }
 
 
-  return keys;
+  return result;
 }
 
+
+/* ================================================================
+   RESOLVER
+   ================================================================ */
 
 export function resolveWorkspaceShellAccess(
   input: {
@@ -117,82 +160,108 @@ export function resolveWorkspaceShellAccess(
       PermissionContext;
   },
 ): WorkspaceShellAccess {
+  const {
+    modules,
+    subscription,
+    permissions,
+  } =
+    input;
+
+
   const installedModules =
-    activeInstalledModules(
-      input.modules,
+    getActiveInstalledModules(
+      modules,
     );
 
 
+  /* ==============================================================
+     ACCESSIBLE BUSINESS APPS
+
+     Installed != accessible.
+
+     A normal member sees only applications represented by their
+     effective module permissions.
+
+     Workspace owner is structural authority and therefore receives
+     the complete active installed application set.
+     ============================================================== */
+
+  let accessibleModules:
+    ModuleContext[];
+
+
+  if (
+    permissions.isOwner
+  ) {
+    accessibleModules =
+      installedModules;
+  } else {
+    const permittedModuleKeys =
+      getEffectiveModuleKeys(
+        permissions,
+      );
+
+
+    accessibleModules =
+      installedModules.filter(
+        module =>
+          permittedModuleKeys.has(
+            normalizeKey(
+              module.key,
+            ),
+          ),
+      );
+  }
+
+
+  /* ==============================================================
+     APPS ADMINISTRATION
+
+     apps.manage controls the complete Apps administration surface.
+
+     IMPORTANT:
+     apps.manage does NOT automatically grant business-record access.
+     ============================================================== */
+
   const canManageApps =
-    input.permissions.isOwner ||
-    input.permissions.permissionSet.has(
+    permissions.isOwner ||
+    permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .APPS_MANAGE,
     );
 
 
+  /* ==============================================================
+     BILLING
+     ============================================================== */
+
   const canViewBilling =
-    input.permissions.isOwner ||
-    input.permissions.permissionSet.has(
+    permissions.isOwner ||
+    permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .BILLING_VIEW,
     ) ||
-    input.permissions.permissionSet.has(
+    permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .BILLING_MANAGE,
     );
 
 
-  /*
-   * Owner has structural authority over the workspace.
-   *
-   * Everyone else gets only applications represented in their
-   * effective module permissions.
-   */
-  const accessibleModules =
-    input.permissions.isOwner
-      ? installedModules
-      : (() => {
-          const allowed =
-            effectiveModuleKeys(
-              input.permissions,
-            );
-
-
-          return installedModules.filter(
-            module =>
-              allowed.has(
-                normalizeKey(
-                  module.key,
-                ),
-              ),
-          );
-        })();
-
+  /* ==============================================================
+     RESULT
+     ============================================================== */
 
   return {
-    /*
-     * Personal working environment.
-     */
     accessibleModules,
 
-    /*
-     * Administration environment.
-     *
-     * apps.view alone does not expose the complete installed
-     * catalog through the normal shell.
-     */
     managedModules:
       canManageApps
         ? installedModules
         : [],
 
-    /*
-     * Never send plan information without billing permission.
-     */
     subscription:
       canViewBilling
-        ? input.subscription
+        ? subscription
         : null,
 
     canManageApps,

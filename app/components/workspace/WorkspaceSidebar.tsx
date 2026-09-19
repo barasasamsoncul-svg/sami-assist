@@ -30,7 +30,6 @@ import {
   Settings,
   ShieldCheck,
   ShoppingCart,
-  SlidersHorizontal,
   Star,
   Store,
   User,
@@ -410,10 +409,8 @@ type Props = {
     MembershipData;
 
   /*
-   * IMPORTANT:
-   *
-   * This must already be null unless the server resolved
-   * billing visibility for this user.
+   * Must already be null when the current user does not have
+   * billing visibility.
    */
   subscription:
     SubscriptionData;
@@ -421,9 +418,8 @@ type Props = {
   /*
    * IMPORTANT:
    *
-   * This is NOT the tenant's complete installed app list.
-   *
-   * This must be the user's Accessible Apps resolved server-side.
+   * This must contain the CURRENT USER'S accessible applications,
+   * not every app installed in the workspace.
    */
   modules:
     ModuleData[];
@@ -443,23 +439,17 @@ type Props = {
 
 
 /* ================================================================
-   SETTINGS TYPES
+   NAVIGATION TYPES
    ================================================================ */
 
-type SettingsTab =
-  | 'personal'
-  | 'preferences'
-  | 'security'
+type SettingsKey =
+  | 'account'
   | 'workspace'
+  | 'users'
+  | 'roles'
   | 'apps'
   | 'ai'
   | 'billing';
-
-
-type SettingsKey =
-  | SettingsTab
-  | 'users'
-  | 'roles';
 
 
 type SettingsChild = {
@@ -597,59 +587,6 @@ const APP_ROUTE_ALIASES:
   e_commerce:
     '/ecommerce',
 };
-
-
-/*
- * PERSONAL SETTINGS
- *
- * Every authenticated SaMi account owns these.
- *
- * They are NOT workspace administration.
- */
-const PERSONAL_SETTINGS:
-  SettingsChild[] = [
-    {
-      key:
-        'personal',
-
-      label:
-        'My Account',
-
-      href:
-        '/settings?tab=personal',
-
-      icon:
-        User,
-    },
-
-    {
-      key:
-        'preferences',
-
-      label:
-        'Preferences',
-
-      href:
-        '/settings?tab=preferences',
-
-      icon:
-        SlidersHorizontal,
-    },
-
-    {
-      key:
-        'security',
-
-      label:
-        'Security',
-
-      href:
-        '/settings?tab=security',
-
-      icon:
-        ShieldCheck,
-    },
-  ];
 
 
 const CLOSED_OVERLAY:
@@ -1045,7 +982,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     WORKSPACE STATE
+     WORKSPACE
      ============================================================ */
 
   const [
@@ -1099,7 +1036,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     COMPANY STATE
+     COMPANY CONTEXT
      ============================================================ */
 
   const [
@@ -1178,7 +1115,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     UI STATE
+     GENERAL UI
      ============================================================ */
 
   const [
@@ -1190,37 +1127,8 @@ export default function WorkspaceSidebar({
     );
 
 
-  const rawSettingsTab =
-    searchParams.get(
-      'tab',
-    );
-
-
-  const settingsTab:
-    SettingsTab =
-    rawSettingsTab ===
-        'preferences' ||
-      rawSettingsTab ===
-        'security' ||
-      rawSettingsTab ===
-        'workspace' ||
-      rawSettingsTab ===
-        'apps' ||
-      rawSettingsTab ===
-        'ai' ||
-      rawSettingsTab ===
-        'billing'
-      ? rawSettingsTab
-      : 'personal';
-
-
   /* ============================================================
-     ACCESSIBLE BUSINESS APPS
-
-     `modules` is expected to already be resolved by
-     resolveWorkspaceShellAccess() on the server.
-
-     This additional status filter is defensive only.
+     ACCESSIBLE APPS
      ============================================================ */
 
   const accessibleApps =
@@ -1279,13 +1187,34 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     PERSONAL SETTINGS
-
-     Always available to authenticated users.
+     NORMAL WORKSPACE CAPABILITIES
      ============================================================ */
 
-  const personalSettingsChildren =
-    PERSONAL_SETTINGS;
+  const canUseAi =
+    capabilities
+      ?.aiEnabled !==
+      false &&
+    navigationPermissions
+      ?.aiUse ===
+      true;
+
+
+  const canUseFiles =
+    capabilities
+      ?.filesEnabled ===
+      true &&
+    navigationPermissions
+      ?.filesView ===
+      true;
+
+
+  const canUseNotifications =
+    capabilities
+      ?.notificationsEnabled ===
+      true &&
+    navigationPermissions
+      ?.notificationsView ===
+      true;
 
 
   /* ============================================================
@@ -1293,17 +1222,13 @@ export default function WorkspaceSidebar({
 
      IMPORTANT:
 
-     These are administration/configuration surfaces.
+     Using a feature does NOT grant access to its administration.
 
-     Using something is NOT enough to expose its settings.
+       workspace.view != workspace.manage
+       ai.use         != ai.manage
+       module access  != apps.manage
 
-     Examples:
-
-       workspace.view  != Workspace Settings
-       ai.use          != SaMi AI Settings
-       apps.view       != Apps Administration
-
-     ============================================================ */
+     ============================================================== */
 
   const adminSettingsChildren =
     useMemo<
@@ -1322,9 +1247,6 @@ export default function WorkspaceSidebar({
           [];
 
 
-        /*
-         * Workspace configuration requires workspace.manage.
-         */
         if (
           navigationPermissions
             .workspaceManage
@@ -1346,7 +1268,12 @@ export default function WorkspaceSidebar({
 
 
         /*
-         * Users is the unified member + invitation surface.
+         * Users now includes:
+         *
+         * - active members
+         * - suspended members
+         * - pending invitations
+         * - expired/revoked invitations
          */
         if (
           navigationPermissions
@@ -1390,10 +1317,6 @@ export default function WorkspaceSidebar({
         }
 
 
-        /*
-         * Complete installed-app administration is only shown to
-         * somebody permitted to MANAGE applications.
-         */
         if (
           navigationPermissions
             .appsManage
@@ -1414,11 +1337,6 @@ export default function WorkspaceSidebar({
         }
 
 
-        /*
-         * ai.use places SaMi AI in the normal workspace.
-         *
-         * ai.manage is required for AI administration/settings.
-         */
         if (
           navigationPermissions
             .aiManage &&
@@ -1442,9 +1360,6 @@ export default function WorkspaceSidebar({
         }
 
 
-        /*
-         * Billing is visible only through explicit billing access.
-         */
         if (
           navigationPermissions
             .billingView ||
@@ -1479,38 +1394,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     NORMAL WORKSPACE CAPABILITIES
-     ============================================================ */
-
-  const canUseAi =
-    capabilities
-      ?.aiEnabled !==
-      false &&
-    navigationPermissions
-      ?.aiUse ===
-      true;
-
-
-  const canUseFiles =
-    capabilities
-      ?.filesEnabled ===
-      true &&
-    navigationPermissions
-      ?.filesView ===
-      true;
-
-
-  const canUseNotifications =
-    capabilities
-      ?.notificationsEnabled ===
-      true &&
-    navigationPermissions
-      ?.notificationsView ===
-      true;
-
-
-  /* ============================================================
-     ROUTE ACTIVITY
+     ACTIVE ROUTES
      ============================================================ */
 
   const appRouteActive =
@@ -1605,7 +1489,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     SETTINGS ACTIVE STATE
+     SETTINGS ACTIVE
      ============================================================ */
 
   function isSettingsChildActive(
@@ -1634,10 +1518,23 @@ export default function WorkspaceSidebar({
     }
 
 
+    if (
+      item.key ===
+      'account'
+    ) {
+      return (
+        pathname ===
+        '/settings'
+      );
+    }
+
+
     return (
       pathname ===
         '/settings' &&
-      settingsTab ===
+      searchParams.get(
+        'tab',
+      ) ===
         item.key
     );
   }
@@ -1749,6 +1646,7 @@ export default function WorkspaceSidebar({
           true,
         );
 
+
         setCompanyError(
           null,
         );
@@ -1826,7 +1724,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     LOAD NAVIGATION AUTHORIZATION
+     LOAD NAVIGATION PERMISSIONS
      ============================================================ */
 
   const loadNavigationPermissions =
@@ -1840,9 +1738,11 @@ export default function WorkspaceSidebar({
             null,
           );
 
+
           setNavigationLoading(
             false,
           );
+
 
           return;
         }
@@ -1888,13 +1788,11 @@ export default function WorkspaceSidebar({
           ) {
             /*
              * Fail closed.
-             *
-             * Administrative navigation disappears if permission
-             * context cannot be resolved.
              */
             setNavigationPermissions(
               null,
             );
+
 
             return;
           }
@@ -2038,7 +1936,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     MOBILE CLOSE AFTER NAVIGATION
+     MOBILE CLOSE
      ============================================================ */
 
   const searchString =
@@ -2080,6 +1978,7 @@ export default function WorkspaceSidebar({
         false,
       );
 
+
       return;
     }
 
@@ -2095,7 +1994,7 @@ export default function WorkspaceSidebar({
 
 
     /*
-     * Immediately remove old workspace administrative links.
+     * Remove previous workspace permissions immediately.
      */
     setNavigationPermissions(
       null,
@@ -2159,15 +2058,17 @@ export default function WorkspaceSidebar({
 
 
       /*
-       * Company IDs belong to the previous physical tenant DB.
+       * Company IDs belong to the old tenant context.
        */
       setCompanySelector(
         null,
       );
 
+
       setCompanyError(
         null,
       );
+
 
       setWorkspaceMenuOpen(
         false,
@@ -2194,6 +2095,9 @@ export default function WorkspaceSidebar({
     } catch (
       error
     ) {
+      /*
+       * Restore authorization for the still-current workspace.
+       */
       void loadNavigationPermissions();
 
 
@@ -2222,7 +2126,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     COMPANY CONTEXT MUTATION
+     UPDATE COMPANY CONTEXT
      ============================================================ */
 
   async function updateCompanyContext(
@@ -2245,6 +2149,7 @@ export default function WorkspaceSidebar({
     setCompanyAction(
       actionKey,
     );
+
 
     setCompanyError(
       null,
@@ -2340,6 +2245,10 @@ export default function WorkspaceSidebar({
   }
 
 
+  /* ============================================================
+     CURRENT COMPANY
+     ============================================================ */
+
   async function switchCurrentCompany(
     company:
       CompanySelectorCompany,
@@ -2364,6 +2273,10 @@ export default function WorkspaceSidebar({
     );
   }
 
+
+  /* ============================================================
+     SELECTED COMPANIES
+     ============================================================ */
 
   async function toggleSelectedCompany(
     company:
@@ -2407,7 +2320,7 @@ export default function WorkspaceSidebar({
 
     if (
       nextCompanyIds.length ===
-      0
+        0
     ) {
       setOverlay({
         open:
@@ -2420,8 +2333,9 @@ export default function WorkspaceSidebar({
           'One company is required',
 
         message:
-          'At least one company must remain selected.',
+          'At least one company must remain selected in your working context.',
       });
+
 
       return;
     }
@@ -2440,6 +2354,10 @@ export default function WorkspaceSidebar({
     );
   }
 
+
+  /* ============================================================
+     DEFAULT COMPANY
+     ============================================================ */
 
   async function makeDefaultCompany(
     company:
@@ -2483,9 +2401,8 @@ export default function WorkspaceSidebar({
 
 
   /*
-   * If subscription is null, no plan should be displayed.
-   *
-   * Never fall back to "Free".
+   * Never invent a "Free" plan when subscription data was
+   * intentionally withheld by authorization.
    */
   const planName =
     subscription
@@ -2497,6 +2414,11 @@ export default function WorkspaceSidebar({
       : null;
 
 
+  /*
+   * Display only.
+   *
+   * This label NEVER controls authorization.
+   */
   const roleName =
     membership?.label ||
     membership
@@ -2529,6 +2451,8 @@ export default function WorkspaceSidebar({
 
   return (
     <>
+      {/* MOBILE BACKDROP */}
+
       {open && (
         <button
           type="button"
@@ -2540,6 +2464,8 @@ export default function WorkspaceSidebar({
         />
       )}
 
+
+      {/* SIDEBAR */}
 
       <aside
         aria-label="Workspace navigation"
@@ -2586,7 +2512,9 @@ export default function WorkspaceSidebar({
         </div>
 
 
-        {/* WORKSPACE SELECTOR */}
+        {/* ======================================================
+            WORKSPACE SELECTOR
+            ====================================================== */}
 
         <div className="relative px-4 pt-4">
 
@@ -2606,6 +2534,7 @@ export default function WorkspaceSidebar({
                 setCompanyMenuOpen(
                   false,
                 );
+
 
                 setWorkspaceMenuOpen(
                   current =>
@@ -2633,6 +2562,7 @@ export default function WorkspaceSidebar({
                 {tenant?.name ||
                   'SaMi Workspace'}
               </p>
+
 
               <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
                 {roleName}
@@ -2775,7 +2705,9 @@ export default function WorkspaceSidebar({
         </div>
 
 
-        {/* COMPANY SELECTOR */}
+        {/* ======================================================
+            COMPANY SELECTOR
+            ====================================================== */}
 
         <div className="relative border-b border-slate-100 px-4 pb-4 pt-2 dark:border-slate-800">
 
@@ -2786,16 +2718,33 @@ export default function WorkspaceSidebar({
                 false,
               );
 
-              setCompanyMenuOpen(
-                current =>
-                  !current,
-              );
+
+              if (
+                companySelector &&
+                companySelector
+                  .companies
+                  .length >
+                  1
+              ) {
+                setCompanyMenuOpen(
+                  current =>
+                    !current,
+                );
+              }
             }}
             disabled={
               companyLoading ||
               (
                 !companySelector &&
                 !companyError
+              ) ||
+              (
+                companySelector !==
+                  null &&
+                companySelector
+                  .companies
+                  .length <=
+                  1
               )
             }
             aria-expanded={
@@ -2819,6 +2768,7 @@ export default function WorkspaceSidebar({
                     'Company'}
               </p>
 
+
               <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
                 {companySelector
                   ? companyCount >
@@ -2836,7 +2786,9 @@ export default function WorkspaceSidebar({
             {companyLoading ? (
               <Loader2 className="h-4 w-4 shrink-0 animate-spin text-slate-400" />
             ) : companySelector &&
-              companySelector.companies.length >
+              companySelector
+                .companies
+                .length >
                 1 ? (
               <ChevronDown
                 className={[
@@ -2854,242 +2806,253 @@ export default function WorkspaceSidebar({
           </button>
 
 
-          {companyMenuOpen && (
-            <div className="absolute left-4 right-4 top-[60px] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          {companyMenuOpen &&
+            companySelector &&
+            companySelector
+              .companies
+              .length >
+              1 && (
+              <div className="absolute left-4 right-4 top-[60px] z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
 
-              <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
+                <div className="border-b border-slate-100 px-3 py-3 dark:border-slate-800">
 
-                <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-                  My companies
-                </p>
-
-                <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
-                  Only companies available to your account are shown.
-                </p>
-
-              </div>
-
-
-              {companyError ? (
-                <div className="p-3">
-
-                  <p className="text-[10px] leading-4 text-red-600 dark:text-red-300">
-                    {companyError}
+                  <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+                    My companies
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void loadCompanyContext()
-                    }
-                    className="mt-2 text-[10px] font-black text-blue-600"
-                  >
-                    Try again
-                  </button>
+                  <p className="mt-1 text-[10px] leading-4 text-slate-500 dark:text-slate-400">
+                    Only companies available to your workspace access are shown.
+                  </p>
 
                 </div>
-              ) : companySelector &&
-                companySelector.companies.length >
-                  0 ? (
-                <div className="max-h-[320px] overflow-y-auto p-2">
-
-                  {companySelector.companies.map(
-                    company => {
-                      const switching =
-                        companyAction ===
-                        `current:${company.id}`;
 
 
-                      const toggling =
-                        companyAction ===
-                        `selected:${company.id}`;
+                {companyError ? (
+                  <div className="p-3">
+
+                    <p className="text-[10px] leading-4 text-red-600 dark:text-red-300">
+                      {companyError}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void loadCompanyContext()
+                      }
+                      className="mt-2 text-[10px] font-black text-blue-600"
+                    >
+                      Try again
+                    </button>
+
+                  </div>
+                ) : (
+                  <div className="max-h-[320px] overflow-y-auto p-2">
+
+                    {companySelector
+                      .companies
+                      .map(
+                        company => {
+                          const switching =
+                            companyAction ===
+                            `current:${company.id}`;
 
 
-                      const defaulting =
-                        companyAction ===
-                        `default:${company.id}`;
+                          const toggling =
+                            companyAction ===
+                            `selected:${company.id}`;
 
 
-                      return (
-                        <div
-                          key={
-                            company.id
-                          }
-                          className={[
-                            'mb-1 flex items-center gap-1 rounded-xl p-1',
+                          const defaulting =
+                            companyAction ===
+                            `default:${company.id}`;
 
-                            company.isCurrent
-                              ? 'bg-blue-50 dark:bg-blue-950/30'
-                              : 'hover:bg-slate-50 dark:hover:bg-slate-800',
-                          ].join(
-                            ' ',
-                          )}
-                        >
 
-                          <button
-                            type="button"
-                            title={
-                              company.isSelected
-                                ? 'Remove from selected companies'
-                                : 'Add to selected companies'
-                            }
-                            disabled={
-                              companyAction !==
-                              null
-                            }
-                            onClick={() =>
-                              void toggleSelectedCompany(
-                                company,
-                              )
-                            }
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
-                          >
-
-                            <span
+                          return (
+                            <div
+                              key={
+                                company.id
+                              }
                               className={[
-                                'flex h-4 w-4 items-center justify-center rounded border',
+                                'mb-1 flex items-center gap-1 rounded-xl p-1',
 
-                                company.isSelected
-                                  ? 'border-blue-600 bg-blue-600 text-white'
-                                  : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950',
+                                company.isCurrent
+                                  ? 'bg-blue-50 dark:bg-blue-950/30'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800',
                               ].join(
                                 ' ',
                               )}
                             >
-                              {toggling ? (
-                                <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                              ) : company.isSelected ? (
-                                <Check className="h-2.5 w-2.5" />
-                              ) : null}
-                            </span>
 
-                          </button>
+                              {/* SELECT COMPANY */}
+
+                              <button
+                                type="button"
+                                title={
+                                  company.isSelected
+                                    ? 'Remove from selected companies'
+                                    : 'Add to selected companies'
+                                }
+                                disabled={
+                                  companyAction !==
+                                  null
+                                }
+                                onClick={() =>
+                                  void toggleSelectedCompany(
+                                    company,
+                                  )
+                                }
+                                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg disabled:opacity-50"
+                              >
+
+                                <span
+                                  className={[
+                                    'flex h-4 w-4 items-center justify-center rounded border',
+
+                                    company.isSelected
+                                      ? 'border-blue-600 bg-blue-600 text-white'
+                                      : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-950',
+                                  ].join(
+                                    ' ',
+                                  )}
+                                >
+                                  {toggling ? (
+                                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                  ) : company.isSelected ? (
+                                    <Check className="h-2.5 w-2.5" />
+                                  ) : null}
+                                </span>
+
+                              </button>
 
 
-                          <button
-                            type="button"
-                            disabled={
-                              companyAction !==
-                              null
-                            }
-                            onClick={() =>
-                              void switchCurrentCompany(
-                                company,
-                              )
-                            }
-                            className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left disabled:opacity-60"
-                          >
+                              {/* CURRENT COMPANY */}
 
-                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  companyAction !==
+                                  null
+                                }
+                                onClick={() =>
+                                  void switchCurrentCompany(
+                                    company,
+                                  )
+                                }
+                                className="min-w-0 flex-1 rounded-lg px-2 py-2 text-left disabled:opacity-60"
+                              >
 
-                              <p
+                                <div className="flex items-center gap-2">
+
+                                  <p
+                                    className={[
+                                      'min-w-0 flex-1 truncate text-[11px] font-black',
+
+                                      company.isCurrent
+                                        ? 'text-blue-700 dark:text-blue-300'
+                                        : 'text-slate-800 dark:text-slate-100',
+                                    ].join(
+                                      ' ',
+                                    )}
+                                  >
+                                    {company.name}
+                                  </p>
+
+
+                                  {switching ? (
+                                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
+                                  ) : company.isCurrent ? (
+                                    <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wide text-white">
+                                      Current
+                                    </span>
+                                  ) : null}
+
+                                </div>
+
+
+                                <div className="mt-1 flex items-center gap-1.5">
+
+                                  {company.isDefault && (
+                                    <span className="text-[8px] font-black text-amber-600 dark:text-amber-300">
+                                      Default
+                                    </span>
+                                  )}
+
+
+                                  <span className="truncate text-[8px] font-semibold text-slate-400">
+                                    {company.currency}
+                                    {' · '}
+                                    {company.timezone}
+                                  </span>
+
+                                </div>
+
+                              </button>
+
+
+                              {/* DEFAULT COMPANY */}
+
+                              <button
+                                type="button"
+                                title={
+                                  company.isDefault
+                                    ? 'Default company'
+                                    : 'Make default company'
+                                }
+                                disabled={
+                                  companyAction !==
+                                    null ||
+                                  company.isDefault
+                                }
+                                onClick={() =>
+                                  void makeDefaultCompany(
+                                    company,
+                                  )
+                                }
                                 className={[
-                                  'min-w-0 flex-1 truncate text-[11px] font-black',
+                                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default',
 
-                                  company.isCurrent
-                                    ? 'text-blue-700 dark:text-blue-300'
-                                    : 'text-slate-800 dark:text-slate-100',
+                                  company.isDefault
+                                    ? 'text-amber-500'
+                                    : 'text-slate-300 hover:text-amber-500 dark:text-slate-600',
                                 ].join(
                                   ' ',
                                 )}
                               >
-                                {company.name}
-                              </p>
-
-
-                              {switching ? (
-                                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-600" />
-                              ) : company.isCurrent ? (
-                                <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-wide text-white">
-                                  Current
-                                </span>
-                              ) : null}
-
-                            </div>
-
-
-                            <div className="mt-1 flex items-center gap-1.5">
-
-                              {company.isDefault && (
-                                <span className="text-[8px] font-black text-amber-600 dark:text-amber-300">
-                                  Default
-                                </span>
-                              )}
-
-
-                              <span className="truncate text-[8px] font-semibold text-slate-400">
-                                {company.currency}
-                                {' · '}
-                                {company.timezone}
-                              </span>
+                                {defaulting ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Star
+                                    className="h-3.5 w-3.5"
+                                    fill={
+                                      company.isDefault
+                                        ? 'currentColor'
+                                        : 'none'
+                                    }
+                                  />
+                                )}
+                              </button>
 
                             </div>
+                          );
+                        },
+                      )}
 
-                          </button>
+                  </div>
+                )}
 
-
-                          <button
-                            type="button"
-                            title={
-                              company.isDefault
-                                ? 'Default company'
-                                : 'Make default company'
-                            }
-                            disabled={
-                              companyAction !==
-                                null ||
-                              company.isDefault
-                            }
-                            onClick={() =>
-                              void makeDefaultCompany(
-                                company,
-                              )
-                            }
-                            className={[
-                              'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition disabled:cursor-default',
-
-                              company.isDefault
-                                ? 'text-amber-500'
-                                : 'text-slate-300 hover:text-amber-500 dark:text-slate-600',
-                            ].join(
-                              ' ',
-                            )}
-                          >
-                            {defaulting ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Star
-                                className="h-3.5 w-3.5"
-                                fill={
-                                  company.isDefault
-                                    ? 'currentColor'
-                                    : 'none'
-                                }
-                              />
-                            )}
-                          </button>
-
-                        </div>
-                      );
-                    },
-                  )}
-
-                </div>
-              ) : (
-                <div className="p-4 text-[10px] text-slate-400">
-                  No active company access is available.
-                </div>
-              )}
-
-            </div>
-          )}
+              </div>
+            )}
 
         </div>
 
 
-        {/* NAVIGATION */}
+        {/* ======================================================
+            NAVIGATION
+            ====================================================== */}
 
         <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+
+          {/* WORKSPACE */}
 
           <NavSectionLabel>
             Workspace
@@ -3140,7 +3103,11 @@ export default function WorkspaceSidebar({
           </div>
 
 
-          {/* ACCESSIBLE BUSINESS APPS */}
+          {/* ====================================================
+              MY APPS
+
+              Only user-accessible modules are present here.
+              ==================================================== */}
 
           {accessibleApps.length >
             0 && (
@@ -3219,7 +3186,9 @@ export default function WorkspaceSidebar({
           )}
 
 
-          {/* CORE TOOLS */}
+          {/* ====================================================
+              WORKSPACE TOOLS
+              ==================================================== */}
 
           {(canUseFiles ||
             canUseNotifications) && (
@@ -3312,7 +3281,9 @@ export default function WorkspaceSidebar({
           )}
 
 
-          {/* SETTINGS */}
+          {/* ====================================================
+              SETTINGS
+              ==================================================== */}
 
           <div className="mt-6">
 
@@ -3349,37 +3320,47 @@ export default function WorkspaceSidebar({
             {settingsExpanded && (
               <div className="ml-[19px] mt-1 border-l border-slate-200 pl-3 dark:border-slate-800">
 
+                {/* PERSONAL SETTINGS */}
+
                 <div className="space-y-1">
 
-                  {personalSettingsChildren.map(
-                    item => (
-                      <ChildNavLink
-                        key={
-                          item.key
-                        }
-                        href={
-                          item.href
-                        }
-                        icon={
-                          item.icon
-                        }
-                        label={
-                          item.label
-                        }
-                        active={
-                          isSettingsChildActive(
-                            item,
-                          )
-                        }
-                        onNavigate={
-                          onClose
-                        }
-                      />
-                    ),
-                  )}
+                  <ChildNavLink
+                    href="/settings?tab=personal"
+                    icon={
+                      User
+                    }
+                    label="My Account"
+                    active={
+                      pathname ===
+                        '/settings' &&
+                      (
+                        !searchParams.get(
+                          'tab',
+                        ) ||
+                        [
+                          'personal',
+                          'account',
+                          'preferences',
+                          'appearance',
+                          'security',
+                          'sessions',
+                        ].includes(
+                          searchParams.get(
+                            'tab',
+                          ) ||
+                          '',
+                        )
+                      )
+                    }
+                    onNavigate={
+                      onClose
+                    }
+                  />
 
                 </div>
 
+
+                {/* ADMINISTRATIVE SETTINGS */}
 
                 {adminSettingsChildren.length >
                   0 && (
@@ -3453,7 +3434,9 @@ export default function WorkspaceSidebar({
         </nav>
 
 
-        {/* USER */}
+        {/* ======================================================
+            USER
+            ====================================================== */}
 
         <div className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800">
 
@@ -3497,6 +3480,10 @@ export default function WorkspaceSidebar({
 
       </aside>
 
+
+      {/* ========================================================
+          OVERLAY
+          ======================================================== */}
 
       <SaMiOverlay
         open={
@@ -3634,7 +3621,7 @@ function NavLink({
 
 
 /* ================================================================
-   DROPDOWN BUTTON
+   DROPDOWN
    ================================================================ */
 
 function DropdownButton({

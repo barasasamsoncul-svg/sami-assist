@@ -44,12 +44,15 @@ export default async function SettingsPage() {
     );
 
 
-  /*
-   * Personal account settings must remain usable even if workspace
-   * authorization cannot currently be resolved.
-   *
-   * Workspace functionality therefore fails closed.
-   */
+  /* ==============================================================
+     PERMISSIONS
+
+     Personal account settings must remain available even if the
+     current workspace authorization context fails.
+
+     Workspace administration therefore fails closed.
+     ============================================================== */
+
   let permissions:
     PermissionContext | null =
     null;
@@ -68,6 +71,10 @@ export default async function SettingsPage() {
     }
   }
 
+
+  /* ==============================================================
+     WORKSPACE SHELL
+     ============================================================== */
 
   const shell =
     permissions
@@ -89,9 +96,6 @@ export default async function SettingsPage() {
 
           subscription:
             null,
-
-          canViewAppCatalog:
-            false,
 
           canManageApps:
             false,
@@ -117,6 +121,10 @@ export default async function SettingsPage() {
       true;
 
 
+  /* ==============================================================
+     RENDER
+     ============================================================== */
+
   return (
     <SettingsClient
       user={
@@ -132,33 +140,55 @@ export default async function SettingsPage() {
       }
 
       /*
-       * Null unless this user has billing access.
+       * Already removed unless this person may view billing.
        */
       subscription={
         shell.subscription
       }
 
       /*
-       * Personal shell/sidebar apps.
+       * Personal working applications.
        */
       accessibleModules={
         shell.accessibleModules
       }
 
       /*
-       * Apps administration only.
+       * Complete installed application set available only to an
+       * Apps administrator / owner.
        */
       managedModules={
         shell.managedModules
       }
 
       capabilities={{
-        workspaceView:
+        /*
+         * Normal workspace use.
+         */
+        aiUse:
           can(
             SAMI_PERMISSIONS
-              .WORKSPACE_VIEW,
+              .AI_USE,
           ),
 
+        filesView:
+          can(
+            SAMI_PERMISSIONS
+              .FILES_VIEW,
+          ),
+
+        notificationsView:
+          can(
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_VIEW,
+          ),
+
+
+        /*
+         * Administration.
+         *
+         * workspace.view is deliberately NOT used here.
+         */
         workspaceManage:
           can(
             SAMI_PERMISSIONS
@@ -166,25 +196,15 @@ export default async function SettingsPage() {
           ),
 
 
-        appsView:
-          can(
-            SAMI_PERMISSIONS
-              .APPS_VIEW,
-          ),
-
         appsManage:
-          can(
-            SAMI_PERMISSIONS
-              .APPS_MANAGE,
-          ),
+          shell.canManageApps,
 
 
-        aiUse:
-          can(
-            SAMI_PERMISSIONS
-              .AI_USE,
-          ),
-
+        /*
+         * ai.use allows using SaMi AI.
+         *
+         * ai.manage allows configuring SaMi AI.
+         */
         aiManage:
           can(
             SAMI_PERMISSIONS
