@@ -24,6 +24,7 @@ import {
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import MyAccountSettings from './components/MyAccountSettings';
+
 import WorkspaceSettings from './components/WorkspaceSettings';
 
 import {
@@ -35,74 +36,166 @@ import {
 } from '@/lib/account/user-formatting';
 
 
+/* ================================================================
+   TYPES
+   ================================================================ */
+
 type UserData = {
-  id: string;
-  email: string;
-  fullName: string;
-  firstName: string;
-  lastName: string;
-  avatarFileId: string | null;
+  id:
+    string;
+
+  email:
+    string;
+
+  fullName:
+    string;
+
+  firstName:
+    string;
+
+  lastName:
+    string;
+
+  avatarFileId:
+    string | null;
 };
 
 
-type TenantData = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-} | null;
+type TenantData =
+  | {
+      id:
+        string;
+
+      name:
+        string;
+
+      slug:
+        string;
+
+      status:
+        string;
+    }
+  | null;
 
 
-type MembershipData = {
-  accessLevel:
-    | 'owner'
-    | 'admin'
-    | 'member';
+type MembershipData =
+  | {
+      accessLevel:
+        | 'owner'
+        | 'admin'
+        | 'member';
 
-  isOwner: boolean;
-  isAdmin: boolean;
-  label: string;
-} | null;
+      isOwner:
+        boolean;
+
+      isAdmin:
+        boolean;
+
+      label:
+        string;
+    }
+  | null;
 
 
-type SubscriptionData = {
-  status: string;
-  billingCycle: string | null;
-  currentPeriodEnd: string | null;
-  planKey: string | null;
-  planName: string | null;
-} | null;
+type SubscriptionData =
+  | {
+      status:
+        string;
+
+      billingCycle:
+        string | null;
+
+      currentPeriodEnd:
+        string | null;
+
+      planKey:
+        string | null;
+
+      planName:
+        string | null;
+    }
+  | null;
 
 
 type ModuleData = {
-  key: string;
-  name: string;
-  status: string;
-  href?: string | null;
-  description?: string | null;
+  key:
+    string;
+
+  name:
+    string;
+
+  status:
+    string;
+
+  href?:
+    string | null;
+
+  description?:
+    string | null;
 };
 
 
-type SessionData = {
-  id: string;
-  expiresAt: string;
+type SettingsCapabilities = {
+  workspaceView:
+    boolean;
 
-  device: {
-    deviceType: string;
-    browser: string;
-    operatingSystem: string;
-    lastActiveAt: string | null;
-  };
+  workspaceManage:
+    boolean;
+
+
+  appsView:
+    boolean;
+
+  appsManage:
+    boolean;
+
+
+  aiUse:
+    boolean;
+
+  aiManage:
+    boolean;
+
+
+  billingView:
+    boolean;
+
+  billingManage:
+    boolean;
 };
 
 
 type Props = {
-  user: UserData;
-  tenant: TenantData;
-  membership: MembershipData;
-  subscription: SubscriptionData;
-  modules: ModuleData[];
-  session: SessionData;
+  user:
+    UserData;
+
+  tenant:
+    TenantData;
+
+  membership:
+    MembershipData;
+
+  subscription:
+    SubscriptionData;
+
+  /*
+   * What THIS person can use.
+   *
+   * Used by WorkspaceSidebar.
+   */
+  accessibleModules:
+    ModuleData[];
+
+  /*
+   * Complete app administration set.
+   *
+   * Never passed to WorkspaceSidebar.
+   */
+  managedModules:
+    ModuleData[];
+
+  capabilities:
+    SettingsCapabilities;
 };
 
 
@@ -115,13 +208,26 @@ type Section =
 
 
 type PreferencesResponse = {
-  success?: boolean;
-  code?: string;
-  error?: string;
-  message?: string;
-  preferences?: UserDisplayPreferences;
+  success?:
+    boolean;
+
+  code?:
+    string;
+
+  error?:
+    string;
+
+  message?:
+    string;
+
+  preferences?:
+    UserDisplayPreferences;
 };
 
+
+/* ================================================================
+   CONSTANTS
+   ================================================================ */
 
 const THEME_STORAGE_KEY =
   'sami_theme';
@@ -137,16 +243,20 @@ const VALID_SECTIONS =
   ]);
 
 
-/* ============================================================
+/* ================================================================
    HELPERS
-   ============================================================ */
+   ================================================================ */
 
 function formatLabel(
-  value?: string | null,
+  value?:
+    string | null,
 ) {
-  if (!value) {
+  if (
+    !value
+  ) {
     return 'Not available';
   }
+
 
   return value
     .replace(
@@ -156,13 +266,15 @@ function formatLabel(
     .replace(
       /\b\w/g,
       character =>
-        character.toUpperCase(),
+        character
+          .toUpperCase(),
     );
 }
 
 
 function normalizeStatus(
-  value?: string | null,
+  value?:
+    string | null,
 ) {
   return (
     value
@@ -181,6 +293,7 @@ function getSystemPrefersDark() {
     return false;
   }
 
+
   return (
     window.matchMedia?.(
       '(prefers-color-scheme: dark)',
@@ -191,7 +304,8 @@ function getSystemPrefersDark() {
 
 
 function applyThemeToDocument(
-  theme: UserTheme,
+  theme:
+    UserTheme,
 ) {
   const resolved =
     resolveUserTheme(
@@ -199,20 +313,25 @@ function applyThemeToDocument(
       getSystemPrefersDark(),
     );
 
+
   const dark =
     resolved ===
     'dark';
+
 
   if (
     typeof document !==
     'undefined'
   ) {
-    document.documentElement
-      .classList.toggle(
+    document
+      .documentElement
+      .classList
+      .toggle(
         'dark',
         dark,
       );
   }
+
 
   try {
     localStorage.setItem(
@@ -220,15 +339,17 @@ function applyThemeToDocument(
       theme,
     );
   } catch {
-    // Optional local cache.
+    // Local preference cache is optional.
   }
+
 
   return dark;
 }
 
 
 async function readPreferencesResponse(
-  response: Response,
+  response:
+    Response,
 ): Promise<PreferencesResponse> {
   try {
     return (
@@ -236,7 +357,8 @@ async function readPreferencesResponse(
     ) as PreferencesResponse;
   } catch {
     return {
-      success: false,
+      success:
+        false,
 
       code:
         'INVALID_SERVER_RESPONSE',
@@ -252,6 +374,10 @@ function normalizeSection(
   value:
     string | null,
 ): Section {
+  /*
+   * Existing account/security/session routes still resolve into
+   * the My Account settings component.
+   */
   if (
     value ===
       'personal' ||
@@ -265,6 +391,7 @@ function normalizeSection(
     return 'account';
   }
 
+
   if (
     value &&
     VALID_SECTIONS.has(
@@ -273,6 +400,7 @@ function normalizeSection(
   ) {
     return value as Section;
   }
+
 
   return 'account';
 }
@@ -306,16 +434,18 @@ function getSectionLabel(
 }
 
 
-/* ============================================================
+/* ================================================================
    CLIENT
-   ============================================================ */
+   ================================================================ */
 
 export default function SettingsClient({
   user,
   tenant,
   membership,
   subscription,
-  modules,
+  accessibleModules,
+  managedModules,
+  capabilities,
 }: Props) {
   const searchParams =
     useSearchParams();
@@ -366,13 +496,6 @@ export default function SettingsClient({
     );
 
 
-  const canAdminWorkspace =
-    Boolean(
-      membership?.isAdmin ||
-      membership?.isOwner,
-    );
-
-
   const hasWorkspaceAccess =
     Boolean(
       tenant &&
@@ -380,52 +503,94 @@ export default function SettingsClient({
     );
 
 
+  /* ==============================================================
+     ALLOWED SETTINGS
+
+     IMPORTANT
+
+     Role names such as:
+       owner
+       admin
+       member
+
+     do NOT decide these sections.
+
+     Category 8 permissions do.
+     ============================================================== */
+
   const allowedSections =
     useMemo(
       () => {
         const sections =
           new Set<Section>([
             'account',
-            'ai',
           ]);
 
+
         if (
-          hasWorkspaceAccess
+          hasWorkspaceAccess &&
+          (
+            capabilities
+              .workspaceView ||
+            capabilities
+              .workspaceManage
+          )
         ) {
           sections.add(
             'workspace',
           );
         }
 
+
         if (
-          canAdminWorkspace
+          capabilities
+            .appsView ||
+          capabilities
+            .appsManage
         ) {
           sections.add(
             'apps',
           );
         }
 
+
         if (
-          membership?.isOwner
+          capabilities
+            .aiUse ||
+          capabilities
+            .aiManage
+        ) {
+          sections.add(
+            'ai',
+          );
+        }
+
+
+        if (
+          capabilities
+            .billingView ||
+          capabilities
+            .billingManage
         ) {
           sections.add(
             'billing',
           );
         }
 
+
         return sections;
       },
+
       [
-        canAdminWorkspace,
         hasWorkspaceAccess,
-        membership?.isOwner,
+        capabilities,
       ],
     );
 
 
-  /* ==========================================================
-     ACTIVE SETTINGS SECTION
-     ========================================================== */
+  /* ==============================================================
+     ACTIVE SECTION
+     ============================================================== */
 
   useEffect(
     () => {
@@ -435,6 +600,7 @@ export default function SettingsClient({
             'tab',
           ),
         );
+
 
       if (
         allowedSections.has(
@@ -448,10 +614,21 @@ export default function SettingsClient({
         return;
       }
 
+
+      /*
+       * Fail closed.
+       *
+       * Someone manually typing:
+       *
+       * /settings?tab=billing
+       *
+       * without billing access returns to My Account.
+       */
       setActive(
         'account',
       );
     },
+
     [
       searchParams,
       allowedSections,
@@ -459,9 +636,9 @@ export default function SettingsClient({
   );
 
 
-  /* ==========================================================
+  /* ==============================================================
      INITIAL THEME
-     ========================================================== */
+     ============================================================== */
 
   useEffect(
     () => {
@@ -471,16 +648,18 @@ export default function SettingsClient({
             THEME_STORAGE_KEY,
           );
 
+
         const theme:
           UserTheme =
           stored ===
-            'dark' ||
-          stored ===
-            'light' ||
-          stored ===
-            'system'
+              'dark' ||
+            stored ===
+              'light' ||
+            stored ===
+              'system'
             ? stored
             : 'system';
+
 
         setDarkMode(
           applyThemeToDocument(
@@ -491,29 +670,35 @@ export default function SettingsClient({
         const dark =
           getSystemPrefersDark();
 
+
         setDarkMode(
           dark,
         );
 
-        document.documentElement
-          .classList.toggle(
+
+        document
+          .documentElement
+          .classList
+          .toggle(
             'dark',
             dark,
           );
       }
     },
+
     [],
   );
 
 
-  /* ==========================================================
+  /* ==============================================================
      LOAD PREFERENCES
-     ========================================================== */
+     ============================================================== */
 
   useEffect(
     () => {
       let cancelled =
         false;
+
 
       async function loadPreferences() {
         try {
@@ -537,10 +722,12 @@ export default function SettingsClient({
               },
             );
 
+
           const data =
             await readPreferencesResponse(
               response,
             );
+
 
           if (
             cancelled ||
@@ -551,9 +738,11 @@ export default function SettingsClient({
             return;
           }
 
+
           setDisplayPreferences(
             data.preferences,
           );
+
 
           setDarkMode(
             applyThemeToDocument(
@@ -566,20 +755,23 @@ export default function SettingsClient({
         }
       }
 
+
       void loadPreferences();
+
 
       return () => {
         cancelled =
           true;
       };
     },
+
     [],
   );
 
 
-  /* ==========================================================
+  /* ==============================================================
      SYSTEM THEME
-     ========================================================== */
+     ============================================================== */
 
   useEffect(
     () => {
@@ -591,10 +783,12 @@ export default function SettingsClient({
         return;
       }
 
+
       const media =
         window.matchMedia(
           '(prefers-color-scheme: dark)',
         );
+
 
       const syncTheme =
         () => {
@@ -605,10 +799,12 @@ export default function SettingsClient({
           );
         };
 
+
       media.addEventListener?.(
         'change',
         syncTheme,
       );
+
 
       return () => {
         media.removeEventListener?.(
@@ -617,15 +813,16 @@ export default function SettingsClient({
         );
       };
     },
+
     [
       displayPreferences.theme,
     ],
   );
 
 
-  /* ==========================================================
+  /* ==============================================================
      THEME TOGGLE
-     ========================================================== */
+     ============================================================== */
 
   async function toggleTheme() {
     if (
@@ -634,8 +831,10 @@ export default function SettingsClient({
       return;
     }
 
+
     const previous =
       displayPreferences;
+
 
     const nextTheme:
       UserTheme =
@@ -643,25 +842,31 @@ export default function SettingsClient({
         ? 'light'
         : 'dark';
 
+
     const optimistic = {
       ...displayPreferences,
+
       theme:
         nextTheme,
     };
+
 
     setThemeSaving(
       true,
     );
 
+
     setDisplayPreferences(
       optimistic,
     );
+
 
     setDarkMode(
       applyThemeToDocument(
         nextTheme,
       ),
     );
+
 
     try {
       const response =
@@ -693,10 +898,12 @@ export default function SettingsClient({
           },
         );
 
+
       const data =
         await readPreferencesResponse(
           response,
         );
+
 
       if (
         !response.ok ||
@@ -709,9 +916,11 @@ export default function SettingsClient({
         );
       }
 
+
       setDisplayPreferences(
         data.preferences,
       );
+
 
       setDarkMode(
         applyThemeToDocument(
@@ -723,6 +932,7 @@ export default function SettingsClient({
       setDisplayPreferences(
         previous,
       );
+
 
       setDarkMode(
         applyThemeToDocument(
@@ -737,15 +947,24 @@ export default function SettingsClient({
   }
 
 
+  /* ==============================================================
+     DISPLAY VALUES
+     ============================================================== */
+
   const currentPlan =
-    subscription?.planName ||
-    (
-      subscription?.planKey
-        ? formatLabel(
-            subscription.planKey,
+    subscription
+      ? (
+          subscription.planName ||
+          (
+            subscription.planKey
+              ? formatLabel(
+                  subscription
+                    .planKey,
+                )
+              : 'Subscription'
           )
-        : 'Free'
-    );
+        )
+      : null;
 
 
   const pageLabel =
@@ -754,32 +973,48 @@ export default function SettingsClient({
     );
 
 
-  /* ==========================================================
+  /* ==============================================================
      RENDER
-     ========================================================== */
+     ============================================================== */
 
   return (
-    <main className="min-h-screen bg-[#f6f8fb] text-slate-950 transition-colors dark:bg-[#070a10] dark:text-white">
+    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
+
       <div className="flex min-h-screen">
+
         <WorkspaceSidebar
           user={
             user
           }
+
           tenant={
             tenant
           }
+
           membership={
             membership
           }
+
+          /*
+           * Already filtered server-side.
+           */
           subscription={
             subscription
           }
+
+          /*
+           * NEVER use managedModules here.
+           *
+           * Sidebar = personal accessible applications.
+           */
           modules={
-            modules
+            accessibleModules
           }
+
           capabilities={{
             aiEnabled:
-              true,
+              capabilities
+                .aiUse,
 
             filesEnabled:
               false,
@@ -787,60 +1022,73 @@ export default function SettingsClient({
             notificationsEnabled:
               false,
           }}
+
           unreadNotifications={
             0
           }
+
           open={
             sidebarOpen
           }
-          onClose={
-            () =>
-              setSidebarOpen(
-                false,
-              )
+
+          onClose={() =>
+            setSidebarOpen(
+              false,
+            )
           }
         />
 
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/88">
-            <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+
+          {/* ====================================================
+              HEADER
+              ==================================================== */}
+
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
+
+            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+
               <button
                 type="button"
                 aria-label="Open navigation"
-                onClick={
-                  () =>
-                    setSidebarOpen(
-                      true,
-                    )
+                onClick={() =>
+                  setSidebarOpen(
+                    true,
+                  )
                 }
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10 lg:hidden"
               >
                 <Menu className="h-5 w-5" />
               </button>
 
 
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold text-slate-900 dark:text-white">
+
+                <p className="truncate text-sm font-bold">
                   {pageLabel}
                 </p>
+
               </div>
 
 
-              <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-slate-800">
-                <p className="max-w-[260px] truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  {tenant?.name ||
-                    'SaMi Workspace'}
-                </p>
-              </div>
+              {tenant && (
+                <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-white/10">
+
+                  <p className="max-w-[260px] truncate text-xs font-medium text-slate-400">
+                    {tenant.name}
+                  </p>
+
+                </div>
+              )}
 
 
               <div className="ml-auto">
+
                 <button
                   type="button"
-                  onClick={
-                    () =>
-                      void toggleTheme()
+                  onClick={() =>
+                    void toggleTheme()
                   }
                   disabled={
                     themeSaving
@@ -850,7 +1098,7 @@ export default function SettingsClient({
                       ? 'Switch to light theme'
                       : 'Switch to dark theme'
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-400 dark:hover:bg-white/10"
                 >
                   {themeSaving ? (
                     <Loader2 className="h-[18px] w-[18px] animate-spin" />
@@ -860,12 +1108,20 @@ export default function SettingsClient({
                     <Moon className="h-[18px] w-[18px]" />
                   )}
                 </button>
+
               </div>
+
             </div>
+
           </header>
 
 
-          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          {/* ====================================================
+              CONTENT
+              ==================================================== */}
+
+          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+
             {active ===
               'account' && (
               <MyAccountSettings />
@@ -874,65 +1130,109 @@ export default function SettingsClient({
 
             {active ===
               'workspace' &&
-              hasWorkspaceAccess && (
+              hasWorkspaceAccess &&
+              (
+                capabilities
+                  .workspaceView ||
+                capabilities
+                  .workspaceManage
+              ) && (
                 <WorkspaceSettings />
               )}
 
 
             {active ===
               'apps' &&
-              canAdminWorkspace && (
+              (
+                capabilities
+                  .appsView ||
+                capabilities
+                  .appsManage
+              ) && (
                 <SettingsSurface>
+
                   <AppsSection
                     modules={
-                      modules
+                      managedModules
+                    }
+
+                    canManage={
+                      capabilities
+                        .appsManage
                     }
                   />
+
                 </SettingsSurface>
               )}
 
 
             {active ===
-              'ai' && (
-              <SettingsSurface>
-                <AiSection
-                  planName={
-                    currentPlan
-                  }
-                />
-              </SettingsSurface>
-            )}
+              'ai' &&
+              (
+                capabilities
+                  .aiUse ||
+                capabilities
+                  .aiManage
+              ) && (
+                <SettingsSurface>
+
+                  <AiSection
+                    canManage={
+                      capabilities
+                        .aiManage
+                    }
+                  />
+
+                </SettingsSurface>
+              )}
 
 
             {active ===
               'billing' &&
-              membership
-                ?.isOwner && (
+              (
+                capabilities
+                  .billingView ||
+                capabilities
+                  .billingManage
+              ) && (
                 <SettingsSurface>
+
                   <BillingSection
                     subscription={
                       subscription
                     }
+
                     currentPlan={
                       currentPlan
                     }
+
                     preferences={
                       displayPreferences
                     }
+
+                    canManage={
+                      capabilities
+                        .billingManage
+                    }
                   />
+
                 </SettingsSurface>
               )}
+
           </div>
+
         </div>
+
       </div>
+
     </main>
   );
 }
 
 
-/* ============================================================
+/* ================================================================
    SURFACE
-   ============================================================ */
+   ================================================================ */
 
 function SettingsSurface({
   children,
@@ -941,22 +1241,26 @@ function SettingsSurface({
     React.ReactNode;
 }) {
   return (
-    <section className="min-w-0 rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-7 dark:border-slate-800 dark:bg-[#0d121b]">
+    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
       {children}
     </section>
   );
 }
 
 
-/* ============================================================
+/* ================================================================
    APPS
-   ============================================================ */
+   ================================================================ */
 
 function AppsSection({
   modules,
+  canManage,
 }: {
   modules:
     ModuleData[];
+
+  canManage:
+    boolean;
 }) {
   if (
     modules.length ===
@@ -967,188 +1271,292 @@ function AppsSection({
         icon={
           AppWindow
         }
-        title="No business apps installed"
-        description="There are currently no installed business apps available to this workspace."
+        title="No applications available"
+        description={
+          canManage
+            ? 'There are currently no installed business applications in this workspace.'
+            : 'There are no workspace applications available to your Apps administration access.'
+        }
       />
     );
   }
 
+
   return (
     <div>
-      <div className="mb-4">
-        <h2 className="text-sm font-black">
-          Installed apps
-        </h2>
 
-        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          {modules.length}{' '}
-          {modules.length ===
-          1
-            ? 'business app'
-            : 'business apps'}
-        </p>
+      <div className="mb-5">
+
+        <div className="flex items-start justify-between gap-4">
+
+          <div>
+
+            <h2 className="text-sm font-bold">
+              Workspace Apps
+            </h2>
+
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {canManage
+                ? 'Installed applications you are authorized to manage.'
+                : 'Installed applications you are authorized to review.'}
+            </p>
+
+          </div>
+
+
+          <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-300">
+            {modules.length}
+          </span>
+
+        </div>
+
       </div>
 
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+
         {modules.map(
           module => {
             const activeModule =
-              normalizeStatus(
-                module.status,
-              ) ===
-              'active';
+              [
+                'active',
+                'installed',
+                'enabled',
+              ].includes(
+                normalizeStatus(
+                  module.status,
+                ),
+              );
+
 
             return (
               <div
                 key={
                   module.key
                 }
-                className="rounded-[18px] border border-slate-200 p-4 dark:border-slate-800"
+                className="rounded-xl border border-slate-200 p-4 dark:border-white/10"
               >
+
                 <div className="flex items-start gap-3">
+
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
                     <AppWindow className="h-[18px] w-[18px]" />
                   </div>
 
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-black">
+
+                  <div className="min-w-0 flex-1">
+
+                    <p className="truncate text-xs font-bold">
                       {module.name}
                     </p>
 
+
                     <span
-                      className={`mt-2 inline-flex rounded-full px-2 py-1 text-[9px] font-black ${
+                      className={[
+                        'mt-2 inline-flex rounded-md px-2 py-1 text-[9px] font-semibold',
+
                         activeModule
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
-                      }`}
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                          : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
+                      ].join(
+                        ' ',
+                      )}
                     >
                       {formatLabel(
                         module.status,
                       )}
                     </span>
+
                   </div>
+
                 </div>
+
               </div>
             );
           },
         )}
+
       </div>
+
     </div>
   );
 }
 
 
-/* ============================================================
+/* ================================================================
    SAMI AI
-   ============================================================ */
+   ================================================================ */
 
 function AiSection({
-  planName,
+  canManage,
 }: {
-  planName:
-    string;
+  canManage:
+    boolean;
 }) {
   return (
     <div className="max-w-4xl">
-      <div className="rounded-[24px] border border-violet-200 bg-gradient-to-br from-blue-50 to-violet-50 p-6 dark:border-violet-900/60 dark:from-blue-950/25 dark:to-violet-950/25">
+
+      <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 p-6 dark:border-blue-900/50 dark:from-blue-950/20 dark:to-cyan-950/20">
+
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-violet-600 text-white">
+
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
             <Bot className="h-5 w-5" />
           </div>
 
+
           <div>
-            <h2 className="text-base font-black">
+
+            <h2 className="text-base font-bold">
               SaMi AI
             </h2>
 
+
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              Manage your SaMi AI workspace preferences and availability.
+              SaMi AI works only with applications, companies and records your current account is authorized to access.
             </p>
+
+
+            {canManage && (
+              <p className="mt-3 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
+                You also have AI administration access.
+              </p>
+            )}
+
           </div>
+
         </div>
+
       </div>
 
-      <div className="mt-5">
-        <InfoCard
-          label="Current plan"
-          value={
-            planName
-          }
-        />
+
+      <div className="mt-4 rounded-xl border border-slate-200 p-4 dark:border-white/10">
+
+        <p className="text-xs font-semibold">
+          Permission-safe AI
+        </p>
+
+        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+          AI context cannot exceed your normal SaMi access. Restricted apps and records are not exposed through AI.
+        </p>
+
       </div>
+
     </div>
   );
 }
 
 
-/* ============================================================
+/* ================================================================
    BILLING
-   ============================================================ */
+   ================================================================ */
 
 function BillingSection({
   subscription,
   currentPlan,
   preferences,
+  canManage,
 }: {
   subscription:
     SubscriptionData;
 
   currentPlan:
-    string;
+    string | null;
 
   preferences:
     UserDisplayPreferences;
+
+  canManage:
+    boolean;
 }) {
+  if (
+    !subscription
+  ) {
+    return (
+      <EmptyState
+        icon={
+          CreditCard
+        }
+        title="Billing information unavailable"
+        description="Subscription information is not currently available for this workspace."
+      />
+    );
+  }
+
+
   return (
     <div className="max-w-4xl">
-      <div className="rounded-[24px] border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/60 dark:bg-blue-950/20">
+
+      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
+
         <div className="flex items-start gap-4">
+
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
             <CreditCard className="h-5 w-5" />
           </div>
 
+
           <div>
-            <p className="text-xs font-black text-blue-600 dark:text-blue-400">
+
+            <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
               Current subscription
             </p>
 
-            <h2 className="mt-1 text-xl font-black">
-              {currentPlan}
+            <h2 className="mt-1 text-xl font-bold">
+              {currentPlan ||
+                'Subscription'}
             </h2>
+
+            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+              {canManage
+                ? 'You can manage workspace billing.'
+                : 'You have read-only billing access.'}
+            </p>
+
           </div>
+
         </div>
+
       </div>
 
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
+
         <InfoCard
           label="Plan"
           value={
-            currentPlan
+            currentPlan ||
+            'Not available'
           }
         />
 
+
         <InfoCard
           label="Subscription status"
-          value={formatLabel(
-            subscription?.status,
-          )}
+          value={
+            formatLabel(
+              subscription.status,
+            )
+          }
         />
+
 
         <InfoCard
           label="Billing cycle"
-          value={formatLabel(
-            subscription
-              ?.billingCycle,
-          )}
+          value={
+            formatLabel(
+              subscription
+                .billingCycle,
+            )
+          }
         />
+
 
         <InfoCard
           label="Current period ends"
           value={
             subscription
-              ?.currentPeriodEnd
+              .currentPeriodEnd
               ? formatUserDateTime(
                   subscription
                     .currentPeriodEnd,
@@ -1157,15 +1565,17 @@ function BillingSection({
               : 'Not available'
           }
         />
+
       </div>
+
     </div>
   );
 }
 
 
-/* ============================================================
-   INFO CARD
-   ============================================================ */
+/* ================================================================
+   INFO
+   ================================================================ */
 
 function InfoCard({
   label,
@@ -1178,22 +1588,24 @@ function InfoCard({
     string;
 }) {
   return (
-    <div className="rounded-[18px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.025]">
+
+      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
         {label}
       </p>
 
-      <p className="mt-2 break-words text-sm font-extrabold text-slate-900 dark:text-white">
+      <p className="mt-2 break-words text-sm font-bold">
         {value}
       </p>
+
     </div>
   );
 }
 
 
-/* ============================================================
-   EMPTY STATE
-   ============================================================ */
+/* ================================================================
+   EMPTY
+   ================================================================ */
 
 function EmptyState({
   icon:
@@ -1211,18 +1623,20 @@ function EmptyState({
     string;
 }) {
   return (
-    <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+    <div className="flex min-h-[240px] flex-col items-center justify-center px-6 text-center">
+
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
         <Icon className="h-5 w-5" />
       </div>
 
-      <h2 className="mt-4 text-sm font-black">
+      <h2 className="mt-4 text-sm font-bold">
         {title}
       </h2>
 
       <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
         {description}
       </p>
+
     </div>
   );
 }

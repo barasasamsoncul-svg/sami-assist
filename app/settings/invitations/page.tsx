@@ -20,6 +20,10 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
+
+import {
   TenantContextError,
 } from '@/lib/auth/tenant-context';
 
@@ -41,11 +45,11 @@ export default async function InvitationsSettingsPage() {
     );
 
 
-  let permissionContext;
+  let permissions;
 
 
   try {
-    permissionContext =
+    permissions =
       await requirePermission(
         SAMI_PERMISSIONS
           .INVITATIONS_VIEW,
@@ -86,6 +90,18 @@ export default async function InvitationsSettingsPage() {
   }
 
 
+  const shell =
+    resolveWorkspaceShellAccess({
+      modules:
+        context.modules,
+
+      subscription:
+        context.subscription,
+
+      permissions,
+    });
+
+
   return (
     <InvitationsSettingsClient
       user={
@@ -101,15 +117,15 @@ export default async function InvitationsSettingsPage() {
       }
 
       subscription={
-        context.subscription
+        shell.subscription
       }
 
       modules={
-        context.modules
+        shell.accessibleModules
       }
 
       canManage={
-        permissionContext
+        permissions
           .permissionSet
           .has(
             SAMI_PERMISSIONS

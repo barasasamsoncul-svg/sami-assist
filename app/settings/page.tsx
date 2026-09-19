@@ -3,14 +3,28 @@ import {
 } from '@/lib/auth/account-context';
 
 import {
+  getPermissionContext,
+  type PermissionContext,
+} from '@/lib/auth/permission-context';
+
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
   requirePageSession,
 } from '@/lib/auth/require-page-session';
+
+import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
 
 import SettingsClient from './SettingsClient';
 
 
 export const runtime =
   'nodejs';
+
 
 export const dynamic =
   'force-dynamic';
@@ -30,48 +44,162 @@ export default async function SettingsPage() {
     );
 
 
+  /*
+   * Personal account settings must remain usable even if workspace
+   * authorization cannot currently be resolved.
+   *
+   * Workspace functionality therefore fails closed.
+   */
+  let permissions:
+    PermissionContext | null =
+    null;
+
+
+  if (
+    context.tenant &&
+    context.membership
+  ) {
+    try {
+      permissions =
+        await getPermissionContext();
+    } catch {
+      permissions =
+        null;
+    }
+  }
+
+
+  const shell =
+    permissions
+      ? resolveWorkspaceShellAccess({
+          modules:
+            context.modules,
+
+          subscription:
+            context.subscription,
+
+          permissions,
+        })
+      : {
+          accessibleModules:
+            [],
+
+          managedModules:
+            [],
+
+          subscription:
+            null,
+
+          canViewAppCatalog:
+            false,
+
+          canManageApps:
+            false,
+
+          canViewBilling:
+            false,
+
+          accessibleModuleKeys:
+            [],
+        };
+
+
+  const can =
+    (
+      permission:
+        string,
+    ) =>
+      permissions
+        ?.permissionSet
+        .has(
+          permission,
+        ) ===
+      true;
+
+
   return (
     <SettingsClient
       user={
         session.user
       }
+
       tenant={
         context.tenant
       }
+
       membership={
         context.membership
       }
+
+      /*
+       * Null unless this user has billing access.
+       */
       subscription={
-        context.subscription
+        shell.subscription
       }
-      modules={
-        context.modules
+
+      /*
+       * Personal shell/sidebar apps.
+       */
+      accessibleModules={
+        shell.accessibleModules
       }
-      session={{
-        id:
-          session.sessionId,
 
-        expiresAt:
-          session.expiresAt.toISOString(),
+      /*
+       * Apps administration only.
+       */
+      managedModules={
+        shell.managedModules
+      }
 
-        device: {
-          deviceType:
-            session.device.deviceType ||
-            'Unknown device',
+      capabilities={{
+        workspaceView:
+          can(
+            SAMI_PERMISSIONS
+              .WORKSPACE_VIEW,
+          ),
 
-          browser:
-            session.device.browser ||
-            'Unknown browser',
+        workspaceManage:
+          can(
+            SAMI_PERMISSIONS
+              .WORKSPACE_MANAGE,
+          ),
 
-          operatingSystem:
-            session.device.operatingSystem ||
-            'Unknown OS',
 
-          lastActiveAt:
-            session.device.lastActiveAt
-              ? session.device.lastActiveAt.toISOString()
-              : null,
-        },
+        appsView:
+          can(
+            SAMI_PERMISSIONS
+              .APPS_VIEW,
+          ),
+
+        appsManage:
+          can(
+            SAMI_PERMISSIONS
+              .APPS_MANAGE,
+          ),
+
+
+        aiUse:
+          can(
+            SAMI_PERMISSIONS
+              .AI_USE,
+          ),
+
+        aiManage:
+          can(
+            SAMI_PERMISSIONS
+              .AI_MANAGE,
+          ),
+
+
+        billingView:
+          shell.canViewBilling,
+
+        billingManage:
+          can(
+            SAMI_PERMISSIONS
+              .BILLING_MANAGE,
+          ),
       }}
     />
   );

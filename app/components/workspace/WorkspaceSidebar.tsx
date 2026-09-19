@@ -2462,12 +2462,14 @@ export default function WorkspaceSidebar({
       user,
     );
 
-
-  const planName =
-    subscription?.planName ||
-    subscription?.planKey ||
-    'Free';
-
+const planName =
+  subscription
+    ? (
+        subscription.planName ||
+        subscription.planKey ||
+        'Subscription'
+      )
+    : null;
 
   /*
    * DISPLAY ONLY.
@@ -2626,12 +2628,16 @@ export default function WorkspaceSidebar({
                   'SaMi Workspace'}
               </p>
 
-              <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
-                {roleName}
-                {' · '}
-                {planName}
-              </p>
+         <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-400">
+  {roleName}
 
+  {planName && (
+    <>
+      {' · '}
+      {planName}
+    </>
+  )}
+</p>
             </div>
 
 

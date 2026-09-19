@@ -7,61 +7,34 @@ import {
 } from 'next/navigation';
 
 import {
+  AlertTriangle,
   AppWindow,
-  BarChart3,
   Bell,
-  Boxes,
-  Briefcase,
+  Bot,
+  BriefcaseBusiness,
   Building2,
-  Calculator,
-  Calendar,
-  CalendarClock,
-  CalendarDays,
-  CalendarOff,
-  Car,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
-  ClipboardCheck,
-  ClipboardList,
-  Clock,
+  Clock3,
   CreditCard,
-  Factory,
   FileText,
   Folder,
-  Headphones,
-  Home,
   LayoutGrid,
   Loader2,
   LogOut,
   Mail,
-  MapPin,
-  Megaphone,
   Menu,
-  MessageSquare,
   Moon,
-  Package,
-  PenTool,
-  Receipt,
-  Repeat,
   Search,
   Settings,
   Shield,
   ShieldCheck,
-  ShoppingBag,
-  ShoppingCart,
   Sparkles,
-  Store,
   Sun,
   User,
-  UserPlus,
-  UserRound,
-  Users,
   UsersRound,
-  UserSearch,
-  Utensils,
-  Workflow,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -86,10 +59,21 @@ import {
   type UserTheme,
 } from '@/lib/account/user-formatting';
 
+import type {
+  DashboardAction,
+  DashboardAttentionItem,
+  DashboardMetric,
+  DashboardPriority,
+  DashboardRecentItem,
+  DashboardTone,
+  DashboardViewModel,
+  DashboardWorkItem,
+} from '@/lib/dashboard/types';
 
-/* ============================================================
+
+/* ================================================================
    TYPES
-   ============================================================ */
+   ================================================================ */
 
 type UserData = {
   id:
@@ -215,11 +199,20 @@ type DashboardCapabilities = {
   notifications:
     boolean;
 
+
+  workspaceView:
+    boolean;
+
+  workspaceManage:
+    boolean;
+
+
   usersView:
     boolean;
 
   usersManage:
     boolean;
+
 
   rolesView:
     boolean;
@@ -227,11 +220,20 @@ type DashboardCapabilities = {
   rolesManage:
     boolean;
 
+
+  invitationsView:
+    boolean;
+
+  invitationsManage:
+    boolean;
+
+
   companiesView:
     boolean;
 
   companiesManage:
     boolean;
+
 
   appsView:
     boolean;
@@ -239,17 +241,20 @@ type DashboardCapabilities = {
   appsManage:
     boolean;
 
+
   billingView:
     boolean;
 
   billingManage:
     boolean;
 
-  workspaceManage:
+
+  settingsView:
     boolean;
 
   settingsManage:
     boolean;
+
 
   auditView:
     boolean;
@@ -277,6 +282,9 @@ type Props = {
 
   company:
     CompanyData;
+
+  dashboard:
+    DashboardViewModel;
 
   capabilities:
     DashboardCapabilities;
@@ -307,40 +315,12 @@ type SearchItem = {
 };
 
 
-type WorkspaceAction = {
-  id:
-    string;
-
-  label:
-    string;
-
-  description:
-    string;
-
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-};
-
-
-/* ============================================================
+/* ================================================================
    CONSTANTS
-   ============================================================ */
+   ================================================================ */
 
 const THEME_STORAGE_KEY =
   'sami_theme';
-
-
-const DISABLED_MODULE_STATUSES =
-  new Set([
-    'disabled',
-    'failed',
-    'uninstalled',
-    'removed',
-    'inactive',
-  ]);
 
 
 const APP_METADATA =
@@ -354,250 +334,9 @@ const APP_METADATA =
   );
 
 
-const ICONS:
-  Record<string, LucideIcon> = {
-  calculator:
-    Calculator,
-
-  receipt:
-    Receipt,
-
-  'file-text':
-    FileText,
-
-  'bar-chart':
-    BarChart3,
-
-  folder:
-    Folder,
-
-  'pen-tool':
-    PenTool,
-
-  users:
-    Users,
-
-  'shopping-cart':
-    ShoppingCart,
-
-  repeat:
-    Repeat,
-
-  home:
-    Home,
-
-  store:
-    Store,
-
-  utensils:
-    Utensils,
-
-  package:
-    Package,
-
-  factory:
-    Factory,
-
-  boxes:
-    Boxes,
-
-  'shopping-bag':
-    ShoppingBag,
-
-  wrench:
-    Wrench,
-
-  'shield-check':
-    ShieldCheck,
-
-  'user-round':
-    UserRound,
-
-  car:
-    Car,
-
-  'user-plus':
-    UserPlus,
-
-  'clipboard-check':
-    ClipboardCheck,
-
-  'calendar-off':
-    CalendarOff,
-
-  'user-search':
-    UserSearch,
-
-  megaphone:
-    Megaphone,
-
-  mail:
-    Mail,
-
-  'message-square':
-    MessageSquare,
-
-  'calendar-days':
-    CalendarDays,
-
-  workflow:
-    Workflow,
-
-  'clipboard-list':
-    ClipboardList,
-
-  briefcase:
-    Briefcase,
-
-  clock:
-    Clock,
-
-  'map-pin':
-    MapPin,
-
-  headphones:
-    Headphones,
-
-  'calendar-clock':
-    CalendarClock,
-
-  calendar:
-    Calendar,
-};
-
-
-const APP_TONES = [
-  {
-    tile:
-      'bg-blue-600',
-
-    ring:
-      'group-hover:ring-blue-200 dark:group-hover:ring-blue-900',
-  },
-
-  {
-    tile:
-      'bg-cyan-600',
-
-    ring:
-      'group-hover:ring-cyan-200 dark:group-hover:ring-cyan-900',
-  },
-
-  {
-    tile:
-      'bg-emerald-600',
-
-    ring:
-      'group-hover:ring-emerald-200 dark:group-hover:ring-emerald-900',
-  },
-
-  {
-    tile:
-      'bg-orange-500',
-
-    ring:
-      'group-hover:ring-orange-200 dark:group-hover:ring-orange-900',
-  },
-
-  {
-    tile:
-      'bg-rose-500',
-
-    ring:
-      'group-hover:ring-rose-200 dark:group-hover:ring-rose-900',
-  },
-
-  {
-    tile:
-      'bg-indigo-600',
-
-    ring:
-      'group-hover:ring-indigo-200 dark:group-hover:ring-indigo-900',
-  },
-
-  {
-    tile:
-      'bg-teal-600',
-
-    ring:
-      'group-hover:ring-teal-200 dark:group-hover:ring-teal-900',
-  },
-
-  {
-    tile:
-      'bg-sky-600',
-
-    ring:
-      'group-hover:ring-sky-200 dark:group-hover:ring-sky-900',
-  },
-];
-
-
-/* ============================================================
+/* ================================================================
    HELPERS
-   ============================================================ */
-
-function getSystemPrefersDark() {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return false;
-  }
-
-
-  return (
-    window.matchMedia?.(
-      '(prefers-color-scheme: dark)',
-    ).matches ??
-    false
-  );
-}
-
-
-function applyTheme(
-  theme:
-    UserTheme,
-) {
-  const resolved =
-    resolveUserTheme(
-      theme,
-      getSystemPrefersDark(),
-    );
-
-
-  const dark =
-    resolved ===
-    'dark';
-
-
-  if (
-    typeof document !==
-    'undefined'
-  ) {
-    document
-      .documentElement
-      .classList
-      .toggle(
-        'dark',
-        dark,
-      );
-  }
-
-
-  try {
-    localStorage.setItem(
-      THEME_STORAGE_KEY,
-      theme,
-    );
-  } catch {
-    // Local theme cache is optional.
-  }
-
-
-  return dark;
-}
-
+   ================================================================ */
 
 function normalizeKey(
   value:
@@ -605,15 +344,11 @@ function normalizeKey(
 ) {
   return value
     .trim()
-    .toLowerCase()
-    .replace(
-      /\s+/g,
-      '-',
-    );
+    .toLowerCase();
 }
 
 
-function getAppMetadata(
+function getModuleMetadata(
   module:
     ModuleData,
 ) {
@@ -634,20 +369,16 @@ function getModuleHref(
   module:
     ModuleData,
 ) {
-  const supplied =
-    module.href
-      ?.trim();
-
-
   if (
-    supplied
+    module.href
+      ?.trim()
   ) {
-    return supplied;
+    return module.href;
   }
 
 
   const metadata =
-    getAppMetadata(
+    getModuleMetadata(
       module,
     );
 
@@ -670,69 +401,16 @@ function getModuleHref(
 }
 
 
-function getModuleIcon(
-  module:
-    ModuleData,
-): LucideIcon {
-  const metadata =
-    getAppMetadata(
-      module,
-    );
-
-
-  if (
-    metadata?.icon &&
-    ICONS[
-      metadata.icon
-    ]
-  ) {
-    return ICONS[
-      metadata.icon
-    ];
-  }
-
-
-  return AppWindow;
-}
-
-
 function getModuleDescription(
   module:
     ModuleData,
 ) {
   return (
     module.description ||
-    getAppMetadata(
+    getModuleMetadata(
       module,
     )?.description ||
     `Open ${module.name}.`
-  );
-}
-
-
-function appToneIndex(
-  value:
-    string,
-) {
-  let total =
-    0;
-
-
-  for (
-    const character
-    of value
-  ) {
-    total +=
-      character
-        .charCodeAt(
-          0,
-        );
-  }
-
-
-  return (
-    total %
-    APP_TONES.length
   );
 }
 
@@ -766,32 +444,6 @@ function getInitials(
     initials
   ) {
     return initials
-      .toUpperCase();
-  }
-
-
-  if (
-    user.fullName
-      ?.trim()
-  ) {
-    return user.fullName
-      .trim()
-      .split(
-        /\s+/,
-      )
-      .slice(
-        0,
-        2,
-      )
-      .map(
-        part =>
-          part.charAt(
-            0,
-          ),
-      )
-      .join(
-        '',
-      )
       .toUpperCase();
   }
 
@@ -830,34 +482,183 @@ function getGreeting() {
 }
 
 
-function humanize(
+function getSystemPrefersDark() {
+  if (
+    typeof window ===
+    'undefined'
+  ) {
+    return false;
+  }
+
+
+  return (
+    window.matchMedia?.(
+      '(prefers-color-scheme: dark)',
+    ).matches ??
+    false
+  );
+}
+
+
+function applyTheme(
+  theme:
+    UserTheme,
+) {
+  const resolved =
+    resolveUserTheme(
+      theme,
+      getSystemPrefersDark(),
+    );
+
+
+  const dark =
+    resolved ===
+    'dark';
+
+
+  document
+    .documentElement
+    .classList
+    .toggle(
+      'dark',
+      dark,
+    );
+
+
+  try {
+    localStorage.setItem(
+      THEME_STORAGE_KEY,
+      theme,
+    );
+  } catch {
+    // Optional local cache.
+  }
+
+
+  return dark;
+}
+
+
+function priorityLabel(
+  priority:
+    DashboardPriority,
+) {
+  switch (
+    priority
+  ) {
+    case 'critical':
+      return 'Critical';
+
+    case 'high':
+      return 'High';
+
+    case 'low':
+      return 'Low';
+
+    default:
+      return 'Normal';
+  }
+}
+
+
+function priorityClasses(
+  priority:
+    DashboardPriority,
+) {
+  switch (
+    priority
+  ) {
+    case 'critical':
+      return 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300';
+
+    case 'high':
+      return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300';
+
+    case 'low':
+      return 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400';
+
+    default:
+      return 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300';
+  }
+}
+
+
+function toneClasses(
+  tone:
+    DashboardTone,
+) {
+  switch (
+    tone
+  ) {
+    case 'danger':
+      return 'text-red-600 dark:text-red-400';
+
+    case 'warning':
+      return 'text-amber-600 dark:text-amber-400';
+
+    case 'success':
+      return 'text-emerald-600 dark:text-emerald-400';
+
+    case 'info':
+      return 'text-blue-600 dark:text-blue-400';
+
+    default:
+      return 'text-slate-950 dark:text-white';
+  }
+}
+
+
+function formatDateTime(
   value:
-    string | null | undefined,
+    string | null,
 ) {
   if (
     !value
   ) {
-    return '';
+    return null;
   }
 
 
-  return value
-    .replace(
-      /[_-]+/g,
-      ' ',
+  const date =
+    new Date(
+      value,
+    );
+
+
+  if (
+    Number.isNaN(
+      date.getTime(),
     )
-    .replace(
-      /\b\w/g,
-      character =>
-        character
-          .toUpperCase(),
+  ) {
+    return null;
+  }
+
+
+  return new Intl.DateTimeFormat(
+    undefined,
+    {
+      month:
+        'short',
+
+      day:
+        'numeric',
+
+      hour:
+        'numeric',
+
+      minute:
+        '2-digit',
+    },
+  )
+    .format(
+      date,
     );
 }
 
 
-/* ============================================================
-   DASHBOARD
-   ============================================================ */
+/* ================================================================
+   CLIENT
+   ================================================================ */
 
 export default function DashboardClient({
   user,
@@ -866,6 +667,7 @@ export default function DashboardClient({
   subscription,
   modules,
   company,
+  dashboard,
   capabilities,
   unreadNotifications =
     0,
@@ -964,28 +766,6 @@ export default function DashboardClient({
     );
 
 
-  const installedApps =
-    useMemo(
-      () =>
-        modules.filter(
-          module =>
-            !DISABLED_MODULE_STATUSES
-              .has(
-                String(
-                  module.status ||
-                  '',
-                )
-                  .trim()
-                  .toLowerCase(),
-              ),
-        ),
-
-      [
-        modules,
-      ],
-    );
-
-
   const displayName =
     user.firstName
       ?.trim() ||
@@ -1006,19 +786,8 @@ export default function DashboardClient({
 
   const roleLabel =
     membership?.label ||
-    humanize(
-      membership
-        ?.accessLevel,
-    ) ||
+    membership?.accessLevel ||
     'Member';
-
-
-  const planName =
-    subscription
-      ?.planName ||
-    subscription
-      ?.planKey ||
-    'Free';
 
 
   const currentCompanyName =
@@ -1030,255 +799,196 @@ export default function DashboardClient({
     'Workspace';
 
 
+  const planName =
+    subscription
+      ? (
+          subscription.planName ||
+          subscription.planKey ||
+          'Subscription'
+        )
+      : null;
+
+
+  /* ============================================================
+     MANAGEMENT
+     ============================================================ */
+
   const managementActions =
     useMemo<
-      WorkspaceAction[]
+      SearchItem[]
     >(
       () => {
-        const actions:
-          WorkspaceAction[] =
+        const items:
+          SearchItem[] =
           [];
 
 
         if (
-          capabilities
-            .workspaceManage ||
-          capabilities
-            .companiesView
+          capabilities.workspaceView ||
+          capabilities.workspaceManage
         ) {
-          actions.push({
+          items.push({
             id:
-              'workspace',
+              'management-workspace',
 
             label:
               'Workspace',
 
             description:
-              'Company and workspace settings',
+              'Workspace configuration',
 
             href:
               '/settings?tab=workspace',
 
             icon:
               Building2,
+
+            keywords:
+              'workspace organization configuration',
           });
         }
 
 
         if (
-          capabilities
-            .usersView
+          capabilities.usersView
         ) {
-          actions.push({
+          items.push({
             id:
-              'users',
+              'management-users',
 
             label:
               'Users',
 
             description:
-              capabilities
-                .usersManage
-                ? 'Manage members and access'
-                : 'View workspace members',
+              'Workspace members',
 
             href:
               '/settings/users',
 
             icon:
               UsersRound,
+
+            keywords:
+              'users members employees access',
           });
         }
 
 
         if (
-          capabilities
-            .rolesView
+          capabilities.rolesView
         ) {
-          actions.push({
+          items.push({
             id:
-              'roles',
+              'management-roles',
 
             label:
-              'Roles',
+              'Roles & Permissions',
 
             description:
-              capabilities
-                .rolesManage
-                ? 'Manage roles and permissions'
-                : 'View access roles',
+              'Access control',
 
             href:
               '/settings/roles',
 
             icon:
               Shield,
+
+            keywords:
+              'roles permissions access security',
           });
         }
 
 
         if (
-          capabilities
-            .appsView ||
-          capabilities
-            .appsManage
+          capabilities.invitationsView
         ) {
-          actions.push({
+          items.push({
             id:
-              'apps',
+              'management-invitations',
+
+            label:
+              'Invitations',
+
+            description:
+              'Pending workspace invitations',
+
+            href:
+              '/settings/invitations',
+
+            icon:
+              Mail,
+
+            keywords:
+              'invite invitation user member',
+          });
+        }
+
+
+        if (
+          capabilities.appsView ||
+          capabilities.appsManage
+        ) {
+          items.push({
+            id:
+              'management-apps',
 
             label:
               'Apps',
 
             description:
-              capabilities
-                .appsManage
-                ? 'Install and manage apps'
-                : 'View workspace apps',
+              'Workspace applications',
 
             href:
               '/settings?tab=apps',
 
             icon:
               LayoutGrid,
+
+            keywords:
+              'apps modules install application',
           });
         }
 
 
         if (
-          capabilities
-            .billingView
+          capabilities.billingView &&
+          subscription
         ) {
-          actions.push({
+          items.push({
             id:
-              'billing',
+              'management-billing',
 
             label:
               'Billing',
 
             description:
-              capabilities
-                .billingManage
-                ? 'Plan and subscription'
-                : 'View subscription',
+              'Subscription and billing',
 
             href:
               '/settings?tab=billing',
 
             icon:
               CreditCard,
+
+            keywords:
+              'billing subscription plan payment',
           });
         }
 
 
-        return actions;
+        return items;
       },
 
       [
         capabilities,
+        subscription,
       ],
     );
 
 
-  const quickAccess =
-    useMemo<
-      WorkspaceAction[]
-    >(
-      () => {
-        const actions:
-          WorkspaceAction[] =
-          [];
-
-
-        if (
-          capabilities.ai
-        ) {
-          actions.push({
-            id:
-              'ai',
-
-            label:
-              'SaMi AI',
-
-            description:
-              'Ask, analyze and work',
-
-            href:
-              '/ai',
-
-            icon:
-              Sparkles,
-          });
-        }
-
-
-        if (
-          capabilities.files
-        ) {
-          actions.push({
-            id:
-              'files',
-
-            label:
-              'Files',
-
-            description:
-              'Workspace documents',
-
-            href:
-              '/files',
-
-            icon:
-              Folder,
-          });
-        }
-
-
-        actions.push({
-          id:
-            'account',
-
-          label:
-            'My Account',
-
-          description:
-            'Profile and preferences',
-
-          href:
-            '/settings?tab=personal',
-
-          icon:
-            User,
-        });
-
-
-        actions.push({
-          id:
-            'security',
-
-          label:
-            'Security',
-
-          description:
-            'Account protection',
-
-          href:
-            '/settings?tab=security',
-
-          icon:
-            ShieldCheck,
-        });
-
-
-        return actions;
-      },
-
-      [
-        capabilities.ai,
-        capabilities.files,
-      ],
-    );
-
+  /* ============================================================
+     SEARCH
+     ============================================================ */
 
   const searchItems =
     useMemo<
@@ -1287,7 +997,7 @@ export default function DashboardClient({
       () => {
         const items:
           SearchItem[] =
-          installedApps.map(
+          modules.map(
             module => ({
               id:
                 `app-${module.key}`,
@@ -1306,81 +1016,69 @@ export default function DashboardClient({
                 ),
 
               icon:
-                getModuleIcon(
-                  module,
-                ),
+                AppWindow,
 
               keywords:
-                `${module.key} ${module.name} application app module`,
+                `${module.key} ${module.name}`,
             }),
           );
 
 
         for (
           const action
-          of quickAccess
+          of managementActions
         ) {
-          items.push({
-            ...action,
-
-            keywords:
-              `${action.label} ${action.description}`,
-          });
+          items.push(
+            action,
+          );
         }
 
 
         for (
           const action
-          of managementActions
+          of dashboard.actions
         ) {
           items.push({
-            ...action,
+            id:
+              `dashboard-${action.id}`,
+
+            label:
+              action.label,
+
+            description:
+              action.description ||
+              'Quick action',
+
+            href:
+              action.href,
+
+            icon:
+              BriefcaseBusiness,
 
             keywords:
-              `${action.label} ${action.description} workspace management`,
+              `${action.label} ${action.description || ''}`,
           });
         }
 
 
         items.push({
           id:
-            'settings',
+            'account',
 
           label:
-            'Settings',
+            'My Account',
 
           description:
-            'Workspace and account settings',
+            'Profile and preferences',
 
           href:
-            '/settings',
+            '/settings?tab=personal',
 
           icon:
-            Settings,
+            User,
 
           keywords:
-            'settings workspace account configuration',
-        });
-
-
-        items.push({
-          id:
-            'help',
-
-          label:
-            'Help',
-
-          description:
-            'Help and support',
-
-          href:
-            '/help',
-
-          icon:
-            CircleHelp,
-
-          keywords:
-            'help support assistance',
+            'account profile preferences',
         });
 
 
@@ -1388,9 +1086,9 @@ export default function DashboardClient({
       },
 
       [
-        installedApps,
+        modules,
         managementActions,
-        quickAccess,
+        dashboard.actions,
       ],
     );
 
@@ -1407,11 +1105,10 @@ export default function DashboardClient({
         if (
           !query
         ) {
-          return searchItems
-            .slice(
-              0,
-              7,
-            );
+          return searchItems.slice(
+            0,
+            8,
+          );
         }
 
 
@@ -1437,16 +1134,12 @@ export default function DashboardClient({
     );
 
 
-  /* ==========================================================
+  /* ============================================================
      THEME
-     ========================================================== */
+     ============================================================ */
 
   useEffect(
     () => {
-      let active =
-        true;
-
-
       try {
         const saved =
           localStorage.getItem(
@@ -1454,21 +1147,21 @@ export default function DashboardClient({
           );
 
 
-        const localTheme:
+        const theme:
           UserTheme =
           saved ===
-            'light' ||
-          saved ===
-            'dark' ||
-          saved ===
-            'system'
+              'light' ||
+            saved ===
+              'dark' ||
+            saved ===
+              'system'
             ? saved
             : 'system';
 
 
         setDarkMode(
           applyTheme(
-            localTheme,
+            theme,
           ),
         );
       } catch {
@@ -1476,73 +1169,6 @@ export default function DashboardClient({
           getSystemPrefersDark(),
         );
       }
-
-
-      void (
-        async () => {
-          try {
-            const response =
-              await fetch(
-                '/api/account/preferences',
-                {
-                  method:
-                    'GET',
-
-                  credentials:
-                    'same-origin',
-
-                  cache:
-                    'no-store',
-
-                  headers: {
-                    Accept:
-                      'application/json',
-                  },
-                },
-              );
-
-
-            const data =
-              await response.json();
-
-
-            const theme =
-              data
-                ?.preferences
-                ?.theme;
-
-
-            if (
-              !active ||
-              (
-                theme !==
-                  'light' &&
-                theme !==
-                  'dark' &&
-                theme !==
-                  'system'
-              )
-            ) {
-              return;
-            }
-
-
-            setDarkMode(
-              applyTheme(
-                theme,
-              ),
-            );
-          } catch {
-            // Keep local theme.
-          }
-        }
-      )();
-
-
-      return () => {
-        active =
-          false;
-      };
     },
 
     [],
@@ -1557,15 +1183,15 @@ export default function DashboardClient({
     }
 
 
-    const nextTheme:
+    const previous =
+      darkMode;
+
+
+    const next:
       UserTheme =
       darkMode
         ? 'light'
         : 'dark';
-
-
-    const previous =
-      darkMode;
 
 
     setThemeSaving(
@@ -1575,7 +1201,7 @@ export default function DashboardClient({
 
     setDarkMode(
       applyTheme(
-        nextTheme,
+        next,
       ),
     );
 
@@ -1591,21 +1217,15 @@ export default function DashboardClient({
             credentials:
               'same-origin',
 
-            cache:
-              'no-store',
-
             headers: {
               'Content-Type':
-                'application/json',
-
-              Accept:
                 'application/json',
             },
 
             body:
               JSON.stringify({
                 theme:
-                  nextTheme,
+                  next,
               }),
           },
         );
@@ -1614,9 +1234,7 @@ export default function DashboardClient({
       if (
         !response.ok
       ) {
-        throw new Error(
-          'Theme could not be saved.',
-        );
+        throw new Error();
       }
     } catch {
       setDarkMode(
@@ -1637,9 +1255,9 @@ export default function DashboardClient({
   }
 
 
-  /* ==========================================================
-     PROFILE / KEYBOARD
-     ========================================================== */
+  /* ============================================================
+     PROFILE
+     ============================================================ */
 
   useEffect(
     () => {
@@ -1649,10 +1267,9 @@ export default function DashboardClient({
       ) {
         if (
           profileRef.current &&
-          !profileRef.current
-            .contains(
-              event.target as Node,
-            )
+          !profileRef.current.contains(
+            event.target as Node,
+          )
         ) {
           setProfileOpen(
             false,
@@ -1678,6 +1295,10 @@ export default function DashboardClient({
   );
 
 
+  /* ============================================================
+     KEYBOARD
+     ============================================================ */
+
   useEffect(
     () => {
       function keyboard(
@@ -1695,8 +1316,7 @@ export default function DashboardClient({
             'INPUT' ||
           target?.tagName ===
             'TEXTAREA' ||
-          target
-            ?.isContentEditable;
+          target?.isContentEditable;
 
 
         if (
@@ -1706,9 +1326,7 @@ export default function DashboardClient({
         ) {
           event.preventDefault();
 
-          searchRef
-            .current
-            ?.focus();
+          searchRef.current?.focus();
 
           return;
         }
@@ -1750,9 +1368,9 @@ export default function DashboardClient({
   );
 
 
-  /* ==========================================================
+  /* ============================================================
      LOGOUT
-     ========================================================== */
+     ============================================================ */
 
   async function logout() {
     if (
@@ -1762,13 +1380,13 @@ export default function DashboardClient({
     }
 
 
-    setLogoutError(
-      null,
+    setLoggingOut(
+      true,
     );
 
 
-    setLoggingOut(
-      true,
+    setLogoutError(
+      null,
     );
 
 
@@ -1782,11 +1400,6 @@ export default function DashboardClient({
 
             credentials:
               'include',
-
-            headers: {
-              Accept:
-                'application/json',
-            },
           },
         );
 
@@ -1794,9 +1407,7 @@ export default function DashboardClient({
       if (
         !response.ok
       ) {
-        throw new Error(
-          'Logout failed.',
-        );
+        throw new Error();
       }
 
 
@@ -1818,30 +1429,12 @@ export default function DashboardClient({
   }
 
 
-  function openSearchItem(
-    href:
-      string,
-  ) {
-    setSearchOpen(
-      false,
-    );
-
-    setSearchQuery(
-      '',
-    );
-
-    router.push(
-      href,
-    );
-  }
-
-
-  /* ==========================================================
+  /* ============================================================
      RENDER
-     ========================================================== */
+     ============================================================ */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
+    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
       <div className="flex min-h-screen">
 
         <WorkspaceSidebar
@@ -1894,9 +1487,12 @@ export default function DashboardClient({
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
 
-          {/* TOP BAR */}
+          {/* ==================================================
+              TOP BAR
+              ================================================== */}
 
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
+
             <div className="flex h-16 items-center gap-2 px-3 sm:px-5 lg:px-7">
 
               <button
@@ -1907,7 +1503,7 @@ export default function DashboardClient({
                     true,
                   )
                 }
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10 lg:hidden"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 lg:hidden"
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -1919,7 +1515,7 @@ export default function DashboardClient({
                     'SaMi Workspace'}
                 </p>
 
-                <p className="max-w-[180px] truncate text-[11px] text-slate-400">
+                <p className="truncate text-[11px] text-slate-400">
                   {currentCompanyName}
                 </p>
               </div>
@@ -1928,35 +1524,27 @@ export default function DashboardClient({
               {/* SEARCH */}
 
               <div className="relative mx-auto min-w-0 max-w-[650px] flex-1">
+
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                 <input
                   ref={
                     searchRef
                   }
-
                   value={
                     searchQuery
                   }
-
                   type="search"
-
-                  aria-label="Search SaMi"
-
-                  placeholder="Search apps, settings and workspace"
-
+                  placeholder="Search your apps and workspace"
                   onFocus={() =>
                     setSearchOpen(
                       true,
                     )
                   }
-
                   onChange={
                     event => {
                       setSearchQuery(
-                        event
-                          .target
-                          .value,
+                        event.target.value,
                       );
 
                       setSearchOpen(
@@ -1964,19 +1552,15 @@ export default function DashboardClient({
                       );
                     }
                   }
-
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm outline-none transition placeholder:text-slate-400 hover:bg-white focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/[0.07] dark:focus:border-blue-500/60 dark:focus:bg-white/[0.07]"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5"
                 />
-
-                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 sm:block dark:border-white/10 dark:bg-white/5">
-                  /
-                </kbd>
 
 
                 {searchOpen && (
-                  <div className="absolute left-0 right-0 top-[46px] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_20px_55px_rgba(15,23,42,0.14)] dark:border-white/10 dark:bg-[#15181F]">
+                  <div className="absolute left-0 right-0 top-[46px] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
 
                     <div className="max-h-[360px] overflow-y-auto p-2">
+
                       {searchResults.length >
                       0 ? (
                         searchResults.map(
@@ -1990,18 +1574,19 @@ export default function DashboardClient({
                                 key={
                                   item.id
                                 }
-
                                 type="button"
+                                onClick={() => {
+                                  setSearchOpen(
+                                    false,
+                                  );
 
-                                onClick={() =>
-                                  openSearchItem(
+                                  router.push(
                                     item.href,
-                                  )
-                                }
-
-                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-blue-50/60 dark:hover:bg-blue-500/10"
+                                  );
+                                }}
+                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
                               >
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
                                   <Icon className="h-4 w-4" />
                                 </div>
 
@@ -2022,30 +1607,29 @@ export default function DashboardClient({
                         )
                       ) : (
                         <div className="px-4 py-8 text-center text-sm text-slate-400">
-                          No matching apps or settings.
+                          No matching accessible result.
                         </div>
                       )}
+
                     </div>
                   </div>
                 )}
+
               </div>
 
 
-              {/* CONTROLS */}
-
-              <div className="ml-auto flex shrink-0 items-center gap-1">
+              <div className="ml-auto flex items-center gap-1">
 
                 {capabilities.notifications && (
                   <Link
                     href="/notifications"
-                    aria-label="Notifications"
-                    className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
+                    className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
                   >
                     <Bell className="h-[18px] w-[18px]" />
 
                     {unreadNotifications >
                       0 && (
-                      <span className="absolute right-1 top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[8px] font-bold text-white">
+                      <span className="absolute right-0.5 top-0.5 rounded-full bg-red-500 px-1 text-[8px] font-bold text-white">
                         {unreadNotifications >
                         99
                           ? '99+'
@@ -2058,21 +1642,20 @@ export default function DashboardClient({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    void toggleTheme()
-                  }
                   disabled={
                     themeSaving
                   }
-                  aria-label="Change theme"
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-400 dark:hover:bg-white/10"
+                  onClick={() =>
+                    void toggleTheme()
+                  }
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
                 >
                   {themeSaving ? (
-                    <Loader2 className="h-[18px] w-[18px] animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : darkMode ? (
-                    <Sun className="h-[18px] w-[18px]" />
+                    <Sun className="h-4 w-4" />
                   ) : (
-                    <Moon className="h-[18px] w-[18px]" />
+                    <Moon className="h-4 w-4" />
                   )}
                 </button>
 
@@ -2085,74 +1668,71 @@ export default function DashboardClient({
                 >
                   <button
                     type="button"
-                    aria-label="Account menu"
                     onClick={() =>
                       setProfileOpen(
-                        current =>
-                          !current,
+                        value =>
+                          !value,
                       )
                     }
-                    className="flex h-9 items-center gap-1.5 rounded-lg pl-1 pr-1.5 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                    className="flex h-9 items-center gap-1 rounded-lg px-1 hover:bg-slate-100 dark:hover:bg-white/10"
                   >
                     <UserAvatar
                       avatarFileId={
                         user.avatarFileId
                       }
-
                       displayName={
                         displayName
                       }
-
                       initials={
                         initials
                       }
-
                       size="sm"
                     />
 
-                    <ChevronDown className="hidden h-3.5 w-3.5 text-slate-400 sm:block" />
+                    <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                   </button>
 
 
                   {profileOpen && (
-                    <div className="absolute right-0 top-[44px] z-50 w-[270px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.16)] dark:border-white/10 dark:bg-[#15181F]">
+                    <div className="absolute right-0 top-[44px] z-50 w-[270px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
 
                       <div className="border-b border-slate-100 px-4 py-3.5 dark:border-white/10">
+
                         <p className="truncate text-sm font-semibold">
                           {displayName}
                         </p>
 
-                        <p className="mt-0.5 truncate text-xs text-slate-400">
+                        <p className="truncate text-xs text-slate-400">
                           {user.email}
                         </p>
 
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+
+                        <div className="mt-2 flex gap-1.5">
+
+                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                             {roleLabel}
                           </span>
 
-                          {(membership?.isOwner ||
-                            capabilities.billingView) && (
+
+                          {planName && (
                             <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
                               {planName}
                             </span>
                           )}
+
                         </div>
+
                       </div>
 
 
                       <div className="p-1.5">
+
                         <ProfileLink
                           href="/settings?tab=personal"
                           icon={
                             User
                           }
                           label="My Account"
-                          onClick={() =>
-                            setProfileOpen(
-                              false,
-                            )
-                          }
                         />
 
                         <ProfileLink
@@ -2161,11 +1741,6 @@ export default function DashboardClient({
                             ShieldCheck
                           }
                           label="Security"
-                          onClick={() =>
-                            setProfileOpen(
-                              false,
-                            )
-                          }
                         />
 
                         <ProfileLink
@@ -2174,25 +1749,22 @@ export default function DashboardClient({
                             CircleHelp
                           }
                           label="Help"
-                          onClick={() =>
-                            setProfileOpen(
-                              false,
-                            )
-                          }
                         />
+
                       </div>
 
 
                       <div className="border-t border-slate-100 p-1.5 dark:border-white/10">
+
                         <button
                           type="button"
                           disabled={
                             loggingOut
                           }
-                          onClick={
-                            logout
+                          onClick={() =>
+                            void logout()
                           }
-                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/30"
+                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                         >
                           {loggingOut ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2200,42 +1772,32 @@ export default function DashboardClient({
                             <LogOut className="h-4 w-4" />
                           )}
 
-                          {loggingOut
-                            ? 'Signing out…'
-                            : 'Sign out'}
+                          Sign out
                         </button>
+
                       </div>
+
                     </div>
                   )}
+
                 </div>
+
               </div>
+
             </div>
+
           </header>
 
 
-          {searchOpen && (
-            <button
-              type="button"
-              aria-label="Close search"
-              onClick={() =>
-                setSearchOpen(
-                  false,
-                )
-              }
-              className="fixed inset-0 z-20 cursor-default"
-            />
-          )}
+          {/* ==================================================
+              CONTENT
+              ================================================== */}
 
-
-          {/* CONTENT */}
-
-          <div className="relative z-10 mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
+          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
 
             {logoutError && (
-              <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-                <span>
-                  {logoutError}
-                </span>
+              <div className="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {logoutError}
 
                 <button
                   type="button"
@@ -2251,201 +1813,531 @@ export default function DashboardClient({
             )}
 
 
-            {/* WORKSPACE HEADER */}
+            {/* HEADER */}
 
-            <section className="flex flex-col gap-3 border-b border-slate-200 pb-5 dark:border-white/10 sm:flex-row sm:items-end sm:justify-between">
+            <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-blue-600 dark:text-blue-400">
+              <div>
+
+                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
                   {currentCompanyName}
                 </p>
 
-                <h1 className="mt-1 text-2xl font-bold tracking-[-0.03em] sm:text-[28px]">
-                  {greeting},{' '}
-                  {displayName}
+                <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-[30px]">
+                  {greeting}, {displayName}
                 </h1>
 
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
-                  <span>
-                    {roleLabel}
-                  </span>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {roleLabel}
+                  {' · '}
+                  {dashboard.scope ===
+                    'business'
+                    ? 'Business overview'
+                    : dashboard.scope ===
+                        'team'
+                      ? 'Team workspace'
+                      : 'My workspace'}
+                </p>
 
-                  {company &&
-                    company.allowedCompanyCount >
-                      1 && (
-                    <>
-                      <span className="h-1 w-1 rounded-full bg-slate-300" />
-
-                      <span>
-                        {
-                          company.selectedCompanyCount
-                        }{' '}
-                        of{' '}
-                        {
-                          company.allowedCompanyCount
-                        }{' '}
-                        companies selected
-                      </span>
-                    </>
-                  )}
-                </div>
               </div>
 
 
               {capabilities.ai && (
                 <Link
                   href="/ai"
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-cyan-600"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white"
                 >
                   <Sparkles className="h-4 w-4" />
 
                   Ask SaMi
                 </Link>
               )}
+
             </section>
 
 
-            {/* APP LAUNCHER */}
+            {/* ==================================================
+                SAMI BRIEF
+                ================================================== */}
 
-            <section className="mt-6">
+            <section className="mt-6 overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-600 to-cyan-600 text-white shadow-sm dark:border-blue-500/20">
 
-              <div className="mb-4 flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-base font-semibold">
-                    Apps
+              <div className="p-5 sm:p-6">
+
+                <div className="flex items-start gap-4">
+
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+
+
+                  <div className="min-w-0 flex-1">
+
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-100">
+                      SaMi Brief
+                    </p>
+
+                    <h2 className="mt-1 text-lg font-bold">
+                      {dashboard.brief.title}
+                    </h2>
+
+                    <p className="mt-2 max-w-4xl text-sm leading-6 text-blue-50">
+                      {dashboard.brief.message}
+                    </p>
+
+
+                    {dashboard.brief.actions.length >
+                      0 && (
+                      <div className="mt-4 flex flex-wrap gap-2">
+
+                        {dashboard.brief.actions.map(
+                          action => (
+                            <Link
+                              key={
+                                action.id
+                              }
+                              href={
+                                action.href
+                              }
+                              className="rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold transition hover:bg-white/25"
+                            >
+                              {action.label}
+                            </Link>
+                          ),
+                        )}
+
+                      </div>
+                    )}
+
+                  </div>
+
+                </div>
+
+              </div>
+
+            </section>
+
+
+            {/* ==================================================
+                ATTENTION + PULSE
+                ================================================== */}
+
+            {(dashboard.attention.length >
+                0 ||
+              dashboard.metrics.length >
+                0) && (
+              <div className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_1fr]">
+
+                {dashboard.attention.length >
+                  0 && (
+                  <DashboardCard
+                    title="Needs your attention"
+                    description="Prioritized exceptions and work requiring action"
+                  >
+                    <div className="divide-y divide-slate-100 dark:divide-white/10">
+
+                      {dashboard.attention.map(
+                        item => (
+                          <AttentionRow
+                            key={
+                              item.id
+                            }
+                            item={
+                              item
+                            }
+                          />
+                        ),
+                      )}
+
+                    </div>
+                  </DashboardCard>
+                )}
+
+
+                {dashboard.metrics.length >
+                  0 && (
+                  <DashboardCard
+                    title={
+                      dashboard.scope ===
+                        'business'
+                        ? 'Business pulse'
+                        : dashboard.scope ===
+                            'team'
+                          ? 'Team pulse'
+                          : 'My pulse'
+                    }
+                    description="Relevant indicators from your accessible apps"
+                  >
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+
+                      {dashboard.metrics.map(
+                        metric => (
+                          <MetricCard
+                            key={
+                              metric.id
+                            }
+                            metric={
+                              metric
+                            }
+                          />
+                        ),
+                      )}
+
+                    </div>
+
+                  </DashboardCard>
+                )}
+
+              </div>
+            )}
+
+
+            {/* ==================================================
+                WORK
+                ================================================== */}
+
+            {dashboard.work.length >
+              0 && (
+              <div className="mt-6">
+
+                <DashboardCard
+                  title={
+                    dashboard.scope ===
+                      'business'
+                      ? 'Work overview'
+                      : dashboard.scope ===
+                          'team'
+                        ? 'Team work'
+                        : 'My work'
+                  }
+                  description="Work that is currently relevant to your responsibilities"
+                >
+
+                  <div className="divide-y divide-slate-100 dark:divide-white/10">
+
+                    {dashboard.work.map(
+                      item => (
+                        <WorkRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                        />
+                      ),
+                    )}
+
+                  </div>
+
+                </DashboardCard>
+
+              </div>
+            )}
+
+
+            {/* ==================================================
+                QUICK ACTIONS
+                ================================================== */}
+
+            {dashboard.actions.length >
+              0 && (
+              <section className="mt-6">
+
+                <div className="mb-3">
+
+                  <h2 className="text-sm font-semibold">
+                    Quick actions
                   </h2>
 
-                  <p className="mt-0.5 text-xs text-slate-400">
-                    Your workspace applications
+                  <p className="mt-0.5 text-[11px] text-slate-400">
+                    Relevant actions from your current work
                   </p>
+
                 </div>
+
+
+                <div className="flex gap-2 overflow-x-auto pb-1">
+
+                  {dashboard.actions.map(
+                    action => (
+                      <ActionCard
+                        key={
+                          action.id
+                        }
+                        action={
+                          action
+                        }
+                      />
+                    ),
+                  )}
+
+                </div>
+
+              </section>
+            )}
+
+
+            {/* ==================================================
+                RECENT
+                ================================================== */}
+
+            {dashboard.recent.length >
+              0 && (
+              <div className="mt-6">
+
+                <DashboardCard
+                  title="Recent work"
+                  description="Recent activity relevant to your permitted work"
+                >
+
+                  <div className="divide-y divide-slate-100 dark:divide-white/10">
+
+                    {dashboard.recent.map(
+                      item => (
+                        <RecentRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                        />
+                      ),
+                    )}
+
+                  </div>
+
+                </DashboardCard>
+
+              </div>
+            )}
+
+
+            {/* ==================================================
+                AI CONTEXT
+                ================================================== */}
+
+            {capabilities.ai && (
+              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.035]">
+
+                <div className="flex items-start gap-4">
+
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
+                    <Bot className="h-5 w-5" />
+                  </div>
+
+
+                  <div className="min-w-0 flex-1">
+
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+
+                      <div>
+
+                        <h2 className="text-sm font-semibold">
+                          SaMi AI
+                        </h2>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          AI works only with information your account is allowed to access.
+                        </p>
+
+                      </div>
+
+
+                      <Link
+                        href="/ai"
+                        className="text-xs font-semibold text-blue-600 dark:text-blue-400"
+                      >
+                        Open SaMi AI
+                      </Link>
+
+                    </div>
+
+
+                    {dashboard.aiContext.length >
+                      0 && (
+                      <div className="mt-4 grid gap-2 lg:grid-cols-2">
+
+                        {dashboard.aiContext.map(
+                          item => (
+                            <div
+                              key={
+                                item.id
+                              }
+                              className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-white/5"
+                            >
+                              <p className="text-xs font-semibold">
+                                {item.title}
+                              </p>
+
+                              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                                {item.detail}
+                              </p>
+                            </div>
+                          ),
+                        )}
+
+                      </div>
+                    )}
+
+                  </div>
+
+                </div>
+
+              </section>
+            )}
+
+
+            {/* ==================================================
+                MY APPS
+                ================================================== */}
+
+            <section className="mt-7">
+
+              <div className="mb-4 flex items-center justify-between">
+
+                <div>
+
+                  <h2 className="text-sm font-semibold">
+                    My Apps
+                  </h2>
+
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    Applications available to your current access
+                  </p>
+
+                </div>
+
 
                 {capabilities.appsManage && (
                   <Link
                     href="/settings?tab=apps"
-                    className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline dark:text-blue-400"
+                    className="text-xs font-semibold text-blue-600 dark:text-blue-400"
                   >
                     Manage apps
                   </Link>
                 )}
+
               </div>
 
 
-              {installedApps.length >
-              0 ? (
-                <div className="grid grid-flow-col grid-rows-2 auto-cols-[76px] gap-x-4 gap-y-4 overflow-x-auto pb-2 sm:grid-flow-row sm:grid-rows-none sm:grid-cols-4 sm:auto-cols-auto sm:overflow-visible md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8">
-                  {installedApps.map(
+              {modules.length >
+                0 ? (
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8">
+
+                  {modules.map(
                     module => (
-                      <AppLauncherItem
+                      <AppItem
                         key={
                           module.key
                         }
-
                         module={
                           module
                         }
                       />
                     ),
                   )}
+
                 </div>
               ) : (
-                <div className="rounded-xl border border-dashed border-slate-300 bg-white px-5 py-7 text-center dark:border-white/10 dark:bg-white/[0.03]">
-                  <AppWindow className="mx-auto h-6 w-6 text-slate-300" />
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center dark:border-white/10 dark:bg-white/[0.025]">
 
-                  <p className="mt-2 text-sm font-semibold">
-                    No business apps available
+                  <AppWindow className="mx-auto h-7 w-7 text-slate-300" />
+
+                  <p className="mt-3 text-sm font-semibold">
+                    No applications assigned
                   </p>
 
                   <p className="mt-1 text-xs text-slate-400">
-                    {capabilities.appsManage
-                      ? 'Install apps needed by this workspace.'
-                      : 'No applications are currently available to this workspace.'}
+                    Your workspace administrator has not assigned application access to your role.
                   </p>
 
-                  {capabilities.appsManage && (
-                    <Link
-                      href="/settings?tab=apps"
-                      className="mt-4 inline-flex h-9 items-center rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white transition hover:bg-blue-700"
-                    >
-                      Manage apps
-                    </Link>
-                  )}
                 </div>
               )}
+
             </section>
 
 
-            {/* QUICK ACCESS */}
-
-            <section className="mt-7">
-              <h2 className="mb-3 text-sm font-semibold">
-                Quick access
-              </h2>
-
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {quickAccess.map(
-                  item => (
-                    <CompactAction
-                      key={
-                        item.id
-                      }
-
-                      item={
-                        item
-                      }
-                    />
-                  ),
-                )}
-              </div>
-            </section>
-
-
-            {/* MANAGEMENT */}
+            {/* ==================================================
+                MANAGEMENT
+                ================================================== */}
 
             {managementActions.length >
               0 && (
-              <section className="mt-7 rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.035]">
+              <section className="mt-7 border-t border-slate-200 pt-6 dark:border-white/10">
 
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-white/10 sm:px-5">
+                <div className="mb-3 flex items-center justify-between">
+
                   <div>
+
                     <h2 className="text-sm font-semibold">
                       Workspace management
                     </h2>
 
-                    <p className="mt-0.5 text-[11px] text-slate-400">
-                      Controls available to your current access
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Administrative areas permitted for your account
                     </p>
+
                   </div>
 
-                  {(membership?.isOwner ||
-                    capabilities.billingView) && (
-                    <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+
+                  {planName && (
+                    <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
                       {planName}
                     </span>
                   )}
+
                 </div>
 
 
-                <div className="flex gap-1 overflow-x-auto p-2 sm:grid sm:grid-cols-2 sm:gap-0 sm:p-2 lg:grid-cols-4">
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+
                   {managementActions.map(
-                    item => (
-                      <ManagementAction
-                        key={
-                          item.id
-                        }
+                    item => {
+                      const Icon =
+                        item.icon;
 
-                        item={
-                          item
-                        }
-                      />
-                    ),
+
+                      return (
+                        <Link
+                          key={
+                            item.id
+                          }
+                          href={
+                            item.href
+                          }
+                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035]"
+                        >
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                            <Icon className="h-4 w-4" />
+                          </div>
+
+                          <div className="min-w-0">
+
+                            <p className="truncate text-xs font-semibold">
+                              {item.label}
+                            </p>
+
+                            <p className="truncate text-[10px] text-slate-400">
+                              {item.description}
+                            </p>
+
+                          </div>
+                        </Link>
+                      );
+                    },
                   )}
+
                 </div>
+
               </section>
             )}
 
 
-            <div className="mt-7 flex items-center justify-between border-t border-slate-200 pt-4 text-[11px] text-slate-400 dark:border-white/10">
+            <footer className="mt-8 flex items-center justify-between border-t border-slate-200 py-5 text-[11px] text-slate-400 dark:border-white/10">
+
               <span>
                 {tenant?.name ||
                   'SaMi'}
@@ -2453,43 +2345,339 @@ export default function DashboardClient({
 
               <Link
                 href="/help"
-                className="hover:text-blue-600 dark:hover:text-blue-400"
+                className="hover:text-blue-600"
               >
                 Help
               </Link>
-            </div>
+
+            </footer>
+
           </div>
+
         </div>
+
       </div>
     </main>
   );
 }
 
 
-/* ============================================================
-   APP LAUNCHER ITEM
-   ============================================================ */
+/* ================================================================
+   CARD
+   ================================================================ */
 
-function AppLauncherItem({
+function DashboardCard({
+  title,
+  description,
+  children,
+}: {
+  title:
+    string;
+
+  description:
+    string;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.035]">
+
+      <div className="border-b border-slate-100 px-4 py-3.5 dark:border-white/10 sm:px-5">
+
+        <h2 className="text-sm font-semibold">
+          {title}
+        </h2>
+
+        <p className="mt-0.5 text-[11px] text-slate-400">
+          {description}
+        </p>
+
+      </div>
+
+      {children}
+
+    </section>
+  );
+}
+
+
+/* ================================================================
+   ATTENTION
+   ================================================================ */
+
+function AttentionRow({
+  item,
+}: {
+  item:
+    DashboardAttentionItem;
+}) {
+  const content =
+    (
+      <div className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4" />
+        </div>
+
+
+        <div className="min-w-0 flex-1">
+
+          <div className="flex items-start justify-between gap-3">
+
+            <div className="min-w-0">
+
+              <p className="truncate text-xs font-semibold">
+                {item.title}
+              </p>
+
+              {item.description && (
+                <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  {item.description}
+                </p>
+              )}
+
+            </div>
+
+
+            <span className={`shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold ${priorityClasses(item.priority)}`}>
+              {priorityLabel(
+                item.priority,
+              )}
+            </span>
+
+          </div>
+
+
+          {item.dueAt && (
+            <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+              <Clock3 className="h-3 w-3" />
+
+              {formatDateTime(
+                item.dueAt,
+              )}
+            </p>
+          )}
+
+        </div>
+
+      </div>
+    );
+
+
+  return item.href ? (
+    <Link
+      href={
+        item.href
+      }
+      className="block transition hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+    >
+      {content}
+    </Link>
+  ) : content;
+}
+
+
+/* ================================================================
+   METRIC
+   ================================================================ */
+
+function MetricCard({
+  metric,
+}: {
+  metric:
+    DashboardMetric;
+}) {
+  return (
+    <div className="rounded-xl bg-slate-50 p-4 dark:bg-white/5">
+
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {metric.label}
+      </p>
+
+      <p className={`mt-2 text-xl font-bold ${toneClasses(metric.tone)}`}>
+        {metric.value}
+      </p>
+
+      {metric.description && (
+        <p className="mt-1 text-[10px] leading-4 text-slate-400">
+          {metric.description}
+        </p>
+      )}
+
+    </div>
+  );
+}
+
+
+/* ================================================================
+   WORK
+   ================================================================ */
+
+function WorkRow({
+  item,
+}: {
+  item:
+    DashboardWorkItem;
+}) {
+  const content =
+    (
+      <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
+          <BriefcaseBusiness className="h-4 w-4" />
+        </div>
+
+
+        <div className="min-w-0 flex-1">
+
+          <p className="truncate text-xs font-semibold">
+            {item.title}
+          </p>
+
+          <p className="mt-1 truncate text-[10px] text-slate-400">
+            {item.description ||
+              item.status ||
+              item.moduleKey}
+          </p>
+
+        </div>
+
+
+        {item.dueAt && (
+          <span className="hidden shrink-0 text-[10px] text-slate-400 sm:block">
+            {formatDateTime(
+              item.dueAt,
+            )}
+          </span>
+        )}
+
+
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+
+      </div>
+    );
+
+
+  return item.href ? (
+    <Link
+      href={
+        item.href
+      }
+      className="block hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+    >
+      {content}
+    </Link>
+  ) : content;
+}
+
+
+/* ================================================================
+   RECENT
+   ================================================================ */
+
+function RecentRow({
+  item,
+}: {
+  item:
+    DashboardRecentItem;
+}) {
+  const content =
+    (
+      <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+          <FileText className="h-4 w-4" />
+        </div>
+
+
+        <div className="min-w-0 flex-1">
+
+          <p className="truncate text-xs font-semibold">
+            {item.title}
+          </p>
+
+          <p className="mt-1 truncate text-[10px] text-slate-400">
+            {item.description ||
+              item.moduleKey}
+          </p>
+
+        </div>
+
+
+        <span className="hidden text-[10px] text-slate-400 sm:block">
+          {formatDateTime(
+            item.occurredAt,
+          )}
+        </span>
+
+      </div>
+    );
+
+
+  return item.href ? (
+    <Link
+      href={
+        item.href
+      }
+      className="block hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+    >
+      {content}
+    </Link>
+  ) : content;
+}
+
+
+/* ================================================================
+   ACTION
+   ================================================================ */
+
+function ActionCard({
+  action,
+}: {
+  action:
+    DashboardAction;
+}) {
+  return (
+    <Link
+      href={
+        action.href
+      }
+      className="min-w-[180px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035]"
+    >
+
+      <div className="flex items-center gap-2">
+
+        <CheckCircle2 className="h-4 w-4 text-blue-600" />
+
+        <p className="truncate text-xs font-semibold">
+          {action.label}
+        </p>
+
+      </div>
+
+
+      {action.description && (
+        <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">
+          {action.description}
+        </p>
+      )}
+
+    </Link>
+  );
+}
+
+
+/* ================================================================
+   APP
+   ================================================================ */
+
+function AppItem({
   module,
 }: {
   module:
     ModuleData;
 }) {
-  const Icon =
-    getModuleIcon(
-      module,
-    );
-
-
-  const tone =
-    APP_TONES[
-      appToneIndex(
-        module.key,
-      )
-    ];
-
-
   return (
     <Link
       href={
@@ -2497,137 +2685,31 @@ function AppLauncherItem({
           module,
         )
       }
-      title={
-        getModuleDescription(
-          module,
-        )
-      }
-      className="group flex min-w-0 flex-col items-center text-center"
+      className="group flex min-w-0 flex-col items-center rounded-xl p-2 text-center transition hover:bg-white dark:hover:bg-white/5"
     >
-      <div
-        className={[
-          'flex h-12 w-12 items-center justify-center rounded-[13px] text-white shadow-sm ring-4 ring-transparent transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md sm:h-14 sm:w-14 sm:rounded-2xl',
-          tone.tile,
-          tone.ring,
-        ].join(
-          ' ',
-        )}
-      >
-        <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
+
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md">
+        <AppWindow className="h-5 w-5" />
       </div>
 
-      <span className="mt-2 line-clamp-2 w-full text-[11px] font-medium leading-4 text-slate-700 dark:text-slate-300 sm:text-xs">
+      <span className="mt-2 line-clamp-2 text-[11px] font-medium">
         {module.name}
       </span>
+
     </Link>
   );
 }
 
 
-/* ============================================================
-   COMPACT ACTION
-   ============================================================ */
-
-function CompactAction({
-  item,
-}: {
-  item:
-    WorkspaceAction;
-}) {
-  const Icon =
-    item.icon;
-
-
-  const isAi =
-    item.id ===
-    'ai';
-
-
-  return (
-    <Link
-      href={
-        item.href
-      }
-      className="flex min-w-[155px] shrink-0 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.06]"
-    >
-      <div
-        className={[
-          'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
-          isAi
-            ? 'bg-gradient-to-br from-blue-600 to-cyan-500 text-white'
-            : 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
-        ].join(
-          ' ',
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </div>
-
-      <div className="min-w-0">
-        <p className="truncate text-xs font-semibold">
-          {item.label}
-        </p>
-
-        <p className="mt-0.5 truncate text-[10px] text-slate-400">
-          {item.description}
-        </p>
-      </div>
-    </Link>
-  );
-}
-
-
-/* ============================================================
-   MANAGEMENT ACTION
-   ============================================================ */
-
-function ManagementAction({
-  item,
-}: {
-  item:
-    WorkspaceAction;
-}) {
-  const Icon =
-    item.icon;
-
-
-  return (
-    <Link
-      href={
-        item.href
-      }
-      className="group flex min-w-[190px] items-center gap-3 rounded-lg px-3 py-3 transition hover:bg-blue-50/60 dark:hover:bg-blue-500/[0.07] sm:min-w-0"
-    >
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-        <Icon className="h-4 w-4" />
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-xs font-semibold">
-          {item.label}
-        </p>
-
-        <p className="mt-0.5 truncate text-[10px] text-slate-400">
-          {item.description}
-        </p>
-      </div>
-
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-500" />
-    </Link>
-  );
-}
-
-
-/* ============================================================
-   PROFILE LINK
-   ============================================================ */
+/* ================================================================
+   PROFILE
+   ================================================================ */
 
 function ProfileLink({
   href,
   icon:
     Icon,
   label,
-  onClick,
 }: {
   href:
     string;
@@ -2637,19 +2719,13 @@ function ProfileLink({
 
   label:
     string;
-
-  onClick:
-    () => void;
 }) {
   return (
     <Link
       href={
         href
       }
-      onClick={
-        onClick
-      }
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-blue-50/60 hover:text-blue-700 dark:text-slate-200 dark:hover:bg-blue-500/10 dark:hover:text-blue-300"
+      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-950/30"
     >
       <Icon className="h-4 w-4 text-slate-400" />
 

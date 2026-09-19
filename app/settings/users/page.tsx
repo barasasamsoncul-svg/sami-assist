@@ -20,6 +20,10 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
+
+import {
   TenantContextError,
 } from '@/lib/auth/tenant-context';
 
@@ -28,6 +32,7 @@ import UsersSettingsClient from './UsersSettingsClient';
 
 export const runtime =
   'nodejs';
+
 
 export const dynamic =
   'force-dynamic';
@@ -40,17 +45,11 @@ export default async function UsersSettingsPage() {
     );
 
 
-  let permissionContext;
+  let permissions;
 
 
   try {
-    /*
-     * Users page itself requires users.view.
-     *
-     * The returned PermissionContext also lets us decide whether
-     * this person may view/manage roles without another resolution.
-     */
-    permissionContext =
+    permissions =
       await requirePermission(
         SAMI_PERMISSIONS
           .USERS_VIEW,
@@ -91,6 +90,18 @@ export default async function UsersSettingsPage() {
   }
 
 
+  const shell =
+    resolveWorkspaceShellAccess({
+      modules:
+        context.modules,
+
+      subscription:
+        context.subscription,
+
+      permissions,
+    });
+
+
   return (
     <UsersSettingsClient
       user={
@@ -106,15 +117,15 @@ export default async function UsersSettingsPage() {
       }
 
       subscription={
-        context.subscription
+        shell.subscription
       }
 
       modules={
-        context.modules
+        shell.accessibleModules
       }
 
       canViewRoles={
-        permissionContext
+        permissions
           .permissionSet
           .has(
             SAMI_PERMISSIONS
@@ -123,7 +134,7 @@ export default async function UsersSettingsPage() {
       }
 
       canManageRoles={
-        permissionContext
+        permissions
           .permissionSet
           .has(
             SAMI_PERMISSIONS

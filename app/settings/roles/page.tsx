@@ -20,6 +20,10 @@ import {
 } from '@/lib/auth/require-page-session';
 
 import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
+
+import {
   TenantContextError,
 } from '@/lib/auth/tenant-context';
 
@@ -28,6 +32,7 @@ import RolesSettingsClient from './RolesSettingsClient';
 
 export const runtime =
   'nodejs';
+
 
 export const dynamic =
   'force-dynamic';
@@ -40,11 +45,11 @@ export default async function RolesSettingsPage() {
     );
 
 
-  let permissionContext;
+  let permissions;
 
 
   try {
-    permissionContext =
+    permissions =
       await requirePermission(
         SAMI_PERMISSIONS
           .ROLES_VIEW,
@@ -85,6 +90,18 @@ export default async function RolesSettingsPage() {
   }
 
 
+  const shell =
+    resolveWorkspaceShellAccess({
+      modules:
+        context.modules,
+
+      subscription:
+        context.subscription,
+
+      permissions,
+    });
+
+
   return (
     <RolesSettingsClient
       user={
@@ -100,15 +117,15 @@ export default async function RolesSettingsPage() {
       }
 
       subscription={
-        context.subscription
+        shell.subscription
       }
 
       modules={
-        context.modules
+        shell.accessibleModules
       }
 
       canManage={
-        permissionContext
+        permissions
           .permissionSet
           .has(
             SAMI_PERMISSIONS

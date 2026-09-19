@@ -11,14 +11,27 @@ import {
 } from '@/lib/auth/permission-context';
 
 import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
   requirePageSession,
 } from '@/lib/auth/require-page-session';
+
+import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
+
+import {
+  composeDashboard,
+} from '@/lib/dashboard/composer';
 
 import DashboardClient from './DashboardClient';
 
 
 export const runtime =
   'nodejs';
+
 
 export const dynamic =
   'force-dynamic';
@@ -32,8 +45,8 @@ export default async function DashboardPage() {
 
 
   const [
-    context,
-    permissions,
+    accountContext,
+    permissionContext,
   ] =
     await Promise.all([
       getAccountContextForUser(
@@ -45,13 +58,48 @@ export default async function DashboardPage() {
     ]);
 
 
+  const shell =
+    resolveWorkspaceShellAccess({
+      modules:
+        accountContext.modules,
+
+      subscription:
+        accountContext.subscription,
+
+      permissions:
+        permissionContext,
+    });
+
+
+  let currentCompanyId:
+    string | null =
+    null;
+
+
+  let selectedCompanyIds:
+    string[] =
+    [];
+
+
+  let allowedCompanyIds:
+    string[] =
+    [];
+
+
   let company:
     {
       currentCompany: {
-        id: string;
-        name: string;
-        currency: string;
-        timezone: string;
+        id:
+          string;
+
+        name:
+          string;
+
+        currency:
+          string;
+
+        timezone:
+          string;
       };
 
       selectedCompanyCount:
@@ -67,6 +115,23 @@ export default async function DashboardPage() {
   try {
     const companyContext =
       await requireCompanyContext();
+
+
+    currentCompanyId =
+      companyContext
+        .currentCompany.id;
+
+
+    selectedCompanyIds = [
+      ...companyContext
+        .selectedCompanyIds,
+    ];
+
+
+    allowedCompanyIds = [
+      ...companyContext
+        .allowedCompanyIds,
+    ];
 
 
     company = {
@@ -100,10 +165,29 @@ export default async function DashboardPage() {
     };
   } catch {
     /*
-     * Dashboard remains available even if company context
-     * is temporarily unavailable.
+     * Dashboard stays usable even if company context is
+     * temporarily unavailable.
      */
   }
+
+
+  const dashboard =
+    await composeDashboard({
+      userId:
+        session.user.id,
+
+      permissions:
+        permissionContext,
+
+      modules:
+        shell.accessibleModules,
+
+      currentCompanyId,
+
+      selectedCompanyIds,
+
+      allowedCompanyIds,
+    });
 
 
   const can =
@@ -111,7 +195,7 @@ export default async function DashboardPage() {
       permission:
         string,
     ) =>
-      permissions
+      permissionContext
         .permissionSet
         .has(
           permission,
@@ -125,109 +209,160 @@ export default async function DashboardPage() {
       }
 
       tenant={
-        context.tenant
+        accountContext.tenant
       }
 
       membership={
-        context.membership
+        accountContext.membership
       }
 
       subscription={
-        context.subscription
+        shell.subscription
       }
 
       modules={
-        context.modules
+        shell.accessibleModules
       }
 
       company={
         company
       }
 
+      dashboard={
+        dashboard
+      }
+
       capabilities={{
         ai:
           can(
-            'ai.use',
+            SAMI_PERMISSIONS
+              .AI_USE,
           ),
 
         files:
           can(
-            'files.view',
+            SAMI_PERMISSIONS
+              .FILES_VIEW,
           ),
 
         notifications:
           can(
-            'notifications.view',
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_VIEW,
           ),
 
-        usersView:
-          can(
-            'users.view',
-          ),
 
-        usersManage:
+        workspaceView:
           can(
-            'users.manage',
-          ),
-
-        rolesView:
-          can(
-            'roles.view',
-          ),
-
-        rolesManage:
-          can(
-            'roles.manage',
-          ),
-
-        companiesView:
-          can(
-            'companies.view',
-          ),
-
-        companiesManage:
-          can(
-            'companies.manage',
-          ),
-
-        appsView:
-          can(
-            'apps.view',
-          ),
-
-        appsManage:
-          can(
-            'apps.manage',
-          ),
-
-        billingView:
-          can(
-            'billing.view',
-          ),
-
-        billingManage:
-          can(
-            'billing.manage',
+            SAMI_PERMISSIONS
+              .WORKSPACE_VIEW,
           ),
 
         workspaceManage:
           can(
-            'workspace.manage',
+            SAMI_PERMISSIONS
+              .WORKSPACE_MANAGE,
+          ),
+
+
+        usersView:
+          can(
+            SAMI_PERMISSIONS
+              .USERS_VIEW,
+          ),
+
+        usersManage:
+          can(
+            SAMI_PERMISSIONS
+              .USERS_MANAGE,
+          ),
+
+
+        rolesView:
+          can(
+            SAMI_PERMISSIONS
+              .ROLES_VIEW,
+          ),
+
+        rolesManage:
+          can(
+            SAMI_PERMISSIONS
+              .ROLES_MANAGE,
+          ),
+
+
+        invitationsView:
+          can(
+            SAMI_PERMISSIONS
+              .INVITATIONS_VIEW,
+          ),
+
+        invitationsManage:
+          can(
+            SAMI_PERMISSIONS
+              .INVITATIONS_MANAGE,
+          ),
+
+
+        companiesView:
+          can(
+            SAMI_PERMISSIONS
+              .COMPANIES_VIEW,
+          ),
+
+        companiesManage:
+          can(
+            SAMI_PERMISSIONS
+              .COMPANIES_MANAGE,
+          ),
+
+
+        appsView:
+          can(
+            SAMI_PERMISSIONS
+              .APPS_VIEW,
+          ),
+
+        appsManage:
+          can(
+            SAMI_PERMISSIONS
+              .APPS_MANAGE,
+          ),
+
+
+        billingView:
+          shell.canViewBilling,
+
+        billingManage:
+          can(
+            SAMI_PERMISSIONS
+              .BILLING_MANAGE,
+          ),
+
+
+        settingsView:
+          can(
+            SAMI_PERMISSIONS
+              .SETTINGS_VIEW,
           ),
 
         settingsManage:
           can(
-            'settings.manage',
+            SAMI_PERMISSIONS
+              .SETTINGS_MANAGE,
           ),
+
 
         auditView:
           can(
-            'audit.view',
+            SAMI_PERMISSIONS
+              .AUDIT_VIEW,
           ),
 
         usageView:
           can(
-            'usage.view',
+            SAMI_PERMISSIONS
+              .USAGE_VIEW,
           ),
       }}
     />
