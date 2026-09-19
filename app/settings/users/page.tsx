@@ -11,8 +11,8 @@ import {
 } from '@/lib/auth/require-page-session';
 
 import {
-  requirePermission,
   PermissionGuardError,
+  requirePermission,
 } from '@/lib/auth/permission-guards';
 
 import {
@@ -34,31 +34,27 @@ export const dynamic =
 
 
 export default async function UsersSettingsPage() {
-  /*
-   * Browser authentication remains owned by requirePageSession().
-   *
-   * This keeps the normal login/redirection behavior unchanged.
-   */
   const session =
     await requirePageSession(
       '/settings/users',
     );
 
 
+  let permissionContext;
+
+
   try {
     /*
-     * Category 8.6
+     * Users page itself requires users.view.
      *
-     * Viewing the Users settings surface requires:
-     *
-     * users.view
-     *
-     * It no longer requires the broad admin role.
+     * The returned PermissionContext also lets us decide whether
+     * this person may view/manage roles without another resolution.
      */
-    await requirePermission(
-      SAMI_PERMISSIONS
-        .USERS_VIEW,
-    );
+    permissionContext =
+      await requirePermission(
+        SAMI_PERMISSIONS
+          .USERS_VIEW,
+      );
   } catch (
     error
   ) {
@@ -85,13 +81,6 @@ export default async function UsersSettingsPage() {
     );
 
 
-  /*
-   * Defensive consistency check.
-   *
-   * The permission guard should already have guaranteed a valid
-   * workspace, but do not render an incomplete Users settings
-   * surface if account context changed concurrently.
-   */
   if (
     !context.tenant ||
     !context.membership
@@ -122,6 +111,24 @@ export default async function UsersSettingsPage() {
 
       modules={
         context.modules
+      }
+
+      canViewRoles={
+        permissionContext
+          .permissionSet
+          .has(
+            SAMI_PERMISSIONS
+              .ROLES_VIEW,
+          )
+      }
+
+      canManageRoles={
+        permissionContext
+          .permissionSet
+          .has(
+            SAMI_PERMISSIONS
+              .ROLES_MANAGE,
+          )
       }
     />
   );

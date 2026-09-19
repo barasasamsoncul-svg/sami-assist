@@ -1,16 +1,23 @@
 'use client';
 
+import Link from 'next/link';
+
 import {
   Building2,
+  Check,
   Crown,
   Filter,
+  KeyRound,
   Loader2,
   Menu,
+  Pencil,
   RefreshCw,
   Search,
+  Shield,
   ShieldCheck,
   UserRound,
   UsersRound,
+  X,
 } from 'lucide-react';
 
 import {
@@ -20,10 +27,6 @@ import {
   useState,
 } from 'react';
 
-import {
-  useRouter,
-} from 'next/navigation';
-
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 
@@ -32,52 +35,85 @@ import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
    ================================================================ */
 
 type UserData = {
-  id: string;
-  email: string;
-  fullName: string;
-  firstName: string;
-  lastName: string;
-  avatarFileId: string | null;
+  id:
+    string;
+
+  email:
+    string;
+
+  fullName:
+    string;
+
+  firstName:
+    string;
+
+  lastName:
+    string;
+
+  avatarFileId:
+    string | null;
 };
 
 
-type TenantData = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-} | null;
+type TenantData =
+  | {
+      id:
+        string;
+
+      name:
+        string;
+
+      slug:
+        string;
+
+      status:
+        string;
+    }
+  | null;
 
 
-type MembershipData = {
-  accessLevel:
-    | 'owner'
-    | 'admin'
-    | 'member';
+type MembershipData =
+  | {
+      accessLevel:
+        | 'owner'
+        | 'admin'
+        | 'member';
 
-  isOwner: boolean;
-  isAdmin: boolean;
+      isOwner:
+        boolean;
 
-  label:
-    string;
-} | null;
+      isAdmin:
+        boolean;
+
+      label:
+        string;
+    }
+  | null;
 
 
-type SubscriptionData = {
-  status: string;
+type SubscriptionData =
+  | {
+      status:
+        string;
 
-  planKey:
-    string | null;
+      planKey:
+        string | null;
 
-  planName:
-    string | null;
-} | null;
+      planName:
+        string | null;
+    }
+  | null;
 
 
 type ModuleData = {
-  key: string;
-  name: string;
-  status: string;
+  key:
+    string;
+
+  name:
+    string;
+
+  status:
+    string;
 
   href?:
     string | null;
@@ -102,6 +138,12 @@ type Props = {
 
   modules:
     ModuleData[];
+
+  canViewRoles:
+    boolean;
+
+  canManageRoles:
+    boolean;
 };
 
 
@@ -260,6 +302,157 @@ type FilterValue =
   | 'removed';
 
 
+type AssignableRole = {
+  id:
+    string;
+
+  tenantId:
+    string | null;
+
+  key:
+    string;
+
+  name:
+    string;
+
+  description:
+    string | null;
+
+  isSystem:
+    boolean;
+
+  status:
+    'active'
+    | 'disabled';
+
+  permissionCount:
+    number;
+
+  assignable:
+    boolean;
+};
+
+
+type MemberRoleAssignment = {
+  id:
+    string;
+
+  key:
+    string;
+
+  name:
+    string;
+
+  description:
+    string | null;
+
+  isSystem:
+    boolean;
+
+  status:
+    'active'
+    | 'disabled';
+};
+
+
+type MemberRoleState = {
+  membershipId:
+    string;
+
+  userId:
+    string;
+
+  tenantId:
+    string;
+
+  isOwner:
+    boolean;
+
+  memberType:
+    'internal';
+
+  membershipStatus:
+    'active';
+
+  roles:
+    MemberRoleAssignment[];
+};
+
+
+type MemberRolesResponse = {
+  success?:
+    boolean;
+
+  code?:
+    string;
+
+  error?:
+    string;
+
+  roles?:
+    AssignableRole[];
+
+  member?:
+    MemberRoleState;
+
+  changed?:
+    boolean;
+};
+
+
+type RoleEditorState = {
+  member:
+    DirectoryMember | null;
+
+  roles:
+    AssignableRole[];
+
+  selected:
+    Set<string>;
+
+  original:
+    Set<string>;
+
+  loading:
+    boolean;
+
+  saving:
+    boolean;
+
+  error:
+    string | null;
+};
+
+
+/* ================================================================
+   EMPTY ROLE EDITOR
+   ================================================================ */
+
+const EMPTY_ROLE_EDITOR:
+  RoleEditorState = {
+  member:
+    null,
+
+  roles:
+    [],
+
+  selected:
+    new Set(),
+
+  original:
+    new Set(),
+
+  loading:
+    false,
+
+  saving:
+    false,
+
+  error:
+    null,
+};
+
+
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -298,8 +491,10 @@ function displayName(
       .trim();
 
 
-  return joined ||
-    member.email;
+  return (
+    joined ||
+    member.email
+  );
 }
 
 
@@ -385,7 +580,8 @@ function formatLabel(
     .replace(
       /\b\w/g,
       character =>
-        character.toUpperCase(),
+        character
+          .toUpperCase(),
     );
 }
 
@@ -447,23 +643,73 @@ function getMemberStatus(
 }
 
 
-async function readResponse(
+function canEditMemberRoles(
+  member:
+    DirectoryMember,
+
+  canManageRoles:
+    boolean,
+) {
+  return Boolean(
+    canManageRoles &&
+
+    member.memberType ===
+      'internal' &&
+
+    member.membershipStatus ===
+      'active' &&
+
+    !member.deletedAt &&
+
+    !member.isOwner,
+  );
+}
+
+
+async function readJson<T>(
   response:
     Response,
-): Promise<DirectoryResponse> {
+): Promise<T | null> {
   try {
     return (
       await response.json()
-    ) as DirectoryResponse;
+    ) as T;
   } catch {
-    return {
-      success:
-        false,
-
-      error:
-        'SaMi returned an invalid response.',
-    };
+    return null;
   }
+}
+
+
+function setsEqual(
+  first:
+    Set<string>,
+
+  second:
+    Set<string>,
+) {
+  if (
+    first.size !==
+    second.size
+  ) {
+    return false;
+  }
+
+
+  for (
+    const value
+    of first
+  ) {
+    if (
+      !second.has(
+        value,
+      )
+    ) {
+      return false;
+    }
+  }
+
+
+  return true;
 }
 
 
@@ -477,11 +723,9 @@ export default function UsersSettingsClient({
   membership,
   subscription,
   modules,
+  canViewRoles,
+  canManageRoles,
 }: Props) {
-  const router =
-    useRouter();
-
-
   const [
     sidebarOpen,
     setSidebarOpen,
@@ -521,6 +765,17 @@ export default function UsersSettingsClient({
 
 
   const [
+    success,
+    setSuccess,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+
+  const [
     directory,
     setDirectory,
   ] =
@@ -546,6 +801,15 @@ export default function UsersSettingsClient({
   ] =
     useState<FilterValue>(
       'all',
+    );
+
+
+  const [
+    roleEditor,
+    setRoleEditor,
+  ] =
+    useState<RoleEditorState>(
+      EMPTY_ROLE_EDITOR,
     );
 
 
@@ -600,18 +864,18 @@ export default function UsersSettingsClient({
 
 
           const data =
-            await readResponse(
+            await readJson<DirectoryResponse>(
               response,
             );
 
 
           if (
             !response.ok ||
-            !data.success ||
+            !data?.success ||
             !data.directory
           ) {
             throw new Error(
-              data.error ||
+              data?.error ||
               'Workspace users could not be loaded.',
             );
           }
@@ -639,6 +903,7 @@ export default function UsersSettingsClient({
           );
         }
       },
+
       [],
     );
 
@@ -647,6 +912,7 @@ export default function UsersSettingsClient({
     () => {
       void loadDirectory();
     },
+
     [
       loadDirectory,
     ],
@@ -778,6 +1044,7 @@ export default function UsersSettingsClient({
             },
           );
       },
+
       [
         directory,
         filter,
@@ -787,28 +1054,368 @@ export default function UsersSettingsClient({
 
 
   /* ============================================================
+     ROLE EDITOR
+     ============================================================ */
+
+  async function openRoleEditor(
+    member:
+      DirectoryMember,
+  ) {
+    if (
+      !canEditMemberRoles(
+        member,
+        canManageRoles,
+      )
+    ) {
+      return;
+    }
+
+
+    setRoleEditor({
+      member,
+
+      roles:
+        [],
+
+      selected:
+        new Set(),
+
+      original:
+        new Set(),
+
+      loading:
+        true,
+
+      saving:
+        false,
+
+      error:
+        null,
+    });
+
+
+    try {
+      const response =
+        await fetch(
+          `/api/workspace/member-roles?userId=${encodeURIComponent(
+            member.userId,
+          )}`,
+          {
+            method:
+              'GET',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+
+      const data =
+        await readJson<MemberRolesResponse>(
+          response,
+        );
+
+
+      if (
+        !response.ok ||
+        !data?.success ||
+        !data.member ||
+        !data.roles
+      ) {
+        throw new Error(
+          data?.error ||
+          'Role assignments could not be loaded.',
+        );
+      }
+
+
+      const assigned =
+        new Set(
+          data.member.roles.map(
+            role =>
+              role.id,
+          ),
+        );
+
+
+      setRoleEditor({
+        member,
+
+        roles:
+          data.roles,
+
+        selected:
+          assigned,
+
+        original:
+          new Set(
+            assigned,
+          ),
+
+        loading:
+          false,
+
+        saving:
+          false,
+
+        error:
+          null,
+      });
+    } catch (
+      requestError
+    ) {
+      setRoleEditor(
+        current => ({
+          ...current,
+
+          loading:
+            false,
+
+          error:
+            requestError instanceof
+              Error
+              ? requestError.message
+              : 'Role assignments could not be loaded.',
+        }),
+      );
+    }
+  }
+
+
+  function closeRoleEditor() {
+    if (
+      roleEditor.saving
+    ) {
+      return;
+    }
+
+
+    setRoleEditor(
+      EMPTY_ROLE_EDITOR,
+    );
+  }
+
+
+  function toggleRole(
+    roleId:
+      string,
+  ) {
+    if (
+      roleEditor.saving
+    ) {
+      return;
+    }
+
+
+    setRoleEditor(
+      current => {
+        const selected =
+          new Set(
+            current.selected,
+          );
+
+
+        if (
+          selected.has(
+            roleId,
+          )
+        ) {
+          selected.delete(
+            roleId,
+          );
+        } else {
+          selected.add(
+            roleId,
+          );
+        }
+
+
+        return {
+          ...current,
+
+          selected,
+        };
+      },
+    );
+  }
+
+
+  const roleEditorDirty =
+    !setsEqual(
+      roleEditor.selected,
+      roleEditor.original,
+    );
+
+
+  async function saveMemberRoles() {
+    const member =
+      roleEditor.member;
+
+
+    if (
+      !member ||
+      roleEditor.saving ||
+      !roleEditorDirty
+    ) {
+      return;
+    }
+
+
+    if (
+      roleEditor.selected.size ===
+      0
+    ) {
+      setRoleEditor(
+        current => ({
+          ...current,
+
+          error:
+            'An active internal member must have at least one role.',
+        }),
+      );
+
+      return;
+    }
+
+
+    setRoleEditor(
+      current => ({
+        ...current,
+
+        saving:
+          true,
+
+        error:
+          null,
+      }),
+    );
+
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/member-roles',
+          {
+            method:
+              'PATCH',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Accept:
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                userId:
+                  member.userId,
+
+                roleIds: [
+                  ...roleEditor.selected,
+                ],
+              }),
+          },
+        );
+
+
+      const data =
+        await readJson<MemberRolesResponse>(
+          response,
+        );
+
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.error ||
+          'Role assignments could not be saved.',
+        );
+      }
+
+
+      setRoleEditor(
+        EMPTY_ROLE_EDITOR,
+      );
+
+
+      setSuccess(
+        `Roles updated for ${displayName(
+          member,
+        )}.`,
+      );
+
+
+      await loadDirectory(
+        true,
+      );
+    } catch (
+      requestError
+    ) {
+      setRoleEditor(
+        current => ({
+          ...current,
+
+          saving:
+            false,
+
+          error:
+            requestError instanceof
+              Error
+              ? requestError.message
+              : 'Role assignments could not be saved.',
+        }),
+      );
+    }
+  }
+
+
+  /* ============================================================
      RENDER
      ============================================================ */
 
   return (
-    <main className="min-h-screen bg-[#f6f8fb] text-slate-950 dark:bg-[#070a10] dark:text-white">
+    <main className="min-h-screen bg-[#f6f7f9] text-slate-950 dark:bg-[#090b10] dark:text-white">
       <div className="flex min-h-screen">
+
         <WorkspaceSidebar
           user={
             user
           }
+
           tenant={
             tenant
           }
+
           membership={
             membership
           }
+
           subscription={
             subscription
           }
+
           modules={
             modules
           }
+
           capabilities={{
             aiEnabled:
               true,
@@ -819,63 +1426,68 @@ export default function UsersSettingsClient({
             notificationsEnabled:
               false,
           }}
+
           unreadNotifications={
             0
           }
+
           open={
             sidebarOpen
           }
-          onClose={
-            () =>
-              setSidebarOpen(
-                false,
-              )
+
+          onClose={() =>
+            setSidebarOpen(
+              false,
+            )
           }
         />
 
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800/90 dark:bg-[#080b12]/90">
-            <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:px-8">
+
+          {/* HEADER */}
+
+          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0d12]/95">
+            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+
               <button
                 type="button"
                 aria-label="Open navigation"
-                onClick={
-                  () =>
-                    setSidebarOpen(
-                      true,
-                    )
+                onClick={() =>
+                  setSidebarOpen(
+                    true,
+                  )
                 }
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 lg:hidden dark:hover:bg-slate-800"
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:hover:bg-white/10 lg:hidden"
               >
                 <Menu className="h-5 w-5" />
               </button>
 
 
               <div className="min-w-0">
-                <p className="truncate text-sm font-extrabold">
+                <p className="truncate text-sm font-semibold">
                   Users
                 </p>
 
-                <p className="mt-0.5 hidden truncate text-[11px] text-slate-500 sm:block dark:text-slate-400">
-                  Manage workspace membership and access visibility
+                <p className="hidden truncate text-[11px] text-slate-400 sm:block">
+                  {tenant?.name ||
+                    'SaMi Workspace'}
                 </p>
               </div>
 
 
               <div className="ml-auto flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={
-                    () =>
-                      router.push(
-                        '/settings?tab=workspace',
-                      )
-                  }
-                  className="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 sm:inline-flex dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
-                >
-                  Workspace settings
-                </button>
+
+                {canViewRoles && (
+                  <Link
+                    href="/settings/roles"
+                    className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:bg-white/10 sm:inline-flex"
+                  >
+                    <Shield className="h-4 w-4" />
+
+                    Roles & permissions
+                  </Link>
+                )}
 
 
                 <button
@@ -883,21 +1495,23 @@ export default function UsersSettingsClient({
                   disabled={
                     refreshing
                   }
-                  onClick={
-                    () =>
-                      void loadDirectory(
-                        true,
-                      )
+                  onClick={() =>
+                    void loadDirectory(
+                      true,
+                    )
                   }
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-800 dark:hover:bg-slate-900"
                   aria-label="Refresh users"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
                 >
                   <RefreshCw
-                    className={`h-4 w-4 ${
+                    className={[
+                      'h-4 w-4',
                       refreshing
                         ? 'animate-spin'
-                        : ''
-                    }`}
+                        : '',
+                    ].join(
+                      ' ',
+                    )}
                   />
                 </button>
               </div>
@@ -905,51 +1519,84 @@ export default function UsersSettingsClient({
           </header>
 
 
-          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <div className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
+
+            {error && (
+              <Message
+                type="error"
+                text={
+                  error
+                }
+                onClose={() =>
+                  setError(
+                    null,
+                  )
+                }
+              />
+            )}
+
+
+            {success && (
+              <Message
+                type="success"
+                text={
+                  success
+                }
+                onClose={() =>
+                  setSuccess(
+                    null,
+                  )
+                }
+              />
+            )}
+
+
             {loading ? (
               <LoadingState />
-            ) : error ? (
+            ) : error &&
+              !directory ? (
               <ErrorState
                 message={
                   error
                 }
-                onRetry={
-                  () =>
-                    void loadDirectory()
+                onRetry={() =>
+                  void loadDirectory()
                 }
               />
             ) : directory ? (
               <>
-                <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-7">
-                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                {/* SUMMARY */}
+
+                <section className="mb-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+
                     <div>
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-white">
-                          <UsersRound className="h-5 w-5" />
-                        </div>
+                      <h1 className="text-xl font-bold tracking-[-0.025em] sm:text-2xl">
+                        Workspace users
+                      </h1>
 
-                        <div>
-                          <h1 className="text-xl font-black sm:text-2xl">
-                            Workspace users
-                          </h1>
-
-                          <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                            {directory.workspaceName ||
-                              tenant?.name ||
-                              'SaMi Workspace'}
-                          </p>
-                        </div>
-                      </div>
-
-                      <p className="mt-5 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
-                        View internal users, portal users, workspace status,
-                        company access and role assignments from one place.
+                      <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:text-sm">
+                        Manage workspace members, company access visibility and role assignments.
                       </p>
                     </div>
+
+
+                    {canViewRoles && (
+                      <Link
+                        href="/settings/roles"
+                        className="inline-flex h-9 w-fit items-center gap-2 rounded-lg bg-[#714b67] px-3 text-xs font-semibold text-white transition hover:bg-[#62415a] sm:hidden"
+                      >
+                        <Shield className="h-4 w-4" />
+
+                        Roles
+                      </Link>
+                    )}
                   </div>
 
 
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                  {/* Dense mobile horizontal summary */}
+
+                  <div className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:grid xl:grid-cols-6 xl:overflow-visible">
                     <SummaryCard
                       label="Total"
                       value={
@@ -1007,11 +1654,15 @@ export default function UsersSettingsClient({
                 </section>
 
 
-                <section className="mt-5 rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
-                  <div className="border-b border-slate-200 p-4 dark:border-slate-800 sm:p-5">
-                    <div className="flex flex-col gap-3 lg:flex-row">
+                {/* DIRECTORY */}
+
+                <section className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.035]">
+
+                  <div className="border-b border-slate-100 p-3 dark:border-white/10 sm:p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row">
+
                       <label className="relative min-w-0 flex-1">
-                        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                         <input
                           value={
@@ -1026,13 +1677,13 @@ export default function UsersSettingsClient({
                               )
                           }
                           placeholder="Search name, email, role or company"
-                          className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:border-slate-800 dark:bg-slate-950"
+                          className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-[#714b67] focus:bg-white dark:border-white/10 dark:bg-white/5"
                         />
                       </label>
 
 
-                      <label className="relative">
-                        <Filter className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <label className="relative shrink-0">
+                        <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
                         <select
                           value={
@@ -1046,7 +1697,7 @@ export default function UsersSettingsClient({
                                   .value as FilterValue,
                               )
                           }
-                          className="h-11 min-w-[180px] appearance-none rounded-xl border border-slate-200 bg-white pl-10 pr-9 text-sm font-semibold outline-none transition focus:border-blue-500 dark:border-slate-800 dark:bg-slate-950"
+                          className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-9 pr-8 text-xs font-semibold outline-none dark:border-white/10 dark:bg-white/5 sm:w-[175px]"
                         >
                           <option value="all">
                             All users
@@ -1076,7 +1727,7 @@ export default function UsersSettingsClient({
                     </div>
 
 
-                    <p className="mt-3 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <p className="mt-2 text-[11px] text-slate-400">
                       {filteredMembers.length}{' '}
                       {filteredMembers.length ===
                       1
@@ -1088,25 +1739,25 @@ export default function UsersSettingsClient({
 
                   {filteredMembers.length ===
                   0 ? (
-                    <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-800">
-                        <UserRound className="h-5 w-5" />
-                      </div>
+                    <div className="flex min-h-[260px] flex-col items-center justify-center px-6 text-center">
+                      <UserRound className="h-7 w-7 text-slate-300" />
 
-                      <p className="mt-4 text-sm font-black">
+                      <p className="mt-3 text-sm font-semibold">
                         No users found
                       </p>
 
-                      <p className="mt-2 max-w-md text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      <p className="mt-1 text-xs text-slate-400">
                         Try another search or filter.
                       </p>
                     </div>
                   ) : (
                     <>
+                      {/* DESKTOP */}
+
                       <div className="hidden overflow-x-auto lg:block">
-                        <table className="w-full min-w-[1050px] border-collapse">
+                        <table className="w-full min-w-[1080px] border-collapse">
                           <thead>
-                            <tr className="border-b border-slate-200 text-left dark:border-slate-800">
+                            <tr className="border-b border-slate-100 text-left dark:border-white/10">
                               <TableHeader>
                                 User
                               </TableHeader>
@@ -1130,8 +1781,15 @@ export default function UsersSettingsClient({
                               <TableHeader>
                                 Last active
                               </TableHeader>
+
+                              {canManageRoles && (
+                                <TableHeader>
+                                  Access
+                                </TableHeader>
+                              )}
                             </tr>
                           </thead>
+
 
                           <tbody>
                             {filteredMembers.map(
@@ -1141,8 +1799,17 @@ export default function UsersSettingsClient({
                                     member
                                       .membershipId
                                   }
+
                                   member={
                                     member
+                                  }
+
+                                  canManageRoles={
+                                    canManageRoles
+                                  }
+
+                                  onManageRoles={
+                                    openRoleEditor
                                   }
                                 />
                               ),
@@ -1152,7 +1819,9 @@ export default function UsersSettingsClient({
                       </div>
 
 
-                      <div className="divide-y divide-slate-200 lg:hidden dark:divide-slate-800">
+                      {/* MOBILE / TABLET */}
+
+                      <div className="divide-y divide-slate-100 lg:hidden dark:divide-white/10">
                         {filteredMembers.map(
                           member => (
                             <MemberCard
@@ -1160,8 +1829,17 @@ export default function UsersSettingsClient({
                                 member
                                   .membershipId
                               }
+
                               member={
                                 member
+                              }
+
+                              canManageRoles={
+                                canManageRoles
+                              }
+
+                              onManageRoles={
+                                openRoleEditor
                               }
                             />
                           ),
@@ -1175,6 +1853,35 @@ export default function UsersSettingsClient({
           </div>
         </div>
       </div>
+
+
+      {/* ======================================================
+          ROLE ASSIGNMENT DRAWER
+          ====================================================== */}
+
+      {roleEditor.member && (
+        <RoleEditor
+          state={
+            roleEditor
+          }
+
+          dirty={
+            roleEditorDirty
+          }
+
+          onClose={
+            closeRoleEditor
+          }
+
+          onToggle={
+            toggleRole
+          }
+
+          onSave={() =>
+            void saveMemberRoles()
+          }
+        />
+      )}
     </main>
   );
 }
@@ -1186,13 +1893,32 @@ export default function UsersSettingsClient({
 
 function MemberRow({
   member,
+  canManageRoles,
+  onManageRoles,
 }: {
   member:
     DirectoryMember;
+
+  canManageRoles:
+    boolean;
+
+  onManageRoles:
+    (
+      member:
+        DirectoryMember,
+    ) => void;
 }) {
+  const editable =
+    canEditMemberRoles(
+      member,
+      canManageRoles,
+    );
+
+
   return (
-    <tr className="border-b border-slate-100 align-top last:border-0 dark:border-slate-900">
-      <td className="px-5 py-4">
+    <tr className="border-b border-slate-100 align-top last:border-0 dark:border-white/10">
+
+      <td className="px-4 py-3.5">
         <MemberIdentity
           member={
             member
@@ -1200,7 +1926,8 @@ function MemberRow({
         />
       </td>
 
-      <td className="px-5 py-4">
+
+      <td className="px-4 py-3.5">
         <TypeBadge
           type={
             member.memberType
@@ -1208,7 +1935,8 @@ function MemberRow({
         />
       </td>
 
-      <td className="px-5 py-4">
+
+      <td className="px-4 py-3.5">
         <StatusBadge
           status={
             getMemberStatus(
@@ -1218,18 +1946,21 @@ function MemberRow({
         />
       </td>
 
-      <td className="px-5 py-4">
+
+      <td className="px-4 py-3.5">
         <RoleList
           roles={
             member.roles
           }
+
           owner={
             member.isOwner
           }
         />
       </td>
 
-      <td className="px-5 py-4">
+
+      <td className="px-4 py-3.5">
         <CompanyList
           companies={
             member.companies
@@ -1237,8 +1968,9 @@ function MemberRow({
         />
       </td>
 
-      <td className="px-5 py-4">
-        <p className="whitespace-nowrap text-xs font-semibold text-slate-600 dark:text-slate-300">
+
+      <td className="px-4 py-3.5">
+        <p className="whitespace-nowrap text-xs font-medium text-slate-600 dark:text-slate-300">
           {formatDate(
             member.lastActiveAt,
           )}
@@ -1251,6 +1983,33 @@ function MemberRow({
           )}
         </p>
       </td>
+
+
+      {canManageRoles && (
+        <td className="px-4 py-3.5">
+          {editable ? (
+            <button
+              type="button"
+              onClick={() =>
+                onManageRoles(
+                  member,
+                )
+              }
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-semibold text-slate-600 transition hover:border-[#714b67] hover:text-[#714b67] dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+
+              Roles
+            </button>
+          ) : (
+            <span className="text-[10px] text-slate-400">
+              {member.isOwner
+                ? 'Protected'
+                : 'Unavailable'}
+            </span>
+          )}
+        </td>
+      )}
     </tr>
   );
 }
@@ -1262,20 +2021,59 @@ function MemberRow({
 
 function MemberCard({
   member,
+  canManageRoles,
+  onManageRoles,
 }: {
   member:
     DirectoryMember;
+
+  canManageRoles:
+    boolean;
+
+  onManageRoles:
+    (
+      member:
+        DirectoryMember,
+    ) => void;
 }) {
+  const editable =
+    canEditMemberRoles(
+      member,
+      canManageRoles,
+    );
+
+
   return (
-    <div className="p-5">
-      <MemberIdentity
-        member={
-          member
-        }
-      />
+    <div className="p-4">
+
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <MemberIdentity
+            member={
+              member
+            }
+          />
+        </div>
 
 
-      <div className="mt-4 flex flex-wrap gap-2">
+        {editable && (
+          <button
+            type="button"
+            onClick={() =>
+              onManageRoles(
+                member,
+              )
+            }
+            aria-label="Manage roles"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 dark:border-white/10"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
         <TypeBadge
           type={
             member.memberType
@@ -1291,7 +2089,7 @@ function MemberCard({
         />
 
         {member.isOwner && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
             <Crown className="h-3 w-3" />
 
             Owner
@@ -1300,58 +2098,294 @@ function MemberCard({
       </div>
 
 
-      <div className="mt-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-          Roles
-        </p>
-
-        <div className="mt-2">
-          <RoleList
-            roles={
-              member.roles
-            }
-            owner={
-              false
-            }
-          />
-        </div>
-      </div>
-
-
-      <div className="mt-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
-          Companies
-        </p>
-
-        <div className="mt-2">
-          <CompanyList
-            companies={
-              member.companies
-            }
-          />
-        </div>
-      </div>
-
-
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <SmallInfo
-          label="Joined"
-          value={
-            formatDate(
-              member.joinedAt,
-            )
+      <div className="mt-3">
+        <RoleList
+          roles={
+            member.roles
           }
-        />
 
-        <SmallInfo
-          label="Last active"
-          value={
-            formatDate(
-              member.lastActiveAt,
-            )
+          owner={
+            false
           }
         />
       </div>
+
+
+      <div className="mt-3 flex gap-2 overflow-x-auto">
+        {member.companies.map(
+          company => (
+            <span
+              key={
+                company.id
+              }
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300"
+            >
+              <Building2 className="h-3 w-3" />
+
+              {company.name}
+            </span>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+/* ================================================================
+   ROLE EDITOR
+   ================================================================ */
+
+function RoleEditor({
+  state,
+  dirty,
+  onClose,
+  onToggle,
+  onSave,
+}: {
+  state:
+    RoleEditorState;
+
+  dirty:
+    boolean;
+
+  onClose:
+    () => void;
+
+  onToggle:
+    (
+      roleId:
+        string,
+    ) => void;
+
+  onSave:
+    () => void;
+}) {
+  const member =
+    state.member;
+
+
+  if (
+    !member
+  ) {
+    return null;
+  }
+
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-5">
+
+      <button
+        type="button"
+        aria-label="Close role editor"
+        onClick={
+          onClose
+        }
+        className="absolute inset-0"
+      />
+
+
+      <section className="relative z-10 flex max-h-[82vh] w-full flex-col rounded-t-2xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181f] sm:max-w-xl sm:rounded-2xl">
+
+        {/* HEADER */}
+
+        <div className="flex items-start gap-3 border-b border-slate-100 px-4 py-4 dark:border-white/10 sm:px-5">
+
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#714b67]/10 text-[#714b67] dark:text-purple-300">
+            <KeyRound className="h-5 w-5" />
+          </div>
+
+
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">
+              Manage roles
+            </h2>
+
+            <p className="mt-0.5 truncate text-xs text-slate-400">
+              {displayName(
+                member,
+              )}
+            </p>
+          </div>
+
+
+          <button
+            type="button"
+            disabled={
+              state.saving
+            }
+            onClick={
+              onClose
+            }
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-white/10"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+
+        {/* BODY */}
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+
+          {state.loading ? (
+            <div className="flex min-h-[240px] items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-[#714b67]" />
+            </div>
+          ) : state.error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
+              {state.error}
+            </div>
+          ) : (
+            <>
+              <div className="mb-3 rounded-lg bg-slate-50 px-3 py-2.5 text-[11px] leading-5 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400">
+                Roles are additive. A user receives the combined permissions of all assigned roles. Company access separately controls where those permissions apply.
+              </div>
+
+
+              <div className="space-y-1">
+                {state.roles.map(
+                  role => {
+                    const checked =
+                      state.selected.has(
+                        role.id,
+                      );
+
+
+                    return (
+                      <button
+                        key={
+                          role.id
+                        }
+                        type="button"
+                        disabled={
+                          state.saving
+                        }
+                        onClick={() =>
+                          onToggle(
+                            role.id,
+                          )
+                        }
+                        className={[
+                          'flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left transition',
+                          checked
+                            ? 'border-[#714b67]/40 bg-[#714b67]/5'
+                            : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04]',
+                        ].join(
+                          ' ',
+                        )}
+                      >
+                        <span
+                          className={[
+                            'flex h-5 w-5 shrink-0 items-center justify-center rounded border',
+                            checked
+                              ? 'border-[#714b67] bg-[#714b67] text-white'
+                              : 'border-slate-300 dark:border-white/20',
+                          ].join(
+                            ' ',
+                          )}
+                        >
+                          {checked && (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                        </span>
+
+
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                          {role.isSystem ? (
+                            <ShieldCheck className="h-4 w-4" />
+                          ) : (
+                            <Shield className="h-4 w-4" />
+                          )}
+                        </div>
+
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="truncate text-xs font-semibold">
+                              {role.name}
+                            </p>
+
+                            {role.isSystem && (
+                              <span className="rounded bg-[#714b67]/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-[#714b67] dark:text-purple-300">
+                                System
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="mt-0.5 line-clamp-1 text-[10px] text-slate-400">
+                            {role.description ||
+                              `${role.permissionCount} permissions`}
+                          </p>
+                        </div>
+
+
+                        <span className="shrink-0 text-[10px] text-slate-400">
+                          {role.permissionCount}
+                        </span>
+                      </button>
+                    );
+                  },
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+
+        {/* FOOTER */}
+
+        {!state.loading && (
+          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 dark:border-white/10 sm:px-5">
+
+            <p className="text-[10px] text-slate-400">
+              {state.selected.size}{' '}
+              {state.selected.size ===
+              1
+                ? 'role'
+                : 'roles'}{' '}
+              selected
+            </p>
+
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={
+                  state.saving
+                }
+                onClick={
+                  onClose
+                }
+                className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300"
+              >
+                Cancel
+              </button>
+
+
+              <button
+                type="button"
+                disabled={
+                  state.saving ||
+                  !dirty ||
+                  state.selected.size ===
+                    0
+                }
+                onClick={
+                  onSave
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#714b67] px-4 text-xs font-semibold text-white hover:bg-[#62415a] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {state.saving && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+
+                Save
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -1368,8 +2402,9 @@ function MemberIdentity({
     DirectoryMember;
 }) {
   return (
-    <div className="flex min-w-[220px] items-center gap-3">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+    <div className="flex min-w-[210px] items-center gap-3">
+
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-bold text-slate-700 dark:bg-white/10 dark:text-slate-200">
         {initials(
           member,
         )}
@@ -1378,7 +2413,7 @@ function MemberIdentity({
 
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
-          <p className="truncate text-sm font-black">
+          <p className="truncate text-xs font-semibold">
             {displayName(
               member,
             )}
@@ -1389,7 +2424,7 @@ function MemberIdentity({
           )}
         </div>
 
-        <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+        <p className="mt-0.5 truncate text-[10px] text-slate-400">
           {member.email}
         </p>
       </div>
@@ -1416,11 +2451,14 @@ function TypeBadge({
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${
+      className={[
+        'inline-flex rounded-md px-2 py-1 text-[10px] font-semibold',
         internal
           ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-          : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300'
-      }`}
+          : 'bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300',
+      ].join(
+        ' ',
+      )}
     >
       {internal
         ? 'Internal'
@@ -1443,12 +2481,12 @@ function StatusBadge({
 
 
   let className =
-    'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+    'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300';
 
 
   if (
     normalized ===
-      'active'
+    'active'
   ) {
     className =
       'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300';
@@ -1457,7 +2495,7 @@ function StatusBadge({
 
   if (
     normalized ===
-      'suspended'
+    'suspended'
   ) {
     className =
       'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300';
@@ -1466,7 +2504,7 @@ function StatusBadge({
 
   if (
     normalized ===
-      'removed'
+    'removed'
   ) {
     className =
       'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300';
@@ -1475,7 +2513,7 @@ function StatusBadge({
 
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${className}`}
+      className={`inline-flex rounded-md px-2 py-1 text-[10px] font-semibold ${className}`}
     >
       {formatLabel(
         normalized,
@@ -1486,7 +2524,7 @@ function StatusBadge({
 
 
 /* ================================================================
-   ROLES
+   ROLE LIST
    ================================================================ */
 
 function RoleList({
@@ -1505,7 +2543,7 @@ function RoleList({
     !owner
   ) {
     return (
-      <span className="text-xs text-slate-400">
+      <span className="text-[10px] text-slate-400">
         No role
       </span>
     );
@@ -1513,9 +2551,10 @@ function RoleList({
 
 
   return (
-    <div className="flex max-w-[260px] flex-wrap gap-1.5">
+    <div className="flex max-w-[250px] flex-wrap gap-1">
+
       {owner && (
-        <span className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
           <ShieldCheck className="h-3 w-3" />
 
           Owner
@@ -1529,7 +2568,7 @@ function RoleList({
             key={
               role.id
             }
-            className="rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+            className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300"
           >
             {role.name ||
               role.key ||
@@ -1543,7 +2582,7 @@ function RoleList({
 
 
 /* ================================================================
-   COMPANIES
+   COMPANY LIST
    ================================================================ */
 
 function CompanyList({
@@ -1557,7 +2596,7 @@ function CompanyList({
       0
   ) {
     return (
-      <span className="text-xs text-slate-400">
+      <span className="text-[10px] text-slate-400">
         No company
       </span>
     );
@@ -1565,27 +2604,40 @@ function CompanyList({
 
 
   return (
-    <div className="flex max-w-[300px] flex-wrap gap-1.5">
-      {companies.map(
-        company => (
-          <span
-            key={
-              company.id
-            }
-            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-          >
-            <Building2 className="h-3 w-3" />
+    <div className="flex max-w-[280px] flex-wrap gap-1">
 
-            {company.name}
+      {companies
+        .slice(
+          0,
+          3,
+        )
+        .map(
+          company => (
+            <span
+              key={
+                company.id
+              }
+              className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-1 text-[10px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300"
+            >
+              <Building2 className="h-3 w-3" />
 
-            {company.isDefault && (
-              <span
-                title="Default company"
-                className="ml-0.5 h-1.5 w-1.5 rounded-full bg-blue-500"
-              />
-            )}
-          </span>
-        ),
+              {company.name}
+
+              {company.isDefault && (
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+              )}
+            </span>
+          ),
+        )}
+
+
+      {companies.length >
+        3 && (
+        <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] text-slate-500 dark:bg-white/10">
+          +
+          {companies.length -
+            3}
+        </span>
       )}
     </div>
   );
@@ -1593,7 +2645,7 @@ function CompanyList({
 
 
 /* ================================================================
-   SMALL COMPONENTS
+   TABLE HEADER
    ================================================================ */
 
 function TableHeader({
@@ -1603,12 +2655,16 @@ function TableHeader({
     React.ReactNode;
 }) {
   return (
-    <th className="px-5 py-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+    <th className="px-4 py-2.5 text-[9px] font-bold uppercase tracking-[0.09em] text-slate-400">
       {children}
     </th>
   );
 }
 
+
+/* ================================================================
+   SUMMARY CARD
+   ================================================================ */
 
 function SummaryCard({
   label,
@@ -1621,12 +2677,12 @@ function SummaryCard({
     number;
 }) {
   return (
-    <div className="rounded-[18px] border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/50">
-      <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+    <div className="min-w-[105px] shrink-0 rounded-lg border border-slate-200 bg-white px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.035] xl:min-w-0">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-400">
         {label}
       </p>
 
-      <p className="mt-2 text-xl font-black">
+      <p className="mt-1 text-lg font-bold">
         {value}
       </p>
     </div>
@@ -1634,37 +2690,65 @@ function SummaryCard({
 }
 
 
-function SmallInfo({
-  label,
-  value,
+/* ================================================================
+   MESSAGE
+   ================================================================ */
+
+function Message({
+  type,
+  text,
+  onClose,
 }: {
-  label:
+  type:
+    'error'
+    | 'success';
+
+  text:
     string;
 
-  value:
-    string;
+  onClose:
+    () => void;
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
-      <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
-        {label}
-      </p>
+    <div
+      className={[
+        'mb-4 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-xs',
+        type ===
+          'error'
+          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
+      ].join(
+        ' ',
+      )}
+    >
+      <span>
+        {text}
+      </span>
 
-      <p className="mt-1 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-        {value}
-      </p>
+      <button
+        type="button"
+        onClick={
+          onClose
+        }
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 }
 
+
+/* ================================================================
+   LOADING
+   ================================================================ */
 
 function LoadingState() {
   return (
     <div className="flex min-h-[420px] items-center justify-center">
       <div className="text-center">
-        <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+        <Loader2 className="mx-auto h-6 w-6 animate-spin text-[#714b67]" />
 
-        <p className="mt-3 text-xs font-semibold text-slate-500">
+        <p className="mt-3 text-xs font-medium text-slate-500">
           Loading workspace users…
         </p>
       </div>
@@ -1672,6 +2756,10 @@ function LoadingState() {
   );
 }
 
+
+/* ================================================================
+   ERROR
+   ================================================================ */
 
 function ErrorState({
   message,
@@ -1686,11 +2774,10 @@ function ErrorState({
   return (
     <div className="flex min-h-[420px] items-center justify-center">
       <div className="max-w-md text-center">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-300">
-          <UsersRound className="h-5 w-5" />
-        </div>
 
-        <h2 className="mt-4 text-sm font-black">
+        <UsersRound className="mx-auto h-8 w-8 text-slate-300" />
+
+        <h2 className="mt-3 text-sm font-semibold">
           Users unavailable
         </h2>
 
@@ -1703,7 +2790,7 @@ function ErrorState({
           onClick={
             onRetry
           }
-          className="mt-4 rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950"
+          className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white dark:bg-white dark:text-slate-900"
         >
           Try again
         </button>
