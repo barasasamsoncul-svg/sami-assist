@@ -227,3 +227,21 @@ test('Category 11: platform typography and controls use one global baseline', as
   assert.match(css, /button,\s*input,\s*select,\s*textarea\s*\{\s*font:\s*inherit/s);
   assert.match(css, /-webkit-text-size-adjust:\s*100%/);
 });
+
+
+test('Category 11: Settings exposes a clear permission-aware local section map', async () => {
+  const settings = compact(
+    await source('app/settings/SettingsClient.tsx'),
+  );
+
+  assert.match(settings, /SETTINGS_NAVIGATION/);
+  assert.match(settings, /aria-label=['"]Settings sections['"]/);
+  assert.match(settings, /allowedSections\.has/);
+  assert.match(settings, /My Account/);
+  assert.match(settings, /Workspace/);
+  assert.match(settings, /Organization/);
+  assert.match(settings, /Apps/);
+  assert.match(settings, /SaMi AI/);
+  assert.match(settings, /Billing/);
+  assert.match(settings, /overflow-x-auto/);
+});
