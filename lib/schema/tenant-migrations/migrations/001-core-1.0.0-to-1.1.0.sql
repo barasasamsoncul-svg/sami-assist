@@ -48,3 +48,14 @@ UPDATE branches
 SET address_line1 = address
 WHERE address_line1 IS NULL
   AND NULLIF(BTRIM(address), '') IS NOT NULL;
+
+-- Ensure every pre-existing company has the generic settings container.
+INSERT INTO company_settings (
+    company_id,
+    settings
+)
+SELECT
+    c.id,
+    '{}'::JSONB
+FROM companies c
+ON CONFLICT (company_id) DO NOTHING;
