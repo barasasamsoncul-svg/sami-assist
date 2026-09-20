@@ -1279,6 +1279,17 @@ WHERE NOT EXISTS (
     FROM {schema}.companies
 );
 
+-- Every company gets a stable generic settings container.
+INSERT INTO {schema}.company_settings (
+    company_id,
+    settings
+)
+SELECT
+    c.id,
+    '{}'::JSONB
+FROM {schema}.companies c
+ON CONFLICT (company_id) DO NOTHING;
+
 
 -- ============================================================
 -- 14. DEFAULT SEQUENCES
