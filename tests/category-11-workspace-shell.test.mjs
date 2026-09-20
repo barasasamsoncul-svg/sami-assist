@@ -275,3 +275,24 @@ test('Category 11: dashboard and settings have stable loading and SaMiOverlay er
   assert.match(settingsLoading, /WorkspaceRouteLoading/);
   assert.match(settingsError, /WorkspaceRouteError/);
 });
+
+
+test('Category 11: Help uses compact disclosure and only real platform destinations', async () => {
+  const help = compact(
+    await source('app/help/page.tsx'),
+  );
+
+  assert.match(help, /<details/);
+  assert.match(help, /Getting started/);
+  assert.match(help, /Account & security/);
+  assert.match(help, /People & Access/);
+  assert.match(help, /Workspace & organization/);
+  assert.match(help, /\/dashboard/);
+  assert.match(help, /\/settings\/users/);
+  assert.match(help, /\/settings\/roles/);
+  assert.match(help, /tab=organization/);
+
+  assert.doesNotMatch(help, /\/auth\/terms/);
+  assert.doesNotMatch(help, /\/auth\/privacy/);
+  assert.doesNotMatch(help, /support@sami\.tech/i);
+});
