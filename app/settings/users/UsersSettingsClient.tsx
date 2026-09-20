@@ -2556,10 +2556,3 @@ function InlineWarning({ text }: { text: string }) {
   return <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">{text}</div>;
 }
 
-function Notice({ tone, text, onClose }: { tone: 'error' | 'success'; text: string; onClose: () => void }) {
-  return (
-    <div className={`mb-4 flex items-center justify-between gap-3 rounded-lg border px-4 py-3 text-xs ${tone === 'success' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300'}`}>
-      <span>{text}</span><button type="button" onClick={onClose}><X className="h-4 w-4" /></button>
-    </div>
-  );
-}
