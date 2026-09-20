@@ -280,6 +280,11 @@ const SETTINGS_NAVIGATION:
       icon: UserRound,
     },
     {
+      key: 'ai',
+      label: 'SaMi AI',
+      icon: Bot,
+    },
+    {
       key: 'workspace',
       label: 'Workspace',
       icon: Building2,
@@ -293,11 +298,6 @@ const SETTINGS_NAVIGATION:
       key: 'apps',
       label: 'Apps',
       icon: AppWindow,
-    },
-    {
-      key: 'ai',
-      label: 'SaMi AI',
-      icon: Bot,
     },
     {
       key: 'billing',
