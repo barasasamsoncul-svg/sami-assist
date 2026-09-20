@@ -11,7 +11,8 @@
     "test:foundation": "node --test tests/category-1-6-foundation.test.mjs tests/category-7-9-access-boundaries.test.mjs",
     "test:authorization": "tsx --test tests/category-8-authorization-security.test.ts",
     "test:all": "npm run test:foundation && npm run test:authorization && npm run build",
-    "check:backup": "node scripts/check-backup-readiness.mjs"
+    "check:backup": "node scripts/check-backup-readiness.mjs",
+    "drill:backup": "node --conditions=react-server --import tsx scripts/tenant-recovery-drill.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
