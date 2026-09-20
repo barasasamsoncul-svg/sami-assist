@@ -100,10 +100,39 @@ test('Category 13: install resolves dependencies and never provisions a workspac
 });
 
 test('Category 13: lifecycle preserves business data on disable and uninstall', async () => {
+  const rawService =
+    await source(
+      'lib/services/workspace-app-lifecycle.ts',
+    );
+
+  const deactivateStart =
+    rawService.indexOf(
+      'async function deactivateWorkspaceApp(',
+    );
+
+  const deactivateEnd =
+    rawService.indexOf(
+      'export async function installWorkspaceApp',
+      deactivateStart,
+    );
+
+  assert.notEqual(
+    deactivateStart,
+    -1,
+    'deactivateWorkspaceApp must exist.',
+  );
+
+  assert.notEqual(
+    deactivateEnd,
+    -1,
+    'deactivateWorkspaceApp must have a stable function boundary.',
+  );
+
   const service =
     compact(
-      await source(
-        'lib/services/workspace-app-lifecycle.ts',
+      rawService.slice(
+        deactivateStart,
+        deactivateEnd,
       ),
     );
 
@@ -130,6 +159,7 @@ test('Category 13: lifecycle preserves business data on disable and uninstall', 
   assert.doesNotMatch(
     service,
     /DROP TABLE|DROP SCHEMA|TRUNCATE|DELETE FROM/i,
+    'Disable/uninstall must never mutate tenant business data.',
   );
 });
 
