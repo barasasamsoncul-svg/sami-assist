@@ -187,7 +187,7 @@ test('Category 6: independent logical backup provider exists and cannot overwrit
   assert.match(recovery, /\$2::varchar/);
   assert.match(
     recovery,
-    /provider\.deleteRecoveryPoint\(\s*createdProviderReference\s*\)/i,
+    /provider\.deleteRecoveryPoint\(\s*createdProviderReference\s*,?\s*\)/i,
   );
   assert.match(
     recovery,
