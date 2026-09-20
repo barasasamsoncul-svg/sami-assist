@@ -1884,14 +1884,14 @@ export default function WorkspaceSettings() {
     return (
       <>
         <div className="space-y-5">
-          <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+          <section className="grid gap-3 sm:grid-cols-2">
             <div className="p-5 sm:p-7">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
                   <Building2 className="h-5 w-5" />
                 </div>
 
-                <div className="min-w-0 flex-1">
+                <div className="mt-3 min-w-0">
                   <h2 className="truncate text-base font-black text-slate-950 dark:text-white">
                     {workspace.name}
                   </h2>
@@ -2922,13 +2922,9 @@ function WorkspaceMenuRow({
       onClick={
         onClick
       }
-      className={`flex w-full items-center gap-4 px-5 py-5 text-left transition hover:bg-slate-50 sm:px-7 dark:hover:bg-slate-900/60 ${
-        last
-          ? ''
-          : 'border-b border-slate-200 dark:border-slate-800'
-      }`}
+      className="group rounded-[20px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-[#0d121b] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-slate-900 dark:text-slate-300">
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
@@ -2942,11 +2938,13 @@ function WorkspaceMenuRow({
         </p>
       </div>
 
-      <span className="hidden max-w-[180px] truncate text-[11px] font-bold text-slate-400 sm:block">
-        {value}
-      </span>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-[11px] font-bold text-slate-400">
+          {value}
+        </span>
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-700" />
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-blue-600 dark:text-slate-600" />
+      </div>
     </button>
   );
 }
