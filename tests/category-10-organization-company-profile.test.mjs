@@ -57,6 +57,7 @@ test('Category 10: organization service uses trusted company context and separat
 
   assert.match(service, /organization\.profile\.updated/);
   assert.match(service, /organization\.branch\.created/);
+  assert.match(service, /organization\.branch\.reactivated/);
   assert.match(service, /organization\.company\.created/);
 });
 
@@ -167,4 +168,46 @@ test('Category 10: tenant migration runner requires a recent verified recovery p
     /DROP DATABASE/i,
     'Schema migration tooling must not perform database lifecycle operations.',
   );
+});
+
+
+test('Category 10: organization profile and company-directory reads remain separate', async () => {
+  const service = compact(
+    await source('lib/services/organization-profile.ts'),
+  );
+
+  assert.match(
+    service,
+    /canViewOrganization\s*=.*ORGANIZATION_VIEW.*ORGANIZATION_MANAGE/i,
+  );
+
+  assert.match(
+    service,
+    /canViewCompanies\s*=.*COMPANIES_VIEW.*COMPANIES_MANAGE/i,
+  );
+
+  assert.match(
+    service,
+    /canViewOrganization\s*\?\s*loadProfile\(context\)\s*:\s*Promise\.resolve\(null\)/i,
+    'Company-directory visibility must not expose the full organization profile.',
+  );
+
+  assert.match(
+    service,
+    /canViewOrganization\s*\?\s*loadBranches\(context\)\s*:\s*Promise\.resolve\(\[\]\)/i,
+    'Company-directory visibility must not expose current-company branches.',
+  );
+});
+
+test('Category 10: archived branches have a controlled reactivation path', async () => {
+  const [service, route, ui] = await Promise.all([
+    source('lib/services/organization-profile.ts'),
+    source('app/api/workspace/organization/branches/[branchId]/route.ts'),
+    source('app/settings/components/OrganizationSettings.tsx'),
+  ]);
+
+  assert.match(service, /reactivateOrganizationBranch/);
+  assert.match(route, /action\?\:\s*['"]reactivate['"]/i);
+  assert.match(route, /reactivateOrganizationBranch/);
+  assert.match(ui, /Reactivate/);
 });
