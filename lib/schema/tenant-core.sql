@@ -1130,6 +1130,24 @@ CREATE TABLE IF NOT EXISTS {schema}.audit_logs (
 
     correlation_id UUID,
 
+    event_type VARCHAR(150),
+
+    category VARCHAR(50) NOT NULL DEFAULT 'activity',
+
+    severity VARCHAR(20) NOT NULL DEFAULT 'info',
+
+    summary VARCHAR(500),
+
+    entity_type VARCHAR(150),
+
+    entity_id UUID,
+
+    changes JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    request_method VARCHAR(10),
+
+    request_path TEXT,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -1147,6 +1165,21 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_user
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_correlation
     ON {schema}.audit_logs(correlation_id);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_company_category_created
+    ON {schema}.audit_logs(company_id, category, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_company_result_created
+    ON {schema}.audit_logs(company_id, result, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_company_actor_created
+    ON {schema}.audit_logs(company_id, user_id, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type
+    ON {schema}.audit_logs(event_type, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
+    ON {schema}.audit_logs(entity_type, entity_id, created_at DESC);
 
 
 -- ============================================================
@@ -1660,7 +1693,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.3.0')
+VALUES ('1.4.0')
 ON CONFLICT (version) DO NOTHING;
 
 

@@ -322,14 +322,19 @@ export async function GET() {
               .NOTIFICATIONS_MANAGE,
           ),
 
+        /*
+         * Core workspace communication is available to every trusted
+         * active internal member. Management actions remain permission
+         * gated through notifications.manage.
+         */
         notificationsView:
+          true,
+
+        auditView:
+          context.isOwner ||
           has(
             SAMI_PERMISSIONS
-              .NOTIFICATIONS_VIEW,
-          ) ||
-          has(
-            SAMI_PERMISSIONS
-              .NOTIFICATIONS_MANAGE,
+              .AUDIT_VIEW,
           ),
 
 

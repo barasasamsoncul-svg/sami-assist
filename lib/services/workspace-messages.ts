@@ -13,6 +13,10 @@ import {
   WorkspaceNotificationError,
 } from '@/lib/services/workspace-notifications';
 
+import {
+  recordWorkspaceAuditEvent,
+} from '@/lib/services/workspace-activity';
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1027,6 +1031,50 @@ export async function startWorkspaceDirectConversation(
     },
   });
 
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      actorType:
+        'human',
+      action:
+        'communication.message.sent',
+      eventType:
+        'communication.message.sent',
+      category:
+        'communication',
+      severity:
+        'info',
+      summary:
+        'Direct workspace message sent.',
+      resourceType:
+        'workspace_conversation',
+      resourceId:
+        conversationId,
+      entityType:
+        'workspace_message',
+      entityId:
+        messageId,
+      module:
+        'core.notifications',
+      result:
+        'success',
+      metadata: {
+        recipientUserId:
+          recipient.id,
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[SaMi Messages] Activity recording failed:',
+      error,
+    );
+  }
+
   return {
     conversationId,
     messageId,
@@ -1296,6 +1344,52 @@ export async function sendWorkspaceConversationMessage(
     }
   }
 
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      actorType:
+        'human',
+      action:
+        'communication.message.sent',
+      eventType:
+        'communication.message.sent',
+      category:
+        'communication',
+      severity:
+        'info',
+      summary:
+        'Workspace conversation reply sent.',
+      resourceType:
+        'workspace_conversation',
+      resourceId:
+        id,
+      entityType:
+        'workspace_message',
+      entityId:
+        messageId,
+      module:
+        'core.notifications',
+      result:
+        'success',
+      metadata: {
+        recipientCount:
+          recipients.length,
+        replyToMessageId:
+          replyToMessageId,
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[SaMi Messages] Activity recording failed:',
+      error,
+    );
+  }
+
   return {
     conversationId:
       id,
@@ -1545,6 +1639,50 @@ export async function sendWorkspaceCompanyAnnouncement(
         },
       );
     }
+  }
+
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      actorType:
+        'human',
+      action:
+        'communication.announcement.sent',
+      eventType:
+        'communication.announcement.sent',
+      category:
+        'communication',
+      severity:
+        'info',
+      summary:
+        subject,
+      resourceType:
+        'workspace_conversation',
+      resourceId:
+        conversationId,
+      entityType:
+        'workspace_message',
+      entityId:
+        messageId,
+      module:
+        'core.notifications',
+      result:
+        'success',
+      metadata: {
+        recipientCount:
+          recipients.length,
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[SaMi Messages] Activity recording failed:',
+      error,
+    );
   }
 
   return {

@@ -764,6 +764,12 @@ export default function OrganizationSettings() {
         'Organization logo updated.',
       );
 
+      window.dispatchEvent(
+        new CustomEvent(
+          'sami:company-context-changed',
+        ),
+      );
+
       await load();
       router.refresh();
     } catch (candidate) {
@@ -824,6 +830,12 @@ export default function OrganizationSettings() {
         'Logo removed',
         data.message ||
         'Organization logo removed.',
+      );
+
+      window.dispatchEvent(
+        new CustomEvent(
+          'sami:company-context-changed',
+        ),
       );
 
       await load();

@@ -29,11 +29,15 @@ test('Category 15: tenant core advances additively from 1.2.0 to 1.3.0', async (
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.3\.0['"]/s,
+    /core-1\.2\.0-to-1\.3\.0/,
   );
   assert.match(
     manifest,
-    /core-1\.2\.0-to-1\.3\.0/,
+    /fromVersion:\s*['"]1\.2\.0['"]/,
+  );
+  assert.match(
+    manifest,
+    /toVersion:\s*['"]1\.3\.0['"]/,
   );
   assert.match(
     migration,
@@ -53,7 +57,7 @@ test('Category 15: tenant core advances additively from 1.2.0 to 1.3.0', async (
   );
   assert.match(
     core,
-    /VALUES \('1\.3\.0'\)/,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.notification_deliveries/,
   );
 });
 

@@ -7,12 +7,13 @@ import { getTenantPoolByTenantId } from '@/lib/db/tenant';
 import { getSession } from '@/lib/auth/session';
 import {
   getPermissionContext,
-  permissionContextHas,
   type PermissionContext,
 } from '@/lib/auth/permission-context';
-import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
 import { requireCompanyAccess } from '@/lib/services/company-access';
 import { sendWorkspaceNotificationEmail } from '@/lib/services/email';
+import {
+  recordWorkspaceAuditEvent,
+} from '@/lib/services/workspace-activity';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -284,29 +285,6 @@ function mapNotification(
   };
 }
 
-function assertViewPermission(
-  context: PermissionContext,
-) {
-  if (
-    context.isOwner ||
-    permissionContextHas(
-      context,
-      SAMI_PERMISSIONS.NOTIFICATIONS_VIEW,
-    ) ||
-    permissionContextHas(
-      context,
-      SAMI_PERMISSIONS.NOTIFICATIONS_MANAGE,
-    )
-  ) {
-    return;
-  }
-
-  throw new WorkspaceNotificationError(
-    'NOTIFICATIONS_VIEW_REQUIRED',
-    'You do not have permission to view workspace notifications.',
-  );
-}
-
 export async function getWorkspaceNotificationContext():
   Promise<NotificationContext> {
   const [
@@ -335,8 +313,6 @@ export async function getWorkspaceNotificationContext():
       'Your selected workspace changed. Please try again.',
     );
   }
-
-  assertViewPermission(permissions);
 
   const companyId =
     session.currentCompanyId;
@@ -898,7 +874,7 @@ export async function updateWorkspaceNotificationPreferences(
   const row =
     result.rows[0];
 
-  return {
+  const updatedPreferences = {
     inAppEnabled:
       row.in_app_enabled === true,
     emailEnabled:
@@ -912,6 +888,62 @@ export async function updateWorkspaceNotificationPreferences(
         row.mute_until || null,
       ),
   };
+
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      actorType:
+        'human',
+      action:
+        'notifications.preferences.updated',
+      eventType:
+        'notifications.preferences.updated',
+      category:
+        'preferences',
+      severity:
+        'info',
+      summary:
+        'Notification preferences updated.',
+      resourceType:
+        'notification_preferences',
+      module:
+        'core.notifications',
+      result:
+        'success',
+      changes: {
+        inAppEnabled: {
+          from:
+            current.inAppEnabled,
+          to:
+            updatedPreferences.inAppEnabled,
+        },
+        emailEnabled: {
+          from:
+            current.emailEnabled,
+          to:
+            updatedPreferences.emailEnabled,
+        },
+        muteUntil: {
+          from:
+            current.muteUntil,
+          to:
+            updatedPreferences.muteUntil,
+        },
+      },
+    });
+  } catch (error) {
+    console.error(
+      '[SaMi Notifications] Activity recording failed:',
+      error,
+    );
+  }
+
+  return updatedPreferences;
 }
 
 export async function setWorkspaceNotificationReadState(

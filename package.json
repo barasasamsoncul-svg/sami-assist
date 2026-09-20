@@ -10,7 +10,7 @@
     "test": "npm run test:foundation",
     "test:foundation": "node --test tests/category-1-6-foundation.test.mjs tests/category-7-9-access-boundaries.test.mjs",
     "test:authorization": "tsx --test tests/category-8-authorization-security.test.ts",
-    "test:all": "npm run test:foundation && npm run test:authorization && npm run test:category10 && npm run test:category11 && npm run test:category12 && npm run test:category13 && npm run test:category14 && npm run test:category15 && npm run build",
+    "test:all": "npm run test:foundation && npm run test:authorization && npm run test:category10 && npm run test:category11 && npm run test:category12 && npm run test:category13 && npm run test:category14 && npm run test:category15 && npm run test:category16 && npm run build",
     "check:backup": "node scripts/check-backup-readiness.mjs",
     "drill:backup": "node --conditions=react-server --import tsx scripts/tenant-recovery-drill.ts",
     "migrate:tenant-core": "node --conditions=react-server --import tsx scripts/migrate-tenant-core.ts",
@@ -19,7 +19,8 @@
     "test:category12": "node --test tests/category-12-navigation-app-registry.test.mjs",
     "test:category13": "node --test tests/category-13-module-app-framework.test.mjs",
     "test:category14": "node --test tests/category-14-files-storage.test.mjs",
-    "test:category15": "node --test tests/category-15-notifications.test.mjs"
+    "test:category15": "node --test tests/category-15-notifications.test.mjs",
+    "test:category16": "node --test tests/category-16-activity-audit.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",

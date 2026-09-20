@@ -9,6 +9,7 @@ import {
 } from 'next/navigation';
 
 import {
+  Activity,
   AppWindow,
   Bell,
   Bot,
@@ -42,6 +43,7 @@ import {
 import SaMiLogo from '@/app/components/SaMiLogo';
 
 import UserAvatar from '@/app/components/account/UserAvatar';
+import CompanyAvatar from '@/app/components/workspace/CompanyAvatar';
 
 import SaMiOverlay, {
   type SaMiOverlayType,
@@ -379,6 +381,9 @@ type NavigationPermissionState = {
     boolean;
 
   notificationsView:
+    boolean;
+
+  auditView:
     boolean;
 
 
@@ -1095,12 +1100,22 @@ export default function WorkspaceSidebar({
       true;
 
 
+  /*
+   * Notifications and internal messaging are core workspace
+   * communication for every active internal member with company
+   * access. notifications.manage remains permission-gated.
+   */
   const canUseNotifications =
-    capabilities
-      ?.notificationsEnabled ===
-      true &&
     navigationPermissions
       ?.notificationsView ===
+      true;
+
+  const canUseActivity =
+    navigationPermissions
+      ?.workspaceView ===
+      true ||
+    navigationPermissions
+      ?.auditView ===
       true;
 
 
@@ -2094,6 +2109,11 @@ export default function WorkspaceSidebar({
         data.selector,
       );
 
+      window.dispatchEvent(
+        new CustomEvent(
+          'sami:company-context-changed',
+        ),
+      );
 
       router.refresh();
     } catch (
@@ -2639,9 +2659,19 @@ export default function WorkspaceSidebar({
             className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition enabled:hover:bg-slate-50 disabled:cursor-default dark:border-slate-800 dark:bg-[#0d121b] dark:enabled:hover:bg-slate-900"
           >
 
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-              <Building2 className="h-4 w-4" />
-            </div>
+            <CompanyAvatar
+              name={
+                currentCompany
+                  ?.name ||
+                'Company'
+              }
+              logoUrl={
+                currentCompany
+                  ?.logoUrl ||
+                null
+              }
+              size="md"
+            />
 
 
             <div className="min-w-0 flex-1">
@@ -2828,6 +2858,16 @@ export default function WorkspaceSidebar({
                               >
 
                                 <div className="flex items-center gap-2">
+
+                                  <CompanyAvatar
+                                    name={
+                                      company.name
+                                    }
+                                    logoUrl={
+                                      company.logoUrl
+                                    }
+                                    size="sm"
+                                  />
 
                                   <p
                                     className={[
@@ -3069,7 +3109,8 @@ export default function WorkspaceSidebar({
               ==================================================== */}
 
           {(canUseFiles ||
-            canUseNotifications) && (
+            canUseNotifications ||
+            canUseActivity) && (
             <div className="mt-6">
 
               <NavSectionLabel>
@@ -3112,6 +3153,27 @@ export default function WorkspaceSidebar({
                           '/files' ||
                         pathname.startsWith(
                           '/files/',
+                        )
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  )}
+
+
+                  {canUseActivity && (
+                    <ChildNavLink
+                      href="/activity"
+                      icon={
+                        Activity
+                      }
+                      label="Activity"
+                      active={
+                        pathname ===
+                          '/activity' ||
+                        pathname.startsWith(
+                          '/activity/',
                         )
                       }
                       onNavigate={
