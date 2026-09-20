@@ -138,11 +138,12 @@ test('Category 10: company lifecycle cannot archive the current or last company 
 });
 
 test('Category 10: settings UI exposes organization profile, branches, companies and history through permission-aware navigation', async () => {
-  const [component, settings, page, sidebar] = await Promise.all([
+  const [component, settings, page, sidebar, navigation] = await Promise.all([
     source('app/settings/components/OrganizationSettings.tsx'),
     source('app/settings/SettingsClient.tsx'),
     source('app/settings/page.tsx'),
     source('app/components/workspace/WorkspaceSidebar.tsx'),
+    source('app/api/workspace/navigation/route.ts'),
   ]);
 
   assert.match(component, /Organization profile/);
@@ -160,6 +161,11 @@ test('Category 10: settings UI exposes organization profile, branches, companies
 
   assert.match(sidebar, /label:\s*['"]Organization['"]/i);
   assert.match(sidebar, /\/settings\?tab=organization/);
+
+  assert.match(navigation, /organizationView/);
+  assert.match(navigation, /organizationManage/);
+  assert.match(navigation, /companiesView/);
+  assert.match(navigation, /companiesManage/);
 });
 
 test('Category 10: tenant migration runner requires a recent verified recovery point', async () => {
