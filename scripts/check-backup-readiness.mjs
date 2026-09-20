@@ -1,5 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
+import dotenv from 'dotenv';
+
+dotenv.config({ path: '.env.local' });
+dotenv.config();
 
 function configured(name) {
   return Boolean(process.env[name]?.trim());
@@ -34,6 +38,34 @@ const dumpCheck =
 const restoreCheck =
   commandWorks(pgRestore);
 
+const storageProvider =
+  process.env.SAMI_STORAGE_PROVIDER?.trim().toLowerCase() || '';
+
+const r2Endpoint =
+  process.env.R2_ENDPOINT?.trim() || '';
+
+const usingR2 =
+  storageProvider === 'r2' ||
+  Boolean(r2Endpoint);
+
+const backupBucket =
+  process.env.SAMI_BACKUP_S3_BUCKET?.trim() ||
+  process.env.SAMI_STORAGE_BUCKET?.trim() ||
+  '';
+
+const backupRegion =
+  process.env.SAMI_BACKUP_S3_REGION?.trim() ||
+  (usingR2 ? 'auto' : '');
+
+const backupEndpoint =
+  process.env.SAMI_BACKUP_S3_ENDPOINT?.trim() ||
+  r2Endpoint ||
+  '';
+
+const r2CredentialsReady =
+  configured('R2_ACCESS_KEY_ID') &&
+  configured('R2_SECRET_ACCESS_KEY');
+
 const checks = [
   {
     name: 'pg_dump available',
@@ -58,13 +90,35 @@ const checks = [
     ok: configured('POSTGRES_ADMIN_PASSWORD'),
   },
   {
-    name: 'SAMI_BACKUP_S3_BUCKET configured',
-    ok: configured('SAMI_BACKUP_S3_BUCKET'),
+    name: 'backup bucket configured',
+    ok: Boolean(backupBucket),
+    detail:
+      process.env.SAMI_BACKUP_S3_BUCKET?.trim()
+        ? 'dedicated backup bucket'
+        : backupBucket
+          ? 'reusing SAMI_STORAGE_BUCKET'
+          : null,
   },
   {
-    name: 'SAMI_BACKUP_S3_REGION configured',
-    ok: configured('SAMI_BACKUP_S3_REGION'),
+    name: 'backup region configured',
+    ok: Boolean(backupRegion),
+    detail:
+      usingR2 && !process.env.SAMI_BACKUP_S3_REGION?.trim()
+        ? 'auto (Cloudflare R2)'
+        : backupRegion || null,
   },
+  ...(usingR2
+    ? [
+        {
+          name: 'R2 endpoint configured',
+          ok: Boolean(backupEndpoint),
+        },
+        {
+          name: 'R2 credentials configured',
+          ok: r2CredentialsReady,
+        },
+      ]
+    : []),
 ];
 
 console.log('\nSaMi tenant backup readiness\n');
