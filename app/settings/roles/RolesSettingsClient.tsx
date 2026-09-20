@@ -10,7 +10,6 @@ import {
   KeyRound,
   Loader2,
   LockKeyhole,
-  Menu,
   MoreHorizontal,
   Power,
   RefreshCw,
@@ -31,7 +30,13 @@ import {
   useState,
 } from 'react';
 
-import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 
 
 /* ================================================================
@@ -404,15 +409,6 @@ export default function RolesSettingsClient({
   canManage,
 }: Props) {
   const [
-    sidebarOpen,
-    setSidebarOpen,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
     roles,
     setRoles,
   ] =
@@ -514,6 +510,56 @@ export default function RolesSettingsClient({
     >(
       null,
     );
+
+
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+    showSuccess,
+    confirmAction,
+  } =
+    useSaMiOverlay();
+
+
+  useEffect(
+    () => {
+      if (!error) return;
+
+      showError(
+        'Roles & Permissions',
+        error,
+      );
+
+      setError(
+        null,
+      );
+    },
+    [
+      error,
+      showError,
+    ],
+  );
+
+
+  useEffect(
+    () => {
+      if (!success) return;
+
+      showSuccess(
+        'Roles & Permissions updated',
+        success,
+      );
+
+      setSuccess(
+        null,
+      );
+    },
+    [
+      success,
+      showSuccess,
+    ],
+  );
 
 
   const [
@@ -1569,24 +1615,11 @@ export default function RolesSettingsClient({
   }
 
 
-  async function deleteRole() {
+  async function performDeleteRole() {
     if (
       !selectedRole ||
       selectedRole.isSystem ||
       actionLoading
-    ) {
-      return;
-    }
-
-
-    const confirmed =
-      window.confirm(
-        `Delete "${selectedRole.name}"?\n\nUsers assigned to this role will lose this role assignment.`,
-      );
-
-
-    if (
-      !confirmed
     ) {
       return;
     }
@@ -1684,162 +1717,90 @@ export default function RolesSettingsClient({
   }
 
 
+  function deleteRole() {
+    if (
+      !selectedRole ||
+      selectedRole.isSystem ||
+      actionLoading
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Delete role?',
+      message:
+        `Delete "${selectedRole.name}"? Users assigned to this role will lose this role assignment.`,
+      confirmLabel:
+        'Delete role',
+      onConfirm: () => {
+        void performDeleteRole();
+      },
+    });
+  }
+
+
   /* ==========================================================
      RENDER
      ========================================================== */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
-      <div className="flex min-h-screen">
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
 
-        <WorkspaceSidebar
-          user={
-            user
-          }
+      <WorkspaceShell
+        user={user}
+        tenant={tenant}
+        membership={membership}
+        subscription={subscription}
+        modules={modules}
+        sidebarCapabilities={{
+          aiEnabled: true,
+          filesEnabled: false,
+          notificationsEnabled: false,
+        }}
+        title="Roles & Permissions"
+        description="Define reusable business roles, then assign them to people from People & Access."
+        contextLabel={tenant?.name || null}
+        actions={
+          <>
+            <Link
+              href="/settings/users"
+              className="hidden h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 sm:flex"
+            >
+              <Users className="h-4 w-4" />
+              People
+            </Link>
 
-          tenant={
-            tenant
-          }
-
-          membership={
-            membership
-          }
-
-          subscription={
-            subscription
-          }
-
-          modules={
-            modules
-          }
-
-          capabilities={{
-            aiEnabled:
-              true,
-
-            filesEnabled:
-              false,
-
-            notificationsEnabled:
-              false,
-          }}
-
-          unreadNotifications={
-            0
-          }
-
-          open={
-            sidebarOpen
-          }
-
-          onClose={() =>
-            setSidebarOpen(
-              false,
-            )
-          }
-        />
-
-
-        <div className="min-w-0 flex-1 lg:pl-[286px]">
-
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
-
+            {canManage && (
               <button
                 type="button"
-                onClick={() =>
-                  setSidebarOpen(
-                    true,
-                  )
-                }
-                aria-label="Open navigation"
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10 lg:hidden"
+                onClick={openCreateRole}
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700"
               >
-                <Menu className="h-5 w-5" />
+                <CirclePlus className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  New role
+                </span>
+                <span className="sm:hidden">
+                  New
+                </span>
               </button>
-
-
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold">
-                  Roles & Permissions
-                </p>
-
-                <p className="hidden truncate text-[11px] text-slate-400 sm:block">
-                  {tenant?.name ||
-                    'SaMi Workspace'}
-                </p>
-              </div>
-
-
-              <div className="ml-auto flex items-center gap-2">
-
-                <Link
-                  href="/settings/users"
-                  className="hidden h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/10 dark:hover:text-blue-300 sm:flex"
-                >
-                  <Users className="h-4 w-4" />
-
-                  Users
-                </Link>
-
-
-                {canManage && (
-                  <button
-                    type="button"
-                    onClick={
-                      openCreateRole
-                    }
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white transition hover:bg-blue-700"
-                  >
-                    <CirclePlus className="h-4 w-4" />
-
-                    <span className="hidden sm:inline">
-                      New role
-                    </span>
-
-                    <span className="sm:hidden">
-                      New
-                    </span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </header>
-
-
-          <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
-
-            {error && (
-              <Message
-                type="error"
-                text={
-                  error
-                }
-                onClose={() =>
-                  setError(
-                    null,
-                  )
-                }
-              />
             )}
+          </>
+        }
+        contentClassName="max-w-[1500px]"
+      >
 
-
-            {success && (
-              <Message
-                type="success"
-                text={
-                  success
-                }
-                onClose={() =>
-                  setSuccess(
-                    null,
-                  )
-                }
-              />
-            )}
-
-
-            <section className="mb-5 flex items-start justify-between gap-4">
+<section className="mb-4 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.035]">
               <div>
                 <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
                   Access management
@@ -1850,7 +1811,7 @@ export default function RolesSettingsClient({
                 </h1>
 
                 <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:text-sm">
-                  Define what users can do. Company access separately controls where those permissions apply.
+                  Roles define what a person may do. App access controls which tools are available, while company assignments control where those permissions apply.
                 </p>
               </div>
 
@@ -2348,10 +2309,8 @@ export default function RolesSettingsClient({
                 )}
               </section>
             </div>
-          </div>
-        </div>
-      </div>
 
+      </WorkspaceShell>
 
       {/* ROLE EDITOR */}
 
@@ -2513,7 +2472,8 @@ export default function RolesSettingsClient({
           </div>
         </div>
       )}
-    </main>
+
+    </>
   );
 }
 
@@ -2765,46 +2725,3 @@ function RoleMenuButton({
 /* ================================================================
    MESSAGE
    ================================================================ */
-
-function Message({
-  type,
-  text,
-  onClose,
-}: {
-  type:
-    'error'
-    | 'success';
-
-  text:
-    string;
-
-  onClose:
-    () => void;
-}) {
-  return (
-    <div
-      className={[
-        'mb-4 flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-xs',
-        type ===
-          'error'
-          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300',
-      ].join(
-        ' ',
-      )}
-    >
-      <span>
-        {text}
-      </span>
-
-      <button
-        type="button"
-        onClick={
-          onClose
-        }
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  );
-}
