@@ -5,11 +5,14 @@ import Link from 'next/link';
 import {
   AppWindow,
   Bot,
+  Building2,
   CreditCard,
+  Factory,
   Loader2,
   Moon,
   Sparkles,
   Sun,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -21,6 +24,7 @@ import {
 } from 'react';
 
 import {
+  useRouter,
   useSearchParams,
 } from 'next/navigation';
 
@@ -258,6 +262,45 @@ const VALID_SECTIONS =
   ]);
 
 
+const SETTINGS_NAVIGATION:
+  Array<{
+    key: Section;
+    label: string;
+    icon: LucideIcon;
+  }> = [
+    {
+      key: 'account',
+      label: 'My Account',
+      icon: UserRound,
+    },
+    {
+      key: 'workspace',
+      label: 'Workspace',
+      icon: Building2,
+    },
+    {
+      key: 'organization',
+      label: 'Organization',
+      icon: Factory,
+    },
+    {
+      key: 'apps',
+      label: 'Apps',
+      icon: AppWindow,
+    },
+    {
+      key: 'ai',
+      label: 'SaMi AI',
+      icon: Bot,
+    },
+    {
+      key: 'billing',
+      label: 'Billing',
+      icon: CreditCard,
+    },
+  ];
+
+
 /* ================================================================
    HELPERS
    ================================================================ */
@@ -471,6 +514,9 @@ export default function SettingsClient({
   managedModules,
   capabilities,
 }: Props) {
+  const router =
+    useRouter();
+
   const searchParams =
     useSearchParams();
 
@@ -996,6 +1042,37 @@ export default function SettingsClient({
     );
 
 
+  function navigateSection(
+    section: Section,
+  ) {
+    if (
+      !allowedSections.has(
+        section,
+      )
+    ) {
+      return;
+    }
+
+    const params =
+      new URLSearchParams(
+        searchParams.toString(),
+      );
+
+    params.set(
+      'tab',
+      section,
+    );
+
+    router.push(
+      `/settings?${params.toString()}`,
+      {
+        scroll:
+          false,
+      },
+    );
+  }
+
+
   /* ==============================================================
      RENDER
      ============================================================== */
@@ -1043,6 +1120,58 @@ export default function SettingsClient({
       }
       contentClassName="max-w-[1500px]"
     >
+      {allowedSections.size > 1 && (
+        <nav
+          aria-label="Settings sections"
+          className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {SETTINGS_NAVIGATION
+            .filter(
+              item =>
+                allowedSections.has(
+                  item.key,
+                ),
+            )
+            .map(
+              item => {
+                const Icon =
+                  item.icon;
+
+                const selected =
+                  active ===
+                  item.key;
+
+                return (
+                  <button
+                    key={
+                      item.key
+                    }
+                    type="button"
+                    onClick={() =>
+                      navigateSection(
+                        item.key,
+                      )
+                    }
+                    aria-current={
+                      selected
+                        ? 'page'
+                        : undefined
+                    }
+                    className={
+                      selected
+                        ? 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm dark:bg-white dark:text-slate-950'
+                        : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10'
+                    }
+                  >
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </button>
+                );
+              },
+            )}
+        </nav>
+      )}
+
           {/* PERSONAL ACCOUNT */}
 
             {active ===
