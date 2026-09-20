@@ -251,7 +251,7 @@ async function resolveFileContext(mode: 'view' | 'manage'): Promise<FileRequestC
   }
 
   if (
-    session.id !== permissions.sessionId ||
+    session.sessionId !== permissions.sessionId ||
     session.user.id !== permissions.userId ||
     session.currentTenantId !== permissions.tenantId
   ) {
