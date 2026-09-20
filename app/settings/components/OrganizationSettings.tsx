@@ -713,6 +713,57 @@ export default function OrganizationSettings() {
     }
   }
 
+  async function reactivateBranch(
+    branchId: string,
+  ) {
+    if (!canManageOrganization) return;
+
+    setSaving(`branch:reactivate:${branchId}`);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const response = await fetch(
+        `/api/workspace/organization/branches/${branchId}`,
+        {
+          method: 'PATCH',
+          credentials: 'same-origin',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            action: 'reactivate',
+          }),
+        },
+      );
+
+      const data = await readJson(response);
+
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.error ||
+          'Branch could not be reactivated.',
+        );
+      }
+
+      setNotice(
+        data.message ||
+        'Branch reactivated.',
+      );
+
+      await load();
+    } catch (candidate) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Branch could not be reactivated.',
+      );
+    } finally {
+      setSaving(null);
+    }
+  }
+
   async function createCompany() {
     if (!canManageCompanies) return;
 
@@ -1000,6 +1051,7 @@ export default function OrganizationSettings() {
             saving={saving}
             onSave={() => void saveBranch()}
             onArchive={id => void archiveBranch(id)}
+            onReactivate={id => void reactivateBranch(id)}
           />
         )}
 
@@ -1135,6 +1187,7 @@ function BranchesView({
   saving,
   onSave,
   onArchive,
+  onReactivate,
 }: {
   branches: BranchProfile[];
   draft: BranchDraft;
@@ -1143,6 +1196,7 @@ function BranchesView({
   saving: string | null;
   onSave: () => void;
   onArchive: (id: string) => void;
+  onReactivate: (id: string) => void;
 }) {
   return (
     <div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -1216,6 +1270,22 @@ function BranchesView({
                       Archive
                     </button>
                   </div>
+                )}
+
+                {canManage && !branch.isActive && (
+                  <button
+                    type="button"
+                    disabled={saving === `branch:reactivate:${branch.id}`}
+                    onClick={() => onReactivate(branch.id)}
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-semibold disabled:opacity-60 dark:border-white/10"
+                  >
+                    {saving === `branch:reactivate:${branch.id}` ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    Reactivate
+                  </button>
                 )}
               </div>
             </div>
