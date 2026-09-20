@@ -1832,7 +1832,7 @@ function AccountOverview({
             </label>
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="mt-3 min-w-0">
             <h2 className="truncate text-xl font-black text-slate-950 dark:text-white">
               {account.fullName ||
                 `${account.firstName} ${account.lastName}`.trim()}
@@ -1899,7 +1899,7 @@ function AccountOverview({
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+      <section className="grid gap-3 sm:grid-cols-2">
         <AccountRow
           icon={UserRound}
           title="Personal information"
@@ -1969,13 +1969,9 @@ function AccountRow({
       onClick={
         onClick
       }
-      className={`group flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50 ${
-        last
-          ? ''
-          : 'border-b border-slate-100 dark:border-slate-800'
-      }`}
+      className="group rounded-[20px] border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-slate-800 dark:bg-[#0d121b] dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]"
     >
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 group-hover:bg-blue-50 group-hover:text-blue-600 dark:bg-slate-800 dark:text-slate-300 dark:group-hover:bg-blue-950/40 dark:group-hover:text-blue-300">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-slate-800 dark:text-slate-300">
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
@@ -1989,13 +1985,19 @@ function AccountRow({
         </p>
       </div>
 
-      {value && (
-        <span className="hidden max-w-[240px] truncate text-xs font-semibold text-slate-400 md:block">
-          {value}
-        </span>
-      )}
+      <div className="mt-3 flex items-center justify-between gap-3">
+        {value ? (
+          <span className="min-w-0 truncate text-[11px] font-semibold text-slate-400">
+            {value}
+          </span>
+        ) : (
+          <span className="text-[11px] font-semibold text-slate-400">
+            Open settings
+          </span>
+        )}
 
-      <ChevronRight className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-blue-600" />
+        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-blue-600" />
+      </div>
     </button>
   );
 }
