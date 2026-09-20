@@ -74,7 +74,7 @@ test('Category 3: sessions use opaque hashed tokens and secure cookies', async (
   const sessions = compact(await source('lib/auth/session.ts'));
 
   assert.match(sessions, /randomBytes/);
-  assert.match(sessions, /createHash\(['"]sha256['"]\)/i);
+  assert.match(sessions, /createHash\(\s*['"]sha256['"]\s*,?\s*\)/i);
   assert.match(sessions, /httpOnly:\s*true/i);
   assert.match(sessions, /sameSite:\s*['"]lax['"]/i);
   assert.match(sessions, /__Host-sami_session/);
@@ -83,13 +83,13 @@ test('Category 3: sessions use opaque hashed tokens and secure cookies', async (
 
   assert.doesNotMatch(
     sessions,
-    /LIKE\\s*['"]%admin%['"]/i,
+    /LIKE\s*['"]%admin%['"]/i,
     'Session workspace selection must not infer authority from fuzzy Admin role names.',
   );
 
   assert.doesNotMatch(
     sessions,
-    /\\.includes\\(\\s*['"]admin['"]\\s*\\)/i,
+    /\.includes\(\s*['"]admin['"]\s*\)/i,
     'Session workspace selection must not infer authority from role text.',
   );
 
