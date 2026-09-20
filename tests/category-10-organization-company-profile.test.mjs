@@ -36,6 +36,8 @@ test('Category 10: tenant core 1.1.0 contains the organization profile schema an
   assert.match(migration, /ALTER TABLE branches/i);
   assert.match(migration, /UPDATE companies\s+SET address_line1 = address/i);
   assert.match(migration, /UPDATE branches\s+SET address_line1 = address/i);
+  assert.match(migration, /INSERT INTO company_settings/i);
+  assert.match(core, /INSERT INTO \{schema\}\.company_settings/i);
 
   assert.match(provisioning, /CORE_SCHEMA_VERSION\s*=\s*['"]1\.1\.0['"]/i);
 });
@@ -59,6 +61,7 @@ test('Category 10: organization service uses trusted company context and separat
   assert.match(service, /organization\.branch\.created/);
   assert.match(service, /organization\.branch\.reactivated/);
   assert.match(service, /organization\.company\.created/);
+  assert.match(service, /INSERT INTO company_settings/i);
 });
 
 test('Category 10: browser APIs never accept a tenant ID and delegate to trusted services', async () => {
