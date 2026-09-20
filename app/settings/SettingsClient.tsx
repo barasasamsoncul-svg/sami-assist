@@ -30,6 +30,12 @@ import {
 
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
+
 import MyAccountSettings from './components/MyAccountSettings';
 
 import WorkspaceSettings from './components/WorkspaceSettings';
@@ -557,6 +563,14 @@ export default function SettingsClient({
     );
 
 
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+  } =
+    useSaMiOverlay();
+
+
   const hasWorkspaceAccess =
     Boolean(
       tenant &&
@@ -1008,6 +1022,12 @@ export default function SettingsClient({
           previous.theme,
         ),
       );
+
+
+      showError(
+        'Theme update failed',
+        'SaMi could not save your theme preference. Your previous theme has been restored.',
+      );
     } finally {
       setThemeSaving(
         false,
@@ -1078,7 +1098,18 @@ export default function SettingsClient({
      ============================================================== */
 
   return (
-    <WorkspaceShell
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
+
+      <WorkspaceShell
       user={user}
       tenant={tenant}
       membership={membership}
@@ -1277,7 +1308,8 @@ export default function SettingsClient({
               )}
 
 
-    </WorkspaceShell>
+      </WorkspaceShell>
+    </>
   );
 }
 
