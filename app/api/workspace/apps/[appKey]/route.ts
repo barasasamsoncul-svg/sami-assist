@@ -143,6 +143,7 @@ function handleError(
       new Set([
         'WORKSPACE_NOT_READY',
         'WORKSPACE_CONTEXT_CHANGED',
+        'APP_CHANGE_IN_PROGRESS',
         'APP_NOT_INSTALLED',
         'APP_DEPENDENCY_BLOCKED',
         'APP_DEPENDENCY_CYCLE',
