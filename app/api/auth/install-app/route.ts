@@ -1413,43 +1413,15 @@ export async function POST(
         .rows[0] as SubscriptionRecord;
 
 
-    const rawIncludedApps =
-      subscription.included_apps;
-
-
+    /*
+     * Category 13 compatibility bridge.
+     *
+     * Paid SaMi workspaces are not limited by the number of first-party
+     * apps installed. Keep -1 in the legacy response shape until
+     * Categories 22/23 replace old plan-limit fields with entitlements.
+     */
     const includedApps =
-      Number(
-        rawIncludedApps,
-      );
-
-
-    if (
-      !Number.isFinite(
-        includedApps,
-      ) ||
-      includedApps <
-        -1
-    ) {
-      console.error(
-        '[Apps] Invalid plan included_apps configuration:',
-        {
-          tenantId,
-
-          plan:
-            subscription.plan_key,
-
-          includedApps:
-            rawIncludedApps,
-        },
-      );
-
-
-      return errorResponse(
-        500,
-        'PLAN_CONFIGURATION_ERROR',
-        'This subscription plan is not configured correctly.',
-      );
-    }
+      -1;
 
 
     /* ========================================================
@@ -1550,67 +1522,11 @@ export async function POST(
 
 
     /* ========================================================
-       16. ENTITLEMENT
+       16. APP AVAILABILITY
+
+       First-party app quantity is not a paid-plan meter.
+       User seats and premium entitlements are enforced separately.
        ======================================================== */
-
-    const usageResult =
-      await controlClient.query(
-        `
-          SELECT
-            COUNT(*)::int
-              AS count
-
-          FROM tenant_modules
-
-          WHERE tenant_id = $1
-
-            AND status IN (
-              'installed',
-              'pending'
-            )
-        `,
-        [
-          tenantId,
-        ],
-      );
-
-
-    const reservedAppCount =
-      Number(
-        usageResult.rows[0]
-          ?.count ||
-        0,
-      );
-
-
-    const targetAlreadyReserved =
-      existingStatus ===
-      'pending';
-
-
-    if (
-      !targetAlreadyReserved &&
-      includedApps !==
-        -1 &&
-      reservedAppCount >=
-        includedApps
-    ) {
-      return errorResponse(
-        403,
-        'UPGRADE_REQUIRED',
-        'Your current plan does not include another app.',
-
-        {
-          currentPlan:
-            subscription.plan_key,
-
-          includedApps,
-
-          installedApps:
-            reservedAppCount,
-        },
-      );
-    }
 
 
     /* ========================================================

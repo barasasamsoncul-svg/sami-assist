@@ -1277,7 +1277,7 @@ export default function SettingsClient({
                 <SettingsSurface>
 
                   <AppsSettings
-                    installedModules={
+                    workspaceModules={
                       managedModules
                     }
                   />

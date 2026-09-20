@@ -34,8 +34,11 @@ export interface WorkspaceShellAccess {
     ModuleContext[];
 
   /**
-   * Complete installed application set exposed only to somebody
+   * Complete tenant application lifecycle set exposed only to somebody
    * authorized to administer workspace applications.
+   *
+   * This includes disabled, failed and uninstalled records so the
+   * Apps manager can present the correct recovery/action state.
    *
    * IMPORTANT:
    * managedModules must never be used for the user's My Apps list.
@@ -337,7 +340,7 @@ export function resolveWorkspaceShellAccess(
 
     managedModules:
       canManageApps
-        ? installedModules
+        ? modules
         : [],
 
     subscription:
