@@ -7,7 +7,6 @@ import {
   Bot,
   CreditCard,
   Loader2,
-  Menu,
   Moon,
   Sparkles,
   Sun,
@@ -25,7 +24,7 @@ import {
   useSearchParams,
 } from 'next/navigation';
 
-import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 
 import MyAccountSettings from './components/MyAccountSettings';
 
@@ -474,15 +473,6 @@ export default function SettingsClient({
 }: Props) {
   const searchParams =
     useSearchParams();
-
-
-  const [
-    sidebarOpen,
-    setSidebarOpen,
-  ] =
-    useState(
-      false,
-    );
 
 
   const [
@@ -1011,157 +1001,49 @@ export default function SettingsClient({
      ============================================================== */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
-
-      <div className="flex min-h-screen">
-
-        <WorkspaceSidebar
-          user={
-            user
+    <WorkspaceShell
+      user={user}
+      tenant={tenant}
+      membership={membership}
+      subscription={subscription}
+      modules={accessibleModules}
+      sidebarCapabilities={{
+        aiEnabled:
+          capabilities.aiAvailable,
+        filesEnabled:
+          capabilities.filesView,
+        notificationsEnabled:
+          capabilities.notificationsView,
+      }}
+      title={pageLabel}
+      description="Personal settings and workspace administration are separated so each task is easier to understand."
+      contextLabel={tenant?.name || null}
+      actions={
+        <button
+          type="button"
+          onClick={() =>
+            void toggleTheme()
           }
-
-          tenant={
-            tenant
+          disabled={themeSaving}
+          aria-label={
+            darkMode
+              ? 'Switch to light theme'
+              : 'Switch to dark theme'
           }
-
-          membership={
-            membership
-          }
-
-          /*
-           * Already filtered server-side.
-           */
-          subscription={
-            subscription
-          }
-
-          /*
-           * Personal accessible apps only.
-           *
-           * NEVER managedModules.
-           */
-          modules={
-            accessibleModules
-          }
-
-          capabilities={{
-            /*
-             * Compatibility prop only. WorkspaceSidebar now uses
-             * navigation.aiAvailable as the canonical AI source.
-             */
-            aiEnabled:
-              capabilities
-                .aiAvailable,
-
-            filesEnabled:
-              capabilities
-                .filesView,
-
-            notificationsEnabled:
-              capabilities
-                .notificationsView,
-          }}
-
-          unreadNotifications={
-            0
-          }
-
-          open={
-            sidebarOpen
-          }
-
-          onClose={() =>
-            setSidebarOpen(
-              false,
-            )
-          }
-        />
-
-
-        <div className="min-w-0 flex-1 lg:pl-[286px]">
-
-          {/* ====================================================
-              HEADER
-              ==================================================== */}
-
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-
-            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
-
-              <button
-                type="button"
-                aria-label="Open navigation"
-                onClick={() =>
-                  setSidebarOpen(
-                    true,
-                  )
-                }
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10 lg:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-
-
-              <div className="min-w-0">
-
-                <p className="truncate text-sm font-bold">
-                  {pageLabel}
-                </p>
-
-              </div>
-
-
-              {tenant && (
-                <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 sm:block dark:border-white/10">
-
-                  <p className="max-w-[260px] truncate text-xs font-medium text-slate-400">
-                    {tenant.name}
-                  </p>
-
-                </div>
-              )}
-
-
-              <div className="ml-auto">
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    void toggleTheme()
-                  }
-                  disabled={
-                    themeSaving
-                  }
-                  aria-label={
-                    darkMode
-                      ? 'Switch to light theme'
-                      : 'Switch to dark theme'
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:opacity-60 dark:text-slate-400 dark:hover:bg-white/10"
-                >
-                  {themeSaving ? (
-                    <Loader2 className="h-[18px] w-[18px] animate-spin" />
-                  ) : darkMode ? (
-                    <Sun className="h-[18px] w-[18px]" />
-                  ) : (
-                    <Moon className="h-[18px] w-[18px]" />
-                  )}
-                </button>
-
-              </div>
-
-            </div>
-
-          </header>
-
-
-          {/* ====================================================
-              SETTINGS CONTENT
-              ==================================================== */}
-
-          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
-
-            {/* PERSONAL ACCOUNT */}
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
+        >
+          {themeSaving ? (
+            <Loader2 className="h-[18px] w-[18px] animate-spin" />
+          ) : darkMode ? (
+            <Sun className="h-[18px] w-[18px]" />
+          ) : (
+            <Moon className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      }
+      contentClassName="max-w-[1500px]"
+    >
+          {/* PERSONAL ACCOUNT */}
 
             {active ===
               'account' && (
@@ -1265,13 +1147,8 @@ export default function SettingsClient({
                 </SettingsSurface>
               )}
 
-          </div>
 
-        </div>
-
-      </div>
-
-    </main>
+    </WorkspaceShell>
   );
 }
 
