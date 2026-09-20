@@ -1226,8 +1226,8 @@ export async function updateOrganizationProfile(
           email = $5,
           phone = $6,
           website = $7,
-          address = $8,
-          address_line1 = $8,
+          address = $8::text,
+          address_line1 = $8::varchar(255),
           address_line2 = $9,
           city = $10,
           state = $11,
@@ -1455,7 +1455,7 @@ export async function createOrganizationBranch(
           updated_at
         )
         VALUES (
-          $1, $2, $3, $4, $4, $5, $6, $7, $8,
+          $1, $2, $3, $4::text, $4::varchar(255), $5, $6, $7, $8,
           $9, $10, $11, $12, $13, TRUE, NOW(), NOW()
         )
         RETURNING *
@@ -1583,8 +1583,8 @@ export async function updateOrganizationBranch(
         SET
           name = $3,
           code = $4,
-          address = $5,
-          address_line1 = $5,
+          address = $5::text,
+          address_line1 = $5::varchar(255),
           address_line2 = $6,
           city = $7,
           state = $8,
