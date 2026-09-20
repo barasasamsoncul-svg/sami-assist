@@ -1875,6 +1875,26 @@ export async function createWorkspaceCompany(
 
     const companyId = String(inserted.rows[0].id);
 
+    await client.query(
+      `
+        INSERT INTO company_settings (
+          company_id,
+          settings,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          '{}'::jsonb,
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (company_id)
+        DO NOTHING
+      `,
+      [companyId],
+    );
+
     const accessUsers = [
       ...new Set([
         ownerUserId,
