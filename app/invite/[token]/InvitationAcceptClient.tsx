@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -30,6 +31,12 @@ import {
 } from 'next/navigation';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 
 
 /* ================================================================
@@ -311,6 +318,43 @@ export default function InvitationAcceptClient({
     useState(
       false,
     );
+
+
+  const [
+    showInviteDetails,
+    setShowInviteDetails,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+  } =
+    useSaMiOverlay();
+
+
+  useEffect(
+    () => {
+      if (!error) return;
+
+      showError(
+        'Invitation action failed',
+        error,
+      );
+
+      setError(
+        null,
+      );
+    },
+    [
+      error,
+      showError,
+    ],
+  );
 
 
   const invitePath =
@@ -685,7 +729,18 @@ export default function InvitationAcceptClient({
      ============================================================ */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] px-3 py-5 text-slate-950 dark:bg-[#090B10] dark:text-white sm:px-6 sm:py-8">
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
+
+      <main className="min-h-screen bg-[#F6F7F9] px-3 py-4 text-slate-950 dark:bg-[#090B10] dark:text-white sm:px-6 sm:py-8">
 
       <div className="mx-auto max-w-[1020px]">
 
@@ -709,13 +764,94 @@ export default function InvitationAcceptClient({
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_40px_rgba(15,23,42,0.06)] dark:border-white/10 dark:bg-[#11141A]">
 
+          <div className="border-b border-slate-200 p-4 dark:border-white/10 lg:hidden">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
+              Workspace invitation
+            </p>
+
+            <div className="mt-2 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-bold">
+                  {invitation.workspaceName}
+                </h1>
+
+                <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
+                  {invitation.email}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowInviteDetails(
+                    current =>
+                      !current,
+                  )
+                }
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-600 dark:border-white/10 dark:text-slate-300"
+              >
+                {showInviteDetails
+                  ? 'Hide details'
+                  : 'View details'}
+              </button>
+            </div>
+
+            {showInviteDetails && (
+              <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.04]">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-slate-400">
+                    Invited by
+                  </span>
+                  <span className="truncate font-semibold">
+                    {invitation.inviterName}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-slate-400">
+                    Access type
+                  </span>
+                  <span className="font-semibold">
+                    {invitation.memberType === 'internal'
+                      ? 'Internal user'
+                      : 'Portal user'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="text-slate-400">
+                    Expires
+                  </span>
+                  <span className="text-right font-semibold">
+                    {formatExpiry(
+                      invitation.expiresAt,
+                    )}
+                  </span>
+                </div>
+
+                {invitation.roles.length > 0 && (
+                  <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    Roles: {invitation.roles.map(role => role.name).join(', ')}
+                  </p>
+                )}
+
+                {invitation.companies.length > 0 && (
+                  <p className="text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    Companies: {invitation.companies.map(company => company.name).join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+
           <div className="grid lg:grid-cols-[360px_minmax(0,1fr)]">
 
             {/* ==================================================
                 INVITATION RECORD SUMMARY
                 ================================================== */}
 
-            <aside className="border-b border-slate-200 bg-slate-50/70 p-5 dark:border-white/10 dark:bg-white/[0.025] lg:border-b-0 lg:border-r lg:p-6">
+            <aside className="hidden border-b border-slate-200 bg-slate-50/70 p-5 dark:border-white/10 dark:bg-white/[0.025] lg:block lg:border-b-0 lg:border-r lg:p-6">
 
               <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
                 Workspace invitation
@@ -864,13 +1000,6 @@ export default function InvitationAcceptClient({
                 ================================================== */}
 
             <div className="p-5 sm:p-7">
-
-              {error && (
-                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300">
-                  {error}
-                </div>
-              )}
-
 
               {/* EXISTING ACCOUNT */}
 
@@ -1138,7 +1267,8 @@ export default function InvitationAcceptClient({
           </Link>
         </div>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
 
