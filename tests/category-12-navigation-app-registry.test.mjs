@@ -642,7 +642,8 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
 
   assert.match(
     settings,
-    /installedModules=\{\s*managedModules\s*\}/s,
+    /workspaceModules=\{\s*managedModules\s*\}/s,
+    'Category 13 lifecycle administration must pass complete workspace module state into Apps settings.',
   );
 
   assert.match(
