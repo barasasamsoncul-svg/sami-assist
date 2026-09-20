@@ -621,6 +621,9 @@ export async function createTenantRecoveryPoint(
     );
 
 
+  let createdProviderReference:
+    string | null = null;
+
   try {
     const providerResult =
       await provider
@@ -669,6 +672,10 @@ export async function createTenantRecoveryPoint(
       );
     }
 
+    createdProviderReference =
+      providerResult
+        .providerReference;
+
 
     const status =
       providerResult.available
@@ -689,11 +696,11 @@ export async function createTenantRecoveryPoint(
               $3,
 
             status =
-              $4,
+              $4::varchar,
 
             available_at =
               CASE
-                WHEN $4 = 'available'
+                WHEN $4::varchar = 'available'::varchar
                 THEN NOW()
 
                 ELSE NULL
@@ -750,6 +757,24 @@ export async function createTenantRecoveryPoint(
       `[SaMi] Recovery point creation failed for tenant ${tenantId}:`,
       error,
     );
+
+    /*
+     * If the provider successfully created an object but SaMi failed
+     * to persist its reference, delete that object immediately so
+     * failed recovery-point creation cannot leak orphaned backups.
+     */
+    if (createdProviderReference) {
+      try {
+        await provider.deleteRecoveryPoint(
+          createdProviderReference,
+        );
+      } catch (cleanupError) {
+        console.error(
+          '[SaMi] Failed to clean up orphaned recovery object:',
+          cleanupError,
+        );
+      }
+    }
 
 
     await queryControl(
@@ -867,12 +892,12 @@ export async function verifyTenantRecoveryPoint(
 
         SET
           status =
-            $2,
+            $2::varchar,
 
           available_at =
             CASE
-              WHEN $2 =
-                   'available'
+              WHEN $2::varchar =
+                   'available'::varchar
 
               THEN COALESCE(
                 available_at,
