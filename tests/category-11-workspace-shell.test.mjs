@@ -245,3 +245,33 @@ test('Category 11: Settings exposes a clear permission-aware local section map',
   assert.match(settings, /Billing/);
   assert.match(settings, /overflow-x-auto/);
 });
+
+
+test('Category 11: dashboard and settings have stable loading and SaMiOverlay error boundaries', async () => {
+  const [
+    loading,
+    routeError,
+    dashboardLoading,
+    dashboardError,
+    settingsLoading,
+    settingsError,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceRouteLoading.tsx'),
+    source('app/components/workspace/WorkspaceRouteError.tsx'),
+    source('app/dashboard/loading.tsx'),
+    source('app/dashboard/error.tsx'),
+    source('app/settings/loading.tsx'),
+    source('app/settings/error.tsx'),
+  ]);
+
+  assert.match(loading, /Loading workspace/);
+  assert.match(loading, /lg:pl-\[286px\]/);
+  assert.match(routeError, /SaMiOverlay/);
+  assert.match(routeError, /Retry/);
+  assert.match(routeError, /\/dashboard/);
+
+  assert.match(dashboardLoading, /WorkspaceRouteLoading/);
+  assert.match(dashboardError, /WorkspaceRouteError/);
+  assert.match(settingsLoading, /WorkspaceRouteLoading/);
+  assert.match(settingsError, /WorkspaceRouteError/);
+});
