@@ -20,6 +20,7 @@ import {
   Search,
   Send,
   Shield,
+  ShieldCheck,
   Sparkles,
   Trash2,
   UserPlus,
@@ -101,6 +102,10 @@ type Props = {
   canManageRoles: boolean;
   canViewInvitations: boolean;
   canManageInvitations: boolean;
+  canViewApps: boolean;
+  canManageApps: boolean;
+  canViewCompanies: boolean;
+  canManageCompanies: boolean;
   canUseAi: boolean;
   canViewFiles: boolean;
   canViewNotifications: boolean;
@@ -635,11 +640,18 @@ export default function UsersSettingsClient({
   canManageRoles,
   canViewInvitations,
   canManageInvitations,
+  canViewApps,
+  canManageApps,
+  canViewCompanies,
+  canManageCompanies,
   canUseAi,
   canViewFiles,
   canViewNotifications,
 }: Props) {
   const searchParams = useSearchParams();
+
+  const canInspectApps = canViewApps || canManageApps;
+  const canInspectCompanies = canViewCompanies || canManageCompanies;
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [members, setMembers] = useState<DirectoryMember[]>([]);
@@ -958,6 +970,17 @@ export default function UsersSettingsClient({
     if (inviteForm.saving) return;
     const email = inviteForm.email.trim().toLowerCase();
 
+    if (
+      inviteForm.memberType === 'internal' &&
+      (!canManageRoles || !canManageApps || !canManageCompanies)
+    ) {
+      setInviteForm(current => ({
+        ...current,
+        error: 'Internal invitations require permission to manage roles, apps and company access as well as invitations.',
+      }));
+      return;
+    }
+
     if (!email) {
       setInviteForm(current => ({ ...current, error: 'Enter the user email address.' }));
       return;
@@ -1125,7 +1148,7 @@ export default function UsersSettingsClient({
       setRoleEditor(EMPTY_ROLE_EDITOR);
       setSuccess('Employee roles updated. Review App Access if you changed which apps these roles permit.');
       await loadAccessDirectory(true);
-      if (canManageUsers) void openMemberAppEditor(member);
+      if (canManageApps) void openMemberAppEditor(member);
     } catch (requestError) {
       setRoleEditor(current => ({
         ...current,
@@ -1150,7 +1173,7 @@ export default function UsersSettingsClient({
      ============================================================== */
 
   async function openMemberAppEditor(member: DirectoryMember) {
-    if (!canManageUsers || member.isOwner || member.userId === user.id) return;
+    if (!canManageApps || member.isOwner || member.userId === user.id) return;
     setSelectedRecord(null);
     setAppEditor({ ...EMPTY_APP_EDITOR, target: { kind: 'member', member }, loading: true });
 
@@ -1187,7 +1210,7 @@ export default function UsersSettingsClient({
   }
 
   async function openInvitationAppEditor(invitation: WorkspaceInvitation) {
-    if (!canManageInvitations || invitation.status !== 'pending') return;
+    if (!canManageInvitations || !canManageApps || invitation.status !== 'pending') return;
     setSelectedRecord(null);
     setAppEditor({ ...EMPTY_APP_EDITOR, target: { kind: 'invitation', invitation }, loading: true });
 
@@ -1291,7 +1314,7 @@ export default function UsersSettingsClient({
      ============================================================== */
 
   async function openCompanyEditor(member: DirectoryMember) {
-    if (!canManageUsers || member.isOwner || member.userId === user.id) return;
+    if (!canManageCompanies || member.isOwner || member.userId === user.id) return;
     setSelectedRecord(null);
     setCompanyEditor({ ...EMPTY_COMPANY_EDITOR, member, loading: true });
 
@@ -1482,7 +1505,7 @@ export default function UsersSettingsClient({
                   <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
                 </button>
 
-                {canManageInvitations && (
+                {canManageInvitations && canManageRoles && canManageApps && canManageCompanies && (
                   <button
                     type="button"
                     onClick={() => void loadInviteForm()}
@@ -1581,6 +1604,10 @@ export default function UsersSettingsClient({
                       canManageUsers={canManageUsers}
                       canManageRoles={canManageRoles}
                       canManageInvitations={canManageInvitations}
+                      canInspectApps={canInspectApps}
+                      canManageApps={canManageApps}
+                      canInspectCompanies={canInspectCompanies}
+                      canManageCompanies={canManageCompanies}
                       invitationAction={invitationAction}
                       onDetails={setSelectedRecord}
                       onEditRoles={openRoleEditor}
@@ -1601,6 +1628,7 @@ export default function UsersSettingsClient({
               <AccessPrinciple icon={Shield} title="Roles define actions" text="Roles determine what the employee can read, create, approve, manage or administer." />
               <AccessPrinciple icon={AppWindow} title="Apps define availability" text="Selected app grants restrict which role-enabled business apps actually become available to the employee." />
               <AccessPrinciple icon={Building2} title="Companies define scope" text="Company assignments determine where those role and app permissions may operate." />
+              <AccessPrinciple icon={ShieldCheck} title="Separated administration" text="User lifecycle, roles, app assignment and company scope are governed by separate permissions so delegated admins receive only the authority they need." />
             </div>
           </div>
         </div>
@@ -1658,7 +1686,9 @@ export default function UsersSettingsClient({
               </DetailSection>
 
               <DetailSection title="Apps">
-                {selectedRecord.apps.length > 0 ? (
+                {!canInspectApps ? (
+                  <p className="text-xs text-slate-400">App access is hidden because your role does not include Apps view or manage permission.</p>
+                ) : selectedRecord.apps.length > 0 ? (
                   <div className="grid gap-2 sm:grid-cols-2">
                     {selectedRecord.apps.map(app => (
                       <div key={app.id} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-white/10">
@@ -1671,7 +1701,9 @@ export default function UsersSettingsClient({
               </DetailSection>
 
               <DetailSection title="Companies">
-                {selectedRecord.companies.length > 0 ? (
+                {!canInspectCompanies ? (
+                  <p className="text-xs text-slate-400">Company scope is hidden because your role does not include Companies view or manage permission.</p>
+                ) : selectedRecord.companies.length > 0 ? (
                   <div className="space-y-2">
                     {selectedRecord.companies.map(company => (
                       <div key={company.id} className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 dark:border-white/10">
@@ -1689,13 +1721,13 @@ export default function UsersSettingsClient({
                   {selectedRecord.kind === 'member' && canManageRoles && selectedRecord.member.memberType === 'internal' && selectedRecord.status === 'active' && !selectedRecord.member.isOwner && (
                     <ActionButton icon={Pencil} label="Edit roles" onClick={() => void openRoleEditor(selectedRecord.member)} />
                   )}
-                  {selectedRecord.kind === 'member' && canManageUsers && !selectedRecord.member.isOwner && selectedRecord.member.userId !== user.id && (
+                  {selectedRecord.kind === 'member' && canManageApps && !selectedRecord.member.isOwner && selectedRecord.member.userId !== user.id && (
                     <ActionButton icon={AppWindow} label="Edit apps" onClick={() => void openMemberAppEditor(selectedRecord.member)} />
                   )}
-                  {selectedRecord.kind === 'member' && canManageUsers && !selectedRecord.member.isOwner && selectedRecord.member.userId !== user.id && (
+                  {selectedRecord.kind === 'member' && canManageCompanies && !selectedRecord.member.isOwner && selectedRecord.member.userId !== user.id && (
                     <ActionButton icon={Building2} label="Edit companies" onClick={() => void openCompanyEditor(selectedRecord.member)} />
                   )}
-                  {selectedRecord.kind === 'invitation' && selectedRecord.invitation.status === 'pending' && canManageInvitations && (
+                  {selectedRecord.kind === 'invitation' && selectedRecord.invitation.status === 'pending' && canManageInvitations && canManageApps && (
                     <ActionButton icon={AppWindow} label="Edit apps" onClick={() => void openInvitationAppEditor(selectedRecord.invitation)} />
                   )}
                   {selectedRecord.kind === 'member' && canManageUsers && !selectedRecord.member.isOwner && selectedRecord.member.userId !== user.id && selectedRecord.status === 'active' && (
@@ -1748,6 +1780,12 @@ export default function UsersSettingsClient({
             ) : (
               <div className="space-y-6 p-5">
                 {inviteForm.error && <InlineError text={inviteForm.error} />}
+
+                {inviteForm.memberType === 'internal' && (!canManageRoles || !canManageApps || !canManageCompanies) && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[11px] leading-5 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
+                    Creating an internal employee is a compound access action. You need Invitations, Roles, Apps and Companies management authority so the invitation cannot bypass delegated administration boundaries.
+                  </div>
+                )}
 
                 <Field label="Email address">
                   <input
@@ -1885,7 +1923,7 @@ export default function UsersSettingsClient({
 
                 <div className="flex justify-end gap-2 border-t border-slate-200 pt-4 dark:border-white/10">
                   <button type="button" disabled={inviteForm.saving} onClick={closeInvite} className="h-9 rounded-lg px-4 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10">Cancel</button>
-                  <button type="button" disabled={inviteForm.saving} onClick={() => void sendInvitation()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                  <button type="button" disabled={inviteForm.saving || (inviteForm.memberType === 'internal' && (!canManageRoles || !canManageApps || !canManageCompanies))} onClick={() => void sendInvitation()} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                     {inviteForm.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     Send invitation
                   </button>
@@ -2113,6 +2151,10 @@ function AccessRow({
   canManageUsers,
   canManageRoles,
   canManageInvitations,
+  canInspectApps,
+  canManageApps,
+  canInspectCompanies,
+  canManageCompanies,
   invitationAction,
   onDetails,
   onEditRoles,
@@ -2129,6 +2171,10 @@ function AccessRow({
   canManageUsers: boolean;
   canManageRoles: boolean;
   canManageInvitations: boolean;
+  canInspectApps: boolean;
+  canManageApps: boolean;
+  canInspectCompanies: boolean;
+  canManageCompanies: boolean;
   invitationAction: string | null;
   onDetails: (record: AccessRecord) => void;
   onEditRoles: (member: DirectoryMember) => void;
@@ -2163,10 +2209,10 @@ function AccessRow({
       <span className="text-[10px] font-semibold capitalize text-slate-500 dark:text-slate-400">{record.memberType}</span>
       <p className="truncate text-[11px] text-slate-600 dark:text-slate-300">{record.roles.length ? record.roles.map(role => role.name).join(', ') : record.kind === 'member' && record.member.isOwner ? 'Workspace Owner' : 'No internal roles'}</p>
       <div className="min-w-0">
-        <p className="truncate text-[11px] text-slate-600 dark:text-slate-300">{record.apps.length ? record.apps.map(app => app.name).join(', ') : 'No apps'}</p>
+        <p className="truncate text-[11px] text-slate-600 dark:text-slate-300">{!canInspectApps ? 'Restricted' : record.apps.length ? record.apps.map(app => app.name).join(', ') : 'No apps'}</p>
         <p className="mt-0.5 text-[9px] text-slate-400">{record.appAccessMode === 'selected' ? 'Selected apps' : 'From roles'}</p>
       </div>
-      <p className="truncate text-[11px] text-slate-600 dark:text-slate-300">{record.companies.length ? record.companies.map(company => company.isDefault ? `${company.name} · Default` : company.name).join(', ') : 'No companies'}</p>
+      <p className="truncate text-[11px] text-slate-600 dark:text-slate-300">{!canInspectCompanies ? 'Restricted' : record.companies.length ? record.companies.map(company => company.isDefault ? `${company.name} · Default` : company.name).join(', ') : 'No companies'}</p>
       <StatusBadge status={record.status} />
       <p className="truncate text-[10px] text-slate-400">{formatDate(record.date)}</p>
 
@@ -2176,10 +2222,10 @@ function AccessRow({
         {record.kind === 'member' && canManageRoles && record.member.memberType === 'internal' && record.status === 'active' && !record.member.isOwner && (
           <IconButton title="Edit roles" icon={Pencil} onClick={() => onEditRoles(record.member)} />
         )}
-        {record.kind === 'member' && canManageUsers && !protectedMember && record.member.memberType === 'internal' && (
+        {record.kind === 'member' && canManageApps && !protectedMember && record.member.memberType === 'internal' && (
           <IconButton title="Edit apps" icon={AppWindow} onClick={() => onEditMemberApps(record.member)} />
         )}
-        {record.kind === 'member' && canManageUsers && !protectedMember && (
+        {record.kind === 'member' && canManageCompanies && !protectedMember && (
           <IconButton title="Edit companies" icon={Building2} onClick={() => onEditCompanies(record.member)} />
         )}
         {record.kind === 'member' && canManageUsers && !protectedMember && record.status === 'active' && (
@@ -2194,7 +2240,7 @@ function AccessRow({
 
         {record.kind === 'invitation' && record.invitation.status === 'pending' && canManageInvitations && (
           <>
-            <IconButton title="Edit apps" icon={AppWindow} onClick={() => onEditInvitationApps(record.invitation)} />
+            {canManageApps && <IconButton title="Edit apps" icon={AppWindow} onClick={() => onEditInvitationApps(record.invitation)} />}
             <IconButton
               title="Resend invitation"
               icon={invitationAction === `resend:${record.invitation.id}` ? Loader2 : RefreshCw}

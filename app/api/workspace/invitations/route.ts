@@ -531,12 +531,32 @@ export async function POST(
   request:
     NextRequest,
 ) {
+  /*
+   * Compatibility entry point only.
+   *
+   * 307 preserves method and request body while routing ALL invitation
+   * creation through the canonical Role → Apps → Companies endpoint.
+   * The original implementation remains below intentionally so this
+   * hardening release does not delete working lifecycle code.
+   */
+  return NextResponse.redirect(
+    new URL(
+      '/api/workspace/invitations/create-with-access',
+      request.url,
+    ),
+    307,
+  );
+
   try {
-    let body:
-      Record<
-        string,
-        unknown
-      >;
+    let body: {
+      email?: string;
+      memberType?: unknown;
+      roleIds?: unknown;
+      companyIds?: unknown;
+      defaultCompanyId?: string | null;
+      message?: string | null;
+      expiresInDays?: number;
+    };
 
 
     try {
@@ -570,10 +590,7 @@ export async function POST(
 
 
       body =
-        parsed as Record<
-          string,
-          unknown
-        >;
+        parsed as typeof body;
     } catch {
       return json(
         {
@@ -600,10 +617,10 @@ export async function POST(
     const created =
       await createWorkspaceInvitation({
         email:
-          typeof body.email ===
-            'string'
-            ? body.email
-            : '',
+          (
+            body.email ??
+            ''
+          ),
 
         memberType:
           memberType(

@@ -20,6 +20,15 @@ import {
 } from '@/lib/auth/account-context';
 
 import {
+  getPermissionContext,
+  permissionContextHas,
+} from '@/lib/auth/permission-context';
+
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
   checkRateLimit,
 } from '@/lib/auth/rate-limit';
 
@@ -164,6 +173,13 @@ type WorkspaceIdentity = {
 
   isOwner: boolean;
   isAdmin: boolean;
+
+  /*
+   * Category 8 permissions are the canonical authority for
+   * ordinary workspace administration.
+   */
+  canViewWorkspaceSettings: boolean;
+  canManageWorkspace: boolean;
 
   accessLevel:
     | 'owner'
@@ -1090,16 +1106,12 @@ function buildWorkspaceAccess(
   policy:
     WorkspaceManagementPolicy,
 ): WorkspaceAccess {
-  const adminCanView =
-    identity.isAdmin &&
-    policy
-      .adminsCanViewWorkspaceSettings;
-
-
-  const adminCanEdit =
-    adminCanView &&
-    policy
-      .adminsCanEditWorkspaceDetails;
+  /*
+   * Legacy workspaceManagement flags are retained in storage for a
+   * non-breaking migration, but they no longer authorize anything.
+   * Category 8 permissions are the sole ordinary-management source.
+   */
+  void policy;
 
 
   return {
@@ -1111,14 +1123,18 @@ function buildWorkspaceAccess(
 
     canViewWorkspaceSettings:
       identity.isOwner ||
-      adminCanView,
+      identity.canViewWorkspaceSettings,
 
     canManageWorkspace:
       identity.isOwner ||
-      adminCanEdit,
+      identity.canManageWorkspace,
 
+    /*
+     * The old owner-controlled "allow Admins" switch is retired.
+     * Roles & Permissions now controls delegated management.
+     */
     canManageWorkspaceAccess:
-      identity.isOwner,
+      false,
 
     canManageLifecycle:
       identity.isOwner,
@@ -1184,6 +1200,44 @@ async function requireWorkspaceIdentity():
   }
 
 
+  const permissionContext =
+    await getPermissionContext();
+
+
+  if (
+    permissionContext.userId !==
+      session.user.id ||
+    permissionContext.tenantId !==
+      context.tenant.id
+  ) {
+    throw new WorkspaceApiError(
+      403,
+      'WORKSPACE_CONTEXT_MISMATCH',
+      'The workspace authorization context is no longer valid.',
+    );
+  }
+
+
+  const canViewWorkspaceSettings =
+    permissionContext.isOwner ||
+    permissionContextHas(
+      permissionContext,
+      SAMI_PERMISSIONS.WORKSPACE_VIEW,
+    ) ||
+    permissionContextHas(
+      permissionContext,
+      SAMI_PERMISSIONS.WORKSPACE_MANAGE,
+    );
+
+
+  const canManageWorkspace =
+    permissionContext.isOwner ||
+    permissionContextHas(
+      permissionContext,
+      SAMI_PERMISSIONS.WORKSPACE_MANAGE,
+    );
+
+
   return {
     sessionId:
       session.sessionId,
@@ -1203,6 +1257,10 @@ async function requireWorkspaceIdentity():
       context.membership
         .isAdmin ===
       true,
+
+    canViewWorkspaceSettings,
+
+    canManageWorkspace,
 
     accessLevel:
       context.membership
@@ -1981,6 +2039,17 @@ export async function PATCH(
         body,
         'workspaceManagement',
       );
+
+
+    if (
+      hasManagement
+    ) {
+      throw new WorkspaceApiError(
+        409,
+        'WORKSPACE_MANAGEMENT_POLICY_RETIRED',
+        'Workspace management access is now controlled by Roles & Permissions.',
+      );
+    }
 
 
     if (

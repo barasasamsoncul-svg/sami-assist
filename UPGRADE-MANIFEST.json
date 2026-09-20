@@ -1,0 +1,111 @@
+{
+  "release": "2026-09-20-v4",
+  "generated": "2026-09-20",
+  "principle": "preserve working full files; guarded patches for very large legacy files",
+  "files": [
+    {
+      "path": "app/settings/users/UsersSettingsClient.tsx",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "b973948e8e3d17c6fbd12238857324257ee768dd",
+      "audited_lines": 2423,
+      "packaged_lines": 2463
+    },
+    {
+      "path": "app/settings/users/page.tsx",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "b4aa328a1a88dc5af0edfe852a4021deb34a5b9f",
+      "audited_lines": 88,
+      "packaged_lines": 97
+    },
+    {
+      "path": "app/api/workspace/members/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "20c9a9fbd9ea23e668f9bb6216f67eda393e3448",
+      "audited_lines": 154,
+      "packaged_lines": 211
+    },
+    {
+      "path": "app/api/workspace/member-apps/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "560846eab9055743cc00fe7d36b271cfa7d5ae7e",
+      "audited_lines": 102,
+      "packaged_lines": 103
+    },
+    {
+      "path": "app/api/workspace/member-companies/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "3cb9d31d9833019a29f2bfb924bd39b56c91d276",
+      "audited_lines": 107,
+      "packaged_lines": 108
+    },
+    {
+      "path": "app/api/workspace/invitation-apps/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "9e7a1b70c9313b11bcd7534cdbd1fb565e44b6b4",
+      "audited_lines": 96,
+      "packaged_lines": 100
+    },
+    {
+      "path": "app/api/workspace/invitations/options/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "720645375c4104a029856e8aa12a924527f4de70",
+      "audited_lines": 132,
+      "packaged_lines": 133
+    },
+    {
+      "path": "app/api/workspace/invitations/create-with-access/route.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "8749deef5f6d7dd54f5396ad21ac5a292ea6e64f",
+      "audited_lines": 227,
+      "packaged_lines": 260
+    },
+    {
+      "path": "lib/services/member-app-access.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "f9ea2b3f97c6c05319d1bcce1729e093f1912528",
+      "audited_lines": 727,
+      "packaged_lines": 782
+    },
+    {
+      "path": "lib/services/member-company-access.ts",
+      "mode": "full_replacement",
+      "audited_github_blob_sha": "2661f9142762cc1e40c39892d2dcd9ff2caa2d15",
+      "audited_lines": 339,
+      "packaged_lines": 367
+    },
+    {
+      "path": "app/api/workspace/route.ts",
+      "mode": "guarded_in_place_patch",
+      "audited_github_blob_sha": "7a4ee3563f5dda625eeba035819f370f6f36cc2a",
+      "audited_lines": 4625,
+      "packaged_lines": null
+    },
+    {
+      "path": "app/api/workspace/invitations/route.ts",
+      "mode": "guarded_in_place_patch",
+      "audited_github_blob_sha": "59a784853a0d315275e947a4fdaf574c38a3cda2",
+      "audited_lines": 1039,
+      "packaged_lines": null
+    },
+    {
+      "path": "lib/services/role-permissions.ts",
+      "mode": "guarded_in_place_patch",
+      "audited_github_blob_sha": "6fa03cb34b80c9ee8aa0c1bbf467bee5c38eb9ce",
+      "audited_lines": 2615,
+      "packaged_lines": null
+    }
+  ],
+  "new_files": [
+    "scripts/apply-foundation-hardening.mjs",
+    "scripts/install-foundation-hardening.ps1",
+    "scripts/fix-category-7-membership-session-trigger.ts",
+    "tests/category-7-9-access-boundaries.test.mjs"
+  ],
+  "notes": [
+    "CRLF-safe guarded patching for Windows checkouts",
+    "Missing ShieldCheck import repaired",
+    "PowerShell installer stops on external command failure",
+    "Legacy invitation POST typing patch is scoped strictly to the POST block, so duplicate Record<string, unknown> declarations elsewhere are safe"
+  ],
+  "version": "4.0.0"
+}
