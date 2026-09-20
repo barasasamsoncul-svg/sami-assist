@@ -168,6 +168,54 @@ export async function GET() {
         true,
 
       navigation: {
+        apps:
+          shell.accessibleModules.map(
+            module => ({
+              key:
+                module.key,
+
+              registryKey:
+                module.registryKey,
+
+              name:
+                module.name,
+
+              description:
+                module.description,
+
+              href:
+                module.href,
+
+              iconKey:
+                module.iconKey,
+
+              category:
+                module.category,
+
+              categoryLabel:
+                module.categoryLabel,
+
+              order:
+                module.order,
+
+              recommended:
+                module.recommended,
+
+              keywords:
+                module.keywords,
+
+              registered:
+                module.registered,
+
+              status:
+                module.status,
+            }),
+          ),
+
+        appCount:
+          shell.accessibleModules.length,
+
+
         /*
          * Core platform entitlement.
          *
