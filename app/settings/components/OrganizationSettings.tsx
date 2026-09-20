@@ -20,6 +20,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from 'react';
 
 import {
@@ -1482,7 +1483,7 @@ function SectionHeader({
 function FieldGrid({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -1554,7 +1555,7 @@ function EmptyState({
 function Badge({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
