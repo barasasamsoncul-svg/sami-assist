@@ -12,6 +12,7 @@ import {
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
+import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
 
 type UserData = {
   id: string;
@@ -184,21 +185,23 @@ export default function WorkspaceShell({
                       </p>
                     </div>
                   )}
-
-                  <div className="ml-auto flex min-w-0 items-center gap-2">
-                    <WorkspaceCompanyIdentity />
-
-                    <WorkspaceNotificationCenter
-                      userId={user.id}
-                      onUnreadChange={
-                        setLiveUnreadNotifications
-                      }
-                    />
-
-                    {actions}
-                  </div>
                 </>
               )}
+
+              <div className="ml-auto flex min-w-0 items-center gap-2">
+                <WorkspaceSearchLauncher />
+
+                <WorkspaceCompanyIdentity />
+
+                <WorkspaceNotificationCenter
+                  userId={user.id}
+                  onUnreadChange={
+                    setLiveUnreadNotifications
+                  }
+                />
+
+                {actions}
+              </div>
             </div>
           </header>
 

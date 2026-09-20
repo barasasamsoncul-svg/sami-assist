@@ -416,6 +416,160 @@ export async function listWorkspaceMessageRecipients() {
     );
 }
 
+export async function searchWorkspaceMessageRecipients(
+  query: string,
+  limit = 30,
+) {
+  const context =
+    await getWorkspaceNotificationContext();
+
+  const normalized =
+    typeof query === 'string'
+      ? query
+          .replace(/[\u0000-\u001f\u007f]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 120)
+      : '';
+
+  if (!normalized) {
+    return [];
+  }
+
+  const safeLimit =
+    Number.isFinite(Number(limit))
+      ? Math.min(
+          Math.max(Math.floor(Number(limit)), 1),
+          60,
+        )
+      : 30;
+
+  const members =
+    await queryControl(
+      `
+        SELECT
+          u.id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          tu.is_owner
+        FROM tenant_users tu
+        INNER JOIN users u
+          ON u.id = tu.user_id
+        WHERE tu.tenant_id = $1
+          AND tu.deleted_at IS NULL
+          AND u.deleted_at IS NULL
+          AND tu.user_id <> $2
+          AND LOWER(COALESCE(tu.status, '')) = 'active'
+          AND LOWER(COALESCE(tu.member_type, '')) = 'internal'
+          AND (
+            POSITION(LOWER($3) IN LOWER(COALESCE(u.email, ''))) > 0
+            OR POSITION(LOWER($3) IN LOWER(COALESCE(u.first_name, ''))) > 0
+            OR POSITION(LOWER($3) IN LOWER(COALESCE(u.last_name, ''))) > 0
+            OR POSITION(
+              LOWER($3)
+              IN LOWER(
+                TRIM(
+                  COALESCE(u.first_name, '') || ' ' ||
+                  COALESCE(u.last_name, '')
+                )
+              )
+            ) > 0
+          )
+        ORDER BY
+          CASE
+            WHEN LOWER(COALESCE(u.email, '')) = LOWER($3) THEN 0
+            WHEN LOWER(
+              TRIM(
+                COALESCE(u.first_name, '') || ' ' ||
+                COALESCE(u.last_name, '')
+              )
+            ) = LOWER($3) THEN 1
+            WHEN POSITION(
+              LOWER($3)
+              IN LOWER(COALESCE(u.email, ''))
+            ) = 1 THEN 2
+            ELSE 3
+          END,
+          LOWER(COALESCE(u.first_name, '')),
+          LOWER(COALESCE(u.last_name, '')),
+          LOWER(u.email)
+        LIMIT $4
+      `,
+      [
+        context.tenantId,
+        context.userId,
+        normalized,
+        safeLimit * 3,
+      ],
+    );
+
+  const candidates =
+    members.rows.map(
+      row =>
+        String(row.id),
+    );
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  const access =
+    candidates.length > 0
+      ? await pool.query(
+          `
+            SELECT user_id
+            FROM company_users
+            WHERE company_id = $1
+              AND user_id = ANY($2::uuid[])
+              AND LOWER(COALESCE(status, '')) = 'active'
+          `,
+          [
+            context.companyId,
+            candidates,
+          ],
+        )
+      : { rows: [] };
+
+  const allowed =
+    new Set(
+      access.rows.map(
+        row =>
+          String(row.user_id),
+      ),
+    );
+
+  return members.rows
+    .filter(
+      row =>
+        row.is_owner === true ||
+        allowed.has(
+          String(row.id),
+        ),
+    )
+    .slice(0, safeLimit)
+    .map(
+      row => ({
+        id:
+          String(row.id),
+        email:
+          String(row.email),
+        name:
+          [
+            row.first_name,
+            row.last_name,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim() ||
+          String(row.email),
+        isOwner:
+          row.is_owner === true,
+      }),
+    );
+}
+
 export async function listWorkspaceConversations():
   Promise<{
     conversations:

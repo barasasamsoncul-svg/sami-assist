@@ -668,6 +668,11 @@ export default function WorkspaceNotificationCenter({
           'conversation',
         );
 
+      const composeUserId =
+        params.get(
+          'compose',
+        );
+
       if (
         requestedTab ===
         'messages'
@@ -680,6 +685,26 @@ export default function WorkspaceNotificationCenter({
       setDeepLinkApplied(
         true,
       );
+
+      if (
+        composeUserId
+      ) {
+        setTab(
+          'messages',
+        );
+
+        setComposeType(
+          'direct',
+        );
+
+        setRecipientId(
+          composeUserId,
+        );
+
+        setComposeOpen(
+          true,
+        );
+      }
 
       if (
         conversationId

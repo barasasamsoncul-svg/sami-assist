@@ -70,7 +70,6 @@ test('Category 11: transient action feedback and destructive confirmations use S
   const [
     overlay,
     hook,
-    dashboard,
     users,
     roles,
     sessions,
@@ -78,7 +77,6 @@ test('Category 11: transient action feedback and destructive confirmations use S
   ] = await Promise.all([
     source('app/components/SaMiOverlay.tsx'),
     source('app/components/useSaMiOverlay.ts'),
-    source('app/dashboard/DashboardClient.tsx'),
     source('app/settings/users/UsersSettingsClient.tsx'),
     source('app/settings/roles/RolesSettingsClient.tsx'),
     source('app/settings/components/SessionsSettings.tsx'),
@@ -92,7 +90,6 @@ test('Category 11: transient action feedback and destructive confirmations use S
   assert.match(hook, /confirmAction/);
   assert.match(hook, /type:\s*['"]warning['"]/);
 
-  assert.match(dashboard, /SaMiOverlay/);
   assert.match(users, /SaMiOverlay/);
   assert.match(users, /Revoke invitation\?/i);
   assert.match(roles, /SaMiOverlay/);
@@ -142,11 +139,15 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
     source('app/settings/components/WorkspaceSettings.tsx'),
   ]);
 
-  assert.match(dashboard, /SaMiMobileTabs/);
-  assert.match(dashboard, /mobileDashboardSection/);
-  assert.match(dashboard, /Overview/);
-  assert.match(dashboard, /Work/);
-  assert.match(dashboard, /Apps/);
+  assert.match(
+    dashboard,
+    /sm:grid-cols-2/,
+    'Dashboard must collapse naturally on mobile rather than depending on a separate mini-shell.',
+  );
+  assert.match(dashboard, /xl:grid-cols/);
+  assert.match(dashboard, /Your apps/);
+  assert.match(dashboard, /Work & attention/);
+  assert.match(dashboard, /Recent activity/);
 
   assert.match(organization, /mobileSection/);
   assert.match(organization, /mobileEditorOpen/);
@@ -196,7 +197,11 @@ test('Category 11: Roles shell capabilities come from real permission context', 
   assert.match(page, /canUseAi/);
   assert.match(page, /shell\.aiAvailable/);
   assert.match(page, /SAMI_PERMISSIONS\s*\.FILES_VIEW|SAMI_PERMISSIONS\s*\.\s*FILES_VIEW/s);
-  assert.match(page, /SAMI_PERMISSIONS\s*\.NOTIFICATIONS_VIEW|SAMI_PERMISSIONS\s*\.\s*NOTIFICATIONS_VIEW/s);
+  assert.match(
+    client,
+    /notificationsEnabled/,
+    'Roles surface must use the shared core notification capability rather than hide communication behind a view role.',
+  );
 
   assert.match(client, /canUseAi/);
   assert.match(client, /canViewFiles/);

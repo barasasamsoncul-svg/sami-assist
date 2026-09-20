@@ -791,6 +791,95 @@ export async function listWorkspaceFiles(
   };
 }
 
+export async function searchWorkspaceFiles(
+  query: string,
+  limit = 30,
+): Promise<WorkspaceFileSummary[]> {
+  const context =
+    await resolveFileContext('view');
+
+  const normalized =
+    typeof query === 'string'
+      ? query
+          .replace(/[\u0000-\u001f\u007f]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 120)
+      : '';
+
+  if (!normalized) {
+    return [];
+  }
+
+  const safeLimit =
+    Number.isFinite(Number(limit))
+      ? Math.min(
+          Math.max(Math.floor(Number(limit)), 1),
+          60,
+        )
+      : 30;
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          id,
+          company_id,
+          name,
+          file_name,
+          mime_type,
+          extension,
+          size_bytes,
+          storage_key,
+          storage_provider,
+          storage_etag,
+          uploaded_by,
+          purpose,
+          status,
+          upload_expires_at,
+          activated_at,
+          created_at
+        FROM files
+        WHERE company_id = $1
+          AND status = 'active'
+          AND deleted_at IS NULL
+          AND (
+            POSITION(LOWER($2) IN LOWER(COALESCE(name, ''))) > 0
+            OR POSITION(LOWER($2) IN LOWER(COALESCE(file_name, ''))) > 0
+            OR POSITION(LOWER($2) IN LOWER(COALESCE(extension, ''))) > 0
+            OR POSITION(LOWER($2) IN LOWER(COALESCE(mime_type, ''))) > 0
+            OR POSITION(LOWER($2) IN LOWER(COALESCE(purpose, ''))) > 0
+          )
+        ORDER BY
+          CASE
+            WHEN LOWER(COALESCE(name, file_name)) = LOWER($2) THEN 0
+            WHEN POSITION(
+              LOWER($2)
+              IN LOWER(COALESCE(name, file_name))
+            ) = 1 THEN 1
+            ELSE 2
+          END,
+          created_at DESC,
+          id DESC
+        LIMIT $3
+      `,
+      [
+        context.companyId,
+        normalized,
+        safeLimit,
+      ],
+    );
+
+  return (
+    result.rows as FileRow[]
+  ).map(mapFile);
+}
+
 export async function getWorkspaceFile(fileId: string): Promise<WorkspaceFileSummary> {
   const context = await resolveFileContext('view');
   return mapFile(

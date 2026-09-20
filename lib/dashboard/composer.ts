@@ -459,33 +459,9 @@ function buildBrief(
 
 
   /*
-   * SaMi AI is a platform action.
-   *
-   * It appears only if the effective user permissions include ai.use.
+   * Category 18 will add the real SaMi AI workspace action.
+   * Do not expose an /ai destination before that surface exists.
    */
-  if (
-    input.aiEnabled
-  ) {
-    briefActions.push({
-      id:
-        'core:ask-sami',
-
-      moduleKey:
-        null,
-
-      label:
-        'Ask SaMi',
-
-      description:
-        'Ask SaMi about information available to your current workspace access.',
-
-      href:
-        '/ai',
-
-      priority:
-        'normal',
-    });
-  }
 
 
   /* ==============================================================

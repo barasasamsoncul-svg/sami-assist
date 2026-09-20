@@ -337,6 +337,13 @@ export async function GET() {
         activityView:
           true,
 
+        /*
+         * Search itself is core workspace access. Each provider
+         * enforces its own app/company/record/file boundary.
+         */
+        searchView:
+          true,
+
         auditView:
           context.isOwner ||
           has(

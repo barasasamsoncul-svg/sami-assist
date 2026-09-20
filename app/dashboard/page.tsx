@@ -1,6 +1,5 @@
 import {
   getAccountContextForUser,
-  listAccessibleWorkspaces,
 } from '@/lib/auth/account-context';
 
 import {
@@ -27,16 +26,22 @@ import {
   composeDashboard,
 } from '@/lib/dashboard/composer';
 
-import DashboardClient from './DashboardClient';
+import {
+  getWorkspaceActivitySummary,
+  listWorkspaceActivity,
+} from '@/lib/services/workspace-activity';
 
+import {
+  getWorkspaceNotificationSummary,
+} from '@/lib/services/workspace-notifications';
+
+import DashboardClient from './DashboardClient';
 
 export const runtime =
   'nodejs';
 
-
 export const dynamic =
   'force-dynamic';
-
 
 export default async function DashboardPage() {
   const session =
@@ -44,128 +49,87 @@ export default async function DashboardPage() {
       '/dashboard',
     );
 
-
-  /* ==============================================================
-     LOAD TRUSTED WORKSPACE CONTEXT
-     ============================================================== */
-
   const [
     accountContext,
     permissionContext,
-    workspaces,
   ] =
     await Promise.all([
       getAccountContextForUser(
         session.user.id,
         session.currentTenantId,
       ),
-
       getPermissionContext(),
-
-      listAccessibleWorkspaces(
-        session.user.id,
-      ),
     ]);
-
-
-  /* ==============================================================
-     RESOLVE USER-SPECIFIC WORKSPACE SHELL
-     ============================================================== */
 
   const shell =
     resolveWorkspaceShellAccess({
       modules:
         accountContext.modules,
-
       subscription:
         accountContext.subscription,
-
       permissions:
         permissionContext,
     });
-
-
-  /* ==============================================================
-     COMPANY CONTEXT
-     ============================================================== */
 
   let currentCompanyId:
     string | null =
     null;
 
-
   let selectedCompanyIds:
     string[] =
     [];
-
 
   let allowedCompanyIds:
     string[] =
     [];
 
-
   let company:
     {
       currentCompany: {
-        id:
-          string;
-
-        name:
-          string;
-
-        currency:
-          string;
-
-        timezone:
-          string;
+        id: string;
+        name: string;
+        logoUrl: string | null;
+        currency: string;
+        timezone: string;
       };
-
-      selectedCompanyCount:
-        number;
-
-      allowedCompanyCount:
-        number;
+      selectedCompanyCount: number;
+      allowedCompanyCount: number;
     }
     | null =
     null;
-
 
   try {
     const companyContext =
       await requireCompanyContext();
 
-
     currentCompanyId =
       companyContext
         .currentCompany.id;
-
 
     selectedCompanyIds = [
       ...companyContext
         .selectedCompanyIds,
     ];
 
-
     allowedCompanyIds = [
       ...companyContext
         .allowedCompanyIds,
     ];
-
 
     company = {
       currentCompany: {
         id:
           companyContext
             .currentCompany.id,
-
         name:
           companyContext
             .currentCompany.name,
-
+        logoUrl:
+          companyContext
+            .currentCompany.logoUrl,
         currency:
           companyContext
             .currentCompany.currency,
-
         timezone:
           companyContext
             .currentCompany.timezone,
@@ -182,192 +146,131 @@ export default async function DashboardPage() {
           .length,
     };
   } catch {
-    /*
-     * Dashboard remains available even if company context cannot
-     * temporarily be resolved.
-     */
+    // The shell still renders while company context is recovering.
   }
-
-
-  /* ==============================================================
-     DYNAMIC DASHBOARD
-
-     Module providers still execute only for modules the current
-     user may access. This same boundary is later used by SaMi AI.
-     ============================================================== */
 
   const dashboard =
     await composeDashboard({
       userId:
         session.user.id,
-
       permissions:
         permissionContext,
-
       modules:
         shell.accessibleModules,
-
       currentCompanyId,
-
       selectedCompanyIds,
-
       allowedCompanyIds,
     });
 
+  let recentActivity:
+    Awaited<
+      ReturnType<
+        typeof listWorkspaceActivity
+      >
+    >['items'] =
+    [];
 
-  const can =
-    (
-      permission:
-        string,
-    ) =>
-      permissionContext
-        .permissionSet
-        .has(
-          permission,
-        );
+  let activitySummary:
+    Awaited<
+      ReturnType<
+        typeof getWorkspaceActivitySummary
+      >
+    > | null =
+    null;
 
+  let unreadNotifications =
+    0;
 
-  /* ==============================================================
-     CLIENT
-     ============================================================== */
+  if (
+    currentCompanyId
+  ) {
+    const [
+      activityResult,
+      summaryResult,
+      notificationResult,
+    ] =
+      await Promise.allSettled([
+        listWorkspaceActivity({
+          view:
+            'activity',
+          limit:
+            6,
+        }),
+
+        getWorkspaceActivitySummary(),
+
+        getWorkspaceNotificationSummary(),
+      ]);
+
+    if (
+      activityResult.status ===
+      'fulfilled'
+    ) {
+      recentActivity =
+        activityResult
+          .value
+          .items;
+    }
+
+    if (
+      summaryResult.status ===
+      'fulfilled'
+    ) {
+      activitySummary =
+        summaryResult.value;
+    }
+
+    if (
+      notificationResult.status ===
+      'fulfilled'
+    ) {
+      unreadNotifications =
+        notificationResult
+          .value
+          .unreadCount;
+    }
+  }
 
   return (
     <DashboardClient
       user={
         session.user
       }
-
       tenant={
         accountContext.tenant
       }
-
       membership={
         accountContext.membership
       }
-
-      /*
-       * Real assigned business roles.
-       *
-       * Membership access level remains structural and does not
-       * replace business-role names.
-       */
-      roles={
-        permissionContext.roles.map(
-          role => ({
-            id:
-              role.id,
-
-            key:
-              role.key,
-
-            name:
-              role.name,
-
-            description:
-              role.description,
-
-            isSystem:
-              role.isSystem,
-          }),
-        )
-      }
-
-      workspaces={
-        workspaces
-      }
-
-      /*
-       * May be null for users without billing visibility.
-       * AI access remains available through shell.aiAvailable.
-       */
       subscription={
         shell.subscription
       }
-
       modules={
         shell.accessibleModules
       }
-
       company={
         company
       }
-
       dashboard={
         dashboard
       }
-
+      recentActivity={
+        recentActivity
+      }
+      activitySummary={
+        activitySummary
+      }
+      unreadNotifications={
+        unreadNotifications
+      }
       capabilities={{
-        /*
-         * Core AI entitlement.
-         * No ai.use / ai.manage permission check.
-         */
-        ai:
-          shell.aiAvailable,
-
         files:
-          can(
-            SAMI_PERMISSIONS
-              .FILES_VIEW,
-          ),
-
-        notifications:
-          can(
-            SAMI_PERMISSIONS
-              .NOTIFICATIONS_VIEW,
-          ),
-
-
-        workspaceManage:
-          can(
-            SAMI_PERMISSIONS
-              .WORKSPACE_MANAGE,
-          ),
-
-
-        usersView:
-          can(
-            SAMI_PERMISSIONS
-              .USERS_VIEW,
-          ) ||
-          can(
-            SAMI_PERMISSIONS
-              .USERS_MANAGE,
-          ),
-
-        invitationsView:
-          can(
-            SAMI_PERMISSIONS
-              .INVITATIONS_VIEW,
-          ) ||
-          can(
-            SAMI_PERMISSIONS
-              .INVITATIONS_MANAGE,
-          ),
-
-
-        rolesView:
-          can(
-            SAMI_PERMISSIONS
-              .ROLES_VIEW,
-          ) ||
-          can(
-            SAMI_PERMISSIONS
-              .ROLES_MANAGE,
-          ),
-
-
-        appsManage:
-          shell.canManageApps,
-
-
-        billingView:
-          shell.canViewBilling,
-
-        billingManage:
-          can(
-            SAMI_PERMISSIONS
-              .BILLING_MANAGE,
-          ),
+          permissionContext
+            .permissionSet
+            .has(
+              SAMI_PERMISSIONS
+                .FILES_VIEW,
+            ),
       }}
     />
   );

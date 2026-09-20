@@ -22,6 +22,7 @@ import {
   Home,
   LayoutGrid,
   Loader2,
+  Search,
   Settings,
   ShieldCheck,
   Star,
@@ -384,6 +385,9 @@ type NavigationPermissionState = {
     boolean;
 
   activityView:
+    boolean;
+
+  searchView:
     boolean;
 
   auditView:
@@ -1084,29 +1088,8 @@ export default function WorkspaceSidebar({
      ============================================================ */
 
   /*
-   * SaMi AI is now a core billing entitlement.
-   *
-   * Do NOT gate this with ai.use or ai.manage.
-   */
-  const canUseAi =
-    navigationPermissions
-      ?.aiAvailable ===
-      true;
-
-
-  const canUseFiles =
-    capabilities
-      ?.filesEnabled ===
-      true &&
-    navigationPermissions
-      ?.filesView ===
-      true;
-
-
-  /*
-   * Notifications and internal messaging are core workspace
-   * communication for every active internal member with company
-   * access. notifications.manage remains permission-gated.
+   * Core workspace surfaces are available to every trusted active
+   * internal member. Deeper actions remain permission-gated.
    */
   const canUseNotifications =
     navigationPermissions
@@ -1116,6 +1099,11 @@ export default function WorkspaceSidebar({
   const canUseActivity =
     navigationPermissions
       ?.activityView ===
+      true;
+
+  const canUseSearch =
+    navigationPermissions
+      ?.searchView ===
       true;
 
 
@@ -1331,9 +1319,14 @@ export default function WorkspaceSidebar({
 
   const coreRouteActive =
     pathname ===
-      '/files' ||
+      '/activity' ||
     pathname.startsWith(
-      '/files/',
+      '/activity/',
+    ) ||
+    pathname ===
+      '/search' ||
+    pathname.startsWith(
+      '/search/',
     ) ||
     pathname ===
       '/notifications' ||
@@ -3006,26 +2999,6 @@ export default function WorkspaceSidebar({
             />
 
 
-            {canUseAi && (
-              <NavLink
-                href="/ai"
-                icon={
-                  Bot
-                }
-                label="SaMi AI"
-                active={
-                  pathname ===
-                    '/ai' ||
-                  pathname.startsWith(
-                    '/ai/',
-                  )
-                }
-                onNavigate={
-                  onClose
-                }
-              />
-            )}
-
           </div>
 
 
@@ -3108,9 +3081,9 @@ export default function WorkspaceSidebar({
               WORKSPACE TOOLS
               ==================================================== */}
 
-          {(canUseFiles ||
-            canUseNotifications ||
-            canUseActivity) && (
+          {(canUseNotifications ||
+            canUseActivity ||
+            canUseSearch) && (
             <div className="mt-6">
 
               <NavSectionLabel>
@@ -3141,27 +3114,6 @@ export default function WorkspaceSidebar({
               {coreExpanded && (
                 <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
 
-                  {canUseFiles && (
-                    <ChildNavLink
-                      href="/files"
-                      icon={
-                        Folder
-                      }
-                      label="Files"
-                      active={
-                        pathname ===
-                          '/files' ||
-                        pathname.startsWith(
-                          '/files/',
-                        )
-                      }
-                      onNavigate={
-                        onClose
-                      }
-                    />
-                  )}
-
-
                   {canUseActivity && (
                     <ChildNavLink
                       href="/activity"
@@ -3174,6 +3126,27 @@ export default function WorkspaceSidebar({
                           '/activity' ||
                         pathname.startsWith(
                           '/activity/',
+                        )
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  )}
+
+
+                  {canUseSearch && (
+                    <ChildNavLink
+                      href="/search"
+                      icon={
+                        Search
+                      }
+                      label="Search"
+                      active={
+                        pathname ===
+                          '/search' ||
+                        pathname.startsWith(
+                          '/search/',
                         )
                       }
                       onNavigate={

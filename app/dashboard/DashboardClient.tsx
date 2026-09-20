@@ -3,122 +3,56 @@
 import Link from 'next/link';
 
 import {
-  useRouter,
-} from 'next/navigation';
-
-import {
-  AlertTriangle,
-  AppWindow,
+  Activity,
+  ArrowRight,
   Bell,
-  Bot,
-  BriefcaseBusiness,
+  Boxes,
   Building2,
-  Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  CircleHelp,
   Clock3,
-  CreditCard,
-  FileText,
-  Home,
   LayoutGrid,
-  Loader2,
-  LogOut,
-  Moon,
   Search,
-  Shield,
-  ShieldCheck,
-  Sparkles,
-  Sun,
-  User,
-  Users,
-  UsersRound,
+  TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
 
 import {
-  useEffect,
   useMemo,
-  useRef,
-  useState,
   type ReactNode,
 } from 'react';
 
-import UserAvatar from '@/app/components/account/UserAvatar';
-
+import CompanyAvatar from '@/app/components/workspace/CompanyAvatar';
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
-
-import SaMiMobileTabs from '@/app/components/workspace/SaMiMobileTabs';
-
-import SaMiOverlay from '@/app/components/SaMiOverlay';
-
-import {
-  useSaMiOverlay,
-} from '@/app/components/useSaMiOverlay';
 
 import {
   getSaMiAppIcon,
 } from '@/lib/apps/icon-registry';
 
-import {
-  resolveUserTheme,
-  type UserTheme,
-} from '@/lib/account/user-formatting';
-
 import type {
-  DashboardAction,
   DashboardAttentionItem,
   DashboardMetric,
-  DashboardPriority,
   DashboardRecentItem,
-  DashboardTone,
   DashboardViewModel,
   DashboardWorkItem,
 } from '@/lib/dashboard/types';
 
-
-/* ================================================================
-   TYPES
-   ================================================================ */
-
 type UserData = {
-  id:
-    string;
-
-  email:
-    string;
-
-  fullName:
-    string;
-
-  firstName:
-    string;
-
-  lastName:
-    string;
-
-  avatarFileId:
-    string | null;
+  id: string;
+  email: string;
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  avatarFileId: string | null;
 };
-
 
 type TenantData =
   | {
-      id:
-        string;
-
-      name:
-        string;
-
-      slug:
-        string;
-
-      status:
-        string;
+      id: string;
+      name: string;
+      slug: string;
+      status: string;
     }
   | null;
-
 
 type MembershipData =
   | {
@@ -126,409 +60,86 @@ type MembershipData =
         | 'owner'
         | 'admin'
         | 'member';
-
-      isOwner:
-        boolean;
-
-      isAdmin:
-        boolean;
-
-      label:
-        string;
+      isOwner: boolean;
+      isAdmin: boolean;
+      label: string;
     }
   | null;
-
-
-type RoleData = {
-  id:
-    string;
-
-  key:
-    string | null;
-
-  name:
-    string;
-
-  description:
-    string | null;
-
-  isSystem:
-    boolean;
-};
-
-
-type WorkspaceData = {
-  id:
-    string;
-
-  name:
-    string;
-
-  slug:
-    string;
-
-  status:
-    string;
-
-  accessLevel:
-    | 'owner'
-    | 'admin'
-    | 'member';
-
-  isOwner:
-    boolean;
-
-  isAdmin:
-    boolean;
-};
-
 
 type SubscriptionData =
   | {
-      status:
-        string;
-
-      planKey:
-        string | null;
-
-      planName:
-        string | null;
+      status: string;
+      planKey: string | null;
+      planName: string | null;
     }
   | null;
 
-
 type ModuleData = {
-  key:
-    string;
-
-  registryKey:
-    string;
-
-  name:
-    string;
-
-  status:
-    string;
-
-  href:
-    string;
-
-  description:
-    string;
-
-  iconKey:
-    string;
-
-  category:
-    string;
-
-  categoryLabel:
-    string;
-
-  order:
-    number;
-
-  recommended:
-    boolean;
-
-  keywords:
-    string[];
-
-  registered:
-    boolean;
+  key: string;
+  registryKey?: string;
+  name: string;
+  status: string;
+  href?: string | null;
+  description?: string | null;
+  iconKey?: string | null;
+  categoryLabel?: string;
 };
-
 
 type CompanyData =
   | {
       currentCompany: {
-        id:
-          string;
-
-        name:
-          string;
-
-        currency:
-          string;
-
-        timezone:
-          string;
+        id: string;
+        name: string;
+        logoUrl: string | null;
+        currency: string;
+        timezone: string;
       };
-
-      selectedCompanyCount:
-        number;
-
-      allowedCompanyCount:
-        number;
+      selectedCompanyCount: number;
+      allowedCompanyCount: number;
     }
   | null;
 
-
-type DashboardCapabilities = {
-  ai:
-    boolean;
-
-  files:
-    boolean;
-
-  notifications:
-    boolean;
-
-
-  workspaceManage:
-    boolean;
-
-
-  usersView:
-    boolean;
-
-  invitationsView:
-    boolean;
-
-
-  rolesView:
-    boolean;
-
-
-  appsManage:
-    boolean;
-
-
-  billingView:
-    boolean;
-
-  billingManage:
-    boolean;
+type ActivityItem = {
+  id: string;
+  label: string;
+  summary: string | null;
+  module: string | null;
+  result: string | null;
+  createdAt: string;
+  actor: {
+    name: string;
+  };
 };
 
+type ActivitySummary =
+  | {
+      todayCount: number;
+      failed7d: number;
+      actors7d: number;
+      modules7d: number;
+    }
+  | null;
 
 type Props = {
-  user:
-    UserData;
-
-  tenant:
-    TenantData;
-
-  membership:
-    MembershipData;
-
-  roles:
-    RoleData[];
-
-  workspaces:
-    WorkspaceData[];
-
-  subscription:
-    SubscriptionData;
-
-  modules:
-    ModuleData[];
-
-  company:
-    CompanyData;
-
-  dashboard:
-    DashboardViewModel;
-
-  capabilities:
-    DashboardCapabilities;
-
-  unreadNotifications?:
-    number;
+  user: UserData;
+  tenant: TenantData;
+  membership: MembershipData;
+  subscription: SubscriptionData;
+  modules: ModuleData[];
+  company: CompanyData;
+  dashboard: DashboardViewModel;
+  recentActivity: ActivityItem[];
+  activitySummary: ActivitySummary;
+  unreadNotifications: number;
+  capabilities: {
+    files: boolean;
+  };
 };
 
-
-type SearchItem = {
-  id:
-    string;
-
-  label:
-    string;
-
-  description:
-    string;
-
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-
-  keywords:
-    string;
-
-  gradient?:
-    string;
-};
-
-
-/* ================================================================
-   CONSTANTS
-   ================================================================ */
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
-
-
-const GENERIC_ROLE_KEYS =
-  new Set([
-    'member',
-    'manager',
-    'admin',
-    'administrator',
-  ]);
-
-
-/*
- * Stable application colors.
- *
- * Apps now have individual identity again instead of every app
- * becoming the same blue/cyan square.
- */
-const APP_GRADIENTS = [
-  'from-blue-600 to-cyan-500',
-  'from-violet-600 to-purple-500',
-  'from-emerald-600 to-teal-500',
-  'from-orange-500 to-amber-500',
-  'from-rose-600 to-pink-500',
-  'from-indigo-600 to-blue-500',
-  'from-cyan-600 to-sky-500',
-  'from-fuchsia-600 to-purple-500',
-  'from-lime-600 to-emerald-500',
-  'from-red-600 to-orange-500',
-] as const;
-
-
-/* ================================================================
-   HELPERS
-   ================================================================ */
-
-function normalizeKey(
-  value:
-    string | null | undefined,
-) {
-  return (
-    value ||
-    ''
-  )
-    .trim()
-    .toLowerCase();
-}
-
-
-function stringHash(
-  value:
-    string,
-) {
-  let hash =
-    0;
-
-
-  for (
-    let index =
-      0;
-
-    index <
-      value.length;
-
-    index +=
-      1
-  ) {
-    hash =
-      (
-        (
-          hash <<
-          5
-        ) -
-        hash
-      ) +
-      value.charCodeAt(
-        index,
-      );
-
-
-    hash |=
-      0;
-  }
-
-
-  return Math.abs(
-    hash,
-  );
-}
-
-
-function getAppGradient(
-  key:
-    string,
-) {
-  const index =
-    stringHash(
-      normalizeKey(
-        key,
-      ),
-    ) %
-    APP_GRADIENTS.length;
-
-
-  return (
-    APP_GRADIENTS[
-      index
-    ] ||
-    APP_GRADIENTS[0]
-  );
-}
-
-
-function getInitials(
-  user:
-    UserData,
-) {
-  const first =
-    user.firstName
-      ?.trim()
-      .charAt(
-        0,
-      );
-
-
-  const last =
-    user.lastName
-      ?.trim()
-      .charAt(
-        0,
-      );
-
-
-  const initials =
-    `${first || ''}${last || ''}`
-      .trim();
-
-
-  if (
-    initials
-  ) {
-    return initials
-      .toUpperCase();
-  }
-
-
-  return (
-    user.email
-      .charAt(
-        0,
-      )
-      .toUpperCase() ||
-    'S'
-  );
-}
-
-
-function getGreeting() {
+function greeting() {
   const hour =
     new Date()
       .getHours();
-
 
   if (
     hour <
@@ -537,7 +148,6 @@ function getGreeting() {
     return 'Good morning';
   }
 
-
   if (
     hour <
     17
@@ -545,2521 +155,789 @@ function getGreeting() {
     return 'Good afternoon';
   }
 
-
   return 'Good evening';
 }
 
-
-function getSystemPrefersDark() {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return false;
-  }
-
-
-  return (
-    window.matchMedia?.(
-      '(prefers-color-scheme: dark)',
-    ).matches ??
-    false
-  );
-}
-
-
-function applyTheme(
-  theme:
-    UserTheme,
-) {
-  const resolved =
-    resolveUserTheme(
-      theme,
-      getSystemPrefersDark(),
-    );
-
-
-  const dark =
-    resolved ===
-    'dark';
-
-
-  document
-    .documentElement
-    .classList
-    .toggle(
-      'dark',
-      dark,
-    );
-
-
-  try {
-    localStorage.setItem(
-      THEME_STORAGE_KEY,
-      theme,
-    );
-  } catch {
-    // Optional cache.
-  }
-
-
-  return dark;
-}
-
-
-function priorityLabel(
-  priority:
-    DashboardPriority,
-) {
-  switch (
-    priority
-  ) {
-    case 'critical':
-      return 'Critical';
-
-    case 'high':
-      return 'High';
-
-    case 'low':
-      return 'Low';
-
-    default:
-      return 'Normal';
-  }
-}
-
-
-function priorityClasses(
-  priority:
-    DashboardPriority,
-) {
-  switch (
-    priority
-  ) {
-    case 'critical':
-      return 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300';
-
-    case 'high':
-      return 'bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300';
-
-    case 'low':
-      return 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400';
-
-    default:
-      return 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300';
-  }
-}
-
-
-function toneClasses(
-  tone:
-    DashboardTone,
-) {
-  switch (
-    tone
-  ) {
-    case 'danger':
-      return 'text-red-600 dark:text-red-400';
-
-    case 'warning':
-      return 'text-amber-600 dark:text-amber-400';
-
-    case 'success':
-      return 'text-emerald-600 dark:text-emerald-400';
-
-    case 'info':
-      return 'text-blue-600 dark:text-blue-400';
-
-    default:
-      return 'text-slate-950 dark:text-white';
-  }
-}
-
-
-function formatDateTime(
+function relativeTime(
   value:
-    string | null,
+    string,
 ) {
-  if (
-    !value
-  ) {
-    return null;
-  }
-
-
   const date =
     new Date(
       value,
     );
-
 
   if (
     Number.isNaN(
       date.getTime(),
     )
   ) {
-    return null;
+    return '';
   }
 
+  const diff =
+    Date.now() -
+    date.getTime();
 
-  return new Intl.DateTimeFormat(
-    undefined,
-    {
-      month:
-        'short',
-
-      day:
-        'numeric',
-
-      hour:
-        'numeric',
-
-      minute:
-        '2-digit',
-    },
-  )
-    .format(
-      date,
-    );
-}
-
-
-/* ================================================================
-   ROLE DISPLAY
-
-   Membership access level is NOT the business job role.
-
-   If custom/specific roles exist, those are shown instead of
-   boring structural labels such as Member / Manager.
-   ================================================================ */
-
-function getRoleNames(
-  membership:
-    MembershipData,
-
-  roles:
-    RoleData[],
-) {
   if (
-    membership?.isOwner
+    diff <
+    60_000
   ) {
-    return [
-      'Workspace Owner',
-    ];
+    return 'Now';
   }
 
+  if (
+    diff <
+    3_600_000
+  ) {
+    return (
+      Math.max(
+        1,
+        Math.floor(
+          diff /
+          60_000,
+        ),
+      ) +
+      'm ago'
+    );
+  }
 
-  const specificRoles =
-    roles.filter(
-      role => {
-        const identity =
-          normalizeKey(
-            role.key ||
-            role.name,
-          );
+  if (
+    diff <
+    86_400_000
+  ) {
+    return (
+      Math.floor(
+        diff /
+        3_600_000,
+      ) +
+      'h ago'
+    );
+  }
 
-
-        return (
-          identity &&
-          !GENERIC_ROLE_KEYS.has(
-            identity,
-          )
-        );
+  return date
+    .toLocaleDateString(
+      undefined,
+      {
+        month:
+          'short',
+        day:
+          'numeric',
       },
     );
-
-
-  if (
-    specificRoles.length >
-    0
-  ) {
-    return specificRoles.map(
-      role =>
-        role.name,
-    );
-  }
-
-
-  if (
-    roles.length >
-    0
-  ) {
-    return roles.map(
-      role =>
-        role.name,
-    );
-  }
-
-
-  return [
-    membership?.label ||
-    'Workspace Member',
-  ];
 }
 
+function resultTone(
+  result:
+    string | null,
+) {
+  if (
+    result ===
+      'failed' ||
+    result ===
+      'denied'
+  ) {
+    return 'text-rose-600 dark:text-rose-300';
+  }
 
-/* ================================================================
-   DASHBOARD
-   ================================================================ */
+  return 'text-emerald-600 dark:text-emerald-300';
+}
 
 export default function DashboardClient({
   user,
   tenant,
   membership,
-  roles,
-  workspaces,
   subscription,
   modules,
   company,
   dashboard,
+  recentActivity,
+  activitySummary,
+  unreadNotifications,
   capabilities,
-  unreadNotifications =
-    0,
 }: Props) {
-  const router =
-    useRouter();
-
-
-  const searchRef =
-    useRef<
-      HTMLInputElement | null
-    >(
-      null,
-    );
-
-
-  const profileRef =
-    useRef<
-      HTMLDivElement | null
-    >(
-      null,
-    );
-
-
-  const workspaceRef =
-    useRef<
-      HTMLDivElement | null
-    >(
-      null,
-    );
-
-
-  const [
-    profileOpen,
-    setProfileOpen,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
-    workspaceOpen,
-    setWorkspaceOpen,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
-    switchingWorkspaceId,
-    setSwitchingWorkspaceId,
-  ] =
-    useState<
-      string | null
-    >(
-      null,
-    );
-
-
-  const [
-    searchOpen,
-    setSearchOpen,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
-    searchQuery,
-    setSearchQuery,
-  ] =
-    useState(
-      '',
-    );
-
-
-  const [
-    darkMode,
-    setDarkMode,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
-    themeSaving,
-    setThemeSaving,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
-    loggingOut,
-    setLoggingOut,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const {
-    overlay,
-    closeOverlay,
-    showError,
-  } =
-    useSaMiOverlay();
-
-
-  const [
-    mobileDashboardSection,
-    setMobileDashboardSection,
-  ] =
-    useState<
-      'overview'
-      | 'work'
-      | 'apps'
-    >(
-      'overview',
-    );
-
-
-  /* ============================================================
-     DISPLAY
-     ============================================================ */
-
-  const displayName =
-    user.firstName
-      ?.trim() ||
-    user.fullName
-      ?.trim() ||
-    user.email;
-
-
-  const initials =
-    getInitials(
-      user,
-    );
-
-
-  const greeting =
-    getGreeting();
-
-
-  const roleNames =
+  const visibleApps =
     useMemo(
       () =>
-        getRoleNames(
-          membership,
-          roles,
-        ),
-
-      [
-        membership,
-        roles,
-      ],
-    );
-
-
-  const roleLabel =
-    roleNames.join(
-      ' · ',
-    );
-
-
-  const currentCompanyName =
-    company
-      ?.currentCompany
-      .name ||
-    tenant
-      ?.name ||
-    'Workspace';
-
-
-  const planName =
-    subscription
-      ? (
-          subscription.planName ||
-          subscription.planKey ||
-          'Subscription'
-        )
-      : null;
-
-
-  const hasMultipleWorkspaces =
-    workspaces.length >
-    1;
-
-
-  /*
-   * Give the sidebar the REAL role label on Dashboard instead of
-   * throwing away PermissionContext.roles.
-   */
-  const sidebarMembership =
-    membership
-      ? {
-          ...membership,
-
-          label:
-            roleLabel,
-        }
-      : membership;
-
-
-  /* ============================================================
-     MANAGEMENT
-
-     IMPORTANT:
-
-     workspace.view does NOT create Workspace administration.
-
-     apps.view does NOT create Apps administration.
-
-     Invitations are part of Users management.
-     ============================================================ */
-
-  const managementActions =
-    useMemo<
-      SearchItem[]
-    >(
-      () => {
-        const items:
-          SearchItem[] =
-          [];
-
-
-        if (
-          capabilities
-            .workspaceManage
-        ) {
-          items.push({
-            id:
-              'management-workspace',
-
-            label:
-              'Workspace',
-
-            description:
-              'Configure this workspace',
-
-            href:
-              '/settings?tab=workspace',
-
-            icon:
-              Building2,
-
-            keywords:
-              'workspace configuration administration',
-          });
-        }
-
-
-        if (
-          capabilities
-            .usersView ||
-          capabilities
-            .invitationsView
-        ) {
-          items.push({
-            id:
-              'management-users',
-
-            label:
-              'Users',
-
-            description:
-              'Members and invitations',
-
-            href:
-              '/settings/users',
-
-            icon:
-              UsersRound,
-
-            keywords:
-              'users employees members invitations access',
-          });
-        }
-
-
-        if (
-          capabilities
-            .rolesView
-        ) {
-          items.push({
-            id:
-              'management-roles',
-
-            label:
-              'Roles & Permissions',
-
-            description:
-              'Business roles and access',
-
-            href:
-              '/settings/roles',
-
-            icon:
-              Shield,
-
-            keywords:
-              'roles permissions access employees',
-          });
-        }
-
-
-        if (
-          capabilities
-            .appsManage
-        ) {
-          items.push({
-            id:
-              'management-apps',
-
-            label:
-              'Apps',
-
-            description:
-              'Install and manage workspace apps',
-
-            href:
-              '/settings?tab=apps',
-
-            icon:
-              LayoutGrid,
-
-            keywords:
-              'apps modules applications install manage',
-          });
-        }
-
-
-        if (
-          capabilities
-            .billingView &&
-          subscription
-        ) {
-          items.push({
-            id:
-              'management-billing',
-
-            label:
-              'Billing',
-
-            description:
-              'Subscription and billing',
-
-            href:
-              '/settings?tab=billing',
-
-            icon:
-              CreditCard,
-
-            keywords:
-              'billing subscription plan payment',
-          });
-        }
-
-
-        return items;
-      },
-
-      [
-        capabilities,
-        subscription,
-      ],
-    );
-
-
-  /* ============================================================
-     SEARCH
-     ============================================================ */
-
-  const searchItems =
-    useMemo<
-      SearchItem[]
-    >(
-      () => {
-        const items:
-          SearchItem[] =
-          modules.map(
-            module => ({
-              id:
-                `app-${module.key}`,
-
-              label:
-                module.name,
-
-              description:
-                module.description,
-
-              href:
-                module.href,
-
-              icon:
-                getSaMiAppIcon(
-                  module.iconKey,
-                ),
-
-              gradient:
-                getAppGradient(
-                  module.registryKey,
-                ),
-
-              keywords:
-                [
-                  module.registryKey,
-                  module.key,
-                  module.name,
-                  module.categoryLabel,
-                  ...module.keywords,
-                ].join(
-                  ' ',
-                ),
-            }),
-          );
-
-
-        for (
-          const action
-          of managementActions
-        ) {
-          items.push(
-            action,
-          );
-        }
-
-
-        for (
-          const action
-          of dashboard.actions
-        ) {
-          items.push({
-            id:
-              `dashboard-${action.id}`,
-
-            label:
-              action.label,
-
-            description:
-              action.description ||
-              'Quick action',
-
-            href:
-              action.href,
-
-            icon:
-              BriefcaseBusiness,
-
-            keywords:
-              `${action.label} ${action.description || ''}`,
-          });
-        }
-
-
-        items.push({
-          id:
-            'account',
-
-          label:
-            'My Account',
-
-          description:
-            'Profile, preferences and security',
-
-          href:
-            '/settings?tab=personal',
-
-          icon:
-            User,
-
-          keywords:
-            'my account profile security appearance preferences',
-        });
-
-
-        return items;
-      },
-
-      [
-        modules,
-        managementActions,
-        dashboard.actions,
-      ],
-    );
-
-
-  const searchResults =
-    useMemo(
-      () => {
-        const query =
-          searchQuery
-            .trim()
-            .toLowerCase();
-
-
-        if (
-          !query
-        ) {
-          return searchItems.slice(
-            0,
-            8,
-          );
-        }
-
-
-        return searchItems
+        modules
           .filter(
-            item =>
-              `${item.label} ${item.description} ${item.keywords}`
-                .toLowerCase()
-                .includes(
-                  query,
-                ),
+            module =>
+              module.status !==
+                'disabled' &&
+              module.status !==
+                'failed' &&
+              module.status !==
+                'uninstalled',
           )
           .slice(
             0,
             8,
-          );
-      },
-
+          ),
       [
-        searchItems,
-        searchQuery,
+        modules,
       ],
     );
 
-
-  /* ============================================================
-     THEME
-     ============================================================ */
-
-  useEffect(
-    () => {
-      try {
-        const saved =
-          localStorage.getItem(
-            THEME_STORAGE_KEY,
-          );
-
-
-        const theme:
-          UserTheme =
-          saved ===
-              'light' ||
-            saved ===
-              'dark' ||
-            saved ===
-              'system'
-            ? saved
-            : 'system';
-
-
-        setDarkMode(
-          applyTheme(
-            theme,
-          ),
-        );
-      } catch {
-        setDarkMode(
-          getSystemPrefersDark(),
-        );
-      }
-    },
-
-    [],
-  );
-
-
-  async function toggleTheme() {
-    if (
-      themeSaving
-    ) {
-      return;
-    }
-
-
-    const previous =
-      darkMode;
-
-
-    const next:
-      UserTheme =
-      darkMode
-        ? 'light'
-        : 'dark';
-
-
-    setThemeSaving(
-      true,
-    );
-
-
-    setDarkMode(
-      applyTheme(
-        next,
-      ),
-    );
-
-
-    try {
-      const response =
-        await fetch(
-          '/api/account/preferences',
-          {
-            method:
-              'PATCH',
-
-            credentials:
-              'same-origin',
-
-            headers: {
-              'Content-Type':
-                'application/json',
-            },
-
-            body:
-              JSON.stringify({
-                theme:
-                  next,
-              }),
-          },
-        );
-
-
-      if (
-        !response.ok
-      ) {
-        throw new Error();
-      }
-    } catch {
-      setDarkMode(
-        previous,
+  const attention =
+    dashboard.attention
+      .slice(
+        0,
+        4,
       );
 
-
-      applyTheme(
-        previous
-          ? 'dark'
-          : 'light',
+  const work =
+    dashboard.work
+      .slice(
+        0,
+        4,
       );
 
-
-      showError(
-        'Theme update failed',
-        'SaMi could not save your theme preference. Your previous theme has been restored.',
-      );
-    } finally {
-      setThemeSaving(
-        false,
-      );
-    }
-  }
-
-
-  /* ============================================================
-     OUTSIDE CLICK
-     ============================================================ */
-
-  useEffect(
-    () => {
-      function outside(
-        event:
-          PointerEvent,
-      ) {
-        const target =
-          event.target as Node;
-
-
-        if (
-          profileRef.current &&
-          !profileRef.current.contains(
-            target,
-          )
-        ) {
-          setProfileOpen(
-            false,
-          );
-        }
-
-
-        if (
-          workspaceRef.current &&
-          !workspaceRef.current.contains(
-            target,
-          )
-        ) {
-          setWorkspaceOpen(
-            false,
-          );
-        }
-      }
-
-
-      window.addEventListener(
-        'pointerdown',
-        outside,
+  const metrics =
+    dashboard.metrics
+      .slice(
+        0,
+        4,
       );
 
-
-      return () =>
-        window.removeEventListener(
-          'pointerdown',
-          outside,
-        );
-    },
-
-    [],
-  );
-
-
-  /* ============================================================
-     KEYBOARD
-     ============================================================ */
-
-  useEffect(
-    () => {
-      function keyboard(
-        event:
-          KeyboardEvent,
-      ) {
-        const target =
-          event.target as
-            | HTMLElement
-            | null;
-
-
-        const typing =
-          target?.tagName ===
-            'INPUT' ||
-          target?.tagName ===
-            'TEXTAREA' ||
-          target?.isContentEditable;
-
-
-        if (
-          event.key ===
-            '/' &&
-          !typing
-        ) {
-          event.preventDefault();
-
-          searchRef.current?.focus();
-
-          return;
-        }
-
-
-        if (
-          event.key ===
-          'Escape'
-        ) {
-          setProfileOpen(
-            false,
-          );
-
-          setWorkspaceOpen(
-            false,
-          );
-
-          setSearchOpen(
-            false,
-          );
-        }
-      }
-
-
-      window.addEventListener(
-        'keydown',
-        keyboard,
+  const recent =
+    dashboard.recent
+      .slice(
+        0,
+        5,
       );
 
-
-      return () =>
-        window.removeEventListener(
-          'keydown',
-          keyboard,
-        );
-    },
-
-    [],
-  );
-
-
-  /* ============================================================
-     WORKSPACE SWITCH
-     ============================================================ */
-
-  async function switchWorkspace(
-    workspace:
-      WorkspaceData,
-  ) {
-    if (
-      switchingWorkspaceId ||
-      workspace.id ===
-        tenant?.id
-    ) {
-      setWorkspaceOpen(
-        false,
-      );
-
-      return;
-    }
-
-
-    setSwitchingWorkspaceId(
-      workspace.id,
-    );
-
-
-    try {
-      const response =
-        await fetch(
-          '/api/workspace',
-          {
-            method:
-              'POST',
-
-            credentials:
-              'same-origin',
-
-            cache:
-              'no-store',
-
-            headers: {
-              'Content-Type':
-                'application/json',
-
-              Accept:
-                'application/json',
-            },
-
-            body:
-              JSON.stringify({
-                action:
-                  'switch_workspace',
-
-                tenantId:
-                  workspace.id,
-              }),
-          },
-        );
-
-
-      const data =
-        await response
-          .json()
-          .catch(
-            () =>
-              null,
-          );
-
-
-      if (
-        !response.ok ||
-        !data?.success
-      ) {
-        throw new Error(
-          data?.error ||
-          'The workspace could not be selected.',
-        );
-      }
-
-
-      setWorkspaceOpen(
-        false,
-      );
-
-
-      router.refresh();
-    } catch (
-      error
-    ) {
-      showError(
-        'Workspace switch failed',
-        error instanceof
-          Error
-          ? error.message
-          : 'The workspace could not be selected.',
-      );
-    } finally {
-      setSwitchingWorkspaceId(
-        null,
-      );
-    }
-  }
-
-
-  /* ============================================================
-     LOGOUT
-     ============================================================ */
-
-  async function logout() {
-    if (
-      loggingOut
-    ) {
-      return;
-    }
-
-
-    setLoggingOut(
-      true,
-    );
-
-
-    try {
-      const response =
-        await fetch(
-          '/api/auth/logout',
-          {
-            method:
-              'POST',
-
-            credentials:
-              'include',
-          },
-        );
-
-
-      if (
-        !response.ok
-      ) {
-        throw new Error();
-      }
-
-
-      router.replace(
-        '/login?reason=logged_out',
-      );
-
-
-      router.refresh();
-    } catch {
-      showError(
-        'Sign out failed',
-        'SaMi could not sign you out. Please try again.',
-      );
-    } finally {
-      setLoggingOut(
-        false,
-      );
-    }
-  }
-
-
-  /* ============================================================
-     RENDER
-     ============================================================ */
+  const firstName =
+    user.firstName
+      ?.trim() ||
+    user.fullName
+      ?.trim()
+      .split(
+        /\s+/,
+      )[0] ||
+    'there';
 
   return (
-    <>
-      <SaMiOverlay
-        open={overlay.open}
-        type={overlay.type}
-        title={overlay.title}
-        message={overlay.message}
-        primaryAction={overlay.primaryAction}
-        secondaryAction={overlay.secondaryAction}
-        onClose={closeOverlay}
-      />
-
-      <WorkspaceShell
-        user={user}
-        tenant={tenant}
-        membership={sidebarMembership}
-        subscription={subscription}
-        modules={modules}
-        sidebarCapabilities={{
-          aiEnabled:
-            capabilities.ai,
-          filesEnabled:
-            capabilities.files,
-          notificationsEnabled:
-            capabilities.notifications,
-        }}
-        unreadNotifications={unreadNotifications}
-        title="Dashboard"
-        description="Your current work, priorities, applications and permitted business context."
-        contextLabel={currentCompanyName}
-        headerContent={
-          <>
-              {/* ================================================
-                  REAL WORKSPACE SWITCHER
-                  ================================================ */}
-
-              <div
-                ref={
-                  workspaceRef
-                }
-                className="relative"
-              >
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    hasMultipleWorkspaces &&
-                    setWorkspaceOpen(
-                      current =>
-                        !current,
-                    )
-                  }
-                  className={[
-                    'flex h-10 items-center gap-2 rounded-xl px-2.5 text-left transition',
-
-                    hasMultipleWorkspaces
-                      ? 'hover:bg-slate-100 dark:hover:bg-white/10'
-                      : '',
-                  ].join(
-                    ' ',
-                  )}
-                >
-
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-xs font-bold text-white">
-                    {tenant?.name
-                      ?.trim()
-                      .charAt(
-                        0,
-                      )
-                      .toUpperCase() ||
-                      'S'}
-                  </div>
-
-
-                  <div className="hidden min-w-0 sm:block">
-
-                    <p className="max-w-[170px] truncate text-xs font-semibold">
-                      {tenant?.name ||
-                        'SaMi Workspace'}
-                    </p>
-
-                    <p className="max-w-[170px] truncate text-[10px] text-slate-400">
-                      {currentCompanyName}
-                    </p>
-
-                  </div>
-
-
-                  {hasMultipleWorkspaces && (
-                    <ChevronDown
-                      className={[
-                        'h-3.5 w-3.5 text-slate-400 transition-transform',
-
-                        workspaceOpen
-                          ? 'rotate-180'
-                          : '',
-                      ].join(
-                        ' ',
-                      )}
-                    />
-                  )}
-
-                </button>
-
-
-                {workspaceOpen &&
-                  hasMultipleWorkspaces && (
-                  <div className="absolute left-0 top-[46px] z-50 w-[290px] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
-
-                    <p className="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-                      Switch workspace
-                    </p>
-
-
-                    <div className="mt-1 space-y-1">
-
-                      {workspaces.map(
-                        workspace => {
-                          const selected =
-                            workspace.id ===
-                            tenant?.id;
-
-
-                          const switching =
-                            switchingWorkspaceId ===
-                            workspace.id;
-
-
-                          return (
-                            <button
-                              key={
-                                workspace.id
-                              }
-                              type="button"
-                              disabled={
-                                switchingWorkspaceId !==
-                                null
-                              }
-                              onClick={() =>
-                                void switchWorkspace(
-                                  workspace,
-                                )
-                              }
-                              className={[
-                                'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left',
-
-                                selected
-                                  ? 'bg-blue-50 dark:bg-blue-950/30'
-                                  : 'hover:bg-slate-50 dark:hover:bg-white/5',
-                              ].join(
-                                ' ',
-                              )}
-                            >
-
-                              <div
-                                className={[
-                                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold',
-
-                                  selected
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
-                                ].join(
-                                  ' ',
-                                )}
-                              >
-                                {workspace.name
-                                  .trim()
-                                  .charAt(
-                                    0,
-                                  )
-                                  .toUpperCase() ||
-                                  'S'}
-                              </div>
-
-
-                              <div className="min-w-0 flex-1">
-
-                                <p className="truncate text-xs font-semibold">
-                                  {workspace.name}
-                                </p>
-
-                                <p className="mt-0.5 text-[9px] capitalize text-slate-400">
-                                  {workspace.isOwner
-                                    ? 'Owner'
-                                    : workspace.accessLevel}
-                                </p>
-
-                              </div>
-
-
-                              {switching ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                              ) : selected ? (
-                                <Check className="h-4 w-4 text-blue-600" />
-                              ) : null}
-
-                            </button>
-                          );
-                        },
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-              </div>
-
-
-              {/* SEARCH */}
-
-              <div className="relative mx-auto min-w-0 max-w-[620px] flex-1">
-
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-                <input
-                  ref={
-                    searchRef
-                  }
-                  value={
-                    searchQuery
-                  }
-                  type="search"
-                  placeholder="Search your work"
-                  onFocus={() =>
-                    setSearchOpen(
-                      true,
-                    )
-                  }
-                  onChange={
-                    event => {
-                      setSearchQuery(
-                        event.target.value,
-                      );
-
-                      setSearchOpen(
-                        true,
-                      );
-                    }
-                  }
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5"
-                />
-
-
-                {searchOpen && (
-                  <div className="absolute left-0 right-0 top-[46px] z-50 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
-
-                    <div className="max-h-[360px] overflow-y-auto p-2">
-
-                      {searchResults.length >
-                      0 ? (
-                        searchResults.map(
-                          item => {
-                            const Icon =
-                              item.icon;
-
-
-                            return (
-                              <button
-                                key={
-                                  item.id
-                                }
-                                type="button"
-                                onClick={() => {
-                                  setSearchOpen(
-                                    false,
-                                  );
-
-                                  router.push(
-                                    item.href,
-                                  );
-                                }}
-                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/5"
-                              >
-
-                                <div
-                                  className={[
-                                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white',
-
-                                    item.gradient
-                                      ? `bg-gradient-to-br ${item.gradient}`
-                                      : 'bg-blue-600',
-                                  ].join(
-                                    ' ',
-                                  )}
-                                >
-                                  <Icon className="h-4 w-4" />
-                                </div>
-
-
-                                <div className="min-w-0 flex-1">
-
-                                  <p className="truncate text-sm font-semibold">
-                                    {item.label}
-                                  </p>
-
-                                  <p className="truncate text-xs text-slate-400">
-                                    {item.description}
-                                  </p>
-
-                                </div>
-
-
-                                <ChevronRight className="h-4 w-4 text-slate-300" />
-
-                              </button>
-                            );
-                          },
-                        )
-                      ) : (
-                        <div className="px-4 py-8 text-center text-sm text-slate-400">
-                          No matching result.
-                        </div>
-                      )}
-
-                    </div>
-
-                  </div>
-                )}
-
-              </div>
-
-
-              {/* TOP ACTIONS */}
-
-              <div className="ml-auto flex items-center gap-1">
-
-                {capabilities.notifications && (
-                  <Link
-                    href="/notifications"
-                    className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
-                  >
-                    <Bell className="h-[18px] w-[18px]" />
-
-                    {unreadNotifications >
-                      0 && (
-                      <span className="absolute right-0.5 top-0.5 rounded-full bg-red-500 px-1 text-[8px] font-bold text-white">
-                        {unreadNotifications >
-                        99
-                          ? '99+'
-                          : unreadNotifications}
-                      </span>
-                    )}
-                  </Link>
-                )}
-
-
-                <button
-                  type="button"
-                  disabled={
-                    themeSaving
-                  }
-                  onClick={() =>
-                    void toggleTheme()
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"
-                >
-                  {themeSaving ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : darkMode ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                </button>
-
-
-                {/* PROFILE */}
-
-                <div
-                  ref={
-                    profileRef
-                  }
-                  className="relative"
-                >
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setProfileOpen(
-                        value =>
-                          !value,
-                      )
-                    }
-                    className="flex h-9 items-center gap-1 rounded-lg px-1 hover:bg-slate-100 dark:hover:bg-white/10"
-                  >
-
-                    <UserAvatar
-                      avatarFileId={
-                        user.avatarFileId
-                      }
-                      displayName={
-                        displayName
-                      }
-                      initials={
-                        initials
-                      }
-                      size="sm"
-                    />
-
-                    <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-
-                  </button>
-
-
-                  {profileOpen && (
-                    <div className="absolute right-0 top-[44px] z-50 w-[290px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
-
-                      <div className="border-b border-slate-100 px-4 py-4 dark:border-white/10">
-
-                        <p className="truncate text-sm font-semibold">
-                          {displayName}
-                        </p>
-
-                        <p className="truncate text-xs text-slate-400">
-                          {user.email}
-                        </p>
-
-
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-
-                          {roleNames.map(
-                            role => (
-                              <span
-                                key={
-                                  role
-                                }
-                                className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
-                              >
-                                {role}
-                              </span>
-                            ),
-                          )}
-
-
-                          {planName && (
-                            <span className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
-                              {planName}
-                            </span>
-                          )}
-
-                        </div>
-
-                      </div>
-
-
-                      <div className="p-1.5">
-
-                        <ProfileLink
-                          href="/settings?tab=personal"
-                          icon={
-                            User
-                          }
-                          label="My Account"
-                        />
-
-                        <ProfileLink
-                          href="/settings?tab=security"
-                          icon={
-                            ShieldCheck
-                          }
-                          label="Security"
-                        />
-
-                        <ProfileLink
-                          href="/help"
-                          icon={
-                            CircleHelp
-                          }
-                          label="Help"
-                        />
-
-                      </div>
-
-
-                      <div className="border-t border-slate-100 p-1.5 dark:border-white/10">
-
-                        <button
-                          type="button"
-                          disabled={
-                            loggingOut
-                          }
-                          onClick={() =>
-                            void logout()
-                          }
-                          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
-                        >
-
-                          {loggingOut ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <LogOut className="h-4 w-4" />
-                          )}
-
-                          Sign out
-
-                        </button>
-
-                      </div>
-
-                    </div>
-                  )}
-
-                </div>
-
-              </div>
-
-
-          </>
-        }
-        contentClassName="max-w-[1500px]"
-      >
-        <SaMiMobileTabs
-          items={[
-            {
-              key:
-                'overview',
-              label:
-                'Overview',
-              icon:
-                Home,
-            },
-            {
-              key:
-                'work',
-              label:
-                'Work',
-              icon:
-                BriefcaseBusiness,
-            },
-            {
-              key:
-                'apps',
-              label:
-                'Apps',
-              icon:
-                AppWindow,
-            },
-          ]}
-          value={
-            mobileDashboardSection
-          }
-          onChange={
-            setMobileDashboardSection
-          }
-        />
-
-        <div
-          className={
-            mobileDashboardSection ===
-            'overview'
-              ? 'block'
-              : 'hidden md:block'
-          }
-        >
-
-            {/* DASHBOARD HEADER */}
-
-            <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-
-              <div>
-
-                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                  {currentCompanyName}
-                </p>
-
-
-                <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-[30px]">
-                  {greeting}, {displayName}
-                </h1>
-
-
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-
-                  {roleNames.map(
-                    role => (
-                      <span
-                        key={
-                          role
-                        }
-                        className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300"
-                      >
-                        {role}
-                      </span>
-                    ),
-                  )}
-
-
-                  <span className="text-[10px] text-slate-400">
-                    {dashboard.scope ===
-                      'business'
-                      ? 'Business overview'
-                      : dashboard.scope ===
-                          'team'
-                        ? 'Team workspace'
-                        : 'My workspace'}
-                  </span>
-
-                </div>
-
-              </div>
-
-
-              {capabilities.ai && (
+    <WorkspaceShell
+      user={
+        user
+      }
+      tenant={
+        tenant
+      }
+      membership={
+        membership
+      }
+      subscription={
+        subscription
+      }
+      modules={
+        modules
+      }
+      sidebarCapabilities={{
+        filesEnabled:
+          capabilities.files,
+        notificationsEnabled:
+          true,
+      }}
+      unreadNotifications={
+        unreadNotifications
+      }
+      title="Dashboard"
+      description="Your current company, work, apps and recent activity."
+      contextLabel={
+        company
+          ?.currentCompany
+          .name ||
+        tenant?.name ||
+        null
+      }
+      contentClassName="max-w-[1540px]"
+    >
+      <div className="space-y-5">
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]">
+          <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                {greeting()}, {firstName}
+              </p>
+
+              <h1 className="mt-2 max-w-3xl text-2xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">
+                {dashboard
+                  .brief.title}
+              </h1>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+                {dashboard
+                  .brief.message}
+              </p>
+
+              <div className="mt-5 flex flex-wrap gap-2">
                 <Link
-                  href="/ai"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm"
+                  href="/search"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                 >
-                  <Sparkles className="h-4 w-4" />
-
-                  Ask SaMi
+                  <Search className="h-4 w-4" />
+                  Search workspace
                 </Link>
-              )}
 
-            </section>
-
-
-            {/* ==================================================
-                SAMI BRIEF
-                ================================================== */}
-
-            <section className="mt-6 overflow-hidden rounded-2xl border border-blue-200/70 bg-gradient-to-br from-blue-600 to-cyan-600 text-white shadow-sm dark:border-blue-500/20">
-
-              <div className="p-5 sm:p-6">
-
-                <div className="flex items-start gap-4">
-
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-
-
-                  <div className="min-w-0 flex-1">
-
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-blue-100">
-                      SaMi Brief
-                    </p>
-
-                    <h2 className="mt-1 text-lg font-bold">
-                      {dashboard.brief.title}
-                    </h2>
-
-                    <p className="mt-2 max-w-4xl text-sm leading-6 text-blue-50">
-                      {dashboard.brief.message}
-                    </p>
-
-
-                    {dashboard.brief.actions.length >
-                      0 && (
-                      <div className="mt-4 flex flex-wrap gap-2">
-
-                        {dashboard.brief.actions.map(
-                          action => (
-                            <Link
-                              key={
-                                action.id
-                              }
-                              href={
-                                action.href
-                              }
-                              className="rounded-lg bg-white/15 px-3 py-2 text-xs font-semibold transition hover:bg-white/25"
-                            >
-                              {action.label}
-                            </Link>
-                          ),
-                        )}
-
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-
-              </div>
-
-            </section>
-
-
-            {/* ==================================================
-                ATTENTION + METRICS
-                ================================================== */}
-
-            {(dashboard.attention.length >
-                0 ||
-              dashboard.metrics.length >
-                0) && (
-              <div className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_1fr]">
-
-                {dashboard.attention.length >
-                  0 && (
-                  <DashboardCard
-                    title="Needs your attention"
-                    description="The most important work requiring action"
-                  >
-
-                    <div className="divide-y divide-slate-100 dark:divide-white/10">
-
-                      {dashboard.attention.map(
-                        item => (
-                          <AttentionRow
-                            key={
-                              item.id
-                            }
-                            item={
-                              item
-                            }
-                          />
-                        ),
-                      )}
-
-                    </div>
-
-                  </DashboardCard>
-                )}
-
-
-                {dashboard.metrics.length >
-                  0 && (
-                  <DashboardCard
-                    title={
-                      dashboard.scope ===
-                        'business'
-                        ? 'Business pulse'
-                        : dashboard.scope ===
-                            'team'
-                          ? 'Team pulse'
-                          : 'My pulse'
-                    }
-                    description="Relevant indicators from your permitted work"
-                  >
-
-                    <div className="grid gap-3 p-4 sm:grid-cols-2">
-
-                      {dashboard.metrics.map(
-                        metric => (
-                          <MetricCard
-                            key={
-                              metric.id
-                            }
-                            metric={
-                              metric
-                            }
-                          />
-                        ),
-                      )}
-
-                    </div>
-
-                  </DashboardCard>
-                )}
-
-              </div>
-            )}
-
-
-        </div>
-
-        <div
-          className={
-            mobileDashboardSection ===
-            'work'
-              ? 'block'
-              : 'hidden md:block'
-          }
-        >
-
-            {/* ==================================================
-                WORK
-                ================================================== */}
-
-            {dashboard.work.length >
-              0 && (
-              <div className="mt-6">
-
-                <DashboardCard
-                  title={
-                    dashboard.scope ===
-                      'business'
-                      ? 'Work overview'
-                      : dashboard.scope ===
-                          'team'
-                        ? 'Team work'
-                        : 'My work'
-                  }
-                  description="Work currently relevant to your responsibilities"
+                <Link
+                  href="/activity"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                 >
+                  <Activity className="h-4 w-4" />
+                  Activity
+                </Link>
 
-                  <div className="divide-y divide-slate-100 dark:divide-white/10">
-
-                    {dashboard.work.map(
-                      item => (
-                        <WorkRow
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                        />
-                      ),
-                    )}
-
-                  </div>
-
-                </DashboardCard>
-
-              </div>
-            )}
-
-
-            {/* ==================================================
-                QUICK ACTIONS
-                ================================================== */}
-
-            {dashboard.actions.length >
-              0 && (
-              <section className="mt-6">
-
-                <div className="mb-3">
-
-                  <h2 className="text-sm font-semibold">
-                    Quick actions
-                  </h2>
-
-                  <p className="mt-0.5 text-[11px] text-slate-400">
-                    Relevant actions from your current work
-                  </p>
-
-                </div>
-
-
-                <div className="flex gap-2 overflow-x-auto pb-1">
-
-                  {dashboard.actions.map(
-                    action => (
-                      <ActionCard
-                        key={
-                          action.id
-                        }
-                        action={
-                          action
-                        }
-                      />
-                    ),
-                  )}
-
-                </div>
-
-              </section>
-            )}
-
-
-            {/* ==================================================
-                RECENT
-                ================================================== */}
-
-            {dashboard.recent.length >
-              0 && (
-              <div className="mt-6">
-
-                <DashboardCard
-                  title="Recent work"
-                  description="Recent activity relevant to your permitted work"
+                <Link
+                  href="/notifications"
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                 >
-
-                  <div className="divide-y divide-slate-100 dark:divide-white/10">
-
-                    {dashboard.recent.map(
-                      item => (
-                        <RecentRow
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                        />
-                      ),
-                    )}
-
-                  </div>
-
-                </DashboardCard>
-
+                  <Bell className="h-4 w-4" />
+                  Messages
+                </Link>
               </div>
-            )}
+            </div>
 
+            <div className="grid grid-cols-2 gap-3">
+              <HomeStat
+                icon={
+                  LayoutGrid
+                }
+                label="Apps"
+                value={
+                  modules.length
+                }
+                detail="Available to you"
+              />
 
-            {/* ==================================================
-                SAMI AI
-                ================================================== */}
+              <HomeStat
+                icon={
+                  Bell
+                }
+                label="Unread"
+                value={
+                  unreadNotifications
+                }
+                detail="Notifications"
+              />
 
-            {capabilities.ai && (
-              <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-white/[0.035]">
+              <HomeStat
+                icon={
+                  Activity
+                }
+                label="Today"
+                value={
+                  activitySummary
+                    ?.todayCount ||
+                  0
+                }
+                detail="Recorded activity"
+              />
 
-                <div className="flex items-start gap-4">
+              <HomeStat
+                icon={
+                  Building2
+                }
+                label="Companies"
+                value={
+                  company
+                    ?.allowedCompanyCount ||
+                  0
+                }
+                detail="Accessible"
+              />
+            </div>
+          </div>
+        </section>
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
-                    <Bot className="h-5 w-5" />
-                  </div>
-
-
-                  <div className="min-w-0 flex-1">
-
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-
-                      <div>
-
-                        <h2 className="text-sm font-semibold">
-                          SaMi AI
-                        </h2>
-
-                        <p className="mt-1 text-xs text-slate-400">
-                          AI only works with information your role is allowed to access.
-                        </p>
-
-                      </div>
-
-
-                      <Link
-                        href="/ai"
-                        className="text-xs font-semibold text-blue-600 dark:text-blue-400"
-                      >
-                        Open SaMi AI
-                      </Link>
-
-                    </div>
-
-
-                    {dashboard.aiContext.length >
-                      0 && (
-                      <div className="mt-4 grid gap-2 lg:grid-cols-2">
-
-                        {dashboard.aiContext.map(
-                          item => (
-                            <div
-                              key={
-                                item.id
-                              }
-                              className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-white/5"
-                            >
-
-                              <p className="text-xs font-semibold">
-                                {item.title}
-                              </p>
-
-                              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                                {item.detail}
-                              </p>
-
-                            </div>
-                          ),
-                        )}
-
-                      </div>
-                    )}
-
-                  </div>
-
-                </div>
-
-              </section>
-            )}
-
-
-        </div>
-
-        <div
-          className={
-            mobileDashboardSection ===
-            'apps'
-              ? 'block'
-              : 'hidden md:block'
-          }
-        >
-
-            {/* ==================================================
-                MY APPS — COLOURED AGAIN
-                ================================================== */}
-
-            <section className="mt-7">
-
-              <div className="mb-4 flex items-center justify-between">
-
-                <div>
-
-                  <h2 className="text-sm font-semibold">
-                    My Apps
-                  </h2>
-
-                  <p className="mt-1 text-[11px] text-slate-400">
-                    Only applications available to your role
-                  </p>
-
-                </div>
-
-
-                <div className="flex items-center gap-3">
-                  <Link
-                    href="/apps"
-                    className="text-xs font-semibold text-slate-500 transition hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
-                  >
-                    All apps
-                  </Link>
-
-                  {capabilities.appsManage && (
-                    <Link
-                      href="/settings?tab=apps"
-                      className="text-xs font-semibold text-blue-600 dark:text-blue-400"
-                    >
-                      Manage
-                    </Link>
-                  )}
-                </div>
-
-              </div>
-
-
-              {modules.length >
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
+          <div className="space-y-5">
+            <Section
+              title="Your apps"
+              description="Installed business apps available to your current access."
+              action={
+                <Link
+                  href="/apps"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-300"
+                >
+                  All apps
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            >
+              {visibleApps.length >
                 0 ? (
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
-
-                  {modules.map(
-                    module => (
-                      <AppItem
-                        key={
-                          module.key
-                        }
-                        module={
-                          module
-                        }
-                      />
-                    ),
-                  )}
-
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-8 text-center dark:border-white/10 dark:bg-white/[0.025]">
-
-                  <AppWindow className="mx-auto h-7 w-7 text-slate-300" />
-
-                  <p className="mt-3 text-sm font-semibold">
-                    No apps assigned
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Your current roles do not grant access to a business app.
-                  </p>
-
-                </div>
-              )}
-
-            </section>
-
-
-            {/* ==================================================
-                MANAGEMENT
-
-                Normal invitee should NOT get Workspace / Apps here
-                from view permissions.
-                ================================================== */}
-
-            {managementActions.length >
-              0 && (
-              <section className="mt-8 border-t border-slate-200 pt-6 dark:border-white/10">
-
-                <div className="mb-3 flex items-center justify-between">
-
-                  <div>
-
-                    <h2 className="text-sm font-semibold">
-                      Administration
-                    </h2>
-
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      Administrative areas explicitly permitted to your roles
-                    </p>
-
-                  </div>
-
-
-                  {planName && (
-                    <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                      {planName}
-                    </span>
-                  )}
-
-                </div>
-
-
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-
-                  {managementActions.map(
-                    item => {
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {visibleApps.map(
+                    module => {
                       const Icon =
-                        item.icon;
-
+                        getSaMiAppIcon(
+                          module.iconKey ||
+                          module.key,
+                        );
 
                       return (
                         <Link
                           key={
-                            item.id
+                            module.key
                           }
                           href={
-                            item.href
+                            module.href ||
+                            '/apps'
                           }
-                          className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035]"
+                          className="group rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-sm dark:border-white/10 dark:bg-white/[0.025] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.05]"
                         >
-
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
-                            <Icon className="h-4 w-4" />
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 dark:bg-[#0B0E14] dark:text-slate-300 dark:ring-white/10">
+                            <Icon className="h-5 w-5" />
                           </div>
 
+                          <p className="mt-4 truncate text-sm font-black tracking-tight">
+                            {module.name}
+                          </p>
 
-                          <div className="min-w-0">
-
-                            <p className="truncate text-xs font-semibold">
-                              {item.label}
-                            </p>
-
-                            <p className="truncate text-[10px] text-slate-400">
-                              {item.description}
-                            </p>
-
-                          </div>
-
+                          <p className="mt-1 line-clamp-2 min-h-10 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                            {module.description ||
+                              module.categoryLabel ||
+                              'Open app'}
+                          </p>
                         </Link>
                       );
                     },
                   )}
-
                 </div>
+              ) : (
+                <EmptyState
+                  icon={
+                    Boxes
+                  }
+                  title="No business apps available"
+                  description="Installed apps will appear here when they are available to your role."
+                />
+              )}
+            </Section>
 
-              </section>
+            {metrics.length >
+              0 && (
+              <Section
+                title="Business snapshot"
+                description="Metrics contributed by the apps you can access."
+              >
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {metrics.map(
+                    metric => (
+                      <MetricCard
+                        key={
+                          metric.id
+                        }
+                        metric={
+                          metric
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </Section>
             )}
 
+            <Section
+              title="Recent activity"
+              description="What has recently happened in the current company."
+              action={
+                <Link
+                  href="/activity"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-300"
+                >
+                  Full timeline
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              }
+            >
+              {recentActivity.length >
+                0 ? (
+                <div className="divide-y divide-slate-100 dark:divide-white/5">
+                  {recentActivity.map(
+                    item => (
+                      <div
+                        key={
+                          item.id
+                        }
+                        className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
+                      >
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                          {item.result ===
+                            'failed' ||
+                          item.result ===
+                            'denied' ? (
+                            <TriangleAlert className="h-4 w-4" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                        </div>
 
-        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="truncate text-xs font-bold">
+                              {item.label}
+                            </p>
 
-            <footer className="mt-8 hidden items-center justify-between border-t border-slate-200 py-5 text-[11px] text-slate-400 dark:border-white/10 md:flex">
+                            <span className="shrink-0 text-[10px] text-slate-400">
+                              {relativeTime(
+                                item.createdAt,
+                              )}
+                            </span>
+                          </div>
 
-              <span>
-                {tenant?.name ||
-                  'SaMi'}
-              </span>
+                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                            {item.actor.name}
+                            {item.module
+                              ? ` · ${item.module}`
+                              : ''}
+                          </p>
 
-              <Link
-                href="/help"
-                className="hover:text-blue-600"
+                          {item.summary && (
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-400">
+                              {item.summary}
+                            </p>
+                          )}
+                        </div>
+
+                        <span
+                          className={[
+                            'mt-0.5 shrink-0 text-[9px] font-black uppercase',
+                            resultTone(
+                              item.result,
+                            ),
+                          ].join(
+                            ' ',
+                          )}
+                        >
+                          {item.result ||
+                            'recorded'}
+                        </span>
+                      </div>
+                    ),
+                  )}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={
+                    Activity
+                  }
+                  title="No recent company activity"
+                  description="New trusted activity will appear here automatically."
+                />
+              )}
+            </Section>
+          </div>
+
+          <div className="space-y-5">
+            <Section
+              title="Current company"
+              description="Your active operating context."
+            >
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]">
+                <div className="flex items-center gap-3">
+                  <CompanyAvatar
+                    name={
+                      company
+                        ?.currentCompany
+                        .name ||
+                      'Company'
+                    }
+                    logoUrl={
+                      company
+                        ?.currentCompany
+                        .logoUrl ||
+                      null
+                    }
+                    size="lg"
+                  />
+
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">
+                      {company
+                        ?.currentCompany
+                        .name ||
+                      'No company selected'}
+                    </p>
+
+                    <p className="mt-1 text-[10px] text-slate-400">
+                      {company
+                        ? `${company.currentCompany.currency} · ${company.currentCompany.timezone}`
+                        : 'Select a company to work with company-scoped data.'}
+                    </p>
+                  </div>
+                </div>
+
+                {company && (
+                  <div className="mt-4 grid grid-cols-2 gap-2">
+                    <SmallFact
+                      label="Selected"
+                      value={
+                        String(
+                          company
+                            .selectedCompanyCount,
+                        )
+                      }
+                    />
+
+                    <SmallFact
+                      label="Accessible"
+                      value={
+                        String(
+                          company
+                            .allowedCompanyCount,
+                        )
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+            </Section>
+
+            <Section
+              title="Work & attention"
+              description="Only real work contributed by installed apps."
+            >
+              {attention.length ===
+                0 &&
+              work.length ===
+                0 ? (
+                <EmptyState
+                  icon={
+                    CheckCircle2
+                  }
+                  title="Nothing needs your attention"
+                  description="Approvals, due work and assigned tasks appear here when an installed app provides them."
+                />
+              ) : (
+                <div className="space-y-2">
+                  {attention.map(
+                    item => (
+                      <AttentionRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+
+                  {work.map(
+                    item => (
+                      <WorkRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              )}
+            </Section>
+
+            <Section
+              title="Quick access"
+              description="Trusted core workspace surfaces."
+            >
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                <QuickLink
+                  href="/search"
+                  icon={
+                    Search
+                  }
+                  label="Search"
+                />
+
+                <QuickLink
+                  href="/notifications"
+                  icon={
+                    Bell
+                  }
+                  label="Messages"
+                />
+
+                <QuickLink
+                  href="/activity"
+                  icon={
+                    Activity
+                  }
+                  label="Activity"
+                />
+
+                <QuickLink
+                  href="/apps"
+                  icon={
+                    LayoutGrid
+                  }
+                  label="Apps"
+                />
+              </div>
+            </Section>
+
+            {recent.length >
+              0 && (
+              <Section
+                title="Recent records"
+                description="Recent items contributed by your installed apps."
               >
-                Help
-              </Link>
-
-            </footer>
-
-
-      </WorkspaceShell>
-    </>
+                <div className="space-y-2">
+                  {recent.map(
+                    item => (
+                      <RecentRow
+                        key={
+                          item.id
+                        }
+                        item={
+                          item
+                        }
+                      />
+                    ),
+                  )}
+                </div>
+              </Section>
+            )}
+          </div>
+        </div>
+      </div>
+    </WorkspaceShell>
   );
 }
 
-
-/* ================================================================
-   DASHBOARD CARD
-   ================================================================ */
-
-function DashboardCard({
+function Section({
   title,
   description,
+  action,
   children,
 }: {
-  title:
-    string;
-
-  description:
-    string;
-
-  children:
-    ReactNode;
+  title: string;
+  description: string;
+  action?: ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.035]">
+    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-white/10 dark:bg-[#0F131B]">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-black tracking-tight">
+            {title}
+          </h2>
 
-      <div className="border-b border-slate-100 px-4 py-3.5 dark:border-white/10 sm:px-5">
+          <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+            {description}
+          </p>
+        </div>
 
-        <h2 className="text-sm font-semibold">
-          {title}
-        </h2>
-
-        <p className="mt-0.5 text-[11px] text-slate-400">
-          {description}
-        </p>
-
+        {action}
       </div>
 
       {children}
-
     </section>
   );
 }
 
-
-/* ================================================================
-   ATTENTION
-   ================================================================ */
-
-function AttentionRow({
-  item,
+function HomeStat({
+  icon: Icon,
+  label,
+  value,
+  detail,
 }: {
-  item:
-    DashboardAttentionItem;
+  icon: LucideIcon;
+  label: string;
+  value: number;
+  detail: string;
 }) {
-  const content =
-    (
-      <div className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.025]">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
+          {label}
+        </p>
 
-        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-300">
-          <AlertTriangle className="h-4 w-4" />
-        </div>
-
-
-        <div className="min-w-0 flex-1">
-
-          <div className="flex items-start justify-between gap-3">
-
-            <div className="min-w-0">
-
-              <p className="truncate text-xs font-semibold">
-                {item.title}
-              </p>
-
-              {item.description && (
-                <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                  {item.description}
-                </p>
-              )}
-
-            </div>
-
-
-            <span
-              className={[
-                'shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold',
-
-                priorityClasses(
-                  item.priority,
-                ),
-              ].join(
-                ' ',
-              )}
-            >
-              {priorityLabel(
-                item.priority,
-              )}
-            </span>
-
-          </div>
-
-
-          {item.dueAt && (
-            <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
-
-              <Clock3 className="h-3 w-3" />
-
-              {formatDateTime(
-                item.dueAt,
-              )}
-
-            </p>
-          )}
-
-        </div>
-
+        <Icon className="h-3.5 w-3.5 text-slate-400" />
       </div>
-    );
 
+      <p className="mt-2 text-xl font-black tracking-tight">
+        {value}
+      </p>
 
-  return item.href ? (
-    <Link
-      href={
-        item.href
-      }
-      className="block transition hover:bg-slate-50 dark:hover:bg-white/[0.03]"
-    >
-      {content}
-    </Link>
-  ) : content;
+      <p className="mt-1 text-[9px] text-slate-400">
+        {detail}
+      </p>
+    </div>
+  );
 }
 
+function SmallFact({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl bg-white p-3 text-center ring-1 ring-slate-200 dark:bg-[#0B0E14] dark:ring-white/10">
+      <p className="text-lg font-black">
+        {value}
+      </p>
 
-/* ================================================================
-   METRIC
-   ================================================================ */
+      <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function QuickLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+}) {
+  return (
+    <Link
+      href={
+        href
+      }
+      className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06] dark:hover:text-blue-300"
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </Link>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  description,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-7 text-center dark:border-white/10">
+      <Icon className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
+
+      <p className="mt-2 text-xs font-bold">
+        {title}
+      </p>
+
+      <p className="mx-auto mt-1 max-w-sm text-[10px] leading-5 text-slate-400">
+        {description}
+      </p>
+    </div>
+  );
+}
 
 function MetricCard({
   metric,
@@ -3068,40 +946,56 @@ function MetricCard({
     DashboardMetric;
 }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-4 dark:bg-white/5">
-
-      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+      <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
         {metric.label}
       </p>
 
-      <p
-        className={[
-          'mt-2 text-xl font-bold',
-
-          toneClasses(
-            metric.tone,
-          ),
-        ].join(
-          ' ',
-        )}
-      >
+      <p className="mt-2 text-xl font-black">
         {metric.value}
       </p>
 
       {metric.description && (
-        <p className="mt-1 text-[10px] leading-4 text-slate-400">
+        <p className="mt-1 text-[10px] leading-5 text-slate-400">
           {metric.description}
         </p>
       )}
-
     </div>
   );
 }
 
+function AttentionRow({
+  item,
+}: {
+  item:
+    DashboardAttentionItem;
+}) {
+  const content = (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-500/20 dark:bg-amber-500/[0.06]">
+      <p className="text-xs font-bold">
+        {item.title}
+      </p>
 
-/* ================================================================
-   WORK
-   ================================================================ */
+      {item.description && (
+        <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
+          {item.description}
+        </p>
+      )}
+    </div>
+  );
+
+  return item.href ? (
+    <Link
+      href={
+        item.href
+      }
+    >
+      {content}
+    </Link>
+  ) : (
+    content
+  );
+}
 
 function WorkRow({
   item,
@@ -3109,61 +1003,43 @@ function WorkRow({
   item:
     DashboardWorkItem;
 }) {
-  const content =
-    (
-      <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+  const content = (
+    <div className="rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]">
+      <p className="text-xs font-bold">
+        {item.title}
+      </p>
 
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-300">
-          <BriefcaseBusiness className="h-4 w-4" />
-        </div>
-
-
-        <div className="min-w-0 flex-1">
-
-          <p className="truncate text-xs font-semibold">
-            {item.title}
-          </p>
-
-          <p className="mt-1 truncate text-[10px] text-slate-400">
-            {item.description ||
-              item.status ||
-              item.moduleKey}
-          </p>
-
-        </div>
-
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-[9px] text-slate-400">
+        {item.status && (
+          <span>
+            {item.status}
+          </span>
+        )}
 
         {item.dueAt && (
-          <span className="hidden shrink-0 text-[10px] text-slate-400 sm:block">
-            {formatDateTime(
+          <span className="inline-flex items-center gap-1">
+            <Clock3 className="h-3 w-3" />
+            {relativeTime(
               item.dueAt,
             )}
           </span>
         )}
-
-
-        <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
-
       </div>
-    );
-
+    </div>
+  );
 
   return item.href ? (
     <Link
       href={
         item.href
       }
-      className="block hover:bg-slate-50 dark:hover:bg-white/[0.03]"
     >
       {content}
     </Link>
-  ) : content;
+  ) : (
+    content
+  );
 }
-
-
-/* ================================================================
-   RECENT
-   ================================================================ */
 
 function RecentRow({
   item,
@@ -3171,175 +1047,29 @@ function RecentRow({
   item:
     DashboardRecentItem;
 }) {
-  const content =
-    (
-      <div className="flex items-center gap-3 px-4 py-3.5 sm:px-5">
+  const content = (
+    <div className="rounded-xl border border-slate-200 p-3 transition hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/[0.04]">
+      <p className="truncate text-xs font-bold">
+        {item.title}
+      </p>
 
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
-          <FileText className="h-4 w-4" />
-        </div>
-
-
-        <div className="min-w-0 flex-1">
-
-          <p className="truncate text-xs font-semibold">
-            {item.title}
-          </p>
-
-          <p className="mt-1 truncate text-[10px] text-slate-400">
-            {item.description ||
-              item.moduleKey}
-          </p>
-
-        </div>
-
-
-        <span className="hidden text-[10px] text-slate-400 sm:block">
-          {formatDateTime(
-            item.occurredAt,
-          )}
-        </span>
-
-      </div>
-    );
-
+      <p className="mt-1 text-[9px] text-slate-400">
+        {relativeTime(
+          item.occurredAt,
+        )}
+      </p>
+    </div>
+  );
 
   return item.href ? (
     <Link
       href={
         item.href
       }
-      className="block hover:bg-slate-50 dark:hover:bg-white/[0.03]"
     >
       {content}
     </Link>
-  ) : content;
-}
-
-
-/* ================================================================
-   ACTION
-   ================================================================ */
-
-function ActionCard({
-  action,
-}: {
-  action:
-    DashboardAction;
-}) {
-  return (
-    <Link
-      href={
-        action.href
-      }
-      className="min-w-[180px] shrink-0 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035]"
-    >
-
-      <div className="flex items-center gap-2">
-
-        <CheckCircle2 className="h-4 w-4 text-blue-600" />
-
-        <p className="truncate text-xs font-semibold">
-          {action.label}
-        </p>
-
-      </div>
-
-
-      {action.description && (
-        <p className="mt-2 line-clamp-2 text-[10px] leading-4 text-slate-400">
-          {action.description}
-        </p>
-      )}
-
-    </Link>
-  );
-}
-
-
-/* ================================================================
-   COLOURED APP ITEM
-   ================================================================ */
-
-function AppItem({
-  module,
-}: {
-  module:
-    ModuleData;
-}) {
-  const Icon =
-    getSaMiAppIcon(
-      module.iconKey,
-    );
-
-
-  const gradient =
-    getAppGradient(
-      module.registryKey,
-    );
-
-
-  return (
-    <Link
-      href={
-        module.href
-      }
-      className="group flex min-w-0 flex-col items-center rounded-xl p-2 text-center transition hover:bg-white dark:hover:bg-white/5"
-    >
-
-      <div
-        className={[
-          'flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md',
-
-          gradient,
-        ].join(
-          ' ',
-        )}
-      >
-        <Icon className="h-6 w-6" />
-      </div>
-
-
-      <span className="mt-2 line-clamp-2 text-[11px] font-semibold">
-        {module.name}
-      </span>
-
-    </Link>
-  );
-}
-
-
-/* ================================================================
-   PROFILE LINK
-   ================================================================ */
-
-function ProfileLink({
-  href,
-  icon:
-    Icon,
-  label,
-}: {
-  href:
-    string;
-
-  icon:
-    LucideIcon;
-
-  label:
-    string;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-950/30"
-    >
-
-      <Icon className="h-4 w-4 text-slate-400" />
-
-      {label}
-
-    </Link>
+  ) : (
+    content
   );
 }
