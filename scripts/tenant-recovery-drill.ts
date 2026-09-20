@@ -79,7 +79,7 @@ function hasFlag(name: string): boolean {
 }
 
 async function getCandidates(): Promise<TenantCandidate[]> {
-  const result = await control.query<TenantCandidate>(
+  const result = await control.query(
     `
       SELECT
         t.id::text AS tenant_id,
@@ -98,7 +98,7 @@ async function getCandidates(): Promise<TenantCandidate[]> {
     `,
   );
 
-  return result.rows;
+  return result.rows as TenantCandidate[];
 }
 
 async function ensureRecoveryTables(): Promise<void> {
