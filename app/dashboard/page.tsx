@@ -1,5 +1,6 @@
 import {
   getAccountContextForUser,
+  listAccessibleWorkspaces,
 } from '@/lib/auth/account-context';
 
 import {
@@ -44,9 +45,14 @@ export default async function DashboardPage() {
     );
 
 
+  /* ==============================================================
+     LOAD TRUSTED WORKSPACE CONTEXT
+     ============================================================== */
+
   const [
     accountContext,
     permissionContext,
+    workspaces,
   ] =
     await Promise.all([
       getAccountContextForUser(
@@ -55,8 +61,16 @@ export default async function DashboardPage() {
       ),
 
       getPermissionContext(),
+
+      listAccessibleWorkspaces(
+        session.user.id,
+      ),
     ]);
 
+
+  /* ==============================================================
+     RESOLVE USER-SPECIFIC WORKSPACE SHELL
+     ============================================================== */
 
   const shell =
     resolveWorkspaceShellAccess({
@@ -70,6 +84,10 @@ export default async function DashboardPage() {
         permissionContext,
     });
 
+
+  /* ==============================================================
+     COMPANY CONTEXT
+     ============================================================== */
 
   let currentCompanyId:
     string | null =
@@ -165,11 +183,15 @@ export default async function DashboardPage() {
     };
   } catch {
     /*
-     * Dashboard stays usable even if company context is
-     * temporarily unavailable.
+     * Dashboard remains available even if company context cannot
+     * temporarily be resolved.
      */
   }
 
+
+  /* ==============================================================
+     DYNAMIC DASHBOARD
+     ============================================================== */
 
   const dashboard =
     await composeDashboard({
@@ -202,6 +224,10 @@ export default async function DashboardPage() {
         );
 
 
+  /* ==============================================================
+     CLIENT
+     ============================================================== */
+
   return (
     <DashboardClient
       user={
@@ -216,10 +242,52 @@ export default async function DashboardPage() {
         accountContext.membership
       }
 
+      /*
+       * These are the REAL assigned roles.
+       *
+       * Example:
+       * - Invoicing Clerk
+       * - Sales Manager
+       * - Accountant
+       *
+       * Not merely Workspace Member.
+       */
+      roles={
+        permissionContext.roles.map(
+          role => ({
+            id:
+              role.id,
+
+            key:
+              role.key,
+
+            name:
+              role.name,
+
+            description:
+              role.description,
+
+            isSystem:
+              role.isSystem,
+          }),
+        )
+      }
+
+      /*
+       * All active workspace memberships this user can actually
+       * switch into.
+       */
+      workspaces={
+        workspaces
+      }
+
       subscription={
         shell.subscription
       }
 
+      /*
+       * User-accessible apps only.
+       */
       modules={
         shell.accessibleModules
       }
@@ -252,12 +320,10 @@ export default async function DashboardPage() {
           ),
 
 
-        workspaceView:
-          can(
-            SAMI_PERMISSIONS
-              .WORKSPACE_VIEW,
-          ),
-
+        /*
+         * Administration requires manage-level access where
+         * appropriate.
+         */
         workspaceManage:
           can(
             SAMI_PERMISSIONS
@@ -271,10 +337,10 @@ export default async function DashboardPage() {
               .USERS_VIEW,
           ),
 
-        usersManage:
+        invitationsView:
           can(
             SAMI_PERMISSIONS
-              .USERS_MANAGE,
+              .INVITATIONS_VIEW,
           ),
 
 
@@ -284,44 +350,6 @@ export default async function DashboardPage() {
               .ROLES_VIEW,
           ),
 
-        rolesManage:
-          can(
-            SAMI_PERMISSIONS
-              .ROLES_MANAGE,
-          ),
-
-
-        invitationsView:
-          can(
-            SAMI_PERMISSIONS
-              .INVITATIONS_VIEW,
-          ),
-
-        invitationsManage:
-          can(
-            SAMI_PERMISSIONS
-              .INVITATIONS_MANAGE,
-          ),
-
-
-        companiesView:
-          can(
-            SAMI_PERMISSIONS
-              .COMPANIES_VIEW,
-          ),
-
-        companiesManage:
-          can(
-            SAMI_PERMISSIONS
-              .COMPANIES_MANAGE,
-          ),
-
-
-        appsView:
-          can(
-            SAMI_PERMISSIONS
-              .APPS_VIEW,
-          ),
 
         appsManage:
           can(
@@ -337,32 +365,6 @@ export default async function DashboardPage() {
           can(
             SAMI_PERMISSIONS
               .BILLING_MANAGE,
-          ),
-
-
-        settingsView:
-          can(
-            SAMI_PERMISSIONS
-              .SETTINGS_VIEW,
-          ),
-
-        settingsManage:
-          can(
-            SAMI_PERMISSIONS
-              .SETTINGS_MANAGE,
-          ),
-
-
-        auditView:
-          can(
-            SAMI_PERMISSIONS
-              .AUDIT_VIEW,
-          ),
-
-        usageView:
-          can(
-            SAMI_PERMISSIONS
-              .USAGE_VIEW,
           ),
       }}
     />

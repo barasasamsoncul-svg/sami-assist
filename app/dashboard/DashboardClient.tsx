@@ -9,32 +9,62 @@ import {
 import {
   AlertTriangle,
   AppWindow,
+  BarChart3,
   Bell,
   Bot,
+  Boxes,
+  Briefcase,
   BriefcaseBusiness,
   Building2,
+  Calculator,
+  CalendarClock,
+  CalendarDays,
+  CalendarOff,
+  Car,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  ClipboardCheck,
+  ClipboardList,
+  Clock,
   Clock3,
+  ContactRound,
   CreditCard,
+  Factory,
   FileText,
   Folder,
+  Headphones,
+  Home,
   LayoutGrid,
   Loader2,
   LogOut,
   Mail,
+  MapPin,
+  Megaphone,
   Menu,
+  MessageSquare,
   Moon,
+  Package,
+  PenTool,
+  ReceiptText,
+  Repeat,
   Search,
-  Settings,
   Shield,
   ShieldCheck,
+  ShoppingCart,
   Sparkles,
+  Store,
   Sun,
   User,
+  UserPlus,
+  UserRound,
+  Users,
   UsersRound,
+  Utensils,
+  Workflow,
+  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -44,6 +74,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 
 import UserAvatar from '@/app/components/account/UserAvatar';
@@ -52,6 +83,7 @@ import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 
 import {
   SAMI_APPS,
+  type SamiApp,
 } from '@/lib/sami-apps';
 
 import {
@@ -132,6 +164,50 @@ type MembershipData =
   | null;
 
 
+type RoleData = {
+  id:
+    string;
+
+  key:
+    string | null;
+
+  name:
+    string;
+
+  description:
+    string | null;
+
+  isSystem:
+    boolean;
+};
+
+
+type WorkspaceData = {
+  id:
+    string;
+
+  name:
+    string;
+
+  slug:
+    string;
+
+  status:
+    string;
+
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+
+  isOwner:
+    boolean;
+
+  isAdmin:
+    boolean;
+};
+
+
 type SubscriptionData =
   | {
       status:
@@ -200,9 +276,6 @@ type DashboardCapabilities = {
     boolean;
 
 
-  workspaceView:
-    boolean;
-
   workspaceManage:
     boolean;
 
@@ -210,33 +283,13 @@ type DashboardCapabilities = {
   usersView:
     boolean;
 
-  usersManage:
+  invitationsView:
     boolean;
 
 
   rolesView:
     boolean;
 
-  rolesManage:
-    boolean;
-
-
-  invitationsView:
-    boolean;
-
-  invitationsManage:
-    boolean;
-
-
-  companiesView:
-    boolean;
-
-  companiesManage:
-    boolean;
-
-
-  appsView:
-    boolean;
 
   appsManage:
     boolean;
@@ -246,20 +299,6 @@ type DashboardCapabilities = {
     boolean;
 
   billingManage:
-    boolean;
-
-
-  settingsView:
-    boolean;
-
-  settingsManage:
-    boolean;
-
-
-  auditView:
-    boolean;
-
-  usageView:
     boolean;
 };
 
@@ -273,6 +312,12 @@ type Props = {
 
   membership:
     MembershipData;
+
+  roles:
+    RoleData[];
+
+  workspaces:
+    WorkspaceData[];
 
   subscription:
     SubscriptionData;
@@ -312,6 +357,9 @@ type SearchItem = {
 
   keywords:
     string;
+
+  gradient?:
+    string;
 };
 
 
@@ -324,14 +372,49 @@ const THEME_STORAGE_KEY =
 
 
 const APP_METADATA =
-  new Map(
+  new Map<
+    string,
+    SamiApp
+  >(
     SAMI_APPS.map(
       app => [
-        app.key,
+        app.key
+          .trim()
+          .toLowerCase(),
+
         app,
       ],
     ),
   );
+
+
+const GENERIC_ROLE_KEYS =
+  new Set([
+    'member',
+    'manager',
+    'admin',
+    'administrator',
+  ]);
+
+
+/*
+ * Stable application colors.
+ *
+ * Apps now have individual identity again instead of every app
+ * becoming the same blue/cyan square.
+ */
+const APP_GRADIENTS = [
+  'from-blue-600 to-cyan-500',
+  'from-violet-600 to-purple-500',
+  'from-emerald-600 to-teal-500',
+  'from-orange-500 to-amber-500',
+  'from-rose-600 to-pink-500',
+  'from-indigo-600 to-blue-500',
+  'from-cyan-600 to-sky-500',
+  'from-fuchsia-600 to-purple-500',
+  'from-lime-600 to-emerald-500',
+  'from-red-600 to-orange-500',
+] as const;
 
 
 /* ================================================================
@@ -340,11 +423,78 @@ const APP_METADATA =
 
 function normalizeKey(
   value:
-    string,
+    string | null | undefined,
 ) {
-  return value
+  return (
+    value ||
+    ''
+  )
     .trim()
     .toLowerCase();
+}
+
+
+function stringHash(
+  value:
+    string,
+) {
+  let hash =
+    0;
+
+
+  for (
+    let index =
+      0;
+
+    index <
+      value.length;
+
+    index +=
+      1
+  ) {
+    hash =
+      (
+        (
+          hash <<
+          5
+        ) -
+        hash
+      ) +
+      value.charCodeAt(
+        index,
+      );
+
+
+    hash |=
+      0;
+  }
+
+
+  return Math.abs(
+    hash,
+  );
+}
+
+
+function getAppGradient(
+  key:
+    string,
+) {
+  const index =
+    stringHash(
+      normalizeKey(
+        key,
+      ),
+    ) %
+    APP_GRADIENTS.length;
+
+
+  return (
+    APP_GRADIENTS[
+      index
+    ] ||
+    APP_GRADIENTS[0]
+  );
 }
 
 
@@ -354,13 +504,11 @@ function getModuleMetadata(
 ) {
   return (
     APP_METADATA.get(
-      module.key,
-    ) ||
-    APP_METADATA.get(
       normalizeKey(
         module.key,
       ),
-    )
+    ) ||
+    null
   );
 }
 
@@ -415,6 +563,127 @@ function getModuleDescription(
 }
 
 
+function getModuleIcon(
+  module:
+    ModuleData,
+): LucideIcon {
+  const icon =
+    getModuleMetadata(
+      module,
+    )?.icon;
+
+
+  switch (
+    icon
+  ) {
+    case 'calculator':
+      return Calculator;
+
+    case 'receipt':
+      return ReceiptText;
+
+    case 'file-text':
+      return FileText;
+
+    case 'bar-chart':
+      return BarChart3;
+
+    case 'folder':
+      return Folder;
+
+    case 'pen-tool':
+      return PenTool;
+
+    case 'users':
+      return Users;
+
+    case 'shopping-cart':
+      return ShoppingCart;
+
+    case 'repeat':
+      return Repeat;
+
+    case 'home':
+      return Home;
+
+    case 'store':
+      return Store;
+
+    case 'utensils':
+      return Utensils;
+
+    case 'package':
+      return Package;
+
+    case 'factory':
+      return Factory;
+
+    case 'boxes':
+      return Boxes;
+
+    case 'wrench':
+      return Wrench;
+
+    case 'shield-check':
+      return ShieldCheck;
+
+    case 'user-round':
+      return UserRound;
+
+    case 'car':
+      return Car;
+
+    case 'user-plus':
+      return UserPlus;
+
+    case 'clipboard-check':
+      return ClipboardCheck;
+
+    case 'calendar-off':
+      return CalendarOff;
+
+    case 'user-search':
+      return UserRound;
+
+    case 'megaphone':
+      return Megaphone;
+
+    case 'mail':
+      return Mail;
+
+    case 'message-square':
+      return MessageSquare;
+
+    case 'calendar-days':
+      return CalendarDays;
+
+    case 'workflow':
+      return Workflow;
+
+    case 'clipboard-list':
+      return ClipboardList;
+
+    case 'briefcase':
+      return Briefcase;
+
+    case 'clock':
+      return Clock;
+
+    case 'map-pin':
+      return MapPin;
+
+    case 'headphones':
+      return Headphones;
+
+    case 'calendar-clock':
+      return CalendarClock;
+
+    default:
+      return AppWindow;
+  }
+}
+
+
 function getInitials(
   user:
     UserData,
@@ -448,11 +717,14 @@ function getInitials(
   }
 
 
-  return user.email
-    .charAt(
-      0,
-    )
-    .toUpperCase();
+  return (
+    user.email
+      .charAt(
+        0,
+      )
+      .toUpperCase() ||
+    'S'
+  );
 }
 
 
@@ -531,7 +803,7 @@ function applyTheme(
       theme,
     );
   } catch {
-    // Optional local cache.
+    // Optional cache.
   }
 
 
@@ -657,13 +929,89 @@ function formatDateTime(
 
 
 /* ================================================================
-   CLIENT
+   ROLE DISPLAY
+
+   Membership access level is NOT the business job role.
+
+   If custom/specific roles exist, those are shown instead of
+   boring structural labels such as Member / Manager.
+   ================================================================ */
+
+function getRoleNames(
+  membership:
+    MembershipData,
+
+  roles:
+    RoleData[],
+) {
+  if (
+    membership?.isOwner
+  ) {
+    return [
+      'Workspace Owner',
+    ];
+  }
+
+
+  const specificRoles =
+    roles.filter(
+      role => {
+        const identity =
+          normalizeKey(
+            role.key ||
+            role.name,
+          );
+
+
+        return (
+          identity &&
+          !GENERIC_ROLE_KEYS.has(
+            identity,
+          )
+        );
+      },
+    );
+
+
+  if (
+    specificRoles.length >
+    0
+  ) {
+    return specificRoles.map(
+      role =>
+        role.name,
+    );
+  }
+
+
+  if (
+    roles.length >
+    0
+  ) {
+    return roles.map(
+      role =>
+        role.name,
+    );
+  }
+
+
+  return [
+    membership?.label ||
+    'Workspace Member',
+  ];
+}
+
+
+/* ================================================================
+   DASHBOARD
    ================================================================ */
 
 export default function DashboardClient({
   user,
   tenant,
   membership,
+  roles,
+  workspaces,
   subscription,
   modules,
   company,
@@ -692,6 +1040,14 @@ export default function DashboardClient({
     );
 
 
+  const workspaceRef =
+    useRef<
+      HTMLDivElement | null
+    >(
+      null,
+    );
+
+
   const [
     sidebarOpen,
     setSidebarOpen,
@@ -707,6 +1063,26 @@ export default function DashboardClient({
   ] =
     useState(
       false,
+    );
+
+
+  const [
+    workspaceOpen,
+    setWorkspaceOpen,
+  ] =
+    useState(
+      false,
+    );
+
+
+  const [
+    switchingWorkspaceId,
+    setSwitchingWorkspaceId,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
     );
 
 
@@ -766,6 +1142,10 @@ export default function DashboardClient({
     );
 
 
+  /* ============================================================
+     DISPLAY
+     ============================================================ */
+
   const displayName =
     user.firstName
       ?.trim() ||
@@ -784,10 +1164,25 @@ export default function DashboardClient({
     getGreeting();
 
 
+  const roleNames =
+    useMemo(
+      () =>
+        getRoleNames(
+          membership,
+          roles,
+        ),
+
+      [
+        membership,
+        roles,
+      ],
+    );
+
+
   const roleLabel =
-    membership?.label ||
-    membership?.accessLevel ||
-    'Member';
+    roleNames.join(
+      ' · ',
+    );
 
 
   const currentCompanyName =
@@ -809,8 +1204,36 @@ export default function DashboardClient({
       : null;
 
 
+  const hasMultipleWorkspaces =
+    workspaces.length >
+    1;
+
+
+  /*
+   * Give the sidebar the REAL role label on Dashboard instead of
+   * throwing away PermissionContext.roles.
+   */
+  const sidebarMembership =
+    membership
+      ? {
+          ...membership,
+
+          label:
+            roleLabel,
+        }
+      : membership;
+
+
   /* ============================================================
      MANAGEMENT
+
+     IMPORTANT:
+
+     workspace.view does NOT create Workspace administration.
+
+     apps.view does NOT create Apps administration.
+
+     Invitations are part of Users management.
      ============================================================ */
 
   const managementActions =
@@ -824,8 +1247,8 @@ export default function DashboardClient({
 
 
         if (
-          capabilities.workspaceView ||
-          capabilities.workspaceManage
+          capabilities
+            .workspaceManage
         ) {
           items.push({
             id:
@@ -835,7 +1258,7 @@ export default function DashboardClient({
               'Workspace',
 
             description:
-              'Workspace configuration',
+              'Configure this workspace',
 
             href:
               '/settings?tab=workspace',
@@ -844,13 +1267,16 @@ export default function DashboardClient({
               Building2,
 
             keywords:
-              'workspace organization configuration',
+              'workspace configuration administration',
           });
         }
 
 
         if (
-          capabilities.usersView
+          capabilities
+            .usersView ||
+          capabilities
+            .invitationsView
         ) {
           items.push({
             id:
@@ -860,7 +1286,7 @@ export default function DashboardClient({
               'Users',
 
             description:
-              'Workspace members',
+              'Members and invitations',
 
             href:
               '/settings/users',
@@ -869,13 +1295,14 @@ export default function DashboardClient({
               UsersRound,
 
             keywords:
-              'users members employees access',
+              'users employees members invitations access',
           });
         }
 
 
         if (
-          capabilities.rolesView
+          capabilities
+            .rolesView
         ) {
           items.push({
             id:
@@ -885,7 +1312,7 @@ export default function DashboardClient({
               'Roles & Permissions',
 
             description:
-              'Access control',
+              'Business roles and access',
 
             href:
               '/settings/roles',
@@ -894,39 +1321,14 @@ export default function DashboardClient({
               Shield,
 
             keywords:
-              'roles permissions access security',
+              'roles permissions access employees',
           });
         }
 
 
         if (
-          capabilities.invitationsView
-        ) {
-          items.push({
-            id:
-              'management-invitations',
-
-            label:
-              'Invitations',
-
-            description:
-              'Pending workspace invitations',
-
-            href:
-              '/settings/invitations',
-
-            icon:
-              Mail,
-
-            keywords:
-              'invite invitation user member',
-          });
-        }
-
-
-        if (
-          capabilities.appsView ||
-          capabilities.appsManage
+          capabilities
+            .appsManage
         ) {
           items.push({
             id:
@@ -936,7 +1338,7 @@ export default function DashboardClient({
               'Apps',
 
             description:
-              'Workspace applications',
+              'Install and manage workspace apps',
 
             href:
               '/settings?tab=apps',
@@ -945,13 +1347,14 @@ export default function DashboardClient({
               LayoutGrid,
 
             keywords:
-              'apps modules install application',
+              'apps modules applications install manage',
           });
         }
 
 
         if (
-          capabilities.billingView &&
+          capabilities
+            .billingView &&
           subscription
         ) {
           items.push({
@@ -1016,7 +1419,14 @@ export default function DashboardClient({
                 ),
 
               icon:
-                AppWindow,
+                getModuleIcon(
+                  module,
+                ),
+
+              gradient:
+                getAppGradient(
+                  module.key,
+                ),
 
               keywords:
                 `${module.key} ${module.name}`,
@@ -1069,7 +1479,7 @@ export default function DashboardClient({
             'My Account',
 
           description:
-            'Profile and preferences',
+            'Profile, preferences and security',
 
           href:
             '/settings?tab=personal',
@@ -1078,7 +1488,7 @@ export default function DashboardClient({
             User,
 
           keywords:
-            'account profile preferences',
+            'my account profile security appearance preferences',
         });
 
 
@@ -1256,7 +1666,7 @@ export default function DashboardClient({
 
 
   /* ============================================================
-     PROFILE
+     OUTSIDE CLICK
      ============================================================ */
 
   useEffect(
@@ -1265,13 +1675,29 @@ export default function DashboardClient({
         event:
           PointerEvent,
       ) {
+        const target =
+          event.target as Node;
+
+
         if (
           profileRef.current &&
           !profileRef.current.contains(
-            event.target as Node,
+            target,
           )
         ) {
           setProfileOpen(
+            false,
+          );
+        }
+
+
+        if (
+          workspaceRef.current &&
+          !workspaceRef.current.contains(
+            target,
+          )
+        ) {
+          setWorkspaceOpen(
             false,
           );
         }
@@ -1344,6 +1770,10 @@ export default function DashboardClient({
             false,
           );
 
+          setWorkspaceOpen(
+            false,
+          );
+
           setSearchOpen(
             false,
           );
@@ -1366,6 +1796,109 @@ export default function DashboardClient({
 
     [],
   );
+
+
+  /* ============================================================
+     WORKSPACE SWITCH
+     ============================================================ */
+
+  async function switchWorkspace(
+    workspace:
+      WorkspaceData,
+  ) {
+    if (
+      switchingWorkspaceId ||
+      workspace.id ===
+        tenant?.id
+    ) {
+      setWorkspaceOpen(
+        false,
+      );
+
+      return;
+    }
+
+
+    setSwitchingWorkspaceId(
+      workspace.id,
+    );
+
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace',
+          {
+            method:
+              'POST',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              'Content-Type':
+                'application/json',
+
+              Accept:
+                'application/json',
+            },
+
+            body:
+              JSON.stringify({
+                action:
+                  'switch_workspace',
+
+                tenantId:
+                  workspace.id,
+              }),
+          },
+        );
+
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () =>
+              null,
+          );
+
+
+      if (
+        !response.ok ||
+        !data?.success
+      ) {
+        throw new Error(
+          data?.error ||
+          'The workspace could not be selected.',
+        );
+      }
+
+
+      setWorkspaceOpen(
+        false,
+      );
+
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      setLogoutError(
+        error instanceof
+          Error
+          ? error.message
+          : 'The workspace could not be selected.',
+      );
+    } finally {
+      setSwitchingWorkspaceId(
+        null,
+      );
+    }
+  }
 
 
   /* ============================================================
@@ -1435,6 +1968,7 @@ export default function DashboardClient({
 
   return (
     <main className="min-h-screen bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
+
       <div className="flex min-h-screen">
 
         <WorkspaceSidebar
@@ -1447,7 +1981,7 @@ export default function DashboardClient({
           }
 
           membership={
-            membership
+            sidebarMembership
           }
 
           subscription={
@@ -1509,21 +2043,186 @@ export default function DashboardClient({
               </button>
 
 
-              <div className="hidden min-w-0 xl:block">
-                <p className="max-w-[180px] truncate text-sm font-semibold">
-                  {tenant?.name ||
-                    'SaMi Workspace'}
-                </p>
+              {/* ================================================
+                  REAL WORKSPACE SWITCHER
+                  ================================================ */}
 
-                <p className="truncate text-[11px] text-slate-400">
-                  {currentCompanyName}
-                </p>
+              <div
+                ref={
+                  workspaceRef
+                }
+                className="relative"
+              >
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    hasMultipleWorkspaces &&
+                    setWorkspaceOpen(
+                      current =>
+                        !current,
+                    )
+                  }
+                  className={[
+                    'flex h-10 items-center gap-2 rounded-xl px-2.5 text-left transition',
+
+                    hasMultipleWorkspaces
+                      ? 'hover:bg-slate-100 dark:hover:bg-white/10'
+                      : '',
+                  ].join(
+                    ' ',
+                  )}
+                >
+
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-cyan-500 text-xs font-bold text-white">
+                    {tenant?.name
+                      ?.trim()
+                      .charAt(
+                        0,
+                      )
+                      .toUpperCase() ||
+                      'S'}
+                  </div>
+
+
+                  <div className="hidden min-w-0 sm:block">
+
+                    <p className="max-w-[170px] truncate text-xs font-semibold">
+                      {tenant?.name ||
+                        'SaMi Workspace'}
+                    </p>
+
+                    <p className="max-w-[170px] truncate text-[10px] text-slate-400">
+                      {currentCompanyName}
+                    </p>
+
+                  </div>
+
+
+                  {hasMultipleWorkspaces && (
+                    <ChevronDown
+                      className={[
+                        'h-3.5 w-3.5 text-slate-400 transition-transform',
+
+                        workspaceOpen
+                          ? 'rotate-180'
+                          : '',
+                      ].join(
+                        ' ',
+                      )}
+                    />
+                  )}
+
+                </button>
+
+
+                {workspaceOpen &&
+                  hasMultipleWorkspaces && (
+                  <div className="absolute left-0 top-[46px] z-50 w-[290px] overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
+
+                    <p className="px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                      Switch workspace
+                    </p>
+
+
+                    <div className="mt-1 space-y-1">
+
+                      {workspaces.map(
+                        workspace => {
+                          const selected =
+                            workspace.id ===
+                            tenant?.id;
+
+
+                          const switching =
+                            switchingWorkspaceId ===
+                            workspace.id;
+
+
+                          return (
+                            <button
+                              key={
+                                workspace.id
+                              }
+                              type="button"
+                              disabled={
+                                switchingWorkspaceId !==
+                                null
+                              }
+                              onClick={() =>
+                                void switchWorkspace(
+                                  workspace,
+                                )
+                              }
+                              className={[
+                                'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left',
+
+                                selected
+                                  ? 'bg-blue-50 dark:bg-blue-950/30'
+                                  : 'hover:bg-slate-50 dark:hover:bg-white/5',
+                              ].join(
+                                ' ',
+                              )}
+                            >
+
+                              <div
+                                className={[
+                                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10px] font-bold',
+
+                                  selected
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
+                                ].join(
+                                  ' ',
+                                )}
+                              >
+                                {workspace.name
+                                  .trim()
+                                  .charAt(
+                                    0,
+                                  )
+                                  .toUpperCase() ||
+                                  'S'}
+                              </div>
+
+
+                              <div className="min-w-0 flex-1">
+
+                                <p className="truncate text-xs font-semibold">
+                                  {workspace.name}
+                                </p>
+
+                                <p className="mt-0.5 text-[9px] capitalize text-slate-400">
+                                  {workspace.isOwner
+                                    ? 'Owner'
+                                    : workspace.accessLevel}
+                                </p>
+
+                              </div>
+
+
+                              {switching ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                              ) : selected ? (
+                                <Check className="h-4 w-4 text-blue-600" />
+                              ) : null}
+
+                            </button>
+                          );
+                        },
+                      )}
+
+                    </div>
+
+                  </div>
+                )}
+
               </div>
 
 
               {/* SEARCH */}
 
-              <div className="relative mx-auto min-w-0 max-w-[650px] flex-1">
+              <div className="relative mx-auto min-w-0 max-w-[620px] flex-1">
 
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -1535,7 +2234,7 @@ export default function DashboardClient({
                     searchQuery
                   }
                   type="search"
-                  placeholder="Search your apps and workspace"
+                  placeholder="Search your work"
                   onFocus={() =>
                     setSearchOpen(
                       true,
@@ -1552,7 +2251,7 @@ export default function DashboardClient({
                       );
                     }
                   }
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/5"
                 />
 
 
@@ -1584,13 +2283,26 @@ export default function DashboardClient({
                                     item.href,
                                   );
                                 }}
-                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 dark:hover:bg-blue-950/30"
+                                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-slate-50 dark:hover:bg-white/5"
                               >
-                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+
+                                <div
+                                  className={[
+                                    'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white',
+
+                                    item.gradient
+                                      ? `bg-gradient-to-br ${item.gradient}`
+                                      : 'bg-blue-600',
+                                  ].join(
+                                    ' ',
+                                  )}
+                                >
                                   <Icon className="h-4 w-4" />
                                 </div>
 
+
                                 <div className="min-w-0 flex-1">
+
                                   <p className="truncate text-sm font-semibold">
                                     {item.label}
                                   </p>
@@ -1598,25 +2310,31 @@ export default function DashboardClient({
                                   <p className="truncate text-xs text-slate-400">
                                     {item.description}
                                   </p>
+
                                 </div>
 
+
                                 <ChevronRight className="h-4 w-4 text-slate-300" />
+
                               </button>
                             );
                           },
                         )
                       ) : (
                         <div className="px-4 py-8 text-center text-sm text-slate-400">
-                          No matching accessible result.
+                          No matching result.
                         </div>
                       )}
 
                     </div>
+
                   </div>
                 )}
 
               </div>
 
+
+              {/* TOP ACTIONS */}
 
               <div className="ml-auto flex items-center gap-1">
 
@@ -1660,12 +2378,15 @@ export default function DashboardClient({
                 </button>
 
 
+                {/* PROFILE */}
+
                 <div
                   ref={
                     profileRef
                   }
                   className="relative"
                 >
+
                   <button
                     type="button"
                     onClick={() =>
@@ -1676,6 +2397,7 @@ export default function DashboardClient({
                     }
                     className="flex h-9 items-center gap-1 rounded-lg px-1 hover:bg-slate-100 dark:hover:bg-white/10"
                   >
+
                     <UserAvatar
                       avatarFileId={
                         user.avatarFileId
@@ -1690,13 +2412,14 @@ export default function DashboardClient({
                     />
 
                     <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+
                   </button>
 
 
                   {profileOpen && (
-                    <div className="absolute right-0 top-[44px] z-50 w-[270px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
+                    <div className="absolute right-0 top-[44px] z-50 w-[290px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#15181F]">
 
-                      <div className="border-b border-slate-100 px-4 py-3.5 dark:border-white/10">
+                      <div className="border-b border-slate-100 px-4 py-4 dark:border-white/10">
 
                         <p className="truncate text-sm font-semibold">
                           {displayName}
@@ -1707,11 +2430,20 @@ export default function DashboardClient({
                         </p>
 
 
-                        <div className="mt-2 flex gap-1.5">
+                        <div className="mt-2 flex flex-wrap gap-1.5">
 
-                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-                            {roleLabel}
-                          </span>
+                          {roleNames.map(
+                            role => (
+                              <span
+                                key={
+                                  role
+                                }
+                                className="rounded-md bg-blue-50 px-2 py-1 text-[10px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"
+                              >
+                                {role}
+                              </span>
+                            ),
+                          )}
 
 
                           {planName && (
@@ -1766,6 +2498,7 @@ export default function DashboardClient({
                           }
                           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30"
                         >
+
                           {loggingOut ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
                           ) : (
@@ -1773,6 +2506,7 @@ export default function DashboardClient({
                           )}
 
                           Sign out
+
                         </button>
 
                       </div>
@@ -1796,7 +2530,8 @@ export default function DashboardClient({
           <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
 
             {logoutError && (
-              <div className="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
+
                 {logoutError}
 
                 <button
@@ -1809,11 +2544,12 @@ export default function DashboardClient({
                 >
                   <X className="h-4 w-4" />
                 </button>
+
               </div>
             )}
 
 
-            {/* HEADER */}
+            {/* DASHBOARD HEADER */}
 
             <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
@@ -1823,21 +2559,39 @@ export default function DashboardClient({
                   {currentCompanyName}
                 </p>
 
+
                 <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-[30px]">
                   {greeting}, {displayName}
                 </h1>
 
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  {roleLabel}
-                  {' · '}
-                  {dashboard.scope ===
-                    'business'
-                    ? 'Business overview'
-                    : dashboard.scope ===
-                        'team'
-                      ? 'Team workspace'
-                      : 'My workspace'}
-                </p>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+
+                  {roleNames.map(
+                    role => (
+                      <span
+                        key={
+                          role
+                        }
+                        className="rounded-md bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300"
+                      >
+                        {role}
+                      </span>
+                    ),
+                  )}
+
+
+                  <span className="text-[10px] text-slate-400">
+                    {dashboard.scope ===
+                      'business'
+                      ? 'Business overview'
+                      : dashboard.scope ===
+                          'team'
+                        ? 'Team workspace'
+                        : 'My workspace'}
+                  </span>
+
+                </div>
 
               </div>
 
@@ -1845,7 +2599,7 @@ export default function DashboardClient({
               {capabilities.ai && (
                 <Link
                   href="/ai"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm"
                 >
                   <Sparkles className="h-4 w-4" />
 
@@ -1919,7 +2673,7 @@ export default function DashboardClient({
 
 
             {/* ==================================================
-                ATTENTION + PULSE
+                ATTENTION + METRICS
                 ================================================== */}
 
             {(dashboard.attention.length >
@@ -1932,8 +2686,9 @@ export default function DashboardClient({
                   0 && (
                   <DashboardCard
                     title="Needs your attention"
-                    description="Prioritized exceptions and work requiring action"
+                    description="The most important work requiring action"
                   >
+
                     <div className="divide-y divide-slate-100 dark:divide-white/10">
 
                       {dashboard.attention.map(
@@ -1950,6 +2705,7 @@ export default function DashboardClient({
                       )}
 
                     </div>
+
                   </DashboardCard>
                 )}
 
@@ -1966,10 +2722,10 @@ export default function DashboardClient({
                           ? 'Team pulse'
                           : 'My pulse'
                     }
-                    description="Relevant indicators from your accessible apps"
+                    description="Relevant indicators from your permitted work"
                   >
 
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-3 p-4 sm:grid-cols-2">
 
                       {dashboard.metrics.map(
                         metric => (
@@ -2011,7 +2767,7 @@ export default function DashboardClient({
                         ? 'Team work'
                         : 'My work'
                   }
-                  description="Work that is currently relevant to your responsibilities"
+                  description="Work currently relevant to your responsibilities"
                 >
 
                   <div className="divide-y divide-slate-100 dark:divide-white/10">
@@ -2116,7 +2872,7 @@ export default function DashboardClient({
 
 
             {/* ==================================================
-                AI CONTEXT
+                SAMI AI
                 ================================================== */}
 
             {capabilities.ai && (
@@ -2140,7 +2896,7 @@ export default function DashboardClient({
                         </h2>
 
                         <p className="mt-1 text-xs text-slate-400">
-                          AI works only with information your account is allowed to access.
+                          AI only works with information your role is allowed to access.
                         </p>
 
                       </div>
@@ -2168,6 +2924,7 @@ export default function DashboardClient({
                               }
                               className="rounded-xl bg-slate-50 px-4 py-3 dark:bg-white/5"
                             >
+
                               <p className="text-xs font-semibold">
                                 {item.title}
                               </p>
@@ -2175,6 +2932,7 @@ export default function DashboardClient({
                               <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                                 {item.detail}
                               </p>
+
                             </div>
                           ),
                         )}
@@ -2191,7 +2949,7 @@ export default function DashboardClient({
 
 
             {/* ==================================================
-                MY APPS
+                MY APPS — COLOURED AGAIN
                 ================================================== */}
 
             <section className="mt-7">
@@ -2205,7 +2963,7 @@ export default function DashboardClient({
                   </h2>
 
                   <p className="mt-1 text-[11px] text-slate-400">
-                    Applications available to your current access
+                    Only applications available to your role
                   </p>
 
                 </div>
@@ -2225,7 +2983,7 @@ export default function DashboardClient({
 
               {modules.length >
                 0 ? (
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-7 xl:grid-cols-8">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8">
 
                   {modules.map(
                     module => (
@@ -2247,11 +3005,11 @@ export default function DashboardClient({
                   <AppWindow className="mx-auto h-7 w-7 text-slate-300" />
 
                   <p className="mt-3 text-sm font-semibold">
-                    No applications assigned
+                    No apps assigned
                   </p>
 
                   <p className="mt-1 text-xs text-slate-400">
-                    Your workspace administrator has not assigned application access to your role.
+                    Your current roles do not grant access to a business app.
                   </p>
 
                 </div>
@@ -2262,22 +3020,25 @@ export default function DashboardClient({
 
             {/* ==================================================
                 MANAGEMENT
+
+                Normal invitee should NOT get Workspace / Apps here
+                from view permissions.
                 ================================================== */}
 
             {managementActions.length >
               0 && (
-              <section className="mt-7 border-t border-slate-200 pt-6 dark:border-white/10">
+              <section className="mt-8 border-t border-slate-200 pt-6 dark:border-white/10">
 
                 <div className="mb-3 flex items-center justify-between">
 
                   <div>
 
                     <h2 className="text-sm font-semibold">
-                      Workspace management
+                      Administration
                     </h2>
 
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Administrative areas permitted for your account
+                      Administrative areas explicitly permitted to your roles
                     </p>
 
                   </div>
@@ -2310,9 +3071,11 @@ export default function DashboardClient({
                           }
                           className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-blue-200 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.035]"
                         >
+
                           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
                             <Icon className="h-4 w-4" />
                           </div>
+
 
                           <div className="min-w-0">
 
@@ -2325,6 +3088,7 @@ export default function DashboardClient({
                             </p>
 
                           </div>
+
                         </Link>
                       );
                     },
@@ -2357,13 +3121,14 @@ export default function DashboardClient({
         </div>
 
       </div>
+
     </main>
   );
 }
 
 
 /* ================================================================
-   CARD
+   DASHBOARD CARD
    ================================================================ */
 
 function DashboardCard({
@@ -2378,7 +3143,7 @@ function DashboardCard({
     string;
 
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-white/[0.035]">
@@ -2440,7 +3205,17 @@ function AttentionRow({
             </div>
 
 
-            <span className={`shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold ${priorityClasses(item.priority)}`}>
+            <span
+              className={[
+                'shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold',
+
+                priorityClasses(
+                  item.priority,
+                ),
+              ].join(
+                ' ',
+              )}
+            >
               {priorityLabel(
                 item.priority,
               )}
@@ -2451,11 +3226,13 @@ function AttentionRow({
 
           {item.dueAt && (
             <p className="mt-2 flex items-center gap-1 text-[10px] text-slate-400">
+
               <Clock3 className="h-3 w-3" />
 
               {formatDateTime(
                 item.dueAt,
               )}
+
             </p>
           )}
 
@@ -2495,7 +3272,17 @@ function MetricCard({
         {metric.label}
       </p>
 
-      <p className={`mt-2 text-xl font-bold ${toneClasses(metric.tone)}`}>
+      <p
+        className={[
+          'mt-2 text-xl font-bold',
+
+          toneClasses(
+            metric.tone,
+          ),
+        ].join(
+          ' ',
+        )}
+      >
         {metric.value}
       </p>
 
@@ -2669,7 +3456,7 @@ function ActionCard({
 
 
 /* ================================================================
-   APP
+   COLOURED APP ITEM
    ================================================================ */
 
 function AppItem({
@@ -2678,6 +3465,18 @@ function AppItem({
   module:
     ModuleData;
 }) {
+  const Icon =
+    getModuleIcon(
+      module,
+    );
+
+
+  const gradient =
+    getAppGradient(
+      module.key,
+    );
+
+
   return (
     <Link
       href={
@@ -2688,11 +3487,20 @@ function AppItem({
       className="group flex min-w-0 flex-col items-center rounded-xl p-2 text-center transition hover:bg-white dark:hover:bg-white/5"
     >
 
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm transition group-hover:-translate-y-0.5 group-hover:shadow-md">
-        <AppWindow className="h-5 w-5" />
+      <div
+        className={[
+          'flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md',
+
+          gradient,
+        ].join(
+          ' ',
+        )}
+      >
+        <Icon className="h-6 w-6" />
       </div>
 
-      <span className="mt-2 line-clamp-2 text-[11px] font-medium">
+
+      <span className="mt-2 line-clamp-2 text-[11px] font-semibold">
         {module.name}
       </span>
 
@@ -2702,7 +3510,7 @@ function AppItem({
 
 
 /* ================================================================
-   PROFILE
+   PROFILE LINK
    ================================================================ */
 
 function ProfileLink({
@@ -2727,9 +3535,11 @@ function ProfileLink({
       }
       className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm hover:bg-blue-50 dark:hover:bg-blue-950/30"
     >
+
       <Icon className="h-4 w-4 text-slate-400" />
 
       {label}
+
     </Link>
   );
 }
