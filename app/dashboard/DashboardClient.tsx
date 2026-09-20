@@ -12,58 +12,33 @@ import {
   BarChart3,
   Bell,
   Bot,
-  Boxes,
   Briefcase,
   BriefcaseBusiness,
   Building2,
-  Calculator,
-  CalendarClock,
-  CalendarDays,
-  CalendarOff,
-  Car,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
-  ClipboardCheck,
-  ClipboardList,
   Clock,
   Clock3,
-  ContactRound,
   CreditCard,
-  Factory,
   FileText,
   Folder,
-  Headphones,
   Home,
   LayoutGrid,
   Loader2,
   LogOut,
-  Mail,
-  MapPin,
-  Megaphone,
-  MessageSquare,
   Moon,
-  Package,
-  PenTool,
-  ReceiptText,
-  Repeat,
   Search,
   Shield,
   ShieldCheck,
-  ShoppingCart,
   Sparkles,
-  Store,
   Sun,
   User,
-  UserPlus,
   UserRound,
   Users,
   UsersRound,
-  Utensils,
-  Workflow,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -89,9 +64,8 @@ import {
 } from '@/app/components/useSaMiOverlay';
 
 import {
-  SAMI_APPS,
-  type SamiApp,
-} from '@/lib/sami-apps';
+  getSaMiAppIcon,
+} from '@/lib/apps/icon-registry';
 
 import {
   resolveUserTheme,
@@ -233,17 +207,41 @@ type ModuleData = {
   key:
     string;
 
+  registryKey:
+    string;
+
   name:
     string;
 
   status:
     string;
 
-  href?:
-    string | null;
+  href:
+    string;
 
-  description?:
-    string | null;
+  description:
+    string;
+
+  iconKey:
+    string;
+
+  category:
+    string;
+
+  categoryLabel:
+    string;
+
+  order:
+    number;
+
+  recommended:
+    boolean;
+
+  keywords:
+    string[];
+
+  registered:
+    boolean;
 };
 
 
@@ -378,23 +376,6 @@ const THEME_STORAGE_KEY =
   'sami_theme';
 
 
-const APP_METADATA =
-  new Map<
-    string,
-    SamiApp
-  >(
-    SAMI_APPS.map(
-      app => [
-        app.key
-          .trim()
-          .toLowerCase(),
-
-        app,
-      ],
-    ),
-  );
-
-
 const GENERIC_ROLE_KEYS =
   new Set([
     'member',
@@ -502,192 +483,6 @@ function getAppGradient(
     ] ||
     APP_GRADIENTS[0]
   );
-}
-
-
-function getModuleMetadata(
-  module:
-    ModuleData,
-) {
-  return (
-    APP_METADATA.get(
-      normalizeKey(
-        module.key,
-      ),
-    ) ||
-    null
-  );
-}
-
-
-function getModuleHref(
-  module:
-    ModuleData,
-) {
-  if (
-    module.href
-      ?.trim()
-  ) {
-    return module.href;
-  }
-
-
-  const metadata =
-    getModuleMetadata(
-      module,
-    );
-
-
-  if (
-    metadata?.route
-  ) {
-    return `/${metadata.route.replace(
-      /^\/+/,
-      '',
-    )}`;
-  }
-
-
-  return `/apps/${encodeURIComponent(
-    normalizeKey(
-      module.key,
-    ),
-  )}`;
-}
-
-
-function getModuleDescription(
-  module:
-    ModuleData,
-) {
-  return (
-    module.description ||
-    getModuleMetadata(
-      module,
-    )?.description ||
-    `Open ${module.name}.`
-  );
-}
-
-
-function getModuleIcon(
-  module:
-    ModuleData,
-): LucideIcon {
-  const icon =
-    getModuleMetadata(
-      module,
-    )?.icon;
-
-
-  switch (
-    icon
-  ) {
-    case 'calculator':
-      return Calculator;
-
-    case 'receipt':
-      return ReceiptText;
-
-    case 'file-text':
-      return FileText;
-
-    case 'bar-chart':
-      return BarChart3;
-
-    case 'folder':
-      return Folder;
-
-    case 'pen-tool':
-      return PenTool;
-
-    case 'users':
-      return Users;
-
-    case 'shopping-cart':
-      return ShoppingCart;
-
-    case 'repeat':
-      return Repeat;
-
-    case 'home':
-      return Home;
-
-    case 'store':
-      return Store;
-
-    case 'utensils':
-      return Utensils;
-
-    case 'package':
-      return Package;
-
-    case 'factory':
-      return Factory;
-
-    case 'boxes':
-      return Boxes;
-
-    case 'wrench':
-      return Wrench;
-
-    case 'shield-check':
-      return ShieldCheck;
-
-    case 'user-round':
-      return UserRound;
-
-    case 'car':
-      return Car;
-
-    case 'user-plus':
-      return UserPlus;
-
-    case 'clipboard-check':
-      return ClipboardCheck;
-
-    case 'calendar-off':
-      return CalendarOff;
-
-    case 'user-search':
-      return UserRound;
-
-    case 'megaphone':
-      return Megaphone;
-
-    case 'mail':
-      return Mail;
-
-    case 'message-square':
-      return MessageSquare;
-
-    case 'calendar-days':
-      return CalendarDays;
-
-    case 'workflow':
-      return Workflow;
-
-    case 'clipboard-list':
-      return ClipboardList;
-
-    case 'briefcase':
-      return Briefcase;
-
-    case 'clock':
-      return Clock;
-
-    case 'map-pin':
-      return MapPin;
-
-    case 'headphones':
-      return Headphones;
-
-    case 'calendar-clock':
-      return CalendarClock;
-
-    default:
-      return AppWindow;
-  }
 }
 
 
@@ -1417,27 +1212,31 @@ export default function DashboardClient({
                 module.name,
 
               description:
-                getModuleDescription(
-                  module,
-                ),
+                module.description,
 
               href:
-                getModuleHref(
-                  module,
-                ),
+                module.href,
 
               icon:
-                getModuleIcon(
-                  module,
+                getSaMiAppIcon(
+                  module.iconKey,
                 ),
 
               gradient:
                 getAppGradient(
-                  module.key,
+                  module.registryKey,
                 ),
 
               keywords:
-                `${module.key} ${module.name}`,
+                [
+                  module.registryKey,
+                  module.key,
+                  module.name,
+                  module.categoryLabel,
+                  ...module.keywords,
+                ].join(
+                  ' ',
+                ),
             }),
           );
 
@@ -2971,14 +2770,23 @@ export default function DashboardClient({
                 </div>
 
 
-                {capabilities.appsManage && (
+                <div className="flex items-center gap-3">
                   <Link
-                    href="/settings?tab=apps"
-                    className="text-xs font-semibold text-blue-600 dark:text-blue-400"
+                    href="/apps"
+                    className="text-xs font-semibold text-slate-500 transition hover:text-blue-600 dark:text-slate-300 dark:hover:text-blue-400"
                   >
-                    Manage apps
+                    All apps
                   </Link>
-                )}
+
+                  {capabilities.appsManage && (
+                    <Link
+                      href="/settings?tab=apps"
+                      className="text-xs font-semibold text-blue-600 dark:text-blue-400"
+                    >
+                      Manage
+                    </Link>
+                  )}
+                </div>
 
               </div>
 
@@ -3466,23 +3274,21 @@ function AppItem({
     ModuleData;
 }) {
   const Icon =
-    getModuleIcon(
-      module,
+    getSaMiAppIcon(
+      module.iconKey,
     );
 
 
   const gradient =
     getAppGradient(
-      module.key,
+      module.registryKey,
     );
 
 
   return (
     <Link
       href={
-        getModuleHref(
-          module,
-        )
+        module.href
       }
       className="group flex min-w-0 flex-col items-center rounded-xl p-2 text-center transition hover:bg-white dark:hover:bg-white/5"
     >
