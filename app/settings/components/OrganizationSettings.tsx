@@ -28,6 +28,11 @@ import {
   useSearchParams,
 } from 'next/navigation';
 
+import SaMiOverlay, {
+  type SaMiOverlayAction,
+  type SaMiOverlayType,
+} from '@/app/components/SaMiOverlay';
+
 type CompanyProfile = {
   id: string;
   name: string;
@@ -191,6 +196,22 @@ type CompanyDraft = {
   locale: string;
 };
 
+type OverlayState = {
+  open: boolean;
+  type: SaMiOverlayType;
+  title: string;
+  message: string;
+  primaryAction?: SaMiOverlayAction;
+  secondaryAction?: SaMiOverlayAction;
+};
+
+const CLOSED_OVERLAY: OverlayState = {
+  open: false,
+  type: 'info',
+  title: '',
+  message: '',
+};
+
 const EMPTY_BRANCH: BranchDraft = {
   id: null,
   name: '',
@@ -338,11 +359,10 @@ export default function OrganizationSettings() {
   const [saving, setSaving] =
     useState<string | null>(null);
 
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const [notice, setNotice] =
-    useState<string | null>(null);
+  const [overlay, setOverlay] =
+    useState<OverlayState>(
+      CLOSED_OVERLAY,
+    );
 
   const [profile, setProfile] =
     useState<ProfileDraft | null>(null);
@@ -352,6 +372,25 @@ export default function OrganizationSettings() {
 
   const [companyDraft, setCompanyDraft] =
     useState<CompanyDraft>(EMPTY_COMPANY);
+
+  function closeOverlay() {
+    setOverlay(
+      CLOSED_OVERLAY,
+    );
+  }
+
+  function showOverlay(
+    type: SaMiOverlayType,
+    title: string,
+    message: string,
+  ) {
+    setOverlay({
+      open: true,
+      type,
+      title,
+      message,
+    });
+  }
 
   const requestedView =
     searchParams.get('organization');
@@ -381,8 +420,6 @@ export default function OrganizationSettings() {
   const load = useCallback(
     async () => {
       setLoading(true);
-      setError(null);
-
       try {
         const response = await fetch(
           '/api/workspace/organization',
@@ -416,7 +453,9 @@ export default function OrganizationSettings() {
             : null,
         );
       } catch (candidate) {
-        setError(
+        showOverlay(
+          'error',
+          'Organization unavailable',
           candidate instanceof Error
             ? candidate.message
             : 'Organization details could not be loaded.',
