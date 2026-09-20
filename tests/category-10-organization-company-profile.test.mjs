@@ -126,6 +126,12 @@ test('Category 10: company lifecycle cannot archive the current or last company 
     service,
     /selected_company_ids/i,
   );
+
+  assert.match(
+    service,
+    /if\s*\(\s*!context\.isOwner\s*\)\s*\{\s*assertAllowedCompany/i,
+    'Structural workspace owners must not depend on a company_users row to administer their own workspace companies.',
+  );
 });
 
 test('Category 10: settings UI exposes organization profile, branches, companies and history through permission-aware navigation', async () => {
