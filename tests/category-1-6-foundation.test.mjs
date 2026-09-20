@@ -193,3 +193,27 @@ test('Foundation boundary: local backup copies are not tracked by future commits
   const gitignore = await source('.gitignore');
   assert.match(gitignore, /^\.sami-backups\/$/m);
 });
+
+
+test('Category 6: operational recovery drill remains non-destructive', async () => {
+  const drill = compact(
+    await source('scripts/tenant-recovery-drill.ts'),
+  );
+
+  assert.match(drill, /recoveryType:\s*['"]logical_export['"]/i);
+  assert.match(drill, /restoreTenantRecoveryPoint/);
+  assert.match(drill, /targetDatabaseName/);
+  assert.match(drill, /dropTemporaryDatabase\(\s*targetDatabaseName\s*\)/i);
+
+  assert.doesNotMatch(
+    drill,
+    /dropTemporaryDatabase\(\s*candidate\.database_name\s*\)/i,
+    'Recovery drill must never drop the active source tenant database.',
+  );
+
+  assert.doesNotMatch(
+    drill,
+    /DROP DATABASE[^;]*candidate\.database_name/i,
+    'Recovery drill must never issue DROP DATABASE against the source tenant database.',
+  );
+});
