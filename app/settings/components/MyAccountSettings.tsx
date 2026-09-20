@@ -1832,7 +1832,7 @@ function AccountOverview({
             </label>
           </div>
 
-          <div className="mt-3 min-w-0">
+          <div className="min-w-0 flex-1">
             <h2 className="truncate text-xl font-black text-slate-950 dark:text-white">
               {account.fullName ||
                 `${account.firstName} ${account.lastName}`.trim()}
@@ -1975,7 +1975,7 @@ function AccountRow({
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="mt-3 min-w-0">
         <p className="text-sm font-black text-slate-950 dark:text-white">
           {title}
         </p>
