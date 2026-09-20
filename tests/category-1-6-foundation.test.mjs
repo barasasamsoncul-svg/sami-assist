@@ -173,6 +173,10 @@ test('Category 6: independent logical backup provider exists and cannot overwrit
   assert.match(provider, /pg_restore/);
   assert.match(provider, /PutObjectCommand/);
   assert.match(provider, /HeadObjectCommand/);
+  assert.match(provider, /SAMI_STORAGE_BUCKET/);
+  assert.match(provider, /R2_ENDPOINT/);
+  assert.match(provider, /R2_ACCESS_KEY_ID/);
+  assert.match(provider, /R2_SECRET_ACCESS_KEY/);
   assert.match(provider, /target database already exists/i);
   assert.match(provider, /fresh database/i);
 
