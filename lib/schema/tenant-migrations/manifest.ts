@@ -30,10 +30,10 @@ export interface TenantCoreMigration {
  *
  * tenant-core.sql currently installs:
  *
- *     1.0.0
+ *     1.1.0
  */
 export const CURRENT_TENANT_CORE_VERSION =
-  '1.0.0';
+  '1.1.0';
 
 /**
  * Migration chain.
@@ -52,4 +52,11 @@ export const CURRENT_TENANT_CORE_VERSION =
  * We do NOT add that until there are real schema changes.
  */
 export const TENANT_CORE_MIGRATIONS:
-  TenantCoreMigration[] = [];
+  TenantCoreMigration[] = [
+    {
+      key: 'core-1.0.0-to-1.1.0',
+      fromVersion: '1.0.0',
+      toVersion: '1.1.0',
+      fileName: '001-core-1.0.0-to-1.1.0.sql',
+    },
+  ];
