@@ -217,3 +217,26 @@ test('Category 6: operational recovery drill remains non-destructive', async () 
     'Recovery drill must never issue DROP DATABASE against the source tenant database.',
   );
 });
+
+
+test('Category 6: server-only dependency is explicitly installed for recovery tooling', async () => {
+  const packageJson = JSON.parse(
+    await source('package.json'),
+  );
+
+  assert.equal(
+    packageJson.dependencies?.['server-only'],
+    '0.0.1',
+    'Standalone recovery tooling must be able to resolve the server-only marker.',
+  );
+
+  const packageLock = JSON.parse(
+    await source('package-lock.json'),
+  );
+
+  assert.equal(
+    packageLock.packages?.['node_modules/server-only']?.version,
+    '0.0.1',
+    'package-lock.json must lock server-only for reproducible installs.',
+  );
+});
