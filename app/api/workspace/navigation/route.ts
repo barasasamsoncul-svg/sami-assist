@@ -330,6 +330,13 @@ export async function GET() {
         notificationsView:
           true,
 
+        /*
+         * Activity is a core workspace timeline for every trusted
+         * active internal member. Audit detail remains permission-gated.
+         */
+        activityView:
+          true,
+
         auditView:
           context.isOwner ||
           has(
