@@ -87,6 +87,7 @@ type CompanySummary = {
   name: string;
   legalName: string | null;
   companyCode: string | null;
+  logoUrl: string | null;
   country: string | null;
   countryCode: string | null;
   currency: string;
@@ -972,11 +973,19 @@ export default function OrganizationSettings() {
         <div className="border-b border-slate-200 px-5 py-5 dark:border-white/10 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex min-w-0 items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
-                {(headerCompany?.name || 'SaMi')
-                  .trim()
-                  .slice(0, 2)
-                  .toUpperCase()}
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
+                {headerCompany?.logoUrl ? (
+                  <img
+                    src={headerCompany.logoUrl}
+                    alt={`${headerCompany.name} logo`}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  (headerCompany?.name || 'SaMi')
+                    .trim()
+                    .slice(0, 2)
+                    .toUpperCase()
+                )}
               </div>
 
               <div className="min-w-0">
@@ -1406,8 +1415,16 @@ function CompaniesView({
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5">
-                  <Building2 className="h-4 w-4" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 dark:bg-white/5">
+                  {company.logoUrl ? (
+                    <img
+                      src={company.logoUrl}
+                      alt={`${company.name} logo`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <Building2 className="h-4 w-4" />
+                  )}
                 </div>
 
                 <div className="min-w-0">

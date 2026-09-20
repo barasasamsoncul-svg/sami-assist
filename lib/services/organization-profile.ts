@@ -108,6 +108,7 @@ export type CompanySummary = {
   name: string;
   legalName: string | null;
   companyCode: string | null;
+  logoUrl: string | null;
   country: string | null;
   countryCode: string | null;
   currency: string;
@@ -830,6 +831,7 @@ async function loadCompanySummaries(
         c.name,
         c.legal_name,
         c.company_code,
+        c.logo_url,
         c.country,
         c.country_code,
         c.currency,
@@ -873,6 +875,10 @@ async function loadCompanySummaries(
     companyCode:
       typeof row.company_code === 'string'
         ? row.company_code
+        : null,
+    logoUrl:
+      typeof row.logo_url === 'string'
+        ? row.logo_url
         : null,
     country:
       typeof row.country === 'string'
