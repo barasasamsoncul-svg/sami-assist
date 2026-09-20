@@ -929,9 +929,36 @@ async function activateWorkspaceApp(
               module.key,
             );
 
-          await tenantPool.query(
-            schema,
-          );
+          const schemaClient =
+            await tenantPool.connect();
+
+          try {
+            await schemaClient.query(
+              'BEGIN',
+            );
+
+            await schemaClient.query(
+              schema,
+            );
+
+            await schemaClient.query(
+              'COMMIT',
+            );
+          } catch (
+            error
+          ) {
+            try {
+              await schemaClient.query(
+                'ROLLBACK',
+              );
+            } catch {
+              // Preserve the original schema error.
+            }
+
+            throw error;
+          } finally {
+            schemaClient.release();
+          }
         }
 
         await controlClient.query(
@@ -1202,6 +1229,35 @@ async function deactivateWorkspaceApp(
         message:
           `${module.name} is not installed.`,
       };
+    }
+
+    if (
+      action ===
+        'disable' &&
+      !ACTIVE_STATUSES.has(
+        current.status,
+      )
+    ) {
+      if (
+        current.status ===
+          'disabled'
+      ) {
+        return {
+          key:
+            module.key,
+          name:
+            module.name,
+          status:
+            'disabled',
+          message:
+            `${module.name} is already disabled.`,
+        };
+      }
+
+      throw new WorkspaceAppLifecycleError(
+        'APP_NOT_INSTALLED',
+        `${module.name} must be installed before it can be disabled.`,
+      );
     }
 
     const dependents =

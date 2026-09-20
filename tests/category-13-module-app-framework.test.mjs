@@ -187,6 +187,21 @@ test('Category 13: install state is serialized and schema failures remain recove
 
   assert.match(
     service,
+    /schemaClient\.query\( 'BEGIN', \)/,
+  );
+
+  assert.match(
+    service,
+    /schemaClient\.query\( 'COMMIT', \)/,
+  );
+
+  assert.match(
+    service,
+    /schemaClient\.query\( 'ROLLBACK', \)/,
+  );
+
+  assert.match(
+    service,
     /status = 'failed'/,
   );
 
@@ -265,7 +280,7 @@ test('Category 13: Settings exposes real install, enable, disable and uninstall 
 
   assert.match(
     client,
-    />\s*Install\s*</,
+    /['"]Install['"]/,
   );
 
   assert.match(
