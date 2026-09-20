@@ -51,7 +51,6 @@ export type WorkspaceActivityErrorCode =
   | 'WORKSPACE_CONTEXT_CHANGED'
   | 'COMPANY_REQUIRED'
   | 'COMPANY_ACCESS_DENIED'
-  | 'ACTIVITY_VIEW_REQUIRED'
   | 'AUDIT_VIEW_REQUIRED'
   | 'INVALID_CURSOR'
   | 'INVALID_FILTER'
@@ -472,18 +471,11 @@ async function resolveActivityContext(): Promise<ActivityContext> {
     permissions.isOwner ||
     permissionContextHas(permissions, SAMI_PERMISSIONS.AUDIT_VIEW);
 
-  const canActivity =
-    permissions.isOwner ||
-    canAudit ||
-    permissionContextHas(permissions, SAMI_PERMISSIONS.WORKSPACE_VIEW);
-
-  if (!canActivity) {
-    throw new WorkspaceActivityError(
-      'ACTIVITY_VIEW_REQUIRED',
-      'You do not have permission to view workspace activity.',
-    );
-  }
-
+  /*
+   * Activity is core workspace context for every trusted active
+   * internal member. The permission boundary applies only to the
+   * deeper Audit view below.
+   */
   const companyId = session.currentCompanyId;
 
   if (!companyId) {
