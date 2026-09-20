@@ -220,7 +220,7 @@ export default async function AppEntryPage({
             </p>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              This application is installed and available to your current role. Category 12 owns its stable navigation entry and access boundary; the module workspace itself plugs into this entry through SaMi's app framework.
+              This application is installed and available to your current role. Its workspace keeps the same SaMi navigation, company context and access rules as the rest of your business tools.
             </p>
           </div>
 
@@ -234,7 +234,7 @@ export default async function AppEntryPage({
             </p>
 
             <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              SaMi resolved this app from the installed workspace modules and your effective role permissions.
+              This app is available because it is installed for the workspace and permitted by your current access.
             </p>
 
             <Link
