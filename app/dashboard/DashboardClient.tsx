@@ -9,10 +9,8 @@ import {
 import {
   AlertTriangle,
   AppWindow,
-  BarChart3,
   Bell,
   Bot,
-  Briefcase,
   BriefcaseBusiness,
   Building2,
   Check,
@@ -20,11 +18,9 @@ import {
   ChevronDown,
   ChevronRight,
   CircleHelp,
-  Clock,
   Clock3,
   CreditCard,
   FileText,
-  Folder,
   Home,
   LayoutGrid,
   Loader2,
@@ -36,10 +32,8 @@ import {
   Sparkles,
   Sun,
   User,
-  UserRound,
   Users,
   UsersRound,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 
