@@ -31,6 +31,8 @@ import MyAccountSettings from './components/MyAccountSettings';
 
 import WorkspaceSettings from './components/WorkspaceSettings';
 
+import OrganizationSettings from './components/OrganizationSettings';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
@@ -163,6 +165,18 @@ type SettingsCapabilities = {
   workspaceManage:
     boolean;
 
+  organizationView:
+    boolean;
+
+  organizationManage:
+    boolean;
+
+  companiesView:
+    boolean;
+
+  companiesManage:
+    boolean;
+
   appsManage:
     boolean;
 
@@ -202,6 +216,7 @@ type Props = {
 type Section =
   | 'account'
   | 'workspace'
+  | 'organization'
   | 'apps'
   | 'ai'
   | 'billing';
@@ -237,6 +252,7 @@ const VALID_SECTIONS =
   new Set<Section>([
     'account',
     'workspace',
+    'organization',
     'apps',
     'ai',
     'billing',
@@ -425,6 +441,9 @@ function getSectionLabel(
     case 'workspace':
       return 'Workspace';
 
+    case 'organization':
+      return 'Organization';
+
     case 'apps':
       return 'Apps';
 
@@ -551,6 +570,25 @@ export default function SettingsClient({
         ) {
           sections.add(
             'workspace',
+          );
+        }
+
+
+        if (
+          hasWorkspaceAccess &&
+          (
+            capabilities
+              .organizationView ||
+            capabilities
+              .organizationManage ||
+            capabilities
+              .companiesView ||
+            capabilities
+              .companiesManage
+          )
+        ) {
+          sections.add(
+            'organization',
           );
         }
 
@@ -1153,6 +1191,25 @@ export default function SettingsClient({
               capabilities
                 .workspaceManage && (
                 <WorkspaceSettings />
+              )}
+
+
+            {/* ORGANIZATION / COMPANY PROFILE */}
+
+            {active ===
+              'organization' &&
+              hasWorkspaceAccess &&
+              (
+                capabilities
+                  .organizationView ||
+                capabilities
+                  .organizationManage ||
+                capabilities
+                  .companiesView ||
+                capabilities
+                  .companiesManage
+              ) && (
+                <OrganizationSettings />
               )}
 
 
