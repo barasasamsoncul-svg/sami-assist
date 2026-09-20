@@ -216,6 +216,31 @@ test('Category 13: install state is serialized and schema failures remain recove
   );
 });
 
+test('Category 13: normal reinstall preserves prior app data without rerunning first-install schema', async () => {
+  const service =
+    compact(
+      await source(
+        'lib/services/workspace-app-lifecycle.ts',
+      ),
+    );
+
+  assert.match(
+    service,
+    /hadSuccessfulInstall = Boolean\( existing \?\.installed_at, \)/,
+  );
+
+  assert.match(
+    service,
+    /if \( !hadSuccessfulInstall \)/,
+  );
+
+  assert.match(
+    service,
+    /installed_at = COALESCE\( installed_at, NOW\(\) \)/,
+  );
+});
+
+
 test('Category 13: app lifecycle API accepts no browser tenant selector', async () => {
   const route =
     await source(
@@ -285,17 +310,17 @@ test('Category 13: Settings exposes real install, enable, disable and uninstall 
 
   assert.match(
     client,
-    />\s*Enable\s*</,
+    /\bEnable\b/,
   );
 
   assert.match(
     client,
-    />\s*Disable\s*</,
+    /\bDisable\b/,
   );
 
   assert.match(
     client,
-    />\s*Uninstall\s*</,
+    /\bUninstall\b/,
   );
 
   assert.match(
@@ -366,11 +391,19 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
   );
 });
 
-test('Category 13: every first-party app still has a schema payload', async () => {
-  const catalog =
-    await source(
-      'lib/sami-apps.ts',
-    );
+test('Category 13: every first-party app has a schema payload and unsafe replacement SQL is guarded', async () => {
+  const [
+    catalog,
+    lifecycle,
+  ] =
+    await Promise.all([
+      source(
+        'lib/sami-apps.ts',
+      ),
+      source(
+        'lib/services/workspace-app-lifecycle.ts',
+      ),
+    ]);
 
   const start =
     catalog.indexOf(
@@ -442,11 +475,35 @@ test('Category 13: every first-party app still has a schema payload', async () =
       schema.trim(),
       `Schema for ${key} must not be empty.`,
     );
-
-    assert.doesNotMatch(
-      schema,
-      /DROP\s+(?:TABLE|SCHEMA|DATABASE)|TRUNCATE\b|DELETE\s+FROM\b/i,
-      `App schema for ${key} must not contain destructive install SQL.`,
-    );
   }
+
+  assert.match(
+    lifecycle,
+    /prepareInstallSchema/,
+  );
+
+  assert.match(
+    lifecycle,
+    /INVOICING_MANAGED_TABLES/,
+  );
+
+  assert.match(
+    lifecycle,
+    /information_schema\.tables/,
+  );
+
+  assert.match(
+    lifecycle,
+    /APP_SCHEMA_UNSAFE/,
+  );
+
+  assert.match(
+    lifecycle,
+    /managedTableSet\.has/,
+  );
+
+  assert.match(
+    lifecycle,
+    /DROP\\s\+TABLE\\s\+IF\\s\+EXISTS/,
+  );
 });

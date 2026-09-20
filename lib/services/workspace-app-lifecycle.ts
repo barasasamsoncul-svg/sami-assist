@@ -54,6 +54,7 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_DEPENDENCY_BLOCKED'
   | 'APP_DEPENDENCY_CYCLE'
   | 'APP_SCHEMA_MISSING'
+  | 'APP_SCHEMA_UNSAFE'
   | 'APP_SCHEMA_FAILED';
 
 
@@ -476,6 +477,148 @@ async function readAppSchema(
 
     throw error;
   }
+}
+
+
+const INVOICING_MANAGED_TABLES = [
+  'invoice_events',
+  'payment_allocations',
+  'invoice_status_history',
+  'invoice_activity_log',
+  'invoice_reminders',
+  'recurring_invoices',
+  'credit_notes',
+  'payments',
+  'invoice_items',
+  'invoices_archive',
+  'invoices',
+  'invoice_settings',
+  'invoice_templates',
+  'products',
+  'tax_rates',
+  'payment_terms',
+  'customers',
+] as const;
+
+
+async function prepareInstallSchema(
+  appKey:
+    string,
+  schema:
+    string,
+  databaseName:
+    string,
+): Promise<string> {
+  const destructiveTopLevel =
+    /^\s*(?:DROP\s+(?:TABLE|SCHEMA|DATABASE)|TRUNCATE\b)/gim;
+
+  if (
+    !destructiveTopLevel.test(
+      schema,
+    )
+  ) {
+    return schema;
+  }
+
+  /*
+   * The current Invoicing v3 schema was authored as a replacement
+   * script and starts by dropping its own tables. That is NOT safe
+   * for normal workspace installation.
+   *
+   * For a true first install we verify that none of the managed
+   * tables already exists, then remove only those legacy DROP TABLE
+   * statements before execution. Any unexpected pre-existing table
+   * causes a hard stop rather than risking business data.
+   */
+  if (
+    appKey !==
+      'invoicing'
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_UNSAFE',
+      'This app install package contains destructive database operations and cannot be installed from Workspace Apps.',
+    );
+  }
+
+  const tenantPool =
+    getTenantPool(
+      databaseName,
+    );
+
+  const existing =
+    await tenantPool.query(
+      `
+        SELECT
+          table_name
+
+        FROM information_schema.tables
+
+        WHERE table_schema =
+              'public'
+
+          AND table_name =
+              ANY(
+                $1::text[]
+              )
+      `,
+      [
+        [
+          ...INVOICING_MANAGED_TABLES,
+        ],
+      ],
+    );
+
+  if (
+    existing.rows.length >
+      0
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_UNSAFE',
+      'Invoicing data already exists in this workspace, so SaMi will not run the legacy replacement installer.',
+      {
+        existingTables:
+          existing.rows.map(
+            row =>
+              String(
+                row.table_name,
+              ),
+          ),
+      },
+    );
+  }
+
+  const managedTableSet =
+    new Set<string>(
+      INVOICING_MANAGED_TABLES,
+    );
+
+  const sanitized =
+    schema.replace(
+      /^\s*DROP\s+TABLE\s+IF\s+EXISTS\s+public\.([a-z0-9_]+)\s+CASCADE\s*;\s*$/gim,
+      (
+        statement,
+        tableName:
+          string,
+      ) =>
+        managedTableSet.has(
+          tableName,
+        )
+          ? ''
+          : statement,
+    );
+
+  if (
+    /^\s*(?:DROP\s+(?:TABLE|SCHEMA|DATABASE)|TRUNCATE\b)/im.test(
+      sanitized,
+    )
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_UNSAFE',
+      'The Invoicing install package still contains an unsafe database operation.',
+    );
+  }
+
+  return sanitized;
 }
 
 
@@ -924,9 +1067,16 @@ async function activateWorkspaceApp(
         if (
           !hadSuccessfulInstall
         ) {
-          const schema =
+          const rawSchema =
             await readAppSchema(
               module.key,
+            );
+
+          const schema =
+            await prepareInstallSchema(
+              module.key,
+              rawSchema,
+              databaseName,
             );
 
           const schemaClient =
