@@ -2,6 +2,7 @@
 
 import {
   Archive,
+  ArrowLeft,
   Building2,
   CheckCircle2,
   ChevronRight,
@@ -136,6 +137,7 @@ type ApiResponse = {
 };
 
 type View =
+  | 'overview'
   | 'profile'
   | 'branches'
   | 'companies'
@@ -396,24 +398,25 @@ export default function OrganizationSettings() {
     searchParams.get('organization');
 
   const requestedNormalized: View =
+    requestedView === 'profile' ||
     requestedView === 'branches' ||
     requestedView === 'companies' ||
     requestedView === 'history'
       ? requestedView
-      : 'profile';
+      : 'overview';
 
   const view: View =
     organization
       ? (
-          requestedNormalized === 'companies' &&
-          organization.capabilities.canViewCompanies
-            ? 'companies'
-            : requestedNormalized !== 'companies' &&
-              organization.capabilities.canViewOrganization
-              ? requestedNormalized
-              : organization.capabilities.canViewOrganization
-                ? 'profile'
-                : 'companies'
+          requestedNormalized === 'overview'
+            ? 'overview'
+            : requestedNormalized === 'companies' &&
+              organization.capabilities.canViewCompanies
+              ? 'companies'
+              : requestedNormalized !== 'companies' &&
+                organization.capabilities.canViewOrganization
+                ? requestedNormalized
+                : 'overview'
         )
       : requestedNormalized;
 
@@ -485,8 +488,10 @@ export default function OrganizationSettings() {
   const views = useMemo(
     () => {
       const items: Array<{
-        key: View;
+        key: Exclude<View, 'overview'>;
         label: string;
+        description: string;
+        value: string;
         icon: typeof Building2;
       }> = [];
 
@@ -497,12 +502,22 @@ export default function OrganizationSettings() {
         items.push(
           {
             key: 'profile',
-            label: 'Profile',
+            label: 'Organization profile',
+            description:
+              'Legal identity, contact, address, locale and fiscal details.',
+            value:
+              canManageOrganization
+                ? 'Manage'
+                : 'View',
             icon: Building2,
           },
           {
             key: 'branches',
-            label: 'Branches',
+            label: 'Branches & locations',
+            description:
+              'Offices, shops, warehouses and other operating locations.',
+            value:
+              `${organization.branches.length} ${organization.branches.length === 1 ? 'location' : 'locations'}`,
             icon: MapPin,
           },
         );
@@ -515,6 +530,10 @@ export default function OrganizationSettings() {
         items.push({
           key: 'companies',
           label: 'Companies',
+          description:
+            'Businesses operating inside this workspace and the active company context.',
+          value:
+            `${organization.companies.length} ${organization.companies.length === 1 ? 'company' : 'companies'}`,
           icon: Factory,
         });
       }
@@ -525,14 +544,21 @@ export default function OrganizationSettings() {
       ) {
         items.push({
           key: 'history',
-          label: 'History',
+          label: 'Organization history',
+          description:
+            'Recent organization-profile, branch and company changes.',
+          value:
+            `${organization.history.length} recent`,
           icon: Clock3,
         });
       }
 
       return items;
     },
-    [organization],
+    [
+      organization,
+      canManageOrganization,
+    ],
   );
 
   function navigate(next: View) {
@@ -542,10 +568,26 @@ export default function OrganizationSettings() {
       );
 
     params.set('tab', 'organization');
-    params.set('organization', next);
+
+    if (
+      next === 'overview'
+    ) {
+      params.delete(
+        'organization',
+      );
+    } else {
+      params.set(
+        'organization',
+        next,
+      );
+    }
 
     router.push(
       `/settings?${params.toString()}`,
+      {
+        scroll:
+          false,
+      },
     );
   }
 
@@ -1147,30 +1189,81 @@ export default function OrganizationSettings() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 lg:ml-auto">
+            {view !== 'overview' && (
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    'overview',
+                  )
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5 lg:ml-auto"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to organization
+              </button>
+            )}
+          </div>
+        </div>
+
+        {view === 'overview' && (
+          <div className="p-4 sm:p-6">
+            <div className="mb-4">
+              <p className="text-sm font-bold">
+                Organization management
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                Choose one task. SaMi opens only that workspace instead of stacking another navigation bar.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
               {views.map(item => {
-                const Icon = item.icon;
-                const selected = view === item.key;
+                const Icon =
+                  item.icon;
 
                 return (
                   <button
-                    key={item.key}
-                    type="button"
-                    onClick={() => navigate(item.key)}
-                    className={
-                      selected
-                        ? 'inline-flex h-9 items-center gap-2 rounded-lg bg-slate-950 px-3 text-xs font-semibold text-white dark:bg-white dark:text-slate-950'
-                        : 'inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5'
+                    key={
+                      item.key
                     }
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        item.key,
+                      )
+                    }
+                    className="group rounded-xl border border-slate-200 p-4 text-left transition hover:border-blue-300 hover:bg-blue-50/40 dark:border-white/10 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06]"
                   >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition group-hover:bg-blue-600 group-hover:text-white dark:bg-white/10 dark:text-slate-300">
+                        <Icon className="h-4 w-4" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-bold">
+                            {item.label}
+                          </p>
+
+                          <span className="shrink-0 text-[10px] font-semibold text-slate-400">
+                            {item.value}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          {item.description}
+                        </p>
+                      </div>
+
+                      <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-slate-300 transition group-hover:text-blue-600" />
+                    </div>
                   </button>
                 );
               })}
             </div>
           </div>
-        </div>
+        )}
 
         {view === 'profile' &&
           profile && (
