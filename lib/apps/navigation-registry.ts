@@ -139,7 +139,7 @@ export function getAppEntryHref(
     registered?.route
   ) {
     return `/${registered.route.replace(
-      /^\\/+/, 
+      /^\/+/, 
       '',
     )}`;
   }
