@@ -390,10 +390,28 @@ test('Category 12: navigation API returns only the permission-resolved accessibl
     /Cache-Control.*?no-store/s,
   );
 
+  assert.match(
+    route,
+    /getAccountContextForUser\( context\.userId, context\.tenantId, \)/,
+    'Navigation must derive tenant and user context from the trusted permission/session context.',
+  );
+
   assert.doesNotMatch(
     route,
-    /searchParams.*tenantId|request.*tenantId|body.*tenantId/i,
-    'Navigation must derive tenant context from the trusted session.',
+    /\bbody\s*(?:\?\.|\.)\s*tenantId\b/i,
+    'Navigation must not accept tenantId from a request body.',
+  );
+
+  assert.doesNotMatch(
+    route,
+    /\bsearchParams\s*\.\s*get\(\s*['"]tenantId['"]\s*\)/i,
+    'Navigation must not accept tenantId from URL search parameters.',
+  );
+
+  assert.doesNotMatch(
+    route,
+    /\brequest\s*\.\s*(?:nextUrl\s*\.\s*)?searchParams\s*\.\s*get\(\s*['"]tenantId['"]\s*\)/i,
+    'Navigation must not derive tenantId from the browser request.',
   );
 });
 
