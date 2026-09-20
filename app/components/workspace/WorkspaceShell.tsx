@@ -76,6 +76,7 @@ type Props = {
   description?: string;
   contextLabel?: string | null;
   actions?: ReactNode;
+  headerContent?: ReactNode;
 
   children: ReactNode;
   contentClassName?: string;
@@ -93,6 +94,7 @@ export default function WorkspaceShell({
   description,
   contextLabel,
   actions,
+  headerContent,
   children,
   contentClassName = '',
 }: Props) {
@@ -145,32 +147,40 @@ export default function WorkspaceShell({
                 <Menu className="h-5 w-5" />
               </button>
 
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold tracking-tight">
-                  {title}
-                </p>
-
-                {description && (
-                  <p className="mt-0.5 hidden max-w-[620px] truncate text-[11px] text-slate-400 sm:block">
-                    {description}
-                  </p>
-                )}
-              </div>
-
-              {(contextLabel ||
-                tenant?.name) && (
-                <div className="ml-1 hidden min-w-0 border-l border-slate-200 pl-4 md:block dark:border-white/10">
-                  <p className="max-w-[260px] truncate text-xs font-medium text-slate-400">
-                    {contextLabel ||
-                      tenant?.name}
-                  </p>
+              {headerContent ? (
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {headerContent}
                 </div>
-              )}
+              ) : (
+                <>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold tracking-tight">
+                      {title}
+                    </p>
 
-              {actions && (
-                <div className="ml-auto flex min-w-0 items-center gap-2">
-                  {actions}
-                </div>
+                    {description && (
+                      <p className="mt-0.5 hidden max-w-[620px] truncate text-[11px] text-slate-400 sm:block">
+                        {description}
+                      </p>
+                    )}
+                  </div>
+
+                  {(contextLabel ||
+                    tenant?.name) && (
+                    <div className="ml-1 hidden min-w-0 border-l border-slate-200 pl-4 md:block dark:border-white/10">
+                      <p className="max-w-[260px] truncate text-xs font-medium text-slate-400">
+                        {contextLabel ||
+                          tenant?.name}
+                      </p>
+                    </div>
+                  )}
+
+                  {actions && (
+                    <div className="ml-auto flex min-w-0 items-center gap-2">
+                      {actions}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </header>
