@@ -1408,9 +1408,55 @@ function BranchesView({
   onArchive: (id: string) => void;
   onReactivate: (id: string) => void;
 }) {
+  const [
+    mobileEditorOpen,
+    setMobileEditorOpen,
+  ] =
+    useState(
+      false,
+    );
+
   return (
-    <div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="space-y-3">
+    <div className="p-4 sm:p-6">
+      {canManage && (
+        <div className="mb-4 flex xl:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                mobileEditorOpen
+              ) {
+                setMobileEditorOpen(
+                  false,
+                );
+
+                return;
+              }
+
+              setDraft(
+                EMPTY_BRANCH,
+              );
+
+              setMobileEditorOpen(
+                true,
+              );
+            }}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-white/10"
+          >
+            {mobileEditorOpen ? (
+              <ChevronRight className="h-4 w-4 rotate-180" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {mobileEditorOpen
+              ? 'Back to branches'
+              : 'Add branch'}
+          </button>
+        </div>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className={`${mobileEditorOpen ? 'hidden' : 'block'} space-y-3 xl:block`}>
         <SectionHeader
           icon={MapPin}
           title="Branches & locations"
@@ -1462,9 +1508,17 @@ function BranchesView({
                   <div className="flex shrink-0 gap-2">
                     <button
                       type="button"
-                      onClick={() =>
-                        setDraft(branchToDraft(branch))
-                      }
+                      onClick={() => {
+                        setDraft(
+                          branchToDraft(
+                            branch,
+                          ),
+                        );
+
+                        setMobileEditorOpen(
+                          true,
+                        );
+                      }}
                       className="h-8 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-white/10"
                     >
                       Edit
@@ -1504,7 +1558,7 @@ function BranchesView({
       </div>
 
       {canManage && (
-        <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+        <div className={`${mobileEditorOpen ? 'block' : 'hidden'} rounded-xl border border-slate-200 p-4 xl:block dark:border-white/10`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold">
@@ -1518,7 +1572,15 @@ function BranchesView({
             {draft.id && (
               <button
                 type="button"
-                onClick={() => setDraft(EMPTY_BRANCH)}
+                onClick={() => {
+                  setDraft(
+                    EMPTY_BRANCH,
+                  );
+
+                  setMobileEditorOpen(
+                    true,
+                  );
+                }}
                 className="text-xs font-semibold text-slate-500"
               >
                 New
@@ -1575,6 +1637,7 @@ function BranchesView({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -1601,9 +1664,42 @@ function CompaniesView({
     action: 'archive' | 'reactivate',
   ) => void;
 }) {
+  const [
+    mobileCreateOpen,
+    setMobileCreateOpen,
+  ] =
+    useState(
+      false,
+    );
+
   return (
-    <div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="space-y-3">
+    <div className="p-4 sm:p-6">
+      {canManage && (
+        <div className="mb-4 flex xl:hidden">
+          <button
+            type="button"
+            onClick={() =>
+              setMobileCreateOpen(
+                previous =>
+                  !previous,
+              )
+            }
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-semibold dark:border-white/10"
+          >
+            {mobileCreateOpen ? (
+              <ChevronRight className="h-4 w-4 rotate-180" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
+            {mobileCreateOpen
+              ? 'Back to companies'
+              : 'Create company'}
+          </button>
+        </div>
+      )}
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <div className={`${mobileCreateOpen ? 'hidden' : 'block'} space-y-3 xl:block`}>
         <SectionHeader
           icon={Factory}
           title="Companies"
@@ -1701,7 +1797,7 @@ function CompaniesView({
       </div>
 
       {canManage && (
-        <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+        <div className={`${mobileCreateOpen ? 'block' : 'hidden'} rounded-xl border border-slate-200 p-4 xl:block dark:border-white/10`}>
           <p className="text-sm font-bold">
             Create company
           </p>
@@ -1735,6 +1831,7 @@ function CompaniesView({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
