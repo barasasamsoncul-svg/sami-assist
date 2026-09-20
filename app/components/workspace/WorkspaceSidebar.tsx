@@ -12,24 +12,17 @@ import {
   AppWindow,
   Bell,
   Bot,
-  Boxes,
   Building2,
-  Calculator,
   Check,
   ChevronDown,
   CircleHelp,
-  ContactRound,
   CreditCard,
   Folder,
-  FolderKanban,
   Home,
   LayoutGrid,
   Loader2,
-  PackageSearch,
-  ReceiptText,
   Settings,
   ShieldCheck,
-  ShoppingCart,
   Star,
   Store,
   User,
@@ -53,6 +46,10 @@ import UserAvatar from '@/app/components/account/UserAvatar';
 import SaMiOverlay, {
   type SaMiOverlayType,
 } from '@/app/components/SaMiOverlay';
+
+import {
+  getSaMiAppIcon,
+} from '@/lib/apps/icon-registry';
 
 
 /* ================================================================
@@ -134,6 +131,9 @@ type ModuleData = {
   key:
     string;
 
+  registryKey?:
+    string;
+
   name:
     string;
 
@@ -145,6 +145,27 @@ type ModuleData = {
 
   description?:
     string | null;
+
+  iconKey?:
+    string | null;
+
+  category?:
+    string | null;
+
+  categoryLabel?:
+    string | null;
+
+  order?:
+    number | null;
+
+  recommended?:
+    boolean;
+
+  keywords?:
+    string[];
+
+  registered?:
+    boolean;
 };
 
 
@@ -289,6 +310,13 @@ type CompanyContextResponse = {
    ================================================================ */
 
 type NavigationPermissionState = {
+  apps?:
+    ModuleData[];
+
+  appCount?:
+    number;
+
+
   /*
    * Core platform entitlement.
    *
@@ -521,92 +549,8 @@ type OverlayState = {
    CONSTANTS
    ================================================================ */
 
-const HIDDEN_MODULE_STATUSES =
-  new Set([
-    'disabled',
-    'failed',
-    'uninstalled',
-    'removed',
-    'inactive',
-  ]);
-
-
-const APP_ROUTE_ALIASES:
-  Record<
-    string,
-    string
-  > = {
-  invoice:
-    '/invoices',
-
-  invoices:
-    '/invoices',
-
-  invoicing:
-    '/invoices',
-
-
-  accounting:
-    '/accounting',
-
-  finance:
-    '/accounting',
-
-
-  crm:
-    '/crm',
-
-
-  sale:
-    '/sales',
-
-  sales:
-    '/sales',
-
-
-  pos:
-    '/pos',
-
-  'point-of-sale':
-    '/pos',
-
-  point_of_sale:
-    '/pos',
-
-
-  inventory:
-    '/inventory',
-
-  stock:
-    '/inventory',
-
-
-  hr:
-    '/hr',
-
-  'human-resources':
-    '/hr',
-
-  human_resources:
-    '/hr',
-
-
-  project:
-    '/projects',
-
-  projects:
-    '/projects',
-
-
-  ecommerce:
-    '/ecommerce',
-
-  'e-commerce':
-    '/ecommerce',
-
-  e_commerce:
-    '/ecommerce',
-};
+const SIDEBAR_APP_LIMIT =
+  6;
 
 
 const CLOSED_OVERLAY:
@@ -625,24 +569,6 @@ const CLOSED_OVERLAY:
 };
 
 
-/* ================================================================
-   HELPERS
-   ================================================================ */
-
-function normalizeKey(
-  value:
-    string,
-) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(
-      /\s+/g,
-      '-',
-    );
-}
-
-
 function hrefPath(
   href:
     string,
@@ -653,155 +579,6 @@ function hrefPath(
     )[0] ||
     href
   );
-}
-
-
-function getModuleHref(
-  module:
-    ModuleData,
-) {
-  const suppliedHref =
-    module.href
-      ?.trim();
-
-
-  if (
-    suppliedHref
-  ) {
-    return suppliedHref;
-  }
-
-
-  const normalized =
-    normalizeKey(
-      module.key,
-    );
-
-
-  if (
-    APP_ROUTE_ALIASES[
-      normalized
-    ]
-  ) {
-    return APP_ROUTE_ALIASES[
-      normalized
-    ];
-  }
-
-
-  return `/apps/${encodeURIComponent(
-    normalized,
-  )}`;
-}
-
-
-function getModuleIcon(
-  key:
-    string,
-): LucideIcon {
-  const normalized =
-    normalizeKey(
-      key,
-    );
-
-
-  if (
-    normalized ===
-      'invoice' ||
-    normalized ===
-      'invoices' ||
-    normalized ===
-      'invoicing'
-  ) {
-    return ReceiptText;
-  }
-
-
-  if (
-    normalized ===
-      'accounting' ||
-    normalized ===
-      'finance'
-  ) {
-    return Calculator;
-  }
-
-
-  if (
-    normalized ===
-    'crm'
-  ) {
-    return ContactRound;
-  }
-
-
-  if (
-    normalized ===
-      'sale' ||
-    normalized ===
-      'sales'
-  ) {
-    return ShoppingCart;
-  }
-
-
-  if (
-    normalized ===
-      'inventory' ||
-    normalized ===
-      'stock'
-  ) {
-    return Boxes;
-  }
-
-
-  if (
-    normalized ===
-      'hr' ||
-    normalized ===
-      'human-resources' ||
-    normalized ===
-      'human_resources'
-  ) {
-    return UsersRound;
-  }
-
-
-  if (
-    normalized ===
-      'project' ||
-    normalized ===
-      'projects'
-  ) {
-    return FolderKanban;
-  }
-
-
-  if (
-    normalized ===
-      'ecommerce' ||
-    normalized ===
-      'e-commerce' ||
-    normalized ===
-      'e_commerce'
-  ) {
-    return Store;
-  }
-
-
-  if (
-    normalized ===
-      'pos' ||
-    normalized ===
-      'point-of-sale' ||
-    normalized ===
-      'point_of_sale'
-  ) {
-    return PackageSearch;
-  }
-
-
-  return AppWindow;
 }
 
 
@@ -1126,6 +903,17 @@ export default function WorkspaceSidebar({
 
 
   const [
+    navigationApps,
+    setNavigationApps,
+  ] =
+    useState<
+      ModuleData[]
+    >(
+      modules,
+    );
+
+
+  const [
     navigationLoading,
     setNavigationLoading,
   ] =
@@ -1149,59 +937,136 @@ export default function WorkspaceSidebar({
 
   /* ============================================================
      ACCESSIBLE APPS
+
+     The server already filtered these apps by installation +
+     effective user permissions and enriched them from the canonical
+     Category 12 registry. The client only renders that model.
      ============================================================ */
 
-  const accessibleApps =
-    useMemo(
-      () =>
-        modules.filter(
-          module => {
-            const status =
-              String(
-                module.status ||
-                '',
-              )
-                .trim()
-                .toLowerCase();
-
-
-            return !HIDDEN_MODULE_STATUSES.has(
-              status,
-            );
-          },
-        ),
-
-      [
+  useEffect(
+    () => {
+      setNavigationApps(
         modules,
-      ],
-    );
+      );
+    },
+    [
+      modules,
+    ],
+  );
+
+
+  const accessibleApps =
+    navigationApps;
 
 
   const appChildren =
     useMemo<AppChild[]>(
       () =>
-        accessibleApps.map(
-          module => ({
-            key:
-              module.key,
-
-            label:
-              module.name,
-
-            href:
-              getModuleHref(
-                module,
+        [
+          ...accessibleApps,
+        ]
+          .sort(
+            (
+              left,
+              right,
+            ) =>
+              (
+                left.order ??
+                10_000
+              ) -
+                (
+                  right.order ??
+                  10_000
+                ) ||
+              left.name.localeCompare(
+                right.name,
               ),
-
-            icon:
-              getModuleIcon(
+          )
+          .map(
+            module => ({
+              key:
                 module.key,
-              ),
-          }),
-        ),
+
+              label:
+                module.name,
+
+              href:
+                module.href ||
+                `/apps/${encodeURIComponent(
+                  module.registryKey ||
+                  module.key,
+                )}`,
+
+              icon:
+                getSaMiAppIcon(
+                  module.iconKey,
+                ),
+            }),
+          ),
 
       [
         accessibleApps,
+      ],
+    );
+
+
+  const sidebarAppChildren =
+    useMemo(
+      () => {
+        if (
+          appChildren.length <=
+          SIDEBAR_APP_LIMIT
+        ) {
+          return appChildren;
+        }
+
+        const active =
+          appChildren.find(
+            item => {
+              const path =
+                hrefPath(
+                  item.href,
+                );
+
+              return (
+                pathname ===
+                  path ||
+                pathname.startsWith(
+                  `${path}/`,
+                )
+              );
+            },
+          );
+
+        const first =
+          appChildren.slice(
+            0,
+            SIDEBAR_APP_LIMIT,
+          );
+
+        if (
+          !active ||
+          first.some(
+            item =>
+              item.key ===
+              active.key,
+          )
+        ) {
+          return first;
+        }
+
+        return [
+          ...first.slice(
+            0,
+            SIDEBAR_APP_LIMIT -
+              1,
+          ),
+          active,
+        ];
+      },
+      [
+        appChildren,
+        pathname,
       ],
     );
 
@@ -1417,6 +1282,11 @@ export default function WorkspaceSidebar({
      ============================================================ */
 
   const appRouteActive =
+    pathname ===
+      '/apps' ||
+    pathname.startsWith(
+      '/apps/',
+    ) ||
     appChildren.some(
       item => {
         const path =
@@ -1454,15 +1324,6 @@ export default function WorkspaceSidebar({
       '/notifications' ||
     pathname.startsWith(
       '/notifications/',
-    );
-
-
-  const [
-    appsExpanded,
-    setAppsExpanded,
-  ] =
-    useState(
-      appRouteActive,
     );
 
 
@@ -1813,6 +1674,11 @@ export default function WorkspaceSidebar({
             );
 
 
+            setNavigationApps(
+              [],
+            );
+
+
             return;
           }
 
@@ -1820,9 +1686,25 @@ export default function WorkspaceSidebar({
           setNavigationPermissions(
             data.navigation,
           );
+
+
+          setNavigationApps(
+            Array.isArray(
+              data.navigation
+                .apps,
+            )
+              ? data.navigation
+                  .apps
+              : [],
+          );
         } catch {
           setNavigationPermissions(
             null,
+          );
+
+
+          setNavigationApps(
+            [],
           );
         } finally {
           setNavigationLoading(
@@ -1902,23 +1784,6 @@ export default function WorkspaceSidebar({
   /* ============================================================
      EXPANSION
      ============================================================ */
-
-  useEffect(
-    () => {
-      if (
-        appRouteActive
-      ) {
-        setAppsExpanded(
-          true,
-        );
-      }
-    },
-
-    [
-      appRouteActive,
-    ],
-  );
-
 
   useEffect(
     () => {
@@ -2017,6 +1882,11 @@ export default function WorkspaceSidebar({
      */
     setNavigationPermissions(
       null,
+    );
+
+
+    setNavigationApps(
+      [],
     );
 
 
@@ -3126,7 +2996,8 @@ export default function WorkspaceSidebar({
           {/* ====================================================
               MY APPS
 
-              Only user-accessible modules are present here.
+              One launcher + a small direct-access set keeps the
+              shell useful even when many apps are installed.
               ==================================================== */}
 
           {accessibleApps.length >
@@ -3138,69 +3009,63 @@ export default function WorkspaceSidebar({
               </NavSectionLabel>
 
 
-              <DropdownButton
-                icon={
-                  LayoutGrid
-                }
-                label="Apps"
-                expanded={
-                  appsExpanded
-                }
-                active={
-                  appRouteActive
-                }
-                badge={
-                  String(
-                    accessibleApps.length,
-                  )
-                }
-                onClick={() =>
-                  setAppsExpanded(
-                    current =>
-                      !current,
-                  )
-                }
-              />
+              <div className="space-y-1">
+
+                <NavLink
+                  href="/apps"
+                  icon={
+                    LayoutGrid
+                  }
+                  label="All Apps"
+                  badge={
+                    String(
+                      accessibleApps.length,
+                    )
+                  }
+                  active={
+                    pathname ===
+                      '/apps'
+                  }
+                  onNavigate={
+                    onClose
+                  }
+                />
 
 
-              {appsExpanded && (
-                <div className="ml-[19px] mt-1 space-y-1 border-l border-slate-200 pl-3 dark:border-slate-800">
+                {sidebarAppChildren.map(
+                  item => (
+                    <ChildNavLink
+                      key={
+                        item.key
+                      }
+                      href={
+                        item.href
+                      }
+                      icon={
+                        item.icon
+                      }
+                      label={
+                        item.label
+                      }
+                      active={
+                        pathname ===
+                          hrefPath(
+                            item.href,
+                          ) ||
+                        pathname.startsWith(
+                          `${hrefPath(
+                            item.href,
+                          )}/`,
+                        )
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  ),
+                )}
 
-                  {appChildren.map(
-                    item => (
-                      <ChildNavLink
-                        key={
-                          item.key
-                        }
-                        href={
-                          item.href
-                        }
-                        icon={
-                          item.icon
-                        }
-                        label={
-                          item.label
-                        }
-                        active={
-                          pathname ===
-                            hrefPath(
-                              item.href,
-                            ) ||
-                          pathname.startsWith(
-                            `${hrefPath(
-                              item.href,
-                            )}/`,
-                          )
-                        }
-                        onNavigate={
-                          onClose
-                        }
-                      />
-                    ),
-                  )}
-
-                </div>
-              )}
+              </div>
 
             </div>
           )}
