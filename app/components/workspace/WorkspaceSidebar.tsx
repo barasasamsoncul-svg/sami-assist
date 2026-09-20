@@ -1674,11 +1674,6 @@ export default function WorkspaceSidebar({
             );
 
 
-            setNavigationApps(
-              [],
-            );
-
-
             return;
           }
 
@@ -1700,11 +1695,6 @@ export default function WorkspaceSidebar({
         } catch {
           setNavigationPermissions(
             null,
-          );
-
-
-          setNavigationApps(
-            [],
           );
         } finally {
           setNavigationLoading(
@@ -1985,9 +1975,15 @@ export default function WorkspaceSidebar({
       error
     ) {
       /*
-       * Restore authorization/entitlement for the still-current
-       * workspace after a failed switch.
+       * Restore the still-current workspace immediately. The server
+       * rendered module list remains trusted for this tenant even if
+       * the capability refresh itself is temporarily unavailable.
        */
+      setNavigationApps(
+        modules,
+      );
+
+
       void loadNavigationPermissions();
 
 
@@ -3000,9 +2996,7 @@ export default function WorkspaceSidebar({
               shell useful even when many apps are installed.
               ==================================================== */}
 
-          {accessibleApps.length >
-            0 && (
-            <div className="mt-6">
+          <div className="mt-6">
 
               <NavSectionLabel>
                 My Apps
@@ -3068,7 +3062,6 @@ export default function WorkspaceSidebar({
               </div>
 
             </div>
-          )}
 
 
           {/* ====================================================
