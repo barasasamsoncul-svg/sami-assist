@@ -1233,6 +1233,20 @@ function ProfileView({
   saving: boolean;
   onSave: () => void;
 }) {
+  const [
+    mobileSection,
+    setMobileSection,
+  ] =
+    useState<
+      | 'identity'
+      | 'business'
+      | 'contact'
+      | 'address'
+      | 'localization'
+    >(
+      'identity',
+    );
+
   function set<K extends keyof ProfileDraft>(
     key: K,
     value: ProfileDraft[K],
@@ -1244,66 +1258,123 @@ function ProfileView({
   }
 
   return (
-    <div className="space-y-8 p-5 sm:p-6">
-      <SectionHeader
-        icon={Building2}
-        title="Organization profile"
-        description="Legal identity, public contact information and business classification for the current company."
-      />
+    <div className="space-y-5 p-4 sm:p-6">
+      <div className="sticky top-16 z-10 -mx-1 overflow-x-auto bg-white/95 px-1 py-1 backdrop-blur dark:bg-[#0F131B]/95 md:hidden">
+        <div className="flex min-w-max gap-2">
+          {[
+            ['identity', 'Identity'],
+            ['business', 'Business'],
+            ['contact', 'Contact'],
+            ['address', 'Address'],
+            ['localization', 'Locale'],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() =>
+                setMobileSection(
+                  key as typeof mobileSection,
+                )
+              }
+              className={
+                mobileSection === key
+                  ? 'h-9 rounded-lg bg-slate-950 px-3 text-xs font-semibold text-white dark:bg-white dark:text-slate-950'
+                  : 'h-9 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-600 dark:border-white/10 dark:text-slate-300'
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <FieldGrid>
-        <TextField label="Company name" value={draft.name} disabled={!canManage} onChange={value => set('name', value)} />
-        <TextField label="Legal name" value={draft.legalName} disabled={!canManage} onChange={value => set('legalName', value)} />
-        <TextField label="Company code" value={draft.companyCode} disabled={!canManage} onChange={value => set('companyCode', value)} />
-        <TextField label="Registration number" value={draft.registrationNumber} disabled={!canManage} onChange={value => set('registrationNumber', value)} />
-        <TextField label="Tax ID" value={draft.taxId} disabled={!canManage} onChange={value => set('taxId', value)} />
-        <TextField label="Industry" value={draft.industry} disabled={!canManage} onChange={value => set('industry', value)} />
-        <TextField label="Business type" value={draft.businessType} disabled={!canManage} onChange={value => set('businessType', value)} />
-        <TextField label="Founded year" value={draft.foundedYear} inputMode="numeric" disabled={!canManage} onChange={value => set('foundedYear', value)} />
-        <TextField label="Employee count" value={draft.employeeCount} inputMode="numeric" disabled={!canManage} onChange={value => set('employeeCount', value)} />
-      </FieldGrid>
+      <div className={`${mobileSection === 'identity' ? 'block' : 'hidden'} space-y-4 md:block`}>
+        <SectionHeader
+          icon={Building2}
+          title="Organization identity"
+          description="Core legal identity for the current company."
+        />
 
-      <SectionHeader
-        icon={MapPin}
-        title="Contact & address"
-        description="Business contact channels and registered or operating address."
-      />
+        <FieldGrid>
+          <TextField label="Company name" value={draft.name} disabled={!canManage} onChange={value => set('name', value)} />
+          <TextField label="Legal name" value={draft.legalName} disabled={!canManage} onChange={value => set('legalName', value)} />
+          <TextField label="Company code" value={draft.companyCode} disabled={!canManage} onChange={value => set('companyCode', value)} />
+          <TextField label="Registration number" value={draft.registrationNumber} disabled={!canManage} onChange={value => set('registrationNumber', value)} />
+          <TextField label="Tax ID" value={draft.taxId} disabled={!canManage} onChange={value => set('taxId', value)} />
+        </FieldGrid>
+      </div>
 
-      <FieldGrid>
-        <TextField label="Email" value={draft.email} type="email" disabled={!canManage} onChange={value => set('email', value)} />
-        <TextField label="Phone" value={draft.phone} disabled={!canManage} onChange={value => set('phone', value)} />
-        <TextField label="Website" value={draft.website} disabled={!canManage} onChange={value => set('website', value)} />
-        <TextField label="Address line 1" value={draft.addressLine1} disabled={!canManage} onChange={value => set('addressLine1', value)} />
-        <TextField label="Address line 2" value={draft.addressLine2} disabled={!canManage} onChange={value => set('addressLine2', value)} />
-        <TextField label="City" value={draft.city} disabled={!canManage} onChange={value => set('city', value)} />
-        <TextField label="State / region" value={draft.state} disabled={!canManage} onChange={value => set('state', value)} />
-        <TextField label="Postal code" value={draft.postalCode} disabled={!canManage} onChange={value => set('postalCode', value)} />
-        <TextField label="Country" value={draft.country} disabled={!canManage} onChange={value => set('country', value)} />
-        <TextField label="Country code" value={draft.countryCode} maxLength={2} disabled={!canManage} onChange={value => set('countryCode', value.toUpperCase())} />
-      </FieldGrid>
+      <div className={`${mobileSection === 'business' ? 'block' : 'hidden'} space-y-4 border-t border-slate-200 pt-5 md:block dark:border-white/10`}>
+        <SectionHeader
+          icon={Factory}
+          title="Business details"
+          description="Classification and operating profile."
+        />
 
-      <SectionHeader
-        icon={Settings2}
-        title="Localization & fiscal settings"
-        description="Defaults used by SaMi when modules need company-specific currency, time and fiscal context."
-      />
+        <FieldGrid>
+          <TextField label="Industry" value={draft.industry} disabled={!canManage} onChange={value => set('industry', value)} />
+          <TextField label="Business type" value={draft.businessType} disabled={!canManage} onChange={value => set('businessType', value)} />
+          <TextField label="Founded year" value={draft.foundedYear} inputMode="numeric" disabled={!canManage} onChange={value => set('foundedYear', value)} />
+          <TextField label="Employee count" value={draft.employeeCount} inputMode="numeric" disabled={!canManage} onChange={value => set('employeeCount', value)} />
+        </FieldGrid>
+      </div>
 
-      <FieldGrid>
-        <TextField label="Currency (ISO 4217)" value={draft.currency} maxLength={3} disabled={!canManage} onChange={value => set('currency', value.toUpperCase())} />
-        <TextField label="Timezone" value={draft.timezone} disabled={!canManage} onChange={value => set('timezone', value)} />
-        <TextField label="Locale" value={draft.locale} disabled={!canManage} onChange={value => set('locale', value)} />
-        <TextField label="Fiscal country code" value={draft.fiscalCountry} maxLength={2} disabled={!canManage} onChange={value => set('fiscalCountry', value.toUpperCase())} />
-        <TextField label="Fiscal year start month" value={draft.fiscalYearStartMonth} inputMode="numeric" disabled={!canManage} onChange={value => set('fiscalYearStartMonth', value)} />
-        <TextField label="Fiscal year start day" value={draft.fiscalYearStartDay} inputMode="numeric" disabled={!canManage} onChange={value => set('fiscalYearStartDay', value)} />
-      </FieldGrid>
+      <div className={`${mobileSection === 'contact' ? 'block' : 'hidden'} space-y-4 border-t border-slate-200 pt-5 md:block dark:border-white/10`}>
+        <SectionHeader
+          icon={Building2}
+          title="Contact"
+          description="Business contact channels."
+        />
+
+        <FieldGrid>
+          <TextField label="Email" value={draft.email} type="email" disabled={!canManage} onChange={value => set('email', value)} />
+          <TextField label="Phone" value={draft.phone} disabled={!canManage} onChange={value => set('phone', value)} />
+          <TextField label="Website" value={draft.website} disabled={!canManage} onChange={value => set('website', value)} />
+        </FieldGrid>
+      </div>
+
+      <div className={`${mobileSection === 'address' ? 'block' : 'hidden'} space-y-4 border-t border-slate-200 pt-5 md:block dark:border-white/10`}>
+        <SectionHeader
+          icon={MapPin}
+          title="Address"
+          description="Registered or operating address."
+        />
+
+        <FieldGrid>
+          <TextField label="Address line 1" value={draft.addressLine1} disabled={!canManage} onChange={value => set('addressLine1', value)} />
+          <TextField label="Address line 2" value={draft.addressLine2} disabled={!canManage} onChange={value => set('addressLine2', value)} />
+          <TextField label="City" value={draft.city} disabled={!canManage} onChange={value => set('city', value)} />
+          <TextField label="State / region" value={draft.state} disabled={!canManage} onChange={value => set('state', value)} />
+          <TextField label="Postal code" value={draft.postalCode} disabled={!canManage} onChange={value => set('postalCode', value)} />
+          <TextField label="Country" value={draft.country} disabled={!canManage} onChange={value => set('country', value)} />
+          <TextField label="Country code" value={draft.countryCode} maxLength={2} disabled={!canManage} onChange={value => set('countryCode', value.toUpperCase())} />
+        </FieldGrid>
+      </div>
+
+      <div className={`${mobileSection === 'localization' ? 'block' : 'hidden'} space-y-4 border-t border-slate-200 pt-5 md:block dark:border-white/10`}>
+        <SectionHeader
+          icon={Settings2}
+          title="Localization & fiscal"
+          description="Company-specific currency, time, locale and fiscal defaults."
+        />
+
+        <FieldGrid>
+          <TextField label="Currency (ISO 4217)" value={draft.currency} maxLength={3} disabled={!canManage} onChange={value => set('currency', value.toUpperCase())} />
+          <TextField label="Timezone" value={draft.timezone} disabled={!canManage} onChange={value => set('timezone', value)} />
+          <TextField label="Locale" value={draft.locale} disabled={!canManage} onChange={value => set('locale', value)} />
+          <TextField label="Fiscal country code" value={draft.fiscalCountry} maxLength={2} disabled={!canManage} onChange={value => set('fiscalCountry', value.toUpperCase())} />
+          <TextField label="Fiscal year start month" value={draft.fiscalYearStartMonth} inputMode="numeric" disabled={!canManage} onChange={value => set('fiscalYearStartMonth', value)} />
+          <TextField label="Fiscal year start day" value={draft.fiscalYearStartDay} inputMode="numeric" disabled={!canManage} onChange={value => set('fiscalYearStartDay', value)} />
+        </FieldGrid>
+      </div>
 
       {canManage && (
-        <div className="flex justify-end border-t border-slate-200 pt-5 dark:border-white/10">
+        <div className="sticky bottom-3 flex justify-end border-t border-slate-200 bg-white/95 pt-4 backdrop-blur md:static dark:border-white/10 dark:bg-[#0F131B]/95">
           <button
             type="button"
             onClick={onSave}
             disabled={saving}
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white disabled:opacity-60 dark:bg-white dark:text-slate-950"
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 text-xs font-semibold text-white disabled:opacity-60 sm:w-auto dark:bg-white dark:text-slate-950"
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
