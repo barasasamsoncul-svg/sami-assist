@@ -2046,7 +2046,12 @@ export async function archiveWorkspaceCompany(
 
   const companyId = requireCompanyId(companyIdInput);
 
-  assertAllowedCompany(context, companyId);
+  if (!context.isOwner) {
+    assertAllowedCompany(
+      context,
+      companyId,
+    );
+  }
 
   await assertCompanyArchiveSafe(context, companyId);
 
