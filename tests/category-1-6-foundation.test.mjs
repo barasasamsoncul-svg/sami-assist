@@ -209,6 +209,11 @@ test('Category 6: operational recovery drill remains non-destructive', async () 
   assert.match(drill, /recoveryType:\s*['"]logical_export['"]/i);
   assert.match(drill, /restoreTenantRecoveryPoint/);
   assert.match(drill, /targetDatabaseName/);
+  assert.match(
+    drill,
+    /FROM\s+public\.\$\{quoteIdentifier\(table\)\}/i,
+    'Recovery verification must schema-qualify public tables and not depend on search_path.',
+  );
   assert.match(drill, /dropTemporaryDatabase\(\s*targetDatabaseName\s*\)/i);
 
   assert.doesNotMatch(
