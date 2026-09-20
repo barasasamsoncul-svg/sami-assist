@@ -13,6 +13,11 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+type BranchPatchBody =
+  BranchMutationInput & {
+    action?: 'reactivate';
+  };
+
 export async function PATCH(
   request: Request,
   context: {
@@ -25,10 +30,7 @@ export async function PATCH(
     const { branchId } = await context.params;
 
     let body:
-      | BranchMutationInput
-      | {
-          action?: 'reactivate';
-        };
+      BranchPatchBody;
 
     try {
       body = await request.json();
