@@ -553,9 +553,6 @@ export default function OrganizationSettings() {
     if (!profile || !canManageOrganization) return;
 
     setSaving('profile');
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         '/api/workspace/organization',
@@ -611,7 +608,9 @@ export default function OrganizationSettings() {
         );
       }
 
-      setNotice(
+      showOverlay(
+        'success',
+        'Organization updated',
         data.message ||
         'Organization profile updated.',
       );
@@ -619,7 +618,9 @@ export default function OrganizationSettings() {
       await load();
       router.refresh();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Organization update failed',
         candidate instanceof Error
           ? candidate.message
           : 'Organization profile could not be saved.',
@@ -633,9 +634,6 @@ export default function OrganizationSettings() {
     if (!canManageOrganization) return;
 
     setSaving('branch');
-    setError(null);
-    setNotice(null);
-
     try {
       const target =
         branchDraft.id
@@ -685,14 +683,18 @@ export default function OrganizationSettings() {
       }
 
       setBranchDraft(EMPTY_BRANCH);
-      setNotice(
+      showOverlay(
+        'success',
+        'Branch saved',
         data.message ||
         'Branch saved.',
       );
 
       await load();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Branch update failed',
         candidate instanceof Error
           ? candidate.message
           : 'Branch could not be saved.',
@@ -708,9 +710,6 @@ export default function OrganizationSettings() {
     if (!canManageOrganization) return;
 
     setSaving(`branch:${branchId}`);
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         `/api/workspace/organization/branches/${branchId}`,
@@ -736,14 +735,18 @@ export default function OrganizationSettings() {
         setBranchDraft(EMPTY_BRANCH);
       }
 
-      setNotice(
+      showOverlay(
+        'success',
+        'Branch archived',
         data.message ||
         'Branch archived.',
       );
 
       await load();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Branch archive failed',
         candidate instanceof Error
           ? candidate.message
           : 'Branch could not be archived.',
@@ -759,9 +762,6 @@ export default function OrganizationSettings() {
     if (!canManageOrganization) return;
 
     setSaving(`branch:reactivate:${branchId}`);
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         `/api/workspace/organization/branches/${branchId}`,
@@ -787,14 +787,18 @@ export default function OrganizationSettings() {
         );
       }
 
-      setNotice(
+      showOverlay(
+        'success',
+        'Branch reactivated',
         data.message ||
         'Branch reactivated.',
       );
 
       await load();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Branch reactivation failed',
         candidate instanceof Error
           ? candidate.message
           : 'Branch could not be reactivated.',
@@ -808,9 +812,6 @@ export default function OrganizationSettings() {
     if (!canManageCompanies) return;
 
     setSaving('company:create');
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         '/api/workspace/companies',
@@ -867,14 +868,18 @@ export default function OrganizationSettings() {
           '',
       });
 
-      setNotice(
+      showOverlay(
+        'success',
+        'Company created',
         data.message ||
         'Company created.',
       );
 
       await load();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Company creation failed',
         candidate instanceof Error
           ? candidate.message
           : 'Company could not be created.',
@@ -888,9 +893,6 @@ export default function OrganizationSettings() {
     companyId: string,
   ) {
     setSaving(`switch:${companyId}`);
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         '/api/workspace/company-context',
@@ -920,9 +922,15 @@ export default function OrganizationSettings() {
       await load();
       router.refresh();
 
-      setNotice('Current company changed.');
+      showOverlay(
+        'success',
+        'Company changed',
+        'Current company changed.',
+      );
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Company switch failed',
         candidate instanceof Error
           ? candidate.message
           : 'Company could not be selected.',
@@ -939,9 +947,6 @@ export default function OrganizationSettings() {
     if (!canManageCompanies) return;
 
     setSaving(`${action}:${companyId}`);
-    setError(null);
-    setNotice(null);
-
     try {
       const response = await fetch(
         `/api/workspace/companies/${companyId}`,
@@ -967,14 +972,24 @@ export default function OrganizationSettings() {
         );
       }
 
-      setNotice(
+      showOverlay(
+        'success',
+        action === 'archive'
+          ? 'Company archived'
+          : 'Company reactivated',
         data.message ||
-        `Company ${action}d.`,
+        (
+          action === 'archive'
+            ? 'Company archived.'
+            : 'Company reactivated.'
+        ),
       );
 
       await load();
     } catch (candidate) {
-      setError(
+      showOverlay(
+        'error',
+        'Company action failed',
         candidate instanceof Error
           ? candidate.message
           : 'Company lifecycle action failed.',
@@ -982,6 +997,90 @@ export default function OrganizationSettings() {
     } finally {
       setSaving(null);
     }
+  }
+
+  function confirmArchiveBranch(
+    branchId: string,
+  ) {
+    const branch =
+      organization
+        ?.branches
+        .find(
+          item =>
+            item.id === branchId,
+        );
+
+    setOverlay({
+      open: true,
+      type: 'warning',
+      title: 'Archive branch?',
+      message:
+        branch
+          ? `Archive ${branch.name}? It will stop being available for active work until reactivated.`
+          : 'Archive this branch? It will stop being available for active work until reactivated.',
+      primaryAction: {
+        label: 'Archive branch',
+        onClick: () => {
+          closeOverlay();
+          void archiveBranch(
+            branchId,
+          );
+        },
+      },
+      secondaryAction: {
+        label: 'Cancel',
+        onClick: closeOverlay,
+      },
+    });
+  }
+
+  function confirmCompanyLifecycle(
+    companyId: string,
+    action: 'archive' | 'reactivate',
+  ) {
+    if (
+      action ===
+      'reactivate'
+    ) {
+      void companyLifecycle(
+        companyId,
+        action,
+      );
+
+      return;
+    }
+
+    const company =
+      organization
+        ?.companies
+        .find(
+          item =>
+            item.id === companyId,
+        );
+
+    setOverlay({
+      open: true,
+      type: 'warning',
+      title: 'Archive company?',
+      message:
+        company
+          ? `Archive ${company.name}? SaMi will first verify that no user, default-company setting, or live session would be stranded.`
+          : 'Archive this company? SaMi will first verify that no user or active context would be stranded.',
+      primaryAction: {
+        label: 'Archive company',
+        onClick: () => {
+          closeOverlay();
+          void companyLifecycle(
+            companyId,
+            'archive',
+          );
+        },
+      },
+      secondaryAction: {
+        label: 'Cancel',
+        onClick: closeOverlay,
+      },
+    });
   }
 
   if (loading) {
@@ -995,7 +1094,7 @@ export default function OrganizationSettings() {
   if (!organization) {
     return (
       <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
-        {error || 'Organization details are unavailable.'}
+        Organization details are unavailable. Refresh this page or try again.
       </div>
     );
   }
@@ -1008,6 +1107,16 @@ export default function OrganizationSettings() {
 
   return (
     <div className="space-y-5">
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
+
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]">
         <div className="border-b border-slate-200 px-5 py-5 dark:border-white/10 sm:px-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
@@ -1063,21 +1172,6 @@ export default function OrganizationSettings() {
           </div>
         </div>
 
-        {(error || notice) && (
-          <div className="border-b border-slate-200 px-5 py-3 dark:border-white/10 sm:px-6">
-            {error && (
-              <p className="text-xs font-medium text-rose-600 dark:text-rose-300">
-                {error}
-              </p>
-            )}
-            {notice && (
-              <p className="text-xs font-medium text-emerald-600 dark:text-emerald-300">
-                {notice}
-              </p>
-            )}
-          </div>
-        )}
-
         {view === 'profile' &&
           profile && (
           <ProfileView
@@ -1097,7 +1191,7 @@ export default function OrganizationSettings() {
             canManage={canManageOrganization}
             saving={saving}
             onSave={() => void saveBranch()}
-            onArchive={id => void archiveBranch(id)}
+            onArchive={confirmArchiveBranch}
             onReactivate={id => void reactivateBranch(id)}
           />
         )}
@@ -1112,9 +1206,7 @@ export default function OrganizationSettings() {
               saving={saving}
               onCreate={() => void createCompany()}
               onSwitch={id => void switchCompany(id)}
-              onLifecycle={(id, action) =>
-                void companyLifecycle(id, action)
-              }
+              onLifecycle={confirmCompanyLifecycle}
             />
           )}
 
