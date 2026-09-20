@@ -7,7 +7,6 @@ import type { PoolClient } from 'pg';
 import {
   getCompanyPermissionContext,
   assertAllowedCompany,
-  assertAnyCompanyPermission,
   assertCompanyPermission,
   type CompanyPermissionContext,
 } from '@/lib/auth/company-permission-guards';
@@ -436,26 +435,6 @@ function toIso(value: unknown): string | null {
    PERMISSION HELPERS
    ================================================================ */
 
-function requireOrganizationView(
-  context: CompanyPermissionContext,
-): void {
-  if (context.isOwner) return;
-
-  try {
-    assertAnyCompanyPermission(context, [
-      SAMI_PERMISSIONS.ORGANIZATION_VIEW,
-      SAMI_PERMISSIONS.ORGANIZATION_MANAGE,
-      SAMI_PERMISSIONS.COMPANIES_VIEW,
-      SAMI_PERMISSIONS.COMPANIES_MANAGE,
-    ]);
-  } catch {
-    throw new OrganizationProfileError(
-      'ORGANIZATION_VIEW_REQUIRED',
-      'You do not have permission to view organization details.',
-    );
-  }
-}
-
 function requireOrganizationManage(
   context: CompanyPermissionContext,
 ): void {
@@ -470,24 +449,6 @@ function requireOrganizationManage(
     throw new OrganizationProfileError(
       'ORGANIZATION_MANAGE_REQUIRED',
       'You do not have permission to manage organization details.',
-    );
-  }
-}
-
-function requireCompaniesView(
-  context: CompanyPermissionContext,
-): void {
-  if (context.isOwner) return;
-
-  try {
-    assertAnyCompanyPermission(context, [
-      SAMI_PERMISSIONS.COMPANIES_VIEW,
-      SAMI_PERMISSIONS.COMPANIES_MANAGE,
-    ]);
-  } catch {
-    throw new OrganizationProfileError(
-      'COMPANIES_VIEW_REQUIRED',
-      'You do not have permission to view company administration.',
     );
   }
 }
