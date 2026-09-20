@@ -668,46 +668,92 @@ async function writeTenantAudit(
     metadata?: Record<string, unknown>;
   },
 ): Promise<void> {
+  /*
+   * Category 16 will provide the durable audit/event pipeline.
+   *
+   * Until then, audit logging must NEVER make an otherwise valid
+   * organization mutation fail. A failed PostgreSQL statement marks
+   * the surrounding transaction as aborted, so use a savepoint and
+   * roll back only the audit statement when necessary.
+   */
+  const savepoint =
+    'sami_organization_audit';
+
   await client.query(
-    `
-      INSERT INTO audit_logs (
-        company_id,
-        user_id,
-        actor_type,
-        action,
-        resource_type,
-        resource_id,
-        module,
-        result,
-        metadata,
-        correlation_id,
-        created_at
-      )
-      VALUES (
-        $1,
-        $2,
-        'human',
-        $3,
-        $4,
-        $5,
-        'organization',
-        'success',
-        $6::jsonb,
-        $7,
-        NOW()
-      )
-    `,
-    [
-      input.companyId,
-      input.userId,
-      input.action,
-      input.resourceType,
-      input.resourceId,
-      JSON.stringify(input.metadata || {}),
-      crypto.randomUUID(),
-    ],
+    `SAVEPOINT ${savepoint}`,
   );
+
+  try {
+    await client.query(
+      `
+        INSERT INTO audit_logs (
+          company_id,
+          user_id,
+          actor_type,
+          action,
+          resource_type,
+          resource_id,
+          module,
+          result,
+          metadata,
+          correlation_id,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          'human',
+          $3,
+          $4,
+          $5,
+          'organization',
+          'success',
+          $6::jsonb,
+          $7,
+          NOW()
+        )
+      `,
+      [
+        input.companyId,
+        input.userId,
+        input.action,
+        input.resourceType,
+        input.resourceId,
+        JSON.stringify(
+          input.metadata || {},
+        ),
+        crypto.randomUUID(),
+      ],
+    );
+
+    await client.query(
+      `RELEASE SAVEPOINT ${savepoint}`,
+    );
+  } catch (error) {
+    try {
+      await client.query(
+        `ROLLBACK TO SAVEPOINT ${savepoint}`,
+      );
+
+      await client.query(
+        `RELEASE SAVEPOINT ${savepoint}`,
+      );
+    } catch (savepointError) {
+      console.error(
+        '[SaMi] Organization audit savepoint recovery failed:',
+        savepointError,
+      );
+
+      throw error;
+    }
+
+    console.error(
+      '[SaMi] Organization audit write failed; business mutation will continue:',
+      error,
+    );
+  }
 }
+
 
 /* ================================================================
    READ HELPERS
@@ -1278,6 +1324,11 @@ export async function updateOrganizationProfile(
     if (error instanceof OrganizationProfileError) {
       throw error;
     }
+
+    console.error(
+      '[SaMi] Organization profile update failed:',
+      error,
+    );
 
     throw new OrganizationProfileError(
       'UPDATE_FAILED',
