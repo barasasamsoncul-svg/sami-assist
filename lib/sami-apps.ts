@@ -27,7 +27,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage accounts, journals, balances and financial reporting.",
     icon: "calculator",
-    route: "accounting",
+    route: "apps/accounting",
     recommended: true,
   },
   {
@@ -37,7 +37,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Create invoices, track payments and manage receivables.",
     icon: "receipt",
-    route: "invoices",
+    route: "apps/invoicing",
     recommended: true,
   },
   {
@@ -46,7 +46,7 @@ export const SAMI_APPS: SamiApp[] = [
     category: "finance",
     description: "Record and manage business expenses.",
     icon: "file-text",
-    route: "expenses",
+    route: "apps/expenses",
   },
   {
     key: "spreadsheet",
@@ -55,7 +55,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Analyze business data with AI-powered reports and spreadsheets.",
     icon: "bar-chart",
-    route: "spreadsheet",
+    route: "apps/spreadsheet",
   },
 
   {
@@ -65,7 +65,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Store, organize and search business documents.",
     icon: "folder",
-    route: "documents",
+    route: "apps/documents",
   },
   {
     key: "sign",
@@ -74,7 +74,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Send and manage documents that need signatures.",
     icon: "pen-tool",
-    route: "sign",
+    route: "apps/sign",
   },
 
   {
@@ -84,7 +84,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage leads, customers, opportunities and relationships.",
     icon: "users",
-    route: "customers",
+    route: "apps/crm",
     recommended: true,
   },
   {
@@ -94,7 +94,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage quotations, sales orders and customers.",
     icon: "shopping-cart",
-    route: "sales",
+    route: "apps/sales",
     recommended: true,
   },
   {
@@ -104,7 +104,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage recurring customers and subscription billing.",
     icon: "repeat",
-    route: "subscriptions",
+    route: "apps/subscriptions",
   },
   {
     key: "rentals",
@@ -113,7 +113,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage rental products, contracts and returns.",
     icon: "home",
-    route: "rentals",
+    route: "apps/rentals",
   },
 
   {
@@ -122,7 +122,7 @@ export const SAMI_APPS: SamiApp[] = [
     category: "commerce",
     description: "Run a retail point of sale.",
     icon: "store",
-    route: "pos-shop",
+    route: "apps/pos_shop",
   },
   {
     key: "pos_restaurant",
@@ -131,7 +131,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Run restaurant orders and point-of-sale operations.",
     icon: "utensils",
-    route: "pos-restaurant",
+    route: "apps/pos_restaurant",
   },
 
   {
@@ -141,7 +141,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage products, stock, warehouses and movements.",
     icon: "package",
-    route: "inventory",
+    route: "apps/inventory",
   },
   {
     key: "manufacturing",
@@ -150,7 +150,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage production, bills of materials and manufacturing orders.",
     icon: "factory",
-    route: "manufacturing",
+    route: "apps/manufacturing",
   },
   {
     key: "plm",
@@ -159,7 +159,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage product lifecycle and engineering changes.",
     icon: "boxes",
-    route: "plm",
+    route: "apps/plm",
   },
   {
     key: "purchase",
@@ -168,7 +168,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage suppliers, purchase orders and procurement.",
     icon: "shopping-bag",
-    route: "purchase",
+    route: "apps/purchase",
   },
 
   {
@@ -178,7 +178,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Track equipment and maintenance activities.",
     icon: "wrench",
-    route: "maintenance",
+    route: "apps/maintenance",
   },
   {
     key: "quality",
@@ -187,7 +187,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage quality checks, controls and issues.",
     icon: "shield-check",
-    route: "quality",
+    route: "apps/quality",
   },
 
   {
@@ -197,7 +197,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage employees and workforce information.",
     icon: "user-round",
-    route: "employees",
+    route: "apps/employees",
   },
   {
     key: "fleet",
@@ -206,7 +206,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage company vehicles and fleet operations.",
     icon: "car",
-    route: "fleet",
+    route: "apps/fleet",
   },
   {
     key: "referrals",
@@ -215,7 +215,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage employee referral programs.",
     icon: "user-plus",
-    route: "referrals",
+    route: "apps/referrals",
   },
   {
     key: "appraisals",
@@ -224,7 +224,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage employee performance reviews.",
     icon: "clipboard-check",
-    route: "appraisals",
+    route: "apps/appraisals",
   },
   {
     key: "time_off",
@@ -233,7 +233,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage leave and time-off requests.",
     icon: "calendar-off",
-    route: "time-off",
+    route: "apps/time_off",
   },
   {
     key: "recruitment",
@@ -242,7 +242,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage vacancies, applicants and hiring.",
     icon: "user-search",
-    route: "recruitment",
+    route: "apps/recruitment",
   },
 
   {
@@ -252,7 +252,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Plan and manage social media marketing.",
     icon: "megaphone",
-    route: "social-marketing",
+    route: "apps/social_marketing",
   },
   {
     key: "email_marketing",
@@ -261,7 +261,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Create and manage email campaigns.",
     icon: "mail",
-    route: "email-marketing",
+    route: "apps/email_marketing",
   },
   {
     key: "sms_marketing",
@@ -270,7 +270,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Create and manage SMS campaigns.",
     icon: "message-square",
-    route: "sms-marketing",
+    route: "apps/sms_marketing",
   },
   {
     key: "events",
@@ -279,7 +279,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage events, registrations and attendees.",
     icon: "calendar-days",
-    route: "events",
+    route: "apps/events",
   },
   {
     key: "marketing_automation",
@@ -288,7 +288,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Automate campaigns and customer journeys.",
     icon: "workflow",
-    route: "marketing-automation",
+    route: "apps/marketing_automation",
   },
   {
     key: "surveys",
@@ -297,7 +297,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Create surveys and collect responses.",
     icon: "clipboard-list",
-    route: "surveys",
+    route: "apps/surveys",
   },
 
   {
@@ -307,7 +307,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Plan projects, tasks and team work.",
     icon: "briefcase",
-    route: "projects",
+    route: "apps/projects",
     recommended: true,
   },
   {
@@ -317,7 +317,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Track time spent on work and projects.",
     icon: "clock",
-    route: "timesheets",
+    route: "apps/timesheets",
   },
   {
     key: "field_services",
@@ -326,7 +326,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage work performed at customer locations.",
     icon: "map-pin",
-    route: "field-services",
+    route: "apps/field_services",
   },
   {
     key: "helpdesk",
@@ -335,7 +335,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Manage customer support tickets and service requests.",
     icon: "headphones",
-    route: "helpdesk",
+    route: "apps/helpdesk",
   },
   {
     key: "planning",
@@ -344,7 +344,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Plan schedules, shifts and assignments.",
     icon: "calendar-clock",
-    route: "planning",
+    route: "apps/planning",
   },
   {
     key: "appointments",
@@ -353,7 +353,7 @@ export const SAMI_APPS: SamiApp[] = [
     description:
       "Let customers book appointments and manage schedules.",
     icon: "calendar",
-    route: "appointments",
+    route: "apps/appointments",
   },
 ];
 
