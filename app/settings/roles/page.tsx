@@ -132,6 +132,28 @@ export default async function RolesSettingsPage() {
               .ROLES_MANAGE,
           )
       }
+
+      canUseAi={
+        shell.aiAvailable
+      }
+
+      canViewFiles={
+        permissions
+          .permissionSet
+          .has(
+            SAMI_PERMISSIONS
+              .FILES_VIEW,
+          )
+      }
+
+      canViewNotifications={
+        permissions
+          .permissionSet
+          .has(
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_VIEW,
+          )
+      }
     />
   );
 }
