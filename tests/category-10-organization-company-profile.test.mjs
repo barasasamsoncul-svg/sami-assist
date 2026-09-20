@@ -309,3 +309,25 @@ test('Category 10: audit write failures cannot roll back valid organization muta
   assert.match(service, /business mutation will continue/i);
   assert.match(service, /Organization profile update failed/i);
 });
+
+
+test('Category 10: legacy and structured address writes use explicit PostgreSQL parameter types', async () => {
+  const service = compact(
+    await source('lib/services/organization-profile.ts'),
+  );
+
+  assert.match(
+    service,
+    /address\s*=\s*\$8::text.*address_line1\s*=\s*\$8::varchar\(255\)/i,
+  );
+
+  assert.match(
+    service,
+    /\$4::text\s*,\s*\$4::varchar\(255\)/i,
+  );
+
+  assert.match(
+    service,
+    /address\s*=\s*\$5::text.*address_line1\s*=\s*\$5::varchar\(255\)/i,
+  );
+});
