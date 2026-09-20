@@ -164,6 +164,39 @@ export default function AppsLauncherClient({
       ],
     );
 
+
+  const categoryCounts =
+    useMemo(
+      () => {
+        const counts =
+          new Map<
+            string,
+            number
+          >();
+
+        for (
+          const app
+          of modules
+        ) {
+          counts.set(
+            app.category,
+            (
+              counts.get(
+                app.category,
+              ) ||
+              0
+            ) +
+            1,
+          );
+        }
+
+        return counts;
+      },
+      [
+        modules,
+      ],
+    );
+
   const visibleApps =
     useMemo(
       () => {
@@ -367,11 +400,10 @@ export default function AppsLauncherClient({
                     item.label
                   }
                   count={
-                    modules.filter(
-                      app =>
-                        app.category ===
-                        item.key,
-                    ).length
+                    categoryCounts.get(
+                      item.key,
+                    ) ||
+                    0
                   }
                   selected={
                     category ===
