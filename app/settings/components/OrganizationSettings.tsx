@@ -8,12 +8,15 @@ import {
   ChevronRight,
   Clock3,
   Factory,
+  ImageIcon,
   Loader2,
   MapPin,
   Plus,
   RefreshCw,
   Save,
   Settings2,
+  Trash2,
+  Upload,
 } from 'lucide-react';
 
 import {
@@ -672,6 +675,174 @@ export default function OrganizationSettings() {
     }
   }
 
+  async function uploadOrganizationLogo(
+    file: File,
+  ) {
+    if (!canManageOrganization) return;
+
+    if (
+      ![
+        'image/png',
+        'image/jpeg',
+        'image/webp',
+      ].includes(
+        file.type,
+      )
+    ) {
+      showOverlay(
+        'error',
+        'Logo not accepted',
+        'Choose a PNG, JPEG, or WebP image.',
+      );
+      return;
+    }
+
+    if (
+      file.size < 1 ||
+      file.size >
+        2 * 1024 * 1024
+    ) {
+      showOverlay(
+        'error',
+        'Logo is too large',
+        'Organization logo must be 2 MB or smaller.',
+      );
+      return;
+    }
+
+    setSaving(
+      'logo',
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/organization/logo',
+          {
+            method:
+              'PUT',
+            credentials:
+              'same-origin',
+            headers: {
+              'Content-Type':
+                file.type,
+              'X-SaMi-File-Name':
+                file.name
+                  .replace(
+                    /[^\x20-\x7E]/g,
+                    '_',
+                  )
+                  .slice(
+                    0,
+                    180,
+                  ),
+            },
+            body:
+              file,
+          },
+        );
+
+      const data =
+        await readJson(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'Organization logo could not be updated.',
+        );
+      }
+
+      showOverlay(
+        'success',
+        'Logo updated',
+        data.message ||
+        'Organization logo updated.',
+      );
+
+      await load();
+      router.refresh();
+    } catch (candidate) {
+      showOverlay(
+        'error',
+        'Logo update failed',
+        candidate instanceof Error
+          ? candidate.message
+          : 'Organization logo could not be updated.',
+      );
+    } finally {
+      setSaving(
+        null,
+      );
+    }
+  }
+
+  async function removeOrganizationLogo() {
+    if (!canManageOrganization) return;
+
+    setSaving(
+      'logo',
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/organization/logo',
+          {
+            method:
+              'DELETE',
+            credentials:
+              'same-origin',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+      const data =
+        await readJson(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'Organization logo could not be removed.',
+        );
+      }
+
+      showOverlay(
+        'success',
+        'Logo removed',
+        data.message ||
+        'Organization logo removed.',
+      );
+
+      await load();
+      router.refresh();
+    } catch (candidate) {
+      showOverlay(
+        'error',
+        'Logo removal failed',
+        candidate instanceof Error
+          ? candidate.message
+          : 'Organization logo could not be removed.',
+      );
+    } finally {
+      setSaving(
+        null,
+      );
+    }
+  }
+
   async function saveBranch() {
     if (!canManageOrganization) return;
 
@@ -1270,9 +1441,23 @@ export default function OrganizationSettings() {
           <ProfileView
             draft={profile}
             setDraft={setProfile}
+            logoUrl={
+              organization.profile?.logoUrl ||
+              null
+            }
             canManage={canManageOrganization}
             saving={saving === 'profile'}
+            logoBusy={saving === 'logo'}
             onSave={() => void saveProfile()}
+            onLogoUpload={
+              file =>
+                void uploadOrganizationLogo(
+                  file,
+                )
+            }
+            onLogoRemove={() =>
+              void removeOrganizationLogo()
+            }
           />
         )}
 
@@ -1316,15 +1501,23 @@ export default function OrganizationSettings() {
 function ProfileView({
   draft,
   setDraft,
+  logoUrl,
   canManage,
   saving,
+  logoBusy,
   onSave,
+  onLogoUpload,
+  onLogoRemove,
 }: {
   draft: ProfileDraft;
   setDraft: (value: ProfileDraft) => void;
+  logoUrl: string | null;
   canManage: boolean;
   saving: boolean;
+  logoBusy: boolean;
   onSave: () => void;
+  onLogoUpload: (file: File) => void;
+  onLogoRemove: () => void;
 }) {
   const [
     mobileSection,
@@ -1387,6 +1580,86 @@ function ProfileView({
           title="Organization identity"
           description="Core legal identity for the current company."
         />
+
+        <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:flex-row sm:items-center dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400 dark:border-white/10 dark:bg-[#0B0E14]">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt="Organization logo"
+                className="h-full w-full object-contain"
+              />
+            ) : (
+              <ImageIcon className="h-7 w-7" />
+            )}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold">
+              Organization logo
+            </p>
+            <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+              Used across SaMi wherever your current company identity is shown. PNG, JPEG, or WebP up to 2 MB.
+            </p>
+
+            {canManage && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label
+                  className={[
+                    'inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-200 dark:hover:bg-white/[0.08]',
+                    logoBusy
+                      ? 'pointer-events-none opacity-60'
+                      : '',
+                  ].join(' ')}
+                >
+                  {logoBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="h-3.5 w-3.5" />
+                  )}
+                  {logoUrl
+                    ? 'Replace logo'
+                    : 'Upload logo'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="sr-only"
+                    disabled={logoBusy}
+                    onChange={event => {
+                      const file =
+                        event.target.files?.[0];
+
+                      if (file) {
+                        onLogoUpload(
+                          file,
+                        );
+                      }
+
+                      event.currentTarget.value =
+                        '';
+                    }}
+                  />
+                </label>
+
+                {logoUrl && (
+                  <button
+                    type="button"
+                    onClick={
+                      onLogoRemove
+                    }
+                    disabled={
+                      logoBusy
+                    }
+                    className="inline-flex h-9 items-center gap-2 rounded-lg border border-rose-200 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         <FieldGrid>
           <TextField label="Company name" value={draft.name} disabled={!canManage} onChange={value => set('name', value)} />

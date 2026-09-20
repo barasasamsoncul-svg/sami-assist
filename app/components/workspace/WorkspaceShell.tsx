@@ -10,6 +10,7 @@ import {
 } from 'react';
 
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 
 type UserData = {
   id: string;
@@ -106,6 +107,14 @@ export default function WorkspaceShell({
       false,
     );
 
+  const [
+    liveUnreadNotifications,
+    setLiveUnreadNotifications,
+  ] =
+    useState(
+      unreadNotifications,
+    );
+
   return (
     <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
       <div className="flex min-h-screen">
@@ -119,7 +128,7 @@ export default function WorkspaceShell({
             sidebarCapabilities
           }
           unreadNotifications={
-            unreadNotifications
+            liveUnreadNotifications
           }
           open={
             sidebarOpen
@@ -175,8 +184,18 @@ export default function WorkspaceShell({
                     </div>
                   )}
 
-                  {actions && (
+                  {(sidebarCapabilities?.notificationsEnabled === true ||
+                    actions) && (
                     <div className="ml-auto flex min-w-0 items-center gap-2">
+                      {sidebarCapabilities?.notificationsEnabled === true && (
+                        <WorkspaceNotificationCenter
+                          userId={user.id}
+                          onUnreadChange={
+                            setLiveUnreadNotifications
+                          }
+                        />
+                      )}
+
                       {actions}
                     </div>
                   )}

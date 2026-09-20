@@ -81,6 +81,8 @@ CREATE TABLE IF NOT EXISTS {schema}.companies (
 
     logo_url TEXT,
 
+    logo_file_id UUID,
+
     company_code VARCHAR(50),
 
     email VARCHAR(255),
@@ -372,6 +374,30 @@ CREATE INDEX IF NOT EXISTS idx_files_cleanup_required
     WHERE cleanup_required = TRUE;
 
 
+
+-- Organization logo file relation is added after core.files exists.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'companies_logo_file_id_fkey'
+          AND conrelid = '{schema}.companies'::regclass
+    ) THEN
+        ALTER TABLE {schema}.companies
+            ADD CONSTRAINT companies_logo_file_id_fkey
+            FOREIGN KEY (logo_file_id)
+            REFERENCES {schema}.files(id)
+            ON DELETE SET NULL;
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_companies_logo_file
+    ON {schema}.companies(logo_file_id)
+    WHERE logo_file_id IS NOT NULL;
+
+
 -- ------------------------------------------------------------
 -- File Links
 --
@@ -606,20 +632,31 @@ CREATE TABLE IF NOT EXISTS {schema}.notifications (
     user_id UUID NOT NULL,
 
     type VARCHAR(100) NOT NULL,
+    event_key VARCHAR(150),
+    priority VARCHAR(20) NOT NULL DEFAULT 'normal',
 
     title VARCHAR(255) NOT NULL,
-
     message TEXT,
-
     link TEXT,
+
+    source_module VARCHAR(150),
+    source_model VARCHAR(150),
+    source_record_id UUID,
+
+    dedupe_key VARCHAR(255),
 
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
 
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
+    in_app_visible BOOLEAN NOT NULL DEFAULT TRUE,
 
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
     read_at TIMESTAMPTZ,
 
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    expires_at TIMESTAMPTZ,
+    archived_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user
@@ -635,8 +672,182 @@ CREATE INDEX IF NOT EXISTS idx_notifications_unread
 CREATE INDEX IF NOT EXISTS idx_notifications_created
     ON {schema}.notifications(created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_notifications_user_company_active
+    ON {schema}.notifications(user_id, company_id, created_at DESC, id DESC)
+    WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread_active
+    ON {schema}.notifications(user_id, company_id, created_at DESC, id DESC)
+    WHERE is_read = FALSE
+      AND in_app_visible = TRUE
+      AND archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_event_key
+    ON {schema}.notifications(event_key)
+    WHERE event_key IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_dedupe_active
+    ON {schema}.notifications(user_id, dedupe_key)
+    WHERE dedupe_key IS NOT NULL
+      AND archived_at IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS {schema}.notification_preferences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    company_id UUID NOT NULL
+        REFERENCES {schema}.companies(id)
+        ON DELETE CASCADE,
+
+    user_id UUID NOT NULL,
+
+    event_key VARCHAR(150) NOT NULL DEFAULT '*',
+
+    in_app_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    push_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    sms_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+
+    mute_until TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(company_id, user_id, event_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_preferences_user
+    ON {schema}.notification_preferences(user_id, company_id);
+
+
+CREATE TABLE IF NOT EXISTS {schema}.notification_deliveries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    notification_id UUID NOT NULL
+        REFERENCES {schema}.notifications(id)
+        ON DELETE CASCADE,
+
+    recipient_user_id UUID NOT NULL,
+
+    channel VARCHAR(30) NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'pending',
+
+    attempts INTEGER NOT NULL DEFAULT 0,
+
+    provider_message_id TEXT,
+
+    last_attempt_at TIMESTAMPTZ,
+    sent_at TIMESTAMPTZ,
+    failed_at TIMESTAMPTZ,
+
+    error_code VARCHAR(100),
+    error_message TEXT,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE(notification_id, channel)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_pending
+    ON {schema}.notification_deliveries(channel, status, created_at)
+    WHERE status IN ('pending', 'failed');
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_recipient
+    ON {schema}.notification_deliveries(recipient_user_id, created_at DESC);
+
 
 -- ============================================================
+
+-- ============================================================
+-- 6B. WORKSPACE COMMUNICATION
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS {schema}.workspace_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    company_id UUID NOT NULL
+        REFERENCES {schema}.companies(id)
+        ON DELETE CASCADE,
+
+    conversation_type VARCHAR(30) NOT NULL DEFAULT 'direct',
+    subject VARCHAR(255),
+
+    direct_key VARCHAR(100),
+
+    created_by UUID NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    archived_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspace_conversations_direct_key
+    ON {schema}.workspace_conversations(company_id, direct_key)
+    WHERE conversation_type = 'direct'
+      AND direct_key IS NOT NULL
+      AND archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workspace_conversations_company_updated
+    ON {schema}.workspace_conversations(company_id, updated_at DESC)
+    WHERE archived_at IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS {schema}.workspace_conversation_members (
+    conversation_id UUID NOT NULL
+        REFERENCES {schema}.workspace_conversations(id)
+        ON DELETE CASCADE,
+
+    user_id UUID NOT NULL,
+
+    member_role VARCHAR(30) NOT NULL DEFAULT 'member',
+
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_read_at TIMESTAMPTZ,
+    muted_until TIMESTAMPTZ,
+    archived_at TIMESTAMPTZ,
+
+    PRIMARY KEY(conversation_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_conversation_members_user
+    ON {schema}.workspace_conversation_members(user_id, conversation_id)
+    WHERE archived_at IS NULL;
+
+
+CREATE TABLE IF NOT EXISTS {schema}.workspace_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    conversation_id UUID NOT NULL
+        REFERENCES {schema}.workspace_conversations(id)
+        ON DELETE CASCADE,
+
+    sender_user_id UUID NOT NULL,
+
+    reply_to_message_id UUID
+        REFERENCES {schema}.workspace_messages(id)
+        ON DELETE SET NULL,
+
+    body TEXT NOT NULL,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    edited_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_messages_conversation
+    ON {schema}.workspace_messages(conversation_id, created_at DESC, id DESC)
+    WHERE deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_workspace_messages_sender
+    ON {schema}.workspace_messages(sender_user_id, created_at DESC)
+    WHERE deleted_at IS NULL;
+
+
 -- 7. WORKFLOW ENGINE
 -- ============================================================
 
@@ -1449,7 +1660,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.2.0')
+VALUES ('1.3.0')
 ON CONFLICT (version) DO NOTHING;
 
 

@@ -166,13 +166,14 @@ test('Category 14: tenant-core has a safe 1.1.0 to 1.2.0 storage migration', asy
     source('lib/schema/tenant-core.sql'),
   ]);
 
-  assert.match(manifest, /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.2\.0['"]/s);
   assert.match(manifest, /core-1\.1\.0-to-1\.2\.0/);
+  assert.match(manifest, /fromVersion:\s*['"]1\.1\.0['"]/);
+  assert.match(manifest, /toVersion:\s*['"]1\.2\.0['"]/);
   assert.match(migration, /ALTER TABLE files/);
   assert.match(migration, /ADD COLUMN IF NOT EXISTS purpose/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS file_links/);
   assert.doesNotMatch(migration, /DROP TABLE|DROP DATABASE|TRUNCATE/i);
-  assert.match(core, /VALUES \('1\.2\.0'\)/);
+  assert.match(core, /storage_provider VARCHAR\(50\) NOT NULL DEFAULT 'r2'/);
 });
 
 test('Category 14: signed URL dependency and full-suite gate are wired', async () => {

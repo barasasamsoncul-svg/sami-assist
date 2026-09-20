@@ -316,10 +316,20 @@ export async function GET() {
           ),
 
 
+        notificationsManage:
+          has(
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_MANAGE,
+          ),
+
         notificationsView:
           has(
             SAMI_PERMISSIONS
               .NOTIFICATIONS_VIEW,
+          ) ||
+          has(
+            SAMI_PERMISSIONS
+              .NOTIFICATIONS_MANAGE,
           ),
 
 

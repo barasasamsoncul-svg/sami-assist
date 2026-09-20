@@ -2552,3 +2552,217 @@ export async function sendSecurityCodeEmail(
     );
   }
 }
+
+/* ============================================================
+   WORKSPACE NOTIFICATION EMAIL
+   ============================================================ */
+
+export type WorkspaceNotificationEmailOptions = {
+  title: string;
+  message?: string | null;
+  actionHref?: string | null;
+};
+
+export type SendWorkspaceNotificationEmailResult = {
+  success: boolean;
+  messageId?: string;
+};
+
+export async function sendWorkspaceNotificationEmail(
+  email: string,
+  name: string,
+  options: WorkspaceNotificationEmailOptions,
+): Promise<SendWorkspaceNotificationEmailResult> {
+  const normalizedEmail =
+    normalizeEmail(email);
+
+  if (!isValidEmail(normalizedEmail)) {
+    throw new Error(
+      'A valid recipient email is required.',
+    );
+  }
+
+  const cleanName =
+    normalizeName(name);
+
+  const title =
+    (options.title || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 180);
+
+  const message =
+    (options.message || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 3000);
+
+  if (!title) {
+    throw new Error(
+      'Notification title is required.',
+    );
+  }
+
+  if (
+    !ensureEmailDeliveryAvailable(
+      'Workspace-notification',
+    )
+  ) {
+    return {
+      success: false,
+    };
+  }
+
+  const appUrl =
+    getAppUrl();
+
+  let actionUrl =
+    appUrl;
+
+  if (options.actionHref) {
+    try {
+      const candidate =
+        new URL(
+          options.actionHref,
+          appUrl + '/',
+        );
+
+      if (
+        candidate.origin ===
+        new URL(appUrl).origin
+      ) {
+        actionUrl =
+          candidate.toString();
+      }
+    } catch {
+      actionUrl =
+        appUrl;
+    }
+  }
+
+  const safeName =
+    escapeHtml(cleanName);
+
+  const safeTitle =
+    escapeHtml(title);
+
+  const safeMessage =
+    escapeHtml(message);
+
+  const safeActionUrl =
+    escapeHtml(actionUrl);
+
+  const safeLogoUrl =
+    escapeHtml(
+      getEmailLogoUrl(),
+    );
+
+  const text = [
+    `Hello ${cleanName},`,
+    '',
+    title,
+    '',
+    message,
+    '',
+    `Open SaMi: ${actionUrl}`,
+    '',
+    'SaMi',
+    'AI Powered Business Workspace',
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${safeTitle}</title>
+</head>
+<body style="margin:0;background:#f5f6f8;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td align="center" style="padding:28px 12px">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px">
+          <tr>
+            <td style="padding:0 4px 18px">
+              <img src="${safeLogoUrl}" width="182" alt="SaMi" style="display:block;border:0;max-width:100%;height:auto">
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:28px">
+              <p style="margin:0 0 14px;font-size:14px;color:#475569">Hello ${safeName},</p>
+              <h1 style="margin:0;font-size:24px;line-height:32px">${safeTitle}</h1>
+              ${safeMessage ? `<p style="margin:16px 0 0;font-size:15px;line-height:24px;color:#475569">${safeMessage}</p>` : ''}
+              <p style="margin:24px 0 0">
+                <a href="${safeActionUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Open in SaMi</a>
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:18px 4px 0;font-size:12px;line-height:18px;color:#94a3b8">
+              This is an automated SaMi workspace notification. Security and verification emails are controlled separately.
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `;
+
+  try {
+    const info =
+      await getTransporter()
+        .sendMail({
+          from:
+            getFromAddress(),
+
+          to:
+            normalizedEmail,
+
+          replyTo:
+            getReplyTo(),
+
+          subject:
+            `${title} — SaMi`,
+
+          text,
+
+          html,
+
+          headers: {
+            'X-SaMi-Email-Type':
+              'workspace-notification',
+
+            'X-SaMi-Audience':
+              'workspace',
+
+            'X-Auto-Response-Suppress':
+              'All',
+
+            'Auto-Submitted':
+              'auto-generated',
+          },
+        });
+
+    return {
+      success:
+        true,
+
+      messageId:
+        info.messageId,
+    };
+  } catch (error) {
+    console.error(
+      '[SaMi] Workspace notification email delivery failed:',
+      error,
+    );
+
+    throw new Error(
+      'Workspace notification email could not be sent.',
+    );
+  }
+}
