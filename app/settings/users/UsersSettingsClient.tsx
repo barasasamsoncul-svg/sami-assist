@@ -1131,6 +1131,39 @@ export default function UsersSettingsClient({
     }
   }
 
+  function confirmInvitationMutation(
+    invitation: WorkspaceInvitation,
+    action: 'resend' | 'revoke',
+  ) {
+    if (
+      action ===
+      'resend'
+    ) {
+      void invitationMutation(
+        invitation,
+        action,
+      );
+
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Revoke invitation?',
+      message:
+        `Revoke the invitation for ${invitation.email}? The current invitation link will stop working immediately.`,
+      confirmLabel:
+        'Revoke invitation',
+      onConfirm: () => {
+        void invitationMutation(
+          invitation,
+          'revoke',
+        );
+      },
+    });
+  }
+
+
   /* ==============================================================
      ROLE EDITOR
      ============================================================== */
@@ -1670,8 +1703,18 @@ export default function UsersSettingsClient({
                       onEditCompanies={openCompanyEditor}
                       onEditInvitationApps={openInvitationAppEditor}
                       onLifecycle={openLifecycleAction}
-                      onResend={invitation => void invitationMutation(invitation, 'resend')}
-                      onRevoke={invitation => void invitationMutation(invitation, 'revoke')}
+                      onResend={invitation =>
+                        confirmInvitationMutation(
+                          invitation,
+                          'resend',
+                        )
+                      }
+                      onRevoke={invitation =>
+                        confirmInvitationMutation(
+                          invitation,
+                          'revoke',
+                        )
+                      }
                       onInviteAgain={invitation => void loadInviteForm(invitation)}
                     />
                   ))}
