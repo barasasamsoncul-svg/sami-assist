@@ -200,7 +200,7 @@ async function tableCounts(
       }
 
       const countResult = await client.query(
-        `SELECT COUNT(*)::bigint AS count FROM ${quoteIdentifier(table)}`,
+        `SELECT COUNT(*)::bigint AS count FROM public.${quoteIdentifier(table)}`,
       );
 
       counts.set(table, Number(countResult.rows[0]?.count || 0));
