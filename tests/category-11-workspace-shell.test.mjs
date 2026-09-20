@@ -296,3 +296,76 @@ test('Category 11: Help uses compact disclosure and only real platform destinati
   assert.doesNotMatch(help, /\/auth\/privacy/);
   assert.doesNotMatch(help, /support@sami\.tech/i);
 });
+
+
+test('Category 11: Settings sections do not stack a second persistent navigation bar', async () => {
+  const [
+    organization,
+    account,
+    workspace,
+  ] = await Promise.all([
+    source('app/settings/components/OrganizationSettings.tsx'),
+    source('app/settings/components/MyAccountSettings.tsx'),
+    source('app/settings/components/WorkspaceSettings.tsx'),
+  ]);
+
+  const organizationCompact = compact(
+    organization,
+  );
+
+  assert.match(
+    organizationCompact,
+    /type View = \| ['"]overview['"] \| ['"]profile['"] \| ['"]branches['"] \| ['"]companies['"] \| ['"]history['"]/,
+  );
+
+  assert.match(
+    organizationCompact,
+    /Organization management/,
+  );
+
+  assert.match(
+    organizationCompact,
+    /Back to organization/,
+  );
+
+  assert.match(
+    organizationCompact,
+    /params\.delete\( ['"]organization['"] \)/,
+  );
+
+  assert.doesNotMatch(
+    organizationCompact,
+    /const selected = view === item\.key/,
+    'Organization must not render a persistent inner tab selector beneath the Settings navigation.',
+  );
+
+  assert.match(
+    account,
+    /function AccountRow/,
+  );
+
+  assert.match(
+    account,
+    /grid gap-3 sm:grid-cols-2/,
+  );
+
+  assert.match(
+    account,
+    /group rounded-\[20px\] border border-slate-200 bg-white p-4 text-left/,
+  );
+
+  assert.match(
+    workspace,
+    /function WorkspaceMenuRow/,
+  );
+
+  assert.match(
+    workspace,
+    /grid gap-3 sm:grid-cols-2/,
+  );
+
+  assert.match(
+    workspace,
+    /group rounded-\[20px\] border border-slate-200 bg-white p-4 text-left/,
+  );
+});
