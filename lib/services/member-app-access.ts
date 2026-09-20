@@ -226,7 +226,7 @@ export async function getRoleAppAccessMapForTenant(
       AND LOWER(COALESCE(m.status, '')) = 'active'
       AND tm.deleted_at IS NULL
       AND LOWER(COALESCE(tm.status, '')) IN ('installed', 'active', 'enabled')
-    ORDER BY rp.role_id, LOWER(m.name), m.id
+    ORDER BY rp.role_id, m.name, m.id
   `, [tenantId, roleIds]);
 
   for (const row of result.rows as Record<string, unknown>[]) {
@@ -670,7 +670,7 @@ export async function getMemberDirectoryAppAccessMap(
       AND LOWER(COALESCE(m.status, '')) = 'active'
       AND tm.deleted_at IS NULL
       AND LOWER(COALESCE(tm.status, '')) IN ('installed', 'active', 'enabled')
-    ORDER BY ur.user_id, LOWER(m.name)
+    ORDER BY ur.user_id, m.name, m.id
   `, [tenantId, userIds]);
 
   const roleApps = new Map<string, WorkspaceAppOption[]>();
