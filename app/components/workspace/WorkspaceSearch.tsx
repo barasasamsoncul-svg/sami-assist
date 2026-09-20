@@ -95,10 +95,7 @@ function iconFor(
           : result.kind ===
               'file'
             ? FileText
-            : result.kind ===
-                'app'
-              ? AppWindow
-              : Search;
+            : Search;
   }
 }
 
