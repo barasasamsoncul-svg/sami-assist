@@ -383,6 +383,9 @@ type NavigationPermissionState = {
   notificationsView:
     boolean;
 
+  activityView:
+    boolean;
+
   auditView:
     boolean;
 
@@ -1112,10 +1115,7 @@ export default function WorkspaceSidebar({
 
   const canUseActivity =
     navigationPermissions
-      ?.workspaceView ===
-      true ||
-    navigationPermissions
-      ?.auditView ===
+      ?.activityView ===
       true;
 
 
