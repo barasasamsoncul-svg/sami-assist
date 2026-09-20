@@ -49,6 +49,7 @@ export type WorkspaceAppLifecycleCode =
   | 'APPS_MANAGE_REQUIRED'
   | 'WORKSPACE_NOT_READY'
   | 'WORKSPACE_CONTEXT_CHANGED'
+  | 'APP_CHANGE_IN_PROGRESS'
   | 'APP_CORE_PROTECTED'
   | 'APP_NOT_INSTALLED'
   | 'APP_DEPENDENCY_BLOCKED'
@@ -927,22 +928,35 @@ async function activateWorkspaceApp(
     false;
 
   try {
-    await controlClient.query(
-      `
-        SELECT
-          pg_advisory_lock(
-            hashtext(
-              $1
+    const lockResult =
+      await controlClient.query(
+        `
+          SELECT
+            pg_try_advisory_lock(
+              hashtext(
+                $1
+              )
             )
-          )
-      `,
-      [
-        lockKey,
-      ],
-    );
+              AS locked
+        `,
+        [
+          lockKey,
+        ],
+      );
 
     locked =
+      lockResult.rows[0]
+        ?.locked ===
       true;
+
+    if (
+      !locked
+    ) {
+      throw new WorkspaceAppLifecycleError(
+        'APP_CHANGE_IN_PROGRESS',
+        'Another app change is already in progress. Please try again.',
+      );
+    }
 
     const context =
       await assertContextStillCurrent(
@@ -1331,22 +1345,35 @@ async function deactivateWorkspaceApp(
     false;
 
   try {
-    await controlClient.query(
-      `
-        SELECT
-          pg_advisory_lock(
-            hashtext(
-              $1
+    const lockResult =
+      await controlClient.query(
+        `
+          SELECT
+            pg_try_advisory_lock(
+              hashtext(
+                $1
+              )
             )
-          )
-      `,
-      [
-        lockKey,
-      ],
-    );
+              AS locked
+        `,
+        [
+          lockKey,
+        ],
+      );
 
     locked =
+      lockResult.rows[0]
+        ?.locked ===
       true;
+
+    if (
+      !locked
+    ) {
+      throw new WorkspaceAppLifecycleError(
+        'APP_CHANGE_IN_PROGRESS',
+        'Another app change is already in progress. Please try again.',
+      );
+    }
 
     const context =
       await assertContextStillCurrent(
@@ -1463,11 +1490,10 @@ async function deactivateWorkspaceApp(
 
         SET
           status =
-            $3,
+            $3::varchar,
           uninstalled_at =
             CASE
-              WHEN $3 =
-                   'uninstalled'
+              WHEN $4::boolean
               THEN NOW()
               ELSE uninstalled_at
             END,
@@ -1484,6 +1510,8 @@ async function deactivateWorkspaceApp(
         context.tenantId,
         module.id,
         nextStatus,
+        action ===
+          'uninstall',
       ],
     );
 
