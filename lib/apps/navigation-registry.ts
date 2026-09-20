@@ -130,6 +130,20 @@ export function getAppEntryHref(
   const key =
     getCanonicalAppKey(value);
 
+  const registered =
+    APP_BY_KEY.get(
+      key,
+    );
+
+  if (
+    registered?.route
+  ) {
+    return `/${registered.route.replace(
+      /^\\/+/, 
+      '',
+    )}`;
+  }
+
   return `/apps/${encodeURIComponent(
     key,
   )}`;
