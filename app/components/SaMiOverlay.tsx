@@ -99,14 +99,14 @@ export default function SaMiOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      className="fixed inset-0 z-[140] flex items-end justify-center bg-slate-950/55 px-0 py-0 backdrop-blur-sm sm:items-center sm:px-4 sm:py-6"
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
-        className="relative w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900"
+        className="relative max-h-[88vh] w-full overflow-y-auto rounded-t-[28px] border border-slate-200 bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-md sm:rounded-[28px] sm:p-6 dark:border-slate-800 dark:bg-slate-900"
         role="dialog"
         aria-modal="true"
         aria-labelledby="sami-overlay-title"
@@ -133,7 +133,7 @@ export default function SaMiOverlay({
         </p>
 
         {(primaryAction || secondaryAction) && (
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
             {primaryAction && (
               <OverlayAction action={primaryAction} primary onClose={onClose} />
             )}
