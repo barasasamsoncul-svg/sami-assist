@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS {schema}.company_settings (
 
 
 -- ============================================================
--- 2. FILES & DOCUMENTS
+-- 2. FILES & STORAGE
 -- ============================================================
 
 -- ------------------------------------------------------------
@@ -313,15 +313,28 @@ CREATE TABLE IF NOT EXISTS {schema}.files (
     size_bytes BIGINT,
 
     storage_key TEXT NOT NULL,
-    storage_provider VARCHAR(50) NOT NULL DEFAULT 's3',
+    storage_provider VARCHAR(50) NOT NULL DEFAULT 'r2',
+    storage_etag VARCHAR(255),
 
     checksum VARCHAR(128),
 
     uploaded_by UUID,
 
+    purpose VARCHAR(100) NOT NULL DEFAULT 'attachment',
+
     is_public BOOLEAN NOT NULL DEFAULT FALSE,
 
     status VARCHAR(30) NOT NULL DEFAULT 'active',
+
+    upload_expires_at TIMESTAMPTZ,
+    activated_at TIMESTAMPTZ,
+
+    cleanup_required BOOLEAN NOT NULL DEFAULT FALSE,
+
+    scan_status VARCHAR(30) NOT NULL DEFAULT 'not_scanned',
+    scan_checked_at TIMESTAMPTZ,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -334,68 +347,83 @@ CREATE INDEX IF NOT EXISTS idx_files_company
 CREATE INDEX IF NOT EXISTS idx_files_storage_key
     ON {schema}.files(storage_key);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_files_storage_provider_key_unique
+    ON {schema}.files(storage_provider, storage_key)
+    WHERE deleted_at IS NULL;
+
 CREATE INDEX IF NOT EXISTS idx_files_uploaded_by
     ON {schema}.files(uploaded_by);
 
 CREATE INDEX IF NOT EXISTS idx_files_status
     ON {schema}.files(status);
 
+CREATE INDEX IF NOT EXISTS idx_files_company_active_created
+    ON {schema}.files(company_id, created_at DESC, id DESC)
+    WHERE status = 'active'
+      AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_files_pending_expiry
+    ON {schema}.files(upload_expires_at)
+    WHERE status = 'pending_upload'
+      AND deleted_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_files_cleanup_required
+    ON {schema}.files(cleanup_required)
+    WHERE cleanup_required = TRUE;
+
 
 -- ------------------------------------------------------------
--- Documents
+-- File Links
 --
--- Business-level abstraction over files.
+-- Generic record attachment relation.
 --
--- Example:
---
---   documents
---       ↓
---   files
---       ↓
---   actual storage
---
--- model + record_id allows any module to attach documents
--- without Core knowing the module's table structure.
+-- Core owns only the physical file reference and generic link.
+-- Business apps (Documents, CRM, Invoicing, HR, etc.) own their
+-- own document/business records and authorize those records before
+-- calling the file-link service.
 -- ------------------------------------------------------------
 
-CREATE TABLE IF NOT EXISTS {schema}.documents (
+CREATE TABLE IF NOT EXISTS {schema}.file_links (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    company_id UUID
+    company_id UUID NOT NULL
         REFERENCES {schema}.companies(id)
         ON DELETE CASCADE,
 
-    file_id UUID
+    file_id UUID NOT NULL
         REFERENCES {schema}.files(id)
-        ON DELETE SET NULL,
+        ON DELETE CASCADE,
 
-    name VARCHAR(255) NOT NULL,
+    module_key VARCHAR(150),
 
-    document_type VARCHAR(100),
+    model VARCHAR(150) NOT NULL,
+    record_id UUID NOT NULL,
 
-    model VARCHAR(150),
-    record_id UUID,
+    purpose VARCHAR(100) NOT NULL DEFAULT 'attachment',
 
-    description TEXT,
-
-    uploaded_by UUID,
+    created_by UUID,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     deleted_at TIMESTAMPTZ
 );
 
-CREATE INDEX IF NOT EXISTS idx_documents_company
-    ON {schema}.documents(company_id);
+CREATE INDEX IF NOT EXISTS idx_file_links_company
+    ON {schema}.file_links(company_id);
 
-CREATE INDEX IF NOT EXISTS idx_documents_file
-    ON {schema}.documents(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_links_file
+    ON {schema}.file_links(file_id);
 
-CREATE INDEX IF NOT EXISTS idx_documents_record
-    ON {schema}.documents(model, record_id);
+CREATE INDEX IF NOT EXISTS idx_file_links_record
+    ON {schema}.file_links(company_id, model, record_id)
+    WHERE deleted_at IS NULL;
 
-CREATE INDEX IF NOT EXISTS idx_documents_type
-    ON {schema}.documents(document_type);
+CREATE INDEX IF NOT EXISTS idx_file_links_module
+    ON {schema}.file_links(company_id, module_key)
+    WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_file_links_active_unique
+    ON {schema}.file_links(file_id, model, record_id, purpose)
+    WHERE deleted_at IS NULL;
 
 
 -- ============================================================
@@ -1421,7 +1449,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.1.0')
+VALUES ('1.2.0')
 ON CONFLICT (version) DO NOTHING;
 
 

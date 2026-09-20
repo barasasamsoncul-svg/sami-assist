@@ -3,11 +3,12 @@ import 'server-only';
 import crypto from 'crypto';
 
 import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
+  deletePrivateObject,
+  getObjectStorageProviderKey,
+  getPrivateObjectBytes,
+  ObjectStorageError,
+  putPrivateObject,
+} from '@/lib/storage/object-storage';
 
 import {
   withControlTransaction,
@@ -73,8 +74,6 @@ type ValidatedImage = {
 export const MAX_AVATAR_BYTES =
   5 * 1024 * 1024;
 
-const STORAGE_PROVIDER = 'r2';
-
 const ALLOWED_OWNER_TYPES =
   new Set<AvatarOwnerType>([
     'user',
@@ -107,86 +106,6 @@ export class AvatarError extends Error {
     this.name = 'AvatarError';
     this.code = code;
   }
-}
-
-/* ============================================================
-   R2 CONFIGURATION
-
-   Credentials remain server-side.
-
-   We deliberately keep this inside Category 2's avatar service.
-   It can later move behind Category 14's storage abstraction
-   without changing the account-facing avatar contract.
-   ============================================================ */
-
-let r2Client: S3Client | null = null;
-
-function requiredEnvironment(
-  name: string
-): string {
-  const value =
-    process.env[name]?.trim();
-
-  if (!value) {
-    throw new AvatarError(
-      'STORAGE_CONFIGURATION_ERROR',
-      'Avatar storage is not configured.'
-    );
-  }
-
-  return value;
-}
-
-function getBucketName(): string {
-  return requiredEnvironment(
-    'SAMI_STORAGE_BUCKET'
-  );
-}
-
-function getR2Client(): S3Client {
-  if (r2Client) {
-    return r2Client;
-  }
-
-  const provider =
-    requiredEnvironment(
-      'SAMI_STORAGE_PROVIDER'
-    ).toLowerCase();
-
-  if (provider !== 'r2') {
-    throw new AvatarError(
-      'STORAGE_CONFIGURATION_ERROR',
-      'Avatar storage provider is not configured correctly.'
-    );
-  }
-
-  const endpoint =
-    requiredEnvironment(
-      'R2_ENDPOINT'
-    );
-
-  const accessKeyId =
-    requiredEnvironment(
-      'R2_ACCESS_KEY_ID'
-    );
-
-  const secretAccessKey =
-    requiredEnvironment(
-      'R2_SECRET_ACCESS_KEY'
-    );
-
-  r2Client = new S3Client({
-    region: 'auto',
-
-    endpoint,
-
-    credentials: {
-      accessKeyId,
-      secretAccessKey,
-    },
-  });
-
-  return r2Client;
 }
 
 /* ============================================================
@@ -400,6 +319,9 @@ function sha256(
 
 /* ============================================================
    STORAGE OPERATIONS
+
+   Category 14 owns the provider connection. Avatar keeps only
+   avatar-specific validation/integrity behavior.
    ============================================================ */
 
 async function putObject(
@@ -409,46 +331,24 @@ async function putObject(
   checksum: string
 ) {
   try {
-    await getR2Client().send(
-      new PutObjectCommand({
-        Bucket:
-          getBucketName(),
-
-        Key:
-          storageKey,
-
-        Body:
-          body,
-
-        ContentType:
-          mimeType,
-
-        CacheControl:
-          'private, max-age=3600',
-
-        Metadata: {
-          sha256:
-            checksum,
-        },
-      })
-    );
+    await putPrivateObject({
+      storageKey,
+      body,
+      mimeType,
+      cacheControl: 'private, no-store',
+      metadata: {
+        checksumSha256: checksum,
+        purpose: 'avatar',
+      },
+    });
   } catch (error) {
-    if (
-      error instanceof
-        AvatarError
-    ) {
-      throw error;
+    if (error instanceof ObjectStorageError) {
+      throw new AvatarError(
+        'STORAGE_UNAVAILABLE',
+        'Profile image storage is temporarily unavailable.'
+      );
     }
-
-    console.error(
-      '[Avatar] R2 upload failed:',
-      error
-    );
-
-    throw new AvatarError(
-      'STORAGE_UNAVAILABLE',
-      'Profile image storage is temporarily unavailable.'
-    );
+    throw error;
   }
 }
 
@@ -460,35 +360,13 @@ async function deleteObject(
   }
 
   try {
-    await getR2Client().send(
-      new DeleteObjectCommand({
-        Bucket:
-          getBucketName(),
-
-        Key:
-          storageKey,
-      })
-    );
-
+    await deletePrivateObject(storageKey);
     return true;
   } catch (error) {
-    /*
-     * Deletion happens after the authoritative database
-     * transaction. A failed cleanup must not roll back an
-     * already-successful account update.
-     *
-     * Category 14 can later add a durable cleanup/reconciliation
-     * worker. For now we log without exposing credentials.
-     */
-
     console.error(
-      '[Avatar] R2 cleanup failed:',
-      {
-        storageKey,
-        error,
-      }
+      '[SaMi Avatar] Storage cleanup failed:',
+      error
     );
-
     return false;
   }
 }
@@ -497,52 +375,11 @@ async function getObject(
   storageKey: string
 ): Promise<Buffer> {
   try {
-    const result =
-      await getR2Client().send(
-        new GetObjectCommand({
-          Bucket:
-            getBucketName(),
-
-          Key:
-            storageKey,
-        })
-      );
-
-    if (!result.Body) {
-      throw new AvatarError(
-        'AVATAR_NOT_FOUND',
-        'Profile image was not found.'
-      );
-    }
-
-    const bytes =
-      await result.Body
-        .transformToByteArray();
-
-    return Buffer.from(
-      bytes
-    );
+    return await getPrivateObjectBytes(storageKey);
   } catch (error) {
     if (
-      error instanceof
-        AvatarError
-    ) {
-      throw error;
-    }
-
-    const candidate =
-      error as {
-        name?: string;
-        $metadata?: {
-          httpStatusCode?: number;
-        };
-      };
-
-    if (
-      candidate.name ===
-        'NoSuchKey' ||
-      candidate.$metadata
-        ?.httpStatusCode === 404
+      error instanceof ObjectStorageError &&
+      error.code === 'STORAGE_OBJECT_NOT_FOUND'
     ) {
       throw new AvatarError(
         'AVATAR_NOT_FOUND',
@@ -550,17 +387,17 @@ async function getObject(
       );
     }
 
-    console.error(
-      '[Avatar] R2 read failed:',
-      error
-    );
+    if (error instanceof ObjectStorageError) {
+      throw new AvatarError(
+        'STORAGE_UNAVAILABLE',
+        'Profile image storage is temporarily unavailable.'
+      );
+    }
 
-    throw new AvatarError(
-      'STORAGE_UNAVAILABLE',
-      'Profile image storage is temporarily unavailable.'
-    );
+    throw error;
   }
 }
+
 
 /* ============================================================
    DATABASE HELPERS
@@ -845,7 +682,7 @@ export async function replaceAvatar(
               [
                 ownerType,
                 id,
-                STORAGE_PROVIDER,
+                getObjectStorageProviderKey(),
                 storageKey,
                 safeOriginalName,
                 image.mimeType,

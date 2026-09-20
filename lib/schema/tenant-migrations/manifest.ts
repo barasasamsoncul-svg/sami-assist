@@ -30,17 +30,17 @@ export interface TenantCoreMigration {
  *
  * tenant-core.sql currently installs:
  *
- *     1.1.0
+ *     1.2.0
  */
 export const CURRENT_TENANT_CORE_VERSION =
-  '1.1.0';
+  '1.2.0';
 
 /**
  * Migration chain.
  *
- * Category 10 introduces the first real tenant-core migration.
- * Existing 1.0.0 tenant databases are upgraded in place to 1.1.0,
- * while new tenants receive the complete latest tenant-core.sql.
+ * Category 10 introduced the first tenant-core migration.
+ * Category 14 extends core file/storage infrastructure to 1.2.0.
+ * New tenants receive the complete latest tenant-core.sql.
  */
 export const TENANT_CORE_MIGRATIONS:
   TenantCoreMigration[] = [
@@ -49,5 +49,11 @@ export const TENANT_CORE_MIGRATIONS:
       fromVersion: '1.0.0',
       toVersion: '1.1.0',
       fileName: '001-core-1.0.0-to-1.1.0.sql',
+    },
+    {
+      key: 'core-1.1.0-to-1.2.0',
+      fromVersion: '1.1.0',
+      toVersion: '1.2.0',
+      fileName: '002-core-1.1.0-to-1.2.0.sql',
     },
   ];
