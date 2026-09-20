@@ -27,6 +27,12 @@ import {
 
 import { useRouter } from 'next/navigation';
 
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
@@ -305,6 +311,45 @@ export default function SessionsSettings() {
       ActionState | null
     >(null);
 
+
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+    showSuccess,
+    confirmAction,
+  } =
+    useSaMiOverlay();
+
+  useEffect(
+    () => {
+      if (!actionState) return;
+
+      if (
+        actionState.type ===
+        'success'
+      ) {
+        showSuccess(
+          'Sessions updated',
+          actionState.message,
+        );
+      } else {
+        showError(
+          'Session action failed',
+          actionState.message,
+        );
+      }
+
+      setActionState(
+        null,
+      );
+    },
+    [
+      actionState,
+      showError,
+      showSuccess,
+    ],
+  );
   /* ==========================================================
      DERIVED
      ========================================================== */
@@ -541,7 +586,7 @@ export default function SessionsSettings() {
      REVOKE ONE OTHER SESSION
      ========================================================== */
 
-  async function revokeOneSession(
+  async function performRevokeOneSession(
     session:
       ActiveSession
   ) {
@@ -549,19 +594,6 @@ export default function SessionsSettings() {
       session.isCurrent ||
       revokeSessionId ||
       revokingOthers
-    ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        `Sign out ${getDeviceLabel(
-          session
-        )}?`
-      );
-
-    if (
-      !confirmed
     ) {
       return;
     }
@@ -670,26 +702,12 @@ export default function SessionsSettings() {
      REVOKE ALL OTHER SESSIONS
      ========================================================== */
 
-  async function revokeOtherSessions() {
+  async function performRevokeOtherSessions() {
     if (
       otherSessions.length ===
         0 ||
       revokingOthers ||
       revokeSessionId
-    ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        otherSessions.length ===
-          1
-          ? 'Sign out the other active device?'
-          : `Sign out all ${otherSessions.length} other active devices?`
-      );
-
-    if (
-      !confirmed
     ) {
       return;
     }
@@ -795,20 +813,9 @@ export default function SessionsSettings() {
      LOGOUT CURRENT DEVICE
      ========================================================== */
 
-  async function logoutCurrentDevice() {
+  async function performLogoutCurrentDevice() {
     if (
       signingOut
-    ) {
-      return;
-    }
-
-    const confirmed =
-      window.confirm(
-        'Sign out this device?'
-      );
-
-    if (
-      !confirmed
     ) {
       return;
     }
@@ -883,6 +890,77 @@ export default function SessionsSettings() {
     }
   }
 
+  function revokeOneSession(
+    session: ActiveSession,
+  ) {
+    if (
+      session.isCurrent ||
+      revokeSessionId ||
+      revokingOthers
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Sign out this device?',
+      message:
+        `Sign out ${getDeviceLabel(session)}? That device will need to sign in again.`,
+      confirmLabel:
+        'Sign out device',
+      onConfirm: () => {
+        void performRevokeOneSession(
+          session,
+        );
+      },
+    });
+  }
+
+
+  function revokeOtherSessions() {
+    if (
+      otherSessions.length === 0 ||
+      revokingOthers ||
+      revokeSessionId
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Sign out other devices?',
+      message:
+        otherSessions.length === 1
+          ? 'Sign out the other active device? It will need to sign in again.'
+          : `Sign out all ${otherSessions.length} other active devices? They will all need to sign in again.`,
+      confirmLabel:
+        'Sign out devices',
+      onConfirm: () => {
+        void performRevokeOtherSessions();
+      },
+    });
+  }
+
+
+  function logoutCurrentDevice() {
+    if (signingOut) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Sign out this device?',
+      message:
+        'Your current SaMi session will end and you will return to the sign-in page.',
+      confirmLabel:
+        'Sign out',
+      onConfirm: () => {
+        void performLogoutCurrentDevice();
+      },
+    });
+  }
+
+
   /* ==========================================================
      LOADING
      ========================================================== */
@@ -913,7 +991,18 @@ export default function SessionsSettings() {
      ========================================================== */
 
   return (
-    <div className="max-w-5xl">
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
+
+      <div className="max-w-5xl">
 
       {/* ========================================================
           HEADER
@@ -962,55 +1051,10 @@ export default function SessionsSettings() {
       </div>
 
       {/* ========================================================
-          STATUS
-          ======================================================== */}
-
-      {actionState && (
-        <div
-          role={
-            actionState.type ===
-            'error'
-              ? 'alert'
-              : 'status'
-          }
-          className={`mt-5 flex items-start gap-3 rounded-2xl border px-4 py-3 ${
-            actionState.type ===
-            'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-300'
-              : 'border-red-200 bg-red-50 text-red-800 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-300'
-          }`}
-        >
-          {actionState.type ===
-          'success' ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          )}
-
-          <p className="flex-1 text-xs font-semibold leading-5">
-            {actionState.message}
-          </p>
-
-          <button
-            type="button"
-            aria-label="Dismiss message"
-            onClick={() =>
-              setActionState(
-                null
-              )
-            }
-            className="text-lg leading-none opacity-60 transition hover:opacity-100"
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      {/* ========================================================
           OVERVIEW
           ======================================================== */}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+      <div className="mt-5 flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible">
 
         <SummaryCard
           icon={
@@ -1228,7 +1272,8 @@ export default function SessionsSettings() {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
