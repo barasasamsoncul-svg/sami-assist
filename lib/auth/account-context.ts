@@ -1853,6 +1853,14 @@ async function getTenantModules(
           AND m.deleted_at
               IS NULL
 
+          AND LOWER(
+            COALESCE(
+              m.status,
+              'active'
+            )
+          ) =
+          'active'
+
         ORDER BY
           m.name ASC
       `,
