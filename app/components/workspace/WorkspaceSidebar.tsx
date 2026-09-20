@@ -464,6 +464,7 @@ type Props = {
 type SettingsKey =
   | 'account'
   | 'workspace'
+  | 'organization'
   | 'users'
   | 'roles'
   | 'apps'
@@ -1285,6 +1286,32 @@ export default function WorkspaceSidebar({
 
             icon:
               Building2,
+          });
+        }
+
+
+        if (
+          navigationPermissions
+            .organizationView ||
+          navigationPermissions
+            .organizationManage ||
+          navigationPermissions
+            .companiesView ||
+          navigationPermissions
+            .companiesManage
+        ) {
+          items.push({
+            key:
+              'organization',
+
+            label:
+              'Organization',
+
+            href:
+              '/settings?tab=organization',
+
+            icon:
+              Store,
           });
         }
 
