@@ -183,6 +183,12 @@ test('Category 6: independent logical backup provider exists and cannot overwrit
   assert.match(recovery, /postgres-logical-backup-provider/);
   assert.match(recovery, /restoreTenantRecoveryPoint/);
   assert.match(recovery, /deleteTenantRecoveryPoint/);
+  assert.match(recovery, /\$4::varchar/);
+  assert.match(recovery, /\$2::varchar/);
+  assert.match(
+    recovery,
+    /provider\.deleteRecoveryPoint\(\s*createdProviderReference\s*\)/i,
+  );
   assert.match(
     recovery,
     /registry cutover is a separate explicit administrative action/i,
