@@ -2,6 +2,11 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  resolveAppNavigation,
+  sortAppNavigation,
+} from '@/lib/apps/navigation-registry';
+
 
 /* ============================================================
    TYPES
@@ -102,8 +107,18 @@ export interface RoleContext {
 
 export interface ModuleContext {
   key: string;
+  registryKey: string;
   name: string;
   status: string;
+  description: string;
+  href: string;
+  iconKey: string;
+  category: string;
+  categoryLabel: string;
+  order: number;
+  recommended: boolean;
+  keywords: string[];
+  registered: boolean;
 }
 
 
@@ -1847,33 +1862,80 @@ async function getTenantModules(
     );
 
 
-  return result.rows.map(
-    (
-      row:
-        Record<string, unknown>,
-    ) => ({
-      key:
-        typeof row.key ===
-          'string'
-          ? row.key
-          : '',
-
-      name:
-        typeof row.name ===
-          'string' &&
-        row.name
-          ? row.name
-          : typeof row.key ===
-              'string'
+  const modules =
+    result.rows.map(
+      (
+        row:
+          Record<string, unknown>,
+      ) => {
+        const key =
+          typeof row.key ===
+            'string'
             ? row.key
-            : '',
+            : '';
 
-      status:
-        typeof row.status ===
-          'string'
-          ? row.status
-          : 'unknown',
-    }),
+        const databaseName =
+          typeof row.name ===
+            'string' &&
+          row.name
+            ? row.name
+            : key;
+
+        const navigation =
+          resolveAppNavigation({
+            key,
+            name:
+              databaseName,
+          });
+
+        return {
+          key:
+            navigation.key,
+
+          registryKey:
+            navigation.registryKey,
+
+          name:
+            navigation.name,
+
+          status:
+            typeof row.status ===
+              'string'
+              ? row.status
+              : 'unknown',
+
+          description:
+            navigation.description,
+
+          href:
+            navigation.href,
+
+          iconKey:
+            navigation.iconKey,
+
+          category:
+            navigation.category,
+
+          categoryLabel:
+            navigation.categoryLabel,
+
+          order:
+            navigation.order,
+
+          recommended:
+            navigation.recommended,
+
+          keywords:
+            navigation.keywords,
+
+          registered:
+            navigation.registered,
+        } satisfies ModuleContext;
+      },
+    );
+
+  return sortAppNavigation(
+    modules,
   );
 }
 
