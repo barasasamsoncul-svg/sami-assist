@@ -50,6 +50,16 @@ export interface WorkspaceShellAccess {
   subscription:
     SubscriptionContext | null;
 
+  /**
+   * Core SaMi AI entitlement for this workspace.
+   *
+   * This is deliberately NOT derived from ai.use / ai.manage.
+   * Every active workspace member receives AI when the workspace
+   * subscription includes it.
+   */
+  aiAvailable:
+    boolean;
+
   canManageApps:
     boolean;
 
@@ -72,6 +82,24 @@ const HIDDEN_MODULE_STATUSES =
     'uninstalled',
     'removed',
     'inactive',
+  ]);
+
+
+/*
+ * Category 22/23 bridge.
+ *
+ * The current subscription model does not yet expose a dedicated
+ * AI entitlement flag. Until Usage / Limits / Entitlements is built,
+ * active and trial subscriptions are treated as AI-entitled.
+ *
+ * When Category 23 introduces a real plan entitlement such as
+ * ai.enabled, ONLY isWorkspaceAiAvailable() should need changing.
+ */
+const AI_ALLOWED_SUBSCRIPTION_STATUSES =
+  new Set([
+    'active',
+    'trial',
+    'trialing',
   ]);
 
 
@@ -141,6 +169,46 @@ function getEffectiveModuleKeys(
 
 
   return result;
+}
+
+
+/* ================================================================
+   SaMi AI ENTITLEMENT
+
+   SaMi AI is a CORE PLATFORM capability.
+
+   Access rule:
+
+     active workspace membership
+            +
+     workspace billing entitlement
+            ↓
+        SaMi AI available
+
+   Authorization rule:
+
+     SaMi AI access <= normal user data access
+
+   Therefore roles do NOT switch AI on/off. Roles, companies and
+   record rules only determine what SaMi AI may read or act on.
+   ================================================================ */
+
+export function isWorkspaceAiAvailable(
+  subscription:
+    SubscriptionContext | null,
+): boolean {
+  if (
+    !subscription
+  ) {
+    return false;
+  }
+
+
+  return AI_ALLOWED_SUBSCRIPTION_STATUSES.has(
+    normalizeKey(
+      subscription.status,
+    ),
+  );
 }
 
 
@@ -248,6 +316,19 @@ export function resolveWorkspaceShellAccess(
 
 
   /* ==============================================================
+     AI
+
+     Resolve this BEFORE subscription minimization. Ordinary users
+     may use AI without receiving plan / billing information.
+     ============================================================== */
+
+  const aiAvailable =
+    isWorkspaceAiAvailable(
+      subscription,
+    );
+
+
+  /* ==============================================================
      RESULT
      ============================================================== */
 
@@ -263,6 +344,8 @@ export function resolveWorkspaceShellAccess(
       canViewBilling
         ? subscription
         : null,
+
+    aiAvailable,
 
     canManageApps,
 

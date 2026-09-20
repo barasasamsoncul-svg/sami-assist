@@ -97,6 +97,9 @@ export default async function SettingsPage() {
           subscription:
             null,
 
+          aiAvailable:
+            false,
+
           canManageApps:
             false,
 
@@ -140,36 +143,31 @@ export default async function SettingsPage() {
       }
 
       /*
-       * Already removed unless this person may view billing.
+       * Billing information remains minimized independently from
+       * AI entitlement.
        */
       subscription={
         shell.subscription
       }
 
-      /*
-       * Personal working applications.
-       */
       accessibleModules={
         shell.accessibleModules
       }
 
-      /*
-       * Complete installed application set available only to an
-       * Apps administrator / owner.
-       */
       managedModules={
         shell.managedModules
       }
 
       capabilities={{
         /*
-         * Normal workspace use.
+         * Personal core capability.
+         *
+         * Every active workspace user gets this when the workspace
+         * billing state allows SaMi AI.
          */
-        aiUse:
-          can(
-            SAMI_PERMISSIONS
-              .AI_USE,
-          ),
+        aiAvailable:
+          shell.aiAvailable,
+
 
         filesView:
           can(
@@ -184,11 +182,6 @@ export default async function SettingsPage() {
           ),
 
 
-        /*
-         * Administration.
-         *
-         * workspace.view is deliberately NOT used here.
-         */
         workspaceManage:
           can(
             SAMI_PERMISSIONS
@@ -198,18 +191,6 @@ export default async function SettingsPage() {
 
         appsManage:
           shell.canManageApps,
-
-
-        /*
-         * ai.use allows using SaMi AI.
-         *
-         * ai.manage allows configuring SaMi AI.
-         */
-        aiManage:
-          can(
-            SAMI_PERMISSIONS
-              .AI_MANAGE,
-          ),
 
 
         billingView:

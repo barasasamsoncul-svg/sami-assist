@@ -285,10 +285,19 @@ type CompanyContextResponse = {
 
 
 /* ================================================================
-   NAVIGATION PERMISSIONS
+   NAVIGATION PERMISSIONS / ENTITLEMENTS
    ================================================================ */
 
 type NavigationPermissionState = {
+  /*
+   * Core platform entitlement.
+   *
+   * Unlike normal fields below, this is NOT a role permission.
+   */
+  aiAvailable:
+    boolean;
+
+
   workspaceView:
     boolean;
 
@@ -345,10 +354,15 @@ type NavigationPermissionState = {
     boolean;
 
 
-  aiUse:
+  /*
+   * Deprecated compatibility aliases returned temporarily by
+   * /api/workspace/navigation while the old AI permission model is
+   * retired from dependent code.
+   */
+  aiUse?:
     boolean;
 
-  aiManage:
+  aiManage?:
     boolean;
 
 
@@ -387,6 +401,11 @@ type NavigationPermissionResponse = {
    ================================================================ */
 
 type Capabilities = {
+  /*
+   * Legacy compatibility prop.
+   *
+   * AI availability is now resolved from navigation.aiAvailable.
+   */
   aiEnabled?:
     boolean;
 
@@ -1091,7 +1110,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     NAVIGATION AUTHORIZATION
+     NAVIGATION AUTHORIZATION / ENTITLEMENTS
      ============================================================ */
 
   const [
@@ -1190,12 +1209,14 @@ export default function WorkspaceSidebar({
      NORMAL WORKSPACE CAPABILITIES
      ============================================================ */
 
+  /*
+   * SaMi AI is now a core billing entitlement.
+   *
+   * Do NOT gate this with ai.use or ai.manage.
+   */
   const canUseAi =
-    capabilities
-      ?.aiEnabled !==
-      false &&
     navigationPermissions
-      ?.aiUse ===
+      ?.aiAvailable ===
       true;
 
 
@@ -1225,10 +1246,11 @@ export default function WorkspaceSidebar({
      Using a feature does NOT grant access to its administration.
 
        workspace.view != workspace.manage
-       ai.use         != ai.manage
-       module access  != apps.manage
+       module access   != apps.manage
 
-     ============================================================== */
+     SaMi AI is intentionally absent here because AI settings are
+     personal and entitlement-driven.
+     ============================================================ */
 
   const adminSettingsChildren =
     useMemo<
@@ -1268,12 +1290,7 @@ export default function WorkspaceSidebar({
 
 
         /*
-         * Users now includes:
-         *
-         * - active members
-         * - suspended members
-         * - pending invitations
-         * - expired/revoked invitations
+         * Unified employee/member/invitation management surface.
          */
         if (
           navigationPermissions
@@ -1286,7 +1303,7 @@ export default function WorkspaceSidebar({
               'users',
 
             label:
-              'Users',
+              'People & Access',
 
             href:
               '/settings/users',
@@ -1339,29 +1356,6 @@ export default function WorkspaceSidebar({
 
         if (
           navigationPermissions
-            .aiManage &&
-          capabilities
-            ?.aiEnabled !==
-            false
-        ) {
-          items.push({
-            key:
-              'ai',
-
-            label:
-              'SaMi AI',
-
-            href:
-              '/settings?tab=ai',
-
-            icon:
-              Bot,
-          });
-        }
-
-
-        if (
-          navigationPermissions
             .billingView ||
           navigationPermissions
             .billingManage
@@ -1387,8 +1381,6 @@ export default function WorkspaceSidebar({
 
       [
         navigationPermissions,
-        capabilities
-          ?.aiEnabled,
       ],
     );
 
@@ -1724,7 +1716,7 @@ export default function WorkspaceSidebar({
 
 
   /* ============================================================
-     LOAD NAVIGATION PERMISSIONS
+     LOAD NAVIGATION PERMISSIONS / ENTITLEMENTS
      ============================================================ */
 
   const loadNavigationPermissions =
@@ -1994,7 +1986,7 @@ export default function WorkspaceSidebar({
 
 
     /*
-     * Remove previous workspace permissions immediately.
+     * Remove previous workspace permissions/entitlements immediately.
      */
     setNavigationPermissions(
       null,
@@ -2096,7 +2088,8 @@ export default function WorkspaceSidebar({
       error
     ) {
       /*
-       * Restore authorization for the still-current workspace.
+       * Restore authorization/entitlement for the still-current
+       * workspace after a failed switch.
        */
       void loadNavigationPermissions();
 
@@ -3356,6 +3349,28 @@ export default function WorkspaceSidebar({
                       onClose
                     }
                   />
+
+
+                  {canUseAi && (
+                    <ChildNavLink
+                      href="/settings?tab=ai"
+                      icon={
+                        Bot
+                      }
+                      label="SaMi AI"
+                      active={
+                        pathname ===
+                          '/settings' &&
+                        searchParams.get(
+                          'tab',
+                        ) ===
+                          'ai'
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  )}
 
                 </div>
 

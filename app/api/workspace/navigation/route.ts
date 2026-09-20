@@ -3,12 +3,20 @@ import {
 } from 'next/server';
 
 import {
+  getAccountContextForUser,
+} from '@/lib/auth/account-context';
+
+import {
   getPermissionContext,
 } from '@/lib/auth/permission-context';
 
 import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
+
+import {
+  resolveWorkspaceShellAccess,
+} from '@/lib/auth/workspace-shell';
 
 import {
   TenantContextError,
@@ -52,12 +60,34 @@ function json(
 
 /* ================================================================
    GET NAVIGATION CAPABILITIES
+
+   SaMi AI is entitlement-driven, not role-driven.
    ================================================================ */
 
 export async function GET() {
   try {
     const context =
       await getPermissionContext();
+
+
+    const account =
+      await getAccountContextForUser(
+        context.userId,
+        context.tenantId,
+      );
+
+
+    const shell =
+      resolveWorkspaceShellAccess({
+        modules:
+          account.modules,
+
+        subscription:
+          account.subscription,
+
+        permissions:
+          context,
+      });
 
 
     const has =
@@ -119,13 +149,6 @@ export async function GET() {
       );
 
 
-    const aiManage =
-      has(
-        SAMI_PERMISSIONS
-          .AI_MANAGE,
-      );
-
-
     const billingManage =
       has(
         SAMI_PERMISSIONS
@@ -145,6 +168,29 @@ export async function GET() {
         true,
 
       navigation: {
+        /*
+         * Core platform entitlement.
+         *
+         * The sidebar and personal settings use this field.
+         */
+        aiAvailable:
+          shell.aiAvailable,
+
+
+        /*
+         * Temporary compatibility aliases.
+         *
+         * ai.use / ai.manage are no longer the canonical shell
+         * authorization model. They remain here only so an older
+         * client does not suddenly lose access during migration.
+         */
+        aiUse:
+          shell.aiAvailable,
+
+        aiManage:
+          false,
+
+
         workspaceManage,
 
         workspaceView:
@@ -226,16 +272,6 @@ export async function GET() {
           has(
             SAMI_PERMISSIONS
               .NOTIFICATIONS_VIEW,
-          ),
-
-
-        aiManage,
-
-        aiUse:
-          aiManage ||
-          has(
-            SAMI_PERMISSIONS
-              .AI_USE,
           ),
 
 

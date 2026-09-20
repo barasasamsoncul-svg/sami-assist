@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import Link from 'next/link';
+
 import {
   AppWindow,
   Bot,
@@ -7,6 +9,7 @@ import {
   Loader2,
   Menu,
   Moon,
+  Sparkles,
   Sun,
   type LucideIcon,
 } from 'lucide-react';
@@ -15,6 +18,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type ReactNode,
 } from 'react';
 
 import {
@@ -137,10 +141,14 @@ type ModuleData = {
 
 type SettingsCapabilities = {
   /*
-   * Normal workspace capabilities.
+   * Core personal platform capability.
+   *
+   * SaMi AI is controlled by workspace billing entitlement,
+   * NOT ai.use / ai.manage role permissions.
    */
-  aiUse:
+  aiAvailable:
     boolean;
+
 
   filesView:
     boolean;
@@ -156,9 +164,6 @@ type SettingsCapabilities = {
     boolean;
 
   appsManage:
-    boolean;
-
-  aiManage:
     boolean;
 
 
@@ -507,14 +512,16 @@ export default function SettingsClient({
   /* ==============================================================
      ALLOWED SETTINGS
 
-     IMPORTANT:
+     PERSONAL:
+       - My Account
+       - SaMi AI when workspace billing entitlement allows it
 
-     My Account is personal.
+     ADMINISTRATION:
+       - Workspace
+       - Apps
+       - Billing
 
-     Workspace / Apps / AI configuration are ADMINISTRATION and
-     therefore require their manage permissions.
-
-     Being able to USE something does not expose its settings.
+     SaMi AI is deliberately NOT an owner/admin-controlled setting.
      ============================================================== */
 
   const allowedSections =
@@ -524,6 +531,17 @@ export default function SettingsClient({
           new Set<Section>([
             'account',
           ]);
+
+
+        if (
+          hasWorkspaceAccess &&
+          capabilities
+            .aiAvailable
+        ) {
+          sections.add(
+            'ai',
+          );
+        }
 
 
         if (
@@ -543,16 +561,6 @@ export default function SettingsClient({
         ) {
           sections.add(
             'apps',
-          );
-        }
-
-
-        if (
-          capabilities
-            .aiManage
-        ) {
-          sections.add(
-            'ai',
           );
         }
 
@@ -607,10 +615,7 @@ export default function SettingsClient({
 
 
       /*
-       * Fail closed.
-       *
-       * Manually typing a protected settings URL never creates
-       * access.
+       * Fail closed for protected administrative pages.
        */
       setActive(
         'account',
@@ -1002,9 +1007,13 @@ export default function SettingsClient({
           }
 
           capabilities={{
+            /*
+             * Compatibility prop only. WorkspaceSidebar now uses
+             * navigation.aiAvailable as the canonical AI source.
+             */
             aiEnabled:
               capabilities
-                .aiUse,
+                .aiAvailable,
 
             filesEnabled:
               capabilities
@@ -1122,6 +1131,20 @@ export default function SettingsClient({
             )}
 
 
+            {/* PERSONAL SaMi AI */}
+
+            {active ===
+              'ai' &&
+              capabilities
+                .aiAvailable && (
+                <SettingsSurface>
+
+                  <AiSection />
+
+                </SettingsSurface>
+              )}
+
+
             {/* WORKSPACE ADMINISTRATION */}
 
             {active ===
@@ -1146,20 +1169,6 @@ export default function SettingsClient({
                       managedModules
                     }
                   />
-
-                </SettingsSurface>
-              )}
-
-
-            {/* SAMI AI ADMINISTRATION */}
-
-            {active ===
-              'ai' &&
-              capabilities
-                .aiManage && (
-                <SettingsSurface>
-
-                  <AiSection />
 
                 </SettingsSurface>
               )}
@@ -1218,7 +1227,7 @@ function SettingsSurface({
   children,
 }: {
   children:
-    React.ReactNode;
+    ReactNode;
 }) {
   return (
     <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
@@ -1354,7 +1363,15 @@ function AppsSection({
 
 
 /* ================================================================
-   SAMI AI ADMINISTRATION
+   PERSONAL SaMi AI SETTINGS
+
+   This is deliberately NOT an administration surface.
+
+   The owner cannot grant/remove another user's core AI access.
+   Billing entitlement controls availability.
+
+   Category 18 will later own deeper AI preferences such as response
+   style, confirmations, history and advanced AI behavior.
    ================================================================ */
 
 function AiSection() {
@@ -1366,14 +1383,14 @@ function AiSection() {
         <div className="flex items-start gap-4">
 
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
-            <Bot className="h-5 w-5" />
+            <Sparkles className="h-5 w-5" />
           </div>
 
 
-          <div>
+          <div className="min-w-0 flex-1">
 
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
-              Administration
+              Personal AI
             </p>
 
             <h2 className="mt-1 text-base font-bold">
@@ -1382,7 +1399,7 @@ function AiSection() {
 
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-300">
-              Configure workspace-level SaMi AI behavior and governance. Ordinary users with ai.use can use SaMi AI but do not receive this administration page.
+              SaMi AI is part of your workspace experience whenever the workspace subscription includes AI. Your workspace owner does not separately grant or remove this personal access.
             </p>
 
           </div>
@@ -1392,17 +1409,72 @@ function AiSection() {
       </div>
 
 
-      <div className="mt-4 rounded-xl border border-slate-200 p-4 dark:border-white/10">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
 
-        <p className="text-xs font-semibold">
-          Permission-safe AI
-        </p>
+        <AiInfoCard
+          title="Permission-safe context"
+          description="SaMi AI can only use applications, companies and records your normal account is already authorized to access."
+        />
 
-        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-          SaMi AI must never access applications, companies or records beyond the effective permissions of the person making the request.
-        </p>
+
+        <AiInfoCard
+          title="Personal workspace"
+          description="AI access follows your signed-in account inside the current workspace and company context."
+        />
+
+
+        <AiInfoCard
+          title="Actions stay authorized"
+          description="Using AI never bypasses normal SaMi permissions, company scope or record-level access rules."
+        />
+
+
+        <AiInfoCard
+          title="Billing controls availability"
+          description="If the workspace no longer has an AI entitlement, SaMi AI becomes unavailable to users in that workspace."
+        />
 
       </div>
+
+
+      <div className="mt-5">
+
+        <Link
+          href="/ai"
+          className="inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-blue-600 to-cyan-500 px-4 text-xs font-semibold text-white transition hover:opacity-95"
+        >
+          <Bot className="h-4 w-4" />
+
+          Open SaMi AI
+        </Link>
+
+      </div>
+
+    </div>
+  );
+}
+
+
+function AiInfoCard({
+  title,
+  description,
+}: {
+  title:
+    string;
+
+  description:
+    string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
+
+      <p className="text-xs font-semibold">
+        {title}
+      </p>
+
+      <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+        {description}
+      </p>
 
     </div>
   );

@@ -191,6 +191,9 @@ export default async function DashboardPage() {
 
   /* ==============================================================
      DYNAMIC DASHBOARD
+
+     Module providers still execute only for modules the current
+     user may access. This same boundary is later used by SaMi AI.
      ============================================================== */
 
   const dashboard =
@@ -243,14 +246,10 @@ export default async function DashboardPage() {
       }
 
       /*
-       * These are the REAL assigned roles.
+       * Real assigned business roles.
        *
-       * Example:
-       * - Invoicing Clerk
-       * - Sales Manager
-       * - Accountant
-       *
-       * Not merely Workspace Member.
+       * Membership access level remains structural and does not
+       * replace business-role names.
        */
       roles={
         permissionContext.roles.map(
@@ -273,21 +272,18 @@ export default async function DashboardPage() {
         )
       }
 
-      /*
-       * All active workspace memberships this user can actually
-       * switch into.
-       */
       workspaces={
         workspaces
       }
 
+      /*
+       * May be null for users without billing visibility.
+       * AI access remains available through shell.aiAvailable.
+       */
       subscription={
         shell.subscription
       }
 
-      /*
-       * User-accessible apps only.
-       */
       modules={
         shell.accessibleModules
       }
@@ -301,11 +297,12 @@ export default async function DashboardPage() {
       }
 
       capabilities={{
+        /*
+         * Core AI entitlement.
+         * No ai.use / ai.manage permission check.
+         */
         ai:
-          can(
-            SAMI_PERMISSIONS
-              .AI_USE,
-          ),
+          shell.aiAvailable,
 
         files:
           can(
@@ -320,10 +317,6 @@ export default async function DashboardPage() {
           ),
 
 
-        /*
-         * Administration requires manage-level access where
-         * appropriate.
-         */
         workspaceManage:
           can(
             SAMI_PERMISSIONS
@@ -335,12 +328,20 @@ export default async function DashboardPage() {
           can(
             SAMI_PERMISSIONS
               .USERS_VIEW,
+          ) ||
+          can(
+            SAMI_PERMISSIONS
+              .USERS_MANAGE,
           ),
 
         invitationsView:
           can(
             SAMI_PERMISSIONS
               .INVITATIONS_VIEW,
+          ) ||
+          can(
+            SAMI_PERMISSIONS
+              .INVITATIONS_MANAGE,
           ),
 
 
@@ -348,14 +349,15 @@ export default async function DashboardPage() {
           can(
             SAMI_PERMISSIONS
               .ROLES_VIEW,
+          ) ||
+          can(
+            SAMI_PERMISSIONS
+              .ROLES_MANAGE,
           ),
 
 
         appsManage:
-          can(
-            SAMI_PERMISSIONS
-              .APPS_MANAGE,
-          ),
+          shell.canManageApps,
 
 
         billingView:
