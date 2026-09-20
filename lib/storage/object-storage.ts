@@ -305,7 +305,7 @@ function getStorageClient(): {
 
   return {
     client:
-      cachedClient,
+      cachedClient!,
     config,
   };
 }
