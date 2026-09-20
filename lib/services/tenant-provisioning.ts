@@ -90,7 +90,7 @@ const DEFAULT_REGION =
   'us-east-1';
 
 const CORE_SCHEMA_VERSION =
-  '1.0.0';
+  '1.1.0';
 
 const PROVISIONING_LOCK_NAMESPACE =
   741921;
