@@ -330,7 +330,7 @@ test('Category 11: Settings sections do not stack a second persistent navigation
 
   assert.match(
     organizationCompact,
-    /params\.delete\( ['"]organization['"] ,? \)/,
+    /params\.delete\(\s*['"]organization['"]\s*,?\s*\)/,
   );
 
   assert.doesNotMatch(
