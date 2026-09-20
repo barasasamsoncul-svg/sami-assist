@@ -249,13 +249,13 @@ test('Category 10: tenant migration connections require SSL for hosted PostgreSQ
 
   assert.match(
     tenantDb,
-    /shouldUseTenantSsl\(\s*database\.databaseHost\s*\)/i,
+    /shouldUseTenantSsl\(\s*database\.databaseHost\s*,?\s*\)/i,
     'Registry-resolved tenant pools must apply hosted-provider SSL.',
   );
 
   assert.match(
     tenantDb,
-    /shouldUseTenantSsl\(\s*host\s*\)/i,
+    /shouldUseTenantSsl\(\s*host\s*,?\s*\)/i,
     'Compatibility tenant pools must apply the same SSL policy.',
   );
 });
