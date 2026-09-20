@@ -1,0 +1,170 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const root = process.cwd();
+
+async function source(file) {
+  return readFile(path.join(root, file), 'utf8');
+}
+
+function compact(value) {
+  return value.replace(/\s+/g, ' ');
+}
+
+test('Category 10: tenant core 1.1.0 contains the organization profile schema and real migration', async () => {
+  const [core, manifest, migration, provisioning] = await Promise.all([
+    source('lib/schema/tenant-core.sql'),
+    source('lib/schema/tenant-migrations/manifest.ts'),
+    source('lib/schema/tenant-migrations/migrations/001-core-1.0.0-to-1.1.0.sql'),
+    source('lib/services/tenant-provisioning.ts'),
+  ]);
+
+  assert.match(core, /company_code\s+VARCHAR\(50\)/i);
+  assert.match(core, /address_line1\s+VARCHAR\(255\)/i);
+  assert.match(core, /country_code\s+VARCHAR\(2\)/i);
+  assert.match(core, /locale\s+VARCHAR\(20\)/i);
+  assert.match(core, /fiscal_year_start_month/i);
+  assert.match(core, /VALUES\s*\(\s*['"]1\.1\.0['"]\s*\)/i);
+
+  assert.match(manifest, /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.1\.0['"]/i);
+  assert.match(manifest, /core-1\.0\.0-to-1\.1\.0/i);
+  assert.match(manifest, /001-core-1\.0\.0-to-1\.1\.0\.sql/i);
+
+  assert.match(migration, /ALTER TABLE companies/i);
+  assert.match(migration, /ALTER TABLE branches/i);
+  assert.match(migration, /UPDATE companies\s+SET address_line1 = address/i);
+  assert.match(migration, /UPDATE branches\s+SET address_line1 = address/i);
+
+  assert.match(provisioning, /CORE_SCHEMA_VERSION\s*=\s*['"]1\.1\.0['"]/i);
+});
+
+test('Category 10: organization service uses trusted company context and separate organization/company permissions', async () => {
+  const service = compact(
+    await source('lib/services/organization-profile.ts'),
+  );
+
+  assert.match(service, /getCompanyPermissionContext/);
+  assert.match(service, /SAMI_PERMISSIONS\.ORGANIZATION_VIEW/);
+  assert.match(service, /SAMI_PERMISSIONS\.ORGANIZATION_MANAGE/);
+  assert.match(service, /SAMI_PERMISSIONS\.COMPANIES_VIEW/);
+  assert.match(service, /SAMI_PERMISSIONS\.COMPANIES_MANAGE/);
+
+  assert.match(service, /context\.currentCompanyId/);
+  assert.match(service, /context\.tenantId/);
+  assert.match(service, /context\.userId/);
+
+  assert.match(service, /organization\.profile\.updated/);
+  assert.match(service, /organization\.branch\.created/);
+  assert.match(service, /organization\.company\.created/);
+});
+
+test('Category 10: browser APIs never accept a tenant ID and delegate to trusted services', async () => {
+  const files = [
+    'app/api/workspace/organization/route.ts',
+    'app/api/workspace/organization/branches/route.ts',
+    'app/api/workspace/organization/branches/[branchId]/route.ts',
+    'app/api/workspace/companies/route.ts',
+    'app/api/workspace/companies/[companyId]/route.ts',
+  ];
+
+  const combined = compact(
+    (
+      await Promise.all(
+        files.map(file => source(file)),
+      )
+    ).join('\n'),
+  );
+
+  assert.doesNotMatch(
+    combined,
+    /body\.tenantId|body\[['"]tenantId['"]\]|searchParams\.get\(['"]tenantId['"]\)/i,
+    'Category 10 APIs must not trust a browser-supplied tenant ID.',
+  );
+
+  assert.match(combined, /getOrganizationState/);
+  assert.match(combined, /updateOrganizationProfile/);
+  assert.match(combined, /createOrganizationBranch/);
+  assert.match(combined, /createWorkspaceCompany/);
+  assert.match(combined, /archiveWorkspaceCompany/);
+  assert.match(combined, /reactivateWorkspaceCompany/);
+});
+
+test('Category 10: company lifecycle cannot archive the current or last company and protects user contexts', async () => {
+  const service = compact(
+    await source('lib/services/organization-profile.ts'),
+  );
+
+  assert.match(
+    service,
+    /companyId === context\.currentCompanyId/,
+  );
+
+  assert.match(
+    service,
+    /A workspace must keep at least one active company/i,
+  );
+
+  assert.match(
+    service,
+    /Reassign users who only have access to this company/i,
+  );
+
+  assert.match(
+    service,
+    /default_company_id = \$2/i,
+  );
+
+  assert.match(
+    service,
+    /current_company_id = \$2/i,
+  );
+
+  assert.match(
+    service,
+    /selected_company_ids/i,
+  );
+});
+
+test('Category 10: settings UI exposes organization profile, branches, companies and history through permission-aware navigation', async () => {
+  const [component, settings, page, sidebar] = await Promise.all([
+    source('app/settings/components/OrganizationSettings.tsx'),
+    source('app/settings/SettingsClient.tsx'),
+    source('app/settings/page.tsx'),
+    source('app/components/workspace/WorkspaceSidebar.tsx'),
+  ]);
+
+  assert.match(component, /Organization profile/);
+  assert.match(component, /Branches & locations/);
+  assert.match(component, /Create company/);
+  assert.match(component, /Organization history/);
+  assert.match(component, /\/api\/workspace\/company-context/);
+
+  assert.match(settings, /OrganizationSettings/);
+  assert.match(settings, /'organization'/);
+  assert.match(page, /ORGANIZATION_VIEW/);
+  assert.match(page, /ORGANIZATION_MANAGE/);
+  assert.match(page, /COMPANIES_VIEW/);
+  assert.match(page, /COMPANIES_MANAGE/);
+
+  assert.match(sidebar, /label:\s*['"]Organization['"]/i);
+  assert.match(sidebar, /\/settings\?tab=organization/);
+});
+
+test('Category 10: tenant migration runner requires a recent verified recovery point', async () => {
+  const script = compact(
+    await source('scripts/migrate-tenant-core.ts'),
+  );
+
+  assert.match(script, /tenant_database_recovery_points/i);
+  assert.match(script, /status = ['"]available['"]/i);
+  assert.match(script, /INTERVAL ['"]7 days['"]/i);
+  assert.match(script, /runTenantCoreMigrations/);
+  assert.match(script, /--tenant/);
+  assert.doesNotMatch(
+    script,
+    /DROP DATABASE/i,
+    'Schema migration tooling must not perform database lifecycle operations.',
+  );
+});
