@@ -81,17 +81,31 @@ CREATE TABLE IF NOT EXISTS {schema}.companies (
 
     logo_url TEXT,
 
+    company_code VARCHAR(50),
+
     email VARCHAR(255),
     phone VARCHAR(50),
     website VARCHAR(255),
 
+    -- address is retained for compatibility with existing tenants.
     address TEXT,
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
     city VARCHAR(100),
     state VARCHAR(100),
+    postal_code VARCHAR(30),
     country VARCHAR(100),
+    country_code VARCHAR(2),
 
     currency VARCHAR(3) NOT NULL DEFAULT 'KES',
     timezone VARCHAR(100) NOT NULL DEFAULT 'Africa/Nairobi',
+    locale VARCHAR(20) NOT NULL DEFAULT 'en',
+
+    fiscal_country VARCHAR(2),
+    fiscal_year_start_month SMALLINT NOT NULL DEFAULT 1
+        CHECK (fiscal_year_start_month BETWEEN 1 AND 12),
+    fiscal_year_start_day SMALLINT NOT NULL DEFAULT 1
+        CHECK (fiscal_year_start_day BETWEEN 1 AND 31),
 
     tax_id VARCHAR(100),
     registration_number VARCHAR(100),
@@ -116,6 +130,10 @@ CREATE INDEX IF NOT EXISTS idx_companies_active
 CREATE INDEX IF NOT EXISTS idx_companies_name
     ON {schema}.companies(name);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_code_unique
+    ON {schema}.companies(LOWER(company_code))
+    WHERE company_code IS NOT NULL;
+
 
 -- ------------------------------------------------------------
 -- Branches
@@ -132,10 +150,15 @@ CREATE TABLE IF NOT EXISTS {schema}.branches (
 
     code VARCHAR(50),
 
+    -- address is retained for compatibility with existing tenants.
     address TEXT,
+    address_line1 VARCHAR(255),
+    address_line2 VARCHAR(255),
     city VARCHAR(100),
     state VARCHAR(100),
+    postal_code VARCHAR(30),
     country VARCHAR(100),
+    country_code VARCHAR(2),
 
     phone VARCHAR(50),
     email VARCHAR(255),
@@ -1387,7 +1410,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.0.0')
+VALUES ('1.1.0')
 ON CONFLICT (version) DO NOTHING;
 
 
