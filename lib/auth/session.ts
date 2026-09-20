@@ -851,43 +851,19 @@ async function resolveDefaultTenantId(
           ) = 'active'
 
         ORDER BY
+          /*
+           * Structural ownership is the only special-case priority.
+           *
+           * Do not infer authority from role names such as "Admin".
+           * Category 8 permissions govern authorization; this query
+           * only chooses a deterministic default workspace.
+           */
           CASE
             WHEN tu.is_owner =
                  TRUE
             THEN 0
 
-            WHEN EXISTS (
-              SELECT 1
-
-              FROM user_roles ur
-
-              INNER JOIN roles r
-                ON r.id =
-                   ur.role_id
-
-              WHERE ur.user_id =
-                    tu.user_id
-
-                AND ur.tenant_id =
-                    tu.tenant_id
-
-                AND ur.deleted_at
-                    IS NULL
-
-                AND r.deleted_at
-                    IS NULL
-
-                AND LOWER(
-                  COALESCE(
-                    r.key,
-                    r.name,
-                    ''
-                  )
-                ) LIKE '%admin%'
-            )
-            THEN 1
-
-            ELSE 2
+            ELSE 1
           END ASC,
 
           tu.created_at ASC,
