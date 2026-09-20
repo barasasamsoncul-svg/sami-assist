@@ -230,3 +230,32 @@ test('Category 10: archived branches have a controlled reactivation path', async
   assert.match(route, /reactivateOrganizationBranch/);
   assert.match(ui, /Reactivate/);
 });
+
+
+test('Category 10: tenant migration connections require SSL for hosted PostgreSQL outside production', async () => {
+  const tenantDb = compact(
+    await source('lib/db/tenant.ts'),
+  );
+
+  assert.match(
+    tenantDb,
+    /function shouldUseTenantSsl/i,
+  );
+
+  assert.match(
+    tenantDb,
+    /normalizedHost\.includes\(['"]neon\.tech['"]\)/i,
+  );
+
+  assert.match(
+    tenantDb,
+    /shouldUseTenantSsl\(\s*database\.databaseHost\s*\)/i,
+    'Registry-resolved tenant pools must apply hosted-provider SSL.',
+  );
+
+  assert.match(
+    tenantDb,
+    /shouldUseTenantSsl\(\s*host\s*\)/i,
+    'Compatibility tenant pools must apply the same SSL policy.',
+  );
+});
