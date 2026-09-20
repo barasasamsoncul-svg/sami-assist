@@ -36,21 +36,34 @@ import {
  * branch. This adapter backs up one tenant database at a time using
  * pg_dump custom format and stores the artifact independently in S3/R2.
  *
+ * Storage configuration:
+ *   - Dedicated backup variables take precedence when present.
+ *   - Otherwise SaMi reuses the existing Category 2 R2 configuration:
+ *       SAMI_STORAGE_BUCKET
+ *       R2_ENDPOINT
+ *       R2_ACCESS_KEY_ID
+ *       R2_SECRET_ACCESS_KEY
+ *   - R2 uses region "auto" automatically.
+ *
  * Required when recovery is actually invoked:
- *   SAMI_BACKUP_S3_BUCKET
- *   SAMI_BACKUP_S3_REGION
  *   POSTGRES_ADMIN_USER
  *   POSTGRES_ADMIN_PASSWORD
+ *   plus either a dedicated S3 backup configuration or the existing
+ *   SaMi R2 configuration above.
  *
  * Optional:
- *   SAMI_BACKUP_S3_ENDPOINT       (Cloudflare R2 / S3-compatible)
+ *   SAMI_BACKUP_S3_BUCKET
+ *   SAMI_BACKUP_S3_REGION
+ *   SAMI_BACKUP_S3_ENDPOINT
  *   SAMI_BACKUP_S3_FORCE_PATH_STYLE=true
  *   SAMI_PG_DUMP_PATH             (default: pg_dump)
  *   SAMI_PG_RESTORE_PATH          (default: pg_restore)
  *   POSTGRES_ADMIN_DATABASE       (default: postgres)
  *   POSTGRES_SSL=true|false
  *
- * AWS credentials are resolved by the normal AWS SDK credential chain.
+ * For non-R2 S3 storage, credentials may come from the normal AWS SDK
+ * credential chain. Dedicated backup variables remain available so SaMi
+ * can move backups to a separate bucket/provider later without code changes.
  */
 
 const PROVIDER_KEY = 'postgresql';
@@ -60,6 +73,10 @@ type BackupConfig = {
   region: string;
   endpoint?: string;
   forcePathStyle: boolean;
+  credentials?: {
+    accessKeyId: string;
+    secretAccessKey: string;
+  };
 };
 
 function requireEnv(name: string): string {
@@ -74,13 +91,73 @@ function requireEnv(name: string): string {
 }
 
 function getBackupConfig(): BackupConfig {
+  const existingProvider =
+    process.env.SAMI_STORAGE_PROVIDER?.trim().toLowerCase();
+
+  const existingR2Endpoint =
+    process.env.R2_ENDPOINT?.trim();
+
+  const endpoint =
+    process.env.SAMI_BACKUP_S3_ENDPOINT?.trim() ||
+    existingR2Endpoint ||
+    undefined;
+
+  const usingR2 =
+    existingProvider === 'r2' ||
+    Boolean(existingR2Endpoint);
+
+  const bucket =
+    process.env.SAMI_BACKUP_S3_BUCKET?.trim() ||
+    process.env.SAMI_STORAGE_BUCKET?.trim();
+
+  if (!bucket) {
+    throw new TenantBackupProviderError(
+      'BACKUP_PROVIDER_NOT_CONFIGURED',
+      'SAMI_BACKUP_S3_BUCKET or SAMI_STORAGE_BUCKET is required for tenant logical backups.',
+    );
+  }
+
+  const region =
+    process.env.SAMI_BACKUP_S3_REGION?.trim() ||
+    (usingR2 ? 'auto' : '');
+
+  if (!region) {
+    throw new TenantBackupProviderError(
+      'BACKUP_PROVIDER_NOT_CONFIGURED',
+      'SAMI_BACKUP_S3_REGION is required for non-R2 tenant backup storage.',
+    );
+  }
+
+  const r2AccessKeyId =
+    process.env.R2_ACCESS_KEY_ID?.trim();
+
+  const r2SecretAccessKey =
+    process.env.R2_SECRET_ACCESS_KEY?.trim();
+
+  if (
+    usingR2 &&
+    (!r2AccessKeyId || !r2SecretAccessKey)
+  ) {
+    throw new TenantBackupProviderError(
+      'BACKUP_PROVIDER_NOT_CONFIGURED',
+      'R2 credentials are incomplete for tenant logical backups.',
+    );
+  }
+
   return {
-    bucket: requireEnv('SAMI_BACKUP_S3_BUCKET'),
-    region: requireEnv('SAMI_BACKUP_S3_REGION'),
-    endpoint: process.env.SAMI_BACKUP_S3_ENDPOINT?.trim() || undefined,
+    bucket,
+    region,
+    endpoint,
     forcePathStyle:
       process.env.SAMI_BACKUP_S3_FORCE_PATH_STYLE?.trim().toLowerCase() ===
       'true',
+    credentials:
+      usingR2 && r2AccessKeyId && r2SecretAccessKey
+        ? {
+            accessKeyId: r2AccessKeyId,
+            secretAccessKey: r2SecretAccessKey,
+          }
+        : undefined,
   };
 }
 
@@ -89,6 +166,7 @@ function createS3Client(config: BackupConfig): S3Client {
     region: config.region,
     endpoint: config.endpoint,
     forcePathStyle: config.forcePathStyle,
+    credentials: config.credentials,
   });
 }
 
