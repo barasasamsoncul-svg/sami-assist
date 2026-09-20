@@ -860,40 +860,44 @@ async function loadCompanySummaries(
 ): Promise<CompanySummary[]> {
   const pool = await getTenantPoolByTenantId(context.tenantId);
 
-  const allowed =
-    context.isOwner
-      ? null
-      : context.allowedCompanyIds;
-
   const result = await pool.query(
     `
       SELECT
-        id,
-        name,
-        legal_name,
-        company_code,
-        country,
-        country_code,
-        currency,
-        timezone,
-        is_active,
-        archived_at
-      FROM companies
+        c.id,
+        c.name,
+        c.legal_name,
+        c.company_code,
+        c.country,
+        c.country_code,
+        c.currency,
+        c.timezone,
+        c.is_active,
+        c.archived_at
+      FROM companies c
       WHERE (
-        $1::uuid[] IS NULL
-        OR id = ANY($1::uuid[])
+        $1::boolean = TRUE
+        OR EXISTS (
+          SELECT 1
+          FROM company_users cu
+          WHERE cu.company_id = c.id
+            AND cu.user_id = $2
+            AND LOWER(COALESCE(cu.status, '')) = 'active'
+        )
       )
       ORDER BY
         CASE
-          WHEN is_active = TRUE AND archived_at IS NULL
+          WHEN c.is_active = TRUE AND c.archived_at IS NULL
           THEN 0
           ELSE 1
         END,
-        LOWER(name),
-        created_at,
-        id
+        LOWER(c.name),
+        c.created_at,
+        c.id
     `,
-    [allowed],
+    [
+      context.isOwner,
+      context.userId,
+    ],
   );
 
   return result.rows.map(row => ({
@@ -2037,17 +2041,35 @@ export async function reactivateWorkspaceCompany(
 
   const companyId = requireCompanyId(companyIdInput);
 
-  /*
-   * Archived companies are excluded from trusted allowedCompanies,
-   * so authorization here is tenant-wide only for an actor who holds
-   * companies.manage. The company ID is still resolved inside the
-   * trusted tenant database; no tenant ID comes from the browser.
-   */
   const pool = await getTenantPoolByTenantId(context.tenantId);
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+
+    if (!context.isOwner) {
+      const access = await client.query(
+        `
+          SELECT 1
+          FROM company_users
+          WHERE company_id = $1
+            AND user_id = $2
+            AND LOWER(COALESCE(status, '')) = 'active'
+          LIMIT 1
+        `,
+        [
+          companyId,
+          context.userId,
+        ],
+      );
+
+      if (access.rows.length !== 1) {
+        throw new OrganizationProfileError(
+          'COMPANY_NOT_FOUND',
+          'The archived company could not be found.',
+        );
+      }
+    }
 
     const updated = await client.query(
       `
