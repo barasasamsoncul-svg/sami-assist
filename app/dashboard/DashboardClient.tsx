@@ -1665,6 +1665,12 @@ export default function DashboardClient({
           ? 'dark'
           : 'light',
       );
+
+
+      showError(
+        'Theme update failed',
+        'SaMi could not save your theme preference. Your previous theme has been restored.',
+      );
     } finally {
       setThemeSaving(
         false,
