@@ -54,7 +54,10 @@ export async function PATCH(
 
     return organizationJson({
       success: true,
-      message: 'Branch updated.',
+      message:
+        body.action === 'reactivate'
+          ? 'Branch reactivated.'
+          : 'Branch updated.',
       branch,
     });
   } catch (error) {
