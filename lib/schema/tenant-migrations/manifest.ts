@@ -38,18 +38,9 @@ export const CURRENT_TENANT_CORE_VERSION =
 /**
  * Migration chain.
  *
- * CURRENTLY EMPTY ON PURPOSE.
- *
- * Example later:
- *
- * {
- *   key: 'core-1.0.0-to-1.1.0',
- *   fromVersion: '1.0.0',
- *   toVersion: '1.1.0',
- *   fileName: '001-core-1.0.0-to-1.1.0.sql',
- * }
- *
- * We do NOT add that until there are real schema changes.
+ * Category 10 introduces the first real tenant-core migration.
+ * Existing 1.0.0 tenant databases are upgraded in place to 1.1.0,
+ * while new tenants receive the complete latest tenant-core.sql.
  */
 export const TENANT_CORE_MIGRATIONS:
   TenantCoreMigration[] = [
