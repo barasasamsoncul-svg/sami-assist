@@ -202,7 +202,13 @@ test('Category 13: install state is serialized and schema failures remain recove
 
   assert.match(
     service,
-    /pg_advisory_lock/,
+    /pg_try_advisory_lock/,
+  );
+
+  assert.doesNotMatch(
+    service,
+    /\bpg_advisory_lock\(/,
+    'Lifecycle requests must never wait indefinitely for a workspace app lock.',
   );
 
   assert.match(
@@ -245,6 +251,48 @@ test('Category 13: install state is serialized and schema failures remain recove
     /pg_advisory_unlock/,
   );
 });
+
+test('Category 13: concurrent app lifecycle requests fail fast instead of timing out', async () => {
+  const [
+    service,
+    route,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-app-lifecycle.ts',
+      ),
+      source(
+        'app/api/workspace/apps/[appKey]/route.ts',
+      ),
+    ]);
+
+  const compactService =
+    compact(
+      service,
+    );
+
+  assert.match(
+    compactService,
+    /pg_try_advisory_lock/,
+  );
+
+  assert.match(
+    compactService,
+    /APP_CHANGE_IN_PROGRESS/,
+  );
+
+  assert.match(
+    route,
+    /'APP_CHANGE_IN_PROGRESS'/,
+  );
+
+  assert.doesNotMatch(
+    compactService,
+    /\bpg_advisory_lock\(/,
+    'A serverless lifecycle request must never block on a session advisory lock.',
+  );
+});
+
 
 test('Category 13: normal reinstall preserves prior app data without rerunning first-install schema', async () => {
   const service =
