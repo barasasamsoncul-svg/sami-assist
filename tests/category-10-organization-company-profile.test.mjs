@@ -21,6 +21,7 @@ test('Category 10: tenant core 1.1.0 contains the organization profile schema an
     source('lib/services/tenant-provisioning.ts'),
   ]);
 
+  assert.match(core, /logo_url\s+TEXT/i);
   assert.match(core, /company_code\s+VARCHAR\(50\)/i);
   assert.match(core, /address_line1\s+VARCHAR\(255\)/i);
   assert.match(core, /country_code\s+VARCHAR\(2\)/i);
@@ -61,6 +62,7 @@ test('Category 10: organization service uses trusted company context and separat
   assert.match(service, /organization\.branch\.created/);
   assert.match(service, /organization\.branch\.reactivated/);
   assert.match(service, /organization\.company\.created/);
+  assert.match(service, /logo_url/);
   assert.match(service, /INSERT INTO company_settings/i);
 });
 
@@ -147,6 +149,8 @@ test('Category 10: settings UI exposes organization profile, branches, companies
   ]);
 
   assert.match(component, /Organization profile/);
+  assert.match(component, /logoUrl/);
+  assert.match(component, /<img/);
   assert.match(component, /Branches & locations/);
   assert.match(component, /Create company/);
   assert.match(component, /Organization history/);
