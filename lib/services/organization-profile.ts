@@ -131,7 +131,7 @@ export type OrganizationHistoryItem = {
 };
 
 export type OrganizationState = {
-  profile: CompanyProfile;
+  profile: CompanyProfile | null;
   branches: BranchProfile[];
   companies: CompanySummary[];
   history: OrganizationHistoryItem[];
@@ -1000,7 +1000,14 @@ export async function getOrganizationState():
   Promise<OrganizationState> {
   const context = await getCompanyPermissionContext();
 
-  requireOrganizationView(context);
+  const canViewOrganization =
+    context.isOwner ||
+    context.permissionContext.permissionSet.has(
+      SAMI_PERMISSIONS.ORGANIZATION_VIEW,
+    ) ||
+    context.permissionContext.permissionSet.has(
+      SAMI_PERMISSIONS.ORGANIZATION_MANAGE,
+    );
 
   const canViewCompanies =
     context.isOwner ||
@@ -1011,18 +1018,31 @@ export async function getOrganizationState():
       SAMI_PERMISSIONS.COMPANIES_MANAGE,
     );
 
+  if (!canViewOrganization && !canViewCompanies) {
+    throw new OrganizationProfileError(
+      'ORGANIZATION_VIEW_REQUIRED',
+      'You do not have permission to view organization or company administration.',
+    );
+  }
+
   const [
     profile,
     branches,
     companies,
     history,
   ] = await Promise.all([
-    loadProfile(context),
-    loadBranches(context),
+    canViewOrganization
+      ? loadProfile(context)
+      : Promise.resolve(null),
+    canViewOrganization
+      ? loadBranches(context)
+      : Promise.resolve([]),
     canViewCompanies
       ? loadCompanySummaries(context)
       : Promise.resolve([]),
-    loadHistory(context),
+    canViewOrganization
+      ? loadHistory(context)
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -1031,7 +1051,7 @@ export async function getOrganizationState():
     companies,
     history,
     capabilities: {
-      canViewOrganization: true,
+      canViewOrganization,
       canManageOrganization:
         context.isOwner ||
         context.permissionContext.permissionSet.has(
