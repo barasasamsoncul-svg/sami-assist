@@ -138,7 +138,13 @@ test('Category 13: lifecycle preserves business data on disable and uninstall', 
 
   assert.match(
     service,
-    /status = \$3/,
+    /status = \$3::varchar/,
+  );
+
+  assert.match(
+    service,
+    /WHEN \$4::boolean THEN NOW\(\)/,
+    'Uninstall timestamp selection must not reuse the varchar status parameter as a boolean condition.',
   );
 
   assert.match(
