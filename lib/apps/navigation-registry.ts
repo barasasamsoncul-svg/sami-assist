@@ -72,10 +72,6 @@ const APP_KEY_ALIASES:
 
     sale: 'sales',
 
-    pos: 'pos_shop',
-    point_of_sale: 'pos_shop',
-    'point-of-sale': 'pos_shop',
-
     stock: 'inventory',
 
     hr: 'employees',
@@ -84,9 +80,6 @@ const APP_KEY_ALIASES:
 
     project: 'projects',
 
-    ecommerce: 'pos_shop',
-    'e-commerce': 'pos_shop',
-    e_commerce: 'pos_shop',
   };
 
 export function normalizeAppKey(
