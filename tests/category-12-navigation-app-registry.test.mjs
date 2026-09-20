@@ -592,10 +592,11 @@ test('Category 12: deep app routes re-authorize access and do not disclose inacc
   );
 });
 
-test('Category 12: dashboard and Apps administration no longer maintain private app route or icon registries', async () => {
+test('Category 12: dashboard and Settings share app identity while Settings exposes the full catalog', async () => {
   const [
     dashboard,
     settings,
+    appsSettings,
   ] =
     await Promise.all([
       source(
@@ -603,6 +604,9 @@ test('Category 12: dashboard and Apps administration no longer maintain private 
       ),
       source(
         'app/settings/SettingsClient.tsx',
+      ),
+      source(
+        'app/settings/components/AppsSettings.tsx',
       ),
     ]);
 
@@ -633,17 +637,53 @@ test('Category 12: dashboard and Apps administration no longer maintain private 
 
   assert.match(
     settings,
-    /getSaMiAppIcon\(\s*module\.iconKey/s,
+    /AppsSettings/,
   );
 
   assert.match(
     settings,
-    /module\.categoryLabel/,
+    /installedModules=\{\s*managedModules\s*\}/s,
   );
 
   assert.match(
-    settings,
-    /href=\{\s*module\.href\s*\}/s,
+    appsSettings,
+    /SAMI_APPS/,
+  );
+
+  assert.match(
+    appsSettings,
+    /APP_CATEGORIES/,
+  );
+
+  assert.match(
+    appsSettings,
+    /filter ===\s*['"]installed['"]/,
+  );
+
+  assert.match(
+    appsSettings,
+    /filter ===\s*['"]available['"]/,
+  );
+
+  assert.match(
+    appsSettings,
+    /Installed/,
+  );
+
+  assert.match(
+    appsSettings,
+    /Available/,
+  );
+
+  assert.match(
+    appsSettings,
+    /getSaMiAppIcon/,
+  );
+
+  assert.doesNotMatch(
+    appsSettings,
+    /maxApps|appLimit|upgrade.*app/i,
+    'Paid-plan app count must not be modeled as a workspace app limit.',
   );
 });
 
