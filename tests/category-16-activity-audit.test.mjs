@@ -118,8 +118,8 @@ test('Category 16: UI follows a business timeline model with separate Activity a
   );
 
   assert.match(client, /dayLabel/);
-  assert.match(client, />Activity</);
-  assert.match(client, />Audit</);
+  assert.match(client, />\s*Activity\s*</);
+  assert.match(client, />\s*Audit\s*</);
   assert.match(client, /Search activity/);
   assert.match(client, /All outcomes/);
   assert.match(client, /All areas/);
