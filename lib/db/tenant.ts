@@ -68,6 +68,47 @@ interface TenantPoolEntry {
 const MAX_TENANT_POOLS = 50;
 
 /**
+ * Resolve SSL for a physical tenant database.
+ *
+ * Local administration commands can still connect to hosted
+ * PostgreSQL providers, so tenant SSL must not depend only on
+ * NODE_ENV.
+ */
+function shouldUseTenantSsl(
+  host: string,
+): boolean {
+  const explicitSsl =
+    process.env.POSTGRES_SSL
+      ?.trim()
+      .toLowerCase();
+
+  if (explicitSsl === 'true') {
+    return true;
+  }
+
+  if (explicitSsl === 'false') {
+    return false;
+  }
+
+  const normalizedHost =
+    host
+      .trim()
+      .toLowerCase();
+
+  if (
+    normalizedHost.includes('neon.tech') ||
+    normalizedHost.includes('neon.build') ||
+    normalizedHost.includes('amazonaws.com') ||
+    normalizedHost.includes('render.com') ||
+    normalizedHost.includes('railway.app')
+  ) {
+    return true;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
+/**
  * Tenant pool cache.
  *
  * Key:
@@ -236,7 +277,9 @@ function createTenantPool(
      * Keep the same SSL behavior as the control database.
      */
     ssl:
-      process.env.NODE_ENV === 'production'
+      shouldUseTenantSsl(
+        database.databaseHost,
+      )
         ? {
             rejectUnauthorized: false,
           }
@@ -501,7 +544,9 @@ export function getTenantPool(
     connectionTimeoutMillis: 10_000,
 
     ssl:
-      process.env.NODE_ENV === 'production'
+      shouldUseTenantSsl(
+        host,
+      )
         ? {
             rejectUnauthorized: false,
           }
