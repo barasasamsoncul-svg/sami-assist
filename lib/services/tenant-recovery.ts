@@ -1,5 +1,7 @@
 import 'server-only';
 
+import '@/lib/services/postgres-logical-backup-provider';
+
 import {
   queryControl,
 } from '@/lib/db/control';
@@ -1159,4 +1161,131 @@ export async function expireTenantRecoveryPoints():
 
 
   return result.rows.length;
+}
+
+/* ================================================================
+   RESTORE RECOVERY POINT
+
+   Safety rule:
+   - restores only into a FRESH database name
+   - never overwrites the currently registered production database
+   - registry cutover is a separate explicit administrative action
+   ================================================================ */
+
+export async function restoreTenantRecoveryPoint(
+  input: {
+    recoveryPointId: string;
+    targetDatabaseName: string;
+  },
+) {
+  const recoveryPointId =
+    typeof input.recoveryPointId === 'string'
+      ? input.recoveryPointId.trim()
+      : '';
+
+  const targetDatabaseName =
+    typeof input.targetDatabaseName === 'string'
+      ? input.targetDatabaseName.trim()
+      : '';
+
+  if (!recoveryPointId || !targetDatabaseName) {
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_AVAILABLE',
+      'A recovery point and fresh restore target are required.',
+    );
+  }
+
+  const result = await queryControl(
+    `
+      SELECT *
+      FROM tenant_database_recovery_points
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [recoveryPointId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_FOUND',
+      'The requested recovery point could not be found.',
+    );
+  }
+
+  const recoveryPoint = mapRecoveryPoint(result.rows[0]);
+
+  if (
+    recoveryPoint.status !== 'available' ||
+    !recoveryPoint.providerReference
+  ) {
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_AVAILABLE',
+      'The requested recovery point is not available for restore.',
+    );
+  }
+
+  const provider = getTenantBackupProvider(recoveryPoint.provider);
+
+  return provider.restoreRecoveryPoint({
+    providerReference: recoveryPoint.providerReference,
+    tenantId: recoveryPoint.tenantId,
+    sourceDatabaseName: recoveryPoint.sourceDatabaseName,
+    targetDatabaseName,
+  });
+}
+
+
+/* ================================================================
+   DELETE RECOVERY POINT
+   ================================================================ */
+
+export async function deleteTenantRecoveryPoint(
+  recoveryPointId: string,
+): Promise<void> {
+  const normalizedId =
+    typeof recoveryPointId === 'string'
+      ? recoveryPointId.trim()
+      : '';
+
+  if (!normalizedId) {
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_FOUND',
+      'The requested recovery point could not be found.',
+    );
+  }
+
+  const result = await queryControl(
+    `
+      SELECT *
+      FROM tenant_database_recovery_points
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [normalizedId],
+  );
+
+  if (result.rows.length === 0) {
+    throw new TenantRecoveryError(
+      'RECOVERY_POINT_NOT_FOUND',
+      'The requested recovery point could not be found.',
+    );
+  }
+
+  const recoveryPoint = mapRecoveryPoint(result.rows[0]);
+
+  if (recoveryPoint.providerReference) {
+    const provider = getTenantBackupProvider(recoveryPoint.provider);
+    await provider.deleteRecoveryPoint(recoveryPoint.providerReference);
+  }
+
+  await queryControl(
+    `
+      UPDATE tenant_database_recovery_points
+      SET
+        status = 'deleted',
+        updated_at = NOW()
+      WHERE id = $1
+    `,
+    [normalizedId],
+  );
 }
