@@ -360,7 +360,18 @@ test('Category 13: Settings exposes real install, enable, disable and uninstall 
 
   assert.match(
     client,
-    /confirmAction/,
+    /pendingAction/,
+  );
+
+  assert.match(
+    client,
+    /confirmPendingAction/,
+  );
+
+  assert.match(
+    client,
+    /action\.appKey,\s*'DELETE'/s,
+    'Confirmed uninstall must call the lifecycle DELETE endpoint directly.',
   );
 
   assert.match(
@@ -374,6 +385,50 @@ test('Category 13: Settings exposes real install, enable, disable and uninstall 
     'Normal workspace app management must never use the onboarding installer.',
   );
 });
+
+test('Category 13: lifecycle audit writes satisfy the live compatibility columns', async () => {
+  const service =
+    compact(
+      await source(
+        'lib/services/workspace-app-lifecycle.ts',
+      ),
+    );
+
+  assert.match(
+    service,
+    /actor_type, action, resource_type, resource_id, module, result/,
+  );
+
+  assert.match(
+    service,
+    /event_type, entity_type, entity_id/,
+  );
+
+  assert.match(
+    service,
+    /'human'.*?'module'.*?'success'/,
+  );
+});
+
+
+test('Category 13: Invoicing trigger uses TG_OP only inside trigger functions', async () => {
+  const schema =
+    await source(
+      'lib/apps/invoicing/schema.sql',
+    );
+
+  assert.doesNotMatch(
+    schema,
+    /CREATE TRIGGER[\s\S]*?WHEN\s*\(\s*TG_OP/gi,
+    'CREATE TRIGGER WHEN cannot reference TG_OP.',
+  );
+
+  assert.match(
+    schema,
+    /CREATE OR REPLACE FUNCTION public\.validate_invoice_status_transition\(\)[\s\S]*?IF TG_OP = 'INSERT'/,
+  );
+});
+
 
 test('Category 13: Apps administration receives lifecycle rows while ordinary navigation remains active-only', async () => {
   const shell =

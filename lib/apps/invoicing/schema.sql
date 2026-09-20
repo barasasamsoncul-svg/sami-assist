@@ -1975,7 +1975,6 @@ CREATE TRIGGER validate_invoice_status_transition_trigger
 BEFORE INSERT OR UPDATE OF status
 ON public.invoices
 FOR EACH ROW
-WHEN (TG_OP = 'UPDATE' OR (TG_OP = 'INSERT' AND NEW.status IS NOT NULL))
 EXECUTE FUNCTION public.validate_invoice_status_transition();
 
 

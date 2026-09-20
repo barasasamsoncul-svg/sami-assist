@@ -803,30 +803,50 @@ async function recordAudit(
     audit?: WorkspaceAppAuditContext;
   },
 ) {
+  const moduleKey =
+    typeof params.metadata
+      ?.appKey ===
+      'string'
+      ? params.metadata
+          .appKey
+      : null;
+
   try {
     await client.query(
       `
         INSERT INTO audit_logs (
           tenant_id,
           user_id,
+          actor_type,
+          action,
+          resource_type,
+          resource_id,
+          module,
+          result,
+          metadata,
+          ip_address,
+          user_agent,
           event_type,
           entity_type,
           entity_id,
-          ip_address,
-          user_agent,
-          metadata,
           created_at
         )
 
         VALUES (
           $1,
           $2,
+          'human',
           $3,
           'module',
           $4,
           $5,
+          'success',
           $6,
           $7,
+          $8,
+          $3,
+          'module',
+          $4,
           NOW()
         )
       `,
@@ -835,12 +855,7 @@ async function recordAudit(
         params.userId,
         params.eventType,
         params.moduleId,
-        params.audit
-          ?.ipAddress ||
-        null,
-        params.audit
-          ?.userAgent ||
-        null,
+        moduleKey,
         JSON.stringify({
           correlationId:
             params.audit
@@ -851,6 +866,12 @@ async function recordAudit(
             {}
           ),
         }),
+        params.audit
+          ?.ipAddress ||
+        null,
+        params.audit
+          ?.userAgent ||
+        null,
       ],
     );
   } catch (
@@ -862,7 +883,6 @@ async function recordAudit(
     );
   }
 }
-
 
 async function activateWorkspaceApp(
   appKey:

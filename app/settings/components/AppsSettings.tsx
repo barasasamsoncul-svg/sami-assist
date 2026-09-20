@@ -60,6 +60,17 @@ type Filter =
   | 'available';
 
 
+type PendingLifecycleAction = {
+  kind:
+    'disable' |
+    'uninstall';
+  appKey:
+    string;
+  appName:
+    string;
+};
+
+
 type LifecycleResponse = {
   success?: boolean;
   code?: string;
@@ -171,12 +182,21 @@ export default function AppsSettings({
       null,
     );
 
+  const [
+    pendingAction,
+    setPendingAction,
+  ] =
+    useState<
+      PendingLifecycleAction | null
+    >(
+      null,
+    );
+
   const {
     overlay,
     closeOverlay,
     showSuccess,
     showError,
-    confirmAction,
   } =
     useSaMiOverlay();
 
@@ -413,6 +433,43 @@ export default function AppsSettings({
     }
   }
 
+  function confirmPendingAction() {
+    const action =
+      pendingAction;
+
+    if (
+      !action
+    ) {
+      return;
+    }
+
+    setPendingAction(
+      null,
+    );
+
+    if (
+      action.kind ===
+        'disable'
+    ) {
+      void runAction(
+        action.appKey,
+        'PATCH',
+        {
+          action:
+            'disable',
+        },
+      );
+
+      return;
+    }
+
+    void runAction(
+      action.appKey,
+      'DELETE',
+    );
+  }
+
+
   return (
     <>
       <div>
@@ -611,23 +668,13 @@ export default function AppsSettings({
                               busy
                             }
                             onClick={() =>
-                              confirmAction({
-                                title:
-                                  `Disable ${app.name}?`,
-                                message:
-                                  'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.',
-                                confirmLabel:
-                                  'Disable app',
-                                onConfirm:
-                                  () =>
-                                    void runAction(
-                                      app.key,
-                                      'PATCH',
-                                      {
-                                        action:
-                                          'disable',
-                                      },
-                                    ),
+                              setPendingAction({
+                                kind:
+                                  'disable',
+                                appKey:
+                                  app.key,
+                                appName:
+                                  app.name,
                               })
                             }
                             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
@@ -672,19 +719,13 @@ export default function AppsSettings({
                               busy
                             }
                             onClick={() =>
-                              confirmAction({
-                                title:
-                                  `Uninstall ${app.name}?`,
-                                message:
-                                  'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.',
-                                confirmLabel:
-                                  'Uninstall app',
-                                onConfirm:
-                                  () =>
-                                    void runAction(
-                                      app.key,
-                                      'DELETE',
-                                    ),
+                              setPendingAction({
+                                kind:
+                                  'uninstall',
+                                appKey:
+                                  app.key,
+                                appName:
+                                  app.name,
                               })
                             }
                             className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11px] font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/20"
@@ -755,9 +796,63 @@ export default function AppsSettings({
       </div>
 
       <SaMiOverlay
-        {...overlay}
+        open={
+          Boolean(
+            pendingAction,
+          ) ||
+          overlay.open
+        }
+        type={
+          pendingAction
+            ? 'warning'
+            : overlay.type
+        }
+        title={
+          pendingAction
+            ? `${pendingAction.kind === 'disable' ? 'Disable' : 'Uninstall'} ${pendingAction.appName}?`
+            : overlay.title
+        }
+        message={
+          pendingAction
+            ? pendingAction.kind ===
+                'disable'
+              ? 'The app will disappear from active workspace use, but its data will be retained. SaMi will block this if another installed app depends on it.'
+              : 'The app will be removed from active workspace use. Its existing business data will be retained for a future reinstall. SaMi will block this if another installed app depends on it.'
+            : overlay.message
+        }
+        primaryAction={
+          pendingAction
+            ? {
+                label:
+                  pendingAction.kind ===
+                    'disable'
+                    ? 'Disable app'
+                    : 'Uninstall app',
+                onClick:
+                  confirmPendingAction,
+              }
+            : overlay.primaryAction
+        }
+        secondaryAction={
+          pendingAction
+            ? {
+                label:
+                  'Cancel',
+                onClick:
+                  () =>
+                    setPendingAction(
+                      null,
+                    ),
+              }
+            : overlay.secondaryAction
+        }
         onClose={
-          closeOverlay
+          pendingAction
+            ? () =>
+                setPendingAction(
+                  null,
+                )
+            : closeOverlay
         }
       />
     </>
