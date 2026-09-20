@@ -42,6 +42,8 @@ import WorkspaceSettings from './components/WorkspaceSettings';
 
 import OrganizationSettings from './components/OrganizationSettings';
 
+import AppsSettings from './components/AppsSettings';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
@@ -49,10 +51,6 @@ import {
   type UserDisplayPreferences,
   type UserTheme,
 } from '@/lib/account/user-formatting';
-
-import {
-  getSaMiAppIcon,
-} from '@/lib/apps/icon-registry';
 
 
 /* ================================================================
@@ -361,19 +359,6 @@ function formatLabel(
         character
           .toUpperCase(),
     );
-}
-
-
-function normalizeStatus(
-  value?:
-    string | null,
-) {
-  return (
-    value
-      ?.trim()
-      .toLowerCase() ||
-    'unknown'
-  );
 }
 
 
@@ -1291,8 +1276,8 @@ export default function SettingsClient({
                 .appsManage && (
                 <SettingsSurface>
 
-                  <AppsSection
-                    modules={
+                  <AppsSettings
+                    installedModules={
                       managedModules
                     }
                   />
@@ -1356,162 +1341,6 @@ function SettingsSurface({
     <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
       {children}
     </section>
-  );
-}
-
-
-/* ================================================================
-   APPS ADMINISTRATION
-   ================================================================ */
-
-function AppsSection({
-  modules,
-}: {
-  modules:
-    ModuleData[];
-}) {
-  if (
-    modules.length ===
-    0
-  ) {
-    return (
-      <EmptyState
-        icon={
-          AppWindow
-        }
-        title="No installed applications"
-        description="There are currently no active business applications available for workspace administration."
-      />
-    );
-  }
-
-
-  return (
-    <div>
-
-      <div className="mb-5">
-
-        <div className="flex items-start justify-between gap-4">
-
-          <div>
-
-            <h2 className="text-sm font-bold">
-              Workspace Apps
-            </h2>
-
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Installed business applications available to your Apps administration access.
-            </p>
-
-          </div>
-
-
-          <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500 dark:bg-white/10 dark:text-slate-300">
-            {modules.length}
-          </span>
-
-        </div>
-
-      </div>
-
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-
-        {modules.map(
-          module => {
-            const activeModule =
-              [
-                'active',
-                'installed',
-                'enabled',
-              ].includes(
-                normalizeStatus(
-                  module.status,
-                ),
-              );
-
-            const Icon =
-              getSaMiAppIcon(
-                module.iconKey,
-              );
-
-            return (
-              <div
-                key={
-                  module.key
-                }
-                className="rounded-xl border border-slate-200 p-4 dark:border-white/10"
-              >
-
-                <div className="flex items-start gap-3">
-
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
-                    <Icon className="h-[18px] w-[18px]" />
-                  </div>
-
-
-                  <div className="min-w-0 flex-1">
-
-                    <div className="flex items-start justify-between gap-3">
-
-                      <div className="min-w-0">
-
-                        <p className="truncate text-xs font-bold">
-                          {module.name}
-                        </p>
-
-                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                          {module.categoryLabel}
-                        </p>
-
-                      </div>
-
-
-                      <span
-                        className={[
-                          'shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold',
-
-                          activeModule
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-                            : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
-                        ].join(
-                          ' ',
-                        )}
-                      >
-                        {formatLabel(
-                          module.status,
-                        )}
-                      </span>
-
-                    </div>
-
-
-                    <p className="mt-3 line-clamp-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                      {module.description}
-                    </p>
-
-
-                    <Link
-                      href={
-                        module.href
-                      }
-                      className="mt-3 inline-flex text-[11px] font-semibold text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
-                    >
-                      Open app
-                    </Link>
-
-                  </div>
-
-                </div>
-
-              </div>
-            );
-          },
-        )}
-
-      </div>
-
-    </div>
   );
 }
 
