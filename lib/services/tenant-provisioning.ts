@@ -4,6 +4,10 @@ import {
   bootstrapPrimaryCompanyAccess,
 } from '@/lib/services/company-access';
 
+import {
+  CURRENT_TENANT_CORE_VERSION,
+} from '@/lib/schema/tenant-migrations/manifest';
+
 import fs from 'fs';
 import path from 'path';
 import { Client } from 'pg';
@@ -90,7 +94,7 @@ const DEFAULT_REGION =
   'us-east-1';
 
 const CORE_SCHEMA_VERSION =
-  '1.1.0';
+  CURRENT_TENANT_CORE_VERSION;
 
 const PROVISIONING_LOCK_NAMESPACE =
   741921;

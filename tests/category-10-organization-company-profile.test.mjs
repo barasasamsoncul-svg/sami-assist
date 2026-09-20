@@ -13,7 +13,7 @@ function compact(value) {
   return value.replace(/\s+/g, ' ');
 }
 
-test('Category 10: tenant core 1.1.0 contains the organization profile schema and real migration', async () => {
+test('Category 10: organization profile remains in tenant core and its 1.0.0 to 1.1.0 migration stays registered', async () => {
   const [core, manifest, migration, provisioning] = await Promise.all([
     source('lib/schema/tenant-core.sql'),
     source('lib/schema/tenant-migrations/manifest.ts'),
@@ -27,10 +27,10 @@ test('Category 10: tenant core 1.1.0 contains the organization profile schema an
   assert.match(core, /country_code\s+VARCHAR\(2\)/i);
   assert.match(core, /locale\s+VARCHAR\(20\)/i);
   assert.match(core, /fiscal_year_start_month/i);
-  assert.match(core, /VALUES\s*\(\s*['"]1\.1\.0['"]\s*\)/i);
 
-  assert.match(manifest, /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.1\.0['"]/i);
   assert.match(manifest, /core-1\.0\.0-to-1\.1\.0/i);
+  assert.match(manifest, /fromVersion:\s*['"]1\.0\.0['"]/i);
+  assert.match(manifest, /toVersion:\s*['"]1\.1\.0['"]/i);
   assert.match(manifest, /001-core-1\.0\.0-to-1\.1\.0\.sql/i);
 
   assert.match(migration, /ALTER TABLE companies/i);
@@ -40,9 +40,16 @@ test('Category 10: tenant core 1.1.0 contains the organization profile schema an
   assert.match(migration, /INSERT INTO company_settings/i);
   assert.match(core, /INSERT INTO \{schema\}\.company_settings/i);
 
-  assert.match(provisioning, /CORE_SCHEMA_VERSION\s*=\s*['"]1\.1\.0['"]/i);
+  assert.match(
+    provisioning,
+    /CURRENT_TENANT_CORE_VERSION/,
+    'New tenant registry metadata must follow the current tenant-core manifest version instead of a historical hard-coded version.',
+  );
+  assert.match(
+    provisioning,
+    /CORE_SCHEMA_VERSION\s*=\s*CURRENT_TENANT_CORE_VERSION/i,
+  );
 });
-
 test('Category 10: organization service uses trusted company context and separate organization/company permissions', async () => {
   const service = compact(
     await source('lib/services/organization-profile.ts'),
