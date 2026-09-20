@@ -80,6 +80,8 @@ import UserAvatar from '@/app/components/account/UserAvatar';
 
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 
+import SaMiMobileTabs from '@/app/components/workspace/SaMiMobileTabs';
+
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 import {
@@ -1133,6 +1135,19 @@ export default function DashboardClient({
     showError,
   } =
     useSaMiOverlay();
+
+
+  const [
+    mobileDashboardSection,
+    setMobileDashboardSection,
+  ] =
+    useState<
+      'overview'
+      | 'work'
+      | 'apps'
+    >(
+      'overview',
+    );
 
 
   /* ============================================================
@@ -2464,7 +2479,49 @@ export default function DashboardClient({
         }
         contentClassName="max-w-[1500px]"
       >
+        <SaMiMobileTabs
+          items={[
+            {
+              key:
+                'overview',
+              label:
+                'Overview',
+              icon:
+                Home,
+            },
+            {
+              key:
+                'work',
+              label:
+                'Work',
+              icon:
+                BriefcaseBusiness,
+            },
+            {
+              key:
+                'apps',
+              label:
+                'Apps',
+              icon:
+                AppWindow,
+            },
+          ]}
+          value={
+            mobileDashboardSection
+          }
+          onChange={
+            setMobileDashboardSection
+          }
+        />
 
+        <div
+          className={
+            mobileDashboardSection ===
+            'overview'
+              ? 'block'
+              : 'hidden md:block'
+          }
+        >
 
             {/* DASHBOARD HEADER */}
 
@@ -2666,6 +2723,17 @@ export default function DashboardClient({
             )}
 
 
+        </div>
+
+        <div
+          className={
+            mobileDashboardSection ===
+            'work'
+              ? 'block'
+              : 'hidden md:block'
+          }
+        >
+
             {/* ==================================================
                 WORK
                 ================================================== */}
@@ -2865,6 +2933,17 @@ export default function DashboardClient({
             )}
 
 
+        </div>
+
+        <div
+          className={
+            mobileDashboardSection ===
+            'apps'
+              ? 'block'
+              : 'hidden md:block'
+          }
+        >
+
             {/* ==================================================
                 MY APPS — COLOURED AGAIN
                 ================================================== */}
@@ -3017,7 +3096,9 @@ export default function DashboardClient({
             )}
 
 
-            <footer className="mt-8 flex items-center justify-between border-t border-slate-200 py-5 text-[11px] text-slate-400 dark:border-white/10">
+        </div>
+
+            <footer className="mt-8 hidden items-center justify-between border-t border-slate-200 py-5 text-[11px] text-slate-400 dark:border-white/10 md:flex">
 
               <span>
                 {tenant?.name ||
