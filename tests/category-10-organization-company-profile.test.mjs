@@ -259,3 +259,53 @@ test('Category 10: tenant migration connections require SSL for hosted PostgreSQ
     'Compatibility tenant pools must apply the same SSL policy.',
   );
 });
+
+
+test('Category 10: organization mutations use SaMiOverlay feedback and destructive warnings', async () => {
+  const component = compact(
+    await source('app/settings/components/OrganizationSettings.tsx'),
+  );
+
+  assert.match(component, /SaMiOverlay/);
+  assert.match(component, /type:\s*['"]warning['"]/i);
+  assert.match(component, /Archive branch\?/i);
+  assert.match(component, /Archive company\?/i);
+
+  assert.doesNotMatch(
+    component,
+    /setNotice\(|setError\(/,
+    'Organization settings must not fall back to inline notice/error state.',
+  );
+
+  assert.match(component, /showOverlay\(\s*['"]success['"]/i);
+  assert.match(component, /showOverlay\(\s*['"]error['"]/i);
+});
+
+test('Category 10: mobile organization pages stay compact instead of stacking every editor', async () => {
+  const component = compact(
+    await source('app/settings/components/OrganizationSettings.tsx'),
+  );
+
+  assert.match(component, /mobileSection/);
+  assert.match(component, /Identity/);
+  assert.match(component, /Business/);
+  assert.match(component, /Contact/);
+  assert.match(component, /Address/);
+  assert.match(component, /Locale/);
+
+  assert.match(component, /mobileEditorOpen/);
+  assert.match(component, /Back to branches/);
+  assert.match(component, /mobileCreateOpen/);
+  assert.match(component, /Back to companies/);
+});
+
+test('Category 10: audit write failures cannot roll back valid organization mutations', async () => {
+  const service = compact(
+    await source('lib/services/organization-profile.ts'),
+  );
+
+  assert.match(service, /SAVEPOINT \$\{savepoint\}/i);
+  assert.match(service, /ROLLBACK TO SAVEPOINT \$\{savepoint\}/i);
+  assert.match(service, /business mutation will continue/i);
+  assert.match(service, /Organization profile update failed/i);
+});
