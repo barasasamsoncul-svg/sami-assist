@@ -43,7 +43,6 @@ import {
   Mail,
   MapPin,
   Megaphone,
-  Menu,
   MessageSquare,
   Moon,
   Package,
@@ -79,7 +78,13 @@ import {
 
 import UserAvatar from '@/app/components/account/UserAvatar';
 
-import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 
 import {
   SAMI_APPS,
@@ -1049,15 +1054,6 @@ export default function DashboardClient({
 
 
   const [
-    sidebarOpen,
-    setSidebarOpen,
-  ] =
-    useState(
-      false,
-    );
-
-
-  const [
     profileOpen,
     setProfileOpen,
   ] =
@@ -1131,15 +1127,12 @@ export default function DashboardClient({
     );
 
 
-  const [
-    logoutError,
-    setLogoutError,
-  ] =
-    useState<
-      string | null
-    >(
-      null,
-    );
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+  } =
+    useSaMiOverlay();
 
 
   /* ============================================================
@@ -1762,10 +1755,6 @@ export default function DashboardClient({
           event.key ===
           'Escape'
         ) {
-          setSidebarOpen(
-            false,
-          );
-
           setProfileOpen(
             false,
           );
@@ -1887,7 +1876,8 @@ export default function DashboardClient({
     } catch (
       error
     ) {
-      setLogoutError(
+      showError(
+        'Workspace switch failed',
         error instanceof
           Error
           ? error.message
@@ -1915,11 +1905,6 @@ export default function DashboardClient({
 
     setLoggingOut(
       true,
-    );
-
-
-    setLogoutError(
-      null,
     );
 
 
@@ -1951,7 +1936,8 @@ export default function DashboardClient({
 
       router.refresh();
     } catch {
-      setLogoutError(
+      showError(
+        'Sign out failed',
         'SaMi could not sign you out. Please try again.',
       );
     } finally {
@@ -1967,82 +1953,37 @@ export default function DashboardClient({
      ============================================================ */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
 
-      <div className="flex min-h-screen">
-
-        <WorkspaceSidebar
-          user={
-            user
-          }
-
-          tenant={
-            tenant
-          }
-
-          membership={
-            sidebarMembership
-          }
-
-          subscription={
-            subscription
-          }
-
-          modules={
-            modules
-          }
-
-          capabilities={{
-            aiEnabled:
-              capabilities.ai,
-
-            filesEnabled:
-              capabilities.files,
-
-            notificationsEnabled:
-              capabilities.notifications,
-          }}
-
-          unreadNotifications={
-            unreadNotifications
-          }
-
-          open={
-            sidebarOpen
-          }
-
-          onClose={() =>
-            setSidebarOpen(
-              false,
-            )
-          }
-        />
-
-
-        <div className="min-w-0 flex-1 lg:pl-[286px]">
-
-          {/* ==================================================
-              TOP BAR
-              ================================================== */}
-
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-
-            <div className="flex h-16 items-center gap-2 px-3 sm:px-5 lg:px-7">
-
-              <button
-                type="button"
-                aria-label="Open navigation"
-                onClick={() =>
-                  setSidebarOpen(
-                    true,
-                  )
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 lg:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
-
-
+      <WorkspaceShell
+        user={user}
+        tenant={tenant}
+        membership={sidebarMembership}
+        subscription={subscription}
+        modules={modules}
+        sidebarCapabilities={{
+          aiEnabled:
+            capabilities.ai,
+          filesEnabled:
+            capabilities.files,
+          notificationsEnabled:
+            capabilities.notifications,
+        }}
+        unreadNotifications={unreadNotifications}
+        title="Dashboard"
+        description="Your current work, priorities, applications and permitted business context."
+        contextLabel={currentCompanyName}
+        headerContent={
+          <>
               {/* ================================================
                   REAL WORKSPACE SWITCHER
                   ================================================ */}
@@ -2518,35 +2459,11 @@ export default function DashboardClient({
 
               </div>
 
-            </div>
 
-          </header>
-
-
-          {/* ==================================================
-              CONTENT
-              ================================================== */}
-
-          <div className="mx-auto w-full max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
-
-            {logoutError && (
-              <div className="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-950/20 dark:text-red-300">
-
-                {logoutError}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLogoutError(
-                      null,
-                    )
-                  }
-                >
-                  <X className="h-4 w-4" />
-                </button>
-
-              </div>
-            )}
+          </>
+        }
+        contentClassName="max-w-[1500px]"
+      >
 
 
             {/* DASHBOARD HEADER */}
@@ -3116,13 +3033,9 @@ export default function DashboardClient({
 
             </footer>
 
-          </div>
 
-        </div>
-
-      </div>
-
-    </main>
+      </WorkspaceShell>
+    </>
   );
 }
 
