@@ -274,6 +274,15 @@ type Props = {
 
   canManage:
     boolean;
+
+  canUseAi:
+    boolean;
+
+  canViewFiles:
+    boolean;
+
+  canViewNotifications:
+    boolean;
 };
 
 
@@ -407,6 +416,9 @@ export default function RolesSettingsClient({
   subscription,
   modules,
   canManage,
+  canUseAi,
+  canViewFiles,
+  canViewNotifications,
 }: Props) {
   const [
     roles,
@@ -1763,9 +1775,12 @@ export default function RolesSettingsClient({
         subscription={subscription}
         modules={modules}
         sidebarCapabilities={{
-          aiEnabled: true,
-          filesEnabled: false,
-          notificationsEnabled: false,
+          aiEnabled:
+            canUseAi,
+          filesEnabled:
+            canViewFiles,
+          notificationsEnabled:
+            canViewNotifications,
         }}
         title="Roles & Permissions"
         description="Define reusable business roles, then assign them to people from People & Access."
