@@ -109,7 +109,7 @@ type HistoryItem = {
 };
 
 type OrganizationState = {
-  profile: CompanyProfile;
+  profile: CompanyProfile | null;
   branches: BranchProfile[];
   companies: CompanySummary[];
   history: HistoryItem[];
@@ -355,12 +355,27 @@ export default function OrganizationSettings() {
   const requestedView =
     searchParams.get('organization');
 
-  const view: View =
+  const requestedNormalized: View =
     requestedView === 'branches' ||
     requestedView === 'companies' ||
     requestedView === 'history'
       ? requestedView
       : 'profile';
+
+  const view: View =
+    organization
+      ? (
+          requestedNormalized === 'companies' &&
+          organization.capabilities.canViewCompanies
+            ? 'companies'
+            : requestedNormalized !== 'companies' &&
+              organization.capabilities.canViewOrganization
+              ? requestedNormalized
+              : organization.capabilities.canViewOrganization
+                ? 'profile'
+                : 'companies'
+        )
+      : requestedNormalized;
 
   const load = useCallback(
     async () => {
@@ -395,7 +410,9 @@ export default function OrganizationSettings() {
 
         setOrganization(data.organization);
         setProfile(
-          profileToDraft(data.organization.profile),
+          data.organization.profile
+            ? profileToDraft(data.organization.profile)
+            : null,
         );
       } catch (candidate) {
         setError(
@@ -431,32 +448,45 @@ export default function OrganizationSettings() {
         key: View;
         label: string;
         icon: typeof Building2;
-      }> = [
-        {
-          key: 'profile',
-          label: 'Profile',
-          icon: Building2,
-        },
-        {
-          key: 'branches',
-          label: 'Branches',
-          icon: MapPin,
-        },
-        {
-          key: 'history',
-          label: 'History',
-          icon: Clock3,
-        },
-      ];
+      }> = [];
+
+      if (
+        organization?.capabilities
+          .canViewOrganization
+      ) {
+        items.push(
+          {
+            key: 'profile',
+            label: 'Profile',
+            icon: Building2,
+          },
+          {
+            key: 'branches',
+            label: 'Branches',
+            icon: MapPin,
+          },
+        );
+      }
 
       if (
         organization?.capabilities
           .canViewCompanies
       ) {
-        items.splice(2, 0, {
+        items.push({
           key: 'companies',
           label: 'Companies',
           icon: Factory,
+        });
+      }
+
+      if (
+        organization?.capabilities
+          .canViewOrganization
+      ) {
+        items.push({
+          key: 'history',
+          label: 'History',
+          icon: Clock3,
         });
       }
 
@@ -726,19 +756,23 @@ export default function OrganizationSettings() {
       setCompanyDraft({
         ...EMPTY_COMPANY,
         currency:
-          organization?.profile.currency ||
+          organization?.profile?.currency ||
+          organization?.companies.find(item => item.isCurrent)?.currency ||
           'KES',
         timezone:
-          organization?.profile.timezone ||
+          organization?.profile?.timezone ||
+          organization?.companies.find(item => item.isCurrent)?.timezone ||
           'Africa/Nairobi',
         locale:
-          organization?.profile.locale ||
+          organization?.profile?.locale ||
           'en',
         country:
-          organization?.profile.country ||
+          organization?.profile?.country ||
+          organization?.companies.find(item => item.isCurrent)?.country ||
           '',
         countryCode:
-          organization?.profile.countryCode ||
+          organization?.profile?.countryCode ||
+          organization?.companies.find(item => item.isCurrent)?.countryCode ||
           '',
       });
 
@@ -867,13 +901,19 @@ export default function OrganizationSettings() {
     );
   }
 
-  if (!organization || !profile) {
+  if (!organization) {
     return (
       <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
         {error || 'Organization details are unavailable.'}
       </div>
     );
   }
+
+  const headerCompany =
+    organization.profile ||
+    organization.companies.find(item => item.isCurrent) ||
+    organization.companies[0] ||
+    null;
 
   return (
     <div className="space-y-5">
@@ -882,7 +922,7 @@ export default function OrganizationSettings() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
             <div className="flex min-w-0 items-center gap-4">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-sm font-bold text-white dark:bg-white dark:text-slate-950">
-                {organization.profile.name
+                {(headerCompany?.name || 'SaMi')
                   .trim()
                   .slice(0, 2)
                   .toUpperCase()}
@@ -890,11 +930,12 @@ export default function OrganizationSettings() {
 
               <div className="min-w-0">
                 <p className="truncate text-base font-bold">
-                  {organization.profile.name}
+                  {headerCompany?.name || 'Organization'}
                 </p>
                 <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                  {organization.profile.legalName ||
-                    'Legal name not set'}
+                  {'legalName' in (headerCompany || {})
+                    ? (headerCompany as CompanyProfile | CompanySummary).legalName || 'Legal name not set'
+                    : 'Company administration'}
                 </p>
               </div>
             </div>
@@ -939,7 +980,8 @@ export default function OrganizationSettings() {
           </div>
         )}
 
-        {view === 'profile' && (
+        {view === 'profile' &&
+          profile && (
           <ProfileView
             draft={profile}
             setDraft={setProfile}
