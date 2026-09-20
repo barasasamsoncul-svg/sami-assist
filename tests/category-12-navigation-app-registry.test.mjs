@@ -667,3 +667,32 @@ test('Category 12: Apps routes have stable loading, error and unavailable states
     /Back to Apps/,
   );
 });
+
+
+test('Category 12: onboarding uses the same app catalog and shared icon registry', async () => {
+  const selector =
+    await source(
+      'app/select-apps/page.tsx',
+    );
+
+  assert.match(
+    selector,
+    /SAMI_APPS/,
+  );
+
+  assert.match(
+    selector,
+    /APP_CATEGORIES/,
+  );
+
+  assert.match(
+    selector,
+    /getSaMiAppIcon/,
+  );
+
+  assert.doesNotMatch(
+    selector,
+    /const iconMap|function getIconComponent/,
+    'Onboarding must not maintain a private app icon registry.',
+  );
+});
