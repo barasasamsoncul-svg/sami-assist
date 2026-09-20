@@ -445,6 +445,8 @@ function requireOrganizationView(
     assertAnyCompanyPermission(context, [
       SAMI_PERMISSIONS.ORGANIZATION_VIEW,
       SAMI_PERMISSIONS.ORGANIZATION_MANAGE,
+      SAMI_PERMISSIONS.COMPANIES_VIEW,
+      SAMI_PERMISSIONS.COMPANIES_MANAGE,
     ]);
   } catch {
     throw new OrganizationProfileError(
