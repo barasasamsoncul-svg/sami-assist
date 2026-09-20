@@ -1,5 +1,6 @@
 import {
   archiveOrganizationBranch,
+  reactivateOrganizationBranch,
   updateOrganizationBranch,
   type BranchMutationInput,
 } from '@/lib/services/organization-profile';
@@ -23,7 +24,11 @@ export async function PATCH(
   try {
     const { branchId } = await context.params;
 
-    let body: BranchMutationInput;
+    let body:
+      | BranchMutationInput
+      | {
+          action?: 'reactivate';
+        };
 
     try {
       body = await request.json();
@@ -35,10 +40,15 @@ export async function PATCH(
       }, 400);
     }
 
-    const branch = await updateOrganizationBranch(
-      branchId,
-      body,
-    );
+    const branch =
+      body.action === 'reactivate'
+        ? await reactivateOrganizationBranch(
+            branchId,
+          )
+        : await updateOrganizationBranch(
+            branchId,
+            body,
+          );
 
     return organizationJson({
       success: true,
