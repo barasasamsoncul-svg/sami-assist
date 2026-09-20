@@ -11,6 +11,7 @@ import {
   Car,
   ClipboardCheck,
   ClipboardList,
+  Clock,
   Factory,
   FileText,
   Folder,
@@ -137,7 +138,7 @@ const APP_ICON_REGISTRY:
     Briefcase,
 
   clock:
-    CalendarClock,
+    Clock,
 
   'map-pin':
     MapPin,
