@@ -189,6 +189,31 @@ export default async function SettingsPage() {
           ),
 
 
+        organizationView:
+          can(
+            SAMI_PERMISSIONS
+              .ORGANIZATION_VIEW,
+          ),
+
+        organizationManage:
+          can(
+            SAMI_PERMISSIONS
+              .ORGANIZATION_MANAGE,
+          ),
+
+        companiesView:
+          can(
+            SAMI_PERMISSIONS
+              .COMPANIES_VIEW,
+          ),
+
+        companiesManage:
+          can(
+            SAMI_PERMISSIONS
+              .COMPANIES_MANAGE,
+          ),
+
+
         appsManage:
           shell.canManageApps,
 
