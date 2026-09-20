@@ -1884,14 +1884,14 @@ export default function WorkspaceSettings() {
     return (
       <>
         <div className="space-y-5">
-          <section className="grid gap-3 sm:grid-cols-2">
+          <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
             <div className="p-5 sm:p-7">
               <div className="flex items-center gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white">
                   <Building2 className="h-5 w-5" />
                 </div>
 
-                <div className="mt-3 min-w-0">
+                <div className="min-w-0 flex-1">
                   <h2 className="truncate text-base font-black text-slate-950 dark:text-white">
                     {workspace.name}
                   </h2>
@@ -1982,7 +1982,7 @@ export default function WorkspaceSettings() {
           )}
 
 
-          <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-[#0d121b]">
+          <section className="grid gap-3 sm:grid-cols-2">
             <WorkspaceMenuRow
               icon={
                 Building2
@@ -2928,7 +2928,7 @@ function WorkspaceMenuRow({
         <Icon className="h-[18px] w-[18px]" />
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="mt-3 min-w-0">
         <p className="text-sm font-black">
           {title}
         </p>
