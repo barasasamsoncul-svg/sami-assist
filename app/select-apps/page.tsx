@@ -5,49 +5,14 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   ArrowRight,
-  BarChart,
   Bot,
-  Boxes,
-  Briefcase,
-  Calculator,
-  Calendar,
-  CalendarClock,
-  CalendarDays,
-  Car,
   Check,
   CheckCircle2,
-  ClipboardCheck,
-  ClipboardList,
-  Clock,
-  Factory,
-  FileText,
-  Folder,
-  Headphones,
-  Home,
   Loader2,
-  Mail,
-  MapPin,
-  Megaphone,
-  MessageSquare,
   Moon,
-  Package,
-  PenTool,
-  Receipt,
-  Repeat,
   Search,
-  ShieldCheck,
-  ShoppingBag,
-  ShoppingCart,
   Sparkles,
-  Store,
   Sun,
-  UserPlus,
-  UserRound,
-  Users,
-  UserSearch,
-  Utensils,
-  Workflow,
-  Wrench,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -59,6 +24,9 @@ import {
 } from 'react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import {
+  getSaMiAppIcon,
+} from '@/lib/apps/icon-registry';
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   APP_CATEGORIES,
@@ -77,59 +45,6 @@ const THEME_STORAGE_KEY =
 
 const NEXT_ROUTE =
   '/select-plan';
-
-/* ============================================================
-   ICON REGISTRY
-   ============================================================ */
-
-const iconMap: Record<string, LucideIcon> = {
-  calculator: Calculator,
-  receipt: Receipt,
-  'file-text': FileText,
-  'bar-chart': BarChart,
-  folder: Folder,
-  'pen-tool': PenTool,
-  users: Users,
-  'shopping-cart': ShoppingCart,
-  repeat: Repeat,
-  home: Home,
-  store: Store,
-  utensils: Utensils,
-  package: Package,
-  factory: Factory,
-  boxes: Boxes,
-  'shopping-bag': ShoppingBag,
-  wrench: Wrench,
-  'shield-check': ShieldCheck,
-  'user-round': UserRound,
-  car: Car,
-  'user-plus': UserPlus,
-  'clipboard-check': ClipboardCheck,
-  'calendar-off': Calendar,
-  'user-search': UserSearch,
-  megaphone: Megaphone,
-  mail: Mail,
-  'message-square': MessageSquare,
-  'calendar-days': CalendarDays,
-  workflow: Workflow,
-  'clipboard-list': ClipboardList,
-  briefcase: Briefcase,
-  clock: Clock,
-  'map-pin': MapPin,
-  headphones: Headphones,
-  'calendar-clock': CalendarClock,
-  calendar: Calendar,
-};
-
-function getIconComponent(
-  iconName?: string
-): LucideIcon {
-  if (!iconName) {
-    return Package;
-  }
-
-  return iconMap[iconName] ?? Package;
-}
 
 /* ============================================================
    APP COLOR SYSTEM
@@ -1274,7 +1189,7 @@ export default function SelectAppsPage() {
                   {filteredApps.map(
                     (app) => {
                       const Icon =
-                        getIconComponent(
+                        getSaMiAppIcon(
                           app.icon
                         );
 
