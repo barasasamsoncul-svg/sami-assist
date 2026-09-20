@@ -181,7 +181,12 @@ test('Category 15: browser can manage its own alerts but cannot forge system not
   );
   assert.match(
     compactService,
-    /NOTIFICATIONS_VIEW/,
+    /requireCompanyAccess/,
+    'Notification viewing follows trusted active company access rather than a separately assigned notification-view role.',
+  );
+  assert.doesNotMatch(
+    compactService,
+    /NOTIFICATIONS_VIEW_REQUIRED/,
   );
   assert.match(
     compactService,
