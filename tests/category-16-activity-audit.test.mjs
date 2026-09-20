@@ -76,6 +76,11 @@ test('Category 16: activity is company scoped while audit can safely federate se
     service,
     /AUDIT_VIEW_REQUIRED/,
   );
+  assert.doesNotMatch(
+    service,
+    /ACTIVITY_VIEW_REQUIRED/,
+    'Every trusted active internal member with company access can view Activity.',
+  );
   assert.match(
     service,
     /action LIKE 'role\.%'/,
@@ -138,8 +143,14 @@ test('Category 16: activity appears in Workspace Tools and audit detail remains 
 
   assert.match(sidebar, /href="\/activity"/);
   assert.match(sidebar, /label="Activity"/);
+  assert.match(sidebar, /activityView/);
   assert.match(sidebar, /auditView/);
 
+  assert.match(
+    navigation,
+    /activityView:\s*true/s,
+    'Activity must be available to every trusted active internal member.',
+  );
   assert.match(navigation, /auditView:/);
   assert.match(navigation, /AUDIT_VIEW/);
 
