@@ -81,6 +81,18 @@ test('Category 3: sessions use opaque hashed tokens and secure cookies', async (
   assert.match(sessions, /repairSessionTenant/);
   assert.match(sessions, /revoke/i);
 
+  assert.doesNotMatch(
+    sessions,
+    /LIKE\\s*['"]%admin%['"]/i,
+    'Session workspace selection must not infer authority from fuzzy Admin role names.',
+  );
+
+  assert.doesNotMatch(
+    sessions,
+    /\\.includes\\(\\s*['"]admin['"]\\s*\\)/i,
+    'Session workspace selection must not infer authority from role text.',
+  );
+
   for (const file of [
     'app/api/account/sessions/route.ts',
     'app/api/account/sessions/[sessionId]/route.ts',
