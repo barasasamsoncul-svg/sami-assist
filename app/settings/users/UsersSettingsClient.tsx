@@ -12,7 +12,6 @@ import {
   Layers3,
   Loader2,
   Mail,
-  Menu,
   PauseCircle,
   Pencil,
   PlayCircle,
@@ -40,7 +39,13 @@ import {
   useSearchParams,
 } from 'next/navigation';
 
-import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
+import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 import UserAvatar from '@/app/components/account/UserAvatar';
 
 /* ================================================================
@@ -653,7 +658,6 @@ export default function UsersSettingsClient({
   const canInspectApps = canViewApps || canManageApps;
   const canInspectCompanies = canViewCompanies || canManageCompanies;
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [members, setMembers] = useState<DirectoryMember[]>([]);
   const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
   const [invitationApps, setInvitationApps] = useState<Map<string, InvitationAppAccess>>(new Map());
@@ -662,6 +666,53 @@ export default function UsersSettingsClient({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+
+  const {
+    overlay,
+    closeOverlay,
+    showError,
+    showSuccess,
+    confirmAction,
+  } =
+    useSaMiOverlay();
+
+  useEffect(
+    () => {
+      if (!error) return;
+
+      showError(
+        'People & Access',
+        error,
+      );
+
+      setError(
+        null,
+      );
+    },
+    [
+      error,
+      showError,
+    ],
+  );
+
+  useEffect(
+    () => {
+      if (!success) return;
+
+      showSuccess(
+        'People & Access updated',
+        success,
+      );
+
+      setSuccess(
+        null,
+      );
+    },
+    [
+      success,
+      showSuccess,
+    ],
+  );
 
   const initialView = searchParams.get('view');
   const [filter, setFilter] = useState<FilterValue>(
@@ -1451,89 +1502,93 @@ export default function UsersSettingsClient({
      ============================================================== */
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
-      <div className="flex min-h-screen">
-        <WorkspaceSidebar
-          user={user}
-          tenant={tenant}
-          membership={membership}
-          subscription={subscription}
-          modules={modules}
-          capabilities={{
-            aiEnabled: canUseAi,
-            filesEnabled: canViewFiles,
-            notificationsEnabled: canViewNotifications,
-          }}
-          unreadNotifications={0}
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
+    <>
+      <SaMiOverlay
+        open={overlay.open}
+        type={overlay.type}
+        title={overlay.title}
+        message={overlay.message}
+        primaryAction={overlay.primaryAction}
+        secondaryAction={overlay.secondaryAction}
+        onClose={closeOverlay}
+      />
 
-        <div className="min-w-0 flex-1 lg:pl-[286px]">
-          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-            <div className="flex h-16 items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <WorkspaceShell
+        user={user}
+        tenant={tenant}
+        membership={membership}
+        subscription={subscription}
+        modules={modules}
+        sidebarCapabilities={{
+          aiEnabled: canUseAi,
+          filesEnabled: canViewFiles,
+          notificationsEnabled: canViewNotifications,
+        }}
+        title="People & Access"
+        description="Employees, invitations, roles, apps and company scope in one access directory."
+        contextLabel={tenant?.name || null}
+        actions={
+          <>
+            <button
+              type="button"
+              disabled={refreshing}
+              onClick={() =>
+                void loadAccessDirectory(
+                  true,
+                )
+              }
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300"
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+
+            {canManageInvitations &&
+              canManageRoles &&
+              canManageApps &&
+              canManageCompanies && (
               <button
                 type="button"
-                aria-label="Open navigation"
-                onClick={() => setSidebarOpen(true)}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10 lg:hidden"
+                onClick={() =>
+                  void loadInviteForm()
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3.5 text-xs font-semibold text-white transition hover:bg-blue-700"
               >
-                <Menu className="h-5 w-5" />
+                <UserPlus className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  Invite user
+                </span>
+                <span className="sm:hidden">
+                  Invite
+                </span>
               </button>
+            )}
+          </>
+        }
+      >
 
-              <div className="min-w-0">
-                <p className="truncate text-sm font-bold">People & Access</p>
-                <p className="hidden truncate text-[10px] text-slate-400 sm:block">
-                  Employees, invitations, roles, apps and company scope
-                </p>
-              </div>
-
-              {tenant && (
-                <div className="ml-2 hidden min-w-0 border-l border-slate-200 pl-4 md:block dark:border-white/10">
-                  <p className="max-w-[260px] truncate text-xs text-slate-400">{tenant.name}</p>
+            <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-white/[0.035]">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-slate-950 dark:text-white">
+                    How access works
+                  </p>
+                  <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                    Roles decide what a person may do. Apps decide which tools are available. Companies decide where that access applies.
+                  </p>
                 </div>
-              )}
 
-              <div className="ml-auto flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={refreshing}
-                  onClick={() => void loadAccessDirectory(true)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-300"
-                  title="Refresh"
-                >
-                  <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                </button>
-
-                {canManageInvitations && canManageRoles && canManageApps && canManageCompanies && (
-                  <button
-                    type="button"
-                    onClick={() => void loadInviteForm()}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white hover:bg-blue-700"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    <span className="hidden sm:inline">Invite user</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          </header>
-
-          <div className="mx-auto w-full max-w-[1700px] px-4 py-6 sm:px-6 lg:px-8">
-            {error && <Notice tone="error" text={error} onClose={() => setError(null)} />}
-            {success && <Notice tone="success" text={success} onClose={() => setSuccess(null)} />}
-
-            <section className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-              <div>
-                <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">Workspace access</p>
-                <h1 className="mt-1 text-2xl font-bold tracking-tight">People & Access</h1>
-                <p className="mt-2 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-                  Assign business roles, explicitly grant apps, set company scope, manage invitations and control the full employee lifecycle from one place.
-                </p>
+                <div className="flex shrink-0 items-center gap-1 overflow-x-auto text-[10px] font-semibold text-slate-500 dark:text-slate-300">
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-white/10">Roles</span>
+                  <span>→</span>
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-white/10">Apps</span>
+                  <span>→</span>
+                  <span className="rounded-lg bg-slate-100 px-2.5 py-1.5 dark:bg-white/10">Companies</span>
+                </div>
               </div>
             </section>
 
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            <div className="flex gap-2 overflow-x-auto pb-1 md:grid md:grid-cols-3 md:gap-3 md:overflow-visible xl:grid-cols-6">
               <SummaryCard label="Total" value={summary.total} active={filter === 'all'} onClick={() => setFilter('all')} />
               <SummaryCard label="Active" value={summary.active} active={filter === 'active'} onClick={() => setFilter('active')} tone="success" />
               <SummaryCard label="Invited" value={summary.invited} active={filter === 'invited'} onClick={() => setFilter('invited')} tone="info" />
@@ -1624,15 +1679,14 @@ export default function UsersSettingsClient({
               )}
             </section>
 
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            <div className="mt-4 hidden gap-3 lg:grid lg:grid-cols-4">
               <AccessPrinciple icon={Shield} title="Roles define actions" text="Roles determine what the employee can read, create, approve, manage or administer." />
               <AccessPrinciple icon={AppWindow} title="Apps define availability" text="Selected app grants restrict which role-enabled business apps actually become available to the employee." />
               <AccessPrinciple icon={Building2} title="Companies define scope" text="Company assignments determine where those role and app permissions may operate." />
               <AccessPrinciple icon={ShieldCheck} title="Separated administration" text="User lifecycle, roles, app assignment and company scope are governed by separate permissions so delegated admins receive only the authority they need." />
             </div>
-          </div>
-        </div>
-      </div>
+
+      </WorkspaceShell>
 
       {/* DETAILS */}
       {selectedRecord && (
@@ -2137,7 +2191,7 @@ export default function UsersSettingsClient({
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }
 
@@ -2311,7 +2365,7 @@ function SummaryCard({
           : 'text-slate-950 dark:text-white';
 
   return (
-    <button type="button" onClick={onClick} className={`rounded-xl border bg-white p-4 text-left transition dark:bg-white/[0.035] ${active ? 'border-blue-500 ring-2 ring-blue-500/10 dark:border-blue-500' : 'border-slate-200 hover:border-slate-300 dark:border-white/10'}`}>
+    <button type="button" onClick={onClick} className={`w-[108px] shrink-0 rounded-xl border bg-white p-3 text-left transition md:w-auto md:p-4 dark:bg-white/[0.035] ${active ? 'border-blue-500 ring-2 ring-blue-500/10 dark:border-blue-500' : 'border-slate-200 hover:border-slate-300 dark:border-white/10'}`}>
       <p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-slate-400">{label}</p>
       <p className={`mt-2 text-xl font-bold ${numberClass}`}>{value}</p>
     </button>
