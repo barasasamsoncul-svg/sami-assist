@@ -80,14 +80,57 @@ export default async function UsersSettingsPage() {
       );
 
 
+  /* ==============================================================
+     USER PERMISSIONS
+     ============================================================== */
+
+  const canManageUsers =
+    can(
+      SAMI_PERMISSIONS
+        .USERS_MANAGE,
+    );
+
+
   const canViewUsers =
+    canManageUsers ||
     can(
       SAMI_PERMISSIONS
         .USERS_VIEW,
     );
 
 
+  /* ==============================================================
+     ROLE PERMISSIONS
+     ============================================================== */
+
+  const canManageRoles =
+    can(
+      SAMI_PERMISSIONS
+        .ROLES_MANAGE,
+    );
+
+
+  const canViewRoles =
+    canManageRoles ||
+    can(
+      SAMI_PERMISSIONS
+        .ROLES_VIEW,
+    );
+
+
+  /* ==============================================================
+     INVITATION PERMISSIONS
+     ============================================================== */
+
+  const canManageInvitations =
+    can(
+      SAMI_PERMISSIONS
+        .INVITATIONS_MANAGE,
+    );
+
+
   const canViewInvitations =
+    canManageInvitations ||
     can(
       SAMI_PERMISSIONS
         .INVITATIONS_VIEW,
@@ -95,12 +138,8 @@ export default async function UsersSettingsPage() {
 
 
   /*
-   * Users becomes the unified access-management surface.
-   *
-   * Somebody must have at least one of:
-   *
-   * - users.view
-   * - invitations.view
+   * People & Access is available when this account has access to
+   * either memberships or invitations.
    */
   if (
     !canViewUsers &&
@@ -151,24 +190,15 @@ export default async function UsersSettingsPage() {
       }
 
       canManageUsers={
-        can(
-          SAMI_PERMISSIONS
-            .USERS_MANAGE,
-        )
+        canManageUsers
       }
 
       canViewRoles={
-        can(
-          SAMI_PERMISSIONS
-            .ROLES_VIEW,
-        )
+        canViewRoles
       }
 
       canManageRoles={
-        can(
-          SAMI_PERMISSIONS
-            .ROLES_MANAGE,
-        )
+        canManageRoles
       }
 
       canViewInvitations={
@@ -176,10 +206,7 @@ export default async function UsersSettingsPage() {
       }
 
       canManageInvitations={
-        can(
-          SAMI_PERMISSIONS
-            .INVITATIONS_MANAGE,
-        )
+        canManageInvitations
       }
 
       canUseAi={

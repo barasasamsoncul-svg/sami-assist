@@ -10,22 +10,47 @@ import {
   withControlTransaction,
 } from '@/lib/db/control';
 
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
 
 /* ================================================================
    SaMi WORKSPACE MEMBERSHIP LIFECYCLE
-   ================================================================
 
    Category 7.3 / 7.9
 
    Responsibilities:
 
-   - suspend a workspace member
-   - reactivate a suspended member
-   - soft-remove a workspace member
-   - restore a previously removed member
-   - protect workspace ownership
-   - invalidate affected session workspace/company context
-   - write lifecycle audit events
+   - suspend workspace members
+   - reactivate suspended members
+   - soft-remove workspace members
+   - restore removed workspace members
+   - enforce users.manage authorization
+   - preserve structural workspace ownership
+   - prevent self-management
+   - invalidate affected workspace session context
+   - keep roles/company assignments intact
+   - write immutable lifecycle audit events
+
+   IMPORTANT
+
+   Membership lifecycle is NOT role assignment.
+
+   users.manage:
+       controls membership lifecycle.
+
+   roles.manage:
+       controls business role assignment.
+
+   invitations.manage:
+       controls invitations.
+
+   companies.manage:
+       controls company administration.
+
+   Workspace ownership:
+       remains structurally protected.
 
    ================================================================ */
 
@@ -118,7 +143,7 @@ export type MembershipLifecycleResult = {
 
 
 /* ================================================================
-   INTERNAL ROW
+   INTERNAL ROWS
    ================================================================ */
 
 type MembershipRow = {
@@ -163,45 +188,65 @@ type MembershipRow = {
 };
 
 
+type ActingMemberRow = {
+  id:
+    string;
+
+  status:
+    string;
+
+  member_type:
+    string;
+
+  is_owner:
+    boolean;
+
+  deleted_at:
+    Date | string | null;
+
+  user_status:
+    string;
+
+  user_deleted_at:
+    Date | string | null;
+
+  can_manage_users:
+    boolean;
+};
+
+
 /* ================================================================
    ERROR
    ================================================================ */
 
+export type MembershipLifecycleErrorCode =
+  | 'INVALID_TENANT_ID'
+  | 'INVALID_ACTOR_USER_ID'
+  | 'INVALID_TARGET_USER_ID'
+  | 'INVALID_REASON'
+  | 'REASON_REQUIRED'
+  | 'WORKSPACE_NOT_FOUND'
+  | 'WORKSPACE_NOT_ACTIVE'
+  | 'ACTOR_MEMBERSHIP_NOT_FOUND'
+  | 'ACTOR_ACCESS_DENIED'
+  | 'USERS_MANAGE_REQUIRED'
+  | 'SELF_MANAGEMENT_PROTECTED'
+  | 'MEMBERSHIP_NOT_FOUND'
+  | 'MEMBERSHIP_REMOVED'
+  | 'MEMBERSHIP_NOT_REMOVED'
+  | 'OWNER_PROTECTED'
+  | 'INVALID_MEMBERSHIP_STATE';
+
+
 export class MembershipLifecycleError
   extends Error {
   readonly code:
-    | 'INVALID_TENANT_ID'
-    | 'INVALID_ACTOR_USER_ID'
-    | 'INVALID_TARGET_USER_ID'
-    | 'INVALID_REASON'
-    | 'WORKSPACE_NOT_FOUND'
-    | 'WORKSPACE_NOT_ACTIVE'
-    | 'ACTOR_MEMBERSHIP_NOT_FOUND'
-    | 'ACTOR_ACCESS_DENIED'
-    | 'OWNER_REQUIRED'
-    | 'MEMBERSHIP_NOT_FOUND'
-    | 'MEMBERSHIP_REMOVED'
-    | 'MEMBERSHIP_NOT_REMOVED'
-    | 'OWNER_PROTECTED'
-    | 'INVALID_MEMBERSHIP_STATE';
+    MembershipLifecycleErrorCode;
 
 
   constructor(
     code:
-      | 'INVALID_TENANT_ID'
-      | 'INVALID_ACTOR_USER_ID'
-      | 'INVALID_TARGET_USER_ID'
-      | 'INVALID_REASON'
-      | 'WORKSPACE_NOT_FOUND'
-      | 'WORKSPACE_NOT_ACTIVE'
-      | 'ACTOR_MEMBERSHIP_NOT_FOUND'
-      | 'ACTOR_ACCESS_DENIED'
-      | 'OWNER_REQUIRED'
-      | 'MEMBERSHIP_NOT_FOUND'
-      | 'MEMBERSHIP_REMOVED'
-      | 'MEMBERSHIP_NOT_REMOVED'
-      | 'OWNER_PROTECTED'
-      | 'INVALID_MEMBERSHIP_STATE',
+      MembershipLifecycleErrorCode,
 
     message:
       string,
@@ -220,7 +265,7 @@ export class MembershipLifecycleError
 
 
 /* ================================================================
-   UUID VALIDATION
+   UUID
    ================================================================ */
 
 const UUID_PATTERN =
@@ -271,32 +316,29 @@ function throwInvalidUuid(
     | 'actor'
     | 'target',
 ): never {
-  if (
-    field ===
-      'tenant'
+  switch (
+    field
   ) {
-    throw new MembershipLifecycleError(
-      'INVALID_TENANT_ID',
-      'A valid workspace ID is required.',
-    );
+    case 'tenant':
+      throw new MembershipLifecycleError(
+        'INVALID_TENANT_ID',
+        'A valid workspace ID is required.',
+      );
+
+
+    case 'actor':
+      throw new MembershipLifecycleError(
+        'INVALID_ACTOR_USER_ID',
+        'A valid acting user ID is required.',
+      );
+
+
+    case 'target':
+      throw new MembershipLifecycleError(
+        'INVALID_TARGET_USER_ID',
+        'A valid target user ID is required.',
+      );
   }
-
-
-  if (
-    field ===
-      'actor'
-  ) {
-    throw new MembershipLifecycleError(
-      'INVALID_ACTOR_USER_ID',
-      'A valid acting user ID is required.',
-    );
-  }
-
-
-  throw new MembershipLifecycleError(
-    'INVALID_TARGET_USER_ID',
-    'A valid target user ID is required.',
-  );
 }
 
 
@@ -355,8 +397,33 @@ function normalizeReason(
 }
 
 
+function requireAdministrativeReason(
+  reason:
+    string | null,
+
+  action:
+    'suspend'
+    | 'remove',
+): string {
+  if (
+    reason
+  ) {
+    return reason;
+  }
+
+
+  throw new MembershipLifecycleError(
+    'REASON_REQUIRED',
+    action ===
+      'suspend'
+      ? 'A reason is required when suspending workspace access.'
+      : 'A reason is required when removing a workspace member.',
+  );
+}
+
+
 /* ================================================================
-   STATUS NORMALIZATION
+   NORMALIZATION
    ================================================================ */
 
 function normalizeStatus(
@@ -364,17 +431,17 @@ function normalizeStatus(
     unknown,
 ): MembershipLifecycleStatus {
   const normalized =
-    typeof value ===
-      'string'
-      ? value
-          .trim()
-          .toLowerCase()
-      : '';
+    String(
+      value ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
 
 
   if (
     normalized ===
-      'active'
+    'active'
   ) {
     return 'active';
   }
@@ -382,7 +449,7 @@ function normalizeStatus(
 
   if (
     normalized ===
-      'suspended'
+    'suspended'
   ) {
     return 'suspended';
   }
@@ -399,29 +466,20 @@ function normalizeMemberType(
   value:
     unknown,
 ): MembershipMemberType {
-  const normalized =
-    typeof value ===
-      'string'
-      ? value
-          .trim()
-          .toLowerCase()
-      : '';
-
-
-  if (
-    normalized ===
-      'portal'
-  ) {
-    return 'portal';
-  }
-
-
-  return 'internal';
+  return String(
+    value ||
+    '',
+  )
+    .trim()
+    .toLowerCase() ===
+    'portal'
+    ? 'portal'
+    : 'internal';
 }
 
 
 /* ================================================================
-   ISO DATE
+   DATE
    ================================================================ */
 
 function toIso(
@@ -439,7 +497,8 @@ function toIso(
 
 
   const date =
-    value instanceof Date
+    value instanceof
+      Date
       ? value
       : new Date(
           String(
@@ -462,7 +521,7 @@ function toIso(
 
 
 /* ================================================================
-   LOAD WORKSPACE
+   WORKSPACE
    ================================================================ */
 
 async function requireActiveWorkspace(
@@ -496,7 +555,7 @@ async function requireActiveWorkspace(
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     throw new MembershipLifecycleError(
       'WORKSPACE_NOT_FOUND',
@@ -519,17 +578,13 @@ async function requireActiveWorkspace(
   }
 
 
-  const status =
-    typeof workspace.status ===
-      'string'
-      ? workspace.status
-          .trim()
-          .toLowerCase()
-      : '';
-
-
   if (
-    status !==
+    String(
+      workspace.status ||
+      '',
+    )
+      .trim()
+      .toLowerCase() !==
       'active'
   ) {
     throw new MembershipLifecycleError(
@@ -541,10 +596,18 @@ async function requireActiveWorkspace(
 
 
 /* ================================================================
-   REQUIRE ACTING OWNER
+   ACTOR AUTHORIZATION
+
+   users.manage is the canonical membership-management permission.
+
+   Owner receives structural override.
+
+   This service still validates authorization even when the API
+   already called requirePermission(users.manage). This is defense
+   in depth and protects future internal callers.
    ================================================================ */
 
-async function requireActingOwner(
+async function requireActingMembershipManager(
   client:
     PoolClient,
 
@@ -553,20 +616,131 @@ async function requireActingOwner(
 
   actorUserId:
     string,
+
+  targetUserId:
+    string,
 ): Promise<void> {
+  if (
+    actorUserId ===
+    targetUserId
+  ) {
+    throw new MembershipLifecycleError(
+      'SELF_MANAGEMENT_PROTECTED',
+      [
+        'You cannot suspend, remove, restore or reactivate your own',
+        'workspace membership from Employee Management.',
+      ].join(
+        ' ',
+      ),
+    );
+  }
+
+
   const result =
-    await client.query(
+    await client.query<ActingMemberRow>(
       `
         SELECT
           tu.id,
-
           tu.status,
           tu.member_type,
           tu.is_owner,
           tu.deleted_at,
 
           u.status
-            AS user_status
+            AS user_status,
+
+          u.deleted_at
+            AS user_deleted_at,
+
+          (
+            tu.is_owner =
+              TRUE
+
+            OR
+
+            EXISTS (
+              SELECT
+                1
+
+              FROM user_roles ur
+
+              INNER JOIN roles r
+                ON r.id =
+                   ur.role_id
+
+              INNER JOIN role_permissions rp
+                ON rp.role_id =
+                   r.id
+
+              INNER JOIN permissions p
+                ON p.id =
+                   rp.permission_id
+
+              WHERE ur.tenant_id =
+                    tu.tenant_id
+
+                AND ur.user_id =
+                    tu.user_id
+
+                AND ur.deleted_at
+                    IS NULL
+
+                AND r.deleted_at
+                    IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    r.status,
+                    'active'
+                  )
+                ) =
+                'active'
+
+                AND (
+                  (
+                    r.is_system =
+                      TRUE
+
+                    AND r.tenant_id
+                        IS NULL
+                  )
+
+                  OR
+
+                  (
+                    r.is_system =
+                      FALSE
+
+                    AND r.tenant_id =
+                        tu.tenant_id
+                  )
+                )
+
+                AND rp.deleted_at
+                    IS NULL
+
+                AND p.deleted_at
+                    IS NULL
+
+                AND LOWER(
+                  COALESCE(
+                    p.status,
+                    'active'
+                  )
+                ) =
+                'active'
+
+                AND LOWER(
+                  p.key
+                ) =
+                LOWER(
+                  $3
+                )
+
+              LIMIT 1
+            )
+          )
+            AS can_manage_users
 
         FROM tenant_users tu
 
@@ -584,13 +758,16 @@ async function requireActingOwner(
       [
         tenantId,
         actorUserId,
+
+        SAMI_PERMISSIONS
+          .USERS_MANAGE,
       ],
     );
 
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     throw new MembershipLifecycleError(
       'ACTOR_MEMBERSHIP_NOT_FOUND',
@@ -604,11 +781,12 @@ async function requireActingOwner(
 
 
   if (
-    actor.deleted_at
+    actor.deleted_at ||
+    actor.user_deleted_at
   ) {
     throw new MembershipLifecycleError(
       'ACTOR_ACCESS_DENIED',
-      'The acting membership is not active.',
+      'The acting user does not have active workspace access.',
     );
   }
 
@@ -624,7 +802,7 @@ async function requireActingOwner(
   ) {
     throw new MembershipLifecycleError(
       'ACTOR_ACCESS_DENIED',
-      'The acting membership is not active.',
+      'The acting workspace membership is not active.',
     );
   }
 
@@ -640,7 +818,7 @@ async function requireActingOwner(
   ) {
     throw new MembershipLifecycleError(
       'ACTOR_ACCESS_DENIED',
-      'Portal members cannot manage workspace membership.',
+      'Portal users cannot manage workspace employees.',
     );
   }
 
@@ -662,19 +840,19 @@ async function requireActingOwner(
 
 
   if (
-    actor.is_owner !==
-      true
+    actor.can_manage_users !==
+    true
   ) {
     throw new MembershipLifecycleError(
-      'OWNER_REQUIRED',
-      'Only the workspace owner can currently manage workspace membership.',
+      'USERS_MANAGE_REQUIRED',
+      'You do not have permission to manage workspace employees.',
     );
   }
 }
 
 
 /* ================================================================
-   LOAD TARGET MEMBERSHIP
+   TARGET MEMBERSHIP
    ================================================================ */
 
 async function getTargetMembershipForUpdate(
@@ -729,7 +907,7 @@ async function getTargetMembershipForUpdate(
 
   if (
     result.rows.length ===
-      0
+    0
   ) {
     throw new MembershipLifecycleError(
       'MEMBERSHIP_NOT_FOUND',
@@ -752,21 +930,30 @@ function protectOwner(
 ): void {
   if (
     membership.is_owner ===
-      true
+    true
   ) {
     throw new MembershipLifecycleError(
       'OWNER_PROTECTED',
       [
-        'The workspace owner cannot be suspended or removed.',
-        'Transfer workspace ownership first.',
-      ].join(' '),
+        'The workspace owner cannot be suspended, removed, restored',
+        'or reactivated through Employee Management.',
+        'Transfer ownership first when ownership itself must change.',
+      ].join(
+        ' ',
+      ),
     );
   }
 }
 
 
 /* ================================================================
-   INVALIDATE SESSION WORKSPACE CONTEXT
+   SESSION INVALIDATION
+
+   Suspension / removal immediately removes the workspace from any
+   current session context.
+
+   The SaMi account itself remains valid because membership removal
+   is workspace-specific, not global-account deletion.
    ================================================================ */
 
 async function clearCurrentWorkspaceSessions(
@@ -884,7 +1071,7 @@ async function insertLifecycleAudit(
     input.audit
       ?.ipAddress
       ?.trim()
-      ?.slice(
+      .slice(
         0,
         45,
       ) ||
@@ -1094,8 +1281,11 @@ export async function suspendWorkspaceMember(
 
 
   const reason =
-    normalizeReason(
-      input.reason,
+    requireAdministrativeReason(
+      normalizeReason(
+        input.reason,
+      ),
+      'suspend',
     );
 
 
@@ -1107,10 +1297,11 @@ export async function suspendWorkspaceMember(
       );
 
 
-      await requireActingOwner(
+      await requireActingMembershipManager(
         client,
         tenantId,
         actorUserId,
+        targetUserId,
       );
 
 
@@ -1145,7 +1336,7 @@ export async function suspendWorkspaceMember(
 
       if (
         previousStatus ===
-          'suspended'
+        'suspended'
       ) {
         return buildResult(
           target,
@@ -1155,7 +1346,7 @@ export async function suspendWorkspaceMember(
       }
 
 
-      const updated =
+      const result =
         await client.query<MembershipRow>(
           `
             UPDATE tenant_users
@@ -1205,18 +1396,18 @@ export async function suspendWorkspaceMember(
 
 
       if (
-        updated.rows.length ===
-          0
+        result.rows.length ===
+        0
       ) {
         throw new MembershipLifecycleError(
           'MEMBERSHIP_NOT_FOUND',
-          'The workspace membership could not be updated.',
+          'The workspace membership could not be suspended.',
         );
       }
 
 
       const membership =
-        updated.rows[0];
+        result.rows[0];
 
 
       const clearedSessions =
@@ -1319,10 +1510,11 @@ export async function reactivateWorkspaceMember(
       );
 
 
-      await requireActingOwner(
+      await requireActingMembershipManager(
         client,
         tenantId,
         actorUserId,
+        targetUserId,
       );
 
 
@@ -1357,7 +1549,7 @@ export async function reactivateWorkspaceMember(
 
       if (
         previousStatus ===
-          'active'
+        'active'
       ) {
         return buildResult(
           target,
@@ -1367,7 +1559,7 @@ export async function reactivateWorkspaceMember(
       }
 
 
-      const updated =
+      const result =
         await client.query<MembershipRow>(
           `
             UPDATE tenant_users
@@ -1415,18 +1607,18 @@ export async function reactivateWorkspaceMember(
 
 
       if (
-        updated.rows.length ===
-          0
+        result.rows.length ===
+        0
       ) {
         throw new MembershipLifecycleError(
           'MEMBERSHIP_NOT_FOUND',
-          'The workspace membership could not be updated.',
+          'The workspace membership could not be reactivated.',
         );
       }
 
 
       const membership =
-        updated.rows[0];
+        result.rows[0];
 
 
       await insertLifecycleAudit(
@@ -1479,6 +1671,19 @@ export async function reactivateWorkspaceMember(
 
 /* ================================================================
    REMOVE MEMBER
+
+   Removal is soft deletion.
+
+   We deliberately preserve:
+
+   - global user identity
+   - historical membership row
+   - role assignments
+   - company assignments
+   - audit history
+
+   This allows controlled restoration while keeping historical
+   accountability.
    ================================================================ */
 
 export async function removeWorkspaceMember(
@@ -1507,8 +1712,11 @@ export async function removeWorkspaceMember(
 
 
   const reason =
-    normalizeReason(
-      input.reason,
+    requireAdministrativeReason(
+      normalizeReason(
+        input.reason,
+      ),
+      'remove',
     );
 
 
@@ -1520,10 +1728,11 @@ export async function removeWorkspaceMember(
       );
 
 
-      await requireActingOwner(
+      await requireActingMembershipManager(
         client,
         tenantId,
         actorUserId,
+        targetUserId,
       );
 
 
@@ -1557,7 +1766,7 @@ export async function removeWorkspaceMember(
         );
 
 
-      const updated =
+      const result =
         await client.query<MembershipRow>(
           `
             UPDATE tenant_users
@@ -1581,8 +1790,7 @@ export async function removeWorkspaceMember(
               suspension_reason =
                 COALESCE(
                   suspension_reason,
-                  $4,
-                  'Membership removed'
+                  $4
                 ),
 
               deleted_at =
@@ -1626,8 +1834,8 @@ export async function removeWorkspaceMember(
 
 
       if (
-        updated.rows.length ===
-          0
+        result.rows.length ===
+        0
       ) {
         throw new MembershipLifecycleError(
           'MEMBERSHIP_NOT_FOUND',
@@ -1637,7 +1845,7 @@ export async function removeWorkspaceMember(
 
 
       const membership =
-        updated.rows[0];
+        result.rows[0];
 
 
       const clearedSessions =
@@ -1698,7 +1906,7 @@ export async function removeWorkspaceMember(
 
 
 /* ================================================================
-   RESTORE REMOVED MEMBER
+   RESTORE MEMBER
    ================================================================ */
 
 export async function restoreWorkspaceMember(
@@ -1740,10 +1948,11 @@ export async function restoreWorkspaceMember(
       );
 
 
-      await requireActingOwner(
+      await requireActingMembershipManager(
         client,
         tenantId,
         actorUserId,
+        targetUserId,
       );
 
 
@@ -1782,7 +1991,7 @@ export async function restoreWorkspaceMember(
         );
 
 
-      const updated =
+      const result =
         await client.query<MembershipRow>(
           `
             UPDATE tenant_users
@@ -1839,8 +2048,8 @@ export async function restoreWorkspaceMember(
 
 
       if (
-        updated.rows.length ===
-          0
+        result.rows.length ===
+        0
       ) {
         throw new MembershipLifecycleError(
           'MEMBERSHIP_NOT_REMOVED',
@@ -1850,7 +2059,7 @@ export async function restoreWorkspaceMember(
 
 
       const membership =
-        updated.rows[0];
+        result.rows[0];
 
 
       await insertLifecycleAudit(

@@ -23,10 +23,6 @@ export const dynamic =
   'force-dynamic';
 
 
-/* ================================================================
-   RESPONSE
-   ================================================================ */
-
 function json(
   body:
     Record<
@@ -55,29 +51,7 @@ function json(
 
 
 /* ================================================================
-   GET /api/workspace/navigation
-
-   PURPOSE
-
-   Resolve workspace-shell navigation visibility from the real
-   Category 8 permission engine.
-
-   The browser receives capability booleans only.
-
-   It does NOT receive:
-   - roles
-   - database information
-   - tenant database registry
-   - permission SQL
-   - authorization internals
-
-   IMPORTANT
-
-   Navigation visibility is UX only.
-
-   Every protected page/API must STILL enforce its own server-side
-   permission guard.
-
+   GET NAVIGATION CAPABILITIES
    ================================================================ */
 
 export async function GET() {
@@ -96,99 +70,148 @@ export async function GET() {
         );
 
 
+    const workspaceManage =
+      has(
+        SAMI_PERMISSIONS
+          .WORKSPACE_MANAGE,
+      );
+
+
+    const usersManage =
+      has(
+        SAMI_PERMISSIONS
+          .USERS_MANAGE,
+      );
+
+
+    const rolesManage =
+      has(
+        SAMI_PERMISSIONS
+          .ROLES_MANAGE,
+      );
+
+
+    const invitationsManage =
+      has(
+        SAMI_PERMISSIONS
+          .INVITATIONS_MANAGE,
+      );
+
+
+    const organizationManage =
+      has(
+        SAMI_PERMISSIONS
+          .ORGANIZATION_MANAGE,
+      );
+
+
+    const companiesManage =
+      has(
+        SAMI_PERMISSIONS
+          .COMPANIES_MANAGE,
+      );
+
+
+    const appsManage =
+      has(
+        SAMI_PERMISSIONS
+          .APPS_MANAGE,
+      );
+
+
+    const aiManage =
+      has(
+        SAMI_PERMISSIONS
+          .AI_MANAGE,
+      );
+
+
+    const billingManage =
+      has(
+        SAMI_PERMISSIONS
+          .BILLING_MANAGE,
+      );
+
+
+    const settingsManage =
+      has(
+        SAMI_PERMISSIONS
+          .SETTINGS_MANAGE,
+      );
+
+
     return json({
       success:
         true,
 
       navigation: {
+        workspaceManage,
+
         workspaceView:
+          workspaceManage ||
           has(
             SAMI_PERMISSIONS
               .WORKSPACE_VIEW,
           ),
 
-        workspaceManage:
-          has(
-            SAMI_PERMISSIONS
-              .WORKSPACE_MANAGE,
-          ),
 
+        usersManage,
 
         usersView:
+          usersManage ||
           has(
             SAMI_PERMISSIONS
               .USERS_VIEW,
           ),
 
-        usersManage:
-          has(
-            SAMI_PERMISSIONS
-              .USERS_MANAGE,
-          ),
 
+        rolesManage,
 
         rolesView:
+          rolesManage ||
           has(
             SAMI_PERMISSIONS
               .ROLES_VIEW,
           ),
 
-        rolesManage:
-          has(
-            SAMI_PERMISSIONS
-              .ROLES_MANAGE,
-          ),
 
+        invitationsManage,
 
         invitationsView:
+          invitationsManage ||
           has(
             SAMI_PERMISSIONS
               .INVITATIONS_VIEW,
           ),
 
-        invitationsManage:
-          has(
-            SAMI_PERMISSIONS
-              .INVITATIONS_MANAGE,
-          ),
 
+        organizationManage,
 
         organizationView:
+          organizationManage ||
           has(
             SAMI_PERMISSIONS
               .ORGANIZATION_VIEW,
           ),
 
-        organizationManage:
-          has(
-            SAMI_PERMISSIONS
-              .ORGANIZATION_MANAGE,
-          ),
 
+        companiesManage,
 
         companiesView:
+          companiesManage ||
           has(
             SAMI_PERMISSIONS
               .COMPANIES_VIEW,
           ),
 
-        companiesManage:
-          has(
-            SAMI_PERMISSIONS
-              .COMPANIES_MANAGE,
-          ),
 
+        appsManage,
 
         appsView:
+          appsManage ||
           has(
             SAMI_PERMISSIONS
               .APPS_VIEW,
-          ),
-
-        appsManage:
-          has(
-            SAMI_PERMISSIONS
-              .APPS_MANAGE,
           ),
 
 
@@ -198,6 +221,7 @@ export async function GET() {
               .FILES_VIEW,
           ),
 
+
         notificationsView:
           has(
             SAMI_PERMISSIONS
@@ -205,42 +229,33 @@ export async function GET() {
           ),
 
 
+        aiManage,
+
         aiUse:
+          aiManage ||
           has(
             SAMI_PERMISSIONS
               .AI_USE,
           ),
 
-        aiManage:
-          has(
-            SAMI_PERMISSIONS
-              .AI_MANAGE,
-          ),
 
+        billingManage,
 
         billingView:
+          billingManage ||
           has(
             SAMI_PERMISSIONS
               .BILLING_VIEW,
           ),
 
-        billingManage:
-          has(
-            SAMI_PERMISSIONS
-              .BILLING_MANAGE,
-          ),
 
+        settingsManage,
 
         settingsView:
+          settingsManage ||
           has(
             SAMI_PERMISSIONS
               .SETTINGS_VIEW,
-          ),
-
-        settingsManage:
-          has(
-            SAMI_PERMISSIONS
-              .SETTINGS_MANAGE,
           ),
       },
     });
@@ -249,7 +264,7 @@ export async function GET() {
   ) {
     if (
       error instanceof
-      TenantContextError
+        TenantContextError
     ) {
       return json(
         {

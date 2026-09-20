@@ -34,18 +34,26 @@ export default async function InvitationsSettingsPage() {
       await getPermissionContext();
 
 
-    if (
+    const allowed =
       permissions.permissionSet.has(
         SAMI_PERMISSIONS
           .INVITATIONS_VIEW,
-      )
+      ) ||
+      permissions.permissionSet.has(
+        SAMI_PERMISSIONS
+          .INVITATIONS_MANAGE,
+      );
+
+
+    if (
+      allowed
     ) {
       redirect(
         '/settings/users?view=invited',
       );
     }
   } catch {
-    // Fall through to Settings.
+    // Fall through.
   }
 
 
