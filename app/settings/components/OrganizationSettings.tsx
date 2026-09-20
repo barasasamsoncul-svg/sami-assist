@@ -984,9 +984,8 @@ export default function OrganizationSettings() {
                   {headerCompany?.name || 'Organization'}
                 </p>
                 <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">
-                  {'legalName' in (headerCompany || {})
-                    ? (headerCompany as CompanyProfile | CompanySummary).legalName || 'Legal name not set'
-                    : 'Company administration'}
+                  {headerCompany?.legalName ||
+                    'Legal name not set'}
                 </p>
               </div>
             </div>
