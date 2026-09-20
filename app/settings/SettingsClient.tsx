@@ -50,6 +50,10 @@ import {
   type UserTheme,
 } from '@/lib/account/user-formatting';
 
+import {
+  getSaMiAppIcon,
+} from '@/lib/apps/icon-registry';
+
 
 /* ================================================================
    TYPES
@@ -136,17 +140,41 @@ type ModuleData = {
   key:
     string;
 
+  registryKey:
+    string;
+
   name:
     string;
 
   status:
     string;
 
-  href?:
-    string | null;
+  href:
+    string;
 
-  description?:
-    string | null;
+  description:
+    string;
+
+  iconKey:
+    string;
+
+  category:
+    string;
+
+  categoryLabel:
+    string;
+
+  order:
+    number;
+
+  recommended:
+    boolean;
+
+  keywords:
+    string[];
+
+  registered:
+    boolean;
 };
 
 
@@ -1402,6 +1430,10 @@ function AppsSection({
                 ),
               );
 
+            const Icon =
+              getSaMiAppIcon(
+                module.iconKey,
+              );
 
             return (
               <div
@@ -1413,33 +1445,60 @@ function AppsSection({
 
                 <div className="flex items-start gap-3">
 
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
-                    <AppWindow className="h-[18px] w-[18px]" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
+                    <Icon className="h-[18px] w-[18px]" />
                   </div>
 
 
                   <div className="min-w-0 flex-1">
 
-                    <p className="truncate text-xs font-bold">
-                      {module.name}
+                    <div className="flex items-start justify-between gap-3">
+
+                      <div className="min-w-0">
+
+                        <p className="truncate text-xs font-bold">
+                          {module.name}
+                        </p>
+
+                        <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                          {module.categoryLabel}
+                        </p>
+
+                      </div>
+
+
+                      <span
+                        className={[
+                          'shrink-0 rounded-md px-2 py-1 text-[9px] font-semibold',
+
+                          activeModule
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
+                            : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
+                        ].join(
+                          ' ',
+                        )}
+                      >
+                        {formatLabel(
+                          module.status,
+                        )}
+                      </span>
+
+                    </div>
+
+
+                    <p className="mt-3 line-clamp-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                      {module.description}
                     </p>
 
 
-                    <span
-                      className={[
-                        'mt-2 inline-flex rounded-md px-2 py-1 text-[9px] font-semibold',
-
-                        activeModule
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-400',
-                      ].join(
-                        ' ',
-                      )}
+                    <Link
+                      href={
+                        module.href
+                      }
+                      className="mt-3 inline-flex text-[11px] font-semibold text-blue-600 transition hover:text-blue-700 dark:text-blue-400"
                     >
-                      {formatLabel(
-                        module.status,
-                      )}
-                    </span>
+                      Open app
+                    </Link>
 
                   </div>
 
