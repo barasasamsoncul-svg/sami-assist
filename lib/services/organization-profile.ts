@@ -1718,6 +1718,91 @@ export async function archiveOrganizationBranch(
   }
 }
 
+export async function reactivateOrganizationBranch(
+  branchIdInput: unknown,
+): Promise<BranchProfile> {
+  const context = await getCompanyPermissionContext();
+  requireOrganizationManage(context);
+
+  const branchId = requireBranchId(branchIdInput);
+
+  const pool = await getTenantPoolByTenantId(context.tenantId);
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    const current = await loadBranchForUpdate(
+      client,
+      context.currentCompanyId,
+      branchId,
+    );
+
+    if (current.isActive) {
+      await client.query('COMMIT');
+      return current;
+    }
+
+    const main = await client.query(
+      `
+        SELECT 1
+        FROM branches
+        WHERE company_id = $1
+          AND is_active = TRUE
+          AND is_main = TRUE
+        LIMIT 1
+      `,
+      [context.currentCompanyId],
+    );
+
+    const updated = await client.query(
+      `
+        UPDATE branches
+        SET
+          is_active = TRUE,
+          is_main = CASE
+            WHEN $3::boolean = TRUE
+            THEN TRUE
+            ELSE is_main
+          END,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+        RETURNING *
+      `,
+      [
+        branchId,
+        context.currentCompanyId,
+        main.rows.length === 0,
+      ],
+    );
+
+    await writeTenantAudit(client, {
+      companyId: context.currentCompanyId,
+      userId: context.userId,
+      action: 'organization.branch.reactivated',
+      resourceType: 'branch',
+      resourceId: branchId,
+    });
+
+    await client.query('COMMIT');
+
+    return mapBranch(updated.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+
+    if (error instanceof OrganizationProfileError) throw error;
+
+    throw new OrganizationProfileError(
+      'UPDATE_FAILED',
+      'The branch could not be reactivated.',
+    );
+  } finally {
+    client.release();
+  }
+}
+
+
 /* ================================================================
    MULTI-COMPANY ADMINISTRATION
    ================================================================ */
