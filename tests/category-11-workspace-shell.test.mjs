@@ -295,6 +295,37 @@ test('Category 11: one account theme runtime governs every route and settings su
     /const\s+THEME_STORAGE_KEY|function\s+applyTheme\s*\(/,
     'My Account Appearance must use the same global theme runtime.',
   );
+
+  const authThemeConsumers =
+    await Promise.all([
+      source('app/components/auth/AuthShell.tsx'),
+      source('app/login/LoginClient.tsx'),
+      source('app/register/RegisterClient.tsx'),
+      source('app/forgot-password/ForgotPasswordClient.tsx'),
+      source('app/reset-password/ResetPasswordClient.tsx'),
+      source('app/verify-email/VerifyEmailClient.tsx'),
+      source('app/google-complete/page.tsx'),
+      source('app/select-apps/page.tsx'),
+      source('app/select-plan/page.tsx'),
+      source('app/login/two-factor/TwoFactorLoginClient.tsx'),
+    ]);
+
+  for (
+    const consumer of
+    authThemeConsumers
+  ) {
+    assert.match(
+      consumer,
+      /useSaMiTheme/,
+      'Auth and onboarding pages must consume the shared global theme runtime.',
+    );
+
+    assert.doesNotMatch(
+      consumer,
+      /sami_theme|THEME_STORAGE_KEY|THEME_KEY|document\.documentElement\.classList\.toggle/,
+      'Auth and onboarding pages must not recreate route-local theme persistence or root-class mutation.',
+    );
+  }
 });
 
 
