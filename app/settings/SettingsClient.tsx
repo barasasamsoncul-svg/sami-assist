@@ -48,10 +48,15 @@ import AiSettings from './components/AiSettings';
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
   formatUserDateTime,
-  resolveUserTheme,
   type UserDisplayPreferences,
   type UserTheme,
 } from '@/lib/account/user-formatting';
+
+import {
+  applySaMiTheme,
+  SAMI_THEME_CHANGE_EVENT,
+  setSaMiTheme,
+} from '@/lib/theme/runtime';
 
 
 /* ================================================================
@@ -280,10 +285,6 @@ type PreferencesResponse = {
    CONSTANTS
    ================================================================ */
 
-const THEME_STORAGE_KEY =
-  'sami_theme';
-
-
 const VALID_SECTIONS =
   new Set<Section>([
     'account',
@@ -360,68 +361,6 @@ function formatLabel(
         character
           .toUpperCase(),
     );
-}
-
-
-function getSystemPrefersDark() {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return false;
-  }
-
-
-  return (
-    window.matchMedia?.(
-      '(prefers-color-scheme: dark)',
-    ).matches ??
-    false
-  );
-}
-
-
-function applyThemeToDocument(
-  theme:
-    UserTheme,
-) {
-  const resolved =
-    resolveUserTheme(
-      theme,
-      getSystemPrefersDark(),
-    );
-
-
-  const dark =
-    resolved ===
-    'dark';
-
-
-  if (
-    typeof document !==
-    'undefined'
-  ) {
-    document
-      .documentElement
-      .classList
-      .toggle(
-        'dark',
-        dark,
-      );
-  }
-
-
-  try {
-    localStorage.setItem(
-      THEME_STORAGE_KEY,
-      theme,
-    );
-  } catch {
-    // Local cache is optional.
-  }
-
-
-  return dark;
 }
 
 
@@ -732,55 +671,60 @@ export default function SettingsClient({
 
 
   /* ==============================================================
-     INITIAL THEME
+     GLOBAL THEME STATE
+
+     Theme ownership lives at the root application layer.
+     Settings only reflects the global document state and never
+     creates a second page-local theme authority.
      ============================================================== */
 
   useEffect(
     () => {
-      try {
-        const stored =
-          localStorage.getItem(
-            THEME_STORAGE_KEY,
+      const syncDarkMode =
+        () => {
+          setDarkMode(
+            document
+              .documentElement
+              .classList
+              .contains(
+                'dark',
+              ),
           );
+        };
 
+      syncDarkMode();
 
-        const theme:
-          UserTheme =
-          stored ===
-              'dark' ||
-            stored ===
-              'light' ||
-            stored ===
-              'system'
-            ? stored
-            : 'system';
-
-
-        setDarkMode(
-          applyThemeToDocument(
-            theme,
-          ),
-        );
-      } catch {
-        const dark =
-          getSystemPrefersDark();
-
-
-        setDarkMode(
-          dark,
+      const observer =
+        new MutationObserver(
+          syncDarkMode,
         );
 
+      observer.observe(
+        document.documentElement,
+        {
+          attributes:
+            true,
+          attributeFilter: [
+            'class',
+            'data-theme-preference',
+          ],
+        },
+      );
 
-        document
-          .documentElement
-          .classList
-          .toggle(
-            'dark',
-            dark,
-          );
-      }
+      window.addEventListener(
+        SAMI_THEME_CHANGE_EVENT,
+        syncDarkMode,
+      );
+
+      return () => {
+        observer.disconnect();
+
+        window.removeEventListener(
+          SAMI_THEME_CHANGE_EVENT,
+          syncDarkMode,
+        );
+      };
     },
-
     [],
   );
 
@@ -840,10 +784,17 @@ export default function SettingsClient({
 
 
           setDarkMode(
-            applyThemeToDocument(
+            applySaMiTheme(
               data.preferences
                 .theme,
-            ),
+              {
+                persist:
+                  true,
+                broadcast:
+                  true,
+              },
+            ) ===
+              'dark',
           );
         } catch {
           /*
@@ -863,57 +814,6 @@ export default function SettingsClient({
     },
 
     [],
-  );
-
-
-  /* ==============================================================
-     SYSTEM THEME
-     ============================================================== */
-
-  useEffect(
-    () => {
-      if (
-        displayPreferences
-          .theme !==
-        'system'
-      ) {
-        return;
-      }
-
-
-      const media =
-        window.matchMedia(
-          '(prefers-color-scheme: dark)',
-        );
-
-
-      const syncTheme =
-        () => {
-          setDarkMode(
-            applyThemeToDocument(
-              'system',
-            ),
-          );
-        };
-
-
-      media.addEventListener?.(
-        'change',
-        syncTheme,
-      );
-
-
-      return () => {
-        media.removeEventListener?.(
-          'change',
-          syncTheme,
-        );
-      };
-    },
-
-    [
-      displayPreferences.theme,
-    ],
   );
 
 
@@ -959,9 +859,10 @@ export default function SettingsClient({
 
 
     setDarkMode(
-      applyThemeToDocument(
+      setSaMiTheme(
         nextTheme,
-      ),
+      ) ===
+        'dark',
     );
 
 
@@ -1020,10 +921,11 @@ export default function SettingsClient({
 
 
       setDarkMode(
-        applyThemeToDocument(
+        setSaMiTheme(
           data.preferences
             .theme,
-        ),
+        ) ===
+          'dark',
       );
     } catch {
       setDisplayPreferences(
@@ -1032,9 +934,10 @@ export default function SettingsClient({
 
 
       setDarkMode(
-        applyThemeToDocument(
+        setSaMiTheme(
           previous.theme,
-        ),
+        ) ===
+          'dark',
       );
 
 
