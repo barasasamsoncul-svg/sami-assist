@@ -30,6 +30,7 @@ import {
   Store,
   User,
   UsersRound,
+  Workflow,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -397,6 +398,12 @@ type NavigationPermissionState = {
     boolean;
 
   auditView:
+    boolean;
+
+  automationView:
+    boolean;
+
+  automationManage:
     boolean;
 
 
@@ -1131,6 +1138,11 @@ export default function WorkspaceSidebar({
       ?.searchView ===
       true;
 
+  const canUseAutomation =
+    navigationPermissions
+      ?.automationView ===
+      true;
+
   const canUseAi =
     navigationPermissions
       ?.aiAvailable ===
@@ -1362,6 +1374,11 @@ export default function WorkspaceSidebar({
       '/notifications' ||
     pathname.startsWith(
       '/notifications/',
+    ) ||
+    pathname ===
+      '/automation' ||
+    pathname.startsWith(
+      '/automation/',
     );
 
 
@@ -3216,7 +3233,8 @@ export default function WorkspaceSidebar({
 
           {(canUseNotifications ||
             canUseActivity ||
-            canUseSearch) && (
+            canUseSearch ||
+            canUseAutomation) && (
             <div className="mt-6">
 
               <NavSectionLabel>
@@ -3280,6 +3298,27 @@ export default function WorkspaceSidebar({
                           '/search' ||
                         pathname.startsWith(
                           '/search/',
+                        )
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  )}
+
+
+                  {canUseAutomation && (
+                    <ChildNavLink
+                      href="/automation"
+                      icon={
+                        Workflow
+                      }
+                      label="Automation"
+                      active={
+                        pathname ===
+                          '/automation' ||
+                        pathname.startsWith(
+                          '/automation/',
                         )
                       }
                       onNavigate={
