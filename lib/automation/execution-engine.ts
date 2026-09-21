@@ -557,6 +557,10 @@ async function executeRemainingSteps(
                   status =
                     'waiting_approval',
                   completed_at =
+                    NULL,
+                  lease_until =
+                    NULL,
+                  lease_token =
                     NULL
                 WHERE id = $1
               `,
@@ -612,6 +616,10 @@ async function executeRemainingSteps(
                   completed_at =
                     NOW(),
                   next_retry_at =
+                    NULL,
+                  lease_until =
+                    NULL,
+                  lease_token =
                     NULL
                 WHERE id = $1
               `,
@@ -928,7 +936,11 @@ async function executeRemainingSteps(
           next_retry_at =
             NULL,
           completed_at =
-            NOW()
+            NOW(),
+          lease_until =
+            NULL,
+          lease_token =
+            NULL
         WHERE id = $1
       `,
       [
@@ -1024,7 +1036,11 @@ async function executeRemainingSteps(
           next_retry_at =
             $4,
           completed_at =
-            NOW()
+            NOW(),
+          lease_until =
+            NULL,
+          lease_token =
+            NULL
         WHERE id = $1
       `,
       [
@@ -1337,7 +1353,11 @@ export async function startAutomationRun(
           result =
             $2::jsonb,
           completed_at =
-            NOW()
+            NOW(),
+          lease_until =
+            NULL,
+          lease_token =
+            NULL
         WHERE id = $1
       `,
       [
