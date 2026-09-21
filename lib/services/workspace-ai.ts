@@ -111,6 +111,7 @@ export type WorkspaceAiErrorCode =
   | 'INVALID_CONVERSATION'
   | 'CONVERSATION_NOT_FOUND'
   | 'INVALID_MESSAGE'
+  | 'MESSAGE_NOT_FOUND'
   | 'INVALID_MEMORY'
   | 'MEMORY_NOT_FOUND'
   | 'AI_PREFERENCES_INVALID'
@@ -222,7 +223,8 @@ function requireUuid(
   code:
     | 'INVALID_CONVERSATION'
     | 'INVALID_ACTION'
-    | 'INVALID_MEMORY',
+    | 'INVALID_MEMORY'
+    | 'INVALID_MESSAGE',
   label: string,
 ) {
   if (
@@ -843,6 +845,273 @@ async function persistMessage(
     MessageRow;
 }
 
+async function requireConversationMessage(
+  context: SamiAiRuntimeContext,
+  conversationId: string,
+  messageId: string,
+  expectedRole?:
+    | 'user'
+    | 'assistant',
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          message.id,
+          message.conversation_id,
+          message.role,
+          message.content,
+          message.status,
+          message.provider,
+          message.model,
+          message.correlation_id,
+          message.metadata,
+          message.created_at
+        FROM ai_messages message
+        INNER JOIN ai_conversations conversation
+          ON conversation.id =
+            message.conversation_id
+        WHERE message.id = $1
+          AND message.conversation_id = $2
+          AND conversation.user_id = $3
+          AND conversation.company_id = $4
+          AND conversation.archived_at IS NULL
+          AND COALESCE(
+            message.status,
+            'completed'
+          ) <> 'superseded'
+        LIMIT 1
+      `,
+      [
+        messageId,
+        conversationId,
+        context.userId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    result.rows.length ===
+    0
+  ) {
+    throw new WorkspaceAiError(
+      'MESSAGE_NOT_FOUND',
+      'That SaMi AI message is no longer available in this conversation.',
+    );
+  }
+
+  const message =
+    result.rows[0] as
+      MessageRow;
+
+  if (
+    expectedRole &&
+    message.role !==
+      expectedRole
+  ) {
+    throw new WorkspaceAiError(
+      'INVALID_MESSAGE',
+      expectedRole ===
+        'user'
+        ? 'Only your own message can be edited.'
+        : 'Only an assistant response can be regenerated.',
+    );
+  }
+
+  return message;
+}
+
+async function supersedeConversationFromMessage(
+  context: SamiAiRuntimeContext,
+  input: {
+    conversationId: string;
+    message:
+      MessageRow;
+    reason:
+      'edited'
+      | 'regenerated';
+  },
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  await pool.query(
+    `
+      UPDATE ai_messages
+      SET
+        status =
+          'superseded',
+        metadata =
+          COALESCE(
+            metadata,
+            '{}'::jsonb
+          ) ||
+          jsonb_build_object(
+            'supersededReason',
+            $3::text,
+            'supersededAt',
+            NOW()
+          )
+      WHERE conversation_id = $1
+        AND created_at >= $2
+        AND COALESCE(
+          status,
+          'completed'
+        ) <> 'superseded'
+    `,
+    [
+      input.conversationId,
+      input.message
+        .created_at,
+      input.reason,
+    ],
+  );
+
+  await pool.query(
+    `
+      UPDATE ai_actions
+      SET
+        status =
+          'expired',
+        expires_at =
+          LEAST(
+            COALESCE(
+              expires_at,
+              NOW()
+            ),
+            NOW()
+          )
+      WHERE conversation_id = $1
+        AND created_at >= $2
+        AND status =
+          'pending_confirmation'
+    `,
+    [
+      input.conversationId,
+      input.message
+        .created_at,
+    ],
+  );
+}
+
+async function prepareRegeneration(
+  context: SamiAiRuntimeContext,
+  conversationId: string,
+  assistantMessageId: string,
+) {
+  const assistantMessage =
+    await requireConversationMessage(
+      context,
+      conversationId,
+      assistantMessageId,
+      'assistant',
+    );
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.tenantId,
+    );
+
+  const later =
+    await pool.query(
+      `
+        SELECT id
+        FROM ai_messages
+        WHERE conversation_id = $1
+          AND created_at >
+            $2
+          AND COALESCE(
+            status,
+            'completed'
+          ) <> 'superseded'
+        LIMIT 1
+      `,
+      [
+        conversationId,
+        assistantMessage
+          .created_at,
+      ],
+    );
+
+  if (
+    later.rows.length >
+    0
+  ) {
+    throw new WorkspaceAiError(
+      'INVALID_MESSAGE',
+      'Only the latest assistant response can be regenerated.',
+    );
+  }
+
+  const previousUser =
+    await pool.query(
+      `
+        SELECT
+          id,
+          conversation_id,
+          role,
+          content,
+          status,
+          provider,
+          model,
+          correlation_id,
+          metadata,
+          created_at
+        FROM ai_messages
+        WHERE conversation_id = $1
+          AND role =
+            'user'
+          AND created_at <
+            $2
+          AND COALESCE(
+            status,
+            'completed'
+          ) <> 'superseded'
+        ORDER BY
+          created_at DESC,
+          id DESC
+        LIMIT 1
+      `,
+      [
+        conversationId,
+        assistantMessage
+          .created_at,
+      ],
+    );
+
+  if (
+    previousUser.rows.length ===
+    0
+  ) {
+    throw new WorkspaceAiError(
+      'MESSAGE_NOT_FOUND',
+      'The user message for that response could not be found.',
+    );
+  }
+
+  await supersedeConversationFromMessage(
+    context,
+    {
+      conversationId,
+      message:
+        assistantMessage,
+      reason:
+        'regenerated',
+    },
+  );
+
+  return previousUser
+    .rows[0] as
+    MessageRow;
+}
+
 async function loadProviderHistory(
   context: SamiAiRuntimeContext,
   conversationId: string,
@@ -866,6 +1135,10 @@ async function loadProviderHistory(
           FROM ai_messages
           WHERE conversation_id = $1
             AND role IN ('user', 'assistant')
+            AND COALESCE(
+              status,
+              'completed'
+            ) <> 'superseded'
           ORDER BY created_at DESC, id DESC
           LIMIT $2
         ) recent
@@ -1667,6 +1940,10 @@ export async function getWorkspaceAiConversation(
           created_at
         FROM ai_messages
         WHERE conversation_id = $1
+          AND COALESCE(
+            status,
+            'completed'
+          ) <> 'superseded'
         ORDER BY created_at ASC, id ASC
         LIMIT 500
       `,
@@ -1833,6 +2110,10 @@ export async function sendWorkspaceAiMessage(
   input: {
     conversationId?: unknown;
     message?: unknown;
+    mode?: unknown;
+    targetMessageId?: unknown;
+    signal?:
+      AbortSignal;
   },
 ) {
   const resolved =
@@ -1841,12 +2122,26 @@ export async function sendWorkspaceAiMessage(
   const context =
     resolved.runtime;
 
-  const message =
-    normalizeMessage(
-      input.message,
-    );
+  const mode =
+    input.mode === 'edit' ||
+    input.mode ===
+      'regenerate'
+      ? input.mode
+      : 'send';
 
-  if (!message) {
+  const message =
+    mode ===
+      'regenerate'
+      ? ''
+      : normalizeMessage(
+          input.message,
+        );
+
+  if (
+    mode !==
+      'regenerate' &&
+    !message
+  ) {
     throw new WorkspaceAiError(
       'INVALID_MESSAGE',
       'Enter a message for SaMi AI.',
@@ -1875,15 +2170,30 @@ export async function sendWorkspaceAiMessage(
     config.requestsPerDay,
   );
 
-  const conversation =
+  const requestedConversationId =
     input.conversationId
+      ? requireUuid(
+          input.conversationId,
+          'INVALID_CONVERSATION',
+          'conversation',
+        )
+      : null;
+
+  if (
+    mode !== 'send' &&
+    !requestedConversationId
+  ) {
+    throw new WorkspaceAiError(
+      'INVALID_CONVERSATION',
+      'A conversation is required for this AI action.',
+    );
+  }
+
+  const conversation =
+    requestedConversationId
       ? await requireConversation(
           context,
-          requireUuid(
-            input.conversationId,
-            'INVALID_CONVERSATION',
-            'conversation',
-          ),
+          requestedConversationId,
         )
       : await createConversation(
           context,
@@ -1898,17 +2208,85 @@ export async function sendWorkspaceAiMessage(
   const correlationId =
     crypto.randomUUID();
 
-  const userMessage =
-    await persistMessage(
+  let userMessage:
+    MessageRow;
+
+  if (
+    mode === 'edit'
+  ) {
+    const targetMessageId =
+      requireUuid(
+        input.targetMessageId,
+        'INVALID_MESSAGE',
+        'message',
+      );
+
+    const targetMessage =
+      await requireConversationMessage(
+        context,
+        conversationId,
+        targetMessageId,
+        'user',
+      );
+
+    await supersedeConversationFromMessage(
       context,
       {
         conversationId,
-        role: 'user',
-        content:
-          message,
-        correlationId,
+        message:
+          targetMessage,
+        reason:
+          'edited',
       },
     );
+
+    userMessage =
+      await persistMessage(
+        context,
+        {
+          conversationId,
+          role:
+            'user',
+          content:
+            message,
+          correlationId,
+          metadata: {
+            editedFromMessageId:
+              targetMessageId,
+          },
+        },
+      );
+  } else if (
+    mode ===
+      'regenerate'
+  ) {
+    const targetMessageId =
+      requireUuid(
+        input.targetMessageId,
+        'INVALID_MESSAGE',
+        'message',
+      );
+
+    userMessage =
+      await prepareRegeneration(
+        context,
+        conversationId,
+        targetMessageId,
+      );
+  } else {
+    userMessage =
+      await persistMessage(
+        context,
+        {
+          conversationId,
+          role:
+            'user',
+          content:
+            message,
+          correlationId,
+        },
+      );
+  }
 
   const runId =
     await createRun(
@@ -2164,6 +2542,15 @@ export async function sendWorkspaceAiMessage(
           );
 
         try {
+          if (
+            input.signal
+              ?.aborted
+          ) {
+            throw new Error(
+              'AI request aborted by client.',
+            );
+          }
+
           const output =
             await tool.execute(
               context,
