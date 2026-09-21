@@ -524,8 +524,8 @@ export default function AiSettings() {
 
   return (
     <div className="max-w-4xl">
-      <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 p-6 dark:border-blue-900/50 dark:from-blue-950/20 dark:to-cyan-950/20">
-        <div className="flex items-start gap-4">
+      <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-cyan-50 p-4 sm:p-6 dark:border-blue-900/50 dark:from-blue-950/20 dark:to-cyan-950/20">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white">
             <Sparkles className="h-5 w-5" />
           </div>
@@ -689,7 +689,7 @@ export default function AiSettings() {
         </SettingCard>
       </div>
 
-      <section className="mt-5 rounded-2xl border border-slate-200 p-4 sm:p-5 dark:border-white/10">
+      <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 p-3.5 sm:p-5 dark:border-white/10">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2">

@@ -1339,7 +1339,7 @@ function SettingsSurface({
     ReactNode;
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
+    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
       {children}
     </section>
   );

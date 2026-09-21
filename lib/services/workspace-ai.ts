@@ -1292,6 +1292,72 @@ export async function getWorkspaceAiStatus() {
       context.runtime,
     );
 
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const performanceResult =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*) FILTER (
+            WHERE created_at >=
+              NOW() - INTERVAL '24 hours'
+          )::int AS requests_24h,
+
+          COUNT(*) FILTER (
+            WHERE created_at >=
+              NOW() - INTERVAL '24 hours'
+              AND status = 'failed'
+          )::int AS failures_24h,
+
+          ROUND(
+            AVG(duration_ms) FILTER (
+              WHERE created_at >=
+                NOW() - INTERVAL '24 hours'
+                AND duration_ms IS NOT NULL
+            )
+          )::int AS avg_duration_ms_24h,
+
+          COALESCE(
+            SUM(total_tokens) FILTER (
+              WHERE created_at >=
+                NOW() - INTERVAL '24 hours'
+            ),
+            0
+          )::bigint AS total_tokens_24h,
+
+          COALESCE(
+            SUM(tool_calls_count) FILTER (
+              WHERE created_at >=
+                NOW() - INTERVAL '24 hours'
+            ),
+            0
+          )::bigint AS tool_calls_24h,
+
+          COUNT(*) FILTER (
+            WHERE created_at >=
+              NOW() - INTERVAL '7 days'
+          )::int AS requests_7d
+        FROM ai_runs
+        WHERE user_id = $1
+          AND company_id = $2
+      `,
+      [
+        context.runtime
+          .userId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+  const performance =
+    performanceResult
+      .rows[0] ||
+    {};
+
   return {
     entitled: true,
     configured:
@@ -1320,6 +1386,44 @@ export async function getWorkspaceAiStatus() {
       responseStyle:
         context.runtime
           .responseStyle,
+    },
+    performance: {
+      requests24h:
+        Number(
+          performance
+            .requests_24h ||
+          0,
+        ),
+      failures24h:
+        Number(
+          performance
+            .failures_24h ||
+          0,
+        ),
+      averageResponseMs24h:
+        Number(
+          performance
+            .avg_duration_ms_24h ||
+          0,
+        ),
+      totalTokens24h:
+        Number(
+          performance
+            .total_tokens_24h ||
+          0,
+        ),
+      toolCalls24h:
+        Number(
+          performance
+            .tool_calls_24h ||
+          0,
+        ),
+      requests7d:
+        Number(
+          performance
+            .requests_7d ||
+          0,
+        ),
     },
     availableTools:
       tools.map(

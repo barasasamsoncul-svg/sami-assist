@@ -22,6 +22,7 @@ import {
   Home,
   LayoutGrid,
   Loader2,
+  LogOut,
   Search,
   Settings,
   ShieldCheck,
@@ -944,6 +945,15 @@ export default function WorkspaceSidebar({
   ] =
     useState<OverlayState>(
       CLOSED_OVERLAY,
+    );
+
+
+  const [
+    signingOut,
+    setSigningOut,
+  ] =
+    useState(
+      false,
     );
 
 
@@ -2349,6 +2359,85 @@ export default function WorkspaceSidebar({
     0;
 
 
+  async function handleSignOut() {
+    if (
+      signingOut
+    ) {
+      return;
+    }
+
+    setSigningOut(
+      true,
+    );
+
+    setWorkspaceMenuOpen(
+      false,
+    );
+
+    setCompanyMenuOpen(
+      false,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/auth/logout',
+          {
+            method:
+              'POST',
+
+            credentials:
+              'same-origin',
+
+            cache:
+              'no-store',
+
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          'SaMi could not sign you out.',
+        );
+      }
+
+      onClose();
+
+      window.location.assign(
+        '/login',
+      );
+    } catch (
+      error
+    ) {
+      setSigningOut(
+        false,
+      );
+
+      setOverlay({
+        open:
+          true,
+
+        type:
+          'error',
+
+        title:
+          'Sign out failed',
+
+        message:
+          error instanceof Error
+            ? error.message
+            : 'SaMi could not sign you out. Please try again.',
+      });
+    }
+  }
+
+
   /* ============================================================
      RENDER
      ============================================================ */
@@ -2374,7 +2463,7 @@ export default function WorkspaceSidebar({
       <aside
         aria-label="Workspace navigation"
         className={[
-          'fixed inset-y-0 left-0 z-50 flex w-[286px] flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-[#090d15] lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-[286px] max-w-[calc(100vw-16px)] flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-[#090d15] lg:max-w-none lg:translate-x-0',
 
           open
             ? 'translate-x-0'
@@ -3378,43 +3467,70 @@ export default function WorkspaceSidebar({
             USER
             ====================================================== */}
 
-        <div className="shrink-0 border-t border-slate-100 p-3 dark:border-slate-800">
+        <div className="shrink-0 border-t border-slate-100 bg-white p-3 pb-[max(12px,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-[#090d15]">
 
-          <Link
-            href="/settings?tab=personal"
-            onClick={
-              onClose
-            }
-            className="flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-slate-50 dark:hover:bg-slate-900"
-          >
+          <div className="flex items-center gap-2">
 
-            <UserAvatar
-              avatarFileId={
-                user.avatarFileId
+            <Link
+              href="/settings?tab=personal"
+              onClick={
+                onClose
               }
-              displayName={
-                displayName
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-slate-50 dark:hover:bg-slate-900"
+            >
+
+              <UserAvatar
+                avatarFileId={
+                  user.avatarFileId
+                }
+                displayName={
+                  displayName
+                }
+                initials={
+                  avatarInitials
+                }
+                size="md"
+              />
+
+
+              <div className="min-w-0 flex-1">
+
+                <p className="truncate text-xs font-black text-slate-900 dark:text-white">
+                  {displayName}
+                </p>
+
+                <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                  Profile & account
+                </p>
+
+              </div>
+
+            </Link>
+
+
+            <button
+              type="button"
+              disabled={
+                signingOut
               }
-              initials={
-                avatarInitials
+              onClick={() =>
+                void handleSignOut()
               }
-              size="md"
-            />
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-rose-200 px-3 text-[10px] font-black text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/10"
+              aria-label="Sign out"
+            >
+              {signingOut ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <LogOut className="h-4 w-4" />
+              )}
 
+              <span>
+                Sign out
+              </span>
+            </button>
 
-            <div className="min-w-0 flex-1">
-
-              <p className="truncate text-xs font-black text-slate-900 dark:text-white">
-                {displayName}
-              </p>
-
-              <p className="mt-0.5 truncate text-[10px] text-slate-400">
-                {user.email}
-              </p>
-
-            </div>
-
-          </Link>
+          </div>
 
         </div>
 

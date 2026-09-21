@@ -144,7 +144,7 @@ export default function WorkspaceShell({
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
           <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-            <div className="flex min-h-16 items-center gap-3 px-3 py-2.5 sm:px-5 lg:px-7">
+            <div className="flex min-h-16 flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap sm:gap-3 sm:px-5 lg:px-7">
               <button
                 type="button"
                 aria-label="Open navigation"
@@ -159,36 +159,32 @@ export default function WorkspaceShell({
               </button>
 
               {headerContent ? (
-                <div className="flex min-w-0 flex-1 items-center gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   {headerContent}
                 </div>
               ) : (
-                <>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold tracking-tight">
-                      {title}
-                    </p>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold tracking-tight">
+                    {title}
+                  </p>
 
-                    {description && (
-                      <p className="mt-0.5 hidden max-w-[620px] truncate text-[11px] text-slate-400 sm:block">
-                        {description}
-                      </p>
-                    )}
-                  </div>
+                  {description && (
+                    <p className="mt-0.5 hidden max-w-[620px] truncate text-[11px] text-slate-400 sm:block">
+                      {description}
+                    </p>
+                  )}
 
                   {(contextLabel ||
                     tenant?.name) && (
-                    <div className="ml-1 hidden min-w-0 border-l border-slate-200 pl-4 md:block dark:border-white/10">
-                      <p className="max-w-[260px] truncate text-xs font-medium text-slate-400">
-                        {contextLabel ||
-                          tenant?.name}
-                      </p>
-                    </div>
+                    <p className="mt-0.5 hidden max-w-[260px] truncate text-[10px] font-medium text-slate-400 md:block">
+                      {contextLabel ||
+                        tenant?.name}
+                    </p>
                   )}
-                </>
+                </div>
               )}
 
-              <div className="ml-auto flex min-w-0 items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceSearchLauncher />
 
                 <WorkspaceCompanyIdentity />
@@ -199,9 +195,13 @@ export default function WorkspaceShell({
                     setLiveUnreadNotifications
                   }
                 />
-
-                {actions}
               </div>
+
+              {actions && (
+                <div className="order-3 flex w-full items-center gap-2 overflow-x-auto border-t border-slate-200/70 pt-2 sm:order-none sm:w-auto sm:overflow-visible sm:border-0 sm:pt-0 dark:border-white/10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {actions}
+                </div>
+              )}
             </div>
           </header>
 

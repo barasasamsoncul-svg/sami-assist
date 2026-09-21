@@ -357,15 +357,15 @@ export default function DashboardClient({
       }
       contentClassName="max-w-[1540px]"
     >
-      <div className="space-y-5">
-        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]">
-          <div className="grid gap-5 p-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
+      <div className="space-y-4 sm:space-y-5">
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:rounded-3xl dark:border-white/10 dark:bg-[#0F131B]">
+          <div className="grid gap-4 p-4 sm:gap-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
                 {greeting()}, {firstName}
               </p>
 
-              <h1 className="mt-2 max-w-3xl text-2xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">
+              <h1 className="mt-2 max-w-3xl text-xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">
                 {dashboard
                   .brief.title}
               </h1>
@@ -375,10 +375,10 @@ export default function DashboardClient({
                   .brief.message}
               </p>
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
                 <Link
                   href="/search"
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                 >
                   <Search className="h-4 w-4" />
                   Search workspace
@@ -387,7 +387,7 @@ export default function DashboardClient({
                 {capabilities.ai && (
                   <Link
                     href="/ai"
-                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/[0.08] dark:text-blue-300 dark:hover:bg-blue-500/[0.12]"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/[0.08] dark:text-blue-300 dark:hover:bg-blue-500/[0.12]"
                   >
                     <Sparkles className="h-4 w-4" />
                     Ask SaMi
@@ -396,7 +396,7 @@ export default function DashboardClient({
 
                 <Link
                   href="/activity"
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                 >
                   <Activity className="h-4 w-4" />
                   Activity
@@ -404,7 +404,7 @@ export default function DashboardClient({
 
                 <Link
                   href="/notifications"
-                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                 >
                   <Bell className="h-4 w-4" />
                   Messages
@@ -412,7 +412,7 @@ export default function DashboardClient({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
               <HomeStat
                 icon={
                   LayoutGrid

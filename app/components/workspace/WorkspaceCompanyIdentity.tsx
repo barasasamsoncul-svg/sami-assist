@@ -77,14 +77,18 @@ export default function WorkspaceCompanyIdentity() {
   }
 
   return (
-    <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 md:flex dark:border-white/10 dark:bg-white/[0.035]">
+    <div
+      aria-label={`Current company: ${company.name}`}
+      title={company.name}
+      className="flex h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 md:px-2.5 dark:border-white/10 dark:bg-white/[0.035]"
+    >
       <CompanyAvatar
         name={company.name}
         logoUrl={company.logoUrl}
         size="sm"
       />
 
-      <div className="min-w-0">
+      <div className="hidden min-w-0 md:block">
         <p className="max-w-[190px] truncate text-[10px] font-black text-slate-700 dark:text-slate-200">
           {company.name}
         </p>

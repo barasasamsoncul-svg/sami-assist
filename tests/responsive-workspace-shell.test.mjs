@@ -1,0 +1,214 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+const root = process.cwd();
+
+async function source(file) {
+  return readFile(
+    path.join(root, file),
+    'utf8',
+  );
+}
+
+test('responsive shell: sign out is always available from the shared workspace drawer', async () => {
+  const sidebar = await source(
+    'app/components/workspace/WorkspaceSidebar.tsx',
+  );
+
+  assert.match(
+    sidebar,
+    /\/api\/auth\/logout/,
+  );
+
+  assert.match(
+    sidebar,
+    /Sign out/,
+  );
+
+  assert.match(
+    sidebar,
+    /max-w-\[calc\(100vw-16px\)\]/,
+  );
+
+  assert.match(
+    sidebar,
+    /safe-area-inset-bottom/,
+  );
+});
+
+test('responsive shell: company identity remains visible on mobile with compact text treatment', async () => {
+  const company = await source(
+    'app/components/workspace/WorkspaceCompanyIdentity.tsx',
+  );
+
+  assert.match(
+    company,
+    /className="flex h-10/,
+  );
+
+  assert.match(
+    company,
+    /hidden min-w-0 md:block/,
+  );
+
+  assert.doesNotMatch(
+    company,
+    /className="hidden min-w-0 items-center/,
+  );
+});
+
+test('responsive shell: common controls stay in the top bar and page actions reflow instead of disappearing', async () => {
+  const shell = await source(
+    'app/components/workspace/WorkspaceShell.tsx',
+  );
+
+  assert.match(
+    shell,
+    /WorkspaceSearchLauncher/,
+  );
+
+  assert.match(
+    shell,
+    /WorkspaceCompanyIdentity/,
+  );
+
+  assert.match(
+    shell,
+    /WorkspaceNotificationCenter/,
+  );
+
+  assert.match(
+    shell,
+    /flex-wrap items-center/,
+  );
+
+  assert.match(
+    shell,
+    /order-3 flex w-full items-center/,
+  );
+
+  assert.equal(
+    (shell.match(/\{actions\}/g) || []).length,
+    1,
+    'Page actions must render once and reflow responsively.',
+  );
+});
+
+test('responsive shell: SaMi AI is a dedicated full-page experience without a permanent second sidebar', async () => {
+  const [page, client] = await Promise.all([
+    source('app/ai/page.tsx'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+  ]);
+
+  assert.doesNotMatch(
+    page,
+    /<WorkspaceShell/,
+  );
+
+  assert.match(
+    client,
+    /min-h-\[100dvh\]/,
+  );
+
+  assert.match(
+    client,
+    /HistoryDrawer/,
+  );
+
+  assert.match(
+    client,
+    /PerformancePanel/,
+  );
+
+  assert.match(
+    client,
+    /\/settings\?tab=ai/,
+  );
+
+  assert.doesNotMatch(
+    client,
+    /xl:grid-cols-\[280px_minmax\(0,1fr\)\]/,
+    'Conversation history must not be a permanent second sidebar.',
+  );
+});
+
+test('responsive shell: SaMi AI performance uses real run metrics', async () => {
+  const service = await source(
+    'lib/services/workspace-ai.ts',
+  );
+
+  assert.match(
+    service,
+    /FROM ai_runs/,
+  );
+
+  assert.match(
+    service,
+    /requests_24h/,
+  );
+
+  assert.match(
+    service,
+    /failures_24h/,
+  );
+
+  assert.match(
+    service,
+    /avg_duration_ms_24h/,
+  );
+
+  assert.match(
+    service,
+    /total_tokens_24h/,
+  );
+
+  assert.match(
+    service,
+    /tool_calls_24h/,
+  );
+});
+
+test('responsive dashboard: primary actions are a mobile-safe grid and desktop flex row', async () => {
+  const dashboard = await source(
+    'app/dashboard/DashboardClient.tsx',
+  );
+
+  assert.match(
+    dashboard,
+    /grid grid-cols-2 gap-2 sm:flex sm:flex-wrap/,
+  );
+
+  assert.match(
+    dashboard,
+    /p-4 sm:gap-5 sm:p-6/,
+  );
+
+  assert.match(
+    dashboard,
+    /text-xl font-black tracking-tight.*sm:text-3xl/s,
+  );
+});
+
+test('responsive settings: content uses mobile-first padding and remains horizontally navigable', async () => {
+  const [settings, ai] = await Promise.all([
+    source('app/settings/SettingsClient.tsx'),
+    source('app/settings/components/AiSettings.tsx'),
+  ]);
+
+  assert.match(
+    settings,
+    /overflow-x-auto/,
+  );
+
+  assert.match(
+    settings,
+    /bg-white p-4 shadow-sm sm:p-6/,
+  );
+
+  assert.match(
+    ai,
+    /p-4 sm:p-6/,
+  );
+});
