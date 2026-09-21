@@ -44,6 +44,10 @@ import {
   type UserTimeFormat,
 } from '@/lib/account/user-formatting';
 
+import {
+  setSaMiTheme,
+} from '@/lib/theme/runtime';
+
 type UserAccount = {
   id: string;
   email: string;
@@ -103,9 +107,6 @@ type OverlayState = {
   message: string;
 };
 
-const THEME_STORAGE_KEY =
-  'sami_theme';
-
 function normalizeEmail(
   value: string
 ) {
@@ -161,55 +162,6 @@ function initials(
       .toUpperCase();
 
   return result || 'SM';
-}
-
-function getSystemDarkMode() {
-  if (
-    typeof window ===
-    'undefined'
-  ) {
-    return false;
-  }
-
-  return (
-    window.matchMedia?.(
-      '(prefers-color-scheme: dark)'
-    ).matches ?? false
-  );
-}
-
-function applyTheme(
-  theme: UserTheme
-) {
-  if (
-    typeof document ===
-    'undefined'
-  ) {
-    return;
-  }
-
-  const dark =
-    theme === 'dark' ||
-    (
-      theme ===
-        'system' &&
-      getSystemDarkMode()
-    );
-
-  document.documentElement
-    .classList.toggle(
-      'dark',
-      dark
-    );
-
-  try {
-    localStorage.setItem(
-      THEME_STORAGE_KEY,
-      theme
-    );
-  } catch {
-    // Optional local cache.
-  }
 }
 
 async function readJson(
@@ -568,7 +520,7 @@ export default function MyAccountSettings() {
             loadedPreferences
           );
 
-          applyTheme(
+          setSaMiTheme(
             loadedPreferences
               .theme
           );
@@ -1035,7 +987,7 @@ export default function MyAccountSettings() {
         data.preferences
       );
 
-      applyTheme(
+      setSaMiTheme(
         data.preferences.theme
       );
 
@@ -1065,7 +1017,7 @@ export default function MyAccountSettings() {
       savedPreferences
     );
 
-    applyTheme(
+    setSaMiTheme(
       savedPreferences.theme
     );
   }
@@ -1726,7 +1678,7 @@ export default function MyAccountSettings() {
                   next
                 );
 
-                applyTheme(
+                setSaMiTheme(
                   next.theme
                 );
               }
