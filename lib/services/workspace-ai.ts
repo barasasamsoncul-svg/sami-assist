@@ -473,6 +473,18 @@ function mapMessage(
       row.model,
     correlationId:
       row.correlation_id,
+    feedback:
+      row.metadata
+        ?.feedback ===
+          'up' ||
+      row.metadata
+        ?.feedback ===
+          'down'
+        ? String(
+            row.metadata
+              .feedback,
+          )
+        : null,
     createdAt:
       toIso(
         row.created_at,
@@ -2030,6 +2042,146 @@ export async function getWorkspaceAiConversation(
               row.expires_at,
             ),
         }),
+      ),
+  };
+}
+
+export async function updateWorkspaceAiMessageFeedback(
+  messageIdInput:
+    unknown,
+  feedbackInput:
+    unknown,
+) {
+  const context =
+    await resolveAiContext();
+
+  const messageId =
+    requireUuid(
+      messageIdInput,
+      'INVALID_MESSAGE',
+      'message',
+    );
+
+  const feedback =
+    feedbackInput ===
+      'up' ||
+    feedbackInput ===
+      'down'
+      ? feedbackInput
+      : feedbackInput ===
+          null
+        ? null
+        : undefined;
+
+  if (
+    feedback ===
+      undefined
+  ) {
+    throw new WorkspaceAiError(
+      'INVALID_MESSAGE',
+      'Feedback must be up, down, or null.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const found =
+    await pool.query(
+      `
+        SELECT
+          message.id,
+          message.conversation_id,
+          message.role,
+          message.content,
+          message.status,
+          message.provider,
+          message.model,
+          message.correlation_id,
+          message.metadata,
+          message.created_at
+        FROM ai_messages message
+        INNER JOIN ai_conversations conversation
+          ON conversation.id =
+            message.conversation_id
+        WHERE message.id = $1
+          AND conversation.user_id = $2
+          AND conversation.company_id = $3
+          AND conversation.archived_at IS NULL
+          AND message.role =
+            'assistant'
+          AND COALESCE(
+            message.status,
+            'completed'
+          ) <> 'superseded'
+        LIMIT 1
+      `,
+      [
+        messageId,
+        context.runtime
+          .userId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+  if (
+    found.rows.length ===
+    0
+  ) {
+    throw new WorkspaceAiError(
+      'MESSAGE_NOT_FOUND',
+      'That SaMi AI response is no longer available.',
+    );
+  }
+
+  const message =
+    found.rows[0] as
+      MessageRow;
+
+  const metadata = {
+    ...safeObject(
+      message.metadata ||
+        {},
+    ),
+    feedback,
+  };
+
+  const result =
+    await pool.query(
+      `
+        UPDATE ai_messages
+        SET metadata =
+          $2::jsonb
+        WHERE id = $1
+        RETURNING
+          id,
+          conversation_id,
+          role,
+          content,
+          status,
+          provider,
+          model,
+          correlation_id,
+          metadata,
+          created_at
+      `,
+      [
+        messageId,
+        JSON.stringify(
+          metadata,
+        ),
+      ],
+    );
+
+  return {
+    message:
+      mapMessage(
+        result.rows[0] as
+          MessageRow,
       ),
   };
 }
