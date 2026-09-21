@@ -1405,8 +1405,8 @@ export default function WorkspaceAiClient({
         }
       />
 
-      <main className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#171717]">
-        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-slate-200/70 bg-white/95 px-3 backdrop-blur-xl sm:px-4 dark:border-white/10 dark:bg-[#171717]/95">
+      <main className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#212121]">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center bg-white/92 px-3 backdrop-blur-xl sm:px-4 dark:bg-[#212121]/92">
           <button
             type="button"
             aria-label="Open AI sidebar"
@@ -1434,10 +1434,42 @@ export default function WorkspaceAiClient({
               title={
                 status.model
               }
-              className="ml-3 hidden max-w-[220px] truncate text-[10px] font-medium text-slate-400 md:block"
+              className="ml-3 hidden max-w-[180px] truncate text-[10px] font-medium text-slate-400 md:block"
             >
               {status.model}
             </p>
+          )}
+
+          {selectedConversationId && (
+            <div className="ml-2 flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="Export conversation"
+                title="Export conversation"
+                onClick={
+                  exportConversation
+                }
+                disabled={
+                  messages.length ===
+                  0
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-30 dark:hover:bg-white/10 dark:hover:text-slate-200"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
+                aria-label="Archive conversation"
+                title="Archive conversation"
+                onClick={() =>
+                  void archiveConversation()
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200"
+              >
+                <Archive className="h-4 w-4" />
+              </button>
+            </div>
           )}
         </header>
 
@@ -1471,16 +1503,16 @@ export default function WorkspaceAiClient({
       ) : (
         <section className="flex min-h-0 flex-1 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-3 pb-6 pt-5 sm:px-6 sm:pt-8">
+            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-3 pb-8 pt-5 sm:px-6 sm:pt-8">
               {messages.length ===
                 0 ? (
                 <div className="flex min-h-[55dvh] flex-col items-center justify-center text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
-                    <Sparkles className="h-7 w-7" />
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950">
+                    <Sparkles className="h-5 w-5" />
                   </div>
 
-                  <h1 className="mt-5 text-2xl font-black tracking-tight sm:text-3xl">
-                    How can SaMi help?
+                  <h1 className="mt-5 text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
+                    How can I help?
                   </h1>
 
                   <p className="mt-2 max-w-xl text-xs leading-6 text-slate-500 sm:text-sm dark:text-slate-400">
@@ -1505,7 +1537,7 @@ export default function WorkspaceAiClient({
                               suggestion,
                             )
                           }
-                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.07]"
+                          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-300 dark:hover:bg-white/[0.07]"
                         >
                           {suggestion}
                         </button>
@@ -1649,38 +1681,8 @@ export default function WorkspaceAiClient({
             </div>
           )}
 
-          <div className="border-t border-slate-200/80 bg-white/95 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-4 dark:border-white/10 dark:bg-[#0B0E14]/95">
-            <div className="mx-auto max-w-4xl">
-              {selectedConversationId && (
-                <div className="mb-2 flex flex-wrap justify-end gap-1">
-                  <button
-                    type="button"
-                    onClick={
-                      exportConversation
-                    }
-                    disabled={
-                      messages.length ===
-                      0
-                    }
-                    className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-300"
-                  >
-                    <Download className="h-3.5 w-3.5" />
-                    Export
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void archiveConversation()
-                    }
-                    className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-300"
-                  >
-                    <Archive className="h-3.5 w-3.5" />
-                    Archive
-                  </button>
-                </div>
-              )}
-
+          <div className="bg-gradient-to-t from-white via-white/98 to-white/0 px-3 pb-3 pt-7 sm:px-6 sm:pb-5 dark:from-[#212121] dark:via-[#212121]/98 dark:to-[#212121]/0">
+            <div className="mx-auto max-w-3xl">
               {editingMessageId && (
                 <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200">
                   <span className="inline-flex min-w-0 items-center gap-2">
@@ -1702,7 +1704,7 @@ export default function WorkspaceAiClient({
                 </div>
               )}
 
-              <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
+              <div className="flex items-end gap-2 rounded-[28px] border border-slate-200 bg-[#F4F4F4] p-2.5 shadow-[0_8px_30px_rgba(15,23,42,0.08)] transition focus-within:border-slate-300 dark:border-white/10 dark:bg-[#303030] dark:shadow-none dark:focus-within:border-white/20">
                 <textarea
                   ref={
                     composerRef
@@ -1722,7 +1724,7 @@ export default function WorkspaceAiClient({
                   rows={1}
                   maxLength={8000}
                   placeholder="Message SaMi…"
-                  className="max-h-40 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2.5 text-sm outline-none placeholder:text-slate-400"
+                  className="max-h-48 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 outline-none placeholder:text-slate-400"
                 />
 
                 <button
@@ -1744,10 +1746,10 @@ export default function WorkspaceAiClient({
                       : void sendMessage()
                   }
                   className={[
-                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-40',
+                    'flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition disabled:cursor-not-allowed disabled:opacity-40',
                     sending
                       ? 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
-                      : 'bg-blue-600 hover:bg-blue-700',
+                      : 'bg-slate-950 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200',
                   ].join(
                     ' ',
                   )}
@@ -1763,7 +1765,7 @@ export default function WorkspaceAiClient({
               </div>
 
               <p className="mt-2 text-center text-[9px] text-slate-400">
-                SaMi uses your current company and effective workspace permissions. Enter sends · Shift+Enter adds a line.
+                SaMi can make mistakes. Business actions still follow your current company, app access and permissions.
               </p>
             </div>
           </div>

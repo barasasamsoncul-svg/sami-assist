@@ -147,7 +147,17 @@ test('Category 16: UI follows a business timeline model with separate Activity a
   assert.match(client, /dayLabel/);
   assert.match(client, />\s*My Activity\s*</);
   assert.match(client, />\s*Audit\s*</);
-  assert.match(client, /Search activity/);
+  assert.match(
+    client,
+    /Search my activity/,
+    'Personal Activity search must make the user-scoped boundary explicit.',
+  );
+
+  assert.match(
+    client,
+    /Search audit/,
+    'Audit search must remain a distinct permission-gated experience.',
+  );
   assert.match(client, /All outcomes/);
   assert.match(client, /All areas/);
   assert.match(client, /Load older activity/);

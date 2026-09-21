@@ -1,13 +1,20 @@
 import {
-  APP_CATEGORIES,
-  SAMI_APPS,
-  type SamiApp,
-  type SamiAppCategory,
-} from '@/lib/sami-apps';
+  FIRST_PARTY_SAMI_MODULES,
+} from '@/lib/modules/first-party';
+
+import {
+  getSamiModuleManifest,
+} from '@/lib/modules/registry';
+
+import type {
+  SamiModuleCategory,
+} from '@/lib/modules/types';
 
 export type SamiNavigationCategory =
-  | SamiAppCategory
-  | 'other';
+  | Exclude<
+      SamiModuleCategory,
+      'technical'
+    >;
 
 export type SamiAppNavigation = {
   key: string;
@@ -30,56 +37,54 @@ export type SamiModuleLike = {
   status?: string | null;
 };
 
-const APP_BY_KEY =
-  new Map<string, SamiApp>(
-    SAMI_APPS.map(app => [
-      normalizeAppKey(app.key),
-      app,
-    ]),
-  );
-
-const CATEGORY_LABELS =
-  new Map<string, string>(
-    APP_CATEGORIES.map(category => [
-      category.key,
-      category.name,
-    ]),
-  );
+const CATEGORY_LABELS:
+  Record<string, string> = {
+    finance: 'Finance',
+    documents: 'Documents & Sign',
+    sales: 'Sales',
+    commerce: 'Commerce',
+    supply_chain: 'Supply Chain',
+    operations: 'Operations',
+    people: 'People',
+    marketing: 'Marketing',
+    work: 'Work Management',
+    other: 'Other',
+  };
 
 const APP_ORDER =
   new Map<string, number>(
-    SAMI_APPS.map((app, index) => [
-      normalizeAppKey(app.key),
-      index,
-    ]),
+    FIRST_PARTY_SAMI_MODULES.map(
+      (
+        manifest,
+        index,
+      ) => [
+        normalizeAppKey(
+          manifest.key,
+        ),
+        index,
+      ],
+    ),
   );
 
 /*
  * Compatibility aliases are resolved in one place.
  *
- * These aliases are accepted for older data / routes, but all
- * navigation emitted by Category 12 uses the canonical registry key.
+ * Aliases only normalize legacy data/routes. They never grant access.
+ * The permission-resolved workspace module set remains authoritative.
  */
 const APP_KEY_ALIASES:
   Record<string, string> = {
     invoice: 'invoicing',
     invoices: 'invoicing',
-
     finance: 'accounting',
-
     customer: 'crm',
     customers: 'crm',
-
     sale: 'sales',
-
     stock: 'inventory',
-
     hr: 'employees',
     human_resources: 'employees',
     'human-resources': 'employees',
-
     project: 'projects',
-
   };
 
 export function normalizeAppKey(
@@ -92,7 +97,10 @@ export function normalizeAppKey(
   )
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, '_');
+    .replace(
+      /\s+/g,
+      '_',
+    );
 }
 
 export function getCanonicalAppKey(
@@ -100,7 +108,9 @@ export function getCanonicalAppKey(
     string | null | undefined,
 ): string {
   const normalized =
-    normalizeAppKey(value);
+    normalizeAppKey(
+      value,
+    );
 
   return (
     APP_KEY_ALIASES[
@@ -113,13 +123,11 @@ export function getCanonicalAppKey(
 export function getRegisteredApp(
   value:
     string | null | undefined,
-): SamiApp | null {
-  const key =
-    getCanonicalAppKey(value);
-
-  return (
-    APP_BY_KEY.get(key) ||
-    null
+) {
+  return getSamiModuleManifest(
+    getCanonicalAppKey(
+      value,
+    ),
   );
 }
 
@@ -128,17 +136,19 @@ export function getAppEntryHref(
     string | null | undefined,
 ): string {
   const key =
-    getCanonicalAppKey(value);
+    getCanonicalAppKey(
+      value,
+    );
 
-  const registered =
-    APP_BY_KEY.get(
+  const manifest =
+    getSamiModuleManifest(
       key,
     );
 
   if (
-    registered?.route
+    manifest?.route
   ) {
-    return `/${registered.route.replace(
+    return `/${manifest.route.replace(
       /^\/+/, 
       '',
     )}`;
@@ -163,19 +173,25 @@ export function resolveAppNavigation(
       sourceKey,
     );
 
-  const registered =
-    APP_BY_KEY.get(
+  const manifest =
+    getSamiModuleManifest(
       registryKey,
-    ) ||
-    null;
+    );
 
-  const category =
-    registered
+  const rawCategory =
+    manifest
       ?.category ||
     'other';
 
+  const category:
+    SamiNavigationCategory =
+    rawCategory ===
+      'technical'
+      ? 'other'
+      : rawCategory;
+
   const name =
-    registered
+    manifest
       ?.name ||
     module.name
       ?.trim() ||
@@ -183,23 +199,20 @@ export function resolveAppNavigation(
     'Application';
 
   const description =
-    registered
+    manifest
       ?.description ||
     `Open ${name} in this workspace.`;
 
   const iconKey =
-    registered
+    manifest
       ?.icon ||
     'app-window';
 
   const categoryLabel =
-    category ===
-      'other'
-      ? 'Other'
-      : CATEGORY_LABELS.get(
-          category,
-        ) ||
-        'Other';
+    CATEGORY_LABELS[
+      category
+    ] ||
+    'Other';
 
   const order =
     APP_ORDER.get(
@@ -214,51 +227,45 @@ export function resolveAppNavigation(
     description,
     categoryLabel,
   ]
-    .filter(Boolean)
-    .map(value =>
-      String(value)
-        .trim()
-        .toLowerCase(),
+    .filter(
+      Boolean,
+    )
+    .map(
+      value =>
+        String(
+          value,
+        )
+          .trim()
+          .toLowerCase(),
     );
 
   return {
     key:
       sourceKey,
-
     registryKey,
-
     name,
-
     description,
-
     href:
       getAppEntryHref(
         registryKey,
       ),
-
     iconKey,
-
     category,
-
     categoryLabel,
-
     order,
-
     recommended:
-      registered
+      manifest
         ?.recommended ===
       true,
-
     keywords:
       [
         ...new Set(
           keywords,
         ),
       ],
-
     registered:
       Boolean(
-        registered,
+        manifest,
       ),
   };
 }
@@ -296,14 +303,20 @@ export function sortAppNavigation<
 
 export function getRegistryNavigation(): SamiAppNavigation[] {
   return sortAppNavigation(
-    SAMI_APPS.map(
-      app =>
-        resolveAppNavigation({
-          key:
-            app.key,
-          name:
-            app.name,
-        }),
-    ),
+    FIRST_PARTY_SAMI_MODULES
+      .filter(
+        manifest =>
+          manifest.application &&
+          manifest.installable,
+      )
+      .map(
+        manifest =>
+          resolveAppNavigation({
+            key:
+              manifest.key,
+            name:
+              manifest.name,
+          }),
+      ),
   );
 }

@@ -4,6 +4,10 @@ import type {
   WorkspaceSearchProvider,
 } from '@/lib/search/types';
 
+import {
+  filterAccessibleModuleExtensions,
+} from '@/lib/modules/registry';
+
 /*
  * Category 17 provider registry.
  *
@@ -18,22 +22,10 @@ export const WORKSPACE_SEARCH_PROVIDERS:
 export function getWorkspaceSearchProviders(
   accessibleModuleKeys: string[],
 ) {
-  const allowed =
-    new Set(
-      accessibleModuleKeys.map(
-        key =>
-          key
-            .trim()
-            .toLowerCase(),
-      ),
-    );
-
-  return WORKSPACE_SEARCH_PROVIDERS.filter(
+  return filterAccessibleModuleExtensions(
+    WORKSPACE_SEARCH_PROVIDERS,
+    accessibleModuleKeys,
     provider =>
-      allowed.has(
-        provider.key
-          .trim()
-          .toLowerCase(),
-      ),
+      provider.key,
   );
 }
