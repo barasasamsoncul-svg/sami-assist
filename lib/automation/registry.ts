@@ -107,7 +107,7 @@ export const CORE_AUTOMATION_ACTIONS:
       requiredPermissions:
         [],
       approvalPolicy:
-        'never',
+        'optional',
       inputSchema: {
         type:
           'object',
