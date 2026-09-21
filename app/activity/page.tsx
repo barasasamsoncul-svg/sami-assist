@@ -57,8 +57,8 @@ export default async function ActivityPage() {
         ),
         notificationsEnabled: true,
       }}
-      title="Activity & Audit"
-      description="A business-readable timeline with permission-gated audit detail."
+      title="My Activity & Audit"
+      description="Your personal business timeline, with broader audit visibility available only to authorized users."
       contextLabel={account.tenant?.name || null}
       contentClassName="max-w-[1500px]"
     >
