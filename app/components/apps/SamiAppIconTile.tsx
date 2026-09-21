@@ -29,7 +29,7 @@ const SIZE_CLASSES = {
   },
   md: {
     box: 'h-10 w-10 rounded-xl',
-    icon: 'h-4.5 w-4.5',
+    icon: 'h-[18px] w-[18px]',
   },
   lg: {
     box: 'h-12 w-12 rounded-2xl',
