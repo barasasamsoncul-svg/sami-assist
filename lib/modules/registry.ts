@@ -6,6 +6,14 @@ import type {
   SamiModuleManifest,
 } from '@/lib/modules/types';
 
+import {
+  assertValidSamiModuleManifests,
+} from '@/lib/modules/validation';
+
+assertValidSamiModuleManifests(
+  FIRST_PARTY_SAMI_MODULES,
+);
+
 function normalizeModuleKey(
   value:
     string | null | undefined,
