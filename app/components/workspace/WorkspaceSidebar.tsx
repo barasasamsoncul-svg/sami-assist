@@ -55,6 +55,11 @@ import {
   getSaMiAppIcon,
 } from '@/lib/apps/icon-registry';
 
+import {
+  getSaMiAppVisual,
+  type SamiAppVisual,
+} from '@/lib/apps/visual-registry';
+
 
 /* ================================================================
    ACCOUNT TYPES
@@ -540,6 +545,9 @@ type AppChild = {
 
   icon:
     LucideIcon;
+
+  visual:
+    SamiAppVisual;
 };
 
 
@@ -1022,6 +1030,13 @@ export default function WorkspaceSidebar({
               icon:
                 getSaMiAppIcon(
                   module.iconKey,
+                ),
+
+              visual:
+                getSaMiAppVisual(
+                  module.registryKey ||
+                    module.key,
+                  module.category,
                 ),
             }),
           ),
@@ -2463,7 +2478,7 @@ export default function WorkspaceSidebar({
       <aside
         aria-label="Workspace navigation"
         className={[
-          'fixed inset-y-0 left-0 z-50 flex w-[286px] max-w-[calc(100vw-16px)] flex-col border-r border-slate-200 bg-white transition-transform duration-200 dark:border-slate-800 dark:bg-[#090d15] lg:max-w-none lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-[286px] max-w-[calc(100vw-16px)] flex-col border-r border-[var(--sami-border)] bg-[var(--sami-sidebar)] shadow-[8px_0_32px_rgba(16,24,40,0.03)] transition-transform duration-200 lg:max-w-none lg:translate-x-0',
 
           open
             ? 'translate-x-0'
@@ -2475,7 +2490,7 @@ export default function WorkspaceSidebar({
 
         {/* LOGO */}
 
-        <div className="flex h-[76px] shrink-0 items-center border-b border-slate-100 px-5 dark:border-slate-800">
+        <div className="flex h-[72px] shrink-0 items-center border-b border-[var(--sami-border)] px-5">
 
           <Link
             href="/dashboard"
@@ -2535,10 +2550,10 @@ export default function WorkspaceSidebar({
                 );
               }
             }}
-            className="flex w-full items-center gap-3 rounded-2xl bg-slate-50 px-3 py-3 text-left transition enabled:hover:bg-slate-100 disabled:cursor-default dark:bg-slate-900 dark:enabled:hover:bg-slate-800"
+            className="sami-surface flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition enabled:hover:-translate-y-px enabled:hover:border-[var(--sami-border-strong)] disabled:cursor-default"
           >
 
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 text-xs font-black text-white">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 via-blue-600 to-cyan-500 text-xs font-black text-white shadow-md shadow-blue-500/15 ring-1 ring-white/25">
               {tenant?.name
                 ?.trim()
                 .charAt(
@@ -3063,7 +3078,7 @@ export default function WorkspaceSidebar({
             NAVIGATION
             ====================================================== */}
 
-        <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        <nav className="sami-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-4">
 
           {/* WORKSPACE */}
 
@@ -3179,6 +3194,9 @@ export default function WorkspaceSidebar({
                             item.href,
                           )}/`,
                         )
+                      }
+                      visual={
+                        item.visual
                       }
                       onNavigate={
                         onClose
@@ -3467,7 +3485,7 @@ export default function WorkspaceSidebar({
             USER
             ====================================================== */}
 
-        <div className="shrink-0 border-t border-slate-100 bg-white p-3 pb-[max(12px,env(safe-area-inset-bottom))] dark:border-slate-800 dark:bg-[#090d15]">
+        <div className="shrink-0 border-t border-[var(--sami-border)] bg-[var(--sami-sidebar)] p-3 pb-[max(12px,env(safe-area-inset-bottom))]">
 
           <div className="flex items-center gap-2">
 
@@ -3476,7 +3494,7 @@ export default function WorkspaceSidebar({
               onClick={
                 onClose
               }
-              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-slate-50 dark:hover:bg-slate-900"
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl px-3 py-2.5 transition hover:bg-[var(--sami-surface)] hover:shadow-[var(--sami-shadow-sm)]"
             >
 
               <UserAvatar
@@ -3516,7 +3534,7 @@ export default function WorkspaceSidebar({
               onClick={() =>
                 void handleSignOut()
               }
-              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-rose-200 px-3 text-[10px] font-black text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/10"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-rose-500 shadow-[var(--sami-shadow-sm)] transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:border-rose-500/20 dark:hover:bg-rose-500/10 dark:hover:text-rose-300"
               aria-label="Sign out"
             >
               {signingOut ? (
@@ -3525,7 +3543,7 @@ export default function WorkspaceSidebar({
                 <LogOut className="h-4 w-4" />
               )}
 
-              <span>
+              <span className="sr-only">
                 Sign out
               </span>
             </button>
@@ -3585,7 +3603,7 @@ function NavSectionLabel({
     ReactNode;
 }) {
   return (
-    <p className="mb-2 px-3 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400">
+    <p className="mb-2 px-3 text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400 dark:text-slate-500">
       {children}
     </p>
   );
@@ -3780,6 +3798,7 @@ function ChildNavLink({
   label,
   active,
   badge,
+  visual,
   onNavigate,
 }: {
   href:
@@ -3796,6 +3815,9 @@ function ChildNavLink({
 
   badge?:
     string;
+
+  visual?:
+    SamiAppVisual;
 
   onNavigate:
     () => void;
@@ -3814,36 +3836,47 @@ function ChildNavLink({
           : undefined
       }
       className={[
-        'flex min-h-9 items-center gap-2.5 rounded-lg px-3 py-2 text-[11px] font-bold transition',
+        'group flex min-h-10 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-[11px] font-semibold transition',
 
         active
-          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/35 dark:text-blue-300'
-          : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-white',
+          ? 'bg-[var(--sami-surface)] text-slate-950 shadow-[var(--sami-shadow-sm)] ring-1 ring-[var(--sami-border)] dark:text-white'
+          : 'text-slate-500 hover:bg-[var(--sami-surface)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
       ].join(
         ' ',
       )}
     >
 
-      <Icon
-        className={[
-          'h-3.5 w-3.5 shrink-0',
+      {visual ? (
+        <span
+          className={[
+            'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-white shadow-sm ring-1 ring-white/20',
+            visual.tile,
+          ].join(
+            ' ',
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      ) : (
+        <Icon
+          className={[
+            'h-3.5 w-3.5 shrink-0',
 
-          active
-            ? 'text-blue-600 dark:text-blue-300'
-            : 'text-slate-400',
-        ].join(
-          ' ',
-        )}
-      />
-
+            active
+              ? 'text-[var(--sami-brand)]'
+              : 'text-slate-400',
+          ].join(
+            ' ',
+          )}
+        />
+      )}
 
       <span className="min-w-0 flex-1 truncate">
         {label}
       </span>
 
-
       {badge && (
-        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+        <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[8px] font-bold text-slate-500 dark:bg-white/10 dark:text-slate-300">
           {badge}
         </span>
       )}
