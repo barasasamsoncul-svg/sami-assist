@@ -715,6 +715,26 @@ test('Category 13: Odoo-class module manifests own dependencies, actions, views,
   );
 
   assert.match(
+    registry,
+    /getSamiModuleAction/,
+  );
+
+  assert.match(
+    registry,
+    /getSamiModuleView/,
+  );
+
+  assert.match(
+    registry,
+    /getSamiModuleResource/,
+  );
+
+  assert.match(
+    registry,
+    /getAccessibleSamiModuleAction/,
+  );
+
+  assert.match(
     compatibility,
     /FIRST_PARTY_SAMI_MODULES/,
     'Legacy app catalog must be a projection from manifests, not an independent source of truth.',
@@ -760,6 +780,17 @@ test('Category 13: module resource security fails closed and separates CRUD, rec
   assert.match(
     security,
     /filterWritableSamiFields/,
+  );
+
+  assert.match(
+    security,
+    /manifest\.security\s*\.fieldPolicies/s,
+    'Declared field policies must be enforced, not just described in the manifest.',
+  );
+
+  assert.match(
+    security,
+    /policiesForField/,
   );
 
   assert.doesNotMatch(
