@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -26,9 +30,6 @@ import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
 /* ============================================================
    CONSTANTS
    ============================================================ */
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const FORGOT_PASSWORD_ENDPOINT =
   '/api/auth/forgot-password';
@@ -133,10 +134,10 @@ export default function ForgotPasswordClient() {
     setCooldown,
   ] = useState(0);
 
-  const [
+  const {
     darkMode,
-    setDarkMode,
-  ] = useState(false);
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     overlay,
@@ -146,64 +147,6 @@ export default function ForgotPasswordClient() {
       typeof getAuthOverlayMessage
     > | null
   >(null);
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const prefersDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        stored === 'dark' ||
-        (!stored &&
-          prefersDark);
-
-      setDarkMode(
-        useDark
-      );
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Page remains usable without
-      // local storage.
-    }
-  }, []);
-
-  function toggleTheme() {
-    const next =
-      !darkMode;
-
-    setDarkMode(next);
-
-    document.documentElement.classList.toggle(
-      'dark',
-      next
-    );
-
-    try {
-      localStorage.setItem(
-        THEME_STORAGE_KEY,
-        next
-          ? 'dark'
-          : 'light'
-      );
-    } catch {
-      // Ignore storage failure.
-    }
-  }
 
   /* ==========================================================
      COOLDOWN
