@@ -430,6 +430,11 @@ function mapConversation(
       'New conversation',
     status:
       row.status,
+    pinned:
+      Boolean(
+        row.metadata
+          ?.pinned,
+      ),
     createdAt:
       toIso(
         row.created_at,
@@ -1875,6 +1880,14 @@ export async function listWorkspaceAiConversations() {
           AND company_id = $2
           AND archived_at IS NULL
         ORDER BY
+          CASE
+            WHEN COALESCE(
+              (metadata ->> 'pinned')::boolean,
+              false
+            )
+            THEN 0
+            ELSE 1
+          END ASC,
           COALESCE(
             last_message_at,
             updated_at,
@@ -2017,6 +2030,234 @@ export async function getWorkspaceAiConversation(
               row.expires_at,
             ),
         }),
+      ),
+  };
+}
+
+export async function updateWorkspaceAiConversation(
+  conversationIdInput:
+    unknown,
+  input: {
+    title?: unknown;
+    pinned?: unknown;
+  },
+) {
+  const context =
+    await resolveAiContext();
+
+  const conversationId =
+    requireUuid(
+      conversationIdInput,
+      'INVALID_CONVERSATION',
+      'conversation',
+    );
+
+  const conversation =
+    await requireConversation(
+      context.runtime,
+      conversationId,
+    );
+
+  const hasTitle =
+    Object.prototype
+      .hasOwnProperty
+      .call(
+        input,
+        'title',
+      );
+
+  const hasPinned =
+    Object.prototype
+      .hasOwnProperty
+      .call(
+        input,
+        'pinned',
+      );
+
+  if (
+    !hasTitle &&
+    !hasPinned
+  ) {
+    throw new WorkspaceAiError(
+      'INVALID_CONVERSATION',
+      'Provide a conversation title or pinned state to update.',
+    );
+  }
+
+  let title =
+    conversation.title ||
+    'New conversation';
+
+  if (hasTitle) {
+    if (
+      typeof input.title !==
+        'string'
+    ) {
+      throw new WorkspaceAiError(
+        'INVALID_CONVERSATION',
+        'Conversation title must be text.',
+      );
+    }
+
+    const normalizedTitle =
+      input.title
+        .replace(
+          /[\u0000-\u001f\u007f]/g,
+          ' ',
+        )
+        .replace(
+          /\s+/g,
+          ' ',
+        )
+        .trim()
+        .slice(
+          0,
+          80,
+        );
+
+    if (!normalizedTitle) {
+      throw new WorkspaceAiError(
+        'INVALID_CONVERSATION',
+        'Conversation title cannot be empty.',
+      );
+    }
+
+    title =
+      normalizedTitle;
+  }
+
+  let pinned =
+    Boolean(
+      conversation.metadata
+        ?.pinned,
+    );
+
+  if (hasPinned) {
+    if (
+      typeof input.pinned !==
+        'boolean'
+    ) {
+      throw new WorkspaceAiError(
+        'INVALID_CONVERSATION',
+        'Pinned state must be true or false.',
+      );
+    }
+
+    pinned =
+      input.pinned;
+  }
+
+  const metadata = {
+    ...safeObject(
+      conversation.metadata ||
+        {},
+    ),
+    pinned,
+  };
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        UPDATE ai_conversations
+        SET
+          title = $4,
+          metadata =
+            $5::jsonb,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND user_id = $2
+          AND company_id = $3
+          AND archived_at IS NULL
+        RETURNING
+          id,
+          user_id,
+          company_id,
+          title,
+          status,
+          metadata,
+          created_at,
+          updated_at,
+          last_message_at,
+          archived_at
+      `,
+      [
+        conversationId,
+        context.runtime
+          .userId,
+        context.runtime
+          .companyId,
+        title,
+        JSON.stringify(
+          metadata,
+        ),
+      ],
+    );
+
+  if (
+    result.rows.length ===
+    0
+  ) {
+    throw new WorkspaceAiError(
+      'CONVERSATION_NOT_FOUND',
+      'The SaMi AI conversation could not be found in the current company.',
+    );
+  }
+
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.runtime
+          .tenantId,
+      companyId:
+        context.runtime
+          .companyId,
+      userId:
+        context.runtime
+          .userId,
+      actorType:
+        'human',
+      action:
+        'ai.conversation.updated',
+      eventType:
+        'ai.conversation.updated',
+      category:
+        'ai',
+      severity:
+        'info',
+      summary:
+        'SaMi AI conversation settings updated.',
+      resourceType:
+        'ai_conversation',
+      resourceId:
+        conversationId,
+      module:
+        'core.ai',
+      result:
+        'success',
+      metadata: {
+        renamed:
+          hasTitle,
+        pinChanged:
+          hasPinned,
+        pinned,
+      },
+    });
+  } catch {
+    // Conversation preference changes must not fail because audit is unavailable.
+  }
+
+  return {
+    conversation:
+      mapConversation(
+        result.rows[0] as
+          ConversationRow,
       ),
   };
 }
