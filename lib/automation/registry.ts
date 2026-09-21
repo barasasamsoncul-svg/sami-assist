@@ -33,42 +33,6 @@ export const CORE_AUTOMATION_TRIGGERS:
       companyScoped:
         true,
     },
-    {
-      key:
-        'core.schedule',
-      name:
-        'Schedule',
-      description:
-        'Run an automation from a stored schedule in the current company.',
-      type:
-        'schedule',
-      moduleKey:
-        null,
-      requiredPermissions:
-        [],
-      companyScoped:
-        true,
-      configSchema: {
-        type:
-          'object',
-        additionalProperties:
-          false,
-        properties: {
-          expression: {
-            type:
-              'string',
-          },
-          timezone: {
-            type:
-              'string',
-          },
-        },
-        required: [
-          'expression',
-          'timezone',
-        ],
-      },
-    },
   ];
 
 /*
@@ -76,6 +40,12 @@ export const CORE_AUTOMATION_TRIGGERS:
  *
  * Database rows may select these keys, but database metadata can never
  * create an executable trigger/action handler by itself.
+ */
+/*
+ * Scheduled/webhook triggers stay out of the user-facing registry until
+ * their trusted worker/ingress path is fully implemented and tested.
+ * Durable tenant tables already exist so those capabilities can be
+ * added without redesigning workflow definitions.
  */
 export const APP_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] =
@@ -97,7 +67,7 @@ export const CORE_AUTOMATION_ACTIONS:
       requiredPermissions:
         [],
       approvalPolicy:
-        'optional',
+        'never',
       inputSchema: {
         type:
           'object',
