@@ -1,38 +1,59 @@
 # SaMi AI environment configuration
 
-SaMi AI never hardcodes a model ID. Configure the provider and model
-through `.env.local` for local development and through deployment
-environment variables for production.
+SaMi AI never hardcodes a model ID.
 
-## Recommended generic variables
+For normal SaMi operation, provider selection is automatic from the
+active provider-specific model variable. API keys are credentials that
+you configure once; after that, changing the active AI is normally just
+a model change.
 
-SAMI_AI_PROVIDER=groq
-SAMI_AI_MODEL=
-SAMI_AI_API_KEY=
-SAMI_AI_BASE_URL=
+## Recommended configuration
+
+# Provider credentials — configure the providers you actually have.
+GROQ_API_KEY=
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+GOOGLE_API_KEY=
+
+# Active model — normally keep exactly ONE provider model active.
+# SaMi infers the provider from this model variable.
+GROQ_MODEL=
+# OPENAI_MODEL=
+# GEMINI_MODEL=
+# GOOGLE_MODEL=
 
 SAMI_AI_REQUESTS_PER_MINUTE=20
 SAMI_AI_REQUESTS_PER_DAY=500
 SAMI_AI_MAX_TOOL_ROUNDS=6
 SAMI_AI_CONTEXT_MESSAGES=24
 
-## Provider-specific alternatives
+## Switching providers
 
-If SAMI_AI_PROVIDER is omitted and exactly one supported provider key
-exists, SaMi can infer that provider. The model still comes from an
-environment variable.
+To switch from Groq to OpenAI, for example, keep both API keys if you
+want, but move the active model:
 
-GROQ_API_KEY=
-GROQ_MODEL=
+# GROQ_MODEL=
+OPENAI_MODEL=<openai-model-id>
 
-OPENAI_API_KEY=
+To switch to Gemini:
+
 OPENAI_MODEL=
+GEMINI_MODEL=<gemini-model-id>
 
-GEMINI_API_KEY=
-GEMINI_MODEL=
+SaMi will reject an ambiguous setup where more than one provider model
+is active at the same time. This prevents an accidental provider/model
+mismatch.
 
-GOOGLE_API_KEY=
-GOOGLE_MODEL=
+## Compatibility / advanced overrides
+
+These remain supported for deployments that need an explicit provider
+or another OpenAI-compatible endpoint, but they are not required for
+normal Groq/OpenAI/Gemini switching:
+
+SAMI_AI_PROVIDER=
+SAMI_AI_MODEL=
+SAMI_AI_API_KEY=
+SAMI_AI_BASE_URL=
 
 For another OpenAI-compatible provider:
 
@@ -41,5 +62,5 @@ SAMI_AI_MODEL=<provider-model-id>
 SAMI_AI_API_KEY=<provider-key>
 SAMI_AI_BASE_URL=<openai-compatible-base-url>
 
-Changing provider/model configuration does not change SaMi's tool,
-permission, tenant, company, memory or confirmation architecture.
+Changing provider/model configuration never changes SaMi's tool,
+permission, tenant, company, memory, confirmation, or audit boundaries.
