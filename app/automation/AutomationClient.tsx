@@ -164,6 +164,24 @@ type RunRow = {
     string;
 };
 
+type ApprovalRow = {
+  id: string;
+  runId: string;
+  stepId: string;
+  workflowId: string;
+  workflowName: string;
+  stepKey: string;
+  actionKey: string;
+  actionModule:
+    string | null;
+  requiredPermissions:
+    string[];
+  requestedAt:
+    string;
+  expiresAt:
+    string | null;
+};
+
 type AutomationState = {
   canManage:
     boolean;
@@ -175,6 +193,8 @@ type AutomationState = {
     WorkflowRow[];
   runs:
     RunRow[];
+  approvals:
+    ApprovalRow[];
 };
 
 type ApiResponse = {
@@ -619,6 +639,9 @@ export default function AutomationClient({
         runs:
           data.runs ||
           [],
+        approvals:
+          data.approvals ||
+          [],
       });
 
       if (
@@ -862,6 +885,90 @@ export default function AutomationClient({
           Error
           ? error.message
           : 'Automation operation failed.',
+      );
+    } finally {
+      setBusy(
+        null,
+      );
+    }
+  }
+
+  async function approvalDecision(
+    approvalId:
+      string,
+    decision:
+      'approve' |
+      'reject',
+  ) {
+    const key =
+      `approval:${approvalId}:${decision}`;
+
+    setBusy(
+      key,
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/workspace/automation/approvals/${approvalId}`,
+          {
+            method:
+              'PATCH',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            body:
+              JSON.stringify({
+                decision,
+              }),
+          },
+        );
+
+      const data =
+        await readResponse(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'Approval decision could not be completed.',
+        );
+      }
+
+      await refresh();
+
+      show(
+        'success',
+        decision ===
+          'approve'
+          ? 'Action approved'
+          : 'Action rejected',
+        decision ===
+          'approve'
+          ? 'The automation resumed under its original run-as user and current permissions.'
+          : 'The pending action and its automation run were cancelled.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Approval failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'Approval decision could not be completed.',
       );
     } finally {
       setBusy(
@@ -1765,6 +1872,91 @@ export default function AutomationClient({
                 )}
               </section>
             </>
+          )}
+
+          {state.canManage && state.approvals.length > 0 && (
+            <section className="sami-surface overflow-hidden rounded-[24px]">
+              <div className="flex items-center justify-between gap-3 border-b border-[var(--sami-border)] px-4 py-4 sm:px-5">
+                <div>
+                  <p className="text-sm font-black text-slate-950 dark:text-white">
+                    Pending approvals
+                  </p>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    Approval never replaces business permissions; SaMi revalidates the run-as user before resuming.
+                  </p>
+                </div>
+                <CheckCircle2 className="h-4 w-4 text-amber-500" />
+              </div>
+
+              <div className="divide-y divide-[var(--sami-border)]">
+                {state.approvals.map(
+                  approval => (
+                    <div
+                      key={
+                        approval.id
+                      }
+                      className="flex flex-col gap-3 px-4 py-4 sm:px-5 lg:flex-row lg:items-center lg:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                          {approval.workflowName}
+                        </p>
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          {approval.actionKey} · requested {formatDate(approval.requestedAt)}
+                        </p>
+                        {approval.expiresAt && (
+                          <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-300">
+                            Expires {formatDate(approval.expiresAt)}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          onClick={() =>
+                            approvalDecision(
+                              approval.id,
+                              'reject',
+                            )
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-bold text-slate-600 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-rose-500/10"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          onClick={() =>
+                            approvalDecision(
+                              approval.id,
+                              'approve',
+                            )
+                          }
+                          className="inline-flex h-9 items-center gap-2 rounded-xl bg-emerald-600 px-3 text-[11px] font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {busy === `approval:${approval.id}:approve` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                          Approve
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            </section>
           )}
 
           <section className="sami-surface overflow-hidden rounded-[24px]">
