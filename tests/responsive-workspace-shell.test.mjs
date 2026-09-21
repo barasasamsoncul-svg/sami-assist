@@ -213,24 +213,31 @@ test('responsive shell: SaMi AI performance uses real run metrics', async () => 
   );
 });
 
-test('responsive dashboard: primary actions are a mobile-safe grid and desktop flex row', async () => {
+test('responsive dashboard: Odoo-style app home stays mobile-first while AI remains prominent', async () => {
   const dashboard = await source(
     'app/dashboard/DashboardClient.tsx',
   );
 
   assert.match(
     dashboard,
-    /grid grid-cols-2 gap-2 sm:flex sm:flex-wrap/,
+    /grid grid-cols-3.*sm:grid-cols-4.*md:grid-cols-5.*lg:grid-cols-6.*xl:grid-cols-8.*2xl:grid-cols-9/s,
   );
 
   assert.match(
     dashboard,
-    /p-4 sm:gap-5 sm:p-6/,
+    /Ask SaMi anything about your business/,
   );
 
   assert.match(
     dashboard,
-    /text-2xl font-black tracking-\[-0\.035em\].*sm:text-3xl/s,
+    /flex w-full flex-col gap-2 sm:flex-row/,
+    'AI/search command controls must stack safely on narrow screens.',
+  );
+
+  assert.match(
+    dashboard,
+    /size="xl"/,
+    'App launcher should use touch-friendly product icons.',
   );
 });
 
