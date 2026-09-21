@@ -226,21 +226,6 @@ async function assertWorkspaceReady(
   tenantId:
     string,
 ) {
-  const manifest =
-    getSamiModuleManifest(
-      moduleKey,
-    );
-
-  if (
-    !manifest ||
-    !manifest.installable
-  ) {
-    throw new WorkspaceAppLifecycleError(
-      'APP_NOT_FOUND',
-      'This app is not registered in the SaMi module runtime.',
-    );
-  }
-
   const result =
     await client.query(
       `
@@ -283,6 +268,21 @@ async function getModule(
   moduleKey:
     string,
 ): Promise<ModuleRow> {
+  const manifest =
+    getSamiModuleManifest(
+      moduleKey,
+    );
+
+  if (
+    !manifest ||
+    !manifest.installable
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_NOT_FOUND',
+      'This app is not registered in the SaMi module runtime.',
+    );
+  }
+
   const result =
     await client.query(
       `
