@@ -2,8 +2,9 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Moon, Sun } from 'lucide-react';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode } from 'react';
 import SaMiLogo from '@/app/components/SaMiLogo';
+import { useSaMiTheme } from '@/app/components/useSaMiTheme';
 
 type AuthShellProps = {
   title: string;
@@ -14,8 +15,6 @@ type AuthShellProps = {
   footer?: ReactNode;
 };
 
-const THEME_KEY = 'sami_theme';
-
 export default function AuthShell({
   title,
   description,
@@ -24,22 +23,10 @@ export default function AuthShell({
   backLabel = 'Back',
   footer,
 }: AuthShellProps) {
-  const [darkMode, setDarkMode] = useState(false);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem(THEME_KEY);
-    const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
-    const dark = saved ? saved === 'dark' : systemDark;
-    setDarkMode(dark);
-    document.documentElement.classList.toggle('dark', dark);
-  }, []);
-
-  function toggleTheme() {
-    const next = !darkMode;
-    setDarkMode(next);
-    document.documentElement.classList.toggle('dark', next);
-    window.localStorage.setItem(THEME_KEY, next ? 'dark' : 'light');
-  }
+  const {
+    darkMode,
+    toggleTheme,
+  } = useSaMiTheme();
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 transition-colors dark:bg-[#080B12] dark:text-white sm:px-6">
