@@ -934,6 +934,12 @@ export async function activateWorkspaceAutomation(
   let version =
     0;
 
+  let normalizedDefinition:
+    ReturnType<
+      typeof normalizeAutomationDefinition
+    > | null =
+    null;
+
   try {
     await client.query(
       'BEGIN',
@@ -993,20 +999,21 @@ export async function activateWorkspaceAutomation(
       );
     }
 
-    normalizeAutomationDefinition(
-      result.rows[0]
-        .definition,
-      {
-        triggers:
-          getAccessibleAutomationTriggers(
-            context.runtime,
-          ),
-        actions:
-          getAccessibleAutomationActions(
-            context.runtime,
-          ),
-      },
-    );
+    normalizedDefinition =
+      normalizeAutomationDefinition(
+        result.rows[0]
+          .definition,
+        {
+          triggers:
+            getAccessibleAutomationTriggers(
+              context.runtime,
+            ),
+          actions:
+            getAccessibleAutomationActions(
+              context.runtime,
+            ),
+        },
+      );
 
     await client.query(
       `
@@ -1046,6 +1053,110 @@ export async function activateWorkspaceAutomation(
         version,
       ],
     );
+
+    if (
+      normalizedDefinition
+        .trigger
+        .key ===
+      'core.schedule'
+    ) {
+      const intervalSeconds =
+        Number(
+          normalizedDefinition
+            .trigger
+            .config
+            .intervalMinutes,
+        ) *
+        60;
+
+      const timezone =
+        String(
+          normalizedDefinition
+            .trigger
+            .config
+            .timezone,
+        );
+
+      await client.query(
+        `
+          INSERT INTO automation_schedules (
+            workflow_id,
+            company_id,
+            run_as_user_id,
+            schedule_kind,
+            interval_seconds,
+            timezone,
+            status,
+            next_run_at,
+            last_run_at,
+            lease_until,
+            lease_token,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'interval',
+            $4,
+            $5,
+            'active',
+            NOW() + ($4 * INTERVAL '1 second'),
+            NULL,
+            NULL,
+            NULL,
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (workflow_id)
+          DO UPDATE SET
+            company_id =
+              EXCLUDED.company_id,
+            run_as_user_id =
+              EXCLUDED.run_as_user_id,
+            schedule_kind =
+              EXCLUDED.schedule_kind,
+            interval_seconds =
+              EXCLUDED.interval_seconds,
+            timezone =
+              EXCLUDED.timezone,
+            status =
+              'active',
+            next_run_at =
+              NOW() +
+              (
+                EXCLUDED.interval_seconds *
+                INTERVAL '1 second'
+              ),
+            lease_until =
+              NULL,
+            lease_token =
+              NULL,
+            updated_at =
+              NOW()
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          context.runtime
+            .userId,
+          intervalSeconds,
+          timezone,
+        ],
+      );
+    } else {
+      await client.query(
+        `
+          DELETE FROM automation_schedules
+          WHERE workflow_id = $1
+        `,
+        [
+          id,
+        ],
+      );
+    }
 
     await client.query(
       'COMMIT',
@@ -2035,38 +2146,81 @@ export async function pauseWorkspaceAutomation(
         .tenantId,
     );
 
-  const result =
-    await pool.query(
+  const client =
+    await pool.connect();
+
+  let result;
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    result =
+      await client.query(
+        `
+          UPDATE automation_workflows
+          SET
+            status = 'paused',
+            updated_by = $3,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+            AND archived_at
+                IS NULL
+          RETURNING
+            active_version
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          context.runtime
+            .userId,
+        ],
+      );
+
+    if (
+      result.rows.length ===
+        0
+    ) {
+      throw new WorkspaceAutomationError(
+        'AUTOMATION_NOT_FOUND',
+        'Automation could not be found in the current company.',
+      );
+    }
+
+    await client.query(
       `
-        UPDATE automation_workflows
+        UPDATE automation_schedules
         SET
           status = 'paused',
-          updated_by = $3,
+          lease_until = NULL,
+          lease_token = NULL,
           updated_at = NOW()
-        WHERE id = $1
+        WHERE workflow_id = $1
           AND company_id = $2
-          AND archived_at
-              IS NULL
-        RETURNING
-          active_version
       `,
       [
         id,
         context.runtime
           .companyId,
-        context.runtime
-          .userId,
       ],
     );
 
-  if (
-    result.rows.length ===
-      0
-  ) {
-    throw new WorkspaceAutomationError(
-      'AUTOMATION_NOT_FOUND',
-      'Automation could not be found in the current company.',
+    await client.query(
+      'COMMIT',
     );
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
   }
 
   await recordAutomationAudit(
