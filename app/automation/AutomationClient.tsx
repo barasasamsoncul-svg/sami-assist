@@ -1228,10 +1228,13 @@ export default function AutomationClient({
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <label>
                         <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                          Schedule expression
+                          Repeat every (minutes)
                         </span>
                         <input
-                          value={String(draft.trigger.config.expression || '')}
+                          type="number"
+                          min={1}
+                          max={43200}
+                          value={Number(draft.trigger.config.intervalMinutes || 60)}
                           onChange={event =>
                             setDraft(
                               current => ({
@@ -1240,14 +1243,13 @@ export default function AutomationClient({
                                   ...current.trigger,
                                   config: {
                                     ...current.trigger.config,
-                                    expression:
-                                      event.target.value,
+                                    intervalMinutes:
+                                      Number(event.target.value),
                                   },
                                 },
                               }),
                             )
                           }
-                          placeholder="0 9 * * 1-5"
                           className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs outline-none"
                         />
                       </label>
@@ -1272,6 +1274,7 @@ export default function AutomationClient({
                               }),
                             )
                           }
+                          placeholder="Africa/Nairobi"
                           className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs outline-none"
                         />
                       </label>
