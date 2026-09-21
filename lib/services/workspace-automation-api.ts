@@ -175,15 +175,21 @@ export function handleAutomationApiError(
             error.code ===
               'AUTOMATION_VIEW_REQUIRED' ||
             error.code ===
-              'AUTOMATION_MANAGE_REQUIRED'
+              'AUTOMATION_MANAGE_REQUIRED' ||
+            error.code ===
+              'AUTOMATION_APPROVAL_PERMISSION_REQUIRED'
           ? 403
           : error.code ===
-              'AUTOMATION_NOT_FOUND'
+                'AUTOMATION_NOT_FOUND' ||
+              error.code ===
+                'AUTOMATION_APPROVAL_NOT_FOUND'
             ? 404
             : error.code ===
                   'WORKSPACE_CONTEXT_CHANGED' ||
                 error.code ===
-                  'COMPANY_REQUIRED'
+                  'COMPANY_REQUIRED' ||
+                error.code ===
+                  'AUTOMATION_APPROVAL_EXPIRED'
               ? 409
               : 400;
 
