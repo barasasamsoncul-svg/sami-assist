@@ -229,6 +229,17 @@ export const APP_AUTOMATION_ACTION_HANDLERS =
     SamiAutomationActionHandler
   >();
 
+export function isAutomationWorkerEnabled() {
+  return (
+    process.env
+      .SAMI_AUTOMATION_WORKER_ENABLED ||
+    ''
+  )
+    .trim()
+    .toLowerCase() ===
+    'true';
+}
+
 function normalizeKey(
   value:
     string | null | undefined,
@@ -315,6 +326,11 @@ export function getAccessibleAutomationTriggers(
     ...APP_AUTOMATION_TRIGGERS,
   ].filter(
     trigger =>
+      (
+        trigger.key !==
+          'core.schedule' ||
+        isAutomationWorkerEnabled()
+      ) &&
       moduleExtensionAvailable(
         context,
         trigger.moduleKey,
