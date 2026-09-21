@@ -11,6 +11,10 @@ import type {
   SamiAutomationTriggerDefinition,
 } from '@/lib/automation/types';
 
+import {
+  createWorkspaceNotification,
+} from '@/lib/services/workspace-notifications';
+
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
     {
@@ -77,9 +81,137 @@ export const APP_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] =
   [];
 
+export const CORE_AUTOMATION_ACTIONS:
+  SamiAutomationActionDefinition[] = [
+    {
+      key:
+        'core.notify_me',
+      name:
+        'Notify me',
+      description:
+        'Create an in-app notification for the workflow runner in the current company.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      requiredPermissions:
+        [],
+      approvalPolicy:
+        'optional',
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          title: {
+            type:
+              'string',
+            maxLength:
+              120,
+          },
+          message: {
+            type:
+              'string',
+            maxLength:
+              1000,
+          },
+        },
+        required: [
+          'title',
+        ],
+      },
+    },
+  ];
+
 export const APP_AUTOMATION_ACTIONS:
   SamiAutomationActionDefinition[] =
   [];
+
+const CORE_AUTOMATION_ACTION_HANDLERS =
+  new Map<
+    string,
+    SamiAutomationActionHandler
+  >([
+    [
+      'core.notify_me',
+      async (
+        context,
+        input,
+      ) => {
+        const title =
+          typeof input.title ===
+            'string'
+            ? input.title
+                .replace(
+                  /[\\u0000-\\u001f\\u007f]/g,
+                  ' ',
+                )
+                .replace(
+                  /\\s+/g,
+                  ' ',
+                )
+                .trim()
+                .slice(
+                  0,
+                  120,
+                )
+            : '';
+
+        const message =
+          typeof input.message ===
+            'string'
+            ? input.message
+                .replace(
+                  /\\u0000/g,
+                  '',
+                )
+                .trim()
+                .slice(
+                  0,
+                  1000,
+                )
+            : '';
+
+        if (
+          !title
+        ) {
+          throw new Error(
+            'Notification title is required.',
+          );
+        }
+
+        const notification =
+          await createWorkspaceNotification({
+            tenantId:
+              context.tenantId,
+            companyId:
+              context.companyId,
+            recipientUserId:
+              context.userId,
+            type:
+              'automation',
+            eventKey:
+              'automation.notify_me',
+            title,
+            message:
+              message ||
+              null,
+            sourceModule:
+              'automation',
+            metadata: {
+              generatedBy:
+                'automation',
+            },
+          });
+
+        return {
+          notificationId:
+            notification.id,
+        };
+      },
+    ],
+  ]);
 
 export const APP_AUTOMATION_ACTION_HANDLERS =
   new Map<
@@ -190,7 +322,10 @@ export function getAccessibleAutomationActions(
   context:
     SamiAutomationRuntimeContext,
 ) {
-  return APP_AUTOMATION_ACTIONS
+  return [
+    ...CORE_AUTOMATION_ACTIONS,
+    ...APP_AUTOMATION_ACTIONS,
+  ]
     .filter(
       action =>
         moduleExtensionAvailable(
@@ -235,12 +370,19 @@ export function getAutomationActionHandler(
   actionKey:
     string,
 ) {
+  const key =
+    normalizeKey(
+      actionKey,
+    );
+
   return (
+    CORE_AUTOMATION_ACTION_HANDLERS
+      .get(
+        key,
+      ) ||
     APP_AUTOMATION_ACTION_HANDLERS
       .get(
-        normalizeKey(
-          actionKey,
-        ),
+        key,
       ) ||
     null
   );
