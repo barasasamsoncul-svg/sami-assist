@@ -96,10 +96,11 @@ test('responsive shell: common controls stay in the top bar and page actions ref
   );
 });
 
-test('responsive shell: SaMi AI is a dedicated full-page experience without a permanent second sidebar', async () => {
-  const [page, client] = await Promise.all([
+test('responsive shell: SaMi AI owns a dedicated collapsible chat sidebar instead of the workspace shell', async () => {
+  const [page, client, aiSidebar] = await Promise.all([
     source('app/ai/page.tsx'),
     source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiSidebar.tsx'),
   ]);
 
   assert.doesNotMatch(
@@ -109,12 +110,54 @@ test('responsive shell: SaMi AI is a dedicated full-page experience without a pe
 
   assert.match(
     client,
-    /min-h-\[100dvh\]/,
+    /h-\[100dvh\]/,
   );
 
   assert.match(
     client,
-    /HistoryDrawer/,
+    /SamiAiSidebar/,
+  );
+
+  assert.match(
+    client,
+    /sidebarCollapsed/,
+  );
+
+  assert.match(
+    client,
+    /sidebarMobileOpen/,
+  );
+
+  assert.doesNotMatch(
+    client,
+    /WorkspaceCompanyIdentity/,
+    'The SaMi AI page must not reuse the dashboard company header.',
+  );
+
+  assert.match(
+    aiSidebar,
+    /Collapse sidebar/,
+  );
+
+  assert.match(
+    aiSidebar,
+    /Expand sidebar/,
+  );
+
+  assert.match(
+    aiSidebar,
+    /Search conversations/,
+  );
+
+  assert.match(
+    aiSidebar,
+    /New chat/,
+  );
+
+  assert.match(
+    aiSidebar,
+    /lg:hidden/,
+    'The AI sidebar must have a mobile overlay mode.',
   );
 
   assert.match(
@@ -123,14 +166,8 @@ test('responsive shell: SaMi AI is a dedicated full-page experience without a pe
   );
 
   assert.match(
-    client,
+    aiSidebar,
     /\/settings\?tab=ai/,
-  );
-
-  assert.doesNotMatch(
-    client,
-    /xl:grid-cols-\[280px_minmax\(0,1fr\)\]/,
-    'Conversation history must not be a permanent second sidebar.',
   );
 });
 
