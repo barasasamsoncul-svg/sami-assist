@@ -27,9 +27,11 @@ import {
   useSaMiOverlay,
 } from '@/app/components/useSaMiOverlay';
 
+import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
+
 import {
-  getSaMiAppIcon,
-} from '@/lib/apps/icon-registry';
+  getSaMiAppVisual,
+} from '@/lib/apps/visual-registry';
 
 import {
   APP_CATEGORIES,
@@ -602,9 +604,10 @@ export default function AppsSettings({
                 actionKey ===
                 app.key;
 
-              const Icon =
-                getSaMiAppIcon(
-                  app.icon,
+              const visual =
+                getSaMiAppVisual(
+                  app.key,
+                  app.category,
                 );
 
               return (
@@ -612,12 +615,26 @@ export default function AppsSettings({
                   key={
                     app.key
                   }
-                  className="rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-blue-200 dark:border-white/10 dark:bg-white/[0.025] dark:hover:border-blue-500/30"
+                  className={[
+                    'rounded-2xl border bg-[var(--sami-surface)] p-4 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:shadow-[var(--sami-shadow-md)]',
+                    visual.border,
+                  ].join(
+                    ' ',
+                  )}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
-                      <Icon className="h-5 w-5" />
-                    </div>
+                    <SamiAppIconTile
+                      appKey={
+                        app.key
+                      }
+                      category={
+                        app.category
+                      }
+                      iconKey={
+                        app.icon
+                      }
+                      size="lg"
+                    />
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
