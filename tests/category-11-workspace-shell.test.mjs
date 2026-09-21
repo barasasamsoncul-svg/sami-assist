@@ -322,8 +322,8 @@ test('Category 11: one account theme runtime governs every route and settings su
 
     assert.doesNotMatch(
       consumer,
-      /sami_theme|THEME_STORAGE_KEY|THEME_KEY|document\.documentElement\.classList\.toggle/,
-      'Auth and onboarding pages must not recreate route-local theme persistence or root-class mutation.',
+      /sami_theme|THEME_STORAGE_KEY|THEME_KEY|document\.documentElement\.classList\.toggle|\bapplyTheme\s*\(/,
+      'Auth and onboarding pages must not recreate route-local theme persistence, root-class mutation, or legacy theme helpers.',
     );
   }
 });
