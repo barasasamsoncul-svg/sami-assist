@@ -432,6 +432,7 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   const [
     page,
     client,
+    aiSidebar,
     sidebar,
     search,
     dashboard,
@@ -439,6 +440,7 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   ] = await Promise.all([
     source('app/ai/page.tsx'),
     source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiSidebar.tsx'),
     source('app/components/workspace/WorkspaceSidebar.tsx'),
     source('lib/search/workspace-search.ts'),
     source('app/dashboard/DashboardClient.tsx'),
@@ -460,10 +462,17 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(client, /AbortController/);
   assert.match(client, /label="Helpful"/);
   assert.match(client, /label="Not helpful"/);
-  assert.match(client, /Search conversations/);
-  assert.match(client, /Rename conversation/);
-  assert.match(client, /Pin conversation/);
-  assert.match(client, /Delete conversation/);
+  assert.match(client, /SamiAiSidebar/);
+  assert.match(client, /sidebarCollapsed/);
+  assert.match(client, /sidebarMobileOpen/);
+  assert.doesNotMatch(client, /WorkspaceCompanyIdentity/);
+  assert.match(aiSidebar, /Search conversations/);
+  assert.match(aiSidebar, /Rename conversation/);
+  assert.match(aiSidebar, /Pin conversation/);
+  assert.match(aiSidebar, /Delete conversation/);
+  assert.match(aiSidebar, /Collapse sidebar/);
+  assert.match(aiSidebar, /Expand sidebar/);
+  assert.match(aiSidebar, /New chat/);
   assert.match(client, /Export/);
 
   const service = await source('lib/services/workspace-ai.ts');
