@@ -22,11 +22,15 @@ test('Category 16: tenant core advances additively from 1.3.0 to 1.4.0', async (
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.4\.0['"]/s,
+    /core-1\.3\.0-to-1\.4\.0/,
   );
   assert.match(
     manifest,
-    /core-1\.3\.0-to-1\.4\.0/,
+    /fromVersion:\s*['"]1\.3\.0['"]/,
+  );
+  assert.match(
+    manifest,
+    /toVersion:\s*['"]1\.4\.0['"]/,
   );
   assert.match(
     manifest,
@@ -44,7 +48,10 @@ test('Category 16: tenant core advances additively from 1.3.0 to 1.4.0', async (
     /DROP TABLE|DROP DATABASE|TRUNCATE/i,
   );
 
-  assert.match(core, /VALUES \('1\.4\.0'\)/);
+  assert.match(
+    core,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.audit_logs/,
+  );
   assert.match(
     core,
     /idx_audit_logs_company_category_created/,

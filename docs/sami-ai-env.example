@@ -1,0 +1,45 @@
+# SaMi AI environment configuration
+
+SaMi AI never hardcodes a model ID. Configure the provider and model
+through `.env.local` for local development and through deployment
+environment variables for production.
+
+## Recommended generic variables
+
+SAMI_AI_PROVIDER=groq
+SAMI_AI_MODEL=
+SAMI_AI_API_KEY=
+SAMI_AI_BASE_URL=
+
+SAMI_AI_REQUESTS_PER_MINUTE=20
+SAMI_AI_REQUESTS_PER_DAY=500
+SAMI_AI_MAX_TOOL_ROUNDS=6
+SAMI_AI_CONTEXT_MESSAGES=24
+
+## Provider-specific alternatives
+
+If SAMI_AI_PROVIDER is omitted and exactly one supported provider key
+exists, SaMi can infer that provider. The model still comes from an
+environment variable.
+
+GROQ_API_KEY=
+GROQ_MODEL=
+
+OPENAI_API_KEY=
+OPENAI_MODEL=
+
+GEMINI_API_KEY=
+GEMINI_MODEL=
+
+GOOGLE_API_KEY=
+GOOGLE_MODEL=
+
+For another OpenAI-compatible provider:
+
+SAMI_AI_PROVIDER=custom
+SAMI_AI_MODEL=<provider-model-id>
+SAMI_AI_API_KEY=<provider-key>
+SAMI_AI_BASE_URL=<openai-compatible-base-url>
+
+Changing provider/model configuration does not change SaMi's tool,
+permission, tenant, company, memory or confirmation architecture.

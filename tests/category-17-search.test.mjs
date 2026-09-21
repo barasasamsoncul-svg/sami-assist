@@ -186,20 +186,20 @@ test('Category 17: coworker search can deep-link into direct-message composition
   assert.match(center, /setComposeOpen\(\s*true/s);
 });
 
-test('Category 17: unfinished AI and Files pages are not exposed as dead workspace routes', async () => {
+test('Category 17: completed core routes are discoverable while unfinished Files remains hidden', async () => {
   const [sidebar, service, composer] = await Promise.all([
     source('app/components/workspace/WorkspaceSidebar.tsx'),
     source('lib/search/workspace-search.ts'),
     source('lib/dashboard/composer.ts'),
   ]);
 
-  assert.doesNotMatch(sidebar, /href="\/ai"/);
+  assert.match(sidebar, /href="\/ai"/);
   assert.doesNotMatch(sidebar, /href="\/files"/);
 
-  assert.doesNotMatch(service, /href:\s*['"]\/ai['"]/);
+  assert.match(service, /href:\s*['"]\/ai['"]/);
   assert.doesNotMatch(service, /href:\s*['"]\/files['"]/);
 
-  assert.doesNotMatch(composer, /href:\s*['"]\/ai['"]/);
+  assert.match(composer, /href:\s*['"]\/ai['"]/);
 });
 
 test('Dashboard refresh: workspace home uses shared shell, real company identity and real platform signals', async () => {
@@ -248,7 +248,7 @@ test('Dashboard refresh: home does not invent business numbers or dead core dest
     'app/dashboard/DashboardClient.tsx',
   );
 
-  assert.doesNotMatch(client, /href="\/ai"/);
+  assert.match(client, /href="\/ai"/);
   assert.doesNotMatch(client, /href="\/files"/);
 
   assert.doesNotMatch(

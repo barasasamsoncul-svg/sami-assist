@@ -12,6 +12,7 @@ import {
   Clock3,
   LayoutGrid,
   Search,
+  Sparkles,
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
@@ -132,6 +133,7 @@ type Props = {
   activitySummary: ActivitySummary;
   unreadNotifications: number;
   capabilities: {
+    ai: boolean;
     files: boolean;
   };
 };
@@ -334,6 +336,8 @@ export default function DashboardClient({
         modules
       }
       sidebarCapabilities={{
+        aiEnabled:
+          capabilities.ai,
         filesEnabled:
           capabilities.files,
         notificationsEnabled:
@@ -379,6 +383,16 @@ export default function DashboardClient({
                   <Search className="h-4 w-4" />
                   Search workspace
                 </Link>
+
+                {capabilities.ai && (
+                  <Link
+                    href="/ai"
+                    className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/[0.08] dark:text-blue-300 dark:hover:bg-blue-500/[0.12]"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Ask SaMi
+                  </Link>
+                )}
 
                 <Link
                   href="/activity"
@@ -777,6 +791,16 @@ export default function DashboardClient({
                   }
                   label="Apps"
                 />
+
+                {capabilities.ai && (
+                  <QuickLink
+                    href="/ai"
+                    icon={
+                      Sparkles
+                    }
+                    label="SaMi AI"
+                  />
+                )}
               </div>
             </Section>
 

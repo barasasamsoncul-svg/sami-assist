@@ -30,10 +30,10 @@ export interface TenantCoreMigration {
  *
  * tenant-core.sql currently installs:
  *
- *     1.4.0
+ *     1.5.0
  */
 export const CURRENT_TENANT_CORE_VERSION =
-  '1.4.0';
+  '1.5.0';
 
 /**
  * Migration chain.
@@ -42,6 +42,7 @@ export const CURRENT_TENANT_CORE_VERSION =
  * Category 14 extends core file/storage infrastructure to 1.2.0.
  * Category 15 extends core notification infrastructure to 1.3.0.
  * Category 16 standardizes tenant activity/audit infrastructure at 1.4.0.
+ * Category 18 strengthens SaMi AI runtime, memory and usage persistence at 1.5.0.
  * New tenants receive the complete latest tenant-core.sql.
  */
 export const TENANT_CORE_MIGRATIONS:
@@ -69,5 +70,11 @@ export const TENANT_CORE_MIGRATIONS:
       fromVersion: '1.3.0',
       toVersion: '1.4.0',
       fileName: '004-core-1.3.0-to-1.4.0.sql',
+    },
+    {
+      key: 'core-1.4.0-to-1.5.0',
+      fromVersion: '1.4.0',
+      toVersion: '1.5.0',
+      fileName: '005-core-1.4.0-to-1.5.0.sql',
     },
   ];

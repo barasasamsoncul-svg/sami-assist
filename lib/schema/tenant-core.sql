@@ -1191,7 +1191,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
 --
 -- Tenant-specific AI conversations.
 --
--- AI models themselves are registered in Control DB.
+-- Model/provider selection is runtime configuration from environment.
+-- Control DB model rows may exist for administration/metadata, but are
+-- not the source of truth for runtime model selection.
 -- ------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS {schema}.ai_conversations (
@@ -1211,6 +1213,8 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_conversations (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    last_message_at TIMESTAMPTZ,
 
     archived_at TIMESTAMPTZ
 );
@@ -1240,6 +1244,14 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_messages (
 
     content TEXT NOT NULL,
 
+    status VARCHAR(30) NOT NULL DEFAULT 'completed',
+
+    provider VARCHAR(50),
+
+    model VARCHAR(255),
+
+    correlation_id UUID,
+
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1254,29 +1266,65 @@ CREATE INDEX IF NOT EXISTS idx_ai_messages_created
         created_at
     );
 
+CREATE INDEX IF NOT EXISTS idx_ai_messages_correlation
+    ON {schema}.ai_messages(correlation_id);
+
+
+-- ------------------------------------------------------------
+-- AI Preferences
+--
+-- Personal SaMi AI settings are scoped to the signed-in user and
+-- current company. user_id refers to the trusted Control-DB user UUID;
+-- it intentionally has no tenant-DB foreign key.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS {schema}.ai_preferences (
+    user_id UUID NOT NULL,
+
+    company_id UUID NOT NULL
+        REFERENCES {schema}.companies(id)
+        ON DELETE CASCADE,
+
+    memory_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
+    use_account_preferences BOOLEAN NOT NULL DEFAULT TRUE,
+
+    response_style VARCHAR(30) NOT NULL DEFAULT 'balanced',
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (user_id, company_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_preferences_company
+    ON {schema}.ai_preferences(company_id, user_id);
+
 
 -- ------------------------------------------------------------
 -- AI Memory
 --
--- Business knowledge stored for this tenant.
+-- Durable context used across conversations.
 --
--- Examples:
---
---   company preferences
---   customer context
---   business rules
---   learned workflows
---   important facts
---
--- Actual AI model registry remains in Control DB.
+-- Personal memory is always scoped by BOTH user_id and company_id.
+-- Company/workspace memory can be introduced by trusted future modules
+-- but must still pass their normal app/permission/record access checks
+-- before being supplied to the model.
 -- ------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS {schema}.ai_memory (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
+    user_id UUID,
+
     company_id UUID
         REFERENCES {schema}.companies(id)
         ON DELETE CASCADE,
+
+    scope VARCHAR(30) NOT NULL DEFAULT 'company'
+        CHECK (scope IN ('personal', 'company', 'workspace')),
+
+    memory_key VARCHAR(150),
 
     memory_type VARCHAR(100) NOT NULL,
 
@@ -1286,9 +1334,23 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_memory (
 
     source_id UUID,
 
+    source_module VARCHAR(150),
+
+    status VARCHAR(30) NOT NULL DEFAULT 'active',
+
+    sensitivity VARCHAR(30) NOT NULL DEFAULT 'normal',
+
     importance INTEGER NOT NULL DEFAULT 5,
 
+    created_by_ai BOOLEAN NOT NULL DEFAULT FALSE,
+
     metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    last_used_at TIMESTAMPTZ,
+
+    expires_at TIMESTAMPTZ,
+
+    archived_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -1296,6 +1358,15 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_memory (
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_company
     ON {schema}.ai_memory(company_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_user_company
+    ON {schema}.ai_memory(
+        user_id,
+        company_id,
+        status,
+        updated_at DESC
+    )
+    WHERE archived_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_type
     ON {schema}.ai_memory(memory_type);
@@ -1305,6 +1376,15 @@ CREATE INDEX IF NOT EXISTS idx_ai_memory_importance
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_source
     ON {schema}.ai_memory(source_type, source_id);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_module
+    ON {schema}.ai_memory(source_module, source_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_memory_personal_key
+    ON {schema}.ai_memory(user_id, company_id, memory_key)
+    WHERE scope = 'personal'
+      AND memory_key IS NOT NULL
+      AND archived_at IS NULL;
 
 
 -- ------------------------------------------------------------
@@ -1335,6 +1415,14 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_actions (
 
     action_name VARCHAR(150) NOT NULL,
 
+    tool_key VARCHAR(150),
+
+    operation VARCHAR(30) NOT NULL DEFAULT 'read',
+
+    risk_level VARCHAR(30) NOT NULL DEFAULT 'low',
+
+    confirmation_required BOOLEAN NOT NULL DEFAULT FALSE,
+
     source_module VARCHAR(150),
     source_record_id UUID,
 
@@ -1349,6 +1437,12 @@ CREATE TABLE IF NOT EXISTS {schema}.ai_actions (
     error_message TEXT,
 
     correlation_id UUID,
+
+    confirmed_at TIMESTAMPTZ,
+
+    confirmed_by UUID,
+
+    expires_at TIMESTAMPTZ,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
@@ -1378,6 +1472,72 @@ CREATE INDEX IF NOT EXISTS idx_ai_actions_target
 
 CREATE INDEX IF NOT EXISTS idx_ai_actions_status
     ON {schema}.ai_actions(status);
+
+CREATE INDEX IF NOT EXISTS idx_ai_actions_tool
+    ON {schema}.ai_actions(tool_key, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_actions_expiry
+    ON {schema}.ai_actions(expires_at)
+    WHERE status = 'pending_confirmation';
+
+
+-- ------------------------------------------------------------
+-- AI Runs
+--
+-- One provider execution attempt. This is intentionally separate from
+-- messages/actions so future usage limits and billing can rely on
+-- durable provider/model/token/duration accounting.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS {schema}.ai_runs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    conversation_id UUID
+        REFERENCES {schema}.ai_conversations(id)
+        ON DELETE SET NULL,
+
+    user_id UUID NOT NULL,
+
+    company_id UUID
+        REFERENCES {schema}.companies(id)
+        ON DELETE SET NULL,
+
+    provider VARCHAR(50) NOT NULL,
+
+    model VARCHAR(255) NOT NULL,
+
+    status VARCHAR(30) NOT NULL DEFAULT 'running',
+
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+
+    tool_calls_count INTEGER NOT NULL DEFAULT 0,
+
+    duration_ms INTEGER,
+
+    error_code VARCHAR(100),
+    error_message TEXT,
+
+    correlation_id UUID NOT NULL,
+
+    metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_user_created
+    ON {schema}.ai_runs(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_company_created
+    ON {schema}.ai_runs(company_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_ai_runs_conversation_created
+    ON {schema}.ai_runs(conversation_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_runs_correlation
+    ON {schema}.ai_runs(correlation_id);
 
 
 -- ============================================================
@@ -1503,6 +1663,15 @@ DROP TRIGGER IF EXISTS trg_ai_conversations_updated_at
 
 CREATE TRIGGER trg_ai_conversations_updated_at
 BEFORE UPDATE ON {schema}.ai_conversations
+FOR EACH ROW
+EXECUTE FUNCTION {schema}.set_updated_at();
+
+
+DROP TRIGGER IF EXISTS trg_ai_preferences_updated_at
+    ON {schema}.ai_preferences;
+
+CREATE TRIGGER trg_ai_preferences_updated_at
+BEFORE UPDATE ON {schema}.ai_preferences
 FOR EACH ROW
 EXECUTE FUNCTION {schema}.set_updated_at();
 
@@ -1693,7 +1862,7 @@ CREATE TABLE IF NOT EXISTS {schema}.core_schema_version (
 );
 
 INSERT INTO {schema}.core_schema_version (version)
-VALUES ('1.4.0')
+VALUES ('1.5.0')
 ON CONFLICT (version) DO NOTHING;
 
 

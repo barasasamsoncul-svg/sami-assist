@@ -12,6 +12,7 @@ import {
   Loader2,
   Search,
   Settings,
+  Sparkles,
   UserRound,
   X,
   type LucideIcon,
@@ -79,6 +80,8 @@ function iconFor(
       return FileText;
     case 'settings':
       return Settings;
+    case 'sparkles':
+      return Sparkles;
     case 'layout-grid':
       return LayoutGrid;
     case 'user':

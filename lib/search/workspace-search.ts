@@ -105,6 +105,9 @@ type SearchRuntimeContext = {
 
   canViewBilling:
     boolean;
+
+  aiAvailable:
+    boolean;
 };
 
 type Candidate =
@@ -436,6 +439,9 @@ async function resolveSearchContext():
 
     canViewBilling:
       shell.canViewBilling,
+
+    aiAvailable:
+      shell.aiAvailable,
   };
 }
 
@@ -609,6 +615,43 @@ function corePageCandidates(
         ],
       }),
     ];
+
+  if (
+    context.aiAvailable
+  ) {
+    pages.push(
+      candidate({
+        id:
+          'page:ai',
+        kind:
+          'page',
+        title:
+          'SaMi AI',
+        subtitle:
+          'Permission-aware business assistant',
+        description:
+          'Ask SaMi about information available to your current workspace access.',
+        href:
+          '/ai',
+        iconKey:
+          'sparkles',
+        badge:
+          'AI',
+        score:
+          35,
+        action:
+          null,
+        source:
+          'core',
+        keywords: [
+          'assistant',
+          'chat',
+          'business ai',
+          'sami',
+        ],
+      }),
+    );
+  }
 
   if (
     context

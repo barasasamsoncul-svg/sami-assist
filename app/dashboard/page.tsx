@@ -264,6 +264,8 @@ export default async function DashboardPage() {
         unreadNotifications
       }
       capabilities={{
+        ai:
+          shell.aiAvailable,
         files:
           permissionContext
             .permissionSet
