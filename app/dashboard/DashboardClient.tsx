@@ -24,10 +24,11 @@ import {
 
 import CompanyAvatar from '@/app/components/workspace/CompanyAvatar';
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 
 import {
-  getSaMiAppIcon,
-} from '@/lib/apps/icon-registry';
+  getSaMiAppVisual,
+} from '@/lib/apps/visual-registry';
 
 import type {
   DashboardAttentionItem,
@@ -83,6 +84,7 @@ type ModuleData = {
   href?: string | null;
   description?: string | null;
   iconKey?: string | null;
+  category?: string;
   categoryLabel?: string;
 };
 
@@ -347,7 +349,7 @@ export default function DashboardClient({
         unreadNotifications
       }
       title="Dashboard"
-      description="Your current company, work, apps and recent activity."
+      description="Your AI-powered operating view across the current company, installed apps and personal work."
       contextLabel={
         company
           ?.currentCompany
@@ -358,14 +360,15 @@ export default function DashboardClient({
       contentClassName="max-w-[1540px]"
     >
       <div className="space-y-4 sm:space-y-5">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm sm:rounded-3xl dark:border-white/10 dark:bg-[#0F131B]">
+        <section className="sami-ai-sheen overflow-hidden rounded-[30px] border border-[var(--sami-border)] shadow-[var(--sami-shadow-md)]">
           <div className="grid gap-4 p-4 sm:gap-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
             <div className="min-w-0">
-              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-indigo-700 shadow-sm backdrop-blur dark:border-indigo-500/20 dark:bg-white/[0.05] dark:text-indigo-300">
+                <Sparkles className="h-3 w-3" />
                 {greeting()}, {firstName}
-              </p>
+              </div>
 
-              <h1 className="mt-2 max-w-3xl text-xl font-black tracking-tight text-slate-950 sm:text-3xl dark:text-white">
+              <h1 className="mt-3 max-w-3xl text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl dark:text-white">
                 {dashboard
                   .brief.title}
               </h1>
@@ -387,7 +390,7 @@ export default function DashboardClient({
                 {capabilities.ai && (
                   <Link
                     href="/ai"
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/20 dark:bg-blue-500/[0.08] dark:text-blue-300 dark:hover:bg-blue-500/[0.12]"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-600 to-blue-600 px-4 text-xs font-bold text-white shadow-md shadow-indigo-500/15 transition hover:-translate-y-px hover:shadow-lg dark:border-indigo-500/20"
                   >
                     <Sparkles className="h-4 w-4" />
                     Ask SaMi
@@ -399,7 +402,7 @@ export default function DashboardClient({
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
                 >
                   <Activity className="h-4 w-4" />
-                  Activity
+                  My activity
                 </Link>
 
                 <Link
@@ -445,7 +448,7 @@ export default function DashboardClient({
                     ?.todayCount ||
                   0
                 }
-                detail="Recorded activity"
+                detail="Your activity"
               />
 
               <HomeStat
@@ -481,13 +484,14 @@ export default function DashboardClient({
             >
               {visibleApps.length >
                 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
                   {visibleApps.map(
                     module => {
-                      const Icon =
-                        getSaMiAppIcon(
-                          module.iconKey ||
-                          module.key,
+                      const visual =
+                        getSaMiAppVisual(
+                          module.registryKey ||
+                            module.key,
+                          module.category,
                         );
 
                       return (
@@ -499,20 +503,53 @@ export default function DashboardClient({
                             module.href ||
                             '/apps'
                           }
-                          className="group rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-white hover:shadow-sm dark:border-white/10 dark:bg-white/[0.025] dark:hover:border-blue-500/30 dark:hover:bg-white/[0.05]"
+                          className={[
+                            'group relative overflow-hidden rounded-[20px] border bg-[var(--sami-surface)] p-3.5 shadow-[var(--sami-shadow-sm)] transition duration-200 hover:-translate-y-1 hover:shadow-[var(--sami-shadow-md)]',
+                            visual.border,
+                          ].join(
+                            ' ',
+                          )}
                         >
-                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-slate-600 shadow-sm ring-1 ring-slate-200 dark:bg-[#0B0E14] dark:text-slate-300 dark:ring-white/10">
-                            <Icon className="h-5 w-5" />
+                          <div className="flex items-center justify-between gap-2">
+                            <SamiAppIconTile
+                              appKey={
+                                module.registryKey ||
+                                module.key
+                              }
+                              category={
+                                module.category
+                              }
+                              iconKey={
+                                module.iconKey
+                              }
+                              size="md"
+                              className="transition duration-200 group-hover:scale-105"
+                            />
+
+                            <ArrowRight
+                              className={[
+                                'h-4 w-4 shrink-0 transition group-hover:translate-x-0.5',
+                                visual.text,
+                              ].join(
+                                ' ',
+                              )}
+                            />
                           </div>
 
-                          <p className="mt-4 truncate text-sm font-black tracking-tight">
+                          <p className="mt-3 truncate text-[12px] font-bold tracking-[-0.01em]">
                             {module.name}
                           </p>
 
-                          <p className="mt-1 line-clamp-2 min-h-10 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                            {module.description ||
-                              module.categoryLabel ||
-                              'Open app'}
+                          <p
+                            className={[
+                              'mt-1 truncate text-[9px] font-semibold',
+                              visual.text,
+                            ].join(
+                              ' ',
+                            )}
+                          >
+                            {module.categoryLabel ||
+                              'Business app'}
                           </p>
                         </Link>
                       );
@@ -555,7 +592,7 @@ export default function DashboardClient({
 
             <Section
               title="Recent activity"
-              description="What has recently happened in the current company."
+              description="Your recent actions in the current company."
               action={
                 <Link
                   href="/activity"
@@ -637,8 +674,8 @@ export default function DashboardClient({
                   icon={
                     Activity
                   }
-                  title="No recent company activity"
-                  description="New trusted activity will appear here automatically."
+                  title="No recent personal activity"
+                  description="Your trusted activity in this company will appear here automatically."
                 />
               )}
             </Section>
@@ -845,7 +882,7 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-white/10 dark:bg-[#0F131B]">
+    <section className="sami-surface rounded-[24px] p-4 sm:p-5">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h2 className="text-sm font-black tracking-tight">
@@ -877,7 +914,7 @@ function HomeStat({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/[0.025]">
+    <div className="sami-soft-surface rounded-2xl p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
           {label}
