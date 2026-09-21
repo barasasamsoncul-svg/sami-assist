@@ -1893,10 +1893,9 @@ export async function listWorkspaceAiConversations() {
           AND archived_at IS NULL
         ORDER BY
           CASE
-            WHEN COALESCE(
-              (metadata ->> 'pinned')::boolean,
-              false
-            )
+            WHEN metadata ->>
+              'pinned' =
+              'true'
             THEN 0
             ELSE 1
           END ASC,
@@ -2211,20 +2210,12 @@ export async function updateWorkspaceAiConversation(
     );
 
   const hasTitle =
-    Object.prototype
-      .hasOwnProperty
-      .call(
-        input,
-        'title',
-      );
+    input.title !==
+    undefined;
 
   const hasPinned =
-    Object.prototype
-      .hasOwnProperty
-      .call(
-        input,
-        'pinned',
-      );
+    input.pinned !==
+    undefined;
 
   if (
     !hasTitle &&
