@@ -11,10 +11,11 @@ import {
 } from 'next/navigation';
 
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 
 import {
-  getSaMiAppIcon,
-} from '@/lib/apps/icon-registry';
+  getSaMiAppVisual,
+} from '@/lib/apps/visual-registry';
 
 import {
   getCanonicalAppKey,
@@ -130,9 +131,10 @@ export default async function AppEntryPage({
           permission,
         );
 
-  const Icon =
-    getSaMiAppIcon(
-      app.iconKey,
+  const visual =
+    getSaMiAppVisual(
+      app.registryKey,
+      app.category,
     );
 
   return (
@@ -180,7 +182,7 @@ export default async function AppEntryPage({
       actions={
         <Link
           href="/apps"
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300"
+          className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-semibold text-slate-600 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
         >
           <ArrowLeft className="h-4 w-4" />
           <span className="hidden sm:inline">
@@ -190,19 +192,45 @@ export default async function AppEntryPage({
       }
       contentClassName="max-w-[1400px]"
     >
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]">
-        <div className="border-b border-slate-200 p-5 dark:border-white/10 sm:p-7">
-          <div className="flex items-start gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/10">
-              <Icon className="h-6 w-6" />
-            </div>
+      <section className="sami-surface overflow-hidden rounded-[28px]">
+        <div className="relative overflow-hidden border-b border-[var(--sami-border)] p-5 sm:p-7">
+          <div
+            aria-hidden="true"
+            className={[
+              'absolute -right-20 -top-20 h-56 w-56 rounded-full opacity-[0.10] blur-3xl',
+              visual.dot,
+            ].join(
+              ' ',
+            )}
+          />
+
+          <div className="relative flex items-start gap-4">
+            <SamiAppIconTile
+              appKey={
+                app.registryKey
+              }
+              category={
+                app.category
+              }
+              iconKey={
+                app.iconKey
+              }
+              size="xl"
+            />
 
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400">
+              <p
+                className={[
+                  'text-[10px] font-bold uppercase tracking-[0.14em]',
+                  visual.text,
+                ].join(
+                  ' ',
+                )}
+              >
                 {app.categoryLabel}
               </p>
 
-              <h1 className="mt-1 text-xl font-black tracking-tight sm:text-2xl">
+              <h1 className="mt-1 text-2xl font-black tracking-[-0.03em] sm:text-3xl">
                 {app.name}
               </h1>
 
@@ -214,32 +242,74 @@ export default async function AppEntryPage({
         </div>
 
         <div className="grid gap-4 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-white/10 dark:bg-white/[0.025]">
-            <p className="text-sm font-bold">
-              Application workspace
-            </p>
-
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              This application is installed and available to your current role. Its workspace keeps the same SaMi navigation, company context and access rules as the rest of your business tools.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 p-5 dark:border-white/10">
+          <div
+            className={[
+              'rounded-[22px] border p-5',
+              visual.soft,
+              visual.border,
+            ].join(
+              ' ',
+            )}
+          >
             <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-              Current access
+              App workspace
             </p>
 
             <p className="mt-2 text-sm font-bold">
-              Available
+              Ready for module features
             </p>
 
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              This app is available because it is installed for the workspace and permitted by your current access.
+            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {app.name} is installed and available to your current role. Its future records, workflows and AI tools will stay inside the same company context and permission boundaries already enforced by SaMi.
+            </p>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              <AppFact
+                label="Company context"
+                value="Inherited"
+              />
+              <AppFact
+                label="Permissions"
+                value="Enforced"
+              />
+              <AppFact
+                label="SaMi AI"
+                value="Boundary-ready"
+              />
+            </div>
+          </div>
+
+          <div className="sami-soft-surface rounded-[22px] p-5">
+            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              Access
+            </p>
+
+            <div className="mt-3 flex items-center gap-2">
+              <span
+                className={[
+                  'h-2 w-2 rounded-full',
+                  visual.dot,
+                ].join(
+                  ' ',
+                )}
+              />
+              <p className="text-sm font-bold">
+                Available to you
+              </p>
+            </div>
+
+            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+              SaMi resolved this application from the installed app registry and your effective role access.
             </p>
 
             <Link
               href="/apps"
-              className="mt-4 inline-flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400"
+              className={[
+                'mt-5 inline-flex items-center gap-2 text-xs font-semibold',
+                visual.text,
+              ].join(
+                ' ',
+              )}
             >
               Browse other apps
               <ArrowRight className="h-4 w-4" />
@@ -248,5 +318,25 @@ export default async function AppEntryPage({
         </div>
       </section>
     </WorkspaceShell>
+  );
+}
+
+
+function AppFact({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-xl border border-black/5 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-black/10">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-[11px] font-bold text-slate-700 dark:text-slate-200">
+        {value}
+      </p>
+    </div>
   );
 }
