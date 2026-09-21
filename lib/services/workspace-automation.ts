@@ -387,7 +387,8 @@ export async function getWorkspaceAutomationState() {
           w.created_at,
           w.updated_at,
           v.trigger_key,
-          v.trigger_module
+          v.trigger_module,
+          v.definition
         FROM automation_workflows w
         LEFT JOIN automation_workflow_versions v
           ON v.workflow_id =
@@ -400,6 +401,39 @@ export async function getWorkspaceAutomationState() {
         ORDER BY
           w.updated_at DESC,
           w.id DESC
+      `,
+      [
+        context.runtime
+          .companyId,
+      ],
+    );
+
+  const runs =
+    await pool.query(
+      `
+        SELECT
+          r.id,
+          r.workflow_id,
+          w.name
+            AS workflow_name,
+          r.status,
+          r.attempt,
+          r.max_attempts,
+          r.correlation_id,
+          r.error_code,
+          r.error_message,
+          r.started_at,
+          r.completed_at,
+          r.created_at
+        FROM automation_runs r
+        INNER JOIN automation_workflows w
+          ON w.id =
+             r.workflow_id
+        WHERE r.company_id = $1
+        ORDER BY
+          r.created_at DESC,
+          r.id DESC
+        LIMIT 40
       `,
       [
         context.runtime
@@ -467,6 +501,12 @@ export async function getWorkspaceAutomationState() {
                   row.trigger_module,
                 )
               : null,
+          definition:
+            row.definition &&
+            typeof row.definition ===
+              'object'
+              ? row.definition
+              : null,
           lastActivatedAt:
             row.last_activated_at ||
             null,
@@ -474,6 +514,63 @@ export async function getWorkspaceAutomationState() {
             row.created_at,
           updatedAt:
             row.updated_at,
+        }),
+      ),
+    runs:
+      runs.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          workflowId:
+            String(
+              row.workflow_id,
+            ),
+          workflowName:
+            String(
+              row.workflow_name ||
+              'Automation',
+            ),
+          status:
+            String(
+              row.status ||
+              'queued',
+            ),
+          attempt:
+            Number(
+              row.attempt ||
+              1,
+            ),
+          maxAttempts:
+            Number(
+              row.max_attempts ||
+              1,
+            ),
+          correlationId:
+            String(
+              row.correlation_id,
+            ),
+          errorCode:
+            row.error_code
+              ? String(
+                  row.error_code,
+                )
+              : null,
+          errorMessage:
+            row.error_message
+              ? String(
+                  row.error_message,
+                )
+              : null,
+          startedAt:
+            row.started_at ||
+            null,
+          completedAt:
+            row.completed_at ||
+            null,
+          createdAt:
+            row.created_at,
         }),
       ),
   };
