@@ -140,6 +140,8 @@ export function handleAiApiError(
                 : error.code ===
                       'CONVERSATION_NOT_FOUND' ||
                     error.code ===
+                      'MESSAGE_NOT_FOUND' ||
+                    error.code ===
                       'ACTION_NOT_FOUND' ||
                     error.code ===
                       'MEMORY_NOT_FOUND'
