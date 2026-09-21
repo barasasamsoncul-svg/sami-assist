@@ -437,7 +437,9 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(client, /\/api\/workspace\/ai\/chat/);
   assert.match(client, /ReactMarkdown/);
   assert.match(client, /Confirmation required/);
-  assert.match(client, /label="Copy"/);
+  assert.match(client, /copiedMessageId/);
+  assert.match(client, /'Copied'/);
+  assert.match(client, /'Copy'/);
   assert.match(client, /label="Edit"/);
   assert.match(client, /label="Regenerate"/);
   assert.match(client, /Stop generating/);
