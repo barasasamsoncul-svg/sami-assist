@@ -7,10 +7,8 @@ import {
   ArrowRight,
   Bell,
   Boxes,
-  Building2,
   CheckCircle2,
   Clock3,
-  LayoutGrid,
   Search,
   Sparkles,
   TriangleAlert,
@@ -229,22 +227,6 @@ function relativeTime(
           'numeric',
       },
     );
-}
-
-function resultTone(
-  result:
-    string | null,
-) {
-  if (
-    result ===
-      'failed' ||
-    result ===
-      'denied'
-  ) {
-    return 'text-rose-600 dark:text-rose-300';
-  }
-
-  return 'text-emerald-600 dark:text-emerald-300';
 }
 
 export default function DashboardClient({
@@ -780,80 +762,6 @@ function Section({
 
       {children}
     </section>
-  );
-}
-
-function HomeStat({
-  icon: Icon,
-  label,
-  value,
-  detail,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: number;
-  detail: string;
-}) {
-  return (
-    <div className="sami-soft-surface rounded-2xl p-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[9px] font-black uppercase tracking-[0.12em] text-slate-400">
-          {label}
-        </p>
-
-        <Icon className="h-3.5 w-3.5 text-slate-400" />
-      </div>
-
-      <p className="mt-2 text-xl font-black tracking-tight">
-        {value}
-      </p>
-
-      <p className="mt-1 text-[9px] text-slate-400">
-        {detail}
-      </p>
-    </div>
-  );
-}
-
-function SmallFact({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl bg-white p-3 text-center ring-1 ring-slate-200 dark:bg-[#0B0E14] dark:ring-white/10">
-      <p className="text-lg font-black">
-        {value}
-      </p>
-
-      <p className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.1em] text-slate-400">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-function QuickLink({
-  href,
-  icon: Icon,
-  label,
-}: {
-  href: string;
-  icon: LucideIcon;
-  label: string;
-}) {
-  return (
-    <Link
-      href={
-        href
-      }
-      className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50/50 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:border-blue-500/30 dark:hover:bg-blue-500/[0.06] dark:hover:text-blue-300"
-    >
-      <Icon className="h-4 w-4" />
-      {label}
-    </Link>
   );
 }
 
