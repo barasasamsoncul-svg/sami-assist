@@ -148,6 +148,10 @@ test('Category 17: common top-bar trust controls survive custom page headers', a
 
   const headerIndex =
     shell.indexOf('headerContent ?');
+  const appsIndex =
+    shell.indexOf('<WorkspaceAppSwitcher');
+  const aiIndex =
+    shell.indexOf('href="/ai"');
   const searchIndex =
     shell.indexOf('<WorkspaceSearchLauncher');
   const companyIndex =
@@ -156,6 +160,8 @@ test('Category 17: common top-bar trust controls survive custom page headers', a
     shell.indexOf('<WorkspaceNotificationCenter');
 
   assert.ok(headerIndex >= 0);
+  assert.ok(appsIndex > headerIndex);
+  assert.ok(aiIndex > headerIndex);
   assert.ok(searchIndex > headerIndex);
   assert.ok(companyIndex > headerIndex);
   assert.ok(notificationIndex > headerIndex);
@@ -231,7 +237,12 @@ test('Dashboard refresh: app content remains provider-driven and module-agnostic
   assert.match(client, /module\.description/);
   assert.match(
     client,
-    /getSaMiAppIcon\(\s*module\.iconKey/s,
+    /SamiAppIconTile/,
+  );
+
+  assert.match(
+    client,
+    /getSaMiAppVisual/,
   );
 
   assert.doesNotMatch(
