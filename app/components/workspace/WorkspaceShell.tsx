@@ -1,7 +1,11 @@
 'use client';
 
+import Link from 'next/link';
+
 import {
+  LayoutGrid,
   Menu,
+  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -118,7 +122,7 @@ export default function WorkspaceShell({
     );
 
   return (
-    <main className="min-h-screen bg-[#F6F7F9] text-slate-950 transition-colors dark:bg-[#090B10] dark:text-white">
+    <main className="sami-canvas min-h-screen text-slate-950 transition-colors dark:text-white">
       <div className="flex min-h-screen">
         <WorkspaceSidebar
           user={user}
@@ -143,8 +147,8 @@ export default function WorkspaceShell({
         />
 
         <div className="min-w-0 flex-1 lg:pl-[286px]">
-          <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-            <div className="flex min-h-16 flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap sm:gap-3 sm:px-5 lg:px-7">
+          <header className="sticky top-0 z-40 border-b border-[var(--sami-border)] bg-[var(--sami-topbar)] shadow-[0_1px_0_rgba(16,24,40,0.02)] backdrop-blur-xl">
+            <div className="flex min-h-[60px] flex-wrap items-center gap-2 px-2.5 py-2 sm:flex-nowrap sm:gap-3 sm:px-5 lg:px-6">
               <button
                 type="button"
                 aria-label="Open navigation"
@@ -153,7 +157,7 @@ export default function WorkspaceShell({
                     true,
                   )
                 }
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10 lg:hidden"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-400 lg:hidden"
               >
                 <Menu className="h-5 w-5" />
               </button>
@@ -164,27 +168,59 @@ export default function WorkspaceShell({
                 </div>
               ) : (
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-bold tracking-tight">
-                    {title}
-                  </p>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <p className="truncate text-[15px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white">
+                      {title}
+                    </p>
+
+                    {(contextLabel ||
+                      tenant?.name) && (
+                      <>
+                        <span className="hidden text-slate-300 md:inline dark:text-slate-700">
+                          /
+                        </span>
+                        <p className="hidden max-w-[220px] truncate text-[11px] font-semibold text-slate-400 md:block">
+                          {contextLabel ||
+                            tenant?.name}
+                        </p>
+                      </>
+                    )}
+                  </div>
 
                   {description && (
-                    <p className="mt-0.5 hidden max-w-[620px] truncate text-[11px] text-slate-400 sm:block">
+                    <p className="mt-0.5 hidden max-w-[660px] truncate text-[10px] text-slate-400 sm:block">
                       {description}
-                    </p>
-                  )}
-
-                  {(contextLabel ||
-                    tenant?.name) && (
-                    <p className="mt-0.5 hidden max-w-[260px] truncate text-[10px] font-medium text-slate-400 md:block">
-                      {contextLabel ||
-                        tenant?.name}
                     </p>
                   )}
                 </div>
               )}
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+                <Link
+                  href="/apps"
+                  aria-label="Open app launcher"
+                  title="Apps"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                </Link>
+
+                {sidebarCapabilities?.aiEnabled && (
+                  <Link
+                    href="/ai"
+                    aria-label="Open SaMi AI"
+                    title="SaMi AI"
+                    className="group inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 px-2.5 text-[10px] font-bold text-indigo-700 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:shadow-md sm:px-3 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300"
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
+                      <Sparkles className="h-3.5 w-3.5" />
+                    </span>
+                    <span className="hidden xl:inline">
+                      SaMi AI
+                    </span>
+                  </Link>
+                )}
+
                 <WorkspaceSearchLauncher />
 
                 <WorkspaceCompanyIdentity />
@@ -198,7 +234,7 @@ export default function WorkspaceShell({
               </div>
 
               {actions && (
-                <div className="order-3 flex w-full items-center gap-2 overflow-x-auto border-t border-slate-200/70 pt-2 sm:order-none sm:w-auto sm:overflow-visible sm:border-0 sm:pt-0 dark:border-white/10 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <div className="order-3 flex w-full items-center gap-2 overflow-x-auto border-t border-[var(--sami-border)] pt-2 sm:order-none sm:w-auto sm:overflow-visible sm:border-0 sm:pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {actions}
                 </div>
               )}
@@ -207,7 +243,7 @@ export default function WorkspaceShell({
 
           <div
             className={[
-              'mx-auto w-full max-w-[1700px] px-3 py-4 sm:px-6 sm:py-6 lg:px-8',
+              'mx-auto w-full max-w-[1720px] px-3 py-4 sm:px-5 sm:py-5 lg:px-6 lg:py-6',
               contentClassName,
             ].join(
               ' ',
