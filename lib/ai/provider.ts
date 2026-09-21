@@ -73,6 +73,8 @@ export async function completeSamiAiChat(
       SamiAiProviderMessage[];
     tools:
       SamiAiProviderTool[];
+    signal?:
+      AbortSignal;
   },
 ): Promise<SamiAiProviderResult> {
   const config =
@@ -127,6 +129,12 @@ export async function completeSamiAiChat(
       .completions
       .create(
         request as never,
+        input.signal
+          ? {
+              signal:
+                input.signal,
+            }
+          : undefined,
       );
 
   const completion =

@@ -67,6 +67,74 @@ function normalizeProvider(
   return null;
 }
 
+type ProviderModelSelection = {
+  provider: SamiAiProvider;
+  model: string;
+};
+
+function providerSpecificModel(
+  provider:
+    SamiAiProvider,
+) {
+  if (provider === 'groq') {
+    return (
+      process.env.GROQ_MODEL?.trim() ||
+      ''
+    );
+  }
+
+  if (provider === 'openai') {
+    return (
+      process.env.OPENAI_MODEL?.trim() ||
+      ''
+    );
+  }
+
+  if (provider === 'gemini') {
+    return (
+      process.env.GEMINI_MODEL?.trim() ||
+      process.env.GOOGLE_MODEL?.trim() ||
+      ''
+    );
+  }
+
+  return (
+    process.env.SAMI_AI_MODEL?.trim() ||
+    ''
+  );
+}
+
+function configuredProviderModels():
+  ProviderModelSelection[] {
+  const candidates:
+    ProviderModelSelection[] = [
+      {
+        provider: 'groq',
+        model:
+          process.env.GROQ_MODEL?.trim() ||
+          '',
+      },
+      {
+        provider: 'openai',
+        model:
+          process.env.OPENAI_MODEL?.trim() ||
+          '',
+      },
+      {
+        provider: 'gemini',
+        model:
+          process.env.GEMINI_MODEL?.trim() ||
+          process.env.GOOGLE_MODEL?.trim() ||
+          '',
+      },
+    ];
+
+  return candidates.filter(
+    candidate =>
+      Boolean(candidate.model),
+  );
+}
+
 function inferProviderFromKeys():
   SamiAiProvider | null {
   const providers:
@@ -96,50 +164,62 @@ function inferProviderFromKeys():
     : null;
 }
 
-function resolveProvider():
-  SamiAiProvider | null {
-  return (
+function resolveProviderAndModel():
+  ProviderModelSelection | null {
+  const explicitProvider =
     normalizeProvider(
       process.env.SAMI_AI_PROVIDER,
-    ) ||
-    inferProviderFromKeys()
-  );
-}
-
-function resolveModel(
-  provider:
-    SamiAiProvider | null,
-) {
-  const generic =
-    process.env.SAMI_AI_MODEL?.trim();
-
-  if (generic) {
-    return generic;
-  }
-
-  if (provider === 'groq') {
-    return (
-      process.env.GROQ_MODEL?.trim() ||
-      ''
     );
+
+  const genericModel =
+    process.env.SAMI_AI_MODEL?.trim() ||
+    '';
+
+  if (explicitProvider) {
+    return {
+      provider:
+        explicitProvider,
+      model:
+        genericModel ||
+        providerSpecificModel(
+          explicitProvider,
+        ),
+    };
   }
 
-  if (provider === 'openai') {
-    return (
-      process.env.OPENAI_MODEL?.trim() ||
-      ''
-    );
+  const modelCandidates =
+    configuredProviderModels();
+
+  if (
+    modelCandidates.length ===
+    1
+  ) {
+    return modelCandidates[0];
   }
 
-  if (provider === 'gemini') {
-    return (
-      process.env.GEMINI_MODEL?.trim() ||
-      process.env.GOOGLE_MODEL?.trim() ||
-      ''
-    );
+  if (
+    modelCandidates.length >
+    1
+  ) {
+    return null;
   }
 
-  return '';
+  const inferredProvider =
+    inferProviderFromKeys();
+
+  if (!inferredProvider) {
+    return null;
+  }
+
+  return {
+    provider:
+      inferredProvider,
+    model:
+      genericModel ||
+      providerSpecificModel(
+        inferredProvider,
+      ),
+  };
 }
 
 function resolveProviderKey(
@@ -224,20 +304,49 @@ function positiveInteger(
 
 export function getSamiAiProviderStatus():
   SamiAiProviderStatus {
+  const explicitProvider =
+    normalizeProvider(
+      process.env.SAMI_AI_PROVIDER,
+    );
+
+  const modelCandidates =
+    configuredProviderModels();
+
+  if (
+    !explicitProvider &&
+    modelCandidates.length >
+      1
+  ) {
+    return {
+      configured: false,
+      provider: null,
+      model: null,
+      baseUrl: null,
+      error:
+        'More than one provider model is active. Keep exactly one of GROQ_MODEL, OPENAI_MODEL, or GEMINI_MODEL/GOOGLE_MODEL configured.',
+    };
+  }
+
+  const selection =
+    resolveProviderAndModel();
+
   const provider =
-    resolveProvider();
+    selection?.provider ||
+    null;
 
   const model =
-    resolveModel(provider);
+    selection?.model ||
+    '';
 
   if (!provider) {
     return {
       configured: false,
       provider: null,
-      model: model || null,
+      model:
+        model || null,
       baseUrl: null,
       error:
-        'Configure SAMI_AI_PROVIDER, or leave exactly one supported provider API key configured so SaMi can infer it.',
+        'Configure exactly one provider model (GROQ_MODEL, OPENAI_MODEL, or GEMINI_MODEL/GOOGLE_MODEL) and its API key. SAMI_AI_PROVIDER is optional.',
     };
   }
 
@@ -252,7 +361,7 @@ export function getSamiAiProviderStatus():
       baseUrl:
         baseUrl || null,
       error:
-        'No AI model is configured. Set SAMI_AI_MODEL or the selected provider model environment variable.',
+        'No AI model is configured. Set the selected provider model variable (for example GROQ_MODEL, OPENAI_MODEL, or GEMINI_MODEL).',
     };
   }
 

@@ -3,7 +3,7 @@ import {
 } from 'next/server';
 
 import {
-  sendWorkspaceAiMessage,
+  updateWorkspaceAiMessageFeedback,
 } from '@/lib/services/workspace-ai';
 
 import {
@@ -18,9 +18,18 @@ export const runtime =
 export const dynamic =
   'force-dynamic';
 
+type RouteContext = {
+  params: Promise<{
+    messageId:
+      string;
+  }>;
+};
+
 export async function POST(
   request:
     NextRequest,
+  context:
+    RouteContext,
 ) {
   try {
     const originError =
@@ -32,22 +41,20 @@ export async function POST(
       return originError;
     }
 
+    const {
+      messageId,
+    } =
+      await context.params;
+
     const body =
       await request.json();
 
     const result =
-      await sendWorkspaceAiMessage({
-        conversationId:
-          body?.conversationId,
-        message:
-          body?.message,
-        mode:
-          body?.mode,
-        targetMessageId:
-          body?.targetMessageId,
-        signal:
-          request.signal,
-      });
+      await updateWorkspaceAiMessageFeedback(
+        messageId,
+        body?.feedback ??
+          null,
+      );
 
     return aiJson({
       success: true,

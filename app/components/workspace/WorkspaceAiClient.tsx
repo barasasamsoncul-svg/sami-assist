@@ -6,15 +6,27 @@ import {
   Archive,
   ArrowLeft,
   Bot,
+  Check,
   CheckCircle2,
+  Copy,
+  Download,
   Gauge,
   History,
   Loader2,
   MessageSquarePlus,
+  Pencil,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Search,
   Send,
   Settings,
   ShieldCheck,
   Sparkles,
+  Square,
+  ThumbsDown,
+  ThumbsUp,
+  Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -23,6 +35,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
 } from 'react';
@@ -36,6 +49,7 @@ type Conversation = {
   id: string;
   title: string;
   status: string;
+  pinned: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   lastMessageAt: string | null;
@@ -50,6 +64,10 @@ type Message = {
   provider: string | null;
   model: string | null;
   correlationId: string | null;
+  feedback:
+    | 'up'
+    | 'down'
+    | null;
   createdAt: string | null;
 };
 
@@ -216,6 +234,32 @@ export default function WorkspaceAiClient({
     useState('');
 
   const [
+    editingMessageId,
+    setEditingMessageId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    copiedMessageId,
+    setCopiedMessageId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const abortControllerRef =
+    useRef<AbortController | null>(
+      null,
+    );
+
+  const composerRef =
+    useRef<HTMLTextAreaElement | null>(
+      null,
+    );
+
+  const [
     loading,
     setLoading,
   ] =
@@ -266,6 +310,22 @@ export default function WorkspaceAiClient({
       [
         conversations,
         selectedConversationId,
+      ],
+    );
+
+  const lastAssistantMessageId =
+    useMemo(
+      () =>
+        [...messages]
+          .reverse()
+          .find(
+            message =>
+              message.role ===
+              'assistant',
+          )?.id ||
+        null,
+      [
+        messages,
       ],
     );
 
@@ -482,6 +542,9 @@ export default function WorkspaceAiClient({
     setMessages([]);
     setPendingActions([]);
     setDraft('');
+    setEditingMessageId(
+      null,
+    );
     setError(null);
     setHistoryOpen(false);
   }
@@ -493,24 +556,42 @@ export default function WorkspaceAiClient({
     setSelectedConversationId(
       conversationId,
     );
+    setEditingMessageId(
+      null,
+    );
+    setDraft('');
     setHistoryOpen(false);
   }
 
-  async function sendMessage() {
-    const message =
-      draft.trim();
-
+  async function runChatRequest(
+    input: {
+      mode:
+        | 'send'
+        | 'edit'
+        | 'regenerate';
+      message?:
+        string;
+      targetMessageId?:
+        string;
+      restoreDraft?:
+        string;
+    },
+  ) {
     if (
-      !message ||
       sending ||
       !status?.configured
     ) {
       return;
     }
 
+    const controller =
+      new AbortController();
+
+    abortControllerRef.current =
+      controller;
+
     setSending(true);
     setError(null);
-    setDraft('');
 
     try {
       const response =
@@ -520,7 +601,10 @@ export default function WorkspaceAiClient({
             method: 'POST',
             credentials:
               'same-origin',
-            cache: 'no-store',
+            cache:
+              'no-store',
+            signal:
+              controller.signal,
             headers: {
               'Content-Type':
                 'application/json',
@@ -531,7 +615,12 @@ export default function WorkspaceAiClient({
               JSON.stringify({
                 conversationId:
                   selectedConversationId,
-                message,
+                message:
+                  input.message,
+                mode:
+                  input.mode,
+                targetMessageId:
+                  input.targetMessageId,
               }),
           },
         );
@@ -567,6 +656,10 @@ export default function WorkspaceAiClient({
         );
       }
 
+      setEditingMessageId(
+        null,
+      );
+
       await Promise.all([
         loadConversations(),
         loadStatus(),
@@ -582,9 +675,37 @@ export default function WorkspaceAiClient({
     } catch (
       candidate
     ) {
-      setDraft(
-        message,
-      );
+      const aborted =
+        controller.signal
+          .aborted ||
+        (
+          candidate instanceof
+            DOMException &&
+          candidate.name ===
+            'AbortError'
+        );
+
+      if (aborted) {
+        setError(null);
+
+        if (
+          input.restoreDraft
+        ) {
+          setDraft(
+            input.restoreDraft,
+          );
+        }
+
+        return;
+      }
+
+      if (
+        input.restoreDraft
+      ) {
+        setDraft(
+          input.restoreDraft,
+        );
+      }
 
       setError(
         candidate instanceof Error
@@ -592,13 +713,512 @@ export default function WorkspaceAiClient({
           : 'SaMi AI could not complete that request.',
       );
     } finally {
+      if (
+        abortControllerRef
+          .current ===
+        controller
+      ) {
+        abortControllerRef.current =
+          null;
+      }
+
       setSending(false);
     }
   }
 
-  async function archiveConversation() {
+  async function sendMessage() {
+    const message =
+      draft.trim();
+
     if (
-      !selectedConversationId
+      !message ||
+      sending ||
+      !status?.configured
+    ) {
+      return;
+    }
+
+    const targetMessageId =
+      editingMessageId;
+
+    setDraft('');
+
+    await runChatRequest({
+      mode:
+        targetMessageId
+          ? 'edit'
+          : 'send',
+      message,
+      targetMessageId:
+        targetMessageId ||
+        undefined,
+      restoreDraft:
+        message,
+    });
+  }
+
+  async function regenerateMessage(
+    messageId:
+      string,
+  ) {
+    if (
+      !selectedConversationId ||
+      sending
+    ) {
+      return;
+    }
+
+    await runChatRequest({
+      mode:
+        'regenerate',
+      targetMessageId:
+        messageId,
+    });
+  }
+
+  function editMessage(
+    message:
+      Message,
+  ) {
+    if (
+      sending ||
+      message.role !==
+        'user'
+    ) {
+      return;
+    }
+
+    setEditingMessageId(
+      message.id,
+    );
+    setDraft(
+      message.content,
+    );
+    setError(null);
+
+    requestAnimationFrame(
+      () => {
+        const composer =
+          composerRef.current;
+
+        if (!composer) {
+          return;
+        }
+
+        composer.focus();
+
+        const end =
+          composer.value
+            .length;
+
+        composer.setSelectionRange(
+          end,
+          end,
+        );
+      },
+    );
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(
+      null,
+    );
+    setDraft('');
+    setError(null);
+  }
+
+  async function copyMessage(
+    message:
+      Message,
+  ) {
+    try {
+      if (
+        navigator.clipboard
+          ?.writeText
+      ) {
+        await navigator
+          .clipboard
+          .writeText(
+            message.content,
+          );
+      } else {
+        const textarea =
+          document.createElement(
+            'textarea',
+          );
+
+        textarea.value =
+          message.content;
+        textarea.setAttribute(
+          'readonly',
+          '',
+        );
+        textarea.style.position =
+          'fixed';
+        textarea.style.opacity =
+          '0';
+
+        document.body.appendChild(
+          textarea,
+        );
+
+        textarea.select();
+
+        const copied =
+          document.execCommand(
+            'copy',
+          );
+
+        textarea.remove();
+
+        if (!copied) {
+          throw new Error(
+            'Copy failed.',
+          );
+        }
+      }
+
+      setCopiedMessageId(
+        message.id,
+      );
+
+      window.setTimeout(
+        () => {
+          setCopiedMessageId(
+            current =>
+              current ===
+                message.id
+                ? null
+                : current,
+          );
+        },
+        1600,
+      );
+    } catch {
+      setError(
+        'That message could not be copied.',
+      );
+    }
+  }
+
+  async function setMessageFeedback(
+    message:
+      Message,
+    feedback:
+      | 'up'
+      | 'down',
+  ) {
+    if (
+      message.role !==
+        'assistant'
+    ) {
+      return;
+    }
+
+    const previous =
+      message.feedback;
+
+    const next =
+      previous ===
+        feedback
+        ? null
+        : feedback;
+
+    setMessages(
+      current =>
+        current.map(
+          item =>
+            item.id ===
+              message.id
+              ? {
+                  ...item,
+                  feedback:
+                    next,
+                }
+              : item,
+        ),
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/ai/messages/' +
+            encodeURIComponent(
+              message.id,
+            ) +
+            '/feedback',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                feedback:
+                  next,
+              }),
+          },
+        );
+
+      const data =
+        await readJson(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Response feedback could not be saved.',
+        );
+      }
+    } catch (
+      candidate
+    ) {
+      setMessages(
+        current =>
+          current.map(
+            item =>
+              item.id ===
+                message.id
+                ? {
+                    ...item,
+                    feedback:
+                      previous,
+                  }
+                : item,
+          ),
+      );
+
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Response feedback could not be saved.',
+      );
+    }
+  }
+
+  function stopGenerating() {
+    abortControllerRef
+      .current
+      ?.abort();
+  }
+
+  async function updateConversation(
+    conversationId:
+      string,
+    input: {
+      title?:
+        string;
+      pinned?:
+        boolean;
+    },
+  ) {
+    const response =
+      await fetch(
+        '/api/workspace/ai/conversations/' +
+          encodeURIComponent(
+            conversationId,
+          ),
+        {
+          method:
+            'PATCH',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Accept:
+              'application/json',
+          },
+          body:
+            JSON.stringify(
+              input,
+            ),
+        },
+      );
+
+    const data =
+      await readJson(
+        response,
+      );
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        data.error ||
+          'Conversation could not be updated.',
+      );
+    }
+
+    await loadConversations();
+
+    if (
+      selectedConversationId ===
+      conversationId
+    ) {
+      await loadConversation(
+        conversationId,
+      );
+    }
+  }
+
+  async function renameConversation(
+    conversationId:
+      string,
+    title:
+      string,
+  ) {
+    try {
+      await updateConversation(
+        conversationId,
+        {
+          title,
+        },
+      );
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Conversation could not be renamed.',
+      );
+
+      throw candidate;
+    }
+  }
+
+  async function toggleConversationPin(
+    conversationId:
+      string,
+    pinned:
+      boolean,
+  ) {
+    try {
+      await updateConversation(
+        conversationId,
+        {
+          pinned,
+        },
+      );
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Conversation pin could not be updated.',
+      );
+
+      throw candidate;
+    }
+  }
+
+  function exportConversation() {
+    if (
+      !selectedConversation ||
+      messages.length ===
+        0
+    ) {
+      return;
+    }
+
+    const safeTitle =
+      selectedConversation
+        .title
+        .replace(
+          /[^a-z0-9-_]+/gi,
+          '-',
+        )
+        .replace(
+          /^-+|-+$/g,
+          '',
+        )
+        .slice(
+          0,
+          60,
+        ) ||
+      'sami-conversation';
+
+    const body = [
+      '# ' +
+        selectedConversation
+          .title,
+      '',
+      ...messages.flatMap(
+        message => [
+          message.role ===
+            'assistant'
+            ? '## SaMi'
+            : '## You',
+          '',
+          message.content,
+          '',
+        ],
+      ),
+    ].join(
+      '\n',
+    );
+
+    const blob =
+      new Blob(
+        [
+          body,
+        ],
+        {
+          type:
+            'text/markdown;charset=utf-8',
+        },
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob,
+      );
+
+    const anchor =
+      document.createElement(
+        'a',
+      );
+
+    anchor.href =
+      url;
+    anchor.download =
+      safeTitle +
+      '.md';
+
+    document.body.appendChild(
+      anchor,
+    );
+
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(
+      url,
+    );
+  }
+
+  async function archiveConversation(
+    conversationId =
+      selectedConversationId,
+  ) {
+    if (
+      !conversationId
     ) {
       return;
     }
@@ -608,7 +1228,7 @@ export default function WorkspaceAiClient({
         await fetch(
           '/api/workspace/ai/conversations/' +
             encodeURIComponent(
-              selectedConversationId,
+              conversationId,
             ),
           {
             method:
@@ -635,7 +1255,13 @@ export default function WorkspaceAiClient({
         );
       }
 
-      newConversation();
+      if (
+        selectedConversationId ===
+        conversationId
+      ) {
+        newConversation();
+      }
+
       await loadConversations();
     } catch (
       candidate
@@ -825,7 +1451,7 @@ export default function WorkspaceAiClient({
             title="AI provider configuration required"
             description={
               status?.configurationError ||
-              'Configure an AI provider, model and API key in the environment.'
+              'Configure one active AI model in the environment. SaMi detects its provider automatically.'
             }
           />
         </div>
@@ -885,14 +1511,64 @@ export default function WorkspaceAiClient({
                         message={
                           message
                         }
+                        copied={
+                          copiedMessageId ===
+                          message.id
+                        }
+                        canRegenerate={
+                          message.role ===
+                            'assistant' &&
+                          message.id ===
+                            lastAssistantMessageId
+                        }
+                        disabled={
+                          sending
+                        }
+                        onCopy={() =>
+                          void copyMessage(
+                            message,
+                          )
+                        }
+                        onEdit={() =>
+                          editMessage(
+                            message,
+                          )
+                        }
+                        onRegenerate={() =>
+                          void regenerateMessage(
+                            message.id,
+                          )
+                        }
+                        onFeedback={
+                          feedback =>
+                            void setMessageFeedback(
+                              message,
+                              feedback,
+                            )
+                        }
                       />
                     ),
                   )}
 
                   {sending && (
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      SaMi is working…
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300">
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        <span className="truncate">
+                          SaMi is working…
+                        </span>
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={
+                          stopGenerating
+                        }
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[9px] font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
+                      >
+                        <Square className="h-3 w-3 fill-current" />
+                        Stop
+                      </button>
                     </div>
                   )}
                 </div>
@@ -963,7 +1639,22 @@ export default function WorkspaceAiClient({
           <div className="border-t border-slate-200/80 bg-white/95 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-4 dark:border-white/10 dark:bg-[#0B0E14]/95">
             <div className="mx-auto max-w-4xl">
               {selectedConversationId && (
-                <div className="mb-2 flex justify-end">
+                <div className="mb-2 flex flex-wrap justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={
+                      exportConversation
+                    }
+                    disabled={
+                      messages.length ===
+                      0
+                    }
+                    className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-300"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export
+                  </button>
+
                   <button
                     type="button"
                     onClick={() =>
@@ -972,13 +1663,37 @@ export default function WorkspaceAiClient({
                     className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-300"
                   >
                     <Archive className="h-3.5 w-3.5" />
-                    Archive conversation
+                    Archive
+                  </button>
+                </div>
+              )}
+
+              {editingMessageId && (
+                <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200">
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <Pencil className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate font-semibold">
+                      Editing your message — later replies will be regenerated from here.
+                    </span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={
+                      cancelEdit
+                    }
+                    className="shrink-0 font-bold underline underline-offset-2"
+                  >
+                    Cancel
                   </button>
                 </div>
               )}
 
               <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
                 <textarea
+                  ref={
+                    composerRef
+                  }
                   value={
                     draft
                   }
@@ -999,18 +1714,35 @@ export default function WorkspaceAiClient({
 
                 <button
                   type="button"
-                  aria-label="Send message"
+                  aria-label={
+                    sending
+                      ? 'Stop generating'
+                      : editingMessageId
+                        ? 'Send edited message'
+                        : 'Send message'
+                  }
                   disabled={
-                    sending ||
+                    !sending &&
                     !draft.trim()
                   }
                   onClick={() =>
-                    void sendMessage()
+                    sending
+                      ? stopGenerating()
+                      : void sendMessage()
                   }
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={[
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-40',
+                    sending
+                      ? 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
+                      : 'bg-blue-600 hover:bg-blue-700',
+                  ].join(
+                    ' ',
+                  )}
                 >
                   {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Square className="h-4 w-4 fill-current" />
+                  ) : editingMessageId ? (
+                    <Check className="h-4 w-4" />
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
@@ -1047,6 +1779,15 @@ export default function WorkspaceAiClient({
                 conversationId,
               )
           }
+          onRename={
+            renameConversation
+          }
+          onTogglePin={
+            toggleConversationPin
+          }
+          onDelete={
+            archiveConversation
+          }
         />
       )}
 
@@ -1068,9 +1809,34 @@ export default function WorkspaceAiClient({
 
 function MessageBubble({
   message,
+  copied,
+  canRegenerate,
+  disabled,
+  onCopy,
+  onEdit,
+  onRegenerate,
+  onFeedback,
 }: {
   message:
     Message;
+  copied:
+    boolean;
+  canRegenerate:
+    boolean;
+  disabled:
+    boolean;
+  onCopy:
+    () => void;
+  onEdit:
+    () => void;
+  onRegenerate:
+    () => void;
+  onFeedback:
+    (
+      feedback:
+        | 'up'
+        | 'down',
+    ) => void;
 }) {
   const assistant =
     message.role ===
@@ -1086,33 +1852,197 @@ function MessageBubble({
     >
       <div
         className={[
-          'max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[78%]',
+          'group min-w-0 max-w-[94%] sm:max-w-[82%]',
           assistant
-            ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200'
-            : 'bg-blue-600 text-white',
+            ? 'w-full'
+            : '',
         ].join(
           ' ',
         )}
       >
-        {assistant ? (
-          <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
-            <ReactMarkdown>
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <p className="whitespace-pre-wrap break-words">
-            {message.content}
-          </p>
-        )}
-
-        <p className="mt-2 text-[8px] opacity-55">
-          {timeLabel(
-            message.createdAt,
+        <div
+          className={[
+            'rounded-2xl px-4 py-3 text-sm leading-6',
+            assistant
+              ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200'
+              : 'ml-auto max-w-full bg-blue-600 text-white',
+          ].join(
+            ' ',
           )}
-        </p>
+        >
+          {assistant ? (
+            <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
+              <ReactMarkdown>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">
+              {message.content}
+            </p>
+          )}
+
+          <p className="mt-2 text-[8px] opacity-55">
+            {timeLabel(
+              message.createdAt,
+            )}
+          </p>
+        </div>
+
+        <div
+          className={[
+            'mt-1.5 flex items-center gap-1',
+            assistant
+              ? 'justify-start'
+              : 'justify-end',
+          ].join(
+            ' ',
+          )}
+        >
+          <MessageAction
+            label={
+              copied
+                ? 'Copied'
+                : 'Copy'
+            }
+            disabled={
+              false
+            }
+            onClick={
+              onCopy
+            }
+            icon={
+              copied
+                ? Check
+                : Copy
+            }
+          />
+
+          {!assistant && (
+            <MessageAction
+              label="Edit"
+              disabled={
+                disabled
+              }
+              onClick={
+                onEdit
+              }
+              icon={
+                Pencil
+              }
+            />
+          )}
+
+          {assistant && (
+            <>
+              <MessageAction
+                label="Helpful"
+                active={
+                  message.feedback ===
+                  'up'
+                }
+                disabled={
+                  disabled
+                }
+                onClick={() =>
+                  onFeedback(
+                    'up',
+                  )
+                }
+                icon={
+                  ThumbsUp
+                }
+              />
+
+              <MessageAction
+                label="Not helpful"
+                active={
+                  message.feedback ===
+                  'down'
+                }
+                disabled={
+                  disabled
+                }
+                onClick={() =>
+                  onFeedback(
+                    'down',
+                  )
+                }
+                icon={
+                  ThumbsDown
+                }
+              />
+            </>
+          )}
+
+          {assistant &&
+            canRegenerate && (
+            <MessageAction
+              label="Regenerate"
+              disabled={
+                disabled
+              }
+              onClick={
+                onRegenerate
+              }
+              icon={
+                RefreshCw
+              }
+            />
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function MessageAction({
+  label,
+  disabled,
+  onClick,
+  icon: Icon,
+  active = false,
+}: {
+  label:
+    string;
+  disabled:
+    boolean;
+  onClick:
+    () => void;
+  icon:
+    typeof Copy;
+  active?:
+    boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={
+        label
+      }
+      aria-label={
+        label
+      }
+      disabled={
+        disabled
+      }
+      onClick={
+        onClick
+      }
+      className={[
+        'inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
+        active
+          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200',
+      ].join(
+        ' ',
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="hidden sm:inline">
+        {label}
+      </span>
+    </button>
   );
 }
 
@@ -1122,6 +2052,9 @@ function HistoryDrawer({
   onClose,
   onNew,
   onSelect,
+  onRename,
+  onTogglePin,
+  onDelete,
 }: {
   conversations:
     Conversation[];
@@ -1136,7 +2069,207 @@ function HistoryDrawer({
       conversationId:
         string,
     ) => void;
+  onRename:
+    (
+      conversationId:
+        string,
+      title:
+        string,
+    ) => Promise<void>;
+  onTogglePin:
+    (
+      conversationId:
+        string,
+      pinned:
+        boolean,
+    ) => Promise<void>;
+  onDelete:
+    (
+      conversationId:
+        string,
+    ) => Promise<void>;
 }) {
+  const [
+    query,
+    setQuery,
+  ] =
+    useState('');
+
+  const [
+    renamingId,
+    setRenamingId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    renameDraft,
+    setRenameDraft,
+  ] =
+    useState('');
+
+  const [
+    busyId,
+    setBusyId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    deleteConfirmId,
+    setDeleteConfirmId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const filteredConversations =
+    useMemo(
+      () => {
+        const normalized =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!normalized) {
+          return conversations;
+        }
+
+        return conversations.filter(
+          conversation =>
+            conversation.title
+              .toLowerCase()
+              .includes(
+                normalized,
+              ),
+        );
+      },
+      [
+        conversations,
+        query,
+      ],
+    );
+
+  function beginRename(
+    conversation:
+      Conversation,
+  ) {
+    setRenamingId(
+      conversation.id,
+    );
+    setRenameDraft(
+      conversation.title,
+    );
+    setDeleteConfirmId(
+      null,
+    );
+  }
+
+  function cancelRename() {
+    setRenamingId(
+      null,
+    );
+    setRenameDraft('');
+  }
+
+  async function saveRename(
+    conversationId:
+      string,
+  ) {
+    const title =
+      renameDraft.trim();
+
+    if (
+      !title ||
+      busyId
+    ) {
+      return;
+    }
+
+    setBusyId(
+      conversationId,
+    );
+
+    try {
+      await onRename(
+        conversationId,
+        title,
+      );
+
+      cancelRename();
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
+  async function changePin(
+    conversation:
+      Conversation,
+  ) {
+    if (busyId) {
+      return;
+    }
+
+    setBusyId(
+      conversation.id,
+    );
+
+    try {
+      await onTogglePin(
+        conversation.id,
+        !conversation.pinned,
+      );
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
+  async function deleteConversation(
+    conversationId:
+      string,
+  ) {
+    if (
+      deleteConfirmId !==
+        conversationId
+    ) {
+      setDeleteConfirmId(
+        conversationId,
+      );
+      setRenamingId(
+        null,
+      );
+      return;
+    }
+
+    if (busyId) {
+      return;
+    }
+
+    setBusyId(
+      conversationId,
+    );
+
+    try {
+      await onDelete(
+        conversationId,
+      );
+
+      setDeleteConfirmId(
+        null,
+      );
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[160]">
       <button
@@ -1148,7 +2281,7 @@ function HistoryDrawer({
         className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
       />
 
-      <aside className="absolute inset-y-0 left-0 flex w-[330px] max-w-[calc(100vw-16px)] flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0B0E14]">
+      <aside className="absolute inset-y-0 left-0 flex w-[360px] max-w-[calc(100vw-12px)] flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0B0E14]">
         <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-4 dark:border-white/10">
           <History className="h-4 w-4 text-blue-600 dark:text-blue-300" />
 
@@ -1157,7 +2290,7 @@ function HistoryDrawer({
               Conversation history
             </p>
             <p className="mt-0.5 text-[9px] text-slate-400">
-              Current company
+              Search, pin, rename or remove chats
             </p>
           </div>
 
@@ -1173,7 +2306,7 @@ function HistoryDrawer({
           </button>
         </div>
 
-        <div className="p-3">
+        <div className="space-y-2 border-b border-slate-200 p-3 dark:border-white/10">
           <button
             type="button"
             onClick={
@@ -1184,9 +2317,26 @@ function HistoryDrawer({
             <MessageSquarePlus className="h-4 w-4" />
             New conversation
           </button>
+
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <input
+              value={
+                query
+              }
+              onChange={
+                event =>
+                  setQuery(
+                    event.target.value,
+                  )
+              }
+              placeholder="Search conversations"
+              className="min-w-0 flex-1 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+            />
+          </label>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-[max(12px,env(safe-area-inset-bottom))]">
           {conversations.length ===
             0 ? (
             <div className="px-4 py-10 text-center">
@@ -1194,42 +2344,244 @@ function HistoryDrawer({
               <p className="mt-2 text-xs font-bold">
                 No conversations yet
               </p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Start a conversation with SaMi AI.
+              </p>
+            </div>
+          ) : filteredConversations.length ===
+              0 ? (
+            <div className="px-4 py-10 text-center">
+              <Search className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
+              <p className="mt-2 text-xs font-bold">
+                No matching conversations
+              </p>
             </div>
           ) : (
             <div className="space-y-1">
-              {conversations.map(
-                conversation => (
-                  <button
-                    key={
-                      conversation.id
-                    }
-                    type="button"
-                    onClick={() =>
-                      onSelect(
-                        conversation.id,
-                      )
-                    }
-                    className={[
-                      'w-full rounded-xl px-3 py-3 text-left transition',
-                      selectedConversationId ===
+              {filteredConversations.map(
+                conversation => {
+                  const selected =
+                    selectedConversationId ===
+                    conversation.id;
+
+                  const renaming =
+                    renamingId ===
+                    conversation.id;
+
+                  const deleting =
+                    deleteConfirmId ===
+                    conversation.id;
+
+                  const busy =
+                    busyId ===
+                    conversation.id;
+
+                  return (
+                    <div
+                      key={
                         conversation.id
-                        ? 'bg-blue-50 text-blue-950 dark:bg-blue-500/10 dark:text-white'
-                        : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]',
-                    ].join(
-                      ' ',
-                    )}
-                  >
-                    <p className="truncate text-xs font-bold">
-                      {conversation.title}
-                    </p>
-                    <p className="mt-1 text-[9px] text-slate-400">
-                      {timeLabel(
-                        conversation.lastMessageAt ||
-                          conversation.updatedAt,
+                      }
+                      className={[
+                        'rounded-xl border px-2 py-2 transition',
+                        selected
+                          ? 'border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10'
+                          : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04]',
+                      ].join(
+                        ' ',
                       )}
-                    </p>
-                  </button>
-                ),
+                    >
+                      {renaming ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            value={
+                              renameDraft
+                            }
+                            maxLength={
+                              80
+                            }
+                            onChange={
+                              event =>
+                                setRenameDraft(
+                                  event.target.value,
+                                )
+                            }
+                            onKeyDown={
+                              event => {
+                                if (
+                                  event.key ===
+                                  'Enter'
+                                ) {
+                                  event.preventDefault();
+                                  void saveRename(
+                                    conversation.id,
+                                  );
+                                }
+
+                                if (
+                                  event.key ===
+                                  'Escape'
+                                ) {
+                                  cancelRename();
+                                }
+                              }
+                            }
+                            className="h-9 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-blue-500/30 dark:bg-[#11151D] dark:text-white"
+                          />
+
+                          <button
+                            type="button"
+                            aria-label="Save conversation name"
+                            disabled={
+                              busy ||
+                              !renameDraft
+                                .trim()
+                            }
+                            onClick={() =>
+                              void saveRename(
+                                conversation.id,
+                              )
+                            }
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                          >
+                            {busy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label="Cancel rename"
+                            onClick={
+                              cancelRename
+                            }
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onSelect(
+                                conversation.id,
+                              )
+                            }
+                            className="block w-full min-w-0 px-1 py-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              {conversation.pinned && (
+                                <Pin className="h-3 w-3 shrink-0 text-blue-500" />
+                              )}
+                              <p className="min-w-0 flex-1 truncate text-xs font-bold">
+                                {conversation.title}
+                              </p>
+                            </div>
+                            <p className="mt-1 pl-0.5 text-[9px] text-slate-400">
+                              {timeLabel(
+                                conversation.lastMessageAt ||
+                                  conversation.updatedAt,
+                              )}
+                            </p>
+                          </button>
+
+                          <div className="mt-1 flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              title={
+                                conversation.pinned
+                                  ? 'Unpin'
+                                  : 'Pin'
+                              }
+                              aria-label={
+                                conversation.pinned
+                                  ? 'Unpin conversation'
+                                  : 'Pin conversation'
+                              }
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                void changePin(
+                                  conversation,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                            >
+                              {conversation.pinned ? (
+                                <PinOff className="h-3.5 w-3.5" />
+                              ) : (
+                                <Pin className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Rename"
+                              aria-label="Rename conversation"
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                beginRename(
+                                  conversation,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={
+                                deleting
+                                  ? 'Confirm delete'
+                                  : 'Delete'
+                              }
+                              aria-label={
+                                deleting
+                                  ? 'Confirm delete conversation'
+                                  : 'Delete conversation'
+                              }
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                void deleteConversation(
+                                  conversation.id,
+                                )
+                              }
+                              className={[
+                                'flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-[9px] font-bold transition disabled:opacity-40',
+                                deleting
+                                  ? 'bg-rose-600 text-white hover:bg-rose-700'
+                                  : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300',
+                              ].join(
+                                ' ',
+                              )}
+                            >
+                              {busy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                              {deleting && (
+                                <span>
+                                  Confirm
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                },
               )}
             </div>
           )}
