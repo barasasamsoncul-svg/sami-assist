@@ -292,8 +292,8 @@ test('Category 11: one account theme runtime governs every route and settings su
 
   assert.doesNotMatch(
     account,
-    /const\s+THEME_STORAGE_KEY|function\s+applyTheme\s*\(/,
-    'My Account Appearance must use the same global theme runtime.',
+    /const\s+THEME_STORAGE_KEY|\bapplyTheme\s*\(/,
+    'My Account Appearance must use the same global theme runtime and must not call the removed legacy applyTheme helper.',
   );
 
   const authThemeConsumers =
