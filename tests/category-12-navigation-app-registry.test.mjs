@@ -627,7 +627,14 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
 
   assert.match(
     dashboard,
-    /module\.description/,
+    /module\.categoryLabel/,
+    'Dashboard app cards should use permission-resolved category identity without requiring long descriptions.',
+  );
+
+  assert.match(
+    dashboard,
+    /module\.registryKey/,
+    'Dashboard app visuals must resolve from the trusted module registry identity.',
   );
 
   assert.match(
