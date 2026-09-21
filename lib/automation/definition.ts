@@ -96,6 +96,80 @@ function validateJsonSize(
   }
 }
 
+function normalizeTriggerConfig(
+  triggerKey:
+    string,
+  value:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  if (
+    triggerKey ===
+      'core.schedule'
+  ) {
+    const intervalMinutes =
+      Number(
+        value.intervalMinutes,
+      );
+
+    const timezone =
+      typeof value.timezone ===
+        'string'
+        ? value.timezone
+            .trim()
+            .slice(
+              0,
+              100,
+            )
+        : '';
+
+    if (
+      !Number.isInteger(
+        intervalMinutes,
+      ) ||
+      intervalMinutes <
+        1 ||
+      intervalMinutes >
+        43_200
+    ) {
+      throw new SamiAutomationDefinitionError(
+        'Schedule interval must be between 1 minute and 30 days.',
+      );
+    }
+
+    if (
+      !timezone
+    ) {
+      throw new SamiAutomationDefinitionError(
+        'Schedule timezone is required.',
+      );
+    }
+
+    try {
+      new Intl.DateTimeFormat(
+        'en',
+        {
+          timeZone:
+            timezone,
+        },
+      );
+    } catch {
+      throw new SamiAutomationDefinitionError(
+        'Choose a valid IANA timezone for this schedule.',
+      );
+    }
+
+    return {
+      intervalMinutes,
+      timezone,
+    };
+  }
+
+  return {};
+}
+
 function safePath(
   value:
     unknown,
@@ -200,20 +274,26 @@ export function normalizeAutomationDefinition(
     );
   }
 
-  const triggerConfig =
+  const rawTriggerConfig =
     safeObject(
       triggerSource.config,
     );
 
   if (
     !validateJsonSize(
-      triggerConfig,
+      rawTriggerConfig,
     )
   ) {
     throw new SamiAutomationDefinitionError(
       'Automation trigger configuration is too large.',
     );
   }
+
+  const triggerConfig =
+    normalizeTriggerConfig(
+      trigger.key,
+      rawTriggerConfig,
+    );
 
   const rawConditions =
     Array.isArray(
