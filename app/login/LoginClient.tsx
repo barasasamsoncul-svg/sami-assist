@@ -1,5 +1,9 @@
 ﻿'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -54,8 +58,6 @@ type LoginErrors = {
 /* ============================================================
    CONSTANTS
    ============================================================ */
-
-const THEME_STORAGE_KEY = 'sami_theme';
 
 const TWO_FACTOR_EMAIL_KEY = 'sami_2fa_email';
 const TWO_FACTOR_CHALLENGE_KEY = 'sami_2fa_challenge';
@@ -220,8 +222,10 @@ function LoginContent() {
   const [googleLoading, setGoogleLoading] =
     useState(false);
 
-  const [darkMode, setDarkMode] =
-    useState(false);
+  const {
+    darkMode,
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [errors, setErrors] =
     useState<LoginErrors>({});
@@ -232,58 +236,6 @@ function LoginContent() {
         typeof getAuthOverlayMessage
       > | null
     >(null);
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const storedTheme =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        storedTheme === 'dark' ||
-        (!storedTheme && systemDark);
-
-      setDarkMode(useDark);
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Login remains usable if local storage
-      // is unavailable.
-    }
-  }, []);
-
-  function toggleTheme() {
-    const next = !darkMode;
-
-    setDarkMode(next);
-
-    document.documentElement.classList.toggle(
-      'dark',
-      next
-    );
-
-    try {
-      localStorage.setItem(
-        THEME_STORAGE_KEY,
-        next ? 'dark' : 'light'
-      );
-    } catch {
-      // Ignore storage errors.
-    }
-  }
 
   /* ==========================================================
      URL STATUS / AUTH MESSAGES
