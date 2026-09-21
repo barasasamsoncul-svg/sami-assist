@@ -7,6 +7,7 @@ import {
   Grid2X2,
   Search,
   Settings2,
+  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -18,10 +19,11 @@ import {
 } from 'react';
 
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 
 import {
-  getSaMiAppIcon,
-} from '@/lib/apps/icon-registry';
+  getSaMiAppVisual,
+} from '@/lib/apps/visual-registry';
 
 type UserData = {
   id: string;
@@ -307,7 +309,7 @@ export default function AppsLauncherClient({
         sidebarCapabilities
       }
       title="Apps"
-      description="Open the business tools available to your role."
+      description="Your permission-aware business applications, organized as one SaMi workspace."
       contextLabel={
         tenant?.name ||
         null
@@ -316,7 +318,7 @@ export default function AppsLauncherClient({
         canManageApps ? (
           <Link
             href="/settings?tab=apps"
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
+            className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-semibold text-slate-600 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
           >
             <Settings2 className="h-4 w-4" />
             <span className="hidden sm:inline">
@@ -327,19 +329,20 @@ export default function AppsLauncherClient({
       }
       contentClassName="max-w-[1500px]"
     >
-      <section className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0F131B] sm:p-5">
+      <section className="sami-ai-sheen overflow-hidden rounded-[28px] border border-[var(--sami-border)] p-4 shadow-[var(--sami-shadow-md)] sm:p-6">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-blue-600 dark:text-blue-400">
-              App launcher
-            </p>
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-indigo-700 shadow-sm backdrop-blur dark:border-indigo-500/20 dark:bg-white/[0.05] dark:text-indigo-300">
+              <Sparkles className="h-3 w-3" />
+              AI-powered workspace
+            </div>
 
-            <h1 className="mt-1 text-xl font-black tracking-tight sm:text-2xl">
-              Your business workspace
+            <h1 className="mt-3 text-2xl font-black tracking-[-0.03em] sm:text-3xl">
+              Your business apps
             </h1>
 
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Only installed applications you are authorized to use appear here.
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Open the tools available to your role. Each app keeps the same company context, permissions, search, activity and SaMi AI foundation.
             </p>
           </div>
 
@@ -362,10 +365,10 @@ export default function AppsLauncherClient({
               }
               placeholder="Search apps"
               aria-label="Search apps"
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-12 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-500/10 dark:border-white/10 dark:bg-white/[0.04] dark:focus:border-blue-500/50 dark:focus:bg-white/[0.06]"
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] pl-10 pr-12 text-sm shadow-[var(--sami-shadow-sm)] outline-none transition focus:border-[var(--sami-brand)] focus:ring-4 focus:ring-blue-500/10"
             />
 
-            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 sm:inline dark:border-white/10 dark:bg-white/[0.06]">
+            <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 sm:inline">
               /
             </kbd>
           </div>
@@ -448,7 +451,7 @@ export default function AppsLauncherClient({
 
       {visibleApps.length >
         0 ? (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {visibleApps.map(
             app => (
               <AppCard
@@ -464,7 +467,7 @@ export default function AppsLauncherClient({
         </div>
       ) : modules.length >
         0 ? (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center dark:border-white/10 dark:bg-white/[0.025]">
+        <div className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border-strong)] bg-[var(--sami-surface)] px-5 py-10 text-center dark:border-white/10 dark:bg-white/[0.025]">
           <Search className="mx-auto h-6 w-6 text-slate-300" />
 
           <p className="mt-3 text-sm font-bold">
@@ -476,7 +479,7 @@ export default function AppsLauncherClient({
           </p>
         </div>
       ) : (
-        <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-10 text-center dark:border-white/10 dark:bg-white/[0.025]">
+        <div className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border-strong)] bg-[var(--sami-surface)] px-5 py-10 text-center dark:border-white/10 dark:bg-white/[0.025]">
           <Grid2X2 className="mx-auto h-7 w-7 text-slate-300" />
 
           <p className="mt-3 text-sm font-bold">
@@ -544,9 +547,11 @@ function AppCard({
 }: {
   app: ModuleData;
 }) {
-  const Icon =
-    getSaMiAppIcon(
-      app.iconKey,
+  const visual =
+    getSaMiAppVisual(
+      app.registryKey ||
+        app.key,
+      app.category,
     );
 
   return (
@@ -554,31 +559,85 @@ function AppCard({
       href={
         app.href
       }
-      className="group rounded-[20px] border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-blue-500/40"
+      className={[
+        'group relative overflow-hidden rounded-[22px] border bg-[var(--sami-surface)] p-4 shadow-[var(--sami-shadow-sm)] transition duration-200 hover:-translate-y-1 hover:shadow-[var(--sami-shadow-md)]',
+        visual.border,
+      ].join(
+        ' ',
+      )}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 text-white shadow-sm">
-          <Icon className="h-5 w-5" />
-        </div>
+      <div
+        aria-hidden="true"
+        className={[
+          'absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-[0.10] blur-2xl',
+          visual.dot,
+        ].join(
+          ' ',
+        )}
+      />
+
+      <div className="relative flex items-start gap-3">
+        <SamiAppIconTile
+          appKey={
+            app.registryKey ||
+            app.key
+          }
+          category={
+            app.category
+          }
+          iconKey={
+            app.iconKey
+          }
+          size="lg"
+          className="transition duration-200 group-hover:scale-[1.04]"
+        />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <p className="truncate text-sm font-bold">
+            <p className="truncate text-[13px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white">
               {app.name}
             </p>
 
-            <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-blue-600" />
+            <ArrowRight
+              className={[
+                'mt-0.5 h-4 w-4 shrink-0 transition duration-200 group-hover:translate-x-0.5',
+                visual.text,
+              ].join(
+                ' ',
+              )}
+            />
           </div>
 
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+          <p
+            className={[
+              'mt-1 text-[9px] font-bold uppercase tracking-[0.11em]',
+              visual.text,
+            ].join(
+              ' ',
+            )}
+          >
             {app.categoryLabel}
           </p>
         </div>
       </div>
 
-      <p className="mt-4 line-clamp-2 min-h-10 text-xs leading-5 text-slate-500 dark:text-slate-400">
+      <p className="relative mt-4 line-clamp-2 min-h-10 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
         {app.description}
       </p>
+
+      <div className="relative mt-4 flex items-center justify-between">
+        <span className="text-[9px] font-semibold text-slate-400">
+          Open workspace
+        </span>
+        <span
+          className={[
+            'h-1.5 w-1.5 rounded-full',
+            visual.dot,
+          ].join(
+            ' ',
+          )}
+        />
+      </div>
     </Link>
   );
 }
