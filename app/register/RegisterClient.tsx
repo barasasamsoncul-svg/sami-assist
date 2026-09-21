@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -86,9 +90,6 @@ type CheckEmailResponse = {
 
 const REGISTRATION_STORAGE_KEY =
   'sami_account_form';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const GOOGLE_INTENT_STORAGE_KEY =
   'sami_google_intent';
@@ -433,8 +434,10 @@ function RegisterContent() {
   const [googleLoading, setGoogleLoading] =
     useState(false);
 
-  const [darkMode, setDarkMode] =
-    useState(false);
+  const {
+    darkMode,
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [overlay, setOverlay] =
     useState<OverlayState | null>(
@@ -449,60 +452,6 @@ function RegisterContent() {
         ),
       [form.password]
     );
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        stored === 'dark' ||
-        (!stored && systemDark);
-
-      setDarkMode(useDark);
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Registration remains usable without
-      // localStorage access.
-    }
-  }, []);
-
-  function toggleTheme() {
-    const next = !darkMode;
-
-    setDarkMode(next);
-
-    document.documentElement.classList.toggle(
-      'dark',
-      next
-    );
-
-    try {
-      localStorage.setItem(
-        THEME_STORAGE_KEY,
-        next
-          ? 'dark'
-          : 'light'
-      );
-    } catch {
-      // Ignore storage failure.
-    }
-  }
 
   /* ==========================================================
      RESTORE REGISTRATION
