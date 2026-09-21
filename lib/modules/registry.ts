@@ -271,3 +271,132 @@ export function getAccessibleSamiModuleRuntime(
       ),
   };
 }
+
+
+export function getSamiModuleNavigation(
+  moduleKey:
+    string,
+) {
+  return (
+    getSamiModuleManifest(
+      moduleKey,
+    )
+      ?.navigation ||
+    []
+  );
+}
+
+export function getSamiModuleAction(
+  moduleKey:
+    string,
+  actionKey:
+    string,
+) {
+  const key =
+    normalizeModuleKey(
+      actionKey,
+    );
+
+  return (
+    getSamiModuleManifest(
+      moduleKey,
+    )
+      ?.actions
+      .find(
+        action =>
+          normalizeModuleKey(
+            action.key,
+          ) ===
+          key,
+      ) ||
+    null
+  );
+}
+
+export function getSamiModuleView(
+  moduleKey:
+    string,
+  viewKey:
+    string,
+) {
+  const key =
+    normalizeModuleKey(
+      viewKey,
+    );
+
+  return (
+    getSamiModuleManifest(
+      moduleKey,
+    )
+      ?.views
+      .find(
+        view =>
+          normalizeModuleKey(
+            view.key,
+          ) ===
+          key,
+      ) ||
+    null
+  );
+}
+
+export function getSamiModuleResource(
+  moduleKey:
+    string,
+  resourceKey:
+    string,
+) {
+  const key =
+    normalizeModuleKey(
+      resourceKey,
+    );
+
+  return (
+    getSamiModuleManifest(
+      moduleKey,
+    )
+      ?.resources
+      .find(
+        resource =>
+          normalizeModuleKey(
+            resource.key,
+          ) ===
+          key,
+      ) ||
+    null
+  );
+}
+
+export function getAccessibleSamiModuleAction(
+  accessibleModuleKeys:
+    string[],
+  moduleKey:
+    string,
+  actionKey:
+    string,
+) {
+  const module =
+    normalizeModuleKey(
+      moduleKey,
+    );
+
+  const allowed =
+    new Set(
+      accessibleModuleKeys.map(
+        normalizeModuleKey,
+      ),
+    );
+
+  if (
+    !allowed.has(
+      module,
+    )
+  ) {
+    return null;
+  }
+
+  return getSamiModuleAction(
+    module,
+    actionKey,
+  );
+}
