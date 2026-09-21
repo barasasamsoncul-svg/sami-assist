@@ -9,17 +9,22 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Download,
   Gauge,
   History,
   Loader2,
   MessageSquarePlus,
   Pencil,
+  Pin,
+  PinOff,
   RefreshCw,
+  Search,
   Send,
   Settings,
   ShieldCheck,
   Sparkles,
   Square,
+  Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -42,6 +47,7 @@ type Conversation = {
   id: string;
   title: string;
   status: string;
+  pinned: boolean;
   createdAt: string | null;
   updatedAt: string | null;
   lastMessageAt: string | null;
@@ -895,9 +901,212 @@ export default function WorkspaceAiClient({
       ?.abort();
   }
 
-  async function archiveConversation() {
+  async function updateConversation(
+    conversationId:
+      string,
+    input: {
+      title?:
+        string;
+      pinned?:
+        boolean;
+    },
+  ) {
+    const response =
+      await fetch(
+        '/api/workspace/ai/conversations/' +
+          encodeURIComponent(
+            conversationId,
+          ),
+        {
+          method:
+            'PATCH',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+          headers: {
+            'Content-Type':
+              'application/json',
+            Accept:
+              'application/json',
+          },
+          body:
+            JSON.stringify(
+              input,
+            ),
+        },
+      );
+
+    const data =
+      await readJson(
+        response,
+      );
+
     if (
-      !selectedConversationId
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        data.error ||
+          'Conversation could not be updated.',
+      );
+    }
+
+    await loadConversations();
+
+    if (
+      selectedConversationId ===
+      conversationId
+    ) {
+      await loadConversation(
+        conversationId,
+      );
+    }
+  }
+
+  async function renameConversation(
+    conversationId:
+      string,
+    title:
+      string,
+  ) {
+    try {
+      await updateConversation(
+        conversationId,
+        {
+          title,
+        },
+      );
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Conversation could not be renamed.',
+      );
+
+      throw candidate;
+    }
+  }
+
+  async function toggleConversationPin(
+    conversationId:
+      string,
+    pinned:
+      boolean,
+  ) {
+    try {
+      await updateConversation(
+        conversationId,
+        {
+          pinned,
+        },
+      );
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Conversation pin could not be updated.',
+      );
+
+      throw candidate;
+    }
+  }
+
+  function exportConversation() {
+    if (
+      !selectedConversation ||
+      messages.length ===
+        0
+    ) {
+      return;
+    }
+
+    const safeTitle =
+      selectedConversation
+        .title
+        .replace(
+          /[^a-z0-9-_]+/gi,
+          '-',
+        )
+        .replace(
+          /^-+|-+$/g,
+          '',
+        )
+        .slice(
+          0,
+          60,
+        ) ||
+      'sami-conversation';
+
+    const body = [
+      '# ' +
+        selectedConversation
+          .title,
+      '',
+      ...messages.flatMap(
+        message => [
+          message.role ===
+            'assistant'
+            ? '## SaMi'
+            : '## You',
+          '',
+          message.content,
+          '',
+        ],
+      ),
+    ].join(
+      '\n',
+    );
+
+    const blob =
+      new Blob(
+        [
+          body,
+        ],
+        {
+          type:
+            'text/markdown;charset=utf-8',
+        },
+      );
+
+    const url =
+      URL.createObjectURL(
+        blob,
+      );
+
+    const anchor =
+      document.createElement(
+        'a',
+      );
+
+    anchor.href =
+      url;
+    anchor.download =
+      safeTitle +
+      '.md';
+
+    document.body.appendChild(
+      anchor,
+    );
+
+    anchor.click();
+    anchor.remove();
+
+    URL.revokeObjectURL(
+      url,
+    );
+  }
+
+  async function archiveConversation(
+    conversationId =
+      selectedConversationId,
+  ) {
+    if (
+      !conversationId
     ) {
       return;
     }
@@ -907,7 +1116,7 @@ export default function WorkspaceAiClient({
         await fetch(
           '/api/workspace/ai/conversations/' +
             encodeURIComponent(
-              selectedConversationId,
+              conversationId,
             ),
           {
             method:
@@ -934,7 +1143,13 @@ export default function WorkspaceAiClient({
         );
       }
 
-      newConversation();
+      if (
+        selectedConversationId ===
+        conversationId
+      ) {
+        newConversation();
+      }
+
       await loadConversations();
     } catch (
       candidate
@@ -1305,7 +1520,22 @@ export default function WorkspaceAiClient({
           <div className="border-t border-slate-200/80 bg-white/95 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-4 dark:border-white/10 dark:bg-[#0B0E14]/95">
             <div className="mx-auto max-w-4xl">
               {selectedConversationId && (
-                <div className="mb-2 flex justify-end">
+                <div className="mb-2 flex flex-wrap justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={
+                      exportConversation
+                    }
+                    disabled={
+                      messages.length ===
+                      0
+                    }
+                    className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-300"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Export
+                  </button>
+
                   <button
                     type="button"
                     onClick={() =>
@@ -1314,7 +1544,7 @@ export default function WorkspaceAiClient({
                     className="inline-flex h-8 items-center gap-2 rounded-lg px-2.5 text-[9px] font-bold text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-white/10 dark:hover:text-slate-300"
                   >
                     <Archive className="h-3.5 w-3.5" />
-                    Archive conversation
+                    Archive
                   </button>
                 </div>
               )}
@@ -1429,6 +1659,15 @@ export default function WorkspaceAiClient({
               void selectConversation(
                 conversationId,
               )
+          }
+          onRename={
+            renameConversation
+          }
+          onTogglePin={
+            toggleConversationPin
+          }
+          onDelete={
+            archiveConversation
           }
         />
       )}
