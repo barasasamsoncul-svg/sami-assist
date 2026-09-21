@@ -15,9 +15,12 @@ export async function GET(request: NextRequest) {
   try {
     const params = request.nextUrl.searchParams;
 
+    const requestedView =
+      params.get('view');
+
     const [result, summary] = await Promise.all([
       listWorkspaceActivity({
-        view: params.get('view'),
+        view: requestedView,
         limit: params.get('limit'),
         cursor: params.get('cursor'),
         search: params.get('search'),
@@ -27,7 +30,9 @@ export async function GET(request: NextRequest) {
         from: params.get('from'),
         to: params.get('to'),
       }),
-      getWorkspaceActivitySummary(),
+      getWorkspaceActivitySummary({
+        view: requestedView,
+      }),
     ]);
 
     return activityJson({
