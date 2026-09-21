@@ -252,6 +252,83 @@ test('Category 11: platform typography and controls use one global baseline', as
 });
 
 
+test('Category 11: one account theme runtime governs every route and settings surface', async () => {
+  const [
+    layout,
+    provider,
+    runtime,
+    settings,
+    account,
+  ] = await Promise.all([
+    source('app/layout.tsx'),
+    source('app/components/SaMiThemeProvider.tsx'),
+    source('lib/theme/runtime.ts'),
+    source('app/settings/SettingsClient.tsx'),
+    source('app/settings/components/MyAccountSettings.tsx'),
+  ]);
+
+  assert.match(layout, /SaMiThemeProvider/);
+  assert.match(layout, /SAMI_THEME_BOOTSTRAP_SCRIPT/);
+  assert.match(layout, /suppressHydrationWarning/);
+
+  assert.match(provider, /\/api\/account\/preferences/);
+  assert.match(provider, /usePathname/);
+  assert.match(provider, /prefers-color-scheme:\s*dark/);
+  assert.match(provider, /addEventListener\(\s*['"]storage['"]/s);
+
+  assert.match(runtime, /SAMI_THEME_STORAGE_KEY/);
+  assert.match(runtime, /SAMI_THEME_CHANGE_EVENT/);
+  assert.match(runtime, /document\.documentElement/);
+  assert.match(runtime, /style\.colorScheme/);
+
+  assert.match(settings, /setSaMiTheme/);
+  assert.match(account, /setSaMiTheme/);
+
+  assert.doesNotMatch(
+    settings,
+    /const\s+THEME_STORAGE_KEY|function\s+applyThemeToDocument/,
+    'Settings must not own a second route-local theme system.',
+  );
+
+  assert.doesNotMatch(
+    account,
+    /const\s+THEME_STORAGE_KEY|\bapplyTheme\s*\(/,
+    'My Account Appearance must use the same global theme runtime and must not call the removed legacy applyTheme helper.',
+  );
+
+  const authThemeConsumers =
+    await Promise.all([
+      source('app/components/auth/AuthShell.tsx'),
+      source('app/login/LoginClient.tsx'),
+      source('app/register/RegisterClient.tsx'),
+      source('app/forgot-password/ForgotPasswordClient.tsx'),
+      source('app/reset-password/ResetPasswordClient.tsx'),
+      source('app/verify-email/VerifyEmailClient.tsx'),
+      source('app/google-complete/page.tsx'),
+      source('app/select-apps/page.tsx'),
+      source('app/select-plan/page.tsx'),
+      source('app/login/two-factor/TwoFactorLoginClient.tsx'),
+    ]);
+
+  for (
+    const consumer of
+    authThemeConsumers
+  ) {
+    assert.match(
+      consumer,
+      /useSaMiTheme/,
+      'Auth and onboarding pages must consume the shared global theme runtime.',
+    );
+
+    assert.doesNotMatch(
+      consumer,
+      /sami_theme|THEME_STORAGE_KEY|THEME_KEY|document\.documentElement\.classList\.toggle|\bapplyTheme\s*\(/,
+      'Auth and onboarding pages must not recreate route-local theme persistence, root-class mutation, or legacy theme helpers.',
+    );
+  }
+});
+
+
 test('Category 11: Settings exposes a clear permission-aware local section map', async () => {
   const settings = compact(
     await source('app/settings/SettingsClient.tsx'),

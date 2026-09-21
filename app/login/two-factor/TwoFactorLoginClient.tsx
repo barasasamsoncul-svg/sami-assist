@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 
 import {
@@ -138,9 +142,6 @@ const TWO_FACTOR_NEXT_KEY =
 
 const TWO_FACTOR_VERIFICATION_KEY =
   'sami_2fa_verification';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 /* ============================================================
    ENDPOINTS
@@ -514,12 +515,10 @@ export default function TwoFactorLoginClient() {
     0
   );
 
-  const [
+  const {
     darkMode,
-    setDarkMode,
-  ] = useState(
-    false
-  );
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     ready,
@@ -538,80 +537,6 @@ export default function TwoFactorLoginClient() {
   >(
     null
   );
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(
-    () => {
-      try {
-        const stored =
-          localStorage.getItem(
-            THEME_STORAGE_KEY
-          );
-
-        const systemDark =
-          window.matchMedia?.(
-            '(prefers-color-scheme: dark)'
-          ).matches ??
-          false;
-
-        const useDark =
-          stored ===
-            'dark' ||
-          (
-            !stored &&
-            systemDark
-          );
-
-        setDarkMode(
-          useDark
-        );
-
-        document.documentElement.classList.toggle(
-          'dark',
-          useDark
-        );
-      } catch {
-        // The page remains usable without stored theme data.
-      }
-    },
-    []
-  );
-
-  const toggleTheme =
-    useCallback(
-      () => {
-        setDarkMode(
-          (
-            current
-          ) => {
-            const next =
-              !current;
-
-            document.documentElement.classList.toggle(
-              'dark',
-              next
-            );
-
-            try {
-              localStorage.setItem(
-                THEME_STORAGE_KEY,
-                next
-                  ? 'dark'
-                  : 'light'
-              );
-            } catch {
-              // Ignore theme persistence failure.
-            }
-
-            return next;
-          }
-        );
-      },
-      []
-    );
 
   /* ==========================================================
      RESTORE LOGIN CHALLENGE

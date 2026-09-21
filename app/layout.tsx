@@ -1,4 +1,11 @@
 import type { Metadata } from 'next';
+
+import SaMiThemeProvider from '@/app/components/SaMiThemeProvider';
+
+import {
+  SAMI_THEME_BOOTSTRAP_SCRIPT,
+} from '@/lib/theme/runtime';
+
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -12,8 +19,24 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html
+      lang="en"
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          id="sami-theme-bootstrap"
+          dangerouslySetInnerHTML={{
+            __html:
+              SAMI_THEME_BOOTSTRAP_SCRIPT,
+          }}
+        />
+      </head>
+
+      <body>
+        <SaMiThemeProvider />
+        {children}
+      </body>
     </html>
   );
 }

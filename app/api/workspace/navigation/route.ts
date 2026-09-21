@@ -149,6 +149,13 @@ export async function GET() {
       );
 
 
+    const automationManage =
+      has(
+        SAMI_PERMISSIONS
+          .AUTOMATION_MANAGE,
+      );
+
+
     const billingManage =
       has(
         SAMI_PERMISSIONS
@@ -349,6 +356,19 @@ export async function GET() {
           has(
             SAMI_PERMISSIONS
               .AUDIT_VIEW,
+          ),
+
+
+        automationManage:
+          context.isOwner ||
+          automationManage,
+
+        automationView:
+          context.isOwner ||
+          automationManage ||
+          has(
+            SAMI_PERMISSIONS
+              .AUTOMATION_VIEW,
           ),
 
 

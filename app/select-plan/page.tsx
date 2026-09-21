@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -47,9 +51,6 @@ const PLAN_STORAGE_KEY =
 
 const VERIFICATION_EMAIL_STORAGE_KEY =
   'sami_verification_email';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const REGISTER_ENDPOINT =
   '/api/auth/register';
@@ -418,10 +419,10 @@ function safeNextPath(
 export default function SelectPlanPage() {
   const router = useRouter();
 
-  const [
+  const {
     darkMode,
-    setDarkMode,
-  ] = useState(false);
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     selectedPlan,
@@ -446,66 +447,6 @@ export default function SelectPlanPage() {
   ] = useState<OverlayState | null>(
     null
   );
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const prefersDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        stored === 'dark' ||
-        (!stored &&
-          prefersDark);
-
-      setDarkMode(useDark);
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Theme still works without persistence.
-    }
-  }, []);
-
-  const toggleTheme =
-    useCallback(() => {
-      setDarkMode(
-        (current) => {
-          const next =
-            !current;
-
-          document.documentElement.classList.toggle(
-            'dark',
-            next
-          );
-
-          try {
-            localStorage.setItem(
-              THEME_STORAGE_KEY,
-              next
-                ? 'dark'
-                : 'light'
-            );
-          } catch {
-            // Ignore storage errors.
-          }
-
-          return next;
-        }
-      );
-    }, []);
 
   /* ==========================================================
      RESTORE ONBOARDING

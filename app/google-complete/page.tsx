@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import {
   useRouter,
@@ -36,9 +40,6 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 
 const ACCOUNT_STORAGE_KEY =
   'sami_account_form';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const NEXT_ROUTE =
   '/select-apps';
@@ -175,10 +176,10 @@ function GoogleCompleteContent() {
   const searchParams =
     useSearchParams();
 
-  const [
+  const {
     darkMode,
-    setDarkMode,
-  ] = useState(false);
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     loading,
@@ -215,69 +216,6 @@ function GoogleCompleteContent() {
     phone: '',
     businessName: '',
   });
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const savedTheme =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        savedTheme === 'dark' ||
-        (!savedTheme &&
-          systemDark);
-
-      setDarkMode(
-        useDark
-      );
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Theme remains usable
-      // without persistence.
-    }
-  }, []);
-
-  const toggleTheme =
-    useCallback(() => {
-      setDarkMode(
-        (current) => {
-          const next =
-            !current;
-
-          document.documentElement.classList.toggle(
-            'dark',
-            next
-          );
-
-          try {
-            localStorage.setItem(
-              THEME_STORAGE_KEY,
-              next
-                ? 'dark'
-                : 'light'
-            );
-          } catch {
-            // Ignore storage failure.
-          }
-
-          return next;
-        }
-      );
-    }, []);
 
   /* ==========================================================
      GOOGLE ACCOUNT DATA

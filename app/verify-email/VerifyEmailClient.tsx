@@ -1,5 +1,9 @@
 ﻿'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import {
   useRouter,
@@ -36,9 +40,6 @@ import { getAuthOverlayMessage } from '@/lib/auth/auth-ui-messages';
 
 const VERIFICATION_EMAIL_STORAGE_KEY =
   'sami_verification_email';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const RESEND_COOLDOWN_SECONDS =
   60;
@@ -182,10 +183,10 @@ function VerifyEmailContent() {
     setVerifyRetrySeconds,
   ] = useState(0);
 
-  const [
+  const {
     darkMode,
-    setDarkMode,
-  ] = useState(false);
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     emailError,
@@ -209,68 +210,6 @@ function VerifyEmailContent() {
       typeof getAuthOverlayMessage
     > | null
   >(null);
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const stored =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const prefersDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const useDark =
-        stored === 'dark' ||
-        (!stored &&
-          prefersDark);
-
-      setDarkMode(
-        useDark
-      );
-
-      document.documentElement.classList.toggle(
-        'dark',
-        useDark
-      );
-    } catch {
-      // Theme remains usable.
-    }
-  }, []);
-
-  const toggleTheme =
-    useCallback(() => {
-      setDarkMode(
-        (current) => {
-          const next =
-            !current;
-
-          document.documentElement.classList.toggle(
-            'dark',
-            next
-          );
-
-          try {
-            localStorage.setItem(
-              THEME_STORAGE_KEY,
-              next
-                ? 'dark'
-                : 'light'
-            );
-          } catch {
-            // Ignore storage error.
-          }
-
-          return next;
-        }
-      );
-    }, []);
 
   /* ==========================================================
      RESTORE EMAIL

@@ -617,6 +617,52 @@ function corePageCandidates(
     ];
 
   if (
+    can(
+      SAMI_PERMISSIONS
+        .AUTOMATION_VIEW,
+    ) ||
+    can(
+      SAMI_PERMISSIONS
+        .AUTOMATION_MANAGE,
+    )
+  ) {
+    pages.push(
+      candidate({
+        id:
+          'page:automation',
+        kind:
+          'page',
+        title:
+          'Automation',
+        subtitle:
+          'Workflows & rules',
+        description:
+          'Build permission-aware business workflows from registered SaMi triggers and actions.',
+        href:
+          '/automation',
+        iconKey:
+          'workflow',
+        badge:
+          null,
+        score:
+          34,
+        action:
+          null,
+        source:
+          'core',
+        keywords: [
+          'workflow',
+          'rules',
+          'triggers',
+          'actions',
+          'scheduled',
+        ],
+      }),
+    );
+  }
+
+
+  if (
     context.aiAvailable
   ) {
     pages.push(
