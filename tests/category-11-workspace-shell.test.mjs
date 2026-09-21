@@ -141,13 +141,31 @@ test('Category 11: mobile workspace pages use progressive disclosure instead of 
 
   assert.match(
     dashboard,
-    /sm:grid-cols-2/,
-    'Dashboard must collapse naturally on mobile rather than depending on a separate mini-shell.',
+    /grid grid-cols-3.*sm:grid-cols-4.*md:grid-cols-5.*lg:grid-cols-6.*xl:grid-cols-8.*2xl:grid-cols-9/s,
+    'Odoo-style app home must progressively expand its permission-resolved launcher across breakpoints.',
   );
-  assert.match(dashboard, /xl:grid-cols/);
-  assert.match(dashboard, /Your apps/);
-  assert.match(dashboard, /Work & attention/);
-  assert.match(dashboard, /Recent activity/);
+
+  assert.match(
+    dashboard,
+    /flex w-full flex-col gap-2 sm:flex-row/,
+    'Dashboard command controls must stack on narrow screens instead of disappearing or overflowing.',
+  );
+
+  assert.match(
+    dashboard,
+    /Only apps available to your role and current workspace are shown/,
+  );
+
+  assert.match(
+    dashboard,
+    /Work & attention/,
+  );
+
+  assert.match(
+    dashboard,
+    /My activity/,
+    'The compact dashboard activity surface must remain personal rather than becoming workspace-wide.',
+  );
 
   assert.match(organization, /mobileSection/);
   assert.match(organization, /mobileEditorOpen/);
