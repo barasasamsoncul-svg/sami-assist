@@ -1144,6 +1144,9 @@ CREATE TABLE IF NOT EXISTS {schema}.automation_runs (
 
     next_retry_at TIMESTAMPTZ,
 
+    lease_until TIMESTAMPTZ,
+    lease_token UUID,
+
     started_at TIMESTAMPTZ,
     completed_at TIMESTAMPTZ,
 
@@ -1163,6 +1166,10 @@ CREATE INDEX IF NOT EXISTS idx_automation_runs_retry
     ON {schema}.automation_runs(next_retry_at)
     WHERE status = 'failed'
       AND next_retry_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_automation_runs_lease
+    ON {schema}.automation_runs(lease_until)
+    WHERE lease_until IS NOT NULL;
 
 
 CREATE TABLE IF NOT EXISTS {schema}.automation_run_steps (
