@@ -362,8 +362,8 @@ export default function WorkspaceActivityClient() {
         />
       </div>
 
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]">
-        <div className="border-b border-slate-200 px-4 py-4 dark:border-white/10 sm:px-5">
+      <section className="sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] px-4 py-4 dark:border-white/10 sm:px-5">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
             <div className="flex min-w-0 items-center gap-2">
               <button
@@ -372,8 +372,8 @@ export default function WorkspaceActivityClient() {
                 className={[
                   'h-9 rounded-xl px-3 text-xs font-bold transition',
                   view === 'activity'
-                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
-                    : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
+                    ? 'bg-gradient-to-r from-indigo-600 to-blue-600 text-white shadow-md shadow-indigo-500/15'
+                    : 'text-slate-500 hover:bg-[var(--sami-surface-soft)] dark:text-slate-400 dark:hover:text-white',
                 ].join(' ')}
               >
                 My Activity
@@ -386,8 +386,8 @@ export default function WorkspaceActivityClient() {
                   className={[
                     'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-bold transition',
                     view === 'audit'
-                      ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
-                      : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
+                      ? 'bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950'
+                      : 'text-slate-500 hover:bg-[var(--sami-surface-soft)] dark:text-slate-400 dark:hover:text-white',
                   ].join(' ')}
                 >
                   <ShieldCheck className="h-3.5 w-3.5" />
@@ -512,7 +512,7 @@ export default function WorkspaceActivityClient() {
           <div>
             {groups.map(([day, dayItems]) => (
               <div key={day}>
-                <div className="sticky top-0 z-10 border-y border-slate-100 bg-slate-50/95 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 backdrop-blur dark:border-white/5 dark:bg-[#0B0E14]/95">
+                <div className="sticky top-0 z-10 border-y border-[var(--sami-border)] bg-[var(--sami-surface-soft)]/95 px-4 py-2 text-[9px] font-black uppercase tracking-[0.14em] text-slate-400 backdrop-blur dark:border-white/5 dark:bg-[#0B0E14]/95">
                   {day}
                 </div>
 
@@ -720,7 +720,7 @@ export default function WorkspaceActivityClient() {
         )}
 
         {nextCursor && (
-          <div className="border-t border-slate-200 px-4 py-4 text-center dark:border-white/10">
+          <div className="border-t border-[var(--sami-border)] px-4 py-4 text-center dark:border-white/10">
             <button
               type="button"
               disabled={loadingMore}
