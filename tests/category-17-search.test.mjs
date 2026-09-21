@@ -221,10 +221,15 @@ test('Dashboard refresh: workspace home uses shared shell, real company identity
 
   assert.match(client, /WorkspaceShell/);
   assert.match(client, /CompanyAvatar/);
-  assert.match(client, /Search workspace/);
-  assert.match(client, /Recent activity/);
+  assert.match(client, /Ask SaMi anything about your business/);
+  assert.match(client, /Only apps available to your role and current workspace are shown/);
+  assert.match(client, /My activity/);
   assert.match(client, /Work & attention/);
-  assert.match(client, /Your apps/);
+  assert.match(
+    client,
+    /grid grid-cols-3.*xl:grid-cols-8.*2xl:grid-cols-9/s,
+    'Workspace home should behave as an app-centric Odoo-style launcher across breakpoints.',
+  );
 });
 
 test('Dashboard refresh: app content remains provider-driven and module-agnostic', async () => {
