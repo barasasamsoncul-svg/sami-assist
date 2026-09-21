@@ -6,15 +6,20 @@ import {
   Archive,
   ArrowLeft,
   Bot,
+  Check,
   CheckCircle2,
+  Copy,
   Gauge,
   History,
   Loader2,
   MessageSquarePlus,
+  Pencil,
+  RefreshCw,
   Send,
   Settings,
   ShieldCheck,
   Sparkles,
+  Square,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -23,6 +28,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
 } from 'react';
@@ -216,6 +222,32 @@ export default function WorkspaceAiClient({
     useState('');
 
   const [
+    editingMessageId,
+    setEditingMessageId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    copiedMessageId,
+    setCopiedMessageId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const abortControllerRef =
+    useRef<AbortController | null>(
+      null,
+    );
+
+  const composerRef =
+    useRef<HTMLTextAreaElement | null>(
+      null,
+    );
+
+  const [
     loading,
     setLoading,
   ] =
@@ -266,6 +298,22 @@ export default function WorkspaceAiClient({
       [
         conversations,
         selectedConversationId,
+      ],
+    );
+
+  const lastAssistantMessageId =
+    useMemo(
+      () =>
+        [...messages]
+          .reverse()
+          .find(
+            message =>
+              message.role ===
+              'assistant',
+          )?.id ||
+        null,
+      [
+        messages,
       ],
     );
 
@@ -482,6 +530,9 @@ export default function WorkspaceAiClient({
     setMessages([]);
     setPendingActions([]);
     setDraft('');
+    setEditingMessageId(
+      null,
+    );
     setError(null);
     setHistoryOpen(false);
   }
@@ -493,24 +544,42 @@ export default function WorkspaceAiClient({
     setSelectedConversationId(
       conversationId,
     );
+    setEditingMessageId(
+      null,
+    );
+    setDraft('');
     setHistoryOpen(false);
   }
 
-  async function sendMessage() {
-    const message =
-      draft.trim();
-
+  async function runChatRequest(
+    input: {
+      mode:
+        | 'send'
+        | 'edit'
+        | 'regenerate';
+      message?:
+        string;
+      targetMessageId?:
+        string;
+      restoreDraft?:
+        string;
+    },
+  ) {
     if (
-      !message ||
       sending ||
       !status?.configured
     ) {
       return;
     }
 
+    const controller =
+      new AbortController();
+
+    abortControllerRef.current =
+      controller;
+
     setSending(true);
     setError(null);
-    setDraft('');
 
     try {
       const response =
@@ -520,7 +589,10 @@ export default function WorkspaceAiClient({
             method: 'POST',
             credentials:
               'same-origin',
-            cache: 'no-store',
+            cache:
+              'no-store',
+            signal:
+              controller.signal,
             headers: {
               'Content-Type':
                 'application/json',
@@ -531,7 +603,12 @@ export default function WorkspaceAiClient({
               JSON.stringify({
                 conversationId:
                   selectedConversationId,
-                message,
+                message:
+                  input.message,
+                mode:
+                  input.mode,
+                targetMessageId:
+                  input.targetMessageId,
               }),
           },
         );
@@ -567,6 +644,10 @@ export default function WorkspaceAiClient({
         );
       }
 
+      setEditingMessageId(
+        null,
+      );
+
       await Promise.all([
         loadConversations(),
         loadStatus(),
@@ -582,9 +663,37 @@ export default function WorkspaceAiClient({
     } catch (
       candidate
     ) {
-      setDraft(
-        message,
-      );
+      const aborted =
+        controller.signal
+          .aborted ||
+        (
+          candidate instanceof
+            DOMException &&
+          candidate.name ===
+            'AbortError'
+        );
+
+      if (aborted) {
+        setError(null);
+
+        if (
+          input.restoreDraft
+        ) {
+          setDraft(
+            input.restoreDraft,
+          );
+        }
+
+        return;
+      }
+
+      if (
+        input.restoreDraft
+      ) {
+        setDraft(
+          input.restoreDraft,
+        );
+      }
 
       setError(
         candidate instanceof Error
@@ -592,8 +701,198 @@ export default function WorkspaceAiClient({
           : 'SaMi AI could not complete that request.',
       );
     } finally {
+      if (
+        abortControllerRef
+          .current ===
+        controller
+      ) {
+        abortControllerRef.current =
+          null;
+      }
+
       setSending(false);
     }
+  }
+
+  async function sendMessage() {
+    const message =
+      draft.trim();
+
+    if (
+      !message ||
+      sending ||
+      !status?.configured
+    ) {
+      return;
+    }
+
+    const targetMessageId =
+      editingMessageId;
+
+    setDraft('');
+
+    await runChatRequest({
+      mode:
+        targetMessageId
+          ? 'edit'
+          : 'send',
+      message,
+      targetMessageId:
+        targetMessageId ||
+        undefined,
+      restoreDraft:
+        message,
+    });
+  }
+
+  async function regenerateMessage(
+    messageId:
+      string,
+  ) {
+    if (
+      !selectedConversationId ||
+      sending
+    ) {
+      return;
+    }
+
+    await runChatRequest({
+      mode:
+        'regenerate',
+      targetMessageId:
+        messageId,
+    });
+  }
+
+  function editMessage(
+    message:
+      Message,
+  ) {
+    if (
+      sending ||
+      message.role !==
+        'user'
+    ) {
+      return;
+    }
+
+    setEditingMessageId(
+      message.id,
+    );
+    setDraft(
+      message.content,
+    );
+    setError(null);
+
+    requestAnimationFrame(
+      () => {
+        const composer =
+          composerRef.current;
+
+        if (!composer) {
+          return;
+        }
+
+        composer.focus();
+
+        const end =
+          composer.value
+            .length;
+
+        composer.setSelectionRange(
+          end,
+          end,
+        );
+      },
+    );
+  }
+
+  function cancelEdit() {
+    setEditingMessageId(
+      null,
+    );
+    setDraft('');
+    setError(null);
+  }
+
+  async function copyMessage(
+    message:
+      Message,
+  ) {
+    try {
+      if (
+        navigator.clipboard
+          ?.writeText
+      ) {
+        await navigator
+          .clipboard
+          .writeText(
+            message.content,
+          );
+      } else {
+        const textarea =
+          document.createElement(
+            'textarea',
+          );
+
+        textarea.value =
+          message.content;
+        textarea.setAttribute(
+          'readonly',
+          '',
+        );
+        textarea.style.position =
+          'fixed';
+        textarea.style.opacity =
+          '0';
+
+        document.body.appendChild(
+          textarea,
+        );
+
+        textarea.select();
+
+        const copied =
+          document.execCommand(
+            'copy',
+          );
+
+        textarea.remove();
+
+        if (!copied) {
+          throw new Error(
+            'Copy failed.',
+          );
+        }
+      }
+
+      setCopiedMessageId(
+        message.id,
+      );
+
+      window.setTimeout(
+        () => {
+          setCopiedMessageId(
+            current =>
+              current ===
+                message.id
+                ? null
+                : current,
+          );
+        },
+        1600,
+      );
+    } catch {
+      setError(
+        'That message could not be copied.',
+      );
+    }
+  }
+
+  function stopGenerating() {
+    abortControllerRef
+      .current
+      ?.abort();
   }
 
   async function archiveConversation() {
@@ -885,14 +1184,57 @@ export default function WorkspaceAiClient({
                         message={
                           message
                         }
+                        copied={
+                          copiedMessageId ===
+                          message.id
+                        }
+                        canRegenerate={
+                          message.role ===
+                            'assistant' &&
+                          message.id ===
+                            lastAssistantMessageId
+                        }
+                        disabled={
+                          sending
+                        }
+                        onCopy={() =>
+                          void copyMessage(
+                            message,
+                          )
+                        }
+                        onEdit={() =>
+                          editMessage(
+                            message,
+                          )
+                        }
+                        onRegenerate={() =>
+                          void regenerateMessage(
+                            message.id,
+                          )
+                        }
                       />
                     ),
                   )}
 
                   {sending && (
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      SaMi is working…
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300">
+                      <span className="inline-flex min-w-0 items-center gap-2">
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        <span className="truncate">
+                          SaMi is working…
+                        </span>
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={
+                          stopGenerating
+                        }
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[9px] font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/10"
+                      >
+                        <Square className="h-3 w-3 fill-current" />
+                        Stop
+                      </button>
                     </div>
                   )}
                 </div>
@@ -977,8 +1319,32 @@ export default function WorkspaceAiClient({
                 </div>
               )}
 
+              {editingMessageId && (
+                <div className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] text-blue-800 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200">
+                  <span className="inline-flex min-w-0 items-center gap-2">
+                    <Pencil className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate font-semibold">
+                      Editing your message — later replies will be regenerated from here.
+                    </span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={
+                      cancelEdit
+                    }
+                    className="shrink-0 font-bold underline underline-offset-2"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 shadow-sm focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
                 <textarea
+                  ref={
+                    composerRef
+                  }
                   value={
                     draft
                   }
@@ -999,18 +1365,35 @@ export default function WorkspaceAiClient({
 
                 <button
                   type="button"
-                  aria-label="Send message"
+                  aria-label={
+                    sending
+                      ? 'Stop generating'
+                      : editingMessageId
+                        ? 'Send edited message'
+                        : 'Send message'
+                  }
                   disabled={
-                    sending ||
+                    !sending &&
                     !draft.trim()
                   }
                   onClick={() =>
-                    void sendMessage()
+                    sending
+                      ? stopGenerating()
+                      : void sendMessage()
                   }
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={[
+                    'flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white transition disabled:cursor-not-allowed disabled:opacity-40',
+                    sending
+                      ? 'bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200'
+                      : 'bg-blue-600 hover:bg-blue-700',
+                  ].join(
+                    ' ',
+                  )}
                 >
                   {sending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Square className="h-4 w-4 fill-current" />
+                  ) : editingMessageId ? (
+                    <Check className="h-4 w-4" />
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
@@ -1068,9 +1451,27 @@ export default function WorkspaceAiClient({
 
 function MessageBubble({
   message,
+  copied,
+  canRegenerate,
+  disabled,
+  onCopy,
+  onEdit,
+  onRegenerate,
 }: {
   message:
     Message;
+  copied:
+    boolean;
+  canRegenerate:
+    boolean;
+  disabled:
+    boolean;
+  onCopy:
+    () => void;
+  onEdit:
+    () => void;
+  onRegenerate:
+    () => void;
 }) {
   const assistant =
     message.role ===
@@ -1086,33 +1487,145 @@ function MessageBubble({
     >
       <div
         className={[
-          'max-w-[92%] rounded-2xl px-4 py-3 text-sm leading-6 sm:max-w-[78%]',
+          'group min-w-0 max-w-[94%] sm:max-w-[82%]',
           assistant
-            ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200'
-            : 'bg-blue-600 text-white',
+            ? 'w-full'
+            : '',
         ].join(
           ' ',
         )}
       >
-        {assistant ? (
-          <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
-            <ReactMarkdown>
-              {message.content}
-            </ReactMarkdown>
-          </div>
-        ) : (
-          <p className="whitespace-pre-wrap break-words">
-            {message.content}
-          </p>
-        )}
-
-        <p className="mt-2 text-[8px] opacity-55">
-          {timeLabel(
-            message.createdAt,
+        <div
+          className={[
+            'rounded-2xl px-4 py-3 text-sm leading-6',
+            assistant
+              ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200'
+              : 'ml-auto max-w-full bg-blue-600 text-white',
+          ].join(
+            ' ',
           )}
-        </p>
+        >
+          {assistant ? (
+            <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
+              <ReactMarkdown>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : (
+            <p className="whitespace-pre-wrap break-words">
+              {message.content}
+            </p>
+          )}
+
+          <p className="mt-2 text-[8px] opacity-55">
+            {timeLabel(
+              message.createdAt,
+            )}
+          </p>
+        </div>
+
+        <div
+          className={[
+            'mt-1.5 flex items-center gap-1',
+            assistant
+              ? 'justify-start'
+              : 'justify-end',
+          ].join(
+            ' ',
+          )}
+        >
+          <MessageAction
+            label={
+              copied
+                ? 'Copied'
+                : 'Copy'
+            }
+            disabled={
+              false
+            }
+            onClick={
+              onCopy
+            }
+            icon={
+              copied
+                ? Check
+                : Copy
+            }
+          />
+
+          {!assistant && (
+            <MessageAction
+              label="Edit"
+              disabled={
+                disabled
+              }
+              onClick={
+                onEdit
+              }
+              icon={
+                Pencil
+              }
+            />
+          )}
+
+          {assistant &&
+            canRegenerate && (
+            <MessageAction
+              label="Regenerate"
+              disabled={
+                disabled
+              }
+              onClick={
+                onRegenerate
+              }
+              icon={
+                RefreshCw
+              }
+            />
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+function MessageAction({
+  label,
+  disabled,
+  onClick,
+  icon: Icon,
+}: {
+  label:
+    string;
+  disabled:
+    boolean;
+  onClick:
+    () => void;
+  icon:
+    typeof Copy;
+}) {
+  return (
+    <button
+      type="button"
+      title={
+        label
+      }
+      aria-label={
+        label
+      }
+      disabled={
+        disabled
+      }
+      onClick={
+        onClick
+      }
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+    >
+      <Icon className="h-3.5 w-3.5" />
+      <span className="hidden sm:inline">
+        {label}
+      </span>
+    </button>
   );
 }
 
