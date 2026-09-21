@@ -9,6 +9,10 @@ import type {
   SamiAiToolDefinition,
 } from '@/lib/ai/types';
 
+import {
+  filterAccessibleModuleExtensions,
+} from '@/lib/modules/registry';
+
 /*
  * Business apps add code-owned handlers here.
  *
@@ -118,9 +122,17 @@ function toolIsSafe(
 export function getAvailableSamiAiTools(
   context: SamiAiRuntimeContext,
 ) {
+  const appTools =
+    filterAccessibleModuleExtensions(
+      APP_SAMI_AI_TOOLS,
+      context.accessibleModuleKeys,
+      tool =>
+        tool.moduleKey,
+    );
+
   return [
     ...CORE_SAMI_AI_TOOLS,
-    ...APP_SAMI_AI_TOOLS,
+    ...appTools,
   ].filter(
     tool =>
       toolIsSafe(
