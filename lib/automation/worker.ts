@@ -362,6 +362,25 @@ async function claimDueSchedules(
                 OR lease_until <
                    NOW()
               )
+              AND NOT EXISTS (
+                SELECT 1
+                FROM automation_runs r
+                WHERE r.workflow_id =
+                      automation_schedules.workflow_id
+                  AND (
+                    r.status IN (
+                      'queued',
+                      'running',
+                      'waiting_approval'
+                    )
+                    OR (
+                      r.status =
+                        'failed'
+                      AND r.next_retry_at
+                          IS NOT NULL
+                    )
+                  )
+              )
             ORDER BY
               next_run_at,
               workflow_id
@@ -886,6 +905,171 @@ function missingAutomationTables(
   );
 }
 
+async function expireApprovalsForTenant(
+  tenantId:
+    string,
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const expired =
+      await client.query(
+        `
+          UPDATE automation_approvals
+          SET
+            status =
+              'expired',
+            resolved_at =
+              NOW()
+          WHERE status =
+                'pending'
+            AND expires_at
+                IS NOT NULL
+            AND expires_at <=
+                NOW()
+          RETURNING
+            run_id,
+            step_id
+        `,
+      );
+
+    if (
+      expired.rows.length ===
+        0
+    ) {
+      await client.query(
+        'COMMIT',
+      );
+
+      return 0;
+    }
+
+    const runIds =
+      expired.rows.map(
+        row =>
+          String(
+            row.run_id,
+          ),
+      );
+
+    const stepIds =
+      expired.rows.map(
+        row =>
+          String(
+            row.step_id,
+          ),
+      );
+
+    await client.query(
+      `
+        UPDATE automation_run_steps
+        SET
+          status =
+            'cancelled',
+          completed_at =
+            COALESCE(
+              completed_at,
+              NOW()
+            )
+        WHERE id =
+              ANY($1::uuid[])
+      `,
+      [
+        stepIds,
+      ],
+    );
+
+    const runs =
+      await client.query(
+        `
+          UPDATE automation_runs
+          SET
+            status =
+              'cancelled',
+            next_retry_at =
+              NULL,
+            lease_until =
+              NULL,
+            lease_token =
+              NULL,
+            completed_at =
+              COALESCE(
+                completed_at,
+                NOW()
+              )
+          WHERE id =
+                ANY($1::uuid[])
+          RETURNING
+            event_id
+        `,
+        [
+          runIds,
+        ],
+      );
+
+    const eventIds =
+      runs.rows
+        .map(
+          row =>
+            row.event_id
+              ? String(
+                  row.event_id,
+                )
+              : '',
+        )
+        .filter(
+          Boolean,
+        );
+
+    if (
+      eventIds.length >
+        0
+    ) {
+      await client.query(
+        `
+          UPDATE automation_events
+          SET
+            status =
+              'ignored',
+            processed_at =
+              NOW()
+          WHERE id =
+                ANY($1::uuid[])
+        `,
+        [
+          eventIds,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return expired.rows.length;
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function runAutomationWorkerTick() {
   const tenantIds =
     await listActiveTenantIds();
@@ -911,6 +1095,10 @@ export async function runAutomationWorkerTick() {
       failed:
         0,
     },
+    approvals: {
+      expired:
+        0,
+    },
   };
 
   for (
@@ -918,6 +1106,15 @@ export async function runAutomationWorkerTick() {
     of tenantIds
   ) {
     try {
+      const expired =
+        await expireApprovalsForTenant(
+          tenantId,
+        );
+
+      summary.approvals
+        .expired +=
+        expired;
+
       const schedules =
         await runDueSchedulesForTenant(
           tenantId,
