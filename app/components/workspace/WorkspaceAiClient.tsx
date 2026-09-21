@@ -1874,6 +1874,9 @@ function HistoryDrawer({
   onClose,
   onNew,
   onSelect,
+  onRename,
+  onTogglePin,
+  onDelete,
 }: {
   conversations:
     Conversation[];
@@ -1888,7 +1891,207 @@ function HistoryDrawer({
       conversationId:
         string,
     ) => void;
+  onRename:
+    (
+      conversationId:
+        string,
+      title:
+        string,
+    ) => Promise<void>;
+  onTogglePin:
+    (
+      conversationId:
+        string,
+      pinned:
+        boolean,
+    ) => Promise<void>;
+  onDelete:
+    (
+      conversationId:
+        string,
+    ) => Promise<void>;
 }) {
+  const [
+    query,
+    setQuery,
+  ] =
+    useState('');
+
+  const [
+    renamingId,
+    setRenamingId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    renameDraft,
+    setRenameDraft,
+  ] =
+    useState('');
+
+  const [
+    busyId,
+    setBusyId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const [
+    deleteConfirmId,
+    setDeleteConfirmId,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+  const filteredConversations =
+    useMemo(
+      () => {
+        const normalized =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!normalized) {
+          return conversations;
+        }
+
+        return conversations.filter(
+          conversation =>
+            conversation.title
+              .toLowerCase()
+              .includes(
+                normalized,
+              ),
+        );
+      },
+      [
+        conversations,
+        query,
+      ],
+    );
+
+  function beginRename(
+    conversation:
+      Conversation,
+  ) {
+    setRenamingId(
+      conversation.id,
+    );
+    setRenameDraft(
+      conversation.title,
+    );
+    setDeleteConfirmId(
+      null,
+    );
+  }
+
+  function cancelRename() {
+    setRenamingId(
+      null,
+    );
+    setRenameDraft('');
+  }
+
+  async function saveRename(
+    conversationId:
+      string,
+  ) {
+    const title =
+      renameDraft.trim();
+
+    if (
+      !title ||
+      busyId
+    ) {
+      return;
+    }
+
+    setBusyId(
+      conversationId,
+    );
+
+    try {
+      await onRename(
+        conversationId,
+        title,
+      );
+
+      cancelRename();
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
+  async function changePin(
+    conversation:
+      Conversation,
+  ) {
+    if (busyId) {
+      return;
+    }
+
+    setBusyId(
+      conversation.id,
+    );
+
+    try {
+      await onTogglePin(
+        conversation.id,
+        !conversation.pinned,
+      );
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
+  async function deleteConversation(
+    conversationId:
+      string,
+  ) {
+    if (
+      deleteConfirmId !==
+        conversationId
+    ) {
+      setDeleteConfirmId(
+        conversationId,
+      );
+      setRenamingId(
+        null,
+      );
+      return;
+    }
+
+    if (busyId) {
+      return;
+    }
+
+    setBusyId(
+      conversationId,
+    );
+
+    try {
+      await onDelete(
+        conversationId,
+      );
+
+      setDeleteConfirmId(
+        null,
+      );
+    } finally {
+      setBusyId(
+        null,
+      );
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[160]">
       <button
@@ -1900,7 +2103,7 @@ function HistoryDrawer({
         className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
       />
 
-      <aside className="absolute inset-y-0 left-0 flex w-[330px] max-w-[calc(100vw-16px)] flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0B0E14]">
+      <aside className="absolute inset-y-0 left-0 flex w-[360px] max-w-[calc(100vw-12px)] flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0B0E14]">
         <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-4 dark:border-white/10">
           <History className="h-4 w-4 text-blue-600 dark:text-blue-300" />
 
@@ -1909,7 +2112,7 @@ function HistoryDrawer({
               Conversation history
             </p>
             <p className="mt-0.5 text-[9px] text-slate-400">
-              Current company
+              Search, pin, rename or remove chats
             </p>
           </div>
 
@@ -1925,7 +2128,7 @@ function HistoryDrawer({
           </button>
         </div>
 
-        <div className="p-3">
+        <div className="space-y-2 border-b border-slate-200 p-3 dark:border-white/10">
           <button
             type="button"
             onClick={
@@ -1936,9 +2139,26 @@ function HistoryDrawer({
             <MessageSquarePlus className="h-4 w-4" />
             New conversation
           </button>
+
+          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
+            <Search className="h-3.5 w-3.5 shrink-0" />
+            <input
+              value={
+                query
+              }
+              onChange={
+                event =>
+                  setQuery(
+                    event.target.value,
+                  )
+              }
+              placeholder="Search conversations"
+              className="min-w-0 flex-1 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+            />
+          </label>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-[max(12px,env(safe-area-inset-bottom))]">
           {conversations.length ===
             0 ? (
             <div className="px-4 py-10 text-center">
@@ -1946,42 +2166,244 @@ function HistoryDrawer({
               <p className="mt-2 text-xs font-bold">
                 No conversations yet
               </p>
+              <p className="mt-1 text-[10px] text-slate-400">
+                Start a conversation with SaMi AI.
+              </p>
+            </div>
+          ) : filteredConversations.length ===
+              0 ? (
+            <div className="px-4 py-10 text-center">
+              <Search className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
+              <p className="mt-2 text-xs font-bold">
+                No matching conversations
+              </p>
             </div>
           ) : (
             <div className="space-y-1">
-              {conversations.map(
-                conversation => (
-                  <button
-                    key={
-                      conversation.id
-                    }
-                    type="button"
-                    onClick={() =>
-                      onSelect(
-                        conversation.id,
-                      )
-                    }
-                    className={[
-                      'w-full rounded-xl px-3 py-3 text-left transition',
-                      selectedConversationId ===
+              {filteredConversations.map(
+                conversation => {
+                  const selected =
+                    selectedConversationId ===
+                    conversation.id;
+
+                  const renaming =
+                    renamingId ===
+                    conversation.id;
+
+                  const deleting =
+                    deleteConfirmId ===
+                    conversation.id;
+
+                  const busy =
+                    busyId ===
+                    conversation.id;
+
+                  return (
+                    <div
+                      key={
                         conversation.id
-                        ? 'bg-blue-50 text-blue-950 dark:bg-blue-500/10 dark:text-white'
-                        : 'hover:bg-slate-50 dark:hover:bg-white/[0.04]',
-                    ].join(
-                      ' ',
-                    )}
-                  >
-                    <p className="truncate text-xs font-bold">
-                      {conversation.title}
-                    </p>
-                    <p className="mt-1 text-[9px] text-slate-400">
-                      {timeLabel(
-                        conversation.lastMessageAt ||
-                          conversation.updatedAt,
+                      }
+                      className={[
+                        'rounded-xl border px-2 py-2 transition',
+                        selected
+                          ? 'border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10'
+                          : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04]',
+                      ].join(
+                        ' ',
                       )}
-                    </p>
-                  </button>
-                ),
+                    >
+                      {renaming ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            value={
+                              renameDraft
+                            }
+                            maxLength={
+                              80
+                            }
+                            onChange={
+                              event =>
+                                setRenameDraft(
+                                  event.target.value,
+                                )
+                            }
+                            onKeyDown={
+                              event => {
+                                if (
+                                  event.key ===
+                                  'Enter'
+                                ) {
+                                  event.preventDefault();
+                                  void saveRename(
+                                    conversation.id,
+                                  );
+                                }
+
+                                if (
+                                  event.key ===
+                                  'Escape'
+                                ) {
+                                  cancelRename();
+                                }
+                              }
+                            }
+                            className="h-9 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-blue-500/30 dark:bg-[#11151D] dark:text-white"
+                          />
+
+                          <button
+                            type="button"
+                            aria-label="Save conversation name"
+                            disabled={
+                              busy ||
+                              !renameDraft
+                                .trim()
+                            }
+                            onClick={() =>
+                              void saveRename(
+                                conversation.id,
+                              )
+                            }
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                          >
+                            {busy ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Check className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+
+                          <button
+                            type="button"
+                            aria-label="Cancel rename"
+                            onClick={
+                              cancelRename
+                            }
+                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onSelect(
+                                conversation.id,
+                              )
+                            }
+                            className="block w-full min-w-0 px-1 py-1 text-left"
+                          >
+                            <div className="flex items-center gap-2">
+                              {conversation.pinned && (
+                                <Pin className="h-3 w-3 shrink-0 text-blue-500" />
+                              )}
+                              <p className="min-w-0 flex-1 truncate text-xs font-bold">
+                                {conversation.title}
+                              </p>
+                            </div>
+                            <p className="mt-1 pl-0.5 text-[9px] text-slate-400">
+                              {timeLabel(
+                                conversation.lastMessageAt ||
+                                  conversation.updatedAt,
+                              )}
+                            </p>
+                          </button>
+
+                          <div className="mt-1 flex items-center justify-end gap-0.5">
+                            <button
+                              type="button"
+                              title={
+                                conversation.pinned
+                                  ? 'Unpin'
+                                  : 'Pin'
+                              }
+                              aria-label={
+                                conversation.pinned
+                                  ? 'Unpin conversation'
+                                  : 'Pin conversation'
+                              }
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                void changePin(
+                                  conversation,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                            >
+                              {conversation.pinned ? (
+                                <PinOff className="h-3.5 w-3.5" />
+                              ) : (
+                                <Pin className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+
+                            <button
+                              type="button"
+                              title="Rename"
+                              aria-label="Rename conversation"
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                beginRename(
+                                  conversation,
+                                )
+                              }
+                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+
+                            <button
+                              type="button"
+                              title={
+                                deleting
+                                  ? 'Confirm delete'
+                                  : 'Delete'
+                              }
+                              aria-label={
+                                deleting
+                                  ? 'Confirm delete conversation'
+                                  : 'Delete conversation'
+                              }
+                              disabled={
+                                busy
+                              }
+                              onClick={() =>
+                                void deleteConversation(
+                                  conversation.id,
+                                )
+                              }
+                              className={[
+                                'flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-[9px] font-bold transition disabled:opacity-40',
+                                deleting
+                                  ? 'bg-rose-600 text-white hover:bg-rose-700'
+                                  : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300',
+                              ].join(
+                                ' ',
+                              )}
+                            >
+                              {busy ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                              {deleting && (
+                                <span>
+                                  Confirm
+                                </span>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                },
               )}
             </div>
           )}
