@@ -6,6 +6,7 @@ import {
 
 import type {
   SamiModuleField,
+  SamiModuleFieldPolicy,
   SamiModuleOperation,
   SamiModuleRecordPolicy,
   SamiModuleResource,
@@ -81,11 +82,23 @@ function fieldReadable(
     SamiModuleSecurityContext,
   field:
     SamiModuleField,
+  policies:
+    SamiModuleFieldPolicy[],
 ) {
-  return hasAllPermissions(
-    context,
-    field.readPermissions ||
-      [],
+  return (
+    hasAllPermissions(
+      context,
+      field.readPermissions ||
+        [],
+    ) &&
+    policies.every(
+      policy =>
+        hasAllPermissions(
+          context,
+          policy.readPermissions ||
+            [],
+        ),
+    )
   );
 }
 
@@ -94,6 +107,8 @@ function fieldWritable(
     SamiModuleSecurityContext,
   field:
     SamiModuleField,
+  policies:
+    SamiModuleFieldPolicy[],
 ) {
   if (
     field.readonly
@@ -101,10 +116,20 @@ function fieldWritable(
     return false;
   }
 
-  return hasAllPermissions(
-    context,
-    field.writePermissions ||
-      [],
+  return (
+    hasAllPermissions(
+      context,
+      field.writePermissions ||
+        [],
+    ) &&
+    policies.every(
+      policy =>
+        hasAllPermissions(
+          context,
+          policy.writePermissions ||
+            [],
+        ),
+    )
   );
 }
 
@@ -397,6 +422,35 @@ export function resolveSamiResourceAccess(
     resource.fields ||
     [];
 
+  const fieldPolicies =
+    manifest.security
+      .fieldPolicies
+      .filter(
+        policy =>
+          normalizeKey(
+            policy.resourceKey,
+          ) ===
+          normalizeKey(
+            resource.key,
+          ),
+      );
+
+  const policiesForField =
+    (
+      fieldKey:
+        string,
+    ) =>
+      fieldPolicies
+        .filter(
+          policy =>
+            normalizeKey(
+              policy.fieldKey,
+            ) ===
+            normalizeKey(
+              fieldKey,
+            ),
+        );
+
   return {
     ...base,
     allowed: true,
@@ -409,6 +463,9 @@ export function resolveSamiResourceAccess(
             fieldReadable(
               context,
               field,
+              policiesForField(
+                field.key,
+              ),
             ),
         )
         .map(
@@ -422,6 +479,9 @@ export function resolveSamiResourceAccess(
             fieldWritable(
               context,
               field,
+              policiesForField(
+                field.key,
+              ),
             ),
         )
         .map(
