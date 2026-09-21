@@ -184,7 +184,19 @@ test('Category 13: dependency apps cannot be disabled or uninstalled while requi
 
   assert.match(
     service,
-    /m\.dependencies.*?\? \$2/,
+    /getSamiModuleManifest/,
+  );
+
+  assert.match(
+    service,
+    /manifest\s*\?\.depends|manifest\s*\.depends/,
+    'Dependency protection must include code-owned manifest dependencies.',
+  );
+
+  assert.match(
+    service,
+    /row\.dependencies/,
+    'Persisted dependency metadata remains a compatibility input.',
   );
 
   assert.match(
@@ -530,43 +542,33 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
   );
 });
 
-test('Category 13: every first-party app has a schema payload and unsafe replacement SQL is guarded', async () => {
+test('Category 13: every first-party manifest has a schema payload and unsafe replacement SQL is guarded', async () => {
   const [
-    catalog,
+    manifests,
     lifecycle,
   ] =
     await Promise.all([
       source(
-        'lib/sami-apps.ts',
+        'lib/modules/first-party.ts',
       ),
       source(
         'lib/services/workspace-app-lifecycle.ts',
       ),
     ]);
 
-  const start =
-    catalog.indexOf(
-      'export const SAMI_APPS',
-    );
-
-  const end =
-    catalog.indexOf(
-      'export const APP_CATEGORIES',
-      start,
-    );
-
   const keys = [
-    ...catalog
-      .slice(
-        start,
-        end,
-      )
-      .matchAll(
-        /\bkey:\s*"([^"]+)"/g,
-      ),
+    ...manifests.matchAll(
+      /defineSamiModule\(\{\s*key:\s*"([^"]+)"/g,
+    ),
   ].map(
     match =>
       match[1],
+  );
+
+  assert.equal(
+    keys.length,
+    36,
+    'All first-party business apps must be represented by canonical manifests.',
   );
 
   const directories =
@@ -618,6 +620,12 @@ test('Category 13: every first-party app has a schema payload and unsafe replace
 
   assert.match(
     lifecycle,
+    /manifest\.schemaPath/,
+    'Install schema resolution must come from the module manifest.',
+  );
+
+  assert.match(
+    lifecycle,
     /prepareInstallSchema/,
   );
 
@@ -645,4 +653,144 @@ test('Category 13: every first-party app has a schema payload and unsafe replace
     lifecycle,
     /DROP\\s\+TABLE\\s\+IF\\s\+EXISTS/,
   );
+});
+
+
+test('Category 13: Odoo-class module manifests own dependencies, actions, views, resources, security and extension hooks', async () => {
+  const [
+    types,
+    manifests,
+    registry,
+    compatibility,
+  ] = await Promise.all([
+    source('lib/modules/types.ts'),
+    source('lib/modules/first-party.ts'),
+    source('lib/modules/registry.ts'),
+    source('lib/sami-apps.ts'),
+  ]);
+
+  for (
+    const contract
+    of [
+      'depends',
+      'optionalDepends',
+      'navigation',
+      'actions',
+      'views',
+      'resources',
+      'recordPolicies',
+      'fieldPolicies',
+      'schemaPath',
+      'migrationNamespace',
+      'automationTriggers',
+      'automationActions',
+      'aiTools',
+    ]
+  ) {
+    assert.match(
+      types,
+      new RegExp(contract),
+      `Module contract must expose ${contract}.`,
+    );
+  }
+
+  assert.match(
+    manifests,
+    /FIRST_PARTY_SAMI_MODULES/,
+  );
+
+  assert.match(
+    registry,
+    /getSamiModuleManifest/,
+  );
+
+  assert.match(
+    registry,
+    /getSamiModuleDependencyPlan/,
+  );
+
+  assert.match(
+    registry,
+    /getAccessibleSamiModuleRuntime/,
+  );
+
+  assert.match(
+    compatibility,
+    /FIRST_PARTY_SAMI_MODULES/,
+    'Legacy app catalog must be a projection from manifests, not an independent source of truth.',
+  );
+});
+
+test('Category 13: module resource security fails closed and separates CRUD, record and field policy decisions', async () => {
+  const security =
+    await source(
+      'lib/modules/security.ts',
+    );
+
+  assert.match(
+    security,
+    /resolveSamiResourceAccess/,
+  );
+
+  assert.match(
+    security,
+    /permission_denied/,
+  );
+
+  assert.match(
+    security,
+    /record_policy_denied/,
+  );
+
+  assert.match(
+    security,
+    /company_context_required/,
+  );
+
+  assert.match(
+    security,
+    /resource\.companyScoped/,
+  );
+
+  assert.match(
+    security,
+    /filterReadableSamiFields/,
+  );
+
+  assert.match(
+    security,
+    /filterWritableSamiFields/,
+  );
+
+  assert.doesNotMatch(
+    security,
+    /query\(|SELECT |INSERT |UPDATE |DELETE FROM/i,
+    'The policy engine describes authority; it must never become a generic SQL executor.',
+  );
+});
+
+test('Category 13: dashboard, search and AI app extensions share one module-runtime access filter', async () => {
+  const [
+    dashboard,
+    search,
+    ai,
+  ] = await Promise.all([
+    source('lib/dashboard/providers/index.ts'),
+    source('lib/search/registry.ts'),
+    source('lib/ai/tool-registry.ts'),
+  ]);
+
+  for (
+    const runtime
+    of [
+      dashboard,
+      search,
+      ai,
+    ]
+  ) {
+    assert.match(
+      runtime,
+      /filterAccessibleModuleExtensions/,
+    );
+  }
 });
