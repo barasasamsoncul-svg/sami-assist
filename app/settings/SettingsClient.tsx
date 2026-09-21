@@ -1138,7 +1138,7 @@ export default function SettingsClient({
           capabilities.notificationsView,
       }}
       title={pageLabel}
-      description="Personal settings and workspace administration are separated so each task is easier to understand."
+      description="Personal preferences and workspace administration, organized without mixing permissions or ownership."
       contextLabel={tenant?.name || null}
       actions={
         <button
@@ -1152,7 +1152,7 @@ export default function SettingsClient({
               ? 'Switch to light theme'
               : 'Switch to dark theme'
           }
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 disabled:opacity-60 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
+          className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] disabled:opacity-60 dark:text-slate-300"
         >
           {themeSaving ? (
             <Loader2 className="h-[18px] w-[18px] animate-spin" />
@@ -1168,7 +1168,7 @@ export default function SettingsClient({
       {allowedSections.size > 1 && (
         <nav
           aria-label="Settings sections"
-          className="mb-4 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="sami-surface mb-4 flex gap-1.5 overflow-x-auto rounded-2xl p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {SETTINGS_NAVIGATION
             .filter(
@@ -1204,8 +1204,10 @@ export default function SettingsClient({
                     }
                     className={
                       selected
-                        ? 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm dark:bg-white dark:text-slate-950'
-                        : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10'
+                        ? item.key === 'ai'
+                          ? 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 px-3.5 text-xs font-semibold text-white shadow-md shadow-indigo-500/15'
+                          : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3.5 text-xs font-semibold text-white shadow-sm dark:bg-white dark:text-slate-950'
+                        : 'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-xs font-semibold text-slate-500 transition hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                     }
                   >
                     <Icon className="h-4 w-4" />
@@ -1339,7 +1341,7 @@ function SettingsSurface({
     ReactNode;
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:border-white/10 dark:bg-white/[0.035]">
+    <section className="sami-surface min-w-0 rounded-[24px] p-4 sm:p-6">
       {children}
     </section>
   );

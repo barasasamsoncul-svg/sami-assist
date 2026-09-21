@@ -80,7 +80,7 @@ export default function WorkspaceCompanyIdentity() {
     <div
       aria-label={`Current company: ${company.name}`}
       title={company.name}
-      className="flex h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 md:px-2.5 dark:border-white/10 dark:bg-white/[0.035]"
+      className="flex h-10 min-w-0 shrink-0 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-2 shadow-[var(--sami-shadow-sm)] md:px-2.5"
     >
       <CompanyAvatar
         name={company.name}
@@ -93,7 +93,7 @@ export default function WorkspaceCompanyIdentity() {
           {company.name}
         </p>
         <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-          Current company
+          Company context
         </p>
       </div>
     </div>

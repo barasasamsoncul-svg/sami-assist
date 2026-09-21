@@ -525,7 +525,12 @@ test('Category 12: app launcher is server-fed and filters instantly without a cl
 
   assert.match(
     client,
-    /getSaMiAppIcon/,
+    /SamiAppIconTile/,
+  );
+
+  assert.match(
+    client,
+    /getSaMiAppVisual/,
   );
 
   assert.doesNotMatch(
@@ -627,7 +632,12 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
 
   assert.match(
     dashboard,
-    /getSaMiAppIcon\(\s*module\.iconKey/s,
+    /SamiAppIconTile/,
+  );
+
+  assert.match(
+    dashboard,
+    /getSaMiAppVisual/,
   );
 
   assert.match(
@@ -685,6 +695,75 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
     appsSettings,
     /maxApps|appLimit|upgrade.*app/i,
     'Paid-plan app count must not be modeled as a workspace app limit.',
+  );
+});
+
+
+
+test('Category 12: shared app visuals stay registry-driven across shell, dashboard and app workspaces', async () => {
+  const [
+    visuals,
+    tile,
+    switcher,
+    sidebar,
+    dashboard,
+    launcher,
+    entry,
+  ] = await Promise.all([
+    source('lib/apps/visual-registry.ts'),
+    source('app/components/apps/SamiAppIconTile.tsx'),
+    source('app/components/workspace/WorkspaceAppSwitcher.tsx'),
+    source('app/components/workspace/WorkspaceSidebar.tsx'),
+    source('app/dashboard/DashboardClient.tsx'),
+    source('app/apps/AppsLauncherClient.tsx'),
+    source('app/apps/[appKey]/page.tsx'),
+  ]);
+
+  assert.match(
+    visuals,
+    /export function getSaMiAppVisual/,
+  );
+
+  assert.match(
+    visuals,
+    /CATEGORY_VISUAL_KEYS/,
+    'Unknown or future apps need a category-level visual fallback.',
+  );
+
+  assert.match(
+    tile,
+    /getSaMiAppVisual/,
+  );
+
+  assert.match(
+    switcher,
+    /SamiAppIconTile/,
+  );
+
+  assert.match(
+    sidebar,
+    /getSaMiAppVisual/,
+  );
+
+  assert.match(
+    dashboard,
+    /getSaMiAppVisual/,
+  );
+
+  assert.match(
+    launcher,
+    /getSaMiAppVisual/,
+  );
+
+  assert.match(
+    entry,
+    /getSaMiAppVisual/,
+  );
+
+  assert.doesNotMatch(
+    dashboard,
+    /SAMI_APPS/,
+    'Dashboard visuals must remain driven by resolved installed modules, not a hardcoded module catalog.',
   );
 });
 

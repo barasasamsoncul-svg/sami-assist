@@ -1273,11 +1273,11 @@ export default function WorkspaceNotificationCenter({
     <div
       className={
         mode === 'page'
-          ? 'min-h-[680px] rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]'
-          : 'flex h-full flex-col bg-white dark:bg-[#0F131B]'
+          ? 'sami-surface min-h-[680px] rounded-[24px]'
+          : 'flex h-full flex-col bg-[var(--sami-surface)]'
       }
     >
-      <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4 dark:border-white/10 sm:px-5">
+      <div className="flex items-center gap-3 border-b border-[var(--sami-border)] px-4 py-4 dark:border-white/10 sm:px-5">
         <div className="min-w-0 flex-1">
           <p className="text-sm font-black tracking-tight">
             Notifications & messages
@@ -1303,7 +1303,7 @@ export default function WorkspaceNotificationCenter({
         )}
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200 px-3 py-2 dark:border-white/10">
+      <div className="flex gap-1 border-b border-[var(--sami-border)] px-3 py-2 dark:border-white/10">
         <TabButton
           active={
             tab ===
@@ -1843,7 +1843,7 @@ export default function WorkspaceNotificationCenter({
             ].join(' ')}>
               {selectedConversation ? (
                 <div className="flex h-full min-h-[430px] flex-col">
-                  <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3 dark:border-white/10">
+                  <div className="flex items-center gap-3 border-b border-[var(--sami-border)] px-4 py-3 dark:border-white/10">
                     {mode !== 'page' && (
                       <button
                         type="button"
@@ -2100,7 +2100,7 @@ export default function WorkspaceNotificationCenter({
             true,
           )
         }
-        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
       >
         <Bell className="h-4 w-4" />
 
@@ -2128,7 +2128,7 @@ export default function WorkspaceNotificationCenter({
             className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
           />
 
-          <aside className="absolute inset-y-0 right-0 w-full max-w-[520px] border-l border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0F131B]">
+          <aside className="absolute inset-y-0 right-0 w-full max-w-[520px] border-l border-[var(--sami-border)] bg-[var(--sami-surface)] shadow-[var(--sami-shadow-lg)]">
             {content}
           </aside>
         </div>

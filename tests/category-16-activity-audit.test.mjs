@@ -58,7 +58,7 @@ test('Category 16: tenant core advances additively from 1.3.0 to 1.4.0', async (
   );
 });
 
-test('Category 16: activity is company scoped while audit can safely federate selected workspace administration events', async () => {
+test('Category 16: personal Activity is user scoped while Audit can safely federate authorized workspace events', async () => {
   const service = compact(
     await source('lib/services/workspace-activity.ts'),
   );
@@ -66,6 +66,21 @@ test('Category 16: activity is company scoped while audit can safely federate se
   assert.match(
     service,
     /FROM audit_logs WHERE company_id = \$1/,
+  );
+  assert.match(
+    service,
+    /view === 'activity' \? context\.userId/,
+    'Personal Activity must force the authenticated user as the actor filter.',
+  );
+  assert.match(
+    service,
+    /\(\$4::uuid IS NULL OR user_id = \$4\)/,
+    'Tenant activity queries must support the trusted actor scope.',
+  );
+  assert.match(
+    service,
+    /\(\$2::uuid IS NULL OR user_id = \$2\)/,
+    'Activity summary must use the same authenticated-user scope.',
   );
   assert.match(
     service,
@@ -86,7 +101,7 @@ test('Category 16: activity is company scoped while audit can safely federate se
   assert.doesNotMatch(
     service,
     /ACTIVITY_VIEW_REQUIRED/,
-    'Every trusted active internal member with company access can view Activity.',
+    'Every trusted active internal member can view their own Activity.',
   );
   assert.match(
     service,
@@ -130,7 +145,7 @@ test('Category 16: UI follows a business timeline model with separate Activity a
   );
 
   assert.match(client, /dayLabel/);
-  assert.match(client, />\s*Activity\s*</);
+  assert.match(client, />\s*My Activity\s*</);
   assert.match(client, />\s*Audit\s*</);
   assert.match(client, /Search activity/);
   assert.match(client, /All outcomes/);
@@ -162,7 +177,7 @@ test('Category 16: activity appears in Workspace Tools and audit detail remains 
   assert.match(navigation, /AUDIT_VIEW/);
 
   assert.match(page, /WorkspaceActivityClient/);
-  assert.match(page, /title="Activity & Audit"/);
+  assert.match(page, /title="My Activity & Audit"/);
 });
 
 test('Core communication: every trusted active internal member can see notifications and messages without a separate view-role assignment', async () => {

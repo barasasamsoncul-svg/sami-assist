@@ -81,6 +81,12 @@ test('responsive shell: common controls stay in the top bar and page actions ref
 
   assert.match(
     shell,
+    /WorkspaceAppSwitcher/,
+    'The shared shell must keep the permission-aware app switcher available globally.',
+  );
+
+  assert.match(
+    shell,
     /flex-wrap items-center/,
   );
 
@@ -224,7 +230,7 @@ test('responsive dashboard: primary actions are a mobile-safe grid and desktop f
 
   assert.match(
     dashboard,
-    /text-xl font-black tracking-tight.*sm:text-3xl/s,
+    /text-2xl font-black tracking-\[-0\.035em\].*sm:text-3xl/s,
   );
 });
 
@@ -241,7 +247,7 @@ test('responsive settings: content uses mobile-first padding and remains horizon
 
   assert.match(
     settings,
-    /bg-white p-4 shadow-sm sm:p-6/,
+    /sami-surface min-w-0 rounded-\[24px\] p-4 sm:p-6/,
   );
 
   assert.match(

@@ -716,9 +716,19 @@ export async function listWorkspaceActivity(
       : '';
   const moduleKey = cleanKey(input.module, 150) || null;
   const resultFilter = cleanKey(input.result, 30) || null;
-  const actorUserId = input.actorUserId
-    ? requireUuid(input.actorUserId, 'actor')
-    : null;
+  /*
+   * Personal Activity is always scoped to the authenticated user.
+   *
+   * A browser-supplied actorUserId must never widen or switch this
+   * scope. Cross-user actor filtering belongs exclusively to the
+   * permission-gated Audit view.
+   */
+  const actorUserId =
+    view === 'activity'
+      ? context.userId
+      : input.actorUserId
+        ? requireUuid(input.actorUserId, 'actor')
+        : null;
   const from = normalizeDate(input.from);
   const to = normalizeDate(input.to);
 
@@ -775,9 +785,26 @@ export async function listWorkspaceActivity(
   };
 }
 
-export async function getWorkspaceActivitySummary() {
+export async function getWorkspaceActivitySummary(
+  input: {
+    view?: unknown;
+  } = {},
+) {
   const context = await resolveActivityContext();
   const pool = await getTenantPoolByTenantId(context.tenantId);
+  const view = input.view === 'audit' ? 'audit' : 'activity';
+
+  if (view === 'audit' && !context.canAudit) {
+    throw new WorkspaceActivityError(
+      'AUDIT_VIEW_REQUIRED',
+      'You do not have permission to view audit details.',
+    );
+  }
+
+  const actorUserId =
+    view === 'activity'
+      ? context.userId
+      : null;
 
   const result = await pool.query(
     `
@@ -803,11 +830,16 @@ export async function getWorkspaceActivitySummary() {
 
       FROM audit_logs
       WHERE company_id = $1
+        AND ($2::uuid IS NULL OR user_id = $2)
     `,
-    [context.companyId],
+    [
+      context.companyId,
+      actorUserId,
+    ],
   );
 
   return {
+    view,
     canAudit: context.canAudit,
     todayCount: Number(result.rows[0]?.today_count || 0),
     failed7d: Number(result.rows[0]?.failed_7d || 0),
