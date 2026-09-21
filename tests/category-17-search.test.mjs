@@ -234,7 +234,16 @@ test('Dashboard refresh: app content remains provider-driven and module-agnostic
   ]);
 
   assert.match(client, /module\.href/);
-  assert.match(client, /module\.description/);
+  assert.match(
+    client,
+    /module\.categoryLabel/,
+    'Dashboard app identity should come from permission-resolved navigation metadata.',
+  );
+  assert.match(
+    client,
+    /module\.registryKey/,
+    'Dashboard visuals should resolve from the trusted app registry identity.',
+  );
   assert.match(
     client,
     /SamiAppIconTile/,
