@@ -30,66 +30,46 @@ function compact(
   );
 }
 
-function getAppsBlock(
+function getManifestRows(
   sourceText,
 ) {
-  const start =
-    sourceText.indexOf(
-      'export const SAMI_APPS',
-    );
+  const matches = [
+    ...sourceText.matchAll(
+      /defineSamiModule\(\{\s*key:\s*"([^"]+)"[\s\S]*?icon:\s*"([^"]+)"[\s\S]*?route:\s*"([^"]+)"[\s\S]*?application:/g,
+    ),
+  ];
 
-  const end =
-    sourceText.indexOf(
-      'export const APP_CATEGORIES',
-      start,
-    );
-
-  assert.notEqual(
-    start,
-    -1,
-    'SAMI_APPS catalog must exist.',
-  );
-
-  assert.notEqual(
-    end,
-    -1,
-    'APP_CATEGORIES must follow SAMI_APPS.',
-  );
-
-  return sourceText.slice(
-    start,
-    end,
+  return matches.map(
+    match => ({
+      key: match[1],
+      icon: match[2],
+      route: match[3],
+    }),
   );
 }
 
 test('Category 12: first-party app catalog has unique stable routes and matching module schemas', async () => {
-  const catalog =
+  const manifests =
     await source(
-      'lib/sami-apps.ts',
+      'lib/modules/first-party.ts',
     );
 
-  const appsBlock =
-    getAppsBlock(
-      catalog,
+  const rows =
+    getManifestRows(
+      manifests,
     );
 
-  const keys = [
-    ...appsBlock.matchAll(
-      /\bkey:\s*"([^"]+)"/g,
-    ),
-  ].map(
-    match =>
-      match[1],
-  );
+  const keys =
+    rows.map(
+      row =>
+        row.key,
+    );
 
-  const routes = [
-    ...appsBlock.matchAll(
-      /\broute:\s*"([^"]+)"/g,
-    ),
-  ].map(
-    match =>
-      match[1],
-  );
+  const routes =
+    rows.map(
+      row =>
+        row.route,
+    );
 
   assert.ok(
     keys.length >
@@ -166,31 +146,25 @@ test('Category 12: first-party app catalog has unique stable routes and matching
 
 test('Category 12: every catalog icon resolves through one shared icon registry', async () => {
   const [
-    catalog,
+    manifests,
     icons,
   ] =
     await Promise.all([
       source(
-        'lib/sami-apps.ts',
+        'lib/modules/first-party.ts',
       ),
       source(
         'lib/apps/icon-registry.ts',
       ),
     ]);
 
-  const appsBlock =
-    getAppsBlock(
-      catalog,
+  const iconKeys =
+    getManifestRows(
+      manifests,
+    ).map(
+      row =>
+        row.icon,
     );
-
-  const iconKeys = [
-    ...appsBlock.matchAll(
-      /\bicon:\s*"([^"]+)"/g,
-    ),
-  ].map(
-    match =>
-      match[1],
-  );
 
   const registryStart =
     icons.indexOf(
@@ -257,7 +231,13 @@ test('Category 12: navigation registry owns canonical aliases, metadata and safe
 
   assert.match(
     registry,
-    /APP_BY_KEY/,
+    /getSamiModuleManifest/,
+    'Navigation identity must resolve from the canonical module manifest runtime.',
+  );
+
+  assert.match(
+    registry,
+    /FIRST_PARTY_SAMI_MODULES/,
   );
 
   assert.match(
@@ -289,7 +269,7 @@ test('Category 12: navigation registry owns canonical aliases, metadata and safe
 
   assert.match(
     registry,
-    /registered\?\.route/,
+    /manifest\?\.route/,
   );
 
   assert.match(
@@ -299,7 +279,7 @@ test('Category 12: navigation registry owns canonical aliases, metadata and safe
 
   assert.match(
     registry,
-    /registered: Boolean\( registered, \)/,
+    /registered: Boolean\( manifest, \)/,
   );
 
   assert.match(
@@ -695,7 +675,12 @@ test('Category 12: dashboard and Settings share app identity while Settings expo
 
   assert.match(
     appsSettings,
-    /getSaMiAppIcon/,
+    /SamiAppIconTile/,
+  );
+
+  assert.match(
+    appsSettings,
+    /getSaMiAppVisual/,
   );
 
   assert.doesNotMatch(
