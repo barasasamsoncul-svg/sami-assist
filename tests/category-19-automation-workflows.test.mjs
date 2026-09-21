@@ -740,6 +740,23 @@ test('Category 19: scheduled and retry workers revalidate live authority and use
     /windowNumber/,
     'Tenant batches must rotate instead of permanently favoring the first workspaces.',
   );
+  assert.match(
+    worker,
+    /NOT EXISTS \([\s\S]*automation_runs/,
+    'Scheduled workflows must not overlap an existing running, approval-waiting, or retry-waiting run.',
+  );
+  assert.match(
+    worker,
+    /expireApprovalsForTenant/,
+  );
+  assert.match(
+    worker,
+    /status =\s*'expired'/,
+  );
+  assert.match(
+    worker,
+    /status =\s*'cancelled'/,
+  );
 
   assert.match(
     registry,
@@ -833,6 +850,38 @@ test('Category 19: schedule definitions are bounded and human approvals do not g
   assert.match(
     service,
     /automation_schedules/,
+  );
+});
+
+test('Category 19: internal worker configuration is documented without becoming workspace UI', async () => {
+  const doc =
+    await source(
+      'docs/automation-runtime.md',
+    );
+
+  assert.match(
+    doc,
+    /SAMI_AUTOMATION_WORKER_ENABLED/,
+  );
+  assert.match(
+    doc,
+    /SAMI_AUTOMATION_WORKER_SECRET/,
+  );
+  assert.match(
+    doc,
+    /GET \/api\/internal\/automation\/tick/,
+  );
+  assert.match(
+    doc,
+    /accepts no tenant, workspace, company, user, action, SQL, or workflow selector/i,
+  );
+  assert.match(
+    doc,
+    /active_version/,
+  );
+  assert.match(
+    doc,
+    /latest_version/,
   );
 });
 
