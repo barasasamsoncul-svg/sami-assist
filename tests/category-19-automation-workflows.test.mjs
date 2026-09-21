@@ -121,6 +121,22 @@ test('Category 19: tenant core advances additively from 1.5.0 to 1.6.0', async (
   );
   assert.match(
     migration,
+    /lease_token/,
+  );
+  assert.match(
+    migration,
+    /run_as_user_id/,
+  );
+  assert.match(
+    migration,
+    /interval_seconds/,
+  );
+  assert.match(
+    migration,
+    /schedule_kind/,
+  );
+  assert.match(
+    migration,
     /VALUES \('1\.6\.0'/,
   );
   assert.match(
@@ -360,11 +376,19 @@ test('Category 19: saving a draft version never silently changes the active vers
   );
 });
 
-test('Category 19: manual runs are durable, idempotent, auditable and fail closed on unavailable actions', async () => {
-  const service =
-    await source(
-      'lib/services/workspace-automation.ts',
-    );
+test('Category 19: manual, scheduled, approval and retry paths share one durable execution engine', async () => {
+  const [
+    service,
+    engine,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-automation.ts',
+      ),
+      source(
+        'lib/automation/execution-engine.ts',
+      ),
+    ]);
 
   assert.match(
     service,
@@ -372,51 +396,69 @@ test('Category 19: manual runs are durable, idempotent, auditable and fail close
   );
   assert.match(
     service,
+    /startAutomationRun/,
+  );
+  assert.match(
+    service,
+    /resolveWorkspaceAutomationApproval/,
+  );
+  assert.match(
+    service,
+    /resumeAutomationRun/,
+  );
+
+  assert.match(
+    engine,
     /INSERT INTO automation_events/,
   );
   assert.match(
-    service,
+    engine,
     /INSERT INTO automation_runs/,
   );
   assert.match(
-    service,
+    engine,
     /INSERT INTO automation_run_steps/,
   );
   assert.match(
-    service,
+    engine,
     /INSERT INTO automation_approvals/,
   );
   assert.match(
-    service,
+    engine,
     /getAccessibleAutomationAction/,
   );
   assert.match(
-    service,
+    engine,
     /getAutomationActionHandler/,
   );
   assert.match(
-    service,
-    /AUTOMATION_ACTION_UNAVAILABLE/,
+    engine,
+    /ACTION_UNAVAILABLE/,
   );
   assert.match(
-    service,
+    engine,
     /idempotencyKey/,
   );
   assert.match(
-    service,
+    engine,
     /correlationId/,
   );
   assert.match(
-    service,
+    engine,
     /next_retry_at/,
   );
   assert.match(
-    service,
-    /recordAutomationAudit/,
+    engine,
+    /lease_until/,
+  );
+  assert.match(
+    engine,
+    /resumeAutomationRun/,
   );
 
   assert.doesNotMatch(
-    service,
+    service +
+      engine,
     /rawSql|executeSql|eval\(|new Function|puppeteer|playwright/i,
   );
 });
@@ -426,6 +468,7 @@ test('Category 19: browser APIs are narrow, same-origin protected and no-cache',
     helper,
     collection,
     item,
+    approval,
   ] =
     await Promise.all([
       source(
@@ -436,6 +479,9 @@ test('Category 19: browser APIs are narrow, same-origin protected and no-cache',
       ),
       source(
         'app/api/workspace/automation/[workflowId]/route.ts',
+      ),
+      source(
+        'app/api/workspace/automation/approvals/[approvalId]/route.ts',
       ),
     ]);
 
@@ -485,10 +531,19 @@ test('Category 19: browser APIs are narrow, same-origin protected and no-cache',
     item,
     /rejectAutomationCrossOrigin/,
   );
+  assert.match(
+    approval,
+    /resolveWorkspaceAutomationApproval/,
+  );
+  assert.match(
+    approval,
+    /rejectAutomationCrossOrigin/,
+  );
 
   assert.doesNotMatch(
     collection +
-      item,
+      item +
+      approval,
     /queryControl|getTenantPool|rawSql|executeSql|toolName\s*:/i,
   );
 });
@@ -554,6 +609,18 @@ test('Category 19: Automation UI is permission-aware, module-agnostic and mobile
   );
   assert.match(
     client,
+    /Pending approvals/,
+  );
+  assert.match(
+    client,
+    /Repeat every \(minutes\)/,
+  );
+  assert.match(
+    client,
+    /approvalDecision/,
+  );
+  assert.match(
+    client,
     /Structured comparisons only/,
   );
   assert.match(
@@ -586,6 +653,186 @@ test('Category 19: Automation UI is permission-aware, module-agnostic and mobile
   assert.match(
     search,
     /href:\s*['"]\/automation['"]/,
+  );
+});
+
+test('Category 19: scheduled and retry workers revalidate live authority and use leases', async () => {
+  const [
+    worker,
+    workerContext,
+    registry,
+    internalRoute,
+  ] =
+    await Promise.all([
+      source(
+        'lib/automation/worker.ts',
+      ),
+      source(
+        'lib/automation/worker-context.ts',
+      ),
+      source(
+        'lib/automation/registry.ts',
+      ),
+      source(
+        'app/api/internal/automation/tick/route.ts',
+      ),
+    ]);
+
+  assert.match(
+    workerContext,
+    /resolvePermissionContext/,
+  );
+  assert.match(
+    workerContext,
+    /requireCompanyAccess/,
+  );
+  assert.match(
+    workerContext,
+    /AUTOMATION_MANAGE/,
+  );
+  assert.match(
+    workerContext,
+    /resolveWorkspaceShellAccess/,
+  );
+  assert.match(
+    workerContext,
+    /accessibleModuleKeys/,
+  );
+
+  assert.match(
+    worker,
+    /FOR UPDATE[\s\S]*SKIP LOCKED/,
+  );
+  assert.match(
+    worker,
+    /lease_token/,
+  );
+  assert.match(
+    worker,
+    /lease_until/,
+  );
+  assert.match(
+    worker,
+    /runDueSchedulesForTenant/,
+  );
+  assert.match(
+    worker,
+    /runDueRetriesForTenant/,
+  );
+  assert.match(
+    worker,
+    /resolveAutomationWorkerRuntime/,
+  );
+  assert.match(
+    worker,
+    /startAutomationRun/,
+  );
+  assert.match(
+    worker,
+    /resumeAutomationRun/,
+  );
+  assert.match(
+    worker,
+    /schedule:\$\{workflowId\}:\$\{scheduledFor\}/,
+  );
+  assert.match(
+    worker,
+    /windowNumber/,
+    'Tenant batches must rotate instead of permanently favoring the first workspaces.',
+  );
+
+  assert.match(
+    registry,
+    /SAMI_AUTOMATION_WORKER_ENABLED/,
+  );
+  assert.match(
+    registry,
+    /core\.schedule/,
+  );
+
+  assert.match(
+    internalRoute,
+    /SAMI_AUTOMATION_WORKER_SECRET/,
+  );
+  assert.match(
+    internalRoute,
+    /CRON_SECRET/,
+  );
+  assert.match(
+    internalRoute,
+    /authorization/,
+  );
+  assert.match(
+    internalRoute,
+    /isAutomationWorkerEnabled/,
+  );
+  assert.doesNotMatch(
+    internalRoute,
+    /tenantId|workspaceId|companyId/,
+    'The internal worker endpoint must never accept a browser-selected workspace/company target.',
+  );
+});
+
+test('Category 19: schedule definitions are bounded and human approvals do not grant business authority', async () => {
+  const [
+    definition,
+    registry,
+    service,
+  ] =
+    await Promise.all([
+      source(
+        'lib/automation/definition.ts',
+      ),
+      source(
+        'lib/automation/registry.ts',
+      ),
+      source(
+        'lib/services/workspace-automation.ts',
+      ),
+    ]);
+
+  assert.match(
+    definition,
+    /intervalMinutes/,
+  );
+  assert.match(
+    definition,
+    /43_200/,
+  );
+  assert.match(
+    definition,
+    /Intl\.DateTimeFormat/,
+  );
+  assert.doesNotMatch(
+    definition,
+    /cron-parser|eval\(|new Function/,
+  );
+
+  assert.match(
+    registry,
+    /approvalPolicy:\s*['"]optional['"]/,
+  );
+
+  assert.match(
+    service,
+    /AUTOMATION_APPROVAL_PERMISSION_REQUIRED/,
+  );
+  assert.match(
+    service,
+    /requiredPermissions\.every/,
+  );
+  assert.match(
+    service,
+    /resolveAutomationWorkerRuntime/,
+    'Approval must resume under the original run-as user live authority.',
+  );
+  assert.match(
+    service,
+    /run_as_user_id/,
+  );
+  assert.match(
+    service,
+    /automation_schedules/,
   );
 });
 
