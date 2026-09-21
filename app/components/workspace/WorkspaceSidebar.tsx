@@ -3271,27 +3271,6 @@ export default function WorkspaceSidebar({
                   />
 
 
-                  {canUseAi && (
-                    <ChildNavLink
-                      href="/settings?tab=ai"
-                      icon={
-                        Bot
-                      }
-                      label="SaMi AI"
-                      active={
-                        pathname ===
-                          '/settings' &&
-                        searchParams.get(
-                          'tab',
-                        ) ===
-                          'ai'
-                      }
-                      onNavigate={
-                        onClose
-                      }
-                    />
-                  )}
-
                 </div>
 
 
