@@ -398,17 +398,31 @@ test('Category 18: tenant schema advances additively from 1.4.0 to 1.5.0', async
     /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.5\.0['"]/s,
   );
   assert.match(manifest, /core-1\.4\.0-to-1\.5\.0/);
+  assert.match(
+    manifest,
+    /fromVersion:\s*['"]1\.4\.0['"]/,
+  );
+  assert.match(
+    manifest,
+    /toVersion:\s*['"]1\.5\.0['"]/,
+  );
+  assert.match(
+    manifest,
+    /005-core-1\.4\.0-to-1\.5\.0\.sql/,
+  );
 
   assert.doesNotMatch(
     migration,
-    /DROP\s+TABLE|TRUNCATE\s+TABLE|DELETE\s+FROM/i,
+    /DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE|DELETE\s+FROM/i,
   );
 
   assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_preferences/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_runs/);
   assert.match(migration, /ALTER TABLE ai_memory/);
-  assert.match(migration, /DO \$\$[\s\S]*END \$\$;/);
-  assert.doesNotMatch(migration, /DO \$\nBEGIN/);
+  assert.match(
+    migration,
+    /DROP TRIGGER IF EXISTS trg_ai_preferences_updated_at[\s\S]*CREATE TRIGGER trg_ai_preferences_updated_at/,
+  );
   assert.match(migration, /VALUES \('1\.5\.0'/);
 
   assert.match(core, /VALUES \('1\.5\.0'\)/);
