@@ -3,13 +3,64 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f5f7fb;
-  --foreground: #171717;
+  --background: #f4f5f7;
+  --foreground: #172033;
+
+  --sami-canvas: #f4f5f7;
+  --sami-surface: #ffffff;
+  --sami-surface-soft: #f8f9fb;
+  --sami-surface-raised: #ffffff;
+  --sami-sidebar: #f8f9fb;
+  --sami-topbar: rgba(255, 255, 255, 0.92);
+
+  --sami-border: #e3e6eb;
+  --sami-border-strong: #d4d9e1;
+  --sami-muted: #667085;
+  --sami-subtle: #98a2b3;
+
+  --sami-brand: #3157d5;
+  --sami-brand-strong: #2346bd;
+  --sami-ai: #5b5bd6;
+  --sami-ai-strong: #3949ab;
+
+  --sami-shadow-sm:
+    0 1px 2px rgba(16, 24, 40, 0.04),
+    0 1px 3px rgba(16, 24, 40, 0.03);
+  --sami-shadow-md:
+    0 12px 30px rgba(16, 24, 40, 0.07),
+    0 2px 8px rgba(16, 24, 40, 0.04);
+  --sami-shadow-lg:
+    0 24px 60px rgba(16, 24, 40, 0.12),
+    0 6px 18px rgba(16, 24, 40, 0.06);
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #0b0d12;
+  --foreground: #f4f6fb;
+
+  --sami-canvas: #0b0d12;
+  --sami-surface: #11141a;
+  --sami-surface-soft: #151920;
+  --sami-surface-raised: #181c24;
+  --sami-sidebar: #0f1218;
+  --sami-topbar: rgba(15, 18, 24, 0.92);
+
+  --sami-border: rgba(255, 255, 255, 0.08);
+  --sami-border-strong: rgba(255, 255, 255, 0.14);
+  --sami-muted: #a6adbb;
+  --sami-subtle: #737b8c;
+
+  --sami-brand: #6f8cff;
+  --sami-brand-strong: #89a0ff;
+  --sami-ai: #8c8cff;
+  --sami-ai-strong: #a2a2ff;
+
+  --sami-shadow-sm:
+    0 1px 2px rgba(0, 0, 0, 0.18);
+  --sami-shadow-md:
+    0 16px 36px rgba(0, 0, 0, 0.28);
+  --sami-shadow-lg:
+    0 28px 70px rgba(0, 0, 0, 0.38);
 }
 
 @theme inline {
@@ -40,6 +91,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family:
+    Inter,
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -61,7 +113,101 @@ a {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--sami-brand) 75%, transparent);
+  outline-offset: 2px;
+}
+
 img,
 svg {
   max-width: 100%;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--sami-brand) 22%, transparent);
+}
+
+.sami-canvas {
+  background: var(--sami-canvas);
+}
+
+.sami-surface {
+  border: 1px solid var(--sami-border);
+  background: var(--sami-surface);
+  box-shadow: var(--sami-shadow-sm);
+}
+
+.sami-surface-raised {
+  border: 1px solid var(--sami-border);
+  background: var(--sami-surface-raised);
+  box-shadow: var(--sami-shadow-md);
+}
+
+.sami-soft-surface {
+  border: 1px solid var(--sami-border);
+  background: var(--sami-surface-soft);
+}
+
+.sami-ai-sheen {
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(91, 91, 214, 0.17),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 15%,
+      rgba(49, 87, 213, 0.13),
+      transparent 30%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.93),
+      rgba(248, 249, 255, 0.9)
+    );
+}
+
+.dark .sami-ai-sheen {
+  background:
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(140, 140, 255, 0.16),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 15%,
+      rgba(111, 140, 255, 0.11),
+      transparent 30%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(18, 22, 30, 0.96),
+      rgba(15, 18, 25, 0.94)
+    );
+}
+
+.sami-scrollbar {
+  scrollbar-color:
+    color-mix(in srgb, var(--sami-subtle) 45%, transparent)
+    transparent;
+  scrollbar-width: thin;
+}
+
+.sami-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.sami-scrollbar::-webkit-scrollbar-thumb {
+  background:
+    color-mix(in srgb, var(--sami-subtle) 45%, transparent);
+  border-radius: 999px;
+}
+
+.sami-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
 }
