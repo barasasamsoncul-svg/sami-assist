@@ -626,6 +626,18 @@ test('Category 13: every first-party manifest has a schema payload and unsafe re
 
   assert.match(
     lifecycle,
+    /expectedPrefix/,
+    'Manifest-owned schema files must remain inside their registered module directory.',
+  );
+
+  assert.match(
+    lifecycle,
+    /path\.join\(\s*process\.cwd\(\),\s*'lib',\s*'apps',\s*manifest\.key,/s,
+    'Filesystem tracing must stay statically scoped to lib/apps instead of tracing the whole project.',
+  );
+
+  assert.match(
+    lifecycle,
     /prepareInstallSchema/,
   );
 
