@@ -1,5 +1,9 @@
 'use client';
 
+import {
+  useSaMiTheme,
+} from '@/app/components/useSaMiTheme';
+
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -39,9 +43,6 @@ import {
 
 const SELECTED_APPS_STORAGE_KEY =
   'sami_selected_apps';
-
-const THEME_STORAGE_KEY =
-  'sami_theme';
 
 const NEXT_ROUTE =
   '/select-plan';
@@ -447,8 +448,10 @@ function saveSelectedApps(
 export default function SelectAppsPage() {
   const router = useRouter();
 
-  const [darkMode, setDarkMode] =
-    useState(false);
+  const {
+    darkMode,
+    toggleTheme,
+  } = useSaMiTheme();
 
   const [
     selectedApps,
@@ -472,68 +475,6 @@ export default function SelectAppsPage() {
     useState<OverlayState | null>(
       null
     );
-
-  /* ==========================================================
-     THEME
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      const storedTheme =
-        localStorage.getItem(
-          THEME_STORAGE_KEY
-        );
-
-      const systemDark =
-        window.matchMedia?.(
-          '(prefers-color-scheme: dark)'
-        ).matches ?? false;
-
-      const shouldUseDark =
-        storedTheme === 'dark' ||
-        (!storedTheme &&
-          systemDark);
-
-      setDarkMode(
-        shouldUseDark
-      );
-
-      document.documentElement.classList.toggle(
-        'dark',
-        shouldUseDark
-      );
-    } catch {
-      // Theme still works without storage.
-    }
-  }, []);
-
-  const toggleTheme =
-    useCallback(() => {
-      setDarkMode(
-        (current) => {
-          const next =
-            !current;
-
-          document.documentElement.classList.toggle(
-            'dark',
-            next
-          );
-
-          try {
-            localStorage.setItem(
-              THEME_STORAGE_KEY,
-              next
-                ? 'dark'
-                : 'light'
-            );
-          } catch {
-            // Ignore storage errors.
-          }
-
-          return next;
-        }
-      );
-    }, []);
 
   /* ==========================================================
      RESTORE APP SELECTION
