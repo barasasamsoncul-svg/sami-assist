@@ -155,6 +155,11 @@ test('Category 18: future app AI tools are code-owned and filtered by installed 
   assert.match(registry, /SamiAiToolDefinition/);
   assert.match(registry, /accessibleModuleKeys/);
   assert.match(registry, /moduleIsAccessible/);
+  assert.match(
+    registry,
+    /filterAccessibleModuleExtensions/,
+    'App AI tools must pass through the same code-owned module runtime as navigation, search and dashboard extensions.',
+  );
 
   assert.doesNotMatch(
     registry,
@@ -473,7 +478,10 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(aiSidebar, /Collapse sidebar/);
   assert.match(aiSidebar, /Expand sidebar/);
   assert.match(aiSidebar, /New chat/);
-  assert.match(client, /Export/);
+  assert.match(client, /Export conversation/);
+  assert.match(client, /How can I help\?/);
+  assert.match(client, /rounded-\[28px\]/);
+  assert.match(client, /max-w-3xl/);
 
   const service = await source('lib/services/workspace-ai.ts');
   assert.match(service, /mode === 'edit'/);
