@@ -455,52 +455,56 @@ export async function getWorkspaceAutomationState() {
     );
 
   const approvals =
-    await pool.query(
-      `
-        SELECT
-          a.id,
-          a.run_id,
-          a.step_id,
-          a.status,
-          a.required_permissions,
-          a.requested_at,
-          a.expires_at,
-          w.id
-            AS workflow_id,
-          w.name
-            AS workflow_name,
-          s.step_key,
-          s.action_key,
-          s.action_module
-        FROM automation_approvals a
-        INNER JOIN automation_runs r
-          ON r.id =
-             a.run_id
-        INNER JOIN automation_workflows w
-          ON w.id =
-             r.workflow_id
-        INNER JOIN automation_run_steps s
-          ON s.id =
-             a.step_id
-        WHERE a.company_id = $1
-          AND a.status =
-              'pending'
-          AND (
-            a.expires_at
-              IS NULL
-            OR a.expires_at >
-               NOW()
-          )
-        ORDER BY
-          a.requested_at ASC,
-          a.id ASC
-        LIMIT 50
-      `,
-      [
-        context.runtime
-          .companyId,
-      ],
-    );
+    context.canManage
+      ? await pool.query(
+          `
+            SELECT
+              a.id,
+              a.run_id,
+              a.step_id,
+              a.status,
+              a.required_permissions,
+              a.requested_at,
+              a.expires_at,
+              w.id
+                AS workflow_id,
+              w.name
+                AS workflow_name,
+              s.step_key,
+              s.action_key,
+              s.action_module
+            FROM automation_approvals a
+            INNER JOIN automation_runs r
+              ON r.id =
+                 a.run_id
+            INNER JOIN automation_workflows w
+              ON w.id =
+                 r.workflow_id
+            INNER JOIN automation_run_steps s
+              ON s.id =
+                 a.step_id
+            WHERE a.company_id = $1
+              AND a.status =
+                  'pending'
+              AND (
+                a.expires_at
+                  IS NULL
+                OR a.expires_at >
+                   NOW()
+              )
+            ORDER BY
+              a.requested_at ASC,
+              a.id ASC
+            LIMIT 50
+          `,
+          [
+            context.runtime
+              .companyId,
+          ],
+        )
+      : {
+          rows: [],
+        };
 
   return {
     canManage:
