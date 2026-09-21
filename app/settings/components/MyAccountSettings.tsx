@@ -588,39 +588,6 @@ export default function MyAccountSettings() {
       );
   }, [resendSeconds]);
 
-  useEffect(() => {
-    if (
-      preferences.theme !==
-      'system'
-    ) {
-      return;
-    }
-
-    const media =
-      window.matchMedia(
-        '(prefers-color-scheme: dark)'
-      );
-
-    const sync =
-      () =>
-        applyTheme(
-          'system'
-        );
-
-    media.addEventListener?.(
-      'change',
-      sync
-    );
-
-    return () =>
-      media.removeEventListener?.(
-        'change',
-        sync
-      );
-  }, [
-    preferences.theme,
-  ]);
-
   async function uploadAvatar(
     file: File | null
   ) {
