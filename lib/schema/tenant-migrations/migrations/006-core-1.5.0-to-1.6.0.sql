@@ -24,8 +24,14 @@ CREATE TABLE IF NOT EXISTS automation_workflows (
             )
         ),
 
-    current_version INTEGER NOT NULL DEFAULT 0
-        CHECK (current_version >= 0),
+    latest_version INTEGER NOT NULL DEFAULT 0
+        CHECK (latest_version >= 0),
+
+    active_version INTEGER
+        CHECK (
+            active_version IS NULL OR
+            active_version > 0
+        ),
 
     created_by UUID NOT NULL,
     updated_by UUID NOT NULL,
