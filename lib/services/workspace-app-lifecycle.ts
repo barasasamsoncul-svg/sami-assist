@@ -468,12 +468,66 @@ async function readAppSchema(
     );
   }
 
+  const normalizedManifestPath =
+    manifest.schemaPath
+      .replace(
+        /\\/g,
+        '/',
+      )
+      .replace(
+        /^\.\//,
+        '',
+      );
+
+  const expectedPrefix =
+    `lib/apps/${manifest.key}/`;
+
+  if (
+    !normalizedManifestPath.startsWith(
+      expectedPrefix,
+    ) ||
+    normalizedManifestPath.includes(
+      '..',
+    )
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_UNSAFE',
+      'This app manifest points outside its registered module directory.',
+    );
+  }
+
+  const schemaFileName =
+    path.posix.basename(
+      normalizedManifestPath,
+    );
+
+  if (
+    !schemaFileName ||
+    !schemaFileName.endsWith(
+      '.sql',
+    )
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_MISSING',
+      'This app manifest does not declare a valid SQL install schema.',
+    );
+  }
+
+  /*
+   * Keep the filesystem trace statically scoped to lib/apps/<module>.
+   *
+   * A fully dynamic path.join(process.cwd(), ...manifestPathSegments)
+   * makes Turbopack/NFT conservatively trace the whole project. The
+   * manifest remains the canonical declaration, but code-owned module
+   * identity constrains where the file may be read from.
+   */
   const schemaPath =
     path.join(
       process.cwd(),
-      ...manifest.schemaPath
-        .split('/')
-        .filter(Boolean),
+      'lib',
+      'apps',
+      manifest.key,
+      schemaFileName,
     );
 
   try {
