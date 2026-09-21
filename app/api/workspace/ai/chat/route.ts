@@ -41,6 +41,12 @@ export async function POST(
           body?.conversationId,
         message:
           body?.message,
+        mode:
+          body?.mode,
+        targetMessageId:
+          body?.targetMessageId,
+        signal:
+          request.signal,
       });
 
     return aiJson({
