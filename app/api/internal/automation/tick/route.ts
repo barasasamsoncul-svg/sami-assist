@@ -7,6 +7,10 @@ import {
   runAutomationWorkerTick,
 } from '@/lib/automation/worker';
 
+import {
+  isAutomationWorkerEnabled,
+} from '@/lib/automation/registry';
+
 export const runtime =
   'nodejs';
 
@@ -81,6 +85,7 @@ export async function GET(
     NextRequest,
 ) {
   if (
+    !isAutomationWorkerEnabled() ||
     !configuredSecret()
   ) {
     return response(
