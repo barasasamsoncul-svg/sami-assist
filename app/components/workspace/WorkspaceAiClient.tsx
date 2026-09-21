@@ -24,6 +24,8 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   TriangleAlert,
   X,
@@ -62,6 +64,10 @@ type Message = {
   provider: string | null;
   model: string | null;
   correlationId: string | null;
+  feedback:
+    | 'up'
+    | 'down'
+    | null;
   createdAt: string | null;
 };
 
@@ -895,6 +901,112 @@ export default function WorkspaceAiClient({
     }
   }
 
+  async function setMessageFeedback(
+    message:
+      Message,
+    feedback:
+      | 'up'
+      | 'down',
+  ) {
+    if (
+      message.role !==
+        'assistant'
+    ) {
+      return;
+    }
+
+    const previous =
+      message.feedback;
+
+    const next =
+      previous ===
+        feedback
+        ? null
+        : feedback;
+
+    setMessages(
+      current =>
+        current.map(
+          item =>
+            item.id ===
+              message.id
+              ? {
+                  ...item,
+                  feedback:
+                    next,
+                }
+              : item,
+        ),
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/ai/messages/' +
+            encodeURIComponent(
+              message.id,
+            ) +
+            '/feedback',
+          {
+            method: 'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                feedback:
+                  next,
+              }),
+          },
+        );
+
+      const data =
+        await readJson(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'Response feedback could not be saved.',
+        );
+      }
+    } catch (
+      candidate
+    ) {
+      setMessages(
+        current =>
+          current.map(
+            item =>
+              item.id ===
+                message.id
+                ? {
+                    ...item,
+                    feedback:
+                      previous,
+                  }
+                : item,
+          ),
+      );
+
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'Response feedback could not be saved.',
+      );
+    }
+  }
+
   function stopGenerating() {
     abortControllerRef
       .current
@@ -1427,6 +1539,13 @@ export default function WorkspaceAiClient({
                             message.id,
                           )
                         }
+                        onFeedback={
+                          feedback =>
+                            void setMessageFeedback(
+                              message,
+                              feedback,
+                            )
+                        }
                       />
                     ),
                   )}
@@ -1696,6 +1815,7 @@ function MessageBubble({
   onCopy,
   onEdit,
   onRegenerate,
+  onFeedback,
 }: {
   message:
     Message;
@@ -1711,6 +1831,12 @@ function MessageBubble({
     () => void;
   onRegenerate:
     () => void;
+  onFeedback:
+    (
+      feedback:
+        | 'up'
+        | 'down',
+    ) => void;
 }) {
   const assistant =
     message.role ===
@@ -1807,6 +1933,48 @@ function MessageBubble({
             />
           )}
 
+          {assistant && (
+            <>
+              <MessageAction
+                label="Helpful"
+                active={
+                  message.feedback ===
+                  'up'
+                }
+                disabled={
+                  disabled
+                }
+                onClick={() =>
+                  onFeedback(
+                    'up',
+                  )
+                }
+                icon={
+                  ThumbsUp
+                }
+              />
+
+              <MessageAction
+                label="Not helpful"
+                active={
+                  message.feedback ===
+                  'down'
+                }
+                disabled={
+                  disabled
+                }
+                onClick={() =>
+                  onFeedback(
+                    'down',
+                  )
+                }
+                icon={
+                  ThumbsDown
+                }
+              />
+            </>
+          )}
+
           {assistant &&
             canRegenerate && (
             <MessageAction
@@ -1833,6 +2001,7 @@ function MessageAction({
   disabled,
   onClick,
   icon: Icon,
+  active = false,
 }: {
   label:
     string;
@@ -1842,6 +2011,8 @@ function MessageAction({
     () => void;
   icon:
     typeof Copy;
+  active?:
+    boolean;
 }) {
   return (
     <button
@@ -1858,7 +2029,14 @@ function MessageAction({
       onClick={
         onClick
       }
-      className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
+      className={[
+        'inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-[9px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40',
+        active
+          ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300'
+          : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-white/10 dark:hover:text-slate-200',
+      ].join(
+        ' ',
+      )}
     >
       <Icon className="h-3.5 w-3.5" />
       <span className="hidden sm:inline">
