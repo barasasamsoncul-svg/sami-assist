@@ -794,3 +794,55 @@ test('Category 13: dashboard, search and AI app extensions share one module-runt
     );
   }
 });
+
+
+test('Category 13: module registry validates dependency, action, view, resource and policy references at load time', async () => {
+  const [
+    validation,
+    registry,
+  ] = await Promise.all([
+    source('lib/modules/validation.ts'),
+    source('lib/modules/registry.ts'),
+  ]);
+
+  assert.match(
+    validation,
+    /assertValidSamiModuleManifests/,
+  );
+
+  assert.match(
+    validation,
+    /cannot depend on itself/,
+  );
+
+  assert.match(
+    validation,
+    /depends on unknown module/,
+  );
+
+  assert.match(
+    validation,
+    /references unknown action/,
+  );
+
+  assert.match(
+    validation,
+    /references unknown view/,
+  );
+
+  assert.match(
+    validation,
+    /references unknown resource/,
+  );
+
+  assert.match(
+    validation,
+    /references unknown field/,
+  );
+
+  assert.match(
+    registry,
+    /assertValidSamiModuleManifests\(\s*FIRST_PARTY_SAMI_MODULES/s,
+    'Invalid first-party manifests must fail when the canonical registry loads.',
+  );
+});
