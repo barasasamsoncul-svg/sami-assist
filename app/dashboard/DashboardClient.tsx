@@ -272,10 +272,6 @@ export default function DashboardClient({
                 'failed' &&
               module.status !==
                 'uninstalled',
-          )
-          .slice(
-            0,
-            8,
           ),
       [
         modules,
@@ -348,8 +344,8 @@ export default function DashboardClient({
       unreadNotifications={
         unreadNotifications
       }
-      title="Dashboard"
-      description="Your AI-powered operating view across the current company, installed apps and personal work."
+      title="Home"
+      description="Open an app or ask SaMi to work across the business capabilities available to you."
       contextLabel={
         company
           ?.currentCompany
@@ -359,334 +355,326 @@ export default function DashboardClient({
       }
       contentClassName="max-w-[1540px]"
     >
-      <div className="space-y-4 sm:space-y-5">
-        <section className="sami-ai-sheen overflow-hidden rounded-[30px] border border-[var(--sami-border)] shadow-[var(--sami-shadow-md)]">
-          <div className="grid gap-4 p-4 sm:gap-5 sm:p-6 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-center">
+      <div className="space-y-6 sm:space-y-7">
+        <section className="sami-ai-sheen relative overflow-hidden rounded-[28px] border border-[var(--sami-border)] p-4 shadow-[var(--sami-shadow-sm)] sm:p-5">
+          <div className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl" />
+
+          <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200/70 bg-white/70 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] text-indigo-700 shadow-sm backdrop-blur dark:border-indigo-500/20 dark:bg-white/[0.05] dark:text-indigo-300">
-                <Sparkles className="h-3 w-3" />
-                {greeting()}, {firstName}
+              <div className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600 dark:text-indigo-300">
+                <Sparkles className="h-3.5 w-3.5" />
+                SaMi AI
               </div>
 
-              <h1 className="mt-3 max-w-3xl text-2xl font-black tracking-[-0.035em] text-slate-950 sm:text-3xl dark:text-white">
-                {dashboard
-                  .brief.title}
+              <h1 className="mt-2 text-xl font-black tracking-[-0.03em] text-slate-950 sm:text-2xl dark:text-white">
+                {greeting()}, {firstName}
               </h1>
 
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {dashboard
-                  .brief.message}
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500 sm:text-sm dark:text-slate-400">
+                {dashboard.brief.message}
               </p>
-
-              <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-                <Link
-                  href="/search"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                >
-                  <Search className="h-4 w-4" />
-                  Search workspace
-                </Link>
-
-                {capabilities.ai && (
-                  <Link
-                    href="/ai"
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-600 to-blue-600 px-4 text-xs font-bold text-white shadow-md shadow-indigo-500/15 transition hover:-translate-y-px hover:shadow-lg dark:border-indigo-500/20"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    Ask SaMi
-                  </Link>
-                )}
-
-                <Link
-                  href="/activity"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
-                >
-                  <Activity className="h-4 w-4" />
-                  My activity
-                </Link>
-
-                <Link
-                  href="/notifications"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-bold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
-                >
-                  <Bell className="h-4 w-4" />
-                  Messages
-                </Link>
-              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
-              <HomeStat
-                icon={
-                  LayoutGrid
-                }
-                label="Apps"
-                value={
-                  modules.length
-                }
-                detail="Available to you"
-              />
+            <div className="flex w-full flex-col gap-2 sm:flex-row lg:max-w-[620px]">
+              {capabilities.ai && (
+                <Link
+                  href="/ai"
+                  className="group flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-2xl border border-indigo-200/80 bg-white/85 px-4 text-left shadow-sm transition hover:-translate-y-px hover:border-indigo-300 hover:shadow-md dark:border-indigo-500/20 dark:bg-white/[0.055] dark:hover:border-indigo-400/30"
+                >
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
+                    <Sparkles className="h-4 w-4" />
+                  </span>
 
-              <HomeStat
-                icon={
-                  Bell
-                }
-                label="Unread"
-                value={
-                  unreadNotifications
-                }
-                detail="Notifications"
-              />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-black text-slate-800 dark:text-slate-100">
+                      Ask SaMi anything about your business
+                    </span>
+                    <span className="mt-0.5 block truncate text-[10px] text-slate-400">
+                      Works across the apps and records your permissions allow
+                    </span>
+                  </span>
 
-              <HomeStat
-                icon={
-                  Activity
-                }
-                label="Today"
-                value={
-                  activitySummary
-                    ?.todayCount ||
-                  0
-                }
-                detail="Your activity"
-              />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-indigo-500 transition group-hover:translate-x-0.5" />
+                </Link>
+              )}
 
-              <HomeStat
-                icon={
-                  Building2
-                }
-                label="Companies"
-                value={
-                  company
-                    ?.allowedCompanyCount ||
-                  0
-                }
-                detail="Accessible"
-              />
+              <Link
+                href="/search"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-4 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
+              >
+                <Search className="h-4 w-4" />
+                Search
+              </Link>
             </div>
           </div>
         </section>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,0.85fr)]">
-          <div className="space-y-5">
-            <Section
-              title="Your apps"
-              description="Installed business apps available to your current access."
-              action={
-                <Link
-                  href="/apps"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-300"
-                >
-                  All apps
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              }
+        <section>
+          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                Workspace
+              </p>
+
+              <h2 className="mt-1 text-lg font-black tracking-[-0.02em] text-slate-950 dark:text-white">
+                Apps
+              </h2>
+
+              <p className="mt-1 text-[11px] text-slate-400">
+                Only apps available to your role and current workspace are shown.
+              </p>
+            </div>
+
+            <Link
+              href="/apps"
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-[11px] font-bold text-blue-600 transition hover:bg-blue-50 dark:text-blue-300 dark:hover:bg-blue-500/10"
             >
-              {visibleApps.length >
-                0 ? (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4">
-                  {visibleApps.map(
-                    module => {
-                      const visual =
-                        getSaMiAppVisual(
-                          module.registryKey ||
-                            module.key,
-                          module.category,
-                        );
-
-                      return (
-                        <Link
-                          key={
-                            module.key
-                          }
-                          href={
-                            module.href ||
-                            '/apps'
-                          }
-                          className={[
-                            'group relative overflow-hidden rounded-[20px] border bg-[var(--sami-surface)] p-3.5 shadow-[var(--sami-shadow-sm)] transition duration-200 hover:-translate-y-1 hover:shadow-[var(--sami-shadow-md)]',
-                            visual.border,
-                          ].join(
-                            ' ',
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <SamiAppIconTile
-                              appKey={
-                                module.registryKey ||
-                                module.key
-                              }
-                              category={
-                                module.category
-                              }
-                              iconKey={
-                                module.iconKey
-                              }
-                              size="md"
-                              className="transition duration-200 group-hover:scale-105"
-                            />
-
-                            <ArrowRight
-                              className={[
-                                'h-4 w-4 shrink-0 transition group-hover:translate-x-0.5',
-                                visual.text,
-                              ].join(
-                                ' ',
-                              )}
-                            />
-                          </div>
-
-                          <p className="mt-3 truncate text-[12px] font-bold tracking-[-0.01em]">
-                            {module.name}
-                          </p>
-
-                          <p
-                            className={[
-                              'mt-1 truncate text-[9px] font-semibold',
-                              visual.text,
-                            ].join(
-                              ' ',
-                            )}
-                          >
-                            {module.categoryLabel ||
-                              'Business app'}
-                          </p>
-                        </Link>
-                      );
-                    },
-                  )}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={
-                    Boxes
-                  }
-                  title="No business apps available"
-                  description="Installed apps will appear here when they are available to your role."
-                />
-              )}
-            </Section>
-
-            {metrics.length >
-              0 && (
-              <Section
-                title="Business snapshot"
-                description="Metrics contributed by the apps you can access."
-              >
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {metrics.map(
-                    metric => (
-                      <MetricCard
-                        key={
-                          metric.id
-                        }
-                        metric={
-                          metric
-                        }
-                      />
-                    ),
-                  )}
-                </div>
-              </Section>
-            )}
-
-            <Section
-              title="Recent activity"
-              description="Your recent actions in the current company."
-              action={
-                <Link
-                  href="/activity"
-                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-300"
-                >
-                  Full timeline
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              }
-            >
-              {recentActivity.length >
-                0 ? (
-                <div className="divide-y divide-slate-100 dark:divide-white/5">
-                  {recentActivity.map(
-                    item => (
-                      <div
-                        key={
-                          item.id
-                        }
-                        className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
-                      >
-                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
-                          {item.result ===
-                            'failed' ||
-                          item.result ===
-                            'denied' ? (
-                            <TriangleAlert className="h-4 w-4" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4" />
-                          )}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="truncate text-xs font-bold">
-                              {item.label}
-                            </p>
-
-                            <span className="shrink-0 text-[10px] text-slate-400">
-                              {relativeTime(
-                                item.createdAt,
-                              )}
-                            </span>
-                          </div>
-
-                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                            {item.actor.name}
-                            {item.module
-                              ? ` · ${item.module}`
-                              : ''}
-                          </p>
-
-                          {item.summary && (
-                            <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-400">
-                              {item.summary}
-                            </p>
-                          )}
-                        </div>
-
-                        <span
-                          className={[
-                            'mt-0.5 shrink-0 text-[9px] font-black uppercase',
-                            resultTone(
-                              item.result,
-                            ),
-                          ].join(
-                            ' ',
-                          )}
-                        >
-                          {item.result ||
-                            'recorded'}
-                        </span>
-                      </div>
-                    ),
-                  )}
-                </div>
-              ) : (
-                <EmptyState
-                  icon={
-                    Activity
-                  }
-                  title="No recent personal activity"
-                  description="Your trusted activity in this company will appear here automatically."
-                />
-              )}
-            </Section>
+              All apps
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
 
-          <div className="space-y-5">
-            <Section
-              title="Current company"
-              description="Your active operating context."
-            >
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-white/10 dark:bg-white/[0.025]">
+          {visibleApps.length >
+            0 ? (
+            <div className="grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-9">
+              {visibleApps.map(
+                module => {
+                  const visual =
+                    getSaMiAppVisual(
+                      module.registryKey ||
+                        module.key,
+                      module.category,
+                    );
+
+                  return (
+                    <Link
+                      key={
+                        module.key
+                      }
+                      href={
+                        module.href ||
+                        '/apps'
+                      }
+                      title={
+                        module.name
+                      }
+                      className="group flex min-w-0 flex-col items-center rounded-2xl px-1.5 py-2 text-center outline-none transition hover:bg-[var(--sami-surface-soft)] focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+                    >
+                      <SamiAppIconTile
+                        appKey={
+                          module.registryKey ||
+                            module.key
+                        }
+                        category={
+                          module.category
+                        }
+                        iconKey={
+                          module.iconKey
+                        }
+                        size="xl"
+                        className="transition duration-200 group-hover:-translate-y-0.5 group-hover:scale-[1.04]"
+                      />
+
+                      <span className="mt-2.5 w-full truncate text-[11px] font-bold text-slate-700 sm:text-xs dark:text-slate-200">
+                        {module.name}
+                      </span>
+
+                      <span
+                        className={[
+                          'mt-0.5 w-full truncate text-[9px] font-semibold opacity-80',
+                          visual.text,
+                        ].join(
+                          ' ',
+                        )}
+                      >
+                        {module.categoryLabel ||
+                          'Business app'}
+                      </span>
+                    </Link>
+                  );
+                },
+              )}
+            </div>
+          ) : (
+            <div className="sami-surface rounded-[24px] p-5">
+              <EmptyState
+                icon={
+                  Boxes
+                }
+                title="No business apps available"
+                description="Apps will appear here when they are installed and granted to your account."
+              />
+            </div>
+          )}
+        </section>
+
+        {(attention.length >
+          0 ||
+          work.length >
+          0 ||
+          metrics.length >
+          0 ||
+          recent.length >
+          0 ||
+          recentActivity.length >
+          0) && (
+          <section className="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(300px,0.75fr)]">
+            <div className="space-y-4">
+              {(attention.length >
+                0 ||
+                work.length >
+                0) && (
+                <Section
+                  title="Work & attention"
+                  description="Real work contributed by the installed apps you can access."
+                >
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {attention.map(
+                      item => (
+                        <AttentionRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                        />
+                      ),
+                    )}
+
+                    {work.map(
+                      item => (
+                        <WorkRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                </Section>
+              )}
+
+              {metrics.length >
+                0 && (
+                <Section
+                  title="Business snapshot"
+                  description="Metrics supplied by modules available to your account."
+                >
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    {metrics.map(
+                      metric => (
+                        <MetricCard
+                          key={
+                            metric.id
+                          }
+                          metric={
+                            metric
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                </Section>
+              )}
+
+              {recent.length >
+                0 && (
+                <Section
+                  title="Recent records"
+                  description="Records surfaced by the apps you can access."
+                >
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {recent.map(
+                      item => (
+                        <RecentRow
+                          key={
+                            item.id
+                          }
+                          item={
+                            item
+                          }
+                        />
+                      ),
+                    )}
+                  </div>
+                </Section>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <Section
+                title="My activity"
+                description="Only your recent activity in the current company."
+                action={
+                  <Link
+                    href="/activity"
+                    className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-600 dark:text-blue-300"
+                  >
+                    Open
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                }
+              >
+                {recentActivity.length >
+                  0 ? (
+                  <div className="divide-y divide-slate-100 dark:divide-white/5">
+                    {recentActivity
+                      .slice(
+                        0,
+                        5,
+                      )
+                      .map(
+                        item => (
+                          <div
+                            key={
+                              item.id
+                            }
+                            className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"
+                          >
+                            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                              {item.result ===
+                                'failed' ||
+                              item.result ===
+                                'denied' ? (
+                                <TriangleAlert className="h-4 w-4" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-bold">
+                                {item.label}
+                              </p>
+                              <p className="mt-1 truncate text-[10px] text-slate-400">
+                                {relativeTime(
+                                  item.createdAt,
+                                )}
+                                {item.module
+                                  ? ` · ${item.module}`
+                                  : ''}
+                              </p>
+                            </div>
+                          </div>
+                        ),
+                      )}
+                  </div>
+                ) : (
+                  <EmptyState
+                    icon={
+                      Activity
+                    }
+                    title="No recent activity"
+                    description="Your actions in this company will appear here."
+                  />
+                )}
+              </Section>
+
+              <div className="sami-surface rounded-[24px] p-4">
                 <div className="flex items-center gap-3">
                   <CompanyAvatar
                     name={
@@ -701,170 +689,63 @@ export default function DashboardClient({
                         .logoUrl ||
                       null
                     }
-                    size="lg"
+                    size="md"
                   />
 
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-black">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-black text-slate-800 dark:text-slate-100">
                       {company
                         ?.currentCompany
                         .name ||
-                      'No company selected'}
+                      tenant?.name ||
+                      'Workspace'}
                     </p>
 
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {company
-                        ? `${company.currentCompany.currency} · ${company.currentCompany.timezone}`
-                        : 'Select a company to work with company-scoped data.'}
+                    <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                      Current company context
                     </p>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Link
+                      href="/notifications"
+                      aria-label="Messages"
+                      className="relative flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
+                    >
+                      <Bell className="h-4 w-4" />
+                      {unreadNotifications >
+                        0 && (
+                        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-rose-500" />
+                      )}
+                    </Link>
+
+                    <Link
+                      href="/activity"
+                      aria-label="My activity"
+                      className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
+                    >
+                      <Activity className="h-4 w-4" />
+                    </Link>
                   </div>
                 </div>
 
-                {company && (
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <SmallFact
-                      label="Selected"
-                      value={
-                        String(
-                          company
-                            .selectedCompanyCount,
-                        )
-                      }
-                    />
-
-                    <SmallFact
-                      label="Accessible"
-                      value={
-                        String(
-                          company
-                            .allowedCompanyCount,
-                        )
-                      }
-                    />
+                {activitySummary && (
+                  <div className="mt-3 flex items-center gap-2 border-t border-[var(--sami-border)] pt-3 text-[9px] font-semibold text-slate-400">
+                    <span>
+                      {activitySummary.todayCount} of your actions today
+                    </span>
+                    <span aria-hidden="true">
+                      ·
+                    </span>
+                    <span>
+                      {company?.allowedCompanyCount || 0} companies available
+                    </span>
                   </div>
                 )}
               </div>
-            </Section>
-
-            <Section
-              title="Work & attention"
-              description="Only real work contributed by installed apps."
-            >
-              {attention.length ===
-                0 &&
-              work.length ===
-                0 ? (
-                <EmptyState
-                  icon={
-                    CheckCircle2
-                  }
-                  title="Nothing needs your attention"
-                  description="Approvals, due work and assigned tasks appear here when an installed app provides them."
-                />
-              ) : (
-                <div className="space-y-2">
-                  {attention.map(
-                    item => (
-                      <AttentionRow
-                        key={
-                          item.id
-                        }
-                        item={
-                          item
-                        }
-                      />
-                    ),
-                  )}
-
-                  {work.map(
-                    item => (
-                      <WorkRow
-                        key={
-                          item.id
-                        }
-                        item={
-                          item
-                        }
-                      />
-                    ),
-                  )}
-                </div>
-              )}
-            </Section>
-
-            <Section
-              title="Quick access"
-              description="Trusted core workspace surfaces."
-            >
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <QuickLink
-                  href="/search"
-                  icon={
-                    Search
-                  }
-                  label="Search"
-                />
-
-                <QuickLink
-                  href="/notifications"
-                  icon={
-                    Bell
-                  }
-                  label="Messages"
-                />
-
-                <QuickLink
-                  href="/activity"
-                  icon={
-                    Activity
-                  }
-                  label="Activity"
-                />
-
-                <QuickLink
-                  href="/apps"
-                  icon={
-                    LayoutGrid
-                  }
-                  label="Apps"
-                />
-
-                {capabilities.ai && (
-                  <QuickLink
-                    href="/ai"
-                    icon={
-                      Sparkles
-                    }
-                    label="SaMi AI"
-                  />
-                )}
-              </div>
-            </Section>
-
-            {recent.length >
-              0 && (
-              <Section
-                title="Recent records"
-                description="Recent items contributed by your installed apps."
-              >
-                <div className="space-y-2">
-                  {recent.map(
-                    item => (
-                      <RecentRow
-                        key={
-                          item.id
-                        }
-                        item={
-                          item
-                        }
-                      />
-                    ),
-                  )}
-                </div>
-              </Section>
-            )}
-          </div>
-        </div>
+            </div>
+          </section>
+        )}
       </div>
     </WorkspaceShell>
   );
