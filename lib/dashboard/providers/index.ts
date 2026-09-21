@@ -13,6 +13,10 @@ import type {
   DashboardScope,
 } from '@/lib/dashboard/types';
 
+import {
+  filterAccessibleModuleExtensions,
+} from '@/lib/modules/registry';
+
 
 /* ================================================================
    PROVIDER CONTEXT
@@ -109,23 +113,15 @@ export function getDashboardProviders(
   modules:
     ModuleContext[],
 ): DashboardProvider[] {
-  const accessible =
-    new Set(
-      modules.map(
-        module =>
-          normalizeKey(
-            module.key,
-          ),
-      ),
-    );
-
-
-  return DASHBOARD_PROVIDERS.filter(
-    provider =>
-      accessible.has(
+  return filterAccessibleModuleExtensions(
+    DASHBOARD_PROVIDERS,
+    modules.map(
+      module =>
         normalizeKey(
-          provider.moduleKey,
+          module.key,
         ),
-      ),
+    ),
+    provider =>
+      provider.moduleKey,
   );
 }
