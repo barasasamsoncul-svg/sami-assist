@@ -40,8 +40,13 @@ import {
 
 import {
   loadActiveAutomationWorkflow,
+  resumeAutomationRun,
   startAutomationRun,
 } from '@/lib/automation/execution-engine';
+
+import {
+  resolveAutomationWorkerRuntime,
+} from '@/lib/automation/worker-context';
 
 import type {
   SamiAutomationRuntimeContext,
@@ -71,7 +76,10 @@ export type WorkspaceAutomationErrorCode =
   | 'AUTOMATION_NOT_ACTIVE'
   | 'AUTOMATION_TRIGGER_MISMATCH'
   | 'AUTOMATION_ACTION_UNAVAILABLE'
-  | 'AUTOMATION_RUN_FAILED';
+  | 'AUTOMATION_RUN_FAILED'
+  | 'AUTOMATION_APPROVAL_NOT_FOUND'
+  | 'AUTOMATION_APPROVAL_EXPIRED'
+  | 'AUTOMATION_APPROVAL_PERMISSION_REQUIRED';
 
 export class WorkspaceAutomationError
   extends Error {
@@ -446,6 +454,54 @@ export async function getWorkspaceAutomationState() {
       ],
     );
 
+  const approvals =
+    await pool.query(
+      `
+        SELECT
+          a.id,
+          a.run_id,
+          a.step_id,
+          a.status,
+          a.required_permissions,
+          a.requested_at,
+          a.expires_at,
+          w.id
+            AS workflow_id,
+          w.name
+            AS workflow_name,
+          s.step_key,
+          s.action_key,
+          s.action_module
+        FROM automation_approvals a
+        INNER JOIN automation_runs r
+          ON r.id =
+             a.run_id
+        INNER JOIN automation_workflows w
+          ON w.id =
+             r.workflow_id
+        INNER JOIN automation_run_steps s
+          ON s.id =
+             a.step_id
+        WHERE a.company_id = $1
+          AND a.status =
+              'pending'
+          AND (
+            a.expires_at
+              IS NULL
+            OR a.expires_at >
+               NOW()
+          )
+        ORDER BY
+          a.requested_at ASC,
+          a.id ASC
+        LIMIT 50
+      `,
+      [
+        context.runtime
+          .companyId,
+      ],
+    );
+
   return {
     canManage:
       context.canManage,
@@ -576,6 +632,79 @@ export async function getWorkspaceAutomationState() {
             null,
           createdAt:
             row.created_at,
+        }),
+      ),
+    approvals:
+      approvals.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          runId:
+            String(
+              row.run_id,
+            ),
+          stepId:
+            String(
+              row.step_id,
+            ),
+          workflowId:
+            String(
+              row.workflow_id,
+            ),
+          workflowName:
+            String(
+              row.workflow_name ||
+              'Automation',
+            ),
+          stepKey:
+            String(
+              row.step_key ||
+              '',
+            ),
+          actionKey:
+            String(
+              row.action_key ||
+              '',
+            ),
+          actionModule:
+            row.action_module
+              ? String(
+                  row.action_module,
+                )
+              : null,
+          requiredPermissions:
+            Array.isArray(
+              row.required_permissions,
+            )
+              ? row.required_permissions
+                  .filter(
+                    (
+                      value:
+                        unknown,
+                    ) =>
+                      typeof value ===
+                        'string',
+                  )
+                  .map(
+                    (
+                      value:
+                        string,
+                    ) =>
+                      value
+                        .trim()
+                        .toLowerCase(),
+                  )
+                  .filter(
+                    Boolean,
+                  )
+              : [],
+          requestedAt:
+            row.requested_at,
+          expiresAt:
+            row.expires_at ||
+            null,
         }),
       ),
   };
@@ -1263,6 +1392,491 @@ export async function runWorkspaceAutomationManually(
       context.runtime
         .userId,
   });
+}
+
+
+export async function resolveWorkspaceAutomationApproval(
+  approvalId:
+    unknown,
+  input: {
+    decision?:
+      unknown;
+    note?:
+      unknown;
+  },
+) {
+  const context =
+    await resolveAutomationContext(
+      'manage',
+    );
+
+  const id =
+    requireUuid(
+      approvalId,
+      'approval',
+    );
+
+  const decision =
+    typeof input.decision ===
+      'string'
+      ? input.decision
+          .trim()
+          .toLowerCase()
+      : '';
+
+  if (
+    decision !==
+      'approve' &&
+    decision !==
+      'reject'
+  ) {
+    throw new WorkspaceAutomationError(
+      'INVALID_AUTOMATION',
+      'Choose approve or reject for this automation approval.',
+    );
+  }
+
+  const note =
+    typeof input.note ===
+      'string'
+      ? input.note
+          .replace(
+            /\u0000/g,
+            '',
+          )
+          .trim()
+          .slice(
+            0,
+            1000,
+          )
+      : '';
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  let runId =
+    '';
+
+  let runAsUserId =
+    '';
+
+  let eventId:
+    string | null =
+    null;
+
+  let workflowId =
+    '';
+
+  let workflowName =
+    'Automation';
+
+  let requiredPermissions:
+    string[] =
+    [];
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            a.id,
+            a.status,
+            a.required_permissions,
+            a.expires_at,
+            a.run_id,
+            a.step_id,
+            r.initiated_by,
+            r.event_id,
+            w.id
+              AS workflow_id,
+            w.name
+              AS workflow_name
+          FROM automation_approvals a
+          INNER JOIN automation_runs r
+            ON r.id =
+               a.run_id
+          INNER JOIN automation_workflows w
+            ON w.id =
+               r.workflow_id
+          WHERE a.id = $1
+            AND a.company_id = $2
+            AND w.company_id = $2
+            AND w.archived_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE OF a
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new WorkspaceAutomationError(
+        'AUTOMATION_APPROVAL_NOT_FOUND',
+        'Automation approval could not be found in the current company.',
+      );
+    }
+
+    const row =
+      result.rows[0];
+
+    if (
+      row.status !==
+        'pending'
+    ) {
+      throw new WorkspaceAutomationError(
+        'AUTOMATION_APPROVAL_NOT_FOUND',
+        'This automation approval is no longer pending.',
+      );
+    }
+
+    if (
+      row.expires_at &&
+      new Date(
+        row.expires_at,
+      ).getTime() <=
+        Date.now()
+    ) {
+      await client.query(
+        `
+          UPDATE automation_approvals
+          SET
+            status =
+              'expired',
+            resolved_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          id,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE automation_run_steps
+          SET
+            status =
+              'cancelled',
+            completed_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          row.step_id,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE automation_runs
+          SET
+            status =
+              'cancelled',
+            next_retry_at =
+              NULL,
+            completed_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          row.run_id,
+        ],
+      );
+
+      await client.query(
+        'COMMIT',
+      );
+
+      throw new WorkspaceAutomationError(
+        'AUTOMATION_APPROVAL_EXPIRED',
+        'This automation approval has expired.',
+      );
+    }
+
+    requiredPermissions =
+      Array.isArray(
+        row.required_permissions,
+      )
+        ? row.required_permissions
+            .filter(
+              (
+                value:
+                  unknown,
+              ) =>
+                typeof value ===
+                  'string',
+            )
+            .map(
+              (
+                value:
+                  string,
+              ) =>
+                value
+                  .trim()
+                  .toLowerCase(),
+            )
+            .filter(
+              Boolean,
+            )
+        : [];
+
+    const canApproveAction =
+      context.runtime
+        .isOwner ||
+      requiredPermissions.every(
+        permission =>
+          context.runtime
+            .permissionSet
+            .has(
+              permission,
+            ),
+      );
+
+    if (
+      !canApproveAction
+    ) {
+      throw new WorkspaceAutomationError(
+        'AUTOMATION_APPROVAL_PERMISSION_REQUIRED',
+        'You do not have the business permission required to approve this action.',
+      );
+    }
+
+    runId =
+      String(
+        row.run_id,
+      );
+
+    runAsUserId =
+      row.initiated_by
+        ? String(
+            row.initiated_by,
+          )
+        : '';
+
+    eventId =
+      row.event_id
+        ? String(
+            row.event_id,
+          )
+        : null;
+
+    workflowId =
+      String(
+        row.workflow_id,
+      );
+
+    workflowName =
+      String(
+        row.workflow_name ||
+        'Automation',
+      );
+
+    if (
+      decision ===
+        'reject'
+    ) {
+      await client.query(
+        `
+          UPDATE automation_approvals
+          SET
+            status =
+              'rejected',
+            resolved_by =
+              $2,
+            decision_note =
+              $3,
+            resolved_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          id,
+          context.runtime
+            .userId,
+          note ||
+            null,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE automation_run_steps
+          SET
+            status =
+              'cancelled',
+            completed_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          row.step_id,
+        ],
+      );
+
+      await client.query(
+        `
+          UPDATE automation_runs
+          SET
+            status =
+              'cancelled',
+            next_retry_at =
+              NULL,
+            completed_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          runId,
+        ],
+      );
+
+      if (
+        eventId
+      ) {
+        await client.query(
+          `
+            UPDATE automation_events
+            SET
+              status =
+                'ignored',
+              processed_at =
+                NOW()
+            WHERE id = $1
+          `,
+          [
+            eventId,
+          ],
+        );
+      }
+    } else {
+      await client.query(
+        `
+          UPDATE automation_approvals
+          SET
+            status =
+              'approved',
+            resolved_by =
+              $2,
+            decision_note =
+              $3,
+            resolved_at =
+              NOW()
+          WHERE id = $1
+        `,
+        [
+          id,
+          context.runtime
+            .userId,
+          note ||
+            null,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {
+      // Transaction may already be committed for the expired path.
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await recordAutomationAudit(
+    context.runtime,
+    {
+      action:
+        decision ===
+          'approve'
+          ? 'automation.approval.approved'
+          : 'automation.approval.rejected',
+      workflowId,
+      summary:
+        decision ===
+          'approve'
+          ? `Approved a pending action for "${workflowName}".`
+          : `Rejected a pending action for "${workflowName}".`,
+      metadata: {
+        approvalId:
+          id,
+        runId,
+        requiredPermissions,
+      },
+    },
+  );
+
+  if (
+    decision ===
+      'reject'
+  ) {
+    return {
+      approvalId:
+        id,
+      runId,
+      status:
+        'cancelled',
+    };
+  }
+
+  if (
+    !runAsUserId
+  ) {
+    throw new WorkspaceAutomationError(
+      'AUTOMATION_RUN_FAILED',
+      'The approved automation run no longer has a valid run-as user.',
+    );
+  }
+
+  const runtime =
+    await resolveAutomationWorkerRuntime({
+      tenantId:
+        context.runtime
+          .tenantId,
+      userId:
+        runAsUserId,
+      companyId:
+        context.runtime
+          .companyId,
+    });
+
+  const resumed =
+    await resumeAutomationRun({
+      runtime,
+      runId,
+    });
+
+  return {
+    approvalId:
+      id,
+    ...resumed,
+  };
 }
 
 
