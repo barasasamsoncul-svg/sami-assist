@@ -400,7 +400,9 @@ test('Category 18: tenant schema advances additively from 1.4.0 to 1.5.0', async
   assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_preferences/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS ai_runs/);
   assert.match(migration, /ALTER TABLE ai_memory/);
-  assert.match(migration, /VALUES \('1\.5\.0'/);
+  assert.match(migration, /DO \\$\\$[\\s\\S]*END \\$\\$;/);
+  assert.doesNotMatch(migration, /DO \\$\\nBEGIN/);
+  assert.match(migration, /VALUES \\('1\\.5\\.0'/);
 
   assert.match(core, /VALUES \('1\.5\.0'\)/);
 });

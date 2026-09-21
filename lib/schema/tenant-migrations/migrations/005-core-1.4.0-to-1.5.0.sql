@@ -54,7 +54,7 @@ ALTER TABLE ai_memory
     ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ,
     ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (
         SELECT 1
@@ -66,7 +66,7 @@ BEGIN
             ADD CONSTRAINT ai_memory_scope_check
             CHECK (scope IN ('personal', 'company', 'workspace'));
     END IF;
-END $;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_user_company
     ON ai_memory(
