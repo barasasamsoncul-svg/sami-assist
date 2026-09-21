@@ -33,6 +33,48 @@ export const CORE_AUTOMATION_TRIGGERS:
       companyScoped:
         true,
     },
+    {
+      key:
+        'core.schedule',
+      name:
+        'Schedule',
+      description:
+        'Run automatically at a bounded interval while revalidating the run-as user\'s current access each time.',
+      type:
+        'schedule',
+      moduleKey:
+        null,
+      requiredPermissions:
+        [],
+      companyScoped:
+        true,
+      configSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          intervalMinutes: {
+            type:
+              'integer',
+            minimum:
+              1,
+            maximum:
+              43200,
+          },
+          timezone: {
+            type:
+              'string',
+            maxLength:
+              100,
+          },
+        },
+        required: [
+          'intervalMinutes',
+          'timezone',
+        ],
+      },
+    },
   ];
 
 /*
@@ -42,10 +84,8 @@ export const CORE_AUTOMATION_TRIGGERS:
  * create an executable trigger/action handler by itself.
  */
 /*
- * Scheduled/webhook triggers stay out of the user-facing registry until
- * their trusted worker/ingress path is fully implemented and tested.
- * Durable tenant tables already exist so those capabilities can be
- * added without redesigning workflow definitions.
+ * Webhook and business-event triggers stay out of the user-facing
+ * registry until their trusted ingress/emitter paths are implemented.
  */
 export const APP_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] =
