@@ -1124,7 +1124,7 @@ export default function WorkspaceAiClient({
             title="AI provider configuration required"
             description={
               status?.configurationError ||
-              'Configure an AI provider, model and API key in the environment.'
+              'Configure one active AI model in the environment. SaMi detects its provider automatically.'
             }
           />
         </div>
