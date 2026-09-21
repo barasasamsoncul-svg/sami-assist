@@ -4,21 +4,16 @@ import Link from 'next/link';
 
 import {
   Archive,
-  ArrowLeft,
   Bot,
   Check,
   CheckCircle2,
   Copy,
   Download,
   Gauge,
-  History,
   Loader2,
-  MessageSquarePlus,
+  Menu,
   Pencil,
-  Pin,
-  PinOff,
   RefreshCw,
-  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -26,7 +21,6 @@ import {
   Square,
   ThumbsDown,
   ThumbsUp,
-  Trash2,
   TriangleAlert,
   X,
 } from 'lucide-react';
@@ -42,8 +36,7 @@ import {
 
 import ReactMarkdown from 'react-markdown';
 
-import SaMiLogo from '@/app/components/SaMiLogo';
-import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
+import SamiAiSidebar from '@/app/components/ai/SamiAiSidebar';
 
 type Conversation = {
   id: string;
@@ -288,8 +281,14 @@ export default function WorkspaceAiClient({
     );
 
   const [
-    historyOpen,
-    setHistoryOpen,
+    sidebarMobileOpen,
+    setSidebarMobileOpen,
+  ] =
+    useState(false);
+
+  const [
+    sidebarCollapsed,
+    setSidebarCollapsed,
   ] =
     useState(false);
 
@@ -546,7 +545,7 @@ export default function WorkspaceAiClient({
       null,
     );
     setError(null);
-    setHistoryOpen(false);
+    setSidebarMobileOpen(false);
   }
 
   async function selectConversation(
@@ -560,7 +559,7 @@ export default function WorkspaceAiClient({
       null,
     );
     setDraft('');
-    setHistoryOpen(false);
+    setSidebarMobileOpen(false);
   }
 
   async function runChatRequest(
@@ -1353,80 +1352,94 @@ export default function WorkspaceAiClient({
   }
 
   return (
-    <main className="flex min-h-[100dvh] flex-col bg-[#F6F7F9] text-slate-950 dark:bg-[#090B10] dark:text-white">
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0B0E14]/95">
-        <div className="mx-auto flex h-16 w-full max-w-[1700px] items-center gap-2 px-2.5 sm:gap-3 sm:px-5 lg:px-7">
-          <Link
-            href="/dashboard"
-            aria-label="Back to workspace"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
+    <div className="flex h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#F7F7F8] text-slate-950 dark:bg-[#0D0D0D] dark:text-white">
+      <SamiAiSidebar
+        conversations={
+          conversations
+        }
+        selectedConversationId={
+          selectedConversationId
+        }
+        collapsed={
+          sidebarCollapsed
+        }
+        mobileOpen={
+          sidebarMobileOpen
+        }
+        onCloseMobile={() =>
+          setSidebarMobileOpen(
+            false,
+          )
+        }
+        onToggleCollapsed={() =>
+          setSidebarCollapsed(
+            current =>
+              !current,
+          )
+        }
+        onNew={
+          newConversation
+        }
+        onSelect={
+          conversationId =>
+            void selectConversation(
+              conversationId,
+            )
+        }
+        onRename={
+          renameConversation
+        }
+        onTogglePin={
+          toggleConversationPin
+        }
+        onDelete={
+          conversationId =>
+            archiveConversation(
+              conversationId,
+            )
+        }
+        onPerformance={() =>
+          setPerformanceOpen(
+            true,
+          )
+        }
+      />
 
-          <Link
-            href="/dashboard"
-            className="hidden shrink-0 sm:block"
-            aria-label="SaMi workspace"
+      <main className="flex min-w-0 flex-1 flex-col bg-white dark:bg-[#171717]">
+        <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center border-b border-slate-200/70 bg-white/95 px-3 backdrop-blur-xl sm:px-4 dark:border-white/10 dark:bg-[#171717]/95">
+          <button
+            type="button"
+            aria-label="Open AI sidebar"
+            onClick={() =>
+              setSidebarMobileOpen(
+                true,
+              )
+            }
+            className="mr-2 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 lg:hidden dark:text-slate-400 dark:hover:bg-white/10"
           >
-            <SaMiLogo
-              size="sm"
-              className="max-w-[150px]"
-            />
-          </Link>
+            <Menu className="h-4 w-4" />
+          </button>
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black tracking-tight">
+            <p className="truncate text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">
               {selectedConversation
                 ?.title ||
                 'SaMi AI'}
             </p>
-            <p className="hidden truncate text-[10px] text-slate-400 sm:block">
-              Permission-aware business assistant
-            </p>
           </div>
 
-          <WorkspaceCompanyIdentity />
-
-          <button
-            type="button"
-            onClick={() =>
-              setHistoryOpen(
-                true,
-              )
-            }
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 sm:px-3 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
-          >
-            <History className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              History
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setPerformanceOpen(
-                true,
-              )
-            }
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-600 transition hover:bg-slate-50 sm:px-3 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
-          >
-            <Gauge className="h-4 w-4" />
-            <span className="hidden md:inline">
-              Performance
-            </span>
-          </button>
-
-          <Link
-            href="/settings?tab=ai"
-            aria-label="SaMi AI settings"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-300 dark:hover:bg-white/10"
-          >
-            <Settings className="h-4 w-4" />
-          </Link>
-        </div>
-      </header>
+          {status?.configured &&
+            status.model && (
+            <p
+              title={
+                status.model
+              }
+              className="ml-3 hidden max-w-[220px] truncate text-[10px] font-medium text-slate-400 md:block"
+            >
+              {status.model}
+            </p>
+          )}
+        </header>
 
       {!entitled ? (
         <div className="flex flex-1 items-center justify-center p-4 sm:p-6">
@@ -1757,40 +1770,6 @@ export default function WorkspaceAiClient({
         </section>
       )}
 
-      {historyOpen && (
-        <HistoryDrawer
-          conversations={
-            conversations
-          }
-          selectedConversationId={
-            selectedConversationId
-          }
-          onClose={() =>
-            setHistoryOpen(
-              false,
-            )
-          }
-          onNew={
-            newConversation
-          }
-          onSelect={
-            conversationId =>
-              void selectConversation(
-                conversationId,
-              )
-          }
-          onRename={
-            renameConversation
-          }
-          onTogglePin={
-            toggleConversationPin
-          }
-          onDelete={
-            archiveConversation
-          }
-        />
-      )}
-
       {performanceOpen && (
         <PerformancePanel
           status={
@@ -1803,7 +1782,8 @@ export default function WorkspaceAiClient({
           }
         />
       )}
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -1864,8 +1844,8 @@ function MessageBubble({
           className={[
             'rounded-2xl px-4 py-3 text-sm leading-6',
             assistant
-              ? 'border border-slate-200 bg-white text-slate-700 shadow-sm dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-200'
-              : 'ml-auto max-w-full bg-blue-600 text-white',
+              ? 'bg-transparent px-1 text-slate-800 dark:text-slate-100'
+              : 'ml-auto max-w-full bg-slate-100 text-slate-900 dark:bg-[#2A2A2A] dark:text-slate-100',
           ].join(
             ' ',
           )}
@@ -2043,551 +2023,6 @@ function MessageAction({
         {label}
       </span>
     </button>
-  );
-}
-
-function HistoryDrawer({
-  conversations,
-  selectedConversationId,
-  onClose,
-  onNew,
-  onSelect,
-  onRename,
-  onTogglePin,
-  onDelete,
-}: {
-  conversations:
-    Conversation[];
-  selectedConversationId:
-    string | null;
-  onClose:
-    () => void;
-  onNew:
-    () => void;
-  onSelect:
-    (
-      conversationId:
-        string,
-    ) => void;
-  onRename:
-    (
-      conversationId:
-        string,
-      title:
-        string,
-    ) => Promise<void>;
-  onTogglePin:
-    (
-      conversationId:
-        string,
-      pinned:
-        boolean,
-    ) => Promise<void>;
-  onDelete:
-    (
-      conversationId:
-        string,
-    ) => Promise<void>;
-}) {
-  const [
-    query,
-    setQuery,
-  ] =
-    useState('');
-
-  const [
-    renamingId,
-    setRenamingId,
-  ] =
-    useState<string | null>(
-      null,
-    );
-
-  const [
-    renameDraft,
-    setRenameDraft,
-  ] =
-    useState('');
-
-  const [
-    busyId,
-    setBusyId,
-  ] =
-    useState<string | null>(
-      null,
-    );
-
-  const [
-    deleteConfirmId,
-    setDeleteConfirmId,
-  ] =
-    useState<string | null>(
-      null,
-    );
-
-  const filteredConversations =
-    useMemo(
-      () => {
-        const normalized =
-          query
-            .trim()
-            .toLowerCase();
-
-        if (!normalized) {
-          return conversations;
-        }
-
-        return conversations.filter(
-          conversation =>
-            conversation.title
-              .toLowerCase()
-              .includes(
-                normalized,
-              ),
-        );
-      },
-      [
-        conversations,
-        query,
-      ],
-    );
-
-  function beginRename(
-    conversation:
-      Conversation,
-  ) {
-    setRenamingId(
-      conversation.id,
-    );
-    setRenameDraft(
-      conversation.title,
-    );
-    setDeleteConfirmId(
-      null,
-    );
-  }
-
-  function cancelRename() {
-    setRenamingId(
-      null,
-    );
-    setRenameDraft('');
-  }
-
-  async function saveRename(
-    conversationId:
-      string,
-  ) {
-    const title =
-      renameDraft.trim();
-
-    if (
-      !title ||
-      busyId
-    ) {
-      return;
-    }
-
-    setBusyId(
-      conversationId,
-    );
-
-    try {
-      await onRename(
-        conversationId,
-        title,
-      );
-
-      cancelRename();
-    } finally {
-      setBusyId(
-        null,
-      );
-    }
-  }
-
-  async function changePin(
-    conversation:
-      Conversation,
-  ) {
-    if (busyId) {
-      return;
-    }
-
-    setBusyId(
-      conversation.id,
-    );
-
-    try {
-      await onTogglePin(
-        conversation.id,
-        !conversation.pinned,
-      );
-    } finally {
-      setBusyId(
-        null,
-      );
-    }
-  }
-
-  async function deleteConversation(
-    conversationId:
-      string,
-  ) {
-    if (
-      deleteConfirmId !==
-        conversationId
-    ) {
-      setDeleteConfirmId(
-        conversationId,
-      );
-      setRenamingId(
-        null,
-      );
-      return;
-    }
-
-    if (busyId) {
-      return;
-    }
-
-    setBusyId(
-      conversationId,
-    );
-
-    try {
-      await onDelete(
-        conversationId,
-      );
-
-      setDeleteConfirmId(
-        null,
-      );
-    } finally {
-      setBusyId(
-        null,
-      );
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[160]">
-      <button
-        type="button"
-        aria-label="Close conversation history"
-        onClick={
-          onClose
-        }
-        className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
-      />
-
-      <aside className="absolute inset-y-0 left-0 flex w-[360px] max-w-[calc(100vw-12px)] flex-col border-r border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0B0E14]">
-        <div className="flex h-16 items-center gap-3 border-b border-slate-200 px-4 dark:border-white/10">
-          <History className="h-4 w-4 text-blue-600 dark:text-blue-300" />
-
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-black">
-              Conversation history
-            </p>
-            <p className="mt-0.5 text-[9px] text-slate-400">
-              Search, pin, rename or remove chats
-            </p>
-          </div>
-
-          <button
-            type="button"
-            aria-label="Close history"
-            onClick={
-              onClose
-            }
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-2 border-b border-slate-200 p-3 dark:border-white/10">
-          <button
-            type="button"
-            onClick={
-              onNew
-            }
-            className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-          >
-            <MessageSquarePlus className="h-4 w-4" />
-            New conversation
-          </button>
-
-          <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-slate-400 focus-within:border-blue-300 dark:border-white/10 dark:bg-white/[0.035] dark:focus-within:border-blue-500/40">
-            <Search className="h-3.5 w-3.5 shrink-0" />
-            <input
-              value={
-                query
-              }
-              onChange={
-                event =>
-                  setQuery(
-                    event.target.value,
-                  )
-              }
-              placeholder="Search conversations"
-              className="min-w-0 flex-1 bg-transparent text-xs text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
-            />
-          </label>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-[max(12px,env(safe-area-inset-bottom))]">
-          {conversations.length ===
-            0 ? (
-            <div className="px-4 py-10 text-center">
-              <Bot className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
-              <p className="mt-2 text-xs font-bold">
-                No conversations yet
-              </p>
-              <p className="mt-1 text-[10px] text-slate-400">
-                Start a conversation with SaMi AI.
-              </p>
-            </div>
-          ) : filteredConversations.length ===
-              0 ? (
-            <div className="px-4 py-10 text-center">
-              <Search className="mx-auto h-5 w-5 text-slate-300 dark:text-slate-600" />
-              <p className="mt-2 text-xs font-bold">
-                No matching conversations
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {filteredConversations.map(
-                conversation => {
-                  const selected =
-                    selectedConversationId ===
-                    conversation.id;
-
-                  const renaming =
-                    renamingId ===
-                    conversation.id;
-
-                  const deleting =
-                    deleteConfirmId ===
-                    conversation.id;
-
-                  const busy =
-                    busyId ===
-                    conversation.id;
-
-                  return (
-                    <div
-                      key={
-                        conversation.id
-                      }
-                      className={[
-                        'rounded-xl border px-2 py-2 transition',
-                        selected
-                          ? 'border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/10'
-                          : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.04]',
-                      ].join(
-                        ' ',
-                      )}
-                    >
-                      {renaming ? (
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            autoFocus
-                            value={
-                              renameDraft
-                            }
-                            maxLength={
-                              80
-                            }
-                            onChange={
-                              event =>
-                                setRenameDraft(
-                                  event.target.value,
-                                )
-                            }
-                            onKeyDown={
-                              event => {
-                                if (
-                                  event.key ===
-                                  'Enter'
-                                ) {
-                                  event.preventDefault();
-                                  void saveRename(
-                                    conversation.id,
-                                  );
-                                }
-
-                                if (
-                                  event.key ===
-                                  'Escape'
-                                ) {
-                                  cancelRename();
-                                }
-                              }
-                            }
-                            className="h-9 min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-blue-500/30 dark:bg-[#11151D] dark:text-white"
-                          />
-
-                          <button
-                            type="button"
-                            aria-label="Save conversation name"
-                            disabled={
-                              busy ||
-                              !renameDraft
-                                .trim()
-                            }
-                            onClick={() =>
-                              void saveRename(
-                                conversation.id,
-                              )
-                            }
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-emerald-600 transition hover:bg-emerald-50 disabled:opacity-40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
-                          >
-                            {busy ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-
-                          <button
-                            type="button"
-                            aria-label="Cancel rename"
-                            onClick={
-                              cancelRename
-                            }
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onSelect(
-                                conversation.id,
-                              )
-                            }
-                            className="block w-full min-w-0 px-1 py-1 text-left"
-                          >
-                            <div className="flex items-center gap-2">
-                              {conversation.pinned && (
-                                <Pin className="h-3 w-3 shrink-0 text-blue-500" />
-                              )}
-                              <p className="min-w-0 flex-1 truncate text-xs font-bold">
-                                {conversation.title}
-                              </p>
-                            </div>
-                            <p className="mt-1 pl-0.5 text-[9px] text-slate-400">
-                              {timeLabel(
-                                conversation.lastMessageAt ||
-                                  conversation.updatedAt,
-                              )}
-                            </p>
-                          </button>
-
-                          <div className="mt-1 flex items-center justify-end gap-0.5">
-                            <button
-                              type="button"
-                              title={
-                                conversation.pinned
-                                  ? 'Unpin'
-                                  : 'Pin'
-                              }
-                              aria-label={
-                                conversation.pinned
-                                  ? 'Unpin conversation'
-                                  : 'Pin conversation'
-                              }
-                              disabled={
-                                busy
-                              }
-                              onClick={() =>
-                                void changePin(
-                                  conversation,
-                                )
-                              }
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
-                            >
-                              {conversation.pinned ? (
-                                <PinOff className="h-3.5 w-3.5" />
-                              ) : (
-                                <Pin className="h-3.5 w-3.5" />
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              title="Rename"
-                              aria-label="Rename conversation"
-                              disabled={
-                                busy
-                              }
-                              onClick={() =>
-                                beginRename(
-                                  conversation,
-                                )
-                              }
-                              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-slate-200"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              title={
-                                deleting
-                                  ? 'Confirm delete'
-                                  : 'Delete'
-                              }
-                              aria-label={
-                                deleting
-                                  ? 'Confirm delete conversation'
-                                  : 'Delete conversation'
-                              }
-                              disabled={
-                                busy
-                              }
-                              onClick={() =>
-                                void deleteConversation(
-                                  conversation.id,
-                                )
-                              }
-                              className={[
-                                'flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-[9px] font-bold transition disabled:opacity-40',
-                                deleting
-                                  ? 'bg-rose-600 text-white hover:bg-rose-700'
-                                  : 'text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-300',
-                              ].join(
-                                ' ',
-                              )}
-                            >
-                              {busy ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                              {deleting && (
-                                <span>
-                                  Confirm
-                                </span>
-                              )}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                },
-              )}
-            </div>
-          )}
-        </div>
-      </aside>
-    </div>
   );
 }
 
