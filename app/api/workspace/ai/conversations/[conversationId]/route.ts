@@ -5,6 +5,7 @@ import {
 import {
   archiveWorkspaceAiConversation,
   getWorkspaceAiConversation,
+  updateWorkspaceAiConversation,
 } from '@/lib/services/workspace-ai';
 
 import {
@@ -41,6 +42,54 @@ export async function GET(
     const result =
       await getWorkspaceAiConversation(
         conversationId,
+      );
+
+    return aiJson({
+      success: true,
+      ...result,
+    });
+  } catch (
+    error
+  ) {
+    return handleAiApiError(
+      error,
+    );
+  }
+}
+
+export async function PATCH(
+  request:
+    NextRequest,
+  context:
+    RouteContext,
+) {
+  try {
+    const originError =
+      rejectAiCrossOrigin(
+        request,
+      );
+
+    if (originError) {
+      return originError;
+    }
+
+    const {
+      conversationId,
+    } =
+      await context.params;
+
+    const body =
+      await request.json();
+
+    const result =
+      await updateWorkspaceAiConversation(
+        conversationId,
+        {
+          title:
+            body?.title,
+          pinned:
+            body?.pinned,
+        },
       );
 
     return aiJson({
