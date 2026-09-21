@@ -21,8 +21,11 @@ import {
 
 import {
   getCanonicalAppKey,
-  getRegisteredApp,
 } from '@/lib/apps/navigation-registry';
+
+import {
+  getSamiModuleManifest,
+} from '@/lib/modules/registry';
 
 import {
   getPermissionContext,
@@ -223,6 +226,21 @@ async function assertWorkspaceReady(
   tenantId:
     string,
 ) {
+  const manifest =
+    getSamiModuleManifest(
+      moduleKey,
+    );
+
+  if (
+    !manifest ||
+    !manifest.installable
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_NOT_FOUND',
+      'This app is not registered in the SaMi module runtime.',
+    );
+  }
+
   const result =
     await client.query(
       `
@@ -356,7 +374,16 @@ async function getModule(
       row.is_core ===
       true,
     dependencies:
-      row.dependencies,
+      [
+        ...new Set([
+          ...normalizeDependencies(
+            row.dependencies,
+          ),
+          ...manifest.depends.map(
+            normalizeKey,
+          ),
+        ]),
+      ],
   };
 }
 
@@ -426,13 +453,27 @@ async function readAppSchema(
   appKey:
     string,
 ): Promise<string> {
+  const manifest =
+    getSamiModuleManifest(
+      appKey,
+    );
+
+  if (
+    !manifest ||
+    !manifest.schemaPath
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SCHEMA_MISSING',
+      'This app manifest does not declare an install schema.',
+    );
+  }
+
   const schemaPath =
     path.join(
       process.cwd(),
-      'lib',
-      'apps',
-      appKey,
-      'schema.sql',
+      ...manifest.schemaPath
+        .split('/')
+        .filter(Boolean),
     );
 
   try {
@@ -721,7 +762,12 @@ async function getActiveDependents(
       `
         SELECT
           m.key,
-          m.name
+          m.name,
+          COALESCE(
+            m.dependencies,
+            '[]'::jsonb
+          )
+            AS dependencies
 
         FROM tenant_modules tm
 
@@ -757,12 +803,6 @@ async function getActiveDependents(
             'enabled'
           )
 
-          AND COALESCE(
-            m.dependencies,
-            '[]'::jsonb
-          ) ?
-          $2
-
         ORDER BY
           LOWER(
             m.name
@@ -770,27 +810,62 @@ async function getActiveDependents(
       `,
       [
         tenantId,
-        moduleKey,
       ],
     );
 
-  return result.rows.map(
-    row => ({
-      key:
-        normalizeKey(
-          row.key,
-        ),
-      name:
-        typeof row.name ===
-          'string'
-          ? row.name
-          : normalizeKey(
-              row.key,
-            ),
-    }),
-  );
-}
+  const dependencyKey =
+    normalizeKey(
+      moduleKey,
+    );
 
+  return result.rows
+    .filter(
+      row => {
+        const key =
+          normalizeKey(
+            row.key,
+          );
+
+        const manifest =
+          getSamiModuleManifest(
+            key,
+          );
+
+        const dependencies =
+          new Set([
+            ...normalizeDependencies(
+              row.dependencies,
+            ),
+            ...(
+              manifest
+                ?.depends ||
+              []
+            ).map(
+              normalizeKey,
+            ),
+          ]);
+
+        return dependencies.has(
+          dependencyKey,
+        );
+      },
+    )
+    .map(
+      row => ({
+        key:
+          normalizeKey(
+            row.key,
+          ),
+        name:
+          typeof row.name ===
+            'string'
+            ? row.name
+            : normalizeKey(
+                row.key,
+              ),
+      }),
+    );
+}
 
 async function recordAudit(
   client:
@@ -900,7 +975,7 @@ async function activateWorkspaceApp(
 
   if (
     !canonicalKey ||
-    !getRegisteredApp(
+    !getSamiModuleManifest(
       canonicalKey,
     )
   ) {
@@ -1317,7 +1392,7 @@ async function deactivateWorkspaceApp(
 
   if (
     !canonicalKey ||
-    !getRegisteredApp(
+    !getSamiModuleManifest(
       canonicalKey,
     )
   ) {
