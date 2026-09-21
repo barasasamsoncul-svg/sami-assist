@@ -663,8 +663,8 @@ function SearchSurface({
       className={
         mode ===
         'launcher'
-          ? 'flex max-h-[min(760px,82vh)] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0F131B]'
-          : 'overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0F131B]'
+          ? 'sami-surface-raised flex max-h-[min(760px,82vh)] flex-col overflow-hidden rounded-[26px]'
+          : 'sami-surface overflow-hidden rounded-[26px]'
       }
     >
       <div className="flex items-center gap-3 border-b border-slate-200 p-3 dark:border-white/10 sm:p-4">
@@ -938,7 +938,7 @@ export default function WorkspaceSearchLauncher() {
             true,
           )
         }
-        className="hidden h-10 min-w-[180px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-xs font-semibold text-slate-400 transition hover:border-slate-300 hover:text-slate-600 md:flex dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-white/20 dark:hover:text-slate-300"
+        className="hidden h-10 min-w-[190px] items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-left text-xs font-semibold text-slate-400 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:border-[var(--sami-border-strong)] hover:text-slate-700 md:flex dark:hover:text-slate-200"
       >
         <Search className="h-4 w-4" />
 
@@ -959,7 +959,7 @@ export default function WorkspaceSearchLauncher() {
             true,
           )
         }
-        className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 md:hidden dark:border-white/10 dark:bg-white/[0.035] dark:text-slate-400 dark:hover:bg-white/10"
+        className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] md:hidden dark:text-slate-400"
       >
         <Search className="h-4 w-4" />
       </button>
