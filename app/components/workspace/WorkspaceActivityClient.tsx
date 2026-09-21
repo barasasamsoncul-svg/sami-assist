@@ -320,23 +320,40 @@ export default function WorkspaceActivityClient() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <SummaryCard
           icon={Activity}
-          label="Today"
+          label={view === 'activity' ? 'My activity today' : 'Today'}
           value={summary.todayCount}
-          detail="Recorded company activity"
+          detail={
+            view === 'activity'
+              ? 'Your recorded actions'
+              : 'Recorded company activity'
+          }
         />
         <SummaryCard
           icon={AlertTriangle}
           label="Needs attention"
           value={summary.failed7d}
-          detail="Failed or denied · 7 days"
+          detail={
+            view === 'activity'
+              ? 'Your failed or denied actions · 7 days'
+              : 'Failed or denied · 7 days'
+          }
           warn={summary.failed7d > 0}
         />
-        <SummaryCard
-          icon={CircleUserRound}
-          label="Active people"
-          value={summary.actors7d}
-          detail="Distinct actors · 7 days"
-        />
+        {view === 'audit' ? (
+          <SummaryCard
+            icon={CircleUserRound}
+            label="Active people"
+            value={summary.actors7d}
+            detail="Distinct actors · 7 days"
+          />
+        ) : (
+          <SummaryCard
+            icon={CircleUserRound}
+            label="Visibility"
+            value={1}
+            detail="Only your activity is shown"
+          />
+        )}
         <SummaryCard
           icon={ShieldCheck}
           label="Active areas"
@@ -359,7 +376,7 @@ export default function WorkspaceActivityClient() {
                     : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-white/10',
                 ].join(' ')}
               >
-                Activity
+                My Activity
               </button>
 
               {summary.canAudit && (
@@ -387,7 +404,7 @@ export default function WorkspaceActivityClient() {
                   onChange={event =>
                     setSearch(event.target.value)
                   }
-                  placeholder="Search activity…"
+                  placeholder={view === 'activity' ? 'Search my activity…' : 'Search audit…'}
                   className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs outline-none transition focus:border-blue-400 dark:border-white/10 dark:bg-white/[0.04]"
                 />
               </label>
@@ -486,7 +503,9 @@ export default function WorkspaceActivityClient() {
               No matching activity
             </p>
             <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Change the filters or continue working in SaMi.
+              {view === 'activity'
+                ? 'Change the filters or continue working in SaMi. Only your activity appears here.'
+                : 'Change the filters or continue working in SaMi.'}
             </p>
           </div>
         ) : (
