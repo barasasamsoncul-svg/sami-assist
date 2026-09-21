@@ -252,6 +252,52 @@ test('Category 11: platform typography and controls use one global baseline', as
 });
 
 
+test('Category 11: one account theme runtime governs every route and settings surface', async () => {
+  const [
+    layout,
+    provider,
+    runtime,
+    settings,
+    account,
+  ] = await Promise.all([
+    source('app/layout.tsx'),
+    source('app/components/SaMiThemeProvider.tsx'),
+    source('lib/theme/runtime.ts'),
+    source('app/settings/SettingsClient.tsx'),
+    source('app/settings/components/MyAccountSettings.tsx'),
+  ]);
+
+  assert.match(layout, /SaMiThemeProvider/);
+  assert.match(layout, /SAMI_THEME_BOOTSTRAP_SCRIPT/);
+  assert.match(layout, /suppressHydrationWarning/);
+
+  assert.match(provider, /\/api\/account\/preferences/);
+  assert.match(provider, /usePathname/);
+  assert.match(provider, /prefers-color-scheme:\s*dark/);
+  assert.match(provider, /addEventListener\(\s*['"]storage['"]/s);
+
+  assert.match(runtime, /SAMI_THEME_STORAGE_KEY/);
+  assert.match(runtime, /SAMI_THEME_CHANGE_EVENT/);
+  assert.match(runtime, /document\.documentElement/);
+  assert.match(runtime, /style\.colorScheme/);
+
+  assert.match(settings, /setSaMiTheme/);
+  assert.match(account, /setSaMiTheme/);
+
+  assert.doesNotMatch(
+    settings,
+    /const\s+THEME_STORAGE_KEY|function\s+applyThemeToDocument/,
+    'Settings must not own a second route-local theme system.',
+  );
+
+  assert.doesNotMatch(
+    account,
+    /const\s+THEME_STORAGE_KEY|function\s+applyTheme\s*\(/,
+    'My Account Appearance must use the same global theme runtime.',
+  );
+});
+
+
 test('Category 11: Settings exposes a clear permission-aware local section map', async () => {
   const settings = compact(
     await source('app/settings/SettingsClient.tsx'),
