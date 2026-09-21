@@ -316,7 +316,17 @@ CREATE TABLE IF NOT EXISTS automation_schedules (
         REFERENCES companies(id)
         ON DELETE CASCADE,
 
-    expression VARCHAR(255) NOT NULL,
+    run_as_user_id UUID NOT NULL,
+
+    schedule_kind VARCHAR(30) NOT NULL DEFAULT 'interval'
+        CHECK (schedule_kind IN ('interval')),
+
+    interval_seconds INTEGER NOT NULL
+        CHECK (
+            interval_seconds >= 60
+            AND interval_seconds <= 2592000
+        ),
+
     timezone VARCHAR(100) NOT NULL,
 
     status VARCHAR(30) NOT NULL DEFAULT 'active'
@@ -336,6 +346,9 @@ CREATE INDEX IF NOT EXISTS idx_automation_schedules_due
     ON automation_schedules(next_run_at, workflow_id)
     WHERE status = 'active'
       AND next_run_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_automation_schedules_run_as
+    ON automation_schedules(run_as_user_id, company_id);
 
 
 DROP TRIGGER IF EXISTS trg_automation_workflows_updated_at
