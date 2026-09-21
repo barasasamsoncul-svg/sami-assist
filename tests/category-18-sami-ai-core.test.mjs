@@ -391,7 +391,7 @@ test('Category 18: AI APIs are narrow and do not expose arbitrary tool or SQL ex
   );
 });
 
-test('Category 18: tenant schema advances additively from 1.4.0 to 1.5.0', async () => {
+test('Category 18: AI migration remains additive in the current tenant-core chain', async () => {
   const [manifest, migration, core] = await Promise.all([
     source('lib/schema/tenant-migrations/manifest.ts'),
     source('lib/schema/tenant-migrations/migrations/005-core-1.4.0-to-1.5.0.sql'),
@@ -400,7 +400,7 @@ test('Category 18: tenant schema advances additively from 1.4.0 to 1.5.0', async
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.5\.0['"]/s,
+    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.6\.0['"]/s,
   );
   assert.match(manifest, /core-1\.4\.0-to-1\.5\.0/);
   assert.match(
@@ -430,7 +430,9 @@ test('Category 18: tenant schema advances additively from 1.4.0 to 1.5.0', async
   );
   assert.match(migration, /VALUES \('1\.5\.0'/);
 
-  assert.match(core, /VALUES \('1\.5\.0'\)/);
+  assert.match(core, /CREATE TABLE IF NOT EXISTS \{schema\}\.ai_preferences/);
+  assert.match(core, /CREATE TABLE IF NOT EXISTS \{schema\}\.ai_runs/);
+  assert.match(core, /VALUES \('1\.6\.0'\)/);
 });
 
 test('Category 18: the real SaMi AI workspace is wired into shell, search, dashboard and settings', async () => {
