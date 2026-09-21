@@ -3,7 +3,6 @@
 import Link from 'next/link';
 
 import {
-  LayoutGrid,
   Menu,
   Sparkles,
 } from 'lucide-react';
@@ -17,6 +16,7 @@ import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
 import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
+import WorkspaceAppSwitcher from '@/app/components/workspace/WorkspaceAppSwitcher';
 
 type UserData = {
   id: string;
@@ -196,14 +196,9 @@ export default function WorkspaceShell({
               )}
 
               <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-                <Link
-                  href="/apps"
-                  aria-label="Open app launcher"
-                  title="Apps"
-                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Link>
+                <WorkspaceAppSwitcher
+                  modules={modules}
+                />
 
                 {sidebarCapabilities?.aiEnabled && (
                   <Link
