@@ -94,11 +94,12 @@ function itemBatchSize() {
 }
 
 async function listActiveTenantIds() {
-  const result =
+  const countResult =
     await queryControl(
       `
         SELECT
-          td.tenant_id
+          COUNT(*)::int
+            AS count
         FROM tenant_databases td
         INNER JOIN tenants t
           ON t.id =
@@ -119,26 +120,133 @@ async function listActiveTenantIds() {
               'active'
           AND t.deleted_at
               IS NULL
-        ORDER BY
-          td.tenant_id
-        LIMIT $1
       `,
-      [
-        tenantBatchSize(),
-      ],
     );
 
-  return result.rows
-    .map(
-      row =>
-        String(
-          row.tenant_id ||
-          '',
-        ),
-    )
-    .filter(
-      Boolean,
+  const count =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
     );
+
+  if (
+    count <=
+      0
+  ) {
+    return [];
+  }
+
+  const batch =
+    Math.min(
+      tenantBatchSize(),
+      count,
+    );
+
+  const windowNumber =
+    Math.floor(
+      Date.now() /
+      (
+        5 *
+        60 *
+        1000
+      ),
+    );
+
+  const offset =
+    (
+      windowNumber *
+      batch
+    ) %
+    count;
+
+  const load =
+    async (
+      start:
+        number,
+      limit:
+        number,
+    ) => {
+      if (
+        limit <=
+          0
+      ) {
+        return [];
+      }
+
+      const result =
+        await queryControl(
+          `
+            SELECT
+              td.tenant_id
+            FROM tenant_databases td
+            INNER JOIN tenants t
+              ON t.id =
+                 td.tenant_id
+            WHERE LOWER(
+                    COALESCE(
+                      td.status,
+                      ''
+                    )
+                  ) =
+                  'active'
+              AND LOWER(
+                    COALESCE(
+                      t.status,
+                      ''
+                    )
+                  ) =
+                  'active'
+              AND t.deleted_at
+                  IS NULL
+            ORDER BY
+              td.tenant_id
+            OFFSET $1
+            LIMIT $2
+          `,
+          [
+            start,
+            limit,
+          ],
+        );
+
+      return result.rows
+        .map(
+          row =>
+            String(
+              row.tenant_id ||
+              '',
+            ),
+        )
+        .filter(
+          Boolean,
+        );
+    };
+
+  const first =
+    await load(
+      offset,
+      batch,
+    );
+
+  if (
+    first.length >=
+      batch
+  ) {
+    return first;
+  }
+
+  const remainder =
+    await load(
+      0,
+      batch -
+        first.length,
+    );
+
+  return [
+    ...first,
+    ...remainder,
+  ];
 }
 
 async function pauseBrokenSchedule(
