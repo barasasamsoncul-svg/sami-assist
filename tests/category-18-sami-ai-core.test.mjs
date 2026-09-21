@@ -442,6 +442,13 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(client, /label="Regenerate"/);
   assert.match(client, /Stop generating/);
   assert.match(client, /AbortController/);
+  assert.match(client, /label="Helpful"/);
+  assert.match(client, /label="Not helpful"/);
+  assert.match(client, /Search conversations/);
+  assert.match(client, /Rename conversation/);
+  assert.match(client, /Pin conversation/);
+  assert.match(client, /Delete conversation/);
+  assert.match(client, /Export/);
 
   const service = await source('lib/services/workspace-ai.ts');
   assert.match(service, /mode === 'edit'/);
@@ -459,6 +466,30 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
     /href="\/files"/,
     'Unfinished Files UI must remain hidden.',
   );
+});
+
+test('Category 18: conversation and feedback actions stay user-scoped and same-origin protected', async () => {
+  const [
+    service,
+    conversationRoute,
+    feedbackRoute,
+  ] = await Promise.all([
+    source('lib/services/workspace-ai.ts'),
+    source('app/api/workspace/ai/conversations/[conversationId]/route.ts'),
+    source('app/api/workspace/ai/messages/[messageId]/feedback/route.ts'),
+  ]);
+
+  assert.match(service, /updateWorkspaceAiConversation/);
+  assert.match(service, /updateWorkspaceAiMessageFeedback/);
+  assert.match(service, /conversation\.user_id = \$2/);
+  assert.match(service, /conversation\.company_id = \$3/);
+  assert.match(service, /message\.role =\s*'assistant'/);
+  assert.match(service, /metadata\s*->>\s*'pinned'/);
+
+  assert.match(conversationRoute, /rejectAiCrossOrigin/);
+  assert.match(conversationRoute, /export async function PATCH/);
+  assert.match(feedbackRoute, /rejectAiCrossOrigin/);
+  assert.match(feedbackRoute, /updateWorkspaceAiMessageFeedback/);
 });
 
 test('Category 18: full-suite gate includes AI core regression coverage', async () => {
