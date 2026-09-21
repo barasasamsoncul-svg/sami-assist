@@ -2392,11 +2392,22 @@ export async function sendWorkspaceAiMessage(
       config.maxToolRounds;
       round += 1
     ) {
+      if (
+        input.signal
+          ?.aborted
+      ) {
+        throw new Error(
+          'AI request aborted by client.',
+        );
+      }
+
       const completion =
         await completeSamiAiChat({
           messages,
           tools:
             providerTools,
+          signal:
+            input.signal,
         });
 
       inputTokens =
