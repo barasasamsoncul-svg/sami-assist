@@ -576,6 +576,22 @@ export const stripeBillingProvider:
     };
   },
 
+  async scheduleRecurringCancellation(
+    providerSubscriptionId,
+  ) {
+    const stripe =
+      stripeClient();
+
+    await stripe.subscriptions
+      .update(
+        providerSubscriptionId,
+        {
+          cancel_at_period_end:
+            true,
+        },
+      );
+  },
+
   async cancelRecurringSubscription(
     providerSubscriptionId,
   ) {
