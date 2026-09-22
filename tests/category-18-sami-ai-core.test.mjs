@@ -496,6 +496,24 @@ test('Category 18: the real SaMi AI workspace is wired into shell, search, dashb
   assert.match(service, /status =\s*'superseded'/);
 
   assert.match(sidebar, /href="\/ai"/);
+
+  assert.doesNotMatch(
+    sidebar,
+    /canUseAi\s*&&/,
+    'SaMi AI is a core workspace destination and must remain visible even when billing temporarily blocks AI usage.',
+  );
+
+  assert.match(
+    client,
+    /SaMi AI is temporarily unavailable/,
+    'The AI workspace must distinguish temporary billing entitlement from the app being absent.',
+  );
+
+  assert.match(
+    client,
+    /subscription or billing status/,
+  );
+
   assert.match(search, /href:\s*['"]\/ai['"]/);
   assert.match(dashboard, /href="\/ai"/);
   assert.match(settings, /<AiSettings \/>/);
