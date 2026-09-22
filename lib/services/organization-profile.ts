@@ -23,6 +23,11 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
 /* ================================================================
    CATEGORY 10 — ORGANIZATION / COMPANY PROFILE
    ================================================================
@@ -211,6 +216,7 @@ export type OrganizationProfileErrorCode =
   | 'ORGANIZATION_MANAGE_REQUIRED'
   | 'COMPANIES_VIEW_REQUIRED'
   | 'COMPANIES_MANAGE_REQUIRED'
+  | 'MULTI_COMPANY_PLAN_REQUIRED'
   | 'INVALID_FIELD'
   | 'COMPANY_NOT_FOUND'
   | 'COMPANY_NOT_ACTIVE'
@@ -1825,6 +1831,60 @@ export async function reactivateOrganizationBranch(
    MULTI-COMPANY ADMINISTRATION
    ================================================================ */
 
+async function requireMultiCompanyPlan(
+  tenantId:
+    string,
+): Promise<void> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          s.status,
+          p.key
+            AS plan_key
+        FROM subscriptions s
+        INNER JOIN plans p
+          ON p.id =
+             s.plan_id
+         AND p.deleted_at
+             IS NULL
+         AND p.is_active =
+             TRUE
+        WHERE s.tenant_id = $1
+          AND s.deleted_at
+              IS NULL
+        ORDER BY
+          s.created_at DESC
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  const row =
+    result.rows[0];
+
+  if (
+    !row ||
+    !isSubscriptionEntitledNow(
+      row.status,
+    ) ||
+    getSamiPlanPolicy(
+      row.plan_key,
+    )
+      ?.companies
+      .multiCompany !==
+      true
+  ) {
+    throw new OrganizationProfileError(
+      'MULTI_COMPANY_PLAN_REQUIRED',
+      'Multiple companies require an active Custom subscription.',
+    );
+  }
+}
+
+
 async function getWorkspaceOwnerUserId(
   tenantId: string,
 ): Promise<string> {
@@ -1856,6 +1916,10 @@ export async function createWorkspaceCompany(
 ): Promise<CompanyProfile> {
   const context = await getCompanyPermissionContext();
   requireCompaniesManage(context);
+
+  await requireMultiCompanyPlan(
+    context.tenantId,
+  );
 
   const current = await loadProfile(context);
 
@@ -2188,6 +2252,10 @@ export async function reactivateWorkspaceCompany(
 ): Promise<void> {
   const context = await getCompanyPermissionContext();
   requireCompaniesManage(context);
+
+  await requireMultiCompanyPlan(
+    context.tenantId,
+  );
 
   const companyId = requireCompanyId(companyIdInput);
 
