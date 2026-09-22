@@ -1949,6 +1949,43 @@ export default function IntegrationsClient({
                           </button>
                         )}
 
+                        {(() => {
+                          const provider =
+                            state.providers.find(
+                              item =>
+                                item.key ===
+                                connection.providerKey,
+                            );
+
+                          if (
+                            provider?.connectionType !==
+                              'oauth2' ||
+                            !provider.configured
+                          ) {
+                            return null;
+                          }
+
+                          return (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                window.location.assign(
+                                  `/api/workspace/integrations/oauth/${connection.providerKey}/start?return=%2Fintegrations`,
+                                )
+                              }
+                              disabled={
+                                Boolean(
+                                  busy,
+                                )
+                              }
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                            >
+                              <Link2 className="h-3 w-3" />
+                              Reconnect
+                            </button>
+                          );
+                        })()}
+
                         <button
                           type="button"
                           onClick={() =>
