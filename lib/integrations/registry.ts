@@ -1,5 +1,9 @@
 import 'server-only';
 
+import {
+  isIntegrationEncryptionConfigured,
+} from '@/lib/integrations/crypto';
+
 import type {
   SamiIntegrationProviderDefinition,
   SamiIntegrationPublicProvider,
@@ -215,6 +219,7 @@ function oauthConfigured(
   }
 
   return Boolean(
+    isIntegrationEncryptionConfigured() &&
     process.env[
       oauth.clientIdEnv
     ]?.trim() &&
