@@ -38,6 +38,7 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  getEffectiveSubscriptionStatus,
   getSamiPlanPolicy,
   isSubscriptionEntitledNow,
 } from '@/lib/billing/plan-policy';
@@ -823,6 +824,8 @@ async function assertInstallPlanEntitled(
       `
         SELECT
           s.status,
+          s.trial_ends_at,
+          s.current_period_end,
           p.key
             AS plan_key
         FROM subscriptions s
