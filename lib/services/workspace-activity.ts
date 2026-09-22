@@ -10,6 +10,7 @@ import {
 } from '@/lib/auth/permission-context';
 import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
 import { requireCompanyAccess } from '@/lib/services/company-access';
+import { getWorkspaceSubscriptionAccessState } from '@/lib/billing/access';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,6 +50,7 @@ const SENSITIVE_KEYS = new Set([
 export type WorkspaceActivityErrorCode =
   | 'UNAUTHENTICATED'
   | 'WORKSPACE_CONTEXT_CHANGED'
+  | 'WORKSPACE_SUSPENDED'
   | 'COMPANY_REQUIRED'
   | 'COMPANY_ACCESS_DENIED'
   | 'AUDIT_VIEW_REQUIRED'
@@ -464,6 +466,20 @@ async function resolveActivityContext(): Promise<ActivityContext> {
     throw new WorkspaceActivityError(
       'WORKSPACE_CONTEXT_CHANGED',
       'Your selected workspace changed. Please try again.',
+    );
+  }
+
+  const subscriptionAccess =
+    await getWorkspaceSubscriptionAccessState(
+      permissions.tenantId,
+    );
+
+  if (
+    subscriptionAccess.pastDue
+  ) {
+    throw new WorkspaceActivityError(
+      'WORKSPACE_SUSPENDED',
+      'This workspace is temporarily locked until the subscription payment is restored.',
     );
   }
 
