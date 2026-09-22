@@ -1147,6 +1147,43 @@ test('Category 20: external app access supports selected users, everyone and str
   );
 });
 
+test('Category 20: OAuth return status is surfaced once and removed from the browser URL', async () => {
+  const client =
+    await source(
+      'app/integrations/IntegrationsClient.tsx',
+    );
+
+  assert.match(
+    client,
+    /url\.searchParams\.get\([\s\S]*['"]connected['"]/,
+  );
+
+  assert.match(
+    client,
+    /url\.searchParams\.get\([\s\S]*['"]error['"]/,
+  );
+
+  assert.match(
+    client,
+    /Integration connected/,
+  );
+
+  assert.match(
+    client,
+    /Connection failed/,
+  );
+
+  assert.match(
+    client,
+    /window\.history\.replaceState/,
+  );
+
+  assert.match(
+    client,
+    /url\.searchParams\.delete\([\s\S]*['"]connected['"]/,
+  );
+});
+
 test('Category 20: Integrations UI, navigation and search are permission-aware and responsive', async () => {
   const [
     page,
