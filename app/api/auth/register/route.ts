@@ -12,6 +12,10 @@ import {
 } from '@/lib/billing/pricing';
 
 import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
+import {
   hashPassword,
 } from '@/lib/auth/password';
 
@@ -105,7 +109,6 @@ type PlanRow = {
   id: unknown;
   key: unknown;
   name?: unknown;
-  included_apps?: unknown;
 };
 
 type GoogleSignupRow = {
@@ -1239,8 +1242,44 @@ export async function POST(
     }
 
     /* ========================================================
-       6. VALIDATE APPS
+       6. VALIDATE APPS + REQUIRED DEPENDENCIES
+
+       Registration and runtime installation share the same
+       code-owned dependency graph. A root app can never enter
+       a new workspace without every required dependency.
        ======================================================== */
+
+    let resolvedApps:
+      string[];
+
+    try {
+      resolvedApps =
+        [
+          ...new Set(
+            selectedApps.flatMap(
+              appKey =>
+                getSamiModuleDependencyPlan(
+                  appKey,
+                )
+                  .map(
+                    manifest =>
+                      manifest.key,
+                  ),
+            ),
+          ),
+        ];
+    } catch (
+      error
+    ) {
+      return errorResponse(
+        400,
+        'INVALID_SELECTED_APPS',
+        error instanceof
+          Error
+          ? error.message
+          : 'One or more selected SaMi apps are unavailable.'
+      );
+    }
 
     const moduleResult =
       await queryControl(
@@ -1261,7 +1300,7 @@ export async function POST(
             AND status = 'active'
         `,
         [
-          selectedApps,
+          resolvedApps,
         ]
       );
 
@@ -1280,7 +1319,7 @@ export async function POST(
       );
 
     const invalidApps =
-      selectedApps.filter(
+      resolvedApps.filter(
         (appKey) =>
           !validAppSet.has(
             appKey
@@ -1304,10 +1343,11 @@ export async function POST(
     /* ========================================================
        7. FINAL PLAN
 
-       Free supports only one business app.
+       Free supports only one installed business app, including
+       required dependencies.
 
-       Selecting multiple apps while Free is selected upgrades
-       the workspace to Standard.
+       If the resolved dependency plan contains more than one
+       business app, Free upgrades to Standard.
 
        Explicit Custom is never downgraded.
        ======================================================== */
@@ -1315,7 +1355,7 @@ export async function POST(
     const finalPlan =
       requestedPlan ===
         'free' &&
-      selectedApps.length >
+      resolvedApps.length >
         1
         ? 'standard'
         : requestedPlan;
@@ -1334,8 +1374,7 @@ export async function POST(
           SELECT
             id,
             key,
-            name,
-            included_apps
+            name
 
           FROM plans
 
@@ -1368,56 +1407,6 @@ export async function POST(
         plan.id,
         'subscription plan'
       );
-
-    /* ========================================================
-       9. PLAN APP LIMIT
-       ======================================================== */
-
-    if (
-      plan.included_apps !==
-        null &&
-      plan.included_apps !==
-        undefined
-    ) {
-      const includedApps =
-        Number(
-          plan.included_apps
-        );
-
-      if (
-        !Number.isFinite(
-          includedApps
-        )
-      ) {
-        throw new Error(
-          `Plan "${finalPlan}" has invalid included_apps configuration.`
-        );
-      }
-
-      /*
-       * -1 = unlimited.
-       */
-      if (
-        includedApps >= 0 &&
-        selectedApps.length >
-          includedApps
-      ) {
-        return errorResponse(
-          400,
-          'PLAN_APP_LIMIT_EXCEEDED',
-          'The selected apps exceed this plan’s allowance.',
-          {
-            plan:
-              finalPlan,
-
-            includedApps,
-
-            selectedApps:
-              selectedApps.length,
-          }
-        );
-      }
-    }
 
     /* ========================================================
        10. PASSWORD HASH
