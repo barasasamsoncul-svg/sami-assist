@@ -52,6 +52,12 @@ export interface PesaPalOrder {
   phone?: string | null;
 
   currency?: string;
+
+  billableUsers?:
+    number;
+
+  pricePerUserMonthly?:
+    number;
 }
 
 export interface PesaPalRecurringOrder
@@ -897,6 +903,33 @@ async function storePaymentTransaction({
 
         plan:
           data.plan,
+
+        billableUsers:
+          Number.isFinite(
+            Number(
+              data.billableUsers,
+            ),
+          )
+            ? Math.max(
+                1,
+                Math.floor(
+                  Number(
+                    data.billableUsers,
+                  ),
+                ),
+              )
+            : null,
+
+        pricePerUserMonthly:
+          Number.isFinite(
+            Number(
+              data.pricePerUserMonthly,
+            ),
+          )
+            ? Number(
+                data.pricePerUserMonthly,
+              )
+            : null,
 
         apps:
           normalizeApps(
