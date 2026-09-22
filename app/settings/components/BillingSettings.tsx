@@ -1,0 +1,956 @@
+'use client';
+
+import {
+  Check,
+  CircleDollarSign,
+  CreditCard,
+  Loader2,
+  ReceiptText,
+  ShieldCheck,
+  Sparkles,
+  Users,
+} from 'lucide-react';
+
+import {
+  useMemo,
+  useState,
+} from 'react';
+
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+type BillingPlan = {
+  id: string;
+  key:
+    'free' |
+    'standard' |
+    'custom';
+  name: string;
+  description: string;
+  currency: string;
+  billingInterval: string;
+  pricePerUserMonthly: number;
+  priceSource: string;
+  firstMonthFree: boolean;
+  billingBasis: string;
+  entitlements: {
+    allBusinessApps: boolean;
+    maxInstalledBusinessApps:
+      number | null;
+    ai: {
+      enabled: boolean;
+      monthlyQueriesPerUser: {
+        mode: string;
+        limit:
+          number | null;
+        unit: string;
+        label?:
+          string;
+      };
+    };
+    automation: {
+      enabled: boolean;
+    };
+    integrations: {
+      enabled: boolean;
+      customIntegrations: boolean;
+    };
+    developerApi: {
+      enabled: boolean;
+    };
+    companies: {
+      multiCompany: boolean;
+    };
+    customization: {
+      enabled: boolean;
+    };
+    storage: {
+      cloudHosted: boolean;
+      allowance: {
+        mode: string;
+        limit:
+          number | null;
+        unit: string;
+        label?:
+          string;
+      };
+    };
+  };
+};
+
+type BillingPayment = {
+  id: string;
+  provider:
+    string | null;
+  providerTransactionId:
+    string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  description:
+    string | null;
+  type:
+    string | null;
+  billingPurpose:
+    string | null;
+  paymentMethod:
+    string | null;
+  createdAt:
+    string | null;
+  updatedAt:
+    string | null;
+};
+
+export type BillingState = {
+  canManage: boolean;
+  currency: string;
+  billableUsers: number;
+  subscription: {
+    id: string;
+    status: string;
+    storedStatus: string;
+    planKey:
+      'free' |
+      'standard' |
+      'custom';
+    planName: string;
+    billingCycle:
+      string | null;
+    startedAt:
+      string | null;
+    trialEndsAt:
+      string | null;
+    currentPeriodStart:
+      string | null;
+    currentPeriodEnd:
+      string | null;
+    cancelledAt:
+      string | null;
+    firstMonthFree: boolean;
+    pricePerUserMonthly: number;
+    monthlyAmount: number;
+    paymentDue: boolean;
+    amountDue: number;
+  };
+  plans:
+    BillingPlan[];
+  payments:
+    BillingPayment[];
+  collection: {
+    provider: string;
+    mode: string;
+    automaticRecurring: boolean;
+    explanation: string;
+  };
+};
+
+type MobileSection =
+  | 'overview'
+  | 'plans'
+  | 'payments';
+
+type Overlay = {
+  open: boolean;
+  type:
+    'success' |
+    'error' |
+    'warning' |
+    'info';
+  title: string;
+  message: string;
+};
+
+const CLOSED_OVERLAY:
+  Overlay = {
+    open:
+      false,
+    type:
+      'info',
+    title:
+      '',
+    message:
+      '',
+  };
+
+function formatMoney(
+  amount:
+    number,
+  currency:
+    string,
+) {
+  return new Intl
+    .NumberFormat(
+      'en-KE',
+      {
+        style:
+          'currency',
+        currency,
+        maximumFractionDigits:
+          0,
+      },
+    )
+    .format(
+      amount,
+    );
+}
+
+function formatDate(
+  value:
+    string | null,
+) {
+  if (
+    !value
+  ) {
+    return '—';
+  }
+
+  const date =
+    new Date(
+      value,
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
+    return '—';
+  }
+
+  return date
+    .toLocaleString(
+      undefined,
+      {
+        dateStyle:
+          'medium',
+        timeStyle:
+          'short',
+      },
+    );
+}
+
+function titleCase(
+  value:
+    string,
+) {
+  return value
+    .replace(
+      /[_-]+/g,
+      ' ',
+    )
+    .replace(
+      /\b\w/g,
+      char =>
+        char.toUpperCase(),
+    );
+}
+
+function planHighlights(
+  plan:
+    BillingPlan,
+) {
+  const ai =
+    plan.entitlements
+      .ai
+      .monthlyQueriesPerUser;
+
+  return [
+    plan.entitlements
+      .allBusinessApps
+      ? 'All business apps'
+      : `Up to ${plan.entitlements.maxInstalledBusinessApps ?? 1} business app`,
+    ai.mode ===
+      'fixed'
+      ? `${Number(
+          ai.limit ||
+          0,
+        ).toLocaleString()} AI queries/user/month`
+      : ai.label ||
+        'Advanced AI allowance',
+    plan.entitlements
+      .companies
+      .multiCompany
+      ? 'Multi-company'
+      : 'Single company',
+    plan.entitlements
+      .developerApi
+      .enabled
+      ? 'External API'
+      : 'No external API',
+    plan.entitlements
+      .customization
+      .enabled
+      ? 'Custom workspace capability'
+      : 'Standard configuration',
+    'Cloud hosted',
+  ];
+}
+
+export default function BillingSettings({
+  initialState,
+}: {
+  initialState:
+    BillingState;
+}) {
+  const [
+    state,
+    setState,
+  ] =
+    useState(
+      initialState,
+    );
+
+  const [
+    mobileSection,
+    setMobileSection,
+  ] =
+    useState<MobileSection>(
+      'overview',
+    );
+
+  const [
+    busy,
+    setBusy,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    overlay,
+    setOverlay,
+  ] =
+    useState(
+      CLOSED_OVERLAY,
+    );
+
+  const currentPlan =
+    useMemo(
+      () =>
+        state.plans
+          .find(
+            plan =>
+              plan.key ===
+              state.subscription
+                .planKey,
+          ) ||
+        null,
+      [
+        state.plans,
+        state.subscription
+          .planKey,
+      ],
+    );
+
+  function show(
+    type:
+      Overlay['type'],
+    title:
+      string,
+    message:
+      string,
+  ) {
+    setOverlay({
+      open:
+        true,
+      type,
+      title,
+      message,
+    });
+  }
+
+  async function refresh() {
+    const response =
+      await fetch(
+        '/api/workspace/billing',
+        {
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+        },
+      );
+
+    const data =
+      await response.json() as {
+        success?:
+          boolean;
+        error?:
+          string;
+        billing?:
+          BillingState;
+      };
+
+    if (
+      !response.ok ||
+      !data.success ||
+      !data.billing
+    ) {
+      throw new Error(
+        data.error ||
+        'Billing could not be refreshed.',
+      );
+    }
+
+    setState(
+      data.billing,
+    );
+  }
+
+  async function checkout() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/billing',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                action:
+                  'checkout',
+              }),
+          },
+        );
+
+      const data =
+        await response.json() as {
+          success?:
+            boolean;
+          error?:
+            string;
+          checkoutUrl?:
+            string | null;
+          checkout?: {
+            checkoutUrl?:
+              string | null;
+          };
+        };
+
+      const checkoutUrl =
+        data.checkout
+          ?.checkoutUrl ||
+        data.checkoutUrl ||
+        null;
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        if (
+          checkoutUrl
+        ) {
+          window.location.assign(
+            checkoutUrl,
+          );
+          return;
+        }
+
+        throw new Error(
+          data.error ||
+          'Checkout could not be started.',
+        );
+      }
+
+      if (
+        !checkoutUrl
+      ) {
+        throw new Error(
+          'PesaPal did not return a checkout URL.',
+        );
+      }
+
+      window.location.assign(
+        checkoutUrl,
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Payment could not start',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not start PesaPal checkout.',
+      );
+
+      try {
+        await refresh();
+      } catch {
+        // Preserve the original payment error.
+      }
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+
+      <div className="sticky top-[68px] z-20 -mx-1 overflow-x-auto bg-[var(--sami-canvas)] px-1 py-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-max gap-1 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-1 shadow-[var(--sami-shadow-sm)]">
+          {([
+            [
+              'overview',
+              'Overview',
+            ],
+            [
+              'plans',
+              'Plans',
+            ],
+            [
+              'payments',
+              'Payments',
+            ],
+          ] as const).map(
+            (
+              [
+                key,
+                label,
+              ],
+            ) => (
+              <button
+                key={
+                  key
+                }
+                type="button"
+                onClick={() =>
+                  setMobileSection(
+                    key,
+                  )
+                }
+                className={[
+                  'h-8 rounded-lg px-3 text-[11px] font-black transition',
+                  mobileSection ===
+                    key
+                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                    : 'text-slate-500',
+                ].join(
+                  ' ',
+                )}
+              >
+                {label}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+
+
+      <section
+        className={[
+          'space-y-4',
+          mobileSection ===
+            'overview'
+            ? ''
+            : 'hidden lg:block',
+        ].join(
+          ' ',
+        )}
+      >
+        <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
+                <CreditCard className="h-5 w-5" />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-400">
+                  Current subscription
+                </p>
+                <h2 className="mt-1 text-xl font-black">
+                  {state.subscription
+                    .planName}
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  {titleCase(
+                    state.subscription
+                      .status,
+                  )} · {state.billableUsers} active billable user{state.billableUsers ===
+                    1
+                    ? ''
+                    : 's'}
+                </p>
+              </div>
+            </div>
+
+            <span className={[
+              'w-fit rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide',
+              state.subscription
+                .paymentDue
+                ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+            ].join(
+              ' ',
+            )}>
+              {state.subscription
+                .paymentDue
+                ? 'Payment due'
+                : 'Current'}
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-[var(--sami-border)] p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Per user / month
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {formatMoney(
+                  state.subscription
+                    .pricePerUserMonthly,
+                  state.currency,
+                )}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[var(--sami-border)] p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Current monthly bill
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {formatMoney(
+                  state.subscription
+                    .monthlyAmount,
+                  state.currency,
+                )}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-[var(--sami-border)] p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Due now
+              </p>
+              <p className="mt-1 text-lg font-black">
+                {formatMoney(
+                  state.subscription
+                    .amountDue,
+                  state.currency,
+                )}
+              </p>
+            </div>
+          </div>
+
+          {state.subscription
+            .paymentDue &&
+            state.canManage && (
+            <button
+              type="button"
+              onClick={
+                checkout
+              }
+              disabled={
+                busy
+              }
+              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:opacity-50 sm:w-auto"
+            >
+              {busy
+                ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )
+                : (
+                  <CircleDollarSign className="h-4 w-4" />
+                )}
+              Pay {formatMoney(
+                state.subscription
+                  .amountDue,
+                state.currency,
+              )} with PesaPal
+            </button>
+          )}
+
+          {!state.canManage && (
+            <p className="mt-4 text-xs text-slate-500">
+              You have read-only billing access. A billing manager or workspace owner can make payments.
+            </p>
+          )}
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
+            <div className="flex items-center gap-2 text-xs font-black">
+              <Users className="h-4 w-4 text-slate-400" />
+              Billing basis
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              SaMi bills paid plans per active internal user. The next checkout is recalculated from the live seat count.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
+            <div className="flex items-center gap-2 text-xs font-black">
+              <ShieldCheck className="h-4 w-4 text-slate-400" />
+              Collection policy
+            </div>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {state.collection
+                .explanation}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
+          <p className="text-xs font-black">
+            Billing dates
+          </p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Trial ends
+              </p>
+              <p className="mt-1 text-xs font-bold">
+                {formatDate(
+                  state.subscription
+                    .trialEndsAt,
+                )}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                Current period ends
+              </p>
+              <p className="mt-1 text-xs font-bold">
+                {formatDate(
+                  state.subscription
+                    .currentPeriodEnd,
+                )}
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+
+      <section
+        className={[
+          'space-y-3',
+          mobileSection ===
+            'plans'
+            ? ''
+            : 'hidden lg:block',
+        ].join(
+          ' ',
+        )}
+      >
+        <div>
+          <h2 className="text-sm font-black">
+            SaMi plans
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Paid plans include the first calendar month free. Prices shown are the same server-authoritative values used for billing.
+          </p>
+        </div>
+
+        <div className="grid gap-3 xl:grid-cols-3">
+          {state.plans.map(
+            plan => {
+              const current =
+                plan.key ===
+                state.subscription
+                  .planKey;
+
+              return (
+                <article
+                  key={
+                    plan.key
+                  }
+                  className={[
+                    'rounded-2xl border bg-[var(--sami-surface)] p-4',
+                    current
+                      ? 'border-blue-400 ring-2 ring-blue-500/10'
+                      : 'border-[var(--sami-border)]',
+                  ].join(
+                    ' ',
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-black">
+                        {plan.name}
+                      </h3>
+                      <p className="mt-1 text-xl font-black">
+                        {formatMoney(
+                          plan.pricePerUserMonthly,
+                          plan.currency,
+                        )}
+                        <span className="text-[10px] font-semibold text-slate-400">
+                          {' '}/ user / month
+                        </span>
+                      </p>
+                    </div>
+
+                    {current && (
+                      <span className="rounded-full bg-blue-50 px-2 py-1 text-[9px] font-black uppercase tracking-wide text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                        Current
+                      </span>
+                    )}
+                  </div>
+
+                  {plan.firstMonthFree && (
+                    <p className="mt-2 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                      First calendar month free
+                    </p>
+                  )}
+
+                  <div className="mt-4 space-y-2">
+                    {planHighlights(
+                      plan,
+                    ).map(
+                      item => (
+                        <div
+                          key={
+                            item
+                          }
+                          className="flex items-start gap-2 text-[11px] text-slate-500"
+                        >
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                          <span>
+                            {item}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+
+                  {plan.key ===
+                    'custom' && (
+                    <div className="mt-4 rounded-xl border border-[var(--sami-border)] p-3">
+                      <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Custom-only
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Multi-company, external API and customization capability.
+                      </p>
+                    </div>
+                  )}
+                </article>
+              );
+            },
+          )}
+        </div>
+      </section>
+
+
+      <section
+        className={[
+          'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]',
+          mobileSection ===
+            'payments'
+            ? ''
+            : 'hidden lg:block',
+        ].join(
+          ' ',
+        )}
+      >
+        <div className="border-b border-[var(--sami-border)] p-4">
+          <div className="flex items-center gap-2">
+            <ReceiptText className="h-4 w-4 text-slate-400" />
+            <h2 className="text-sm font-black">
+              Payment history
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            PesaPal transaction history for this workspace.
+          </p>
+        </div>
+
+        <div className="divide-y divide-[var(--sami-border)]">
+          {state.payments.length ===
+            0 && (
+            <div className="p-8 text-center text-sm text-slate-500">
+              No payments have been recorded yet.
+            </div>
+          )}
+
+          {state.payments.map(
+            payment => (
+              <div
+                key={
+                  payment.id
+                }
+                className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-black">
+                    {payment.description ||
+                    'SaMi subscription payment'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    {formatDate(
+                      payment.createdAt,
+                    )}
+                    {payment.paymentMethod
+                      ? ` · ${payment.paymentMethod}`
+                      : ''}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
+                  <p className="text-xs font-black">
+                    {formatMoney(
+                      payment.amount,
+                      payment.currency,
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                    {titleCase(
+                      payment.status,
+                    )}
+                  </p>
+                </div>
+              </div>
+            ),
+          )}
+        </div>
+      </section>
+
+
+      <SaMiOverlay
+        open={
+          overlay.open
+        }
+        type={
+          overlay.type
+        }
+        title={
+          overlay.title
+        }
+        message={
+          overlay.message
+        }
+        onClose={() =>
+          setOverlay(
+            CLOSED_OVERLAY,
+          )
+        }
+      />
+
+    </div>
+  );
+}
