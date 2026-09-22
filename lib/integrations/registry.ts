@@ -14,7 +14,7 @@ import type {
   SamiIntegrationRuntimeContext,
 } from '@/lib/integrations/types';
 
-const PROVIDERS:
+export const CORE_INTEGRATION_PROVIDERS:
   SamiIntegrationProviderDefinition[] = [
     {
       key:
@@ -188,6 +188,16 @@ const PROVIDERS:
         'launcher',
       ],
     },
+  ];
+
+export const APP_INTEGRATION_PROVIDERS:
+  SamiIntegrationProviderDefinition[] =
+  [];
+
+const PROVIDERS:
+  SamiIntegrationProviderDefinition[] = [
+    ...CORE_INTEGRATION_PROVIDERS,
+    ...APP_INTEGRATION_PROVIDERS,
   ];
 
 function normalizeKey(
