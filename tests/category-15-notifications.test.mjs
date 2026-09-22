@@ -99,6 +99,10 @@ test('Category 15: notification delivery model separates alerts, preferences and
     core,
     /email_enabled BOOLEAN NOT NULL DEFAULT FALSE/,
   );
+  assert.match(
+    core,
+    /sms_enabled BOOLEAN NOT NULL DEFAULT FALSE/,
+  );
 
   assert.match(
     core,
@@ -292,6 +296,14 @@ test('Category 15: notification center is integrated into shared shell and full 
     /Email notifications/,
   );
   assert.match(
+    center,
+    /SMS notifications/,
+  );
+  assert.match(
+    center,
+    /smsEnabled/,
+  );
+  assert.match(
     page,
     /mode="page"/,
   );
@@ -444,6 +456,153 @@ test('Category 15: workspace notification email reuses the trusted email transpo
     /Security and verification emails are controlled separately/,
   );
 });
+
+test('Category 15: SMS delivery is a real env-driven notification channel', async () => {
+  const [
+    service,
+    sms,
+    center,
+    messages,
+  ] = await Promise.all([
+    source(
+      'lib/services/workspace-notifications.ts',
+    ),
+    source(
+      'lib/services/sms.ts',
+    ),
+    source(
+      'app/components/workspace/WorkspaceNotificationCenter.tsx',
+    ),
+    source(
+      'lib/services/workspace-messages.ts',
+    ),
+  ]);
+
+  assert.match(
+    service,
+    /sendWorkspaceNotificationSms/,
+  );
+
+  assert.match(
+    service,
+    /channel[\s\S]*'sms'/s,
+  );
+
+  assert.match(
+    service,
+    /provider_message_id/,
+  );
+
+  assert.match(
+    service,
+    /smsEnabled/,
+  );
+
+  assert.match(
+    service,
+    /critical/,
+    'Critical service notifications must be able to bypass ordinary channel preferences.',
+  );
+
+  assert.match(
+    sms,
+    /SAMI_SMS_PROVIDER/,
+  );
+
+  assert.match(
+    sms,
+    /africastalking/,
+  );
+
+  assert.match(
+    sms,
+    /twilio/,
+  );
+
+  assert.match(
+    sms,
+    /AFRICASTALKING_SENDER_ID/,
+    'Africa\'s Talking must support a registered branded SaMi sender ID.',
+  );
+
+  assert.match(
+    sms,
+    /SAMI_SMS_DEFAULT_COUNTRY_CODE/,
+  );
+
+  assert.match(
+    center,
+    /SMS notifications/,
+  );
+
+  assert.match(
+    messages,
+    /createWorkspaceNotification/,
+    'Messages and announcements must use the shared notification pipeline so SMS preferences apply automatically.',
+  );
+});
+
+test('Category 15: critical billing and account-security updates use the shared notification pipeline', async () => {
+  const [
+    billing,
+    security,
+    password,
+    emailChange,
+    authenticator,
+  ] = await Promise.all([
+    source(
+      'lib/billing/notifications.ts',
+    ),
+    source(
+      'lib/security/notifications.ts',
+    ),
+    source(
+      'app/api/auth/change-password/route.ts',
+    ),
+    source(
+      'app/api/account/email-change/verify/route.ts',
+    ),
+    source(
+      'app/api/account/security/two-factor/confirm/route.ts',
+    ),
+  ]);
+
+  assert.match(
+    billing,
+    /critical:[\s\S]*true/s,
+  );
+
+  assert.match(
+    billing,
+    /forceSms:[\s\S]*true/s,
+  );
+
+  assert.match(
+    security,
+    /critical:[\s\S]*true/s,
+  );
+
+  assert.match(
+    security,
+    /forceSms:[\s\S]*true/s,
+  );
+
+  assert.match(
+    password,
+    /notifyCriticalSecurityEvent/,
+  );
+
+  assert.match(
+    emailChange,
+    /notifyCriticalSecurityEvent/,
+  );
+
+  assert.match(
+    authenticator,
+    /notifyCriticalSecurityEvent/,
+  );
+});
+
 
 test('Category 15: full-suite gate includes notification regression coverage', async () => {
   const pkg =
