@@ -1440,12 +1440,15 @@ test('Category 22: pending cancellation can be kept and ended subscriptions can 
   );
 });
 
-test('Category 22: billing worker and shell respect cancellation boundaries', async () => {
+test('Category 22: billing worker and all central access guards respect cancellation boundaries', async () => {
   const [
     reconcile,
     shell,
     access,
     account,
+    permissions,
+    pageGuard,
+    recoveryPage,
   ] =
     await Promise.all([
       source(
@@ -1459,6 +1462,15 @@ test('Category 22: billing worker and shell respect cancellation boundaries', as
       ),
       source(
         'lib/auth/account-context.ts',
+      ),
+      source(
+        'lib/auth/permission-context.ts',
+      ),
+      source(
+        'lib/auth/require-page-session.ts',
+      ),
+      source(
+        'app/subscription-required/page.tsx',
       ),
     ]);
 
@@ -1492,6 +1504,28 @@ test('Category 22: billing worker and shell respect cancellation boundaries', as
   assert.match(
     account,
     /s\.cancelled_at/,
+  );
+
+  assert.match(
+    permissions,
+    /subscriptionAccess\.suspended[\s\S]*!subscriptionAccess\.entitled/s,
+    'Cancelled subscriptions must lose business/API permissions even though they are not past-due suspended.',
+  );
+
+  assert.match(
+    pageGuard,
+    /access\.suspended[\s\S]*!access\.entitled/s,
+    'Bookmarked business pages must redirect after paid entitlement ends.',
+  );
+
+  assert.match(
+    recoveryPage,
+    /Paid subscription ended/,
+  );
+
+  assert.match(
+    recoveryPage,
+    /Data retained for recovery/,
   );
 });
 
