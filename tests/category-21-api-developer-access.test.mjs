@@ -557,7 +557,7 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
     registry,
     types,
     firstParty,
-    plannedFirstParty,
+    additionalFirstParty,
   ] =
     await Promise.all([
       source(
@@ -570,7 +570,7 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
         'lib/modules/first-party.ts',
       ),
       source(
-        'lib/modules/planned-first-party.ts',
+        'lib/modules/additional-first-party.ts',
       ),
     ]);
 
@@ -602,7 +602,7 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
       []
     ).length +
     (
-      plannedFirstParty.match(
+      additionalFirstParty.match(
         /apiEndpoints:\s*false/g,
       ) ||
       []
@@ -611,13 +611,13 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
   assert.equal(
     apiClosedCount,
     37,
-    'The 36 ready manifests plus the shared planned-manifest extension contract must fail closed for public API exposure.',
+    'The original manifests plus the shared additional-module extension contract must fail closed for public API exposure.',
   );
 
   assert.doesNotMatch(
-    plannedFirstParty,
+    additionalFirstParty,
     /apiEndpoints:\s*true/,
-    'None of the 44 planned catalog apps may expose a public developer API before implementation.',
+    'None of the 44 additional app foundations may expose a public developer API before implementation.',
   );
 });
 
