@@ -1023,6 +1023,7 @@ test('Category 22: billing state changes notify workspace owners through critica
     application,
     reconcile,
     transition,
+    service,
   ] = await Promise.all([
     source(
       'lib/billing/notifications.ts',
@@ -1035,6 +1036,9 @@ test('Category 22: billing state changes notify workspace owners through critica
     ),
     source(
       'lib/billing/plan-transition.ts',
+    ),
+    source(
+      'lib/services/workspace-billing.ts',
     ),
   ]);
 
