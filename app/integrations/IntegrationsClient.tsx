@@ -63,6 +63,8 @@ type Connection = {
     string[];
   capabilities:
     string[];
+  syncAvailable:
+    boolean;
   healthStatus: string;
   lastHealthCheckAt:
     string | null;
@@ -1573,7 +1575,7 @@ export default function IntegrationsClient({
                           Check
                         </button>
 
-                        {connection.capabilities.includes('sync') && (
+                        {connection.syncAvailable && (
                           <button
                             type="button"
                             onClick={() =>
