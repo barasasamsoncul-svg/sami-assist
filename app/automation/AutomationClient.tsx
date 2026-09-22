@@ -182,6 +182,21 @@ type ApprovalRow = {
     string | null;
 };
 
+type IntegrationWebhookOption = {
+  id: string;
+  name: string;
+  status: string;
+  eventKeys:
+    string[];
+};
+
+type SlackConnectionOption = {
+  id: string;
+  name: string;
+  providerKey: string;
+  status: string;
+};
+
 type AutomationState = {
   canManage:
     boolean;
@@ -534,6 +549,22 @@ export default function AutomationClient({
       EMPTY_OVERLAY,
     );
 
+  const [
+    integrationWebhooks,
+    setIntegrationWebhooks,
+  ] =
+    useState<
+      IntegrationWebhookOption[]
+    >([]);
+
+  const [
+    slackConnections,
+    setSlackConnections,
+  ] =
+    useState<
+      SlackConnectionOption[]
+    >([]);
+
   const selected =
     useMemo(
       () =>
@@ -549,6 +580,92 @@ export default function AutomationClient({
         selectedId,
       ],
     );
+
+  useEffect(
+    () => {
+      let active =
+        true;
+
+      async function loadIntegrationOptions() {
+        try {
+          const response =
+            await fetch(
+              '/api/workspace/integrations',
+              {
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+              },
+            );
+
+          const data =
+            await response.json() as {
+              success?:
+                boolean;
+              webhooks?:
+                IntegrationWebhookOption[];
+              connections?:
+                SlackConnectionOption[];
+            };
+
+          if (
+            !active ||
+            !response.ok ||
+            data.success !==
+              true
+          ) {
+            return;
+          }
+
+          setIntegrationWebhooks(
+            Array.isArray(
+              data.webhooks,
+            )
+              ? data.webhooks.filter(
+                  webhook =>
+                    webhook.status ===
+                    'active',
+                )
+              : [],
+          );
+
+          setSlackConnections(
+            Array.isArray(
+              data.connections,
+            )
+              ? data.connections.filter(
+                  connection =>
+                    connection.providerKey ===
+                      'slack' &&
+                    connection.status ===
+                      'connected',
+                )
+              : [],
+          );
+        } catch {
+          if (
+            active
+          ) {
+            setIntegrationWebhooks(
+              [],
+            );
+            setSlackConnections(
+              [],
+            );
+          }
+        }
+      }
+
+      void loadIntegrationOptions();
+
+      return () => {
+        active =
+          false;
+      };
+    },
+    [],
+  );
 
   useEffect(
     () => {
@@ -1387,6 +1504,79 @@ export default function AutomationClient({
                       </label>
                     </div>
                   )}
+
+                  {draft.trigger.key === 'integrations.webhook.received' && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <label>
+                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                          Webhook endpoint
+                        </span>
+                        <select
+                          value={String(draft.trigger.config.endpointId || '')}
+                          onChange={event =>
+                            setDraft(
+                              current => ({
+                                ...current,
+                                trigger: {
+                                  ...current.trigger,
+                                  config: {
+                                    ...current.trigger.config,
+                                    endpointId:
+                                      event.target.value,
+                                  },
+                                },
+                              }),
+                            )
+                          }
+                          className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                        >
+                          <option value="">
+                            Choose webhook
+                          </option>
+                          {integrationWebhooks.map(
+                            webhook => (
+                              <option
+                                key={
+                                  webhook.id
+                                }
+                                value={
+                                  webhook.id
+                                }
+                              >
+                                {webhook.name}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </label>
+
+                      <label>
+                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                          Event key (optional)
+                        </span>
+                        <input
+                          value={String(draft.trigger.config.eventKey || '')}
+                          onChange={event =>
+                            setDraft(
+                              current => ({
+                                ...current,
+                                trigger: {
+                                  ...current.trigger,
+                                  config: {
+                                    ...current.trigger.config,
+                                    eventKey:
+                                      event.target.value,
+                                  },
+                                },
+                              }),
+                            )
+                          }
+                          placeholder="lead.created"
+                          className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs outline-none"
+                        />
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 <div className="sami-surface rounded-[24px] p-4 sm:p-5">
@@ -1793,35 +1983,82 @@ export default function AutomationClient({
                                           <span className="text-[9px] font-black uppercase tracking-wide text-slate-400">
                                             {key.replace(/[_-]+/g, ' ')}
                                           </span>
-                                          <input
-                                            value={String(step.input[key] ?? '')}
-                                            maxLength={
-                                              property.maxLength
-                                            }
-                                            onChange={event =>
-                                              setDraft(
-                                                current => ({
-                                                  ...current,
-                                                  actions:
-                                                    current.actions.map(
-                                                      item =>
-                                                        item.key ===
-                                                          step.key
-                                                          ? {
-                                                              ...item,
-                                                              input: {
-                                                                ...item.input,
-                                                                [key]:
-                                                                  event.target.value,
-                                                              },
-                                                            }
-                                                          : item,
-                                                    ),
-                                                }),
-                                              )
-                                            }
-                                            className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
-                                          />
+                                          {action?.key === 'integrations.slack.send_message' && key === 'connectionId' ? (
+                                            <select
+                                              value={String(step.input[key] ?? '')}
+                                              onChange={event =>
+                                                setDraft(
+                                                  current => ({
+                                                    ...current,
+                                                    actions:
+                                                      current.actions.map(
+                                                        item =>
+                                                          item.key ===
+                                                            step.key
+                                                            ? {
+                                                                ...item,
+                                                                input: {
+                                                                  ...item.input,
+                                                                  [key]:
+                                                                    event.target.value,
+                                                                },
+                                                              }
+                                                            : item,
+                                                      ),
+                                                  }),
+                                                )
+                                              }
+                                              className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                                            >
+                                              <option value="">
+                                                Choose Slack connection
+                                              </option>
+                                              {slackConnections.map(
+                                                connection => (
+                                                  <option
+                                                    key={
+                                                      connection.id
+                                                    }
+                                                    value={
+                                                      connection.id
+                                                    }
+                                                  >
+                                                    {connection.name}
+                                                  </option>
+                                                ),
+                                              )}
+                                            </select>
+                                          ) : (
+                                            <input
+                                              value={String(step.input[key] ?? '')}
+                                              maxLength={
+                                                property.maxLength
+                                              }
+                                              onChange={event =>
+                                                setDraft(
+                                                  current => ({
+                                                    ...current,
+                                                    actions:
+                                                      current.actions.map(
+                                                        item =>
+                                                          item.key ===
+                                                            step.key
+                                                            ? {
+                                                                ...item,
+                                                                input: {
+                                                                  ...item.input,
+                                                                  [key]:
+                                                                    event.target.value,
+                                                                },
+                                                              }
+                                                            : item,
+                                                      ),
+                                                  }),
+                                                )
+                                              }
+                                              className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                                            />
+                                          )}
                                         </label>
                                       ),
                                     )}
