@@ -584,7 +584,6 @@ export async function recordDeveloperRequest(
       ),
     ],
   );
-}
 
   await pool.query(
     `
@@ -598,6 +597,7 @@ export async function recordDeveloperRequest(
       context.companyId,
     ],
   );
+}
 
 export function developerApiJson(
   body:
