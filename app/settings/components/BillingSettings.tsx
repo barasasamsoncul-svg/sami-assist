@@ -859,6 +859,380 @@ export default function BillingSettings({
     );
   }
 
+  async function postBillingLifecycleAction(
+    action:
+      'cancel_plan_change' |
+      'cancel_subscription' |
+      'resume_subscription' |
+      'reactivate_subscription',
+  ) {
+    const response =
+      await fetch(
+        '/api/workspace/billing',
+        {
+          method:
+            'POST',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify({
+              action,
+            }),
+        },
+      );
+
+    const data =
+      await response.json() as {
+        success?:
+          boolean;
+        error?:
+          string;
+        subscriptionCancellation?: {
+          mode?:
+            string;
+          effectiveAt?:
+            string | null;
+        };
+        subscriptionReactivation?: {
+          paymentRequired?:
+            boolean;
+        };
+      };
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        data.error ||
+        'SaMi could not update the subscription.',
+      );
+    }
+
+    return data;
+  }
+
+
+  function confirmCancelPlanChange() {
+    const scheduled =
+      state.subscription
+        .scheduledPlan;
+
+    if (
+      !scheduled ||
+      !state.canManage ||
+      busy
+    ) {
+      return;
+    }
+
+    setOverlay({
+      open:
+        true,
+      type:
+        'warning',
+      title:
+        'Cancel scheduled plan change?',
+      message:
+        `SaMi will keep the current ${state.subscription.planName} plan and undo the pending change to ${scheduled.name}${scheduled.effectiveAt ? ` on ${formatDate(scheduled.effectiveAt)}` : ''}. If the billing provider had already been prepared for the change, SaMi will restore the current renewal settings too.`,
+      primaryAction: {
+        label:
+          'Cancel plan change',
+        onClick: () => {
+          setOverlay(
+            CLOSED_OVERLAY,
+          );
+          void cancelPlanChange();
+        },
+      },
+      secondaryAction: {
+        label:
+          'Keep scheduled change',
+      },
+    });
+  }
+
+
+  async function cancelPlanChange() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'cancel_plan_change',
+      );
+
+      await refresh();
+
+      show(
+        'success',
+        'Plan change cancelled',
+        'Your current SaMi plan will continue. Any provider renewal settings changed for the pending plan change were restored where required.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Plan change could not be cancelled',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not cancel the pending plan change.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  function confirmCancelSubscription() {
+    if (
+      !state.canManage ||
+      busy ||
+      state.subscription
+        .planKey ===
+        'free' ||
+      state.subscription
+        .cancellation
+        .scheduled ||
+      state.subscription
+        .cancellation
+        .ended
+    ) {
+      return;
+    }
+
+    const boundary =
+      state.subscription
+        .status ===
+          'trial' ||
+      state.subscription
+        .status ===
+          'trialing'
+        ? state.subscription
+            .trialEndsAt
+        : state.subscription
+            .currentPeriodEnd;
+
+    setOverlay({
+      open:
+        true,
+      type:
+        'warning',
+      title:
+        'Cancel paid subscription?',
+      message:
+        boundary
+          ? `Automatic renewal will stop. Your current paid access remains available until ${formatDate(boundary)}. After that, paid workspace work stops, but SaMi keeps your data, files, settings and app data. This does not delete the workspace. You can undo the cancellation before that date.`
+          : 'Automatic renewal will stop and paid access may end immediately because there is no remaining paid billing period. SaMi keeps your workspace data, files, settings and app data.',
+      primaryAction: {
+        label:
+          'Cancel subscription',
+        onClick: () => {
+          setOverlay(
+            CLOSED_OVERLAY,
+          );
+          void cancelSubscription();
+        },
+      },
+      secondaryAction: {
+        label:
+          'Keep subscription',
+      },
+    });
+  }
+
+
+  async function cancelSubscription() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      const data =
+        await postBillingLifecycleAction(
+          'cancel_subscription',
+        );
+
+      await refresh();
+
+      const effectiveAt =
+        data
+          .subscriptionCancellation
+          ?.effectiveAt ||
+        null;
+
+      show(
+        'success',
+        data
+          .subscriptionCancellation
+          ?.mode ===
+          'scheduled'
+          ? 'Cancellation scheduled'
+          : 'Subscription cancelled',
+        data
+          .subscriptionCancellation
+          ?.mode ===
+          'scheduled'
+          ? `Your paid subscription will end${effectiveAt ? ` on ${formatDate(effectiveAt)}` : ' at the current billing boundary'}. Paid access remains available until then and your workspace data will be retained.`
+          : 'Future renewal has stopped. Your workspace data remains retained and Billing stays available for reactivation.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be cancelled',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not cancel this subscription.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  async function keepSubscription() {
+    if (
+      busy ||
+      !state.canManage ||
+      !state.subscription
+        .cancellation
+        .scheduled
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'resume_subscription',
+      );
+
+      await refresh();
+
+      show(
+        'success',
+        'Subscription will continue',
+        'The pending cancellation was removed. Automatic renewal was restored where the billing provider supports recurring renewal.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be resumed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not undo the cancellation.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  async function reactivateSubscription() {
+    if (
+      busy ||
+      !state.canManage ||
+      !state.subscription
+        .cancellation
+        .ended
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'reactivate_subscription',
+      );
+
+      await refresh();
+
+      setOverlay({
+        open:
+          true,
+        type:
+          'info',
+        title:
+          'Complete payment to reactivate',
+        message:
+          'SaMi restored the subscription to payment-recovery state. Complete the current plan payment to start a new paid period. Your previous workspace data has remained in place.',
+        primaryAction: {
+          label:
+            'Pay now',
+          onClick: () => {
+            setOverlay(
+              CLOSED_OVERLAY,
+            );
+            void checkout();
+          },
+        },
+        secondaryAction: {
+          label:
+            'Pay later',
+        },
+      });
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be reactivated',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not prepare this subscription for reactivation.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
   async function changePlan(
     targetPlan:
       BillingPlan['key'],
