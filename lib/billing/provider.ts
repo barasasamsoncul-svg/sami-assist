@@ -219,6 +219,13 @@ export type SamiBillingProvider = {
           string;
       }>;
 
+  scheduleRecurringCancellation?:
+    (
+      providerSubscriptionId:
+        string,
+    ) =>
+      Promise<void>;
+
   cancelRecurringSubscription?:
     (
       providerSubscriptionId:
