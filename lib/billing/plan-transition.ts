@@ -289,6 +289,41 @@ export async function applyDueSubscriptionCancellations(
     try {
       await queryControl(
         `
+          UPDATE subscription_billing_profiles
+          SET
+            recurring_status =
+              'cancelled',
+            metadata =
+              metadata ||
+              $2::jsonb,
+            updated_at =
+              NOW()
+          WHERE subscription_id =
+                $1
+            AND is_active =
+                TRUE
+        `,
+        [
+          row.id,
+          JSON.stringify({
+            cancellationAppliedAt:
+              new Date()
+                .toISOString(),
+          }),
+        ],
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Billing] Cancellation profile finalization failed:',
+        error,
+      );
+    }
+
+    try {
+      await queryControl(
+        `
           INSERT INTO audit_logs (
             tenant_id,
             actor_type,
