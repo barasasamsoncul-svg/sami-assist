@@ -151,29 +151,56 @@ export async function getActiveSubscriptionBillingProfile(
   subscriptionId:
     string,
 ) {
-  const result =
-    await queryControl(
-      `
-        SELECT *
-        FROM subscription_billing_profiles
-        WHERE subscription_id = $1
-          AND is_active =
-              TRUE
-        ORDER BY
-          updated_at DESC,
-          id DESC
-        LIMIT 1
-      `,
-      [
-        subscriptionId,
-      ],
-    );
+  try {
+    const result =
+      await queryControl(
+        `
+          SELECT *
+          FROM subscription_billing_profiles
+          WHERE subscription_id = $1
+            AND is_active =
+                TRUE
+          ORDER BY
+            updated_at DESC,
+            id DESC
+          LIMIT 1
+        `,
+        [
+          subscriptionId,
+        ],
+      );
 
-  return result.rows[0]
-    ? rowToProfile(
-        result.rows[0],
-      )
-    : null;
+    return result.rows[0]
+      ? rowToProfile(
+          result.rows[0],
+        )
+      : null;
+  } catch (
+    error
+  ) {
+    if (
+      error &&
+      typeof error ===
+        'object' &&
+      'code' in error &&
+      (
+        error as {
+          code?:
+            string;
+        }
+      ).code ===
+        '42P01'
+    ) {
+      /*
+       * Rolling deploy compatibility:
+       * old control DB -> new application.
+       * Recurring setup still requires the migration before write.
+       */
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function createSubscriptionBillingProfile(
