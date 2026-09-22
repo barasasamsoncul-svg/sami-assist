@@ -115,9 +115,14 @@ test('Category 22: subscription prices are server-authoritative and environment 
     /getSamiMonthlyAmount/,
   );
 
+  const policy =
+    await source(
+      'lib/billing/plan-policy.ts',
+    );
+
   assert.match(
-    pricing,
-    /per_active_internal_user|active_internal_user/i,
+    policy,
+    /billingBasis:[\s\S]*'per_active_internal_user'/s,
   );
 });
 
