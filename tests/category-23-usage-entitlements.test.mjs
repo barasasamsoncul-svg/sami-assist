@@ -205,6 +205,127 @@ test('Category 23: optional Custom AI and storage guardrails are environment-dri
   );
 });
 
+test('Category 23: internal seat limits cover invitations and member reactivation', async () => {
+  const [
+    usage,
+    invitations,
+    membership,
+  ] =
+    await Promise.all([
+      source(
+        'lib/usage/entitlements.ts',
+      ),
+      source(
+        'lib/services/invitation-acceptance.ts',
+      ),
+      source(
+        'lib/services/membership-lifecycle.ts',
+      ),
+    ]);
+
+  assert.match(
+    usage,
+    /pg_advisory_xact_lock/,
+    'Seat checks must serialize concurrent activation paths.',
+  );
+
+  assert.match(
+    usage,
+    /INTERNAL_SEAT_LIMIT_REACHED/,
+  );
+
+  assert.match(
+    usage,
+    /member_type[\s\S]*internal[\s\S]*status[\s\S]*active/s,
+  );
+
+  assert.match(
+    invitations,
+    /assertInternalSeatAvailableWithClient/,
+    'Invitation acceptance must not bypass the active internal-user allowance.',
+  );
+
+  assert.match(
+    invitations,
+    /INVITATION_PLAN_LIMIT_REACHED/,
+  );
+
+  assert.match(
+    membership,
+    /assertMembershipSeatAvailable[\s\S]*reactivate/s,
+  );
+
+  assert.match(
+    membership,
+    /assertMembershipSeatAvailable[\s\S]*restore/s,
+  );
+});
+
+test('Category 23: Custom-only integrations are enforced at management and runtime boundaries', async () => {
+  const [
+    integrations,
+    webhookRuntime,
+    policy,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-integrations.ts',
+      ),
+      source(
+        'lib/integrations/webhooks.ts',
+      ),
+      source(
+        'lib/billing/plan-policy.ts',
+      ),
+    ]);
+
+  assert.match(
+    policy,
+    /free:[\s\S]*customIntegrations:[\s\S]*false/s,
+  );
+
+  assert.match(
+    policy,
+    /standard:[\s\S]*customIntegrations:[\s\S]*false/s,
+  );
+
+  assert.match(
+    policy,
+    /custom:[\s\S]*customIntegrations:[\s\S]*true/s,
+  );
+
+  assert.match(
+    integrations,
+    /requireCustomIntegrationEntitlement/,
+  );
+
+  assert.match(
+    integrations,
+    /createWorkspaceWebhookEndpoint[\s\S]*requireCustomIntegrationEntitlement/s,
+  );
+
+  assert.match(
+    integrations,
+    /createWorkspaceExternalApp[\s\S]*requireCustomIntegrationEntitlement/s,
+  );
+
+  assert.match(
+    integrations,
+    /action ===[\s\S]*'resume'[\s\S]*rotate_secret[\s\S]*requireCustomIntegrationEntitlement/s,
+  );
+
+  assert.match(
+    integrations,
+    /operation ===[\s\S]*'update'[\s\S]*'enable'[\s\S]*requireCustomIntegrationEntitlement/s,
+  );
+
+  assert.match(
+    webhookRuntime,
+    /custom_webhook[\s\S]*customIntegrations[\s\S]*WEBHOOK_PLAN_INACTIVE/s,
+    'Downgraded workspaces must not continue executing custom webhooks.',
+  );
+});
+
 test('Category 23: workspace usage visibility follows billing authority', async () => {
   const service =
     await source(
