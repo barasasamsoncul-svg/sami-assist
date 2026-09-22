@@ -1,0 +1,329 @@
+import 'server-only';
+
+import type {
+  SamiIntegrationProviderDefinition,
+  SamiIntegrationPublicProvider,
+  SamiIntegrationRuntimeContext,
+} from '@/lib/integrations/types';
+
+const PROVIDERS:
+  SamiIntegrationProviderDefinition[] = [
+    {
+      key:
+        'google_workspace',
+      name:
+        'Google Workspace',
+      description:
+        'Connect Google Workspace services through an organization-managed OAuth connection.',
+      category:
+        'productivity',
+      iconKey:
+        'google',
+      connectionType:
+        'oauth2',
+      websiteUrl:
+        'https://workspace.google.com',
+      docsUrl:
+        'https://developers.google.com/identity/protocols/oauth2',
+      capabilities: [
+        'sync',
+        'automation_triggers',
+        'automation_actions',
+        'ai_context',
+      ],
+      oauth: {
+        authorizationUrl:
+          'https://accounts.google.com/o/oauth2/v2/auth',
+        tokenUrl:
+          'https://oauth2.googleapis.com/token',
+        revokeUrl:
+          'https://oauth2.googleapis.com/revoke',
+        clientIdEnv:
+          'SAMI_GOOGLE_OAUTH_CLIENT_ID',
+        clientSecretEnv:
+          'SAMI_GOOGLE_OAUTH_CLIENT_SECRET',
+        scopes: [
+          'openid',
+          'email',
+          'profile',
+        ],
+        usePkce:
+          true,
+        extraAuthorizationParams: {
+          access_type:
+            'offline',
+          prompt:
+            'consent',
+        },
+      },
+    },
+    {
+      key:
+        'microsoft_365',
+      name:
+        'Microsoft 365',
+      description:
+        'Connect Microsoft 365 through Microsoft identity and Graph-compatible OAuth.',
+      category:
+        'productivity',
+      iconKey:
+        'microsoft',
+      connectionType:
+        'oauth2',
+      websiteUrl:
+        'https://www.microsoft.com/microsoft-365',
+      docsUrl:
+        'https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow',
+      capabilities: [
+        'sync',
+        'automation_triggers',
+        'automation_actions',
+        'ai_context',
+      ],
+      oauth: {
+        authorizationUrl:
+          'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+        tokenUrl:
+          'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        clientIdEnv:
+          'SAMI_MICROSOFT_OAUTH_CLIENT_ID',
+        clientSecretEnv:
+          'SAMI_MICROSOFT_OAUTH_CLIENT_SECRET',
+        scopes: [
+          'openid',
+          'profile',
+          'email',
+          'offline_access',
+          'User.Read',
+        ],
+        usePkce:
+          true,
+      },
+    },
+    {
+      key:
+        'slack',
+      name:
+        'Slack',
+      description:
+        'Connect a Slack workspace for approved messaging, events and workflow actions.',
+      category:
+        'communication',
+      iconKey:
+        'message-square',
+      connectionType:
+        'oauth2',
+      websiteUrl:
+        'https://slack.com',
+      docsUrl:
+        'https://api.slack.com/authentication/oauth-v2',
+      capabilities: [
+        'inbound_webhook',
+        'outbound_webhook',
+        'automation_triggers',
+        'automation_actions',
+      ],
+      oauth: {
+        authorizationUrl:
+          'https://slack.com/oauth/v2/authorize',
+        tokenUrl:
+          'https://slack.com/api/oauth.v2.access',
+        clientIdEnv:
+          'SAMI_SLACK_OAUTH_CLIENT_ID',
+        clientSecretEnv:
+          'SAMI_SLACK_OAUTH_CLIENT_SECRET',
+        scopes: [],
+        usePkce:
+          false,
+      },
+    },
+    {
+      key:
+        'custom_webhook',
+      name:
+        'Custom Webhook',
+      description:
+        'Receive signed events from a trusted external system without giving it database or API access.',
+      category:
+        'developer',
+      iconKey:
+        'webhook',
+      connectionType:
+        'webhook',
+      websiteUrl:
+        null,
+      docsUrl:
+        null,
+      capabilities: [
+        'inbound_webhook',
+        'automation_triggers',
+      ],
+    },
+    {
+      key:
+        'external_app',
+      name:
+        'External App',
+      description:
+        'Add an approved external or internal business application to the SaMi launcher.',
+      category:
+        'other',
+      iconKey:
+        'external-link',
+      connectionType:
+        'external_app',
+      websiteUrl:
+        null,
+      docsUrl:
+        null,
+      capabilities: [
+        'launcher',
+      ],
+    },
+  ];
+
+function normalizeKey(
+  value:
+    string | null | undefined,
+) {
+  return (
+    value ||
+    ''
+  )
+    .trim()
+    .toLowerCase();
+}
+
+function oauthConfigured(
+  provider:
+    SamiIntegrationProviderDefinition,
+) {
+  if (
+    provider.connectionType !==
+      'oauth2'
+  ) {
+    return true;
+  }
+
+  const oauth =
+    provider.oauth;
+
+  if (
+    !oauth
+  ) {
+    return false;
+  }
+
+  return Boolean(
+    process.env[
+      oauth.clientIdEnv
+    ]?.trim() &&
+    process.env[
+      oauth.clientSecretEnv
+    ]?.trim(),
+  );
+}
+
+export function getIntegrationProvider(
+  providerKey:
+    string,
+) {
+  const key =
+    normalizeKey(
+      providerKey,
+    );
+
+  return (
+    PROVIDERS.find(
+      provider =>
+        provider.key ===
+        key,
+    ) ||
+    null
+  );
+}
+
+export function getIntegrationProviderCatalog():
+  SamiIntegrationPublicProvider[] {
+  return PROVIDERS.map(
+    provider => ({
+      ...provider,
+      configured:
+        oauthConfigured(
+          provider,
+        ),
+    }),
+  );
+}
+
+export function getAccessibleIntegrationProviders(
+  context:
+    SamiIntegrationRuntimeContext,
+) {
+  return getIntegrationProviderCatalog()
+    .filter(
+      provider => {
+        if (
+          !provider.moduleKey
+        ) {
+          return true;
+        }
+
+        return context
+          .accessibleModuleKeys
+          .includes(
+            provider.moduleKey,
+          );
+      },
+    );
+}
+
+export function requireConfiguredOAuthProvider(
+  providerKey:
+    string,
+) {
+  const provider =
+    getIntegrationProvider(
+      providerKey,
+    );
+
+  if (
+    !provider ||
+    provider.connectionType !==
+      'oauth2' ||
+    !provider.oauth
+  ) {
+    throw new Error(
+      'Integration provider does not support OAuth.',
+    );
+  }
+
+  const clientId =
+    process.env[
+      provider.oauth
+        .clientIdEnv
+    ]?.trim();
+
+  const clientSecret =
+    process.env[
+      provider.oauth
+        .clientSecretEnv
+    ]?.trim();
+
+  if (
+    !clientId ||
+    !clientSecret
+  ) {
+    throw new Error(
+      'Integration provider is not configured on this SaMi deployment.',
+    );
+  }
+
+  return {
+    provider,
+    oauth:
+      provider.oauth,
+    clientId,
+    clientSecret,
+  };
+}
