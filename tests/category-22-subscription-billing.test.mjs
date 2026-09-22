@@ -1376,6 +1376,121 @@ test('Category 22: paid subscription cancellation is distinct from downgrade and
   );
 });
 
+test('Category 22: trial-to-Free downgrade preserves the free month and remains reversible', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-billing.ts',
+    );
+
+  assert.match(
+    service,
+    /During the first paid-plan trial/,
+  );
+
+  assert.match(
+    service,
+    /targetPlan:[\s\S]*'free'[\s\S]*cancellationMode:[\s\S]*'period_end'/s,
+  );
+
+  assert.match(
+    service,
+    /scheduled_plan_effective_at/,
+  );
+
+  assert.match(
+    service,
+    /boundary:[\s\S]*'trial_end'/s,
+  );
+
+  assert.match(
+    service,
+    /You can cancel this pending change in Billing before then/,
+  );
+});
+
+test('Category 22: stale verified payments honor paid service without restoring renewal', async () => {
+  const application =
+    await source(
+      'lib/billing/payment-application.ts',
+    );
+
+  const checkoutStart =
+    application.indexOf(
+      'export async function applyVerifiedCheckoutPayment',
+    );
+
+  const failedStart =
+    application.indexOf(
+      'export async function markVerifiedCheckoutFailed',
+      checkoutStart,
+    );
+
+  const recurringStart =
+    application.indexOf(
+      'export async function applyVerifiedRecurringInvoice',
+      failedStart,
+    );
+
+  assert.ok(
+    checkoutStart >= 0 &&
+    failedStart >
+      checkoutStart &&
+    recurringStart >
+      failedStart,
+  );
+
+  const checkoutBlock =
+    application.slice(
+      checkoutStart,
+      failedStart,
+    );
+
+  const failedBlock =
+    application.slice(
+      failedStart,
+      recurringStart,
+    );
+
+  const recurringBlock =
+    application.slice(
+      recurringStart,
+    );
+
+  assert.match(
+    checkoutBlock,
+    /'cancelled'/,
+    'A provider-verified checkout that was already in flight may still be honored after cancellation.',
+  );
+
+  assert.match(
+    checkoutBlock,
+    /cancellationPreserved/,
+  );
+
+  assert.doesNotMatch(
+    checkoutBlock,
+    /cancelled_at\s*=\s*NULL/i,
+    'A stale verified checkout must not erase the customer cancellation.',
+  );
+
+  assert.match(
+    failedBlock,
+    /cancelled_at[\s\S]*IS NULL/s,
+    'A stale failed checkout must not move a cancelled subscription into dunning.',
+  );
+
+  assert.doesNotMatch(
+    recurringBlock,
+    /cancelled_at\s*=\s*NULL/i,
+    'A final recurring invoice must not restore renewal after cancellation.',
+  );
+
+  assert.match(
+    recurringBlock,
+    /cancellation remains scheduled/,
+  );
+});
+
 test('Category 22: pending cancellation can be kept and ended subscriptions can recover', async () => {
   const [
     service,
