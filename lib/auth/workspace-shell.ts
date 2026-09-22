@@ -13,6 +13,11 @@ import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
 
+import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
 
 /* ================================================================
    TYPES
@@ -85,24 +90,6 @@ const HIDDEN_MODULE_STATUSES =
     'uninstalled',
     'removed',
     'inactive',
-  ]);
-
-
-/*
- * Category 22/23 bridge.
- *
- * The current subscription model does not yet expose a dedicated
- * AI entitlement flag. Until Usage / Limits / Entitlements is built,
- * active and trial subscriptions are treated as AI-entitled.
- *
- * When Category 23 introduces a real plan entitlement such as
- * ai.enabled, ONLY isWorkspaceAiAvailable() should need changing.
- */
-const AI_ALLOWED_SUBSCRIPTION_STATUSES =
-  new Set([
-    'active',
-    'trial',
-    'trialing',
   ]);
 
 
@@ -207,10 +194,20 @@ export function isWorkspaceAiAvailable(
   }
 
 
-  return AI_ALLOWED_SUBSCRIPTION_STATUSES.has(
-    normalizeKey(
+  if (
+    !isSubscriptionEntitledNow(
       subscription.status,
-    ),
+    )
+  ) {
+    return false;
+  }
+
+  return (
+    getSamiPlanPolicy(
+      subscription.planKey,
+    )
+      ?.ai.enabled ===
+    true
   );
 }
 
