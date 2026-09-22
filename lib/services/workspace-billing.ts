@@ -39,6 +39,7 @@ import {
 
 import {
   applyDueScheduledPlanChanges,
+  applyDueSubscriptionCancellations,
 } from '@/lib/billing/plan-transition';
 
 import {
@@ -70,7 +71,13 @@ export type WorkspaceBillingErrorCode =
   | 'BILLING_PROVIDER_MIGRATION_REQUIRED'
   | 'PLAN_CHANGE_BLOCKED'
   | 'PLAN_CHANGE_PROVIDER_UNSUPPORTED'
-  | 'PLAN_CHANGE_ALREADY_SCHEDULED';
+  | 'PLAN_CHANGE_ALREADY_SCHEDULED'
+  | 'PLAN_CHANGE_NOT_SCHEDULED'
+  | 'SUBSCRIPTION_CANCELLATION_NOT_APPLICABLE'
+  | 'SUBSCRIPTION_CANCELLATION_ALREADY_SCHEDULED'
+  | 'SUBSCRIPTION_CANCELLATION_NOT_SCHEDULED'
+  | 'SUBSCRIPTION_CANCELLATION_EFFECTIVE'
+  | 'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED';
 
 export class WorkspaceBillingError
   extends Error {
@@ -222,6 +229,10 @@ async function loadSubscription(
     string,
 ) {
   await applyDueScheduledPlanChanges(
+    tenantId,
+  );
+
+  await applyDueSubscriptionCancellations(
     tenantId,
   );
 
@@ -1029,6 +1040,8 @@ export async function getWorkspaceBillingState() {
         subscription.trial_ends_at,
       currentPeriodEnd:
         subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
     });
 
   await persistPastDueIfNeeded(
@@ -1148,6 +1161,34 @@ export async function getWorkspaceBillingState() {
         toIso(
           subscription.cancelled_at,
         ),
+      cancellation: {
+        requestedAt:
+          toIso(
+            subscription.cancelled_at,
+          ),
+        effectiveAt:
+          subscription.cancelled_at
+            ? toIso(
+                (
+                  effectiveStatus ===
+                    'trial' ||
+                  effectiveStatus ===
+                    'trialing'
+                )
+                  ? subscription.trial_ends_at
+                  : subscription.current_period_end,
+              )
+            : null,
+        scheduled:
+          Boolean(
+            subscription.cancelled_at &&
+            effectiveStatus !==
+              'cancelled'
+          ),
+        ended:
+          effectiveStatus ===
+            'cancelled',
+      },
       scheduledPlan:
         subscription.scheduled_plan_key
           ? {
@@ -1347,6 +1388,8 @@ export async function startWorkspaceBillingCheckout(
         subscription.trial_ends_at,
       currentPeriodEnd:
         subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
     });
 
   if (
@@ -1692,6 +1735,8 @@ export async function startWorkspaceRecurringBillingSetup(
         subscription.trial_ends_at,
       currentPeriodEnd:
         subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
     });
 
   if (
@@ -2054,6 +2099,8 @@ export async function completeWorkspaceRecurringBillingSetup() {
         subscription.trial_ends_at,
       currentPeriodEnd:
         subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
     });
 
   const noChargeUntil =
@@ -2647,6 +2694,8 @@ export async function changeWorkspaceSubscriptionPlan(
         subscription.trial_ends_at,
       currentPeriodEnd:
         subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
     });
 
   const subscriptionId =
