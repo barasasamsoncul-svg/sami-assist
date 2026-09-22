@@ -19,6 +19,10 @@ import {
   createWorkspaceNotification,
 } from '@/lib/services/workspace-notifications';
 
+import {
+  sendSlackIntegrationMessage,
+} from '@/lib/integrations/runtime';
+
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
     {
@@ -173,6 +177,53 @@ export const CORE_AUTOMATION_ACTIONS:
         ],
       },
     },
+    {
+      key:
+        'integrations.slack.send_message',
+      name:
+        'Send Slack message',
+      description:
+        'Send a message through an approved Slack connection in the current company.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      requiredPermissions: [
+        SAMI_PERMISSIONS
+          .INTEGRATIONS_VIEW,
+      ],
+      approvalPolicy:
+        'optional',
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          connectionId: {
+            type:
+              'string',
+          },
+          channel: {
+            type:
+              'string',
+            maxLength:
+              40,
+          },
+          text: {
+            type:
+              'string',
+            maxLength:
+              3000,
+          },
+        },
+        required: [
+          'connectionId',
+          'channel',
+          'text',
+        ],
+      },
+    },
   ];
 
 export const APP_AUTOMATION_ACTIONS:
@@ -260,6 +311,50 @@ const CORE_AUTOMATION_ACTION_HANDLERS =
           notificationId:
             notification.id,
         };
+      },
+    ],
+    [
+      'integrations.slack.send_message',
+      async (
+        context,
+        input,
+      ) => {
+        const connectionId =
+          typeof input.connectionId ===
+            'string'
+            ? input.connectionId
+                .trim()
+            : '';
+
+        const channel =
+          typeof input.channel ===
+            'string'
+            ? input.channel
+                .trim()
+            : '';
+
+        const text =
+          typeof input.text ===
+            'string'
+            ? input.text
+            : '';
+
+        if (
+          !connectionId
+        ) {
+          throw new Error(
+            'Slack connection is required.',
+          );
+        }
+
+        return sendSlackIntegrationMessage(
+          context,
+          {
+            connectionId,
+            channel,
+            text,
+          },
+        );
       },
     ],
   ]);
