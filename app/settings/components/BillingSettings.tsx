@@ -14,6 +14,7 @@ import {
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -160,6 +161,8 @@ export type BillingState = {
       string;
     providerName:
       string;
+    configured:
+      boolean;
     mode:
       string;
     automaticRecurring:
@@ -408,6 +411,11 @@ export default function BillingSettings({
       null,
     );
 
+  const automaticSetupStarted =
+    useRef(
+      false,
+    );
+
   const currentPlan =
     useMemo(
       () =>
@@ -437,6 +445,66 @@ export default function BillingSettings({
           .recurringStatus,
       ),
     );
+
+  useEffect(
+    () => {
+      const params =
+        new URLSearchParams(
+          window.location.search,
+        );
+
+      if (
+        params.get(
+          'setup',
+        ) !==
+          '1' ||
+        automaticSetupStarted
+          .current ||
+        !state.canManage ||
+        !state.collection
+          .configured ||
+        !state.collection
+          .capabilities
+          .savePaymentMethodWithoutCharge ||
+        automaticBillingActive
+      ) {
+        return;
+      }
+
+      automaticSetupStarted
+        .current =
+        true;
+
+      void startAutomaticBilling();
+
+      const clean =
+        new URL(
+          window.location.href,
+        );
+
+      clean.searchParams
+        .delete(
+          'setup',
+        );
+
+      window.history
+        .replaceState(
+          {},
+          '',
+          `${clean.pathname}${clean.search}${clean.hash}`,
+        );
+    },
+    [
+      automaticBillingActive,
+      state.canManage,
+      state.collection
+        .configured,
+      state.collection
+        .capabilities
+        .savePaymentMethodWithoutCharge,
+    ],
+  );
+
 
   useEffect(
     () => {
@@ -1067,6 +1135,8 @@ export default function BillingSettings({
             {state.subscription.planKey !==
               'free' &&
               state.canManage &&
+              state.collection
+                .configured &&
               state.collection.capabilities
                 .savePaymentMethodWithoutCharge &&
               !automaticBillingActive && (
