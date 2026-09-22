@@ -19,6 +19,29 @@ PESAPAL_CONSUMER_KEY=<your-pesapal-consumer-key>
 PESAPAL_CONSUMER_SECRET=<your-pesapal-consumer-secret>
 PESAPAL_IPN_ID=<your-registered-pesapal-ipn-id>
 
+
+# ============================================================
+# Alternative billing provider — Stripe
+# Configure only when SAMI_BILLING_PROVIDER=stripe
+# ============================================================
+
+STRIPE_SECRET_KEY=
+STRIPE_PUBLISHABLE_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+# Optional. SaMi can discover/create products when these are blank.
+STRIPE_STANDARD_PRODUCT_ID=
+STRIPE_CUSTOM_PRODUCT_ID=
+
+
+# ============================================================
+# Alternative billing provider — Paystack
+# Configure only when SAMI_BILLING_PROVIDER=paystack
+# ============================================================
+
+PAYSTACK_SECRET_KEY=
+
+
 # Manual/internal billing-worker authentication.
 SAMI_BILLING_WORKER_SECRET=<generate-a-long-random-secret>
 
