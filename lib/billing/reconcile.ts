@@ -236,6 +236,134 @@ export async function reconcileWorkspaceBilling(
       });
 
     if (
+      policy.paid &&
+      [
+        'trial',
+        'trialing',
+        'active',
+      ].includes(
+        effectiveStatus,
+      )
+    ) {
+      const boundaryValue =
+        (
+          effectiveStatus ===
+            'trial' ||
+          effectiveStatus ===
+            'trialing'
+        )
+          ? row.trial_ends_at
+          : row.current_period_end;
+
+      const boundaryDate =
+        boundaryValue
+          ? new Date(
+              boundaryValue,
+            )
+          : null;
+
+      if (
+        boundaryDate &&
+        !Number.isNaN(
+          boundaryDate
+            .getTime(),
+        )
+      ) {
+        const remainingMs =
+          boundaryDate
+            .getTime() -
+          Date.now();
+
+        const remainingDays =
+          Math.ceil(
+            remainingMs /
+            (
+              24 *
+              60 *
+              60 *
+              1000
+            ),
+          );
+
+        const reminderBucket =
+          remainingDays <= 1 &&
+          remainingDays >= 0
+            ? 1
+            : remainingDays <= 3 &&
+                remainingDays > 1
+              ? 3
+              : remainingDays <= 7 &&
+                  remainingDays > 3
+                ? 7
+                : null;
+
+        if (
+          reminderBucket !==
+            null
+        ) {
+          try {
+            await notifyWorkspaceOwnersOfBillingEvent({
+              tenantId:
+                String(
+                  row.tenant_id,
+                ),
+              type:
+                'billing.due_soon',
+              eventKey:
+                'billing.due_soon',
+              title:
+                reminderBucket ===
+                  1
+                  ? 'Subscription payment due soon'
+                  : `Subscription payment due within ${reminderBucket} days`,
+              message:
+                `Your SaMi ${policy.name} subscription billing boundary is ${boundaryDate.toLocaleDateString(
+                  'en-KE',
+                  {
+                    year:
+                      'numeric',
+                    month:
+                      'short',
+                    day:
+                      'numeric',
+                    timeZone:
+                      'Africa/Nairobi',
+                  },
+                )}. Review Billing before it becomes past due to avoid workspace suspension.`,
+              priority:
+                reminderBucket ===
+                  1
+                  ? 'urgent'
+                  : 'high',
+              dedupeKey:
+                `billing:due-soon:${row.id}:${boundaryDate.toISOString()}:${reminderBucket}`,
+              metadata: {
+                subscriptionId:
+                  String(
+                    row.id,
+                  ),
+                plan:
+                  planKey,
+                billingBoundary:
+                  boundaryDate
+                    .toISOString(),
+                reminderDays:
+                  reminderBucket,
+              },
+            });
+          } catch (
+            error
+          ) {
+            console.error(
+              '[SaMi Billing] Due-soon notification failed:',
+              error,
+            );
+          }
+        }
+      }
+    }
+
+    if (
       effectiveStatus ===
         'past_due' &&
       String(
