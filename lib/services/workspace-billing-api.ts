@@ -164,7 +164,13 @@ export function handleBillingError(
                 'WORKSPACE_CONTEXT_CHANGED'
               ? 409
               : error.code ===
-                    'PAYMENT_ALREADY_PENDING'
+                    'PAYMENT_ALREADY_PENDING' ||
+                  error.code ===
+                    'PLAN_CHANGE_BLOCKED' ||
+                  error.code ===
+                    'PLAN_CHANGE_PROVIDER_UNSUPPORTED' ||
+                  error.code ===
+                    'PLAN_CHANGE_ALREADY_SCHEDULED'
                 ? 409
                 : error.code ===
                     'PAYMENT_PROVIDER_FAILED'
