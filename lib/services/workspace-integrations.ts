@@ -211,7 +211,7 @@ function normalizeExternalLaunchUrl(
   return url.toString();
 }
 
-async function resolveIntegrationContext(
+export async function resolveWorkspaceIntegrationContext(
   required:
     'view' |
     'manage' =
@@ -418,7 +418,7 @@ async function auditIntegration(
 
 export async function getWorkspaceIntegrationState() {
   const context =
-    await resolveIntegrationContext(
+    await resolveWorkspaceIntegrationContext(
       'view',
     );
 
@@ -840,7 +840,7 @@ export async function createWorkspaceWebhookEndpoint(
   },
 ) {
   const context =
-    await resolveIntegrationContext(
+    await resolveWorkspaceIntegrationContext(
       'manage',
     );
 
@@ -1095,7 +1095,7 @@ export async function createWorkspaceExternalApp(
   },
 ) {
   const context =
-    await resolveIntegrationContext(
+    await resolveWorkspaceIntegrationContext(
       'manage',
     );
 
@@ -1285,7 +1285,7 @@ export async function disconnectWorkspaceIntegration(
     unknown,
 ) {
   const context =
-    await resolveIntegrationContext(
+    await resolveWorkspaceIntegrationContext(
       'manage',
     );
 
@@ -1427,7 +1427,7 @@ export async function disconnectWorkspaceIntegration(
 
 export async function getWorkspaceExternalAppLauncherEntries() {
   const context =
-    await resolveIntegrationContext(
+    await resolveWorkspaceIntegrationContext(
       'view',
     );
 
