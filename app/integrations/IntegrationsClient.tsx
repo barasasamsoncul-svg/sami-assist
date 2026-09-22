@@ -21,6 +21,7 @@ import {
 
 import {
   useDeferredValue,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
@@ -534,6 +535,74 @@ export default function IntegrationsClient({
       message,
     });
   }
+
+  useEffect(
+    () => {
+      const url =
+        new URL(
+          window.location.href,
+        );
+
+      const connected =
+        url.searchParams.get(
+          'connected',
+        );
+
+      const error =
+        url.searchParams.get(
+          'error',
+        );
+
+      if (
+        !connected &&
+        !error
+      ) {
+        return;
+      }
+
+      if (
+        connected
+      ) {
+        show(
+          'success',
+          'Integration connected',
+          providerLabel(
+            connected,
+            state.providers,
+          ) +
+            ' is now connected to this company.',
+        );
+      } else {
+        show(
+          'error',
+          'Connection failed',
+          error ===
+            'connection_failed'
+            ? 'SaMi could not start the provider connection. Check the deployment configuration and try again.'
+            : 'SaMi could not complete the provider connection. Start the connection again.',
+        );
+      }
+
+      url.searchParams.delete(
+        'connected',
+      );
+
+      url.searchParams.delete(
+        'error',
+      );
+
+      window.history.replaceState(
+        window.history.state,
+        '',
+        url.pathname +
+          url.search +
+          url.hash,
+      );
+    },
+    [
+      state.providers,
+    ],
+  );
 
   async function refresh() {
     setBusy(
