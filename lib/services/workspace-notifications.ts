@@ -327,7 +327,7 @@ export async function getWorkspaceNotificationContext():
     );
 
   if (
-    subscriptionAccess.pastDue
+    subscriptionAccess.suspended
   ) {
     throw new WorkspaceNotificationError(
       'WORKSPACE_SUSPENDED',
