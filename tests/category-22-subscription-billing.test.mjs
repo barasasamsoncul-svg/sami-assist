@@ -94,10 +94,10 @@ test('Category 22: subscription prices are server-authoritative and environment 
     /SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY/,
   );
 
-  assert.match(
+  assert.doesNotMatch(
     pricing,
-    /PESAPAL_PRICE_STANDARD_MONTHLY/,
-    'Legacy PesaPal price env remains a rollout compatibility fallback only.',
+    /PESAPAL_PRICE_STANDARD_MONTHLY|PESAPAL_PRICE_CUSTOM_MONTHLY/,
+    'Provider-specific legacy price variables must not override SaMi plan pricing.',
   );
 
   assert.match(
@@ -226,6 +226,12 @@ test('Category 22: billing provider is selected by environment behind one provid
 
   assert.match(
     pesapal,
+    /automaticRecurring:[\s\S]*false/s,
+    'The generic PesaPal adapter must not advertise automatic recurring until that contract is implemented end-to-end.',
+  );
+
+  assert.match(
+    pesapal,
     /variableRecurringAmount:[\s\S]*false/s,
     'PesaPal must not claim variable recurring support that SaMi cannot safely depend on.',
   );
@@ -345,6 +351,7 @@ test('Category 22: verified provider webhooks are the only authority that applie
   const [
     stripeWebhook,
     paystack,
+    pesapalCallback,
     application,
   ] =
     await Promise.all([
@@ -353,6 +360,9 @@ test('Category 22: verified provider webhooks are the only authority that applie
       ),
       source(
         'app/api/billing/paystack/callback/route.ts',
+      ),
+      source(
+        'app/api/auth/pesapal-callback/route.ts',
       ),
       source(
         'lib/billing/payment-application.ts',
@@ -382,6 +392,27 @@ test('Category 22: verified provider webhooks are the only authority that applie
   assert.match(
     paystack,
     /transaction\/verify/,
+  );
+
+  assert.match(
+    pesapalCallback,
+    /billingPurpose[\s\S]*'one_time'/s,
+  );
+
+  assert.match(
+    pesapalCallback,
+    /getCurrentSamiCheckoutAmount/,
+  );
+
+  assert.match(
+    pesapalCallback,
+    /billing_contract_mismatch/,
+  );
+
+  assert.match(
+    pesapalCallback,
+    /applyVerifiedCheckoutPayment/,
+    'PesaPal one-time checkout must use the same verified payment application as other providers.',
   );
 
   assert.match(
