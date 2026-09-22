@@ -604,6 +604,81 @@ test('Category 15: critical billing and account-security updates use the shared 
 });
 
 
+test('Category 15: transactional security email and SMS fire only for real account mutations', async () => {
+  const [
+    security,
+    twoFactor,
+    sessions,
+  ] = await Promise.all([
+    source(
+      'lib/security/notifications.ts',
+    ),
+    source(
+      'app/api/account/security/two-factor/route.ts',
+    ),
+    source(
+      'app/api/account/sessions/[sessionId]/route.ts',
+    ),
+  ]);
+
+  assert.match(
+    security,
+    /forceEmail:[\s\S]*true/s,
+    'Critical account-security events must always enqueue transactional email.',
+  );
+
+  assert.match(
+    security,
+    /forceSms:[\s\S]*true/s,
+    'Critical account-security events must always enqueue transactional SMS.',
+  );
+
+  const getStart =
+    twoFactor.indexOf(
+      'export async function GET',
+    );
+
+  const deleteStart =
+    twoFactor.indexOf(
+      'export async function DELETE',
+    );
+
+  assert.ok(
+    getStart >= 0 &&
+    deleteStart > getStart,
+  );
+
+  const getBlock =
+    twoFactor.slice(
+      getStart,
+      deleteStart,
+    );
+
+  assert.doesNotMatch(
+    getBlock,
+    /notifyCriticalSecurityEvent/,
+    'Reading 2FA status must never send a false security-change alert.',
+  );
+
+  const deleteBlock =
+    twoFactor.slice(
+      deleteStart,
+    );
+
+  assert.match(
+    deleteBlock,
+    /disableTwoFactor[\s\S]*notifyCriticalSecurityEvent/s,
+    'The 2FA-disabled alert must happen only after the real disable mutation.',
+  );
+
+  assert.match(
+    sessions,
+    /SESSION_REVOKED[\s\S]*notifyCriticalSecurityEvent/s,
+    'Remote device sign-out must notify the account owner through transactional channels.',
+  );
+});
+
+
 test('Category 15: full-suite gate includes notification regression coverage', async () => {
   const pkg =
     JSON.parse(
