@@ -1688,14 +1688,52 @@ export async function startWorkspaceRecurringBillingSetup(
       'trial',
       'trialing',
       'active',
-      'past_due',
     ].includes(
       effectiveStatus,
     )
   ) {
     throw new WorkspaceBillingError(
       'PAYMENT_SETUP_FAILED',
-      'This subscription cannot set up recurring billing in its current state.',
+      'Settle the current subscription bill before enabling automatic billing.',
+      {
+        status:
+          effectiveStatus,
+      },
+    );
+  }
+
+  const noChargeUntil =
+    (
+      effectiveStatus ===
+        'trial' ||
+      effectiveStatus ===
+        'trialing'
+    )
+      ? subscription
+          .trial_ends_at
+      : subscription
+          .current_period_end;
+
+  const noChargeUntilDate =
+    noChargeUntil
+      ? new Date(
+          noChargeUntil,
+        )
+      : null;
+
+  if (
+    !noChargeUntilDate ||
+    Number.isNaN(
+      noChargeUntilDate
+        .getTime(),
+    ) ||
+    noChargeUntilDate
+      .getTime() <=
+      Date.now()
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      'SaMi cannot guarantee a zero-charge setup before the next billing boundary.',
       {
         status:
           effectiveStatus,
@@ -1996,6 +2034,59 @@ export async function completeWorkspaceRecurringBillingSetup() {
     );
   }
 
+  const effectiveStatus =
+    getEffectiveSubscriptionStatus({
+      status:
+        subscription.status,
+      planKey,
+      trialEndsAt:
+        subscription.trial_ends_at,
+      currentPeriodEnd:
+        subscription.current_period_end,
+    });
+
+  const noChargeUntil =
+    (
+      effectiveStatus ===
+        'trial' ||
+      effectiveStatus ===
+        'trialing'
+    )
+      ? subscription
+          .trial_ends_at
+      : effectiveStatus ===
+          'active'
+        ? subscription
+            .current_period_end
+        : null;
+
+  const noChargeUntilDate =
+    noChargeUntil
+      ? new Date(
+          noChargeUntil,
+        )
+      : null;
+
+  if (
+    !noChargeUntilDate ||
+    Number.isNaN(
+      noChargeUntilDate
+        .getTime(),
+    ) ||
+    noChargeUntilDate
+      .getTime() <=
+      Date.now()
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_INCOMPLETE',
+      'The zero-charge billing setup window has expired. Settle any due bill first.',
+      {
+        status:
+          effectiveStatus,
+      },
+    );
+  }
+
   const profile =
     await getActiveSubscriptionBillingProfile(
       String(
@@ -2165,8 +2256,7 @@ export async function completeWorkspaceRecurringBillingSetup() {
             ),
           billableUsers,
           trialEndsAt:
-            subscription.trial_ends_at ||
-            null,
+            noChargeUntilDate,
         });
 
     await updateActiveSubscriptionBillingProfile(
