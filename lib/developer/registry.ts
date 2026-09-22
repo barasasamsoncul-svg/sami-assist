@@ -56,20 +56,29 @@ export function getAccessibleModuleDeveloperEndpoints(
         Boolean,
       );
 
-  const effectiveKeys =
-    credentialBoundary.length >
+  /*
+   * Empty is intentionally NONE, not ALL.
+   * A service credential must explicitly opt into each future
+   * business app API boundary.
+   */
+  if (
+    credentialBoundary.length ===
       0
-      ? accessibleModuleKeys
-          .filter(
-            key =>
-              credentialBoundary
-                .includes(
-                  key
-                    .trim()
-                    .toLowerCase(),
-                ),
-          )
-      : accessibleModuleKeys;
+  ) {
+    return [];
+  }
+
+  const effectiveKeys =
+    accessibleModuleKeys
+      .filter(
+        key =>
+          credentialBoundary
+            .includes(
+              key
+                .trim()
+                .toLowerCase(),
+            ),
+      );
 
   return filterAccessibleModuleExtensions(
     MODULE_DEVELOPER_ENDPOINTS,
