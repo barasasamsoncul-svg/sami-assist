@@ -177,6 +177,8 @@ export async function notifyWorkspaceOwnersOfBillingEvent(
               {},
             forceSms:
               true,
+            critical:
+              true,
           }),
       ),
     );
