@@ -237,6 +237,33 @@ dependencies do not.
 Custom-only capabilities such as multi-company and Developer API are enforced
 below the UI. Role permissions alone cannot bypass the commercial plan.
 
+## Transactional communication
+
+SaMi uses one trusted notification pipeline for in-app alerts, email and SMS.
+
+- Ordinary workspace messages and announcements follow each user's Email/SMS notification preferences.
+- Critical billing and account-security events force in-app + transactional email + transactional SMS.
+- SMS providers are selected with `SAMI_SMS_PROVIDER`.
+- Africa's Talking and Twilio are supported by the current provider layer.
+- A branded SMS sender such as `SaMi` requires provider/mobile-network approval before production use.
+- Email uses the shared SMTP transport configured with `SMTP_*`, `EMAIL_FROM` and `EMAIL_REPLY_TO`.
+
+## Past-due dunning and suspension
+
+SaMi uses a platform-wide dunning lifecycle rather than immediately deleting or dismantling a workspace when payment becomes overdue.
+
+- The default grace period is 14 days.
+- Override it with `SAMI_BILLING_PAST_DUE_GRACE_DAYS` (0–90).
+- Billing reconciliation sends due-soon reminders before the billing boundary.
+- After the boundary, owners receive overdue and final-warning notifications.
+- Critical billing notices are delivered through in-app, transactional email and transactional SMS.
+- During grace, normal workspace work remains available.
+- After grace expires, normal business work is suspended platform-wide.
+- Sign-in, personal account/security, Billing, payment recovery, Help and logout remain available.
+- Workspace data, configuration and installed-app state are retained.
+- Verified successful payment changes the subscription back to active; normal access is restored automatically.
+- A failed checkout does not shorten an already-paid period. Dunning begins only after the applicable trial or paid-period boundary has expired.
+
 ## Internal reconciliation
 
 The internal billing reconciliation route is:
