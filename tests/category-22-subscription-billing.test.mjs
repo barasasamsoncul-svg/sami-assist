@@ -505,6 +505,17 @@ test('Category 22: billing reconciliation follows provider pinning and live seat
 
   assert.match(
     reconcile,
+    /member_type/,
+    'Recurring reconciliation must bill active internal users only.',
+  );
+
+  assert.match(
+    reconcile,
+    /'internal'/,
+  );
+
+  assert.match(
+    reconcile,
     /updateRecurringSubscription/,
   );
 
@@ -524,6 +535,40 @@ test('Category 22: billing reconciliation follows provider pinning and live seat
     'Internal billing reconciliation must not rely on a browser session.',
   );
 });
+
+test('Category 22: paid seat counting consistently uses active internal users', async () => {
+  const [
+    service,
+    reconcile,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'lib/billing/reconcile.ts',
+      ),
+    ]);
+
+  for (
+    const sourceText
+    of [
+      service,
+      reconcile,
+    ]
+  ) {
+    assert.match(
+      sourceText,
+      /member_type/,
+    );
+
+    assert.match(
+      sourceText,
+      /'internal'/,
+    );
+  }
+});
+
 
 test('Category 22: dependency resolution occurs before subscription app entitlement checks', async () => {
   const [
