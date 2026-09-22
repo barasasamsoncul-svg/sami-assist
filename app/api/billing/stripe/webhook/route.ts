@@ -394,7 +394,7 @@ export async function POST(
                 'past_due',
               metadata =
                 bp.metadata ||
-                $3::jsonb,
+                $2::jsonb,
               updated_at =
                 NOW()
             WHERE bp.provider =
@@ -408,7 +408,6 @@ export async function POST(
           `,
           [
             providerSubscriptionId,
-            event.id,
             JSON.stringify({
               lastFailedInvoiceEvent:
                 event.id,
