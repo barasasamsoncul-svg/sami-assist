@@ -391,7 +391,14 @@ async function requireCustomIntegrationEntitlement(
     access.policy
       ?.integrations
       .customIntegrations !==
-      true
+      true ||
+    (
+      access.scheduledPolicy &&
+      access.scheduledPolicy
+        .integrations
+        .customIntegrations !==
+        true
+    )
   ) {
     throw new WorkspaceIntegrationError(
       'CUSTOM_INTEGRATION_PLAN_REQUIRED',
