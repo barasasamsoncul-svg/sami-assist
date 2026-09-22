@@ -256,11 +256,11 @@ export default async function AppEntryPage({
             </p>
 
             <p className="mt-2 text-sm font-bold">
-              Module foundation installed
+              App installed
             </p>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {app.name} is registered in the SaMi module framework with its schema, dependencies, company context and access boundaries. Its full business pages, workflows, reports and AI tools are implemented app by app without changing the platform contract.
+              {app.name} is available in your workspace and follows your current company access and permissions. Additional features for this app will appear here as they become available.
             </p>
 
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
