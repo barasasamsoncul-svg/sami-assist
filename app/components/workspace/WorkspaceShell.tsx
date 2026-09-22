@@ -3,6 +3,13 @@
 import Link from 'next/link';
 
 import {
+  usePathname,
+} from 'next/navigation';
+
+import {
+  AlertTriangle,
+  CreditCard,
+  LockKeyhole,
   Menu,
   Sparkles,
 } from 'lucide-react';
@@ -121,6 +128,27 @@ export default function WorkspaceShell({
       unreadNotifications,
     );
 
+  const pathname =
+    usePathname();
+
+  const subscriptionPastDue =
+    subscription
+      ?.status
+      ?.trim()
+      .toLowerCase() ===
+      'past_due';
+
+  const recoverySurface =
+    pathname ===
+      '/settings' ||
+    pathname.startsWith(
+      '/settings/',
+    );
+
+  const workspaceLocked =
+    subscriptionPastDue &&
+    !recoverySurface;
+
   return (
     <main className="sami-canvas min-h-screen text-slate-950 transition-colors dark:text-white">
       <div className="flex min-h-screen">
@@ -200,21 +228,19 @@ export default function WorkspaceShell({
                   modules={modules}
                 />
 
-                {sidebarCapabilities?.aiEnabled && (
-                  <Link
-                    href="/ai"
-                    aria-label="Open SaMi AI"
-                    title="SaMi AI"
-                    className="group inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 px-2.5 text-[10px] font-bold text-indigo-700 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:shadow-md sm:px-3 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300"
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
-                      <Sparkles className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="hidden xl:inline">
-                      SaMi AI
-                    </span>
-                  </Link>
-                )}
+                <Link
+                  href="/ai"
+                  aria-label="Open SaMi AI"
+                  title="SaMi AI"
+                  className="group inline-flex h-10 items-center gap-2 rounded-xl border border-indigo-200/80 bg-gradient-to-r from-indigo-50 to-blue-50 px-2.5 text-[10px] font-bold text-indigo-700 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:shadow-md sm:px-3 dark:border-indigo-500/20 dark:from-indigo-500/10 dark:to-blue-500/10 dark:text-indigo-300"
+                >
+                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
+                    <Sparkles className="h-3.5 w-3.5" />
+                  </span>
+                  <span className="hidden xl:inline">
+                    SaMi AI
+                  </span>
+                </Link>
 
                 <WorkspaceSearchLauncher />
 
@@ -244,7 +270,89 @@ export default function WorkspaceShell({
               ' ',
             )}
           >
-            {children}
+            {workspaceLocked ? (
+              <section className="mx-auto flex min-h-[68vh] max-w-3xl items-center justify-center py-8 sm:py-12">
+                <div className="w-full overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-xl shadow-amber-950/5 dark:border-amber-500/20 dark:bg-[#11141a]">
+                  <div className="border-b border-amber-100 bg-amber-50 px-5 py-4 dark:border-amber-500/15 dark:bg-amber-500/10 sm:px-7">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
+                        <LockKeyhole className="h-4.5 w-4.5" />
+                      </span>
+
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-amber-700 dark:text-amber-300">
+                          Subscription recovery
+                        </p>
+                        <h1 className="mt-1 text-lg font-black tracking-[-0.02em] text-slate-950 dark:text-white sm:text-xl">
+                          Workspace temporarily suspended
+                        </h1>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="px-5 py-6 sm:px-7 sm:py-7">
+                    <div className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
+                      <AlertTriangle className="mt-0.5 h-4.5 w-4.5 shrink-0 text-amber-600 dark:text-amber-300" />
+
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          The subscription payment is past due.
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          SaMi has paused normal business work across apps, AI, messages, automations, integrations and developer access. Existing workspace data is retained and access is restored automatically after SaMi verifies payment.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                          Data
+                        </p>
+                        <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          Your workspace records and configuration remain stored.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                          Restoration
+                        </p>
+                        <p className="mt-2 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          Verified payment restores normal workspace access automatically.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+                      {membership?.isOwner ||
+                      membership?.isAdmin ? (
+                        <Link
+                          href="/settings?tab=billing"
+                          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-xs font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          Open Billing
+                        </Link>
+                      ) : (
+                        <div className="rounded-xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                          Contact a workspace owner or administrator to restore the subscription.
+                        </div>
+                      )}
+
+                      <Link
+                        href="/settings"
+                        className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-200 dark:hover:bg-white/[0.05]"
+                      >
+                        Account & settings
+                      </Link>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : (
+              children
+            )}
           </div>
         </div>
       </div>
