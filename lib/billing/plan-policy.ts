@@ -385,6 +385,102 @@ export function getSamiPlanPolicy(
     : null;
 }
 
+function dateReached(
+  value:
+    Date | string | null | undefined,
+  now:
+    Date,
+) {
+  if (
+    !value
+  ) {
+    return false;
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(
+          value,
+        );
+
+  return (
+    !Number.isNaN(
+      date.getTime(),
+    ) &&
+    date.getTime() <=
+      now.getTime()
+  );
+}
+
+export function getEffectiveSubscriptionStatus(
+  input: {
+    status:
+      string | null | undefined;
+    planKey:
+      string | null | undefined;
+    trialEndsAt?:
+      Date | string | null;
+    currentPeriodEnd?:
+      Date | string | null;
+    now?:
+      Date;
+  },
+) {
+  const normalized =
+    (
+      input.status ||
+      ''
+    )
+      .trim()
+      .toLowerCase();
+
+  const policy =
+    getSamiPlanPolicy(
+      input.planKey,
+    );
+
+  if (
+    !policy ||
+    !policy.paid
+  ) {
+    return normalized;
+  }
+
+  const now =
+    input.now ||
+    new Date();
+
+  if (
+    (
+      normalized ===
+        'trial' ||
+      normalized ===
+        'trialing'
+    ) &&
+    dateReached(
+      input.trialEndsAt,
+      now,
+    )
+  ) {
+    return 'past_due';
+  }
+
+  if (
+    normalized ===
+      'active' &&
+    dateReached(
+      input.currentPeriodEnd,
+      now,
+    )
+  ) {
+    return 'past_due';
+  }
+
+  return normalized;
+}
+
+
 export function isSubscriptionEntitledNow(
   status:
     string | null | undefined,
