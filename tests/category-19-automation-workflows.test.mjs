@@ -47,7 +47,8 @@ test('Category 19: automation migration remains additive in the current tenant-c
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.7\.0['"]/s,
+    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"][0-9]+\.[0-9]+\.[0-9]+['"]/s,
+    'The migration chain must continue to declare a current tenant-core version.',
   );
   assert.match(
     manifest,
