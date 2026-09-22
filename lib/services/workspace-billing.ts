@@ -2780,7 +2780,10 @@ export async function cancelScheduledWorkspacePlanChange() {
     priority:
       'high',
     dedupeKey:
-      `billing:plan-change-cancelled:${subscriptionId}:${scheduledPlan}`,
+      `billing:plan-change-cancelled:${subscriptionId}:${scheduledPlan}:${toIso(
+        subscription
+          .scheduled_plan_requested_at,
+      ) || 'unknown-request'}`,
     metadata: {
       subscriptionId,
       currentPlan,
@@ -2837,6 +2840,9 @@ export async function cancelWorkspaceSubscription() {
     String(
       subscription.id,
     );
+
+  const cancellationRequestedAt =
+    new Date();
 
   let effectiveStatus =
     getEffectiveSubscriptionStatus({
@@ -3002,7 +3008,7 @@ export async function cancelWorkspaceSubscription() {
         UPDATE subscriptions
         SET
           cancelled_at =
-            NOW(),
+            $2,
           scheduled_plan_id =
             NULL,
           scheduled_plan_effective_at =
@@ -3019,6 +3025,7 @@ export async function cancelWorkspaceSubscription() {
       `,
       [
         subscriptionId,
+        cancellationRequestedAt,
       ],
     );
 
@@ -3067,7 +3074,7 @@ export async function cancelWorkspaceSubscription() {
       priority:
         'high',
       dedupeKey:
-        `billing:subscription-cancellation-scheduled:${subscriptionId}:${boundary.toISOString()}`,
+        `billing:subscription-cancellation-scheduled:${subscriptionId}:${cancellationRequestedAt.toISOString()}:${boundary.toISOString()}`,
       metadata: {
         subscriptionId,
         plan:
@@ -3107,10 +3114,7 @@ export async function cancelWorkspaceSubscription() {
         billing_cycle =
           NULL,
         cancelled_at =
-          COALESCE(
-            cancelled_at,
-            NOW()
-          ),
+          $2,
         scheduled_plan_id =
           NULL,
         scheduled_plan_effective_at =
@@ -3127,6 +3131,7 @@ export async function cancelWorkspaceSubscription() {
     `,
     [
       subscriptionId,
+      cancellationRequestedAt,
     ],
   );
 
@@ -3162,7 +3167,7 @@ export async function cancelWorkspaceSubscription() {
     priority:
       'high',
     dedupeKey:
-      `billing:subscription-cancelled:${subscriptionId}:immediate`,
+      `billing:subscription-cancelled:${subscriptionId}:immediate:${cancellationRequestedAt.toISOString()}`,
     metadata: {
       subscriptionId,
       plan:
@@ -3288,7 +3293,10 @@ export async function resumeWorkspaceSubscriptionCancellation() {
     priority:
       'high',
     dedupeKey:
-      `billing:subscription-cancellation-reversed:${subscriptionId}`,
+      `billing:subscription-cancellation-reversed:${subscriptionId}:${toIso(
+        subscription
+          .cancelled_at,
+      ) || 'unknown-request'}`,
     metadata: {
       subscriptionId,
       plan:
@@ -3425,7 +3433,10 @@ export async function reactivateCancelledWorkspaceSubscription() {
     priority:
       'urgent',
     dedupeKey:
-      `billing:subscription-reactivation:${subscriptionId}`,
+      `billing:subscription-reactivation:${subscriptionId}:${toIso(
+        subscription
+          .cancelled_at,
+      ) || 'unknown-cancellation'}`,
     metadata: {
       subscriptionId,
       plan:
