@@ -60,6 +60,11 @@ type SubscriptionData =
       status: string;
       planKey: string | null;
       planName: string | null;
+      pastDue?: boolean;
+      suspended?: boolean;
+      graceEndsAt?: string | null;
+      graceDays?: number;
+      daysPastDue?: number | null;
     }
   | null;
 
@@ -133,10 +138,18 @@ export default function WorkspaceShell({
 
   const subscriptionPastDue =
     subscription
+      ?.pastDue ===
+      true ||
+    subscription
       ?.status
       ?.trim()
       .toLowerCase() ===
       'past_due';
+
+  const subscriptionSuspended =
+    subscription
+      ?.suspended ===
+      true;
 
   const recoverySurface =
     pathname ===
@@ -146,7 +159,12 @@ export default function WorkspaceShell({
     );
 
   const workspaceLocked =
+    subscriptionSuspended &&
+    !recoverySurface;
+
+  const showDunningWarning =
     subscriptionPastDue &&
+    !subscriptionSuspended &&
     !recoverySurface;
 
   return (
@@ -261,6 +279,37 @@ export default function WorkspaceShell({
               )}
             </div>
           </header>
+
+          {showDunningWarning && (
+            <div className="border-b border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/15 dark:bg-amber-500/10 sm:px-5 lg:px-6">
+              <div className="mx-auto flex max-w-[1720px] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+
+                  <p className="text-[11px] font-semibold leading-5 text-amber-900 dark:text-amber-100">
+                    Subscription payment is overdue. Your workspace is still active during the grace period, but it will be suspended if payment is not restored before
+                    {' '}
+                    {subscription?.graceEndsAt
+                      ? new Date(
+                          subscription.graceEndsAt,
+                        ).toLocaleDateString()
+                      : 'the grace deadline'}
+                    .
+                  </p>
+                </div>
+
+                {(membership?.isOwner ||
+                  membership?.isAdmin) && (
+                  <Link
+                    href="/settings?tab=billing"
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-lg bg-amber-600 px-3 text-[10px] font-black text-white transition hover:bg-amber-700"
+                  >
+                    Resolve billing
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           <div
             className={[
