@@ -24,7 +24,9 @@ export function handleActivityApiError(error: unknown) {
     const status =
       error.code === 'UNAUTHENTICATED'
         ? 401
-        : error.code === 'AUDIT_VIEW_REQUIRED' ||
+        : error.code === 'WORKSPACE_SUSPENDED'
+          ? 402
+          : error.code === 'AUDIT_VIEW_REQUIRED' ||
             error.code === 'COMPANY_ACCESS_DENIED'
           ? 403
           : error.code === 'WORKSPACE_CONTEXT_CHANGED' ||
