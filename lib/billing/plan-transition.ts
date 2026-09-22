@@ -4,6 +4,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  notifyWorkspaceOwnersOfBillingEvent,
+} from '@/lib/billing/notifications';
+
 export async function applyDueScheduledPlanChanges(
   tenantId?:
     string | null,
@@ -136,6 +140,52 @@ export async function applyDueScheduledPlanChanges(
     ) {
       console.error(
         '[SaMi Billing] Scheduled plan audit failed:',
+        error,
+      );
+    }
+
+    try {
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          String(
+            row.tenant_id,
+          ),
+        type:
+          'billing.plan_changed',
+        eventKey:
+          'billing.plan_changed',
+        title:
+          'Subscription plan updated',
+        message:
+          `Your SaMi workspace is now on the ${String(
+            row.applied_plan_key,
+          )} plan. Current access has been recalculated from the new subscription state.`,
+        priority:
+          'high',
+        dedupeKey:
+          `billing:plan-applied:${row.id}:${String(
+            row.applied_plan_key,
+          )}`,
+        metadata: {
+          subscriptionId:
+            String(
+              row.id,
+            ),
+          plan:
+            String(
+              row.applied_plan_key,
+            ),
+          status:
+            String(
+              row.status,
+            ),
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Billing] Applied-plan notification failed:',
         error,
       );
     }
