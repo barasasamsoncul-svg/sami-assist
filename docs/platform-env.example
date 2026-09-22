@@ -72,6 +72,11 @@ SAMI_USAGE_FREE_STORAGE_BYTES=
 SAMI_USAGE_STANDARD_STORAGE_BYTES=
 SAMI_USAGE_CUSTOM_STORAGE_BYTES=
 
+# SaMi AI attachment safety controls.
+# These are platform guardrails, not marketed plan entitlements.
+SAMI_AI_MAX_ATTACHMENTS_PER_MESSAGE=5
+SAMI_AI_ATTACHMENT_TEXT_MAX_BYTES=524288
+
 
 # ============================================================
 # SaMi email — shared transactional + workspace notifications
