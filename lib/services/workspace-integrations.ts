@@ -685,6 +685,13 @@ export async function getWorkspaceIntegrationState() {
             String(
               row.endpoint_key,
             ),
+          endpointPath:
+            '/api/integrations/webhooks/inbound/' +
+            context.runtime.tenantId +
+            '/' +
+            String(
+              row.endpoint_key,
+            ),
           name:
             String(
               row.name,
@@ -1078,6 +1085,11 @@ export async function createWorkspaceWebhookEndpoint(
     endpointId,
     connectionId,
     endpointKey,
+    endpointPath:
+      '/api/integrations/webhooks/inbound/' +
+      context.runtime.tenantId +
+      '/' +
+      endpointKey,
     secret,
   };
 }
