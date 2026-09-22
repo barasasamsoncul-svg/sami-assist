@@ -228,6 +228,7 @@ async function readState(
           s.status,
           s.trial_ends_at,
           s.current_period_end,
+          s.cancelled_at,
           p.key
             AS plan_key
         FROM subscriptions s
@@ -297,6 +298,8 @@ async function readState(
         row.trial_ends_at,
       currentPeriodEnd:
         row.current_period_end,
+      cancelledAt:
+        row.cancelled_at,
     });
 
   const suspension =
