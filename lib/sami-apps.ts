@@ -21,9 +21,6 @@ export type SamiApp = {
   icon: string;
   route: string;
   installable: boolean;
-  availability:
-    | 'ready'
-    | 'planned';
   recommended?: boolean;
 };
 
@@ -63,28 +60,10 @@ export const SAMI_APPS:
           manifest.route,
         installable:
           manifest.installable,
-        availability:
-          manifest.installable
-            ? 'ready'
-            : 'planned',
         recommended:
           manifest.recommended,
       }),
     );
-
-export const INSTALLABLE_SAMI_APPS:
-  SamiApp[] =
-  SAMI_APPS.filter(
-    app =>
-      app.installable,
-  );
-
-export const PLANNED_SAMI_APPS:
-  SamiApp[] =
-  SAMI_APPS.filter(
-    app =>
-      !app.installable,
-  );
 
 export const APP_CATEGORIES: Array<{
   key: SamiAppCategory;
@@ -136,7 +115,7 @@ export function normalizeAppKeys(
 
   const valid =
     new Set(
-      INSTALLABLE_SAMI_APPS.map(
+      SAMI_APPS.map(
         app =>
           app.key,
       ),
@@ -159,7 +138,7 @@ export function normalizeAppKeys(
 }
 
 export function getRecommendedAppKeys(): string[] {
-  return INSTALLABLE_SAMI_APPS
+  return SAMI_APPS
     .filter(
       app =>
         app.recommended,
