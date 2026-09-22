@@ -2109,7 +2109,10 @@ export async function POST(
         },
 
         next:
-          resolvedNext,
+          resolvedNext ===
+            '/dashboard'
+            ? undefined
+            : resolvedNext,
 
         billingOnboardingRequired:
           resolvedNext.startsWith(
