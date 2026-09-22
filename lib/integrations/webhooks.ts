@@ -326,10 +326,20 @@ export async function receiveIntegrationWebhook(
         'hex',
       );
 
-  const pool =
-    await getTenantPoolByTenantId(
-      input.tenantId,
+  let pool;
+
+  try {
+    pool =
+      await getTenantPoolByTenantId(
+        input.tenantId,
+      );
+  } catch {
+    throw new IntegrationWebhookError(
+      404,
+      'WEBHOOK_NOT_FOUND',
+      'Webhook endpoint could not be found.',
     );
+  }
 
   const endpointResult =
     await pool.query(
