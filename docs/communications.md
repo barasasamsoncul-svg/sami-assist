@@ -13,10 +13,12 @@ SaMi currently supports:
 - SMS notifications
 - delivery state in `notification_deliveries`
 
-Ordinary workspace alerts follow the user's notification preferences.
+Ordinary workspace alerts follow the user's notification preferences for both
+email and SMS.
 
 Critical service alerts are transactional and are not controlled by ordinary
-notification opt-outs. Examples include:
+notification opt-outs. Critical events explicitly request both email and SMS;
+each configured transport records its own delivery result. Examples include:
 
 - subscription payment failed / succeeded
 - workspace suspended for overdue payment
@@ -30,11 +32,42 @@ service continuity.
 ## Messages and announcements
 
 Direct messages and company announcements already create SaMi notifications.
-If a user enables SMS notifications, those communication events can therefore
-reach the user's profile phone through the same shared delivery pipeline.
+If a user enables email and/or SMS notifications, those communication events
+use the same shared delivery pipeline. Email may carry the richer SaMi
+notification; SMS stays concise and does not copy private workspace message
+bodies onto the carrier channel.
 
 Business apps should emit trusted SaMi notifications instead of calling an SMS
 provider directly.
+
+## Email transport
+
+Email is a first-class SaMi notification channel, not a separate fallback.
+The same trusted notification emitter used by Billing, Security, Messages and
+future business apps queues an `email` delivery record and sends through the
+central SMTP transport.
+
+Required production SMTP configuration:
+
+```env
+APP_URL=https://your-sami-domain.example
+SMTP_HOST=<smtp-host>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<smtp-user>
+SMTP_PASSWORD=<smtp-password>
+EMAIL_FROM=SaMi <notifications@your-sami-domain.example>
+EMAIL_REPLY_TO=<support-or-no-reply-address>
+```
+
+`EMAIL_FROM` is optional when `SMTP_USER` is already a valid sender, but a
+dedicated SaMi sender identity is recommended. In production, SaMi treats
+missing SMTP configuration as a delivery configuration error rather than
+silently pretending email was sent.
+
+Workspace notification email is SaMi-branded, includes the configured SaMi
+logo and an `Open in SaMi` action. Security-code and verification emails keep
+their stricter dedicated templates while sharing the trusted SMTP transport.
 
 ## SMS provider selection
 
