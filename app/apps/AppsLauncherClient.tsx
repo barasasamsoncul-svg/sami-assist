@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 import {
   ArrowRight,
+  ExternalLink,
   Grid2X2,
   Search,
   Settings2,
@@ -79,12 +80,22 @@ type ModuleData = {
   registered: boolean;
 };
 
+type ExternalAppData = {
+  id: string;
+  name: string;
+  description: string | null;
+  launchUrl: string;
+  iconKey: string | null;
+  authMode: string;
+};
+
 type Props = {
   user: UserData;
   tenant: TenantData;
   membership: MembershipData;
   subscription: SubscriptionData;
   modules: ModuleData[];
+  externalApps: ExternalAppData[];
   canManageApps: boolean;
   sidebarCapabilities: {
     aiEnabled: boolean;
@@ -99,6 +110,7 @@ export default function AppsLauncherClient({
   membership,
   subscription,
   modules,
+  externalApps,
   canManageApps,
   sidebarCapabilities,
 }: Props) {
@@ -147,6 +159,16 @@ export default function AppsLauncherClient({
           );
         }
 
+        if (
+          externalApps.length >
+          0
+        ) {
+          found.set(
+            'external',
+            'External',
+          );
+        }
+
         return [
           ...found.entries(),
         ].map(
@@ -162,6 +184,7 @@ export default function AppsLauncherClient({
         );
       },
       [
+        externalApps.length,
         modules,
       ],
     );
@@ -192,9 +215,20 @@ export default function AppsLauncherClient({
           );
         }
 
+        if (
+          externalApps.length >
+          0
+        ) {
+          counts.set(
+            'external',
+            externalApps.length,
+          );
+        }
+
         return counts;
       },
       [
+        externalApps.length,
         modules,
       ],
     );
@@ -245,6 +279,56 @@ export default function AppsLauncherClient({
         category,
         deferredSearch,
         modules,
+      ],
+    );
+
+  const visibleExternalApps =
+    useMemo(
+      () => {
+        const query =
+          deferredSearch
+            .trim()
+            .toLowerCase();
+
+        if (
+          category !==
+            'all' &&
+          category !==
+            'external'
+        ) {
+          return [];
+        }
+
+        return externalApps.filter(
+          app => {
+            if (
+              !query
+            ) {
+              return true;
+            }
+
+            return [
+              app.name,
+              app.description ||
+                '',
+              app.authMode,
+              app.launchUrl,
+              'external app',
+            ]
+              .join(
+                ' ',
+              )
+              .toLowerCase()
+              .includes(
+                query,
+              );
+          },
+        );
+      },
+      [
+        category,
+        deferredSearch,
+        externalApps,
       ],
     );
 
@@ -380,7 +464,8 @@ export default function AppsLauncherClient({
             <CategoryButton
               label="All"
               count={
-                modules.length
+                modules.length +
+                externalApps.length
               }
               selected={
                 category ===
@@ -440,8 +525,10 @@ export default function AppsLauncherClient({
           </p>
 
           <p className="mt-0.5 text-[11px] text-slate-400">
-            {visibleApps.length}{' '}
-            {visibleApps.length ===
+            {visibleApps.length +
+              visibleExternalApps.length}{' '}
+            {visibleApps.length +
+              visibleExternalApps.length ===
             1
               ? 'application'
               : 'applications'}
@@ -449,24 +536,67 @@ export default function AppsLauncherClient({
         </div>
       </div>
 
-      {visibleApps.length >
-        0 ? (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-          {visibleApps.map(
-            app => (
-              <AppCard
-                key={
-                  app.key
-                }
-                app={
-                  app
-                }
-              />
-            ),
+      {(visibleApps.length >
+        0 ||
+        visibleExternalApps.length >
+          0) ? (
+        <div className="mt-4 space-y-6">
+          {visibleApps.length >
+            0 && (
+            <div>
+              {visibleExternalApps.length > 0 && category === 'all' && (
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+                  SaMi apps
+                </p>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {visibleApps.map(
+                  app => (
+                    <AppCard
+                      key={
+                        app.key
+                      }
+                      app={
+                        app
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {visibleExternalApps.length >
+            0 && (
+            <div>
+              {visibleApps.length > 0 && category === 'all' && (
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.13em] text-slate-400">
+                  Connected business apps
+                </p>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {visibleExternalApps.map(
+                  app => (
+                    <ExternalAppCard
+                      key={
+                        app.id
+                      }
+                      app={
+                        app
+                      }
+                    />
+                  ),
+                )}
+              </div>
+            </div>
           )}
         </div>
-      ) : modules.length >
-        0 ? (
+      ) : (modules.length >
+            0 ||
+          externalApps.length >
+            0) ? (
         <div className="mt-4 rounded-2xl border border-dashed border-[var(--sami-border-strong)] bg-[var(--sami-surface)] px-5 py-10 text-center dark:border-white/10 dark:bg-white/[0.025]">
           <Search className="mx-auto h-6 w-6 text-slate-300" />
 
@@ -487,7 +617,7 @@ export default function AppsLauncherClient({
           </p>
 
           <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-400">
-            Your current workspace role does not provide access to an installed business application.
+            Your current workspace role does not provide access to an installed or assigned business application.
           </p>
 
           {canManageApps && (
@@ -501,6 +631,58 @@ export default function AppsLauncherClient({
         </div>
       )}
     </WorkspaceShell>
+  );
+}
+
+function ExternalAppCard({
+  app,
+}: {
+  app:
+    ExternalAppData;
+}) {
+  return (
+    <a
+      href={
+        app.launchUrl
+      }
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group relative overflow-hidden rounded-[22px] border border-slate-200 bg-[var(--sami-surface)] p-4 shadow-[var(--sami-shadow-sm)] transition duration-200 hover:-translate-y-1 hover:shadow-[var(--sami-shadow-md)] dark:border-white/10"
+    >
+      <div className="relative flex items-start gap-3">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[15px] bg-gradient-to-br from-slate-600 to-slate-900 text-white shadow-sm">
+          <ExternalLink className="h-5 w-5" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="truncate text-[13px] font-bold tracking-[-0.01em] text-slate-900 dark:text-white">
+              {app.name}
+            </p>
+
+            <ExternalLink className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          </div>
+
+          <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.11em] text-slate-500 dark:text-slate-300">
+            External app
+          </p>
+        </div>
+      </div>
+
+      <p className="relative mt-4 line-clamp-2 min-h-10 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+        {app.description ||
+          'Approved external business application.'}
+      </p>
+
+      <div className="relative mt-4 flex items-center justify-between">
+        <span className="text-[9px] font-semibold text-slate-400">
+          Opens outside SaMi
+        </span>
+        <span className="rounded-full border border-[var(--sami-border)] px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-slate-400">
+          {app.authMode}
+        </span>
+      </div>
+    </a>
   );
 }
 

@@ -1,0 +1,1310 @@
+import 'server-only';
+
+import crypto from 'node:crypto';
+
+import {
+  getTenantPoolByTenantId,
+} from '@/lib/db/tenant';
+
+import {
+  openIntegrationSecret,
+  sealIntegrationSecret,
+} from '@/lib/integrations/crypto';
+
+import {
+  getIntegrationProvider,
+  requireConfiguredOAuthProvider,
+} from '@/lib/integrations/registry';
+
+import type {
+  SamiIntegrationCredentialPayload,
+  SamiIntegrationRuntimeContext,
+} from '@/lib/integrations/types';
+
+const REQUEST_TIMEOUT_MS =
+  12_000;
+
+type HealthResult = {
+  healthy:
+    boolean;
+  status:
+    'healthy' |
+    'degraded' |
+    'unreachable' |
+    'expired' |
+    'revoked';
+  externalAccountId?:
+    string | null;
+  externalAccountName?:
+    string | null;
+  externalAccountEmail?:
+    string | null;
+};
+
+export type SamiIntegrationSyncHandler =
+  (
+    context:
+      SamiIntegrationRuntimeContext,
+    input: {
+      connectionId:
+        string;
+      cursor:
+        Record<
+          string,
+          unknown
+        >;
+    },
+  ) => Promise<{
+    cursor?:
+      Record<
+        string,
+        unknown
+      >;
+    result?:
+      Record<
+        string,
+        unknown
+      >;
+  }>;
+
+export const CORE_INTEGRATION_SYNC_HANDLERS =
+  new Map<
+    string,
+    SamiIntegrationSyncHandler
+  >();
+
+export const APP_INTEGRATION_SYNC_HANDLERS =
+  new Map<
+    string,
+    SamiIntegrationSyncHandler
+  >();
+
+const SYNC_HANDLERS =
+  new Map<
+    string,
+    SamiIntegrationSyncHandler
+  >([
+    ...CORE_INTEGRATION_SYNC_HANDLERS,
+    ...APP_INTEGRATION_SYNC_HANDLERS,
+  ]);
+
+function safeObject(
+  value:
+    unknown,
+) {
+  return value &&
+    typeof value ===
+      'object' &&
+    !Array.isArray(
+      value,
+    )
+    ? value as
+        Record<
+          string,
+          unknown
+        >
+    : {};
+}
+
+async function fetchJson(
+  url:
+    string,
+  accessToken:
+    string,
+  method =
+    'GET',
+) {
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+  try {
+    const response =
+      await fetch(
+        url,
+        {
+          method,
+          headers: {
+            Accept:
+              'application/json',
+            Authorization:
+              'Bearer ' +
+              accessToken,
+          },
+          cache:
+            'no-store',
+          signal:
+            controller.signal,
+        },
+      );
+
+    const payload =
+      safeObject(
+        await response.json()
+          .catch(
+            () => ({}),
+          ),
+      );
+
+    return {
+      response,
+      payload,
+    };
+  } finally {
+    clearTimeout(
+      timeout,
+    );
+  }
+}
+
+function credentialExpired(
+  credential:
+    SamiIntegrationCredentialPayload,
+) {
+  if (
+    !credential.expiresAt
+  ) {
+    return false;
+  }
+
+  const time =
+    new Date(
+      credential.expiresAt,
+    ).getTime();
+
+  return (
+    Number.isFinite(
+      time,
+    ) &&
+    time <=
+      Date.now()
+  );
+}
+
+async function loadCredential(
+  input: {
+    tenantId:
+      string;
+    companyId:
+      string;
+    connectionId:
+      string;
+  },
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      input.tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          c.id,
+          c.provider_key,
+          c.status,
+          c.connection_type,
+          cr.sealed_payload
+        FROM integration_connections c
+        LEFT JOIN integration_credentials cr
+          ON cr.connection_id =
+             c.id
+        WHERE c.id = $1
+          AND c.company_id = $2
+          AND c.archived_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        input.connectionId,
+        input.companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new Error(
+      'Integration connection could not be found.',
+    );
+  }
+
+  const row =
+    result.rows[0];
+
+  if (
+    row.status ===
+      'revoked'
+  ) {
+    return {
+      providerKey:
+        String(
+          row.provider_key,
+        ),
+      connectionType:
+        String(
+          row.connection_type,
+        ),
+      credential:
+        null,
+      revoked:
+        true,
+    };
+  }
+
+  if (
+    !row.sealed_payload
+  ) {
+    return {
+      providerKey:
+        String(
+          row.provider_key,
+        ),
+      connectionType:
+        String(
+          row.connection_type,
+        ),
+      credential:
+        null,
+      revoked:
+        false,
+    };
+  }
+
+  return {
+    providerKey:
+      String(
+        row.provider_key,
+      ),
+    connectionType:
+      String(
+        row.connection_type,
+      ),
+    credential:
+      openIntegrationSecret<
+        SamiIntegrationCredentialPayload
+      >(
+        String(
+          row.sealed_payload,
+        ),
+      ),
+    revoked:
+      false,
+  };
+}
+
+function normalizedScope(
+  value:
+    unknown,
+  fallback:
+    string | undefined,
+) {
+  if (
+    typeof value ===
+      'string' &&
+    value.trim()
+  ) {
+    return value
+      .trim()
+      .replace(
+        /\s+/g,
+        ' ',
+      );
+  }
+
+  return fallback;
+}
+
+async function refreshOAuthCredential(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+  providerKey:
+    string,
+  credential:
+    SamiIntegrationCredentialPayload,
+) {
+  if (
+    !credential.refreshToken
+  ) {
+    return null;
+  }
+
+  let configured;
+
+  try {
+    configured =
+      requireConfiguredOAuthProvider(
+        providerKey,
+      );
+  } catch {
+    return null;
+  }
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+  try {
+    const body =
+      new URLSearchParams();
+
+    body.set(
+      'grant_type',
+      'refresh_token',
+    );
+
+    body.set(
+      'refresh_token',
+      credential.refreshToken,
+    );
+
+    body.set(
+      'client_id',
+      configured.clientId,
+    );
+
+    body.set(
+      'client_secret',
+      configured.clientSecret,
+    );
+
+    const response =
+      await fetch(
+        configured.oauth
+          .tokenUrl,
+        {
+          method:
+            'POST',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/x-www-form-urlencoded',
+          },
+          body,
+          cache:
+            'no-store',
+          signal:
+            controller.signal,
+        },
+      );
+
+    const payload =
+      safeObject(
+        await response.json()
+          .catch(
+            () => ({}),
+          ),
+      );
+
+    if (
+      !response.ok ||
+      payload.ok ===
+        false ||
+      typeof payload.access_token !==
+        'string'
+    ) {
+      return null;
+    }
+
+    const expiresIn =
+      Number(
+        payload.expires_in,
+      );
+
+    const expiresAt =
+      Number.isFinite(
+        expiresIn,
+      ) &&
+      expiresIn >
+        0
+        ? new Date(
+            Date.now() +
+            expiresIn *
+            1000,
+          )
+            .toISOString()
+        : null;
+
+    const next:
+      SamiIntegrationCredentialPayload = {
+      ...credential,
+      accessToken:
+        payload.access_token,
+      refreshToken:
+        typeof payload.refresh_token ===
+          'string'
+          ? payload.refresh_token
+          : credential.refreshToken,
+      tokenType:
+        typeof payload.token_type ===
+          'string'
+          ? payload.token_type
+          : credential.tokenType,
+      scope:
+        normalizedScope(
+          payload.scope,
+          credential.scope,
+        ),
+      expiresAt,
+    };
+
+    const sealed =
+      sealIntegrationSecret(
+        next,
+      );
+
+    const pool =
+      await getTenantPoolByTenantId(
+        runtime.tenantId,
+      );
+
+    await pool.query(
+      `
+        UPDATE integration_credentials cr
+        SET
+          sealed_payload = $4,
+          key_version = $5,
+          expires_at = $6,
+          rotated_at = NOW(),
+          updated_at = NOW()
+        FROM integration_connections c
+        WHERE cr.connection_id = $1
+          AND c.id =
+              cr.connection_id
+          AND c.company_id = $2
+          AND c.provider_key = $3
+          AND c.archived_at
+              IS NULL
+      `,
+      [
+        connectionId,
+        runtime.companyId,
+        providerKey,
+        sealed.sealed,
+        sealed.version,
+        expiresAt,
+      ],
+    );
+
+    return next;
+  } finally {
+    clearTimeout(
+      timeout,
+    );
+  }
+}
+
+async function usableOAuthCredential(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+  providerKey:
+    string,
+  credential:
+    SamiIntegrationCredentialPayload,
+) {
+  if (
+    credential.accessToken &&
+    !credentialExpired(
+      credential,
+    )
+  ) {
+    return credential;
+  }
+
+  return refreshOAuthCredential(
+    runtime,
+    connectionId,
+    providerKey,
+    credential,
+  );
+}
+
+
+async function testOAuthProvider(
+  providerKey:
+    string,
+  accessToken:
+    string,
+): Promise<HealthResult> {
+  if (
+    providerKey ===
+      'google_workspace'
+  ) {
+    const {
+      response,
+      payload,
+    } =
+      await fetchJson(
+        'https://openidconnect.googleapis.com/v1/userinfo',
+        accessToken,
+      );
+
+    if (
+      response.status ===
+        401 ||
+      response.status ===
+        403
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'expired',
+      };
+    }
+
+    if (
+      !response.ok
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'unreachable',
+      };
+    }
+
+    return {
+      healthy:
+        true,
+      status:
+        'healthy',
+      externalAccountId:
+        typeof payload.sub ===
+          'string'
+          ? payload.sub
+          : null,
+      externalAccountName:
+        typeof payload.name ===
+          'string'
+          ? payload.name
+          : null,
+      externalAccountEmail:
+        typeof payload.email ===
+          'string'
+          ? payload.email
+          : null,
+    };
+  }
+
+  if (
+    providerKey ===
+      'microsoft_365'
+  ) {
+    const {
+      response,
+      payload,
+    } =
+      await fetchJson(
+        'https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName',
+        accessToken,
+      );
+
+    if (
+      response.status ===
+        401 ||
+      response.status ===
+        403
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'expired',
+      };
+    }
+
+    if (
+      !response.ok
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'unreachable',
+      };
+    }
+
+    return {
+      healthy:
+        true,
+      status:
+        'healthy',
+      externalAccountId:
+        typeof payload.id ===
+          'string'
+          ? payload.id
+          : null,
+      externalAccountName:
+        typeof payload.displayName ===
+          'string'
+          ? payload.displayName
+          : null,
+      externalAccountEmail:
+        typeof payload.mail ===
+          'string'
+          ? payload.mail
+          : typeof payload.userPrincipalName ===
+              'string'
+            ? payload.userPrincipalName
+            : null,
+    };
+  }
+
+  if (
+    providerKey ===
+      'slack'
+  ) {
+    const {
+      response,
+      payload,
+    } =
+      await fetchJson(
+        'https://slack.com/api/auth.test',
+        accessToken,
+        'POST',
+      );
+
+    if (
+      response.status ===
+        401 ||
+      response.status ===
+        403 ||
+      payload.ok ===
+        false
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'expired',
+      };
+    }
+
+    if (
+      !response.ok
+    ) {
+      return {
+        healthy:
+          false,
+        status:
+          'unreachable',
+      };
+    }
+
+    return {
+      healthy:
+        true,
+      status:
+        'healthy',
+      externalAccountId:
+        typeof payload.team_id ===
+          'string'
+          ? payload.team_id
+          : null,
+      externalAccountName:
+        typeof payload.team ===
+          'string'
+          ? payload.team
+          : null,
+      externalAccountEmail:
+        null,
+    };
+  }
+
+  return {
+    healthy:
+      false,
+    status:
+      'degraded',
+  };
+}
+
+export async function checkIntegrationConnectionHealth(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+) {
+  const loaded =
+    await loadCredential({
+      tenantId:
+        runtime.tenantId,
+      companyId:
+        runtime.companyId,
+      connectionId,
+    });
+
+  const provider =
+    getIntegrationProvider(
+      loaded.providerKey,
+    );
+
+  if (
+    !provider
+  ) {
+    throw new Error(
+      'Integration provider is not registered.',
+    );
+  }
+
+  let health:
+    HealthResult;
+
+  if (
+    loaded.revoked
+  ) {
+    health = {
+      healthy:
+        false,
+      status:
+        'revoked',
+    };
+  } else if (
+    provider.connectionType ===
+      'webhook'
+  ) {
+    health = {
+      healthy:
+        true,
+      status:
+        'healthy',
+    };
+  } else if (
+    provider.connectionType ===
+      'external_app'
+  ) {
+    health = {
+      healthy:
+        true,
+      status:
+        'healthy',
+    };
+  } else if (
+    !loaded.credential
+  ) {
+    health = {
+      healthy:
+        false,
+      status:
+        'degraded',
+    };
+  } else {
+    const usable =
+      await usableOAuthCredential(
+        runtime,
+        connectionId,
+        loaded.providerKey,
+        loaded.credential,
+      );
+
+    if (
+      !usable
+        ?.accessToken
+    ) {
+      health = {
+        healthy:
+          false,
+        status:
+          credentialExpired(
+            loaded.credential,
+          )
+            ? 'expired'
+            : 'degraded',
+      };
+    } else {
+      health =
+        await testOAuthProvider(
+          loaded.providerKey,
+          usable.accessToken,
+        );
+
+      if (
+        health.status ===
+          'expired' &&
+        usable.refreshToken
+      ) {
+        const refreshed =
+          await refreshOAuthCredential(
+            runtime,
+            connectionId,
+            loaded.providerKey,
+            usable,
+          );
+
+        if (
+          refreshed
+            ?.accessToken
+        ) {
+          health =
+            await testOAuthProvider(
+              loaded.providerKey,
+              refreshed
+                .accessToken,
+            );
+        }
+      }
+    }
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      runtime.tenantId,
+    );
+
+  await pool.query(
+    `
+      UPDATE integration_connections
+      SET
+        health_status = $3,
+        status =
+          CASE
+            WHEN $3 = 'healthy'
+            THEN 'connected'
+            WHEN $3 = 'revoked'
+            THEN 'revoked'
+            WHEN $3 = 'expired'
+            THEN 'expired'
+            ELSE 'degraded'
+          END,
+        last_health_check_at =
+          NOW(),
+        external_account_id =
+          COALESCE(
+            $4,
+            external_account_id
+          ),
+        external_account_name =
+          COALESCE(
+            $5,
+            external_account_name
+          ),
+        external_account_email =
+          COALESCE(
+            $6,
+            external_account_email
+          ),
+        updated_by = $7,
+        updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND archived_at
+            IS NULL
+    `,
+    [
+      connectionId,
+      runtime.companyId,
+      health.status,
+      health.externalAccountId ||
+        null,
+      health.externalAccountName ||
+        null,
+      health.externalAccountEmail ||
+        null,
+      runtime.userId,
+    ],
+  );
+
+  return health;
+}
+
+export async function sendSlackIntegrationMessage(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  input: {
+    connectionId:
+      string;
+    channel:
+      string;
+    text:
+      string;
+  },
+) {
+  const channel =
+    input.channel
+      .trim()
+      .toUpperCase();
+
+  const text =
+    input.text
+      .replace(
+        /\u0000/g,
+        '',
+      )
+      .trim()
+      .slice(
+        0,
+        3000,
+      );
+
+  if (
+    !/^[A-Z][A-Z0-9]{7,30}$/.test(
+      channel,
+    )
+  ) {
+    throw new Error(
+      'Slack channel must be a valid channel or conversation ID.',
+    );
+  }
+
+  if (
+    !text
+  ) {
+    throw new Error(
+      'Slack message text is required.',
+    );
+  }
+
+  const loaded =
+    await loadCredential({
+      tenantId:
+        runtime.tenantId,
+      companyId:
+        runtime.companyId,
+      connectionId:
+        input.connectionId,
+    });
+
+  if (
+    loaded.providerKey !==
+      'slack' ||
+    loaded.revoked ||
+    !loaded.credential
+      ?.accessToken
+  ) {
+    throw new Error(
+      'Connected Slack credentials are not available.',
+    );
+  }
+
+  const usable =
+    await usableOAuthCredential(
+      runtime,
+      input.connectionId,
+      loaded.providerKey,
+      loaded.credential,
+    );
+
+  if (
+    !usable
+      ?.accessToken
+  ) {
+    throw new Error(
+      'The Slack connection has expired and must be reconnected.',
+    );
+  }
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+  try {
+    const response =
+      await fetch(
+        'https://slack.com/api/chat.postMessage',
+        {
+          method:
+            'POST',
+          headers: {
+            Accept:
+              'application/json',
+            Authorization:
+              'Bearer ' +
+              usable
+                .accessToken,
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify({
+              channel,
+              text,
+            }),
+          cache:
+            'no-store',
+          signal:
+            controller.signal,
+        },
+      );
+
+    const payload =
+      safeObject(
+        await response.json()
+          .catch(
+            () => ({}),
+          ),
+      );
+
+    if (
+      !response.ok ||
+      payload.ok !==
+        true
+    ) {
+      const code =
+        typeof payload.error ===
+          'string'
+          ? payload.error
+              .replace(
+                /[^a-z0-9_:-]/gi,
+                '',
+              )
+              .slice(
+                0,
+                120,
+              )
+          : 'slack_message_failed';
+
+      throw new Error(
+        'Slack rejected the message (' +
+        code +
+        ').',
+      );
+    }
+
+    return {
+      provider:
+        'slack',
+      channel:
+        typeof payload.channel ===
+          'string'
+          ? payload.channel
+          : channel,
+      messageTs:
+        typeof payload.ts ===
+          'string'
+          ? payload.ts
+          : null,
+    };
+  } finally {
+    clearTimeout(
+      timeout,
+    );
+  }
+}
+
+
+export function getIntegrationSyncHandler(
+  providerKey:
+    string,
+) {
+  return (
+    SYNC_HANDLERS.get(
+      providerKey
+        .trim()
+        .toLowerCase(),
+    ) ||
+    null
+  );
+}
+
+export async function runIntegrationSync(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+) {
+  const loaded =
+    await loadCredential({
+      tenantId:
+        runtime.tenantId,
+      companyId:
+        runtime.companyId,
+      connectionId,
+    });
+
+  const handler =
+    getIntegrationSyncHandler(
+      loaded.providerKey,
+    );
+
+  if (
+    !handler
+  ) {
+    throw new Error(
+      'This integration does not currently register a SaMi sync handler.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      runtime.tenantId,
+    );
+
+  const jobId =
+    crypto.randomUUID();
+
+  const correlationId =
+    crypto.randomUUID();
+
+  await pool.query(
+    `
+      INSERT INTO integration_sync_jobs (
+        id,
+        connection_id,
+        company_id,
+        run_as_user_id,
+        direction,
+        job_type,
+        status,
+        attempt,
+        max_attempts,
+        correlation_id,
+        started_at,
+        created_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        'bidirectional',
+        'manual',
+        'running',
+        1,
+        3,
+        $5,
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      jobId,
+      connectionId,
+      runtime.companyId,
+      runtime.userId,
+      correlationId,
+    ],
+  );
+
+  try {
+    const output =
+      await handler(
+        runtime,
+        {
+          connectionId,
+          cursor: {},
+        },
+      );
+
+    await pool.query(
+      `
+        UPDATE integration_sync_jobs
+        SET
+          status =
+            'succeeded',
+          cursor =
+            $2::jsonb,
+          result =
+            $3::jsonb,
+          completed_at =
+            NOW()
+        WHERE id = $1
+      `,
+      [
+        jobId,
+        JSON.stringify(
+          output.cursor ||
+          {},
+        ),
+        JSON.stringify(
+          output.result ||
+          {},
+        ),
+      ],
+    );
+
+    await pool.query(
+      `
+        UPDATE integration_connections
+        SET
+          last_sync_at =
+            NOW(),
+          updated_by =
+            $3,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        connectionId,
+        runtime.companyId,
+        runtime.userId,
+      ],
+    );
+
+    return {
+      jobId,
+      correlationId,
+      status:
+        'succeeded',
+    };
+  } catch (
+    error
+  ) {
+    const message =
+      error instanceof
+        Error
+        ? error.message
+            .replace(
+              /[\u0000-\u001f\u007f]/g,
+              ' ',
+            )
+            .replace(
+              /\s+/g,
+              ' ',
+            )
+            .trim()
+            .slice(
+              0,
+              800,
+            )
+        : 'Integration sync failed.';
+
+    await pool.query(
+      `
+        UPDATE integration_sync_jobs
+        SET
+          status =
+            'failed',
+          error_code =
+            'SYNC_FAILED',
+          error_message =
+            $2,
+          completed_at =
+            NOW()
+        WHERE id = $1
+      `,
+      [
+        jobId,
+        message,
+      ],
+    );
+
+    throw error;
+  }
+}

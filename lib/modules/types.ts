@@ -132,6 +132,7 @@ export type SamiModuleExtensions = {
   automationTriggers: boolean;
   automationActions: boolean;
   aiTools: boolean;
+  integrationProviders: boolean;
 };
 
 export type SamiModuleManifest = {

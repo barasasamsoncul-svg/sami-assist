@@ -37,6 +37,10 @@ import {
 } from '@/lib/services/workspace-messages';
 
 import {
+  getWorkspaceExternalAppLauncherEntries,
+} from '@/lib/services/workspace-integrations';
+
+import {
   getWorkspaceSearchProviders,
 } from '@/lib/search/registry';
 
@@ -663,6 +667,55 @@ function corePageCandidates(
 
 
   if (
+    can(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_VIEW,
+    ) ||
+    can(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_MANAGE,
+    )
+  ) {
+    pages.push(
+      candidate({
+        id:
+          'page:integrations',
+        kind:
+          'page',
+        title:
+          'Integrations',
+        subtitle:
+          'Connections, webhooks & external apps',
+        description:
+          'Connect approved cloud services, manage webhooks and provision external business apps.',
+        href:
+          '/integrations',
+        iconKey:
+          'plug',
+        badge:
+          null,
+        score:
+          34,
+        action:
+          null,
+        source:
+          'core',
+        keywords: [
+          'connections',
+          'oauth',
+          'webhooks',
+          'external apps',
+          'google workspace',
+          'microsoft 365',
+          'slack',
+          'sso',
+        ],
+      }),
+    );
+  }
+
+
+  if (
     context.aiAvailable
   ) {
     pages.push(
@@ -887,6 +940,51 @@ function appCandidates(
     );
 }
 
+async function externalAppCandidates() {
+  try {
+    const apps =
+      await getWorkspaceExternalAppLauncherEntries();
+
+    return apps.map(
+      app =>
+        candidate({
+          id:
+            'external-app:' +
+            app.id,
+          kind:
+            'app',
+          title:
+            app.name,
+          subtitle:
+            'External business app',
+          description:
+            app.description ||
+            'Assigned external application.',
+          href:
+            app.launchUrl,
+          iconKey:
+            'external-link',
+          badge:
+            'External',
+          score:
+            40,
+          action:
+            null,
+          source:
+            'integrations',
+          keywords: [
+            'external',
+            'connected',
+            'launcher',
+            app.authMode,
+          ],
+        }),
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function companyCandidates() {
   const state =
     await getCompanySelectorState();
@@ -1108,11 +1206,13 @@ export async function searchWorkspace(
 
   const [
     companiesResult,
+    externalAppsResult,
     peopleResult,
     filesResult,
   ] =
     await Promise.allSettled([
       companyCandidates(),
+      externalAppCandidates(),
       query
         ? peopleCandidates(
             raw,
@@ -1137,6 +1237,12 @@ export async function searchWorkspace(
       companiesResult.status ===
         'fulfilled'
         ? companiesResult.value
+        : []
+    ),
+    ...(
+      externalAppsResult.status ===
+        'fulfilled'
+        ? externalAppsResult.value
         : []
     ),
     ...(

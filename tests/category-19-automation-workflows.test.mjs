@@ -27,7 +27,7 @@ function compact(
   );
 }
 
-test('Category 19: tenant core advances additively from 1.5.0 to 1.6.0', async () => {
+test('Category 19: automation migration remains additive in the current tenant-core chain', async () => {
   const [
     manifest,
     migration,
@@ -47,7 +47,7 @@ test('Category 19: tenant core advances additively from 1.5.0 to 1.6.0', async (
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.6\.0['"]/s,
+    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.7\.0['"]/s,
   );
   assert.match(
     manifest,
@@ -141,7 +141,11 @@ test('Category 19: tenant core advances additively from 1.5.0 to 1.6.0', async (
   );
   assert.match(
     core,
-    /VALUES \('1\.6\.0'\)/,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.automation_workflows/,
+  );
+  assert.match(
+    core,
+    /VALUES \('1\.7\.0'\)/,
   );
 });
 

@@ -1,4 +1,10 @@
 import {
+  notFound,
+} from 'next/navigation';
+
+import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
+
+import {
   getAccountContextForUser,
 } from '@/lib/auth/account-context';
 
@@ -19,10 +25,10 @@ import {
 } from '@/lib/auth/workspace-shell';
 
 import {
-  getWorkspaceExternalAppLauncherEntries,
+  getWorkspaceIntegrationState,
 } from '@/lib/services/workspace-integrations';
 
-import AppsLauncherClient from './AppsLauncherClient';
+import IntegrationsClient from './IntegrationsClient';
 
 export const runtime =
   'nodejs';
@@ -30,10 +36,10 @@ export const runtime =
 export const dynamic =
   'force-dynamic';
 
-export default async function AppsPage() {
+export default async function IntegrationsPage() {
   const session =
     await requirePageSession(
-      '/apps',
+      '/integrations',
     );
 
   const [
@@ -45,37 +51,47 @@ export default async function AppsPage() {
         session.user.id,
         session.currentTenantId,
       ),
-
       getPermissionContext(),
     ]);
+
+  const canIntegrations =
+    permissions.isOwner ||
+    permissions.permissionSet.has(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_VIEW,
+    ) ||
+    permissions.permissionSet.has(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_MANAGE,
+    );
+
+  if (
+    !canIntegrations
+  ) {
+    notFound();
+  }
 
   const shell =
     resolveWorkspaceShellAccess({
       modules:
         account.modules,
-
       subscription:
         account.subscription,
-
       permissions,
     });
 
-  const externalApps =
-    await getWorkspaceExternalAppLauncherEntries();
+  const integrations =
+    await getWorkspaceIntegrationState();
 
-  const can =
-    (
-      permission:
-        string,
-    ) =>
-      permissions
-        .permissionSet
-        .has(
-          permission,
-        );
+  const initialState =
+    JSON.parse(
+      JSON.stringify(
+        integrations,
+      ),
+    );
 
   return (
-    <AppsLauncherClient
+    <WorkspaceShell
       user={
         session.user
       }
@@ -91,28 +107,33 @@ export default async function AppsPage() {
       modules={
         shell.accessibleModules
       }
-      externalApps={
-        externalApps
-      }
-      canManageApps={
-        shell.canManageApps
-      }
       sidebarCapabilities={{
         aiEnabled:
           shell.aiAvailable,
-
         filesEnabled:
-          can(
-            SAMI_PERMISSIONS
-              .FILES_VIEW,
-          ),
-
+          permissions
+            .permissionSet
+            .has(
+              SAMI_PERMISSIONS
+                .FILES_VIEW,
+            ),
         notificationsEnabled:
-          can(
-            SAMI_PERMISSIONS
-              .NOTIFICATIONS_VIEW,
-          ),
+          true,
       }}
-    />
+      title="Integrations"
+      description="Connect approved services, receive verified events and provision external business apps from one company-scoped control center."
+      contextLabel={
+        account.tenant
+          ?.name ||
+        null
+      }
+      contentClassName="max-w-[1540px]"
+    >
+      <IntegrationsClient
+        initialState={
+          initialState
+        }
+      />
+    </WorkspaceShell>
   );
 }

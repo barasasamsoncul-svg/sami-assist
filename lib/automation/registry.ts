@@ -1,6 +1,10 @@
 import 'server-only';
 
 import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
   getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
@@ -14,6 +18,10 @@ import type {
 import {
   createWorkspaceNotification,
 } from '@/lib/services/workspace-notifications';
+
+import {
+  sendSlackIntegrationMessage,
+} from '@/lib/integrations/runtime';
 
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
@@ -75,6 +83,43 @@ export const CORE_AUTOMATION_TRIGGERS:
         ],
       },
     },
+    {
+      key:
+        'integrations.webhook.received',
+      name:
+        'Webhook received',
+      description:
+        'Run when a verified SaMi custom-webhook endpoint receives an allowed event.',
+      type:
+        'event',
+      moduleKey:
+        null,
+      requiredPermissions: [
+        SAMI_PERMISSIONS
+          .INTEGRATIONS_VIEW,
+      ],
+      companyScoped:
+        true,
+      configSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          endpointId: {
+            type:
+              'string',
+          },
+          eventKey: {
+            type:
+              'string',
+          },
+        },
+        required: [
+          'endpointId',
+        ],
+      },
+    },
   ];
 
 /*
@@ -129,6 +174,53 @@ export const CORE_AUTOMATION_ACTIONS:
         },
         required: [
           'title',
+        ],
+      },
+    },
+    {
+      key:
+        'integrations.slack.send_message',
+      name:
+        'Send Slack message',
+      description:
+        'Send a message through an approved Slack connection in the current company.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      requiredPermissions: [
+        SAMI_PERMISSIONS
+          .INTEGRATIONS_VIEW,
+      ],
+      approvalPolicy:
+        'optional',
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          connectionId: {
+            type:
+              'string',
+          },
+          channel: {
+            type:
+              'string',
+            maxLength:
+              40,
+          },
+          text: {
+            type:
+              'string',
+            maxLength:
+              3000,
+          },
+        },
+        required: [
+          'connectionId',
+          'channel',
+          'text',
         ],
       },
     },
@@ -219,6 +311,50 @@ const CORE_AUTOMATION_ACTION_HANDLERS =
           notificationId:
             notification.id,
         };
+      },
+    ],
+    [
+      'integrations.slack.send_message',
+      async (
+        context,
+        input,
+      ) => {
+        const connectionId =
+          typeof input.connectionId ===
+            'string'
+            ? input.connectionId
+                .trim()
+            : '';
+
+        const channel =
+          typeof input.channel ===
+            'string'
+            ? input.channel
+                .trim()
+            : '';
+
+        const text =
+          typeof input.text ===
+            'string'
+            ? input.text
+            : '';
+
+        if (
+          !connectionId
+        ) {
+          throw new Error(
+            'Slack connection is required.',
+          );
+        }
+
+        return sendSlackIntegrationMessage(
+          context,
+          {
+            connectionId,
+            channel,
+            text,
+          },
+        );
       },
     ],
   ]);
