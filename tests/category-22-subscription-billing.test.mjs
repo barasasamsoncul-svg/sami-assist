@@ -959,6 +959,17 @@ test('Category 22: billing state changes notify workspace owners through critica
 
   assert.match(
     reconcile,
+    /billing\.due_soon/,
+    'Owners must receive limited reminders before a paid workspace reaches suspension.',
+  );
+
+  assert.match(
+    reconcile,
+    /reminderBucket/,
+  );
+
+  assert.match(
+    reconcile,
     /billing\.past_due/,
   );
 
@@ -1015,6 +1026,64 @@ test('Category 22: Billing UI is provider-aware and mobile-compact', async () =>
     /Set up automatic billing/,
   );
 });
+
+test('Category 22: overdue reconciliation runs automatically with an authenticated scheduler', async () => {
+  const [
+    route,
+    vercel,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/internal/billing/reconcile/route.ts',
+      ),
+      source(
+        'vercel.json',
+      ),
+    ]);
+
+  assert.match(
+    route,
+    /CRON_SECRET/,
+  );
+
+  assert.match(
+    route,
+    /SAMI_BILLING_WORKER_SECRET/,
+  );
+
+  assert.match(
+    route,
+    /authorization/,
+  );
+
+  assert.match(
+    route,
+    /timingSafeEqual/,
+  );
+
+  assert.match(
+    route,
+    /export async function GET/,
+  );
+
+  const config =
+    JSON.parse(
+      vercel,
+    );
+
+  assert.deepEqual(
+    config.crons,
+    [
+      {
+        path:
+          '/api/internal/billing/reconcile',
+        schedule:
+          '0 6 * * *',
+      },
+    ],
+  );
+});
+
 
 test('Category 22: control migration is additive and never stores provider secrets', async () => {
   const migration =
