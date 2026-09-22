@@ -908,13 +908,18 @@ export async function getWorkspaceBillingState() {
 
     collection: (() => {
       const provider =
-        getActiveBillingProvider();
+        getBillingProvider();
+
+      const configured =
+        provider
+          .isConfigured();
 
       return {
         provider:
           provider.key,
         providerName:
           provider.name,
+        configured,
         mode:
           provider.capabilities
             .automaticRecurring &&
@@ -923,6 +928,7 @@ export async function getWorkspaceBillingState() {
             ? 'recurring_capable'
             : 'monthly_checkout',
         automaticRecurring:
+          configured &&
           provider.capabilities
             .automaticRecurring,
         capabilities:
@@ -930,12 +936,14 @@ export async function getWorkspaceBillingState() {
         providerCatalog:
           getBillingProviderCatalog(),
         explanation:
-          provider.capabilities
-            .automaticRecurring &&
-          provider.capabilities
-            .variableRecurringAmount
-            ? `SaMi can use ${provider.name} for future recurring billing while still recalculating seats and server-configured prices.`
-            : `SaMi recalculates each monthly bill from the current active-user count and server-configured plan price before opening ${provider.name}.`,
+          !configured
+            ? `${provider.name} is selected for SaMi billing but is not configured yet.`
+            : provider.capabilities
+                .automaticRecurring &&
+              provider.capabilities
+                .variableRecurringAmount
+              ? `SaMi can use ${provider.name} for recurring billing while recalculating live seats and server-configured prices.`
+              : `SaMi recalculates each monthly bill from the current active-user count and server-configured plan price before opening ${provider.name}.`,
       };
     })(),
   };
