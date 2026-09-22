@@ -15,52 +15,102 @@ export const runtime =
 export const dynamic =
   'force-dynamic';
 
-function authorized(
-  request:
-    NextRequest,
+function safeEqual(
+  left:
+    string,
+  right:
+    string,
 ) {
-  const expected =
-    process.env
-      .SAMI_BILLING_WORKER_SECRET
-      ?.trim();
-
-  const received =
-    request.headers
-      .get(
-        'x-sami-billing-secret',
-      )
-      ?.trim();
-
-  if (
-    !expected ||
-    !received
-  ) {
-    return false;
-  }
-
-  const left =
+  const a =
     Buffer.from(
-      expected,
+      left,
       'utf8',
     );
 
-  const right =
+  const b =
     Buffer.from(
-      received,
+      right,
       'utf8',
     );
 
   return (
-    left.length ===
-      right.length &&
+    a.length ===
+      b.length &&
     crypto.timingSafeEqual(
-      left,
-      right,
+      a,
+      b,
     )
   );
 }
 
-export async function POST(
+function authorized(
+  request:
+    NextRequest,
+) {
+  const workerSecret =
+    process.env
+      .SAMI_BILLING_WORKER_SECRET
+      ?.trim() ||
+    '';
+
+  const cronSecret =
+    process.env
+      .CRON_SECRET
+      ?.trim() ||
+    '';
+
+  const workerHeader =
+    request.headers
+      .get(
+        'x-sami-billing-secret',
+      )
+      ?.trim() ||
+    '';
+
+  const authorization =
+    request.headers
+      .get(
+        'authorization',
+      )
+      ?.trim() ||
+    '';
+
+  const bearer =
+    authorization
+      .toLowerCase()
+      .startsWith(
+        'bearer ',
+      )
+      ? authorization
+          .slice(
+            7,
+          )
+          .trim()
+      : '';
+
+  return (
+    Boolean(
+      workerSecret &&
+      workerHeader,
+    ) &&
+    safeEqual(
+      workerSecret,
+      workerHeader,
+    )
+  ) ||
+  (
+    Boolean(
+      cronSecret &&
+      bearer,
+    ) &&
+    safeEqual(
+      cronSecret,
+      bearer,
+    )
+  );
+}
+
+async function runReconciliation(
   request:
     NextRequest,
 ) {
@@ -127,4 +177,22 @@ export async function POST(
       },
     );
   }
+}
+
+export async function GET(
+  request:
+    NextRequest,
+) {
+  return runReconciliation(
+    request,
+  );
+}
+
+export async function POST(
+  request:
+    NextRequest,
+) {
+  return runReconciliation(
+    request,
+  );
 }
