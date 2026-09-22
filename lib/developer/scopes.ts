@@ -79,7 +79,7 @@ type ScopeRuntime = {
   isOwner:
     boolean;
   permissionSet:
-    Set<string>;
+    ReadonlySet<string>;
 };
 
 export function getDeveloperScope(
