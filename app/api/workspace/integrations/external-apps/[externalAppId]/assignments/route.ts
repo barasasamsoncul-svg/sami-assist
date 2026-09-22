@@ -4,7 +4,7 @@ import {
 
 import {
   getWorkspaceExternalAppAssignmentState,
-  setWorkspaceExternalAppAssignments,
+  setWorkspaceExternalAppAccessPolicy,
 } from '@/lib/services/workspace-integrations';
 
 import {
@@ -87,9 +87,16 @@ export async function PUT(
       ]);
 
     const result =
-      await setWorkspaceExternalAppAssignments(
+      await setWorkspaceExternalAppAccessPolicy(
         params.externalAppId,
-        body.userIds,
+        {
+          mode:
+            body.mode,
+          userIds:
+            body.userIds,
+          rule:
+            body.rule,
+        },
       );
 
     return integrationJson({
