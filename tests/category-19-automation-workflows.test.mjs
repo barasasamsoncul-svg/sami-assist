@@ -146,7 +146,8 @@ test('Category 19: automation migration remains additive in the current tenant-c
   );
   assert.match(
     core,
-    /VALUES \('1\.7\.0'\)/,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.core_schema_version/,
+    'The current tenant core must retain version tracking without freezing Category 19 to a later category version.',
   );
 });
 
