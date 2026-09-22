@@ -4,8 +4,8 @@ import {
 } from '@/lib/modules/types';
 
 import {
-  PLANNED_FIRST_PARTY_SAMI_MODULES,
-} from '@/lib/modules/planned-first-party';
+  ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
+} from '@/lib/modules/additional-first-party';
 
 /*
  * Canonical first-party module manifests.
@@ -2397,5 +2397,5 @@ export const FIRST_PARTY_SAMI_MODULES:
     },
   }),
 
-  ...PLANNED_FIRST_PARTY_SAMI_MODULES,
+  ...ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
 ];
