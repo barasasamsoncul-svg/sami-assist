@@ -18,6 +18,25 @@ CRON_SECRET=<generate-another-long-random-secret>
 
 
 # ============================================================
+# SaMi email — shared transactional + workspace notifications
+# ============================================================
+
+APP_URL=https://your-sami-domain.example
+
+SMTP_HOST=<your-smtp-host>
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=<your-smtp-user>
+SMTP_PASSWORD=<your-smtp-password>
+
+# Recommended branded sender identity.
+EMAIL_FROM=SaMi <notifications@your-sami-domain.example>
+
+# Optional support/reply address.
+EMAIL_REPLY_TO=<your-reply-address>
+
+
+# ============================================================
 # SaMi branded SMS — recommended Kenya setup: Africa's Talking
 # ============================================================
 
