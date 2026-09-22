@@ -4035,10 +4035,13 @@ export async function changeWorkspaceSubscriptionPlan(
   }
 
   /*
-   * During the free paid trial, moving between Standard/Custom
-   * is immediate and does not reset the original trial end.
-   * Moving to Free is also immediate because nothing has been
-   * charged yet.
+   * During the first paid-plan trial:
+   *
+   * - Standard <-> Custom is immediate and preserves the original
+   *   trial boundary.
+   * - Paid -> Free is scheduled for the trial boundary so the
+   *   customer keeps the promised free month and can still cancel
+   *   the pending downgrade before it takes effect.
    */
   if (
     effectiveStatus ===
@@ -4074,54 +4077,162 @@ export async function changeWorkspaceSubscriptionPlan(
     }
 
     if (
-      targetPolicy.paid
+      !targetPolicy.paid
     ) {
+      const effectiveAt =
+        subscription
+          .trial_ends_at
+          ? new Date(
+              subscription
+                .trial_ends_at,
+            )
+          : null;
+
+      if (
+        !effectiveAt ||
+        Number.isNaN(
+          effectiveAt
+            .getTime(),
+        ) ||
+        effectiveAt
+          .getTime() <=
+          Date.now()
+      ) {
+        throw new WorkspaceBillingError(
+          'PLAN_CHANGE_BLOCKED',
+          'The paid-plan trial boundary must be resolved before moving to Free.',
+        );
+      }
+
       await synchronizeRecurringPlanChange({
         subscriptionId,
-        targetPlan,
+        targetPlan:
+          'free',
         seats:
           capacity.users,
         cancellationMode:
-          null,
+          'period_end',
       });
-    } else {
-      await synchronizeRecurringPlanChange({
+
+      await queryControl(
+        `
+          UPDATE subscriptions
+          SET
+            scheduled_plan_id =
+              $2,
+            scheduled_plan_effective_at =
+              $3,
+            scheduled_plan_requested_by =
+              $4,
+            scheduled_plan_requested_at =
+              NOW(),
+            updated_at =
+              NOW()
+          WHERE id = $1
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          subscriptionId,
+          target.rows[0]
+            .id,
+          effectiveAt,
+          context.userId,
+        ],
+      );
+
+      await auditPlanChange({
+        tenantId:
+          context.tenantId,
+        userId:
+          context.userId,
         subscriptionId,
-        targetPlan,
-        seats:
-          capacity.users,
-        cancellationMode:
-          'immediate',
+        eventType:
+          'SUBSCRIPTION_PLAN_CHANGE_SCHEDULED',
+        metadata: {
+          from:
+            currentPlan,
+          to:
+            'free',
+          effectiveAt:
+            effectiveAt
+              .toISOString(),
+          boundary:
+            'trial_end',
+        },
       });
+
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          context.tenantId,
+        type:
+          'billing.plan_change_scheduled',
+        eventKey:
+          'billing.plan_change_scheduled',
+        title:
+          'Free plan downgrade scheduled',
+        message:
+          `Your SaMi workspace will move from ${currentPlan} to Free when the current free paid-plan month ends on ${effectiveAt.toLocaleDateString(
+            'en-KE',
+            {
+              year:
+                'numeric',
+              month:
+                'short',
+              day:
+                'numeric',
+              timeZone:
+                'Africa/Nairobi',
+            },
+          )}. You can cancel this pending change in Billing before then.`,
+        priority:
+          'high',
+        dedupeKey:
+          `billing:plan-scheduled:${subscriptionId}:free:${effectiveAt.toISOString()}`,
+        metadata: {
+          subscriptionId,
+          from:
+            currentPlan,
+          to:
+            'free',
+          effectiveAt:
+            effectiveAt
+              .toISOString(),
+          boundary:
+            'trial_end',
+        },
+      });
+
+      return {
+        mode:
+          'scheduled',
+        currentPlan,
+        targetPlan:
+          'free',
+        effectiveAt:
+          effectiveAt
+            .toISOString(),
+      };
     }
+
+    await synchronizeRecurringPlanChange({
+      subscriptionId,
+      targetPlan,
+      seats:
+        capacity.users,
+      cancellationMode:
+        null,
+    });
 
     await queryControl(
       `
         UPDATE subscriptions
         SET
           plan_id = $2,
-          status = $3,
+          status =
+            'trialing',
           billing_cycle =
-            CASE
-              WHEN $3 =
-                   'active'
-              THEN NULL
-              ELSE 'monthly'
-            END,
-          current_period_start =
-            CASE
-              WHEN $3 =
-                   'active'
-              THEN NULL
-              ELSE current_period_start
-            END,
-          current_period_end =
-            CASE
-              WHEN $3 =
-                   'active'
-              THEN NULL
-              ELSE current_period_end
-            END,
+            'monthly',
           cancelled_at =
             NULL,
           updated_at =
@@ -4134,9 +4245,6 @@ export async function changeWorkspaceSubscriptionPlan(
         subscriptionId,
         target.rows[0]
           .id,
-        targetPolicy.paid
-          ? 'trialing'
-          : 'active',
       ],
     );
 
@@ -4168,7 +4276,7 @@ export async function changeWorkspaceSubscriptionPlan(
       title:
         'Subscription plan updated',
       message:
-        `Your SaMi workspace changed from ${currentPlan} to ${targetPlan}. Billing and access now follow the new plan.`,
+        `Your SaMi workspace changed from ${currentPlan} to ${targetPlan}. The original free-month trial boundary is unchanged.`,
       priority:
         'high',
       dedupeKey:
@@ -4191,11 +4299,10 @@ export async function changeWorkspaceSubscriptionPlan(
         targetPlan,
       targetPlan,
       status:
-        targetPolicy.paid
-          ? 'trialing'
-          : 'active',
+        'trialing',
     };
   }
+
 
   /*
    * Once a paid period has started, every plan change is
