@@ -504,7 +504,14 @@ export async function getWorkspaceDeveloperState() {
             scopes,
             allowed_app_keys,
             rate_limit_per_minute,
-            status,
+            CASE
+              WHEN status = 'active'
+               AND expires_at IS NOT NULL
+               AND expires_at <= NOW()
+              THEN 'expired'
+              ELSE status
+            END
+              AS status,
             expires_at,
             last_used_at,
             rotated_at,
@@ -939,7 +946,8 @@ export async function manageWorkspaceApiCredential(
           id,
           name,
           public_id,
-          status
+          status,
+          expires_at
         FROM api_credentials
         WHERE id = $1
           AND company_id = $2
@@ -972,7 +980,14 @@ export async function manageWorkspaceApiCredential(
       String(
         row.status,
       ) !==
-        'active'
+        'active' ||
+      (
+        row.expires_at &&
+        new Date(
+          row.expires_at,
+        ).getTime() <=
+          Date.now()
+      )
     ) {
       throw new WorkspaceDeveloperError(
         'API_CREDENTIAL_INACTIVE',
