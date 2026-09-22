@@ -14,6 +14,175 @@ import {
   isSubscriptionEntitledNow,
 } from '@/lib/billing/plan-policy';
 
+const DEFAULT_PAST_DUE_GRACE_DAYS =
+  14;
+
+export function getSamiPastDueGraceDays() {
+  const raw =
+    process.env
+      .SAMI_BILLING_PAST_DUE_GRACE_DAYS
+      ?.trim();
+
+  if (
+    !raw
+  ) {
+    return DEFAULT_PAST_DUE_GRACE_DAYS;
+  }
+
+  const parsed =
+    Number.parseInt(
+      raw,
+      10,
+    );
+
+  if (
+    !Number.isInteger(
+      parsed,
+    ) ||
+    parsed < 0 ||
+    parsed > 90
+  ) {
+    return DEFAULT_PAST_DUE_GRACE_DAYS;
+  }
+
+  return parsed;
+}
+
+function toDate(
+  value:
+    unknown,
+) {
+  if (
+    !value
+  ) {
+    return null;
+  }
+
+  const date =
+    value instanceof Date
+      ? value
+      : new Date(
+          String(
+            value,
+          ),
+        );
+
+  return Number.isNaN(
+    date.getTime(),
+  )
+    ? null
+    : date;
+}
+
+export function getSubscriptionSuspensionWindow({
+  effectiveStatus,
+  trialEndsAt,
+  currentPeriodEnd,
+  now =
+    new Date(),
+}: {
+  effectiveStatus:
+    string;
+  trialEndsAt?:
+    unknown;
+  currentPeriodEnd?:
+    unknown;
+  now?:
+    Date;
+}) {
+  const pastDue =
+    effectiveStatus ===
+    'past_due';
+
+  if (
+    !pastDue
+  ) {
+    return {
+      pastDue:
+        false,
+      suspended:
+        false,
+      dueAt:
+        null as string | null,
+      graceEndsAt:
+        null as string | null,
+      daysPastDue:
+        0,
+      graceDays:
+        getSamiPastDueGraceDays(),
+    };
+  }
+
+  const dueDate =
+    toDate(
+      currentPeriodEnd,
+    ) ||
+    toDate(
+      trialEndsAt,
+    );
+
+  const graceDays =
+    getSamiPastDueGraceDays();
+
+  if (
+    !dueDate
+  ) {
+    return {
+      pastDue:
+        true,
+      suspended:
+        true,
+      dueAt:
+        null as string | null,
+      graceEndsAt:
+        null as string | null,
+      daysPastDue:
+        null as number | null,
+      graceDays,
+    };
+  }
+
+  const graceEnds =
+    new Date(
+      dueDate.getTime() +
+      graceDays *
+        24 *
+        60 *
+        60 *
+        1000,
+    );
+
+  const elapsedMs =
+    Math.max(
+      0,
+      now.getTime() -
+      dueDate.getTime(),
+    );
+
+  return {
+    pastDue:
+      true,
+    suspended:
+      now.getTime() >=
+      graceEnds.getTime(),
+    dueAt:
+      dueDate.toISOString(),
+    graceEndsAt:
+      graceEnds.toISOString(),
+    daysPastDue:
+      Math.floor(
+        elapsedMs /
+        (
+          24 *
+          60 *
+          60 *
+          1000
+        ),
+      ),
+    graceDays,
+  };
+}
+
 export const SAMI_PAST_DUE_ACCESS_POLICY = {
   allowed: [
     'sign_in',
@@ -98,6 +267,16 @@ async function readState(
         false,
       pastDue:
         false,
+      suspended:
+        false,
+      dueAt:
+        null,
+      graceEndsAt:
+        null,
+      daysPastDue:
+        0,
+      graceDays:
+        getSamiPastDueGraceDays(),
       policy:
         null,
     };
@@ -120,6 +299,15 @@ async function readState(
         row.current_period_end,
     });
 
+  const suspension =
+    getSubscriptionSuspensionWindow({
+      effectiveStatus,
+      trialEndsAt:
+        row.trial_ends_at,
+      currentPeriodEnd:
+        row.current_period_end,
+    });
+
   return {
     planKey:
       policy?.key ||
@@ -128,10 +316,12 @@ async function readState(
     entitled:
       isSubscriptionEntitledNow(
         effectiveStatus,
+      ) ||
+      (
+        suspension.pastDue &&
+        !suspension.suspended
       ),
-    pastDue:
-      effectiveStatus ===
-      'past_due',
+    ...suspension,
     policy,
   };
 }
