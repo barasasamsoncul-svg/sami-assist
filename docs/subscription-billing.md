@@ -174,7 +174,9 @@ can extend subscription access.
 - Free → paid after a prior paid trial: payment is required; the free month is
   not reset by cycling through Free.
 - Paid trial → another paid plan: immediate, preserving the original trial end.
-- Paid trial → Free: immediate and any recurring trial mandate is cancelled.
+- Paid trial → Free: scheduled for the original trial end. The free month remains
+  available, provider renewal is stopped at the boundary, and the pending
+  downgrade can be cancelled before it takes effect.
 - Active paid → another plan: scheduled for the current paid-period boundary.
 - Active paid → Free: provider cancellation is scheduled at period end.
 - Downgrades are blocked if active users, installed apps/dependencies or active
@@ -228,6 +230,12 @@ For a valid paid trial or active paid period:
 
 If there is no valid remaining paid/trial period, cancellation may take effect
 immediately.
+
+A provider payment that was already in flight when cancellation was requested
+does not silently restore renewal. If the provider later verifies that payment,
+SaMi honors the period that was actually paid for while preserving the existing
+cancellation, so future renewal remains stopped. A failed stale checkout cannot
+turn a cancelled subscription back into past-due dunning.
 
 ### Keep the subscription
 
