@@ -18,6 +18,10 @@ import {
   resolveWorkspaceShellAccess,
 } from '@/lib/auth/workspace-shell';
 
+import {
+  getWorkspaceExternalAppLauncherEntries,
+} from '@/lib/services/workspace-integrations';
+
 import AppsLauncherClient from './AppsLauncherClient';
 
 export const runtime =
@@ -56,6 +60,9 @@ export default async function AppsPage() {
       permissions,
     });
 
+  const externalApps =
+    await getWorkspaceExternalAppLauncherEntries();
+
   const can =
     (
       permission:
@@ -83,6 +90,9 @@ export default async function AppsPage() {
       }
       modules={
         shell.accessibleModules
+      }
+      externalApps={
+        externalApps
       }
       canManageApps={
         shell.canManageApps
