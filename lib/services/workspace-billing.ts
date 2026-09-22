@@ -2768,6 +2768,45 @@ export async function changeWorkspaceSubscriptionPlan(
       },
     });
 
+    await notifyWorkspaceOwnersOfBillingEvent({
+      tenantId:
+        context.tenantId,
+      type:
+        firstPaidTrial
+          ? 'billing.plan_changed'
+          : 'billing.payment_required',
+      eventKey:
+        firstPaidTrial
+          ? 'billing.plan_changed'
+          : 'billing.payment_required',
+      title:
+        firstPaidTrial
+          ? 'Paid plan activated'
+          : 'Payment required for paid plan',
+      message:
+        firstPaidTrial
+          ? `Your SaMi workspace changed from ${currentPlan} to ${targetPlan}. The first paid month is free and the trial billing period has started.`
+          : `Your SaMi workspace changed from ${currentPlan} to ${targetPlan}. Complete the current subscription payment in Billing to activate paid access.`,
+      priority:
+        firstPaidTrial
+          ? 'high'
+          : 'urgent',
+      dedupeKey:
+        `billing:plan-immediate:${subscriptionId}:${targetPlan}:${firstPaidTrial ? 'trial' : 'payment-required'}`,
+      metadata: {
+        subscriptionId,
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        mode:
+          'immediate',
+        firstPaidTrial,
+        paymentRequired:
+          !firstPaidTrial,
+      },
+    });
+
     return {
       mode:
         'immediate',
