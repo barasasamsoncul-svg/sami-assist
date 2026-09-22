@@ -254,13 +254,22 @@ export function getIntegrationProvider(
 export function getIntegrationProviderCatalog():
   SamiIntegrationPublicProvider[] {
   return PROVIDERS.map(
-    provider => ({
-      ...provider,
-      configured:
-        oauthConfigured(
-          provider,
-        ),
-    }),
+    provider => {
+      const {
+        oauth:
+          _oauth,
+        ...publicProvider
+      } =
+        provider;
+
+      return {
+        ...publicProvider,
+        configured:
+          oauthConfigured(
+            provider,
+          ),
+      };
+    },
   );
 }
 
