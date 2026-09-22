@@ -5,36 +5,23 @@ import {
 } from '@/lib/modules/types';
 
 /*
- * SaMi catalog expansion.
+ * First-party SaMi catalog expansion.
  *
- * These modules are part of the first-party product roadmap and may be
- * discovered in the workspace app catalog, but they deliberately remain
- * installable=false until they own a real schema, route, permissions and
- * business implementation.
- *
- * This preserves the Odoo-style manifest architecture without pretending
- * that a catalog card is already a working business application.
+ * These modules have real domain schemas and explicit dependency contracts,
+ * but remain installable=false until their routes, permissions, services and
+ * end-to-end business behavior are implemented and regression-tested.
  */
 
 const NO_EXTENSIONS = {
-  dashboard:
-    false,
-  search:
-    false,
-  notifications:
-    false,
-  activity:
-    false,
-  automationTriggers:
-    false,
-  automationActions:
-    false,
-  aiTools:
-    false,
-  integrationProviders:
-    false,
-  apiEndpoints:
-    false,
+  dashboard: false,
+  search: false,
+  notifications: false,
+  activity: false,
+  automationTriggers: false,
+  automationActions: false,
+  aiTools: false,
+  integrationProviders: false,
+  apiEndpoints: false,
 } as const;
 
 function plannedModule({
@@ -43,45 +30,33 @@ function plannedModule({
   description,
   category,
   icon,
-  recommended =
-    false,
+  depends,
+  optionalDepends,
 }: {
-  key:
-    string;
-  name:
-    string;
-  description:
-    string;
-  category:
-    SamiModuleCategory;
-  icon:
-    string;
-  recommended?:
-    boolean;
+  key: string;
+  name: string;
+  description: string;
+  category: SamiModuleCategory;
+  icon: string;
+  depends: string[];
+  optionalDepends: string[];
 }): SamiModuleManifest {
   return defineSamiModule({
     key,
     name,
-    version:
-      '0.1.0',
+    version: '0.1.0',
     description,
     category,
     icon,
-    route:
-      `apps/${key}`,
-    application:
-      true,
-    installable:
-      false,
-    autoInstall:
-      false,
-    recommended,
-    depends: [],
-    optionalDepends: [],
-    schemaPath:
-      null,
-    migrationNamespace:
-      key,
+    route: `apps/${key}`,
+    application: true,
+    installable: false,
+    autoInstall: false,
+    recommended: false,
+    depends,
+    optionalDepends,
+    schemaPath: `lib/apps/${key}/schema.sql`,
+    migrationNamespace: key,
     navigation: [],
     actions: [],
     views: [],
@@ -100,549 +75,402 @@ function plannedModule({
 
 export const PLANNED_FIRST_PARTY_SAMI_MODULES:
   SamiModuleManifest[] = [
-  /* Finance */
   plannedModule({
-    key:
-      'billing',
-    name:
-      'Billing',
-    description:
-      'Manage customer billing cycles, recurring charges and revenue schedules.',
-    category:
-      'finance',
-    icon:
-      'repeat',
+    key: "billing",
+    name: "Billing",
+    description: "Manage customer billing cycles, recurring charges and revenue schedules.",
+    category: "finance",
+    icon: "repeat",
+    depends: ["invoicing"],
+    optionalDepends: ["accounting","payments"],
   }),
   plannedModule({
-    key:
-      'payments',
-    name:
-      'Payments',
-    description:
-      'Collect, reconcile and track business payments across supported channels.',
-    category:
-      'finance',
-    icon:
-      'receipt',
+    key: "payments",
+    name: "Payments",
+    description: "Collect, reconcile and track business payments across supported channels.",
+    category: "finance",
+    icon: "receipt",
+    depends: ["accounting"],
+    optionalDepends: ["invoicing","billing"],
   }),
   plannedModule({
-    key:
-      'budgeting',
-    name:
-      'Budgeting',
-    description:
-      'Plan budgets, compare actuals and manage departmental spending targets.',
-    category:
-      'finance',
-    icon:
-      'bar-chart',
+    key: "budgeting",
+    name: "Budgeting",
+    description: "Plan budgets, compare actuals and manage departmental spending targets.",
+    category: "finance",
+    icon: "bar-chart",
+    depends: ["accounting"],
+    optionalDepends: ["expenses"],
   }),
   plannedModule({
-    key:
-      'cash_flow',
-    name:
-      'Cash Flow',
-    description:
-      'Forecast cash positions, inflows, outflows and liquidity requirements.',
-    category:
-      'finance',
-    icon:
-      'bar-chart',
+    key: "cash_flow",
+    name: "Cash Flow",
+    description: "Forecast cash positions, inflows, outflows and liquidity requirements.",
+    category: "finance",
+    icon: "bar-chart",
+    depends: ["accounting"],
+    optionalDepends: ["invoicing","expenses","payments"],
   }),
   plannedModule({
-    key:
-      'fixed_assets',
-    name:
-      'Fixed Assets',
-    description:
-      'Track capitalization, depreciation, transfers and disposal of fixed assets.',
-    category:
-      'finance',
-    icon:
-      'calculator',
+    key: "fixed_assets",
+    name: "Fixed Assets",
+    description: "Track capitalization, depreciation, transfers and disposal of fixed assets.",
+    category: "finance",
+    icon: "calculator",
+    depends: ["accounting"],
+    optionalDepends: ["maintenance"],
   }),
   plannedModule({
-    key:
-      'tax',
-    name:
-      'Tax',
-    description:
-      'Manage tax configurations, filings, obligations and compliance workflows.',
-    category:
-      'finance',
-    icon:
-      'file-text',
-  }),
-
-  /* Sales */
-  plannedModule({
-    key:
-      'bookings',
-    name:
-      'Bookings',
-    description:
-      'Accept customer bookings for services, resources, locations and staff.',
-    category:
-      'sales',
-    icon:
-      'calendar',
+    key: "tax",
+    name: "Tax",
+    description: "Manage tax registrations, filings, obligations and compliance workflows.",
+    category: "finance",
+    icon: "file-text",
+    depends: ["accounting"],
+    optionalDepends: ["invoicing","payments"],
   }),
   plannedModule({
-    key:
-      'customer_portal',
-    name:
-      'Customer Portal',
-    description:
-      'Give customers secure self-service access to documents, orders and requests.',
-    category:
-      'sales',
-    icon:
-      'users',
+    key: "bookings",
+    name: "Bookings",
+    description: "Accept customer bookings for services, resources, locations and staff.",
+    category: "sales",
+    icon: "calendar",
+    depends: ["appointments"],
+    optionalDepends: ["crm"],
   }),
   plannedModule({
-    key:
-      'sales_inbox',
-    name:
-      'Sales Inbox',
-    description:
-      'Unify sales conversations, customer replies and deal-related communication.',
-    category:
-      'sales',
-    icon:
-      'mail',
+    key: "customer_portal",
+    name: "Customer Portal",
+    description: "Give customers secure self-service access to documents, orders and requests.",
+    category: "sales",
+    icon: "users",
+    depends: [],
+    optionalDepends: ["crm","documents","sales","invoicing"],
   }),
   plannedModule({
-    key:
-      'cpq',
-    name:
-      'CPQ',
-    description:
-      'Configure complex offers, calculate prices and generate governed quotations.',
-    category:
-      'sales',
-    icon:
-      'calculator',
+    key: "sales_inbox",
+    name: "Sales Inbox",
+    description: "Unify sales conversations, customer replies and deal-related communication.",
+    category: "sales",
+    icon: "mail",
+    depends: ["crm"],
+    optionalDepends: ["mail"],
   }),
   plannedModule({
-    key:
-      'commissions',
-    name:
-      'Sales Commissions',
-    description:
-      'Define commission rules and track earned sales incentives.',
-    category:
-      'sales',
-    icon:
-      'users',
-  }),
-
-  /* Commerce */
-  plannedModule({
-    key:
-      'ecommerce',
-    name:
-      'E-commerce',
-    description:
-      'Run an online storefront connected to products, customers and fulfillment.',
-    category:
-      'commerce',
-    icon:
-      'shopping-bag',
+    key: "cpq",
+    name: "CPQ",
+    description: "Configure complex offers, calculate prices and generate governed quotations.",
+    category: "sales",
+    icon: "calculator",
+    depends: ["sales"],
+    optionalDepends: ["inventory"],
   }),
   plannedModule({
-    key:
-      'checkout',
-    name:
-      'Checkout',
-    description:
-      'Create hosted checkout experiences for products, services and payment links.',
-    category:
-      'commerce',
-    icon:
-      'shopping-cart',
+    key: "commissions",
+    name: "Sales Commissions",
+    description: "Define commission rules and track earned sales incentives.",
+    category: "sales",
+    icon: "users",
+    depends: ["sales"],
+    optionalDepends: ["employees","accounting"],
   }),
   plannedModule({
-    key:
-      'loyalty',
-    name:
-      'Loyalty',
-    description:
-      'Manage customer points, rewards, tiers and retention programs.',
-    category:
-      'commerce',
-    icon:
-      'users',
+    key: "ecommerce",
+    name: "E-commerce",
+    description: "Run an online storefront connected to products, customers and fulfillment.",
+    category: "commerce",
+    icon: "shopping-bag",
+    depends: ["sales","inventory"],
+    optionalDepends: ["payments","shipping","crm"],
   }),
   plannedModule({
-    key:
-      'gift_cards',
-    name:
-      'Gift Cards',
-    description:
-      'Issue, redeem and reconcile digital and physical gift-card balances.',
-    category:
-      'commerce',
-    icon:
-      'shopping-bag',
+    key: "checkout",
+    name: "Checkout",
+    description: "Create hosted checkout experiences for products, services and payment links.",
+    category: "commerce",
+    icon: "shopping-cart",
+    depends: ["payments"],
+    optionalDepends: ["ecommerce","sales"],
   }),
   plannedModule({
-    key:
-      'marketplace',
-    name:
-      'Marketplace',
-    description:
-      'Coordinate multi-seller catalogs, orders, commissions and settlements.',
-    category:
-      'commerce',
-    icon:
-      'store',
-  }),
-
-  /* Supply chain */
-  plannedModule({
-    key:
-      'warehouse',
-    name:
-      'Warehouse',
-    description:
-      'Coordinate warehouse locations, put-away, picking and internal stock flows.',
-    category:
-      'supply_chain',
-    icon:
-      'boxes',
+    key: "loyalty",
+    name: "Loyalty",
+    description: "Manage customer points, rewards, tiers and retention programs.",
+    category: "commerce",
+    icon: "users",
+    depends: [],
+    optionalDepends: ["crm","sales","pos_shop","ecommerce"],
   }),
   plannedModule({
-    key:
-      'shipping',
-    name:
-      'Shipping',
-    description:
-      'Prepare shipments, carrier handoffs, tracking and delivery exceptions.',
-    category:
-      'supply_chain',
-    icon:
-      'package',
+    key: "gift_cards",
+    name: "Gift Cards",
+    description: "Issue, redeem and reconcile digital and physical gift-card balances.",
+    category: "commerce",
+    icon: "shopping-bag",
+    depends: ["payments"],
+    optionalDepends: ["pos_shop","ecommerce","sales"],
   }),
   plannedModule({
-    key:
-      'demand_planning',
-    name:
-      'Demand Planning',
-    description:
-      'Forecast product demand and translate forecasts into replenishment signals.',
-    category:
-      'supply_chain',
-    icon:
-      'bar-chart',
+    key: "marketplace",
+    name: "Marketplace",
+    description: "Coordinate multi-seller catalogs, orders, commissions and settlements.",
+    category: "commerce",
+    icon: "store",
+    depends: ["ecommerce","payments"],
+    optionalDepends: ["shipping"],
   }),
   plannedModule({
-    key:
-      'vendor_portal',
-    name:
-      'Vendor Portal',
-    description:
-      'Give suppliers controlled access to purchase orders, deliveries and documents.',
-    category:
-      'supply_chain',
-    icon:
-      'users',
+    key: "warehouse",
+    name: "Warehouse",
+    description: "Coordinate warehouse locations, put-away, picking and internal stock flows.",
+    category: "supply_chain",
+    icon: "boxes",
+    depends: ["inventory"],
+    optionalDepends: ["barcode","shipping"],
   }),
   plannedModule({
-    key:
-      'barcode',
-    name:
-      'Barcode',
-    description:
-      'Use barcode workflows for receiving, picking, inventory and fulfillment.',
-    category:
-      'supply_chain',
-    icon:
-      'package',
-  }),
-
-  /* Operations */
-  plannedModule({
-    key:
-      'facilities',
-    name:
-      'Facilities',
-    description:
-      'Manage sites, rooms, utilities, service requests and facility operations.',
-    category:
-      'operations',
-    icon:
-      'home',
+    key: "shipping",
+    name: "Shipping",
+    description: "Prepare shipments, carrier handoffs, tracking and delivery exceptions.",
+    category: "supply_chain",
+    icon: "package",
+    depends: ["inventory"],
+    optionalDepends: ["sales","ecommerce","warehouse"],
   }),
   plannedModule({
-    key:
-      'assets',
-    name:
-      'Operational Assets',
-    description:
-      'Track operational equipment, ownership, assignment and lifecycle status.',
-    category:
-      'operations',
-    icon:
-      'wrench',
+    key: "demand_planning",
+    name: "Demand Planning",
+    description: "Forecast product demand and translate forecasts into replenishment signals.",
+    category: "supply_chain",
+    icon: "bar-chart",
+    depends: ["inventory"],
+    optionalDepends: ["purchase","sales"],
   }),
   plannedModule({
-    key:
-      'work_orders',
-    name:
-      'Work Orders',
-    description:
-      'Create, assign and monitor operational jobs from request through completion.',
-    category:
-      'operations',
-    icon:
-      'clipboard-list',
+    key: "vendor_portal",
+    name: "Vendor Portal",
+    description: "Give suppliers controlled access to purchase orders, deliveries and documents.",
+    category: "supply_chain",
+    icon: "users",
+    depends: ["purchase"],
+    optionalDepends: ["documents"],
   }),
   plannedModule({
-    key:
-      'inspections',
-    name:
-      'Inspections',
-    description:
-      'Run structured inspections, checklists, findings and corrective actions.',
-    category:
-      'operations',
-    icon:
-      'clipboard-check',
+    key: "barcode",
+    name: "Barcode",
+    description: "Use barcode workflows for receiving, picking, inventory and fulfillment.",
+    category: "supply_chain",
+    icon: "package",
+    depends: ["inventory"],
+    optionalDepends: ["warehouse"],
   }),
   plannedModule({
-    key:
-      'safety',
-    name:
-      'Safety',
-    description:
-      'Manage incidents, safety actions, compliance checks and operational risk.',
-    category:
-      'operations',
-    icon:
-      'shield-check',
-  }),
-
-  /* People */
-  plannedModule({
-    key:
-      'payroll',
-    name:
-      'Payroll',
-    description:
-      'Calculate payroll, deductions, benefits and employee pay runs.',
-    category:
-      'people',
-    icon:
-      'calculator',
+    key: "facilities",
+    name: "Facilities",
+    description: "Manage sites, rooms, utilities, service requests and facility operations.",
+    category: "operations",
+    icon: "home",
+    depends: [],
+    optionalDepends: ["maintenance","work_orders"],
   }),
   plannedModule({
-    key:
-      'attendance',
-    name:
-      'Attendance',
-    description:
-      'Track attendance, clock events, lateness and attendance policies.',
-    category:
-      'people',
-    icon:
-      'clock',
+    key: "assets",
+    name: "Operational Assets",
+    description: "Track operational equipment, ownership, assignment and lifecycle status.",
+    category: "operations",
+    icon: "wrench",
+    depends: [],
+    optionalDepends: ["maintenance","fixed_assets"],
   }),
   plannedModule({
-    key:
-      'shifts',
-    name:
-      'Shifts',
-    description:
-      'Build staff rosters, shift rotations and coverage schedules.',
-    category:
-      'people',
-    icon:
-      'calendar-clock',
+    key: "work_orders",
+    name: "Work Orders",
+    description: "Create, assign and monitor operational jobs from request through completion.",
+    category: "operations",
+    icon: "clipboard-list",
+    depends: [],
+    optionalDepends: ["maintenance","assets","inventory"],
   }),
   plannedModule({
-    key:
-      'onboarding',
-    name:
-      'Employee Onboarding',
-    description:
-      'Coordinate new-hire tasks, documents, access and induction journeys.',
-    category:
-      'people',
-    icon:
-      'user-plus',
+    key: "inspections",
+    name: "Inspections",
+    description: "Run structured inspections, checklists, findings and corrective actions.",
+    category: "operations",
+    icon: "clipboard-check",
+    depends: [],
+    optionalDepends: ["quality","work_orders"],
   }),
   plannedModule({
-    key:
-      'learning',
-    name:
-      'Learning',
-    description:
-      'Create internal courses, learning paths, assessments and training records.',
-    category:
-      'people',
-    icon:
-      'file-text',
+    key: "safety",
+    name: "Safety",
+    description: "Manage incidents, safety actions, compliance checks and operational risk.",
+    category: "operations",
+    icon: "shield-check",
+    depends: [],
+    optionalDepends: ["quality","inspections"],
   }),
   plannedModule({
-    key:
-      'benefits',
-    name:
-      'Benefits',
-    description:
-      'Manage employee benefit programs, eligibility and enrollment records.',
-    category:
-      'people',
-    icon:
-      'users',
+    key: "payroll",
+    name: "Payroll",
+    description: "Calculate payroll, deductions, benefits and employee pay runs.",
+    category: "people",
+    icon: "calculator",
+    depends: ["employees"],
+    optionalDepends: ["accounting","attendance","benefits"],
   }),
   plannedModule({
-    key:
-      'org_chart',
-    name:
-      'Organization Chart',
-    description:
-      'Visualize reporting lines, teams, roles and organizational structure.',
-    category:
-      'people',
-    icon:
-      'users',
-  }),
-
-  /* Marketing */
-  plannedModule({
-    key:
-      'landing_pages',
-    name:
-      'Landing Pages',
-    description:
-      'Build campaign landing pages connected to leads, forms and analytics.',
-    category:
-      'marketing',
-    icon:
-      'app-window',
+    key: "attendance",
+    name: "Attendance",
+    description: "Track attendance, clock events, lateness and attendance policies.",
+    category: "people",
+    icon: "clock",
+    depends: ["employees"],
+    optionalDepends: ["shifts"],
   }),
   plannedModule({
-    key:
-      'web_analytics',
-    name:
-      'Web Analytics',
-    description:
-      'Measure website acquisition, behavior, conversion and campaign performance.',
-    category:
-      'marketing',
-    icon:
-      'bar-chart',
+    key: "shifts",
+    name: "Shifts",
+    description: "Build staff rosters, shift rotations and coverage schedules.",
+    category: "people",
+    icon: "calendar-clock",
+    depends: ["employees"],
+    optionalDepends: ["planning","attendance"],
   }),
   plannedModule({
-    key:
-      'ads',
-    name:
-      'Ads',
-    description:
-      'Coordinate paid campaigns, audiences, spend and performance reporting.',
-    category:
-      'marketing',
-    icon:
-      'megaphone',
+    key: "onboarding",
+    name: "Employee Onboarding",
+    description: "Coordinate new-hire tasks, documents, access and induction journeys.",
+    category: "people",
+    icon: "user-plus",
+    depends: ["employees"],
+    optionalDepends: ["documents"],
   }),
   plannedModule({
-    key:
-      'seo',
-    name:
-      'SEO',
-    description:
-      'Track search visibility, content opportunities and organic performance.',
-    category:
-      'marketing',
-    icon:
-      'bar-chart',
+    key: "learning",
+    name: "Learning",
+    description: "Create internal courses, learning paths, assessments and training records.",
+    category: "people",
+    icon: "file-text",
+    depends: ["employees"],
+    optionalDepends: ["surveys"],
   }),
   plannedModule({
-    key:
-      'lead_capture',
-    name:
-      'Lead Capture',
-    description:
-      'Capture and route inbound leads from forms, campaigns and digital channels.',
-    category:
-      'marketing',
-    icon:
-      'user-plus',
-  }),
-
-  /* Work and collaboration */
-  plannedModule({
-    key:
-      'mail',
-    name:
-      'Mail',
-    description:
-      'Business email connected to SaMi contacts, activities and AI assistance.',
-    category:
-      'work',
-    icon:
-      'mail',
+    key: "benefits",
+    name: "Benefits",
+    description: "Manage employee benefit programs, eligibility and enrollment records.",
+    category: "people",
+    icon: "users",
+    depends: ["employees"],
+    optionalDepends: ["payroll"],
   }),
   plannedModule({
-    key:
-      'chat',
-    name:
-      'Team Chat',
-    description:
-      'Real-time team messaging with workspace-aware channels and conversations.',
-    category:
-      'work',
-    icon:
-      'message-square',
+    key: "org_chart",
+    name: "Organization Chart",
+    description: "Visualize reporting lines, teams, roles and organizational structure.",
+    category: "people",
+    icon: "users",
+    depends: ["employees"],
+    optionalDepends: [],
   }),
   plannedModule({
-    key:
-      'meetings',
-    name:
-      'Meetings',
-    description:
-      'Plan and run online meetings linked to customers, projects and teams.',
-    category:
-      'work',
-    icon:
-      'users',
+    key: "landing_pages",
+    name: "Landing Pages",
+    description: "Build campaign landing pages connected to leads, forms and analytics.",
+    category: "marketing",
+    icon: "app-window",
+    depends: [],
+    optionalDepends: ["crm","lead_capture","web_analytics"],
   }),
   plannedModule({
-    key:
-      'calendar',
-    name:
-      'Calendar',
-    description:
-      'Coordinate personal, team and business calendars across SaMi apps.',
-    category:
-      'work',
-    icon:
-      'calendar',
+    key: "web_analytics",
+    name: "Web Analytics",
+    description: "Measure website acquisition, behavior, conversion and campaign performance.",
+    category: "marketing",
+    icon: "bar-chart",
+    depends: [],
+    optionalDepends: ["landing_pages","ecommerce"],
   }),
   plannedModule({
-    key:
-      'team_inbox',
-    name:
-      'Team Inbox',
-    description:
-      'Manage shared business inboxes with assignment, ownership and collaboration.',
-    category:
-      'work',
-    icon:
-      'mail',
+    key: "ads",
+    name: "Ads",
+    description: "Coordinate paid campaigns, audiences, spend and performance reporting.",
+    category: "marketing",
+    icon: "megaphone",
+    depends: [],
+    optionalDepends: ["marketing_automation","web_analytics","crm"],
   }),
   plannedModule({
-    key:
-      'whiteboard',
-    name:
-      'Whiteboard',
-    description:
-      'Collaborate visually on plans, workflows, ideas and business processes.',
-    category:
-      'work',
-    icon:
-      'pen-tool',
+    key: "seo",
+    name: "SEO",
+    description: "Track search visibility, content opportunities and organic performance.",
+    category: "marketing",
+    icon: "bar-chart",
+    depends: [],
+    optionalDepends: ["web_analytics","landing_pages"],
   }),
+  plannedModule({
+    key: "lead_capture",
+    name: "Lead Capture",
+    description: "Capture and route inbound leads from forms, campaigns and digital channels.",
+    category: "marketing",
+    icon: "user-plus",
+    depends: ["crm"],
+    optionalDepends: ["landing_pages","marketing_automation"],
+  }),
+  plannedModule({
+    key: "mail",
+    name: "Mail",
+    description: "Business email connected to SaMi contacts, activities and AI assistance.",
+    category: "work",
+    icon: "mail",
+    depends: [],
+    optionalDepends: ["crm","documents"],
+  }),
+  plannedModule({
+    key: "chat",
+    name: "Team Chat",
+    description: "Real-time team messaging with workspace-aware channels and conversations.",
+    category: "work",
+    icon: "message-square",
+    depends: [],
+    optionalDepends: ["documents"],
+  }),
+  plannedModule({
+    key: "meetings",
+    name: "Meetings",
+    description: "Plan and run online meetings linked to customers, projects and teams.",
+    category: "work",
+    icon: "users",
+    depends: [],
+    optionalDepends: ["calendar","crm","projects"],
+  }),
+  plannedModule({
+    key: "calendar",
+    name: "Calendar",
+    description: "Coordinate personal, team and business calendars across SaMi apps.",
+    category: "work",
+    icon: "calendar",
+    depends: [],
+    optionalDepends: ["appointments","meetings"],
+  }),
+  plannedModule({
+    key: "team_inbox",
+    name: "Team Inbox",
+    description: "Manage shared business inboxes with assignment, ownership and collaboration.",
+    category: "work",
+    icon: "mail",
+    depends: [],
+    optionalDepends: ["mail","crm","helpdesk"],
+  }),
+  plannedModule({
+    key: "whiteboard",
+    name: "Whiteboard",
+    description: "Collaborate visually on plans, workflows, ideas and business processes.",
+    category: "work",
+    icon: "pen-tool",
+    depends: [],
+    optionalDepends: ["projects","documents"],
+  })
 ];
 
 export const PLANNED_FIRST_PARTY_SAMI_MODULE_COUNT =
