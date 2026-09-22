@@ -139,10 +139,26 @@ async function recordRateLimit(
   credentialId:
     string,
 ) {
-  const pool =
-    await getTenantPoolByTenantId(
-      tenantId,
+  let pool:
+    Awaited<
+      ReturnType<
+        typeof getTenantPoolByTenantId
+      >
+    >;
+
+  try {
+    pool =
+      await getTenantPoolByTenantId(
+        tenantId,
+      );
+  } catch {
+    throw new DeveloperApiError(
+      'API_KEY_INVALID',
+      401,
+      'The API key is invalid.',
+      requestId,
     );
+  }
 
   const result =
     await pool.query(
