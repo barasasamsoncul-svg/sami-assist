@@ -19,6 +19,7 @@ import {
   CircleHelp,
   CreditCard,
   Folder,
+  Gauge,
   Home,
   LayoutGrid,
   Loader2,
@@ -536,7 +537,8 @@ type SettingsKey =
   | 'roles'
   | 'apps'
   | 'ai'
-  | 'billing';
+  | 'billing'
+  | 'usage';
 
 
 type SettingsChild = {
@@ -1317,6 +1319,20 @@ export default function WorkspaceSidebar({
         ) {
           items.push({
             key:
+              'usage',
+
+            label:
+              'Usage & Limits',
+
+            href:
+              '/usage',
+
+            icon:
+              Gauge,
+          });
+
+          items.push({
+            key:
               'billing',
 
             label:
@@ -1374,6 +1390,11 @@ export default function WorkspaceSidebar({
       '/settings' ||
     pathname.startsWith(
       '/settings/',
+    ) ||
+    pathname ===
+      '/usage' ||
+    pathname.startsWith(
+      '/usage/',
     );
 
 
@@ -1463,7 +1484,9 @@ export default function WorkspaceSidebar({
       item.key ===
         'users' ||
       item.key ===
-        'roles'
+        'roles' ||
+      item.key ===
+        'usage'
     ) {
       const path =
         hrefPath(
