@@ -261,6 +261,77 @@ test('Category 21: public API authentication is independent of browser sessions 
   );
 });
 
+
+test('Category 21: invalid-tenant handling stays inside authentication and cleanup stays inside request logging', async () => {
+  const auth =
+    await source(
+      'lib/developer/auth.ts',
+    );
+
+  const rateStart =
+    auth.indexOf(
+      'async function recordRateLimit(',
+    );
+
+  const authenticateStart =
+    auth.indexOf(
+      'export async function authenticateDeveloperRequest(',
+    );
+
+  const recordStart =
+    auth.indexOf(
+      'export async function recordDeveloperRequest(',
+    );
+
+  const jsonStart =
+    auth.indexOf(
+      'export function developerApiJson(',
+    );
+
+  assert.ok(
+    rateStart >= 0 &&
+    authenticateStart > rateStart &&
+    recordStart > authenticateStart &&
+    jsonStart > recordStart,
+  );
+
+  const rateBlock =
+    auth.slice(
+      rateStart,
+      authenticateStart,
+    );
+
+  const authenticateBlock =
+    auth.slice(
+      authenticateStart,
+      recordStart,
+    );
+
+  const recordBlock =
+    auth.slice(
+      recordStart,
+      jsonStart,
+    );
+
+  assert.doesNotMatch(
+    rateBlock,
+    /requestId/,
+    'The rate-limit helper must not depend on authentication-local request state.',
+  );
+
+  assert.match(
+    authenticateBlock,
+    /try\s*\{[\s\S]*getTenantPoolByTenantId[\s\S]*catch\s*\{[\s\S]*API_KEY_INVALID[\s\S]*requestId/s,
+    'Unknown tenant resolution must fail closed inside the authentication request context.',
+  );
+
+  assert.match(
+    recordBlock,
+    /DELETE FROM api_request_logs[\s\S]*context\.companyId/s,
+    'Request-history retention cleanup must remain inside recordDeveloperRequest.',
+  );
+});
+
 test('Category 21: rate limiting is durable across serverless instances and bounded', async () => {
   const [
     auth,
