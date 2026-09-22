@@ -152,21 +152,6 @@ export async function GET() {
         session.user.id
       );
 
-    await notifyCriticalSecurityEvent({
-      tenantId:
-        session.currentTenantId,
-      userId:
-        session.user.id,
-      eventKey:
-        'security.two_factor_disabled',
-      title:
-        'Two-factor authentication disabled',
-      message:
-        'Two-factor authentication was disabled on your SaMi account and other active sessions were signed out. If this was not you, secure your account immediately.',
-      dedupeKey:
-        `security:two-factor-disabled:${session.user.id}:${Date.now()}`,
-    });
-
     return jsonResponse({
       success:
         true,
@@ -397,6 +382,21 @@ export async function DELETE(
       await getTwoFactorStatus(
         session.user.id
       );
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId:
+        session.user.id,
+      eventKey:
+        'security.two_factor_disabled',
+      title:
+        'Two-factor authentication disabled',
+      message:
+        'Two-factor authentication was disabled on your SaMi account and other active sessions were signed out. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:two-factor-disabled:${session.user.id}:${Date.now()}`,
+    });
 
     return jsonResponse({
       success:
