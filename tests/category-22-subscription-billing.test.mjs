@@ -1090,6 +1090,23 @@ test('Category 22: billing state changes notify workspace owners through critica
     transition,
     /billing\.plan_changed/,
   );
+
+  assert.match(
+    service,
+    /billing\.plan_change_scheduled/,
+    'Owners must be notified when a paid-period plan change is scheduled.',
+  );
+
+  assert.match(
+    service,
+    /billing:plan-scheduled/,
+  );
+
+  assert.match(
+    service,
+    /billing:plan-immediate/,
+    'Immediate trial/free-to-paid plan changes must also notify owners.',
+  );
 });
 
 
