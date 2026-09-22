@@ -639,6 +639,28 @@ export async function beginWorkspaceIntegrationOAuth(
 
   await pool.query(
     `
+      DELETE FROM integration_oauth_states
+      WHERE company_id = $1
+        AND user_id = $2
+        AND provider_key = $3
+        AND (
+          expires_at <=
+            NOW()
+          OR consumed_at
+             IS NOT NULL
+        )
+    `,
+    [
+      context.runtime
+        .companyId,
+      context.runtime
+        .userId,
+      provider.key,
+    ],
+  );
+
+  await pool.query(
+    `
       INSERT INTO integration_oauth_states (
         company_id,
         provider_key,
