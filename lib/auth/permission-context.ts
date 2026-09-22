@@ -370,7 +370,7 @@ export async function resolvePermissionContext(
     ]);
 
   const permissions =
-    subscriptionAccess.pastDue
+    subscriptionAccess.suspended
       ? resolvedPermissions.filter(
           permission =>
             recoveryPermissions.has(
