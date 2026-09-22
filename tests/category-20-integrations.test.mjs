@@ -1237,6 +1237,117 @@ test('Category 20: Automation uses real webhook and Slack connection selectors i
   );
 });
 
+test('Category 20: public provider catalog strips OAuth runtime internals', async () => {
+  const [
+    types,
+    registry,
+  ] =
+    await Promise.all([
+      source(
+        'lib/integrations/types.ts',
+      ),
+      source(
+        'lib/integrations/registry.ts',
+      ),
+    ]);
+
+  assert.match(
+    types,
+    /Omit<[\s\S]*SamiIntegrationProviderDefinition[\s\S]*['"]oauth['"]/,
+  );
+
+  assert.match(
+    registry,
+    /const \{[\s\S]*oauth:[\s\S]*_oauth[\s\S]*\.\.\.publicProvider/,
+  );
+
+  const catalogStart =
+    registry.indexOf(
+      'export function getIntegrationProviderCatalog',
+    );
+
+  const accessibleStart =
+    registry.indexOf(
+      'export function getAccessibleIntegrationProviders',
+      catalogStart,
+    );
+
+  const catalog =
+    registry.slice(
+      catalogStart,
+      accessibleStart,
+    );
+
+  assert.doesNotMatch(
+    catalog,
+    /clientSecretEnv|clientIdEnv|tokenUrl|authorizationUrl|revokeUrl/,
+    'Workspace provider catalog must not expose OAuth runtime metadata.',
+  );
+});
+
+test('Category 20: OAuth initiation clears stale state and UI exposes explicit reconnect', async () => {
+  const [
+    oauth,
+    client,
+  ] =
+    await Promise.all([
+      source(
+        'lib/integrations/oauth.ts',
+      ),
+      source(
+        'app/integrations/IntegrationsClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    oauth,
+    /DELETE FROM integration_oauth_states/,
+  );
+
+  assert.match(
+    oauth,
+    /expires_at <=[\s\S]*NOW\(\)/,
+  );
+
+  assert.match(
+    oauth,
+    /consumed_at[\s\S]*IS NOT NULL/,
+  );
+
+  assert.match(
+    client,
+    /Reconnect/,
+  );
+
+  assert.match(
+    client,
+    /oauth\/\$\{connection\.providerKey\}\/start/,
+  );
+});
+
+test('Category 20: public webhook ingress fails closed on an unknown tenant without surfacing infrastructure errors', async () => {
+  const webhook =
+    await source(
+      'lib/integrations/webhooks.ts',
+    );
+
+  assert.match(
+    webhook,
+    /try\s*\{[\s\S]*getTenantPoolByTenantId[\s\S]*\}\s*catch\s*\{[\s\S]*WEBHOOK_NOT_FOUND/s,
+  );
+
+  assert.match(
+    webhook,
+    /404/,
+  );
+
+  assert.doesNotMatch(
+    webhook,
+    /throw\s+error;[\s\S]{0,200}getTenantPoolByTenantId/,
+    'Unknown tenant resolution must not leak the raw infrastructure error.',
+  );
+});
+
 test('Category 20: browser management APIs are narrow, same-origin protected and no-cache', async () => {
   const [
     helper,
