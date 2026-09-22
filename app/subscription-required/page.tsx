@@ -7,6 +7,7 @@ import {
   LifeBuoy,
   LockKeyhole,
   Settings,
+  type LucideIcon,
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -175,7 +176,7 @@ function InfoCard({
   title,
   text,
 }: {
-  icon: typeof LockKeyhole;
+  icon: LucideIcon;
   title: string;
   text: string;
 }) {
