@@ -307,6 +307,13 @@ async function getBillableUsers(
                 )
               ) =
               'active'
+          AND LOWER(
+                COALESCE(
+                  member_type,
+                  ''
+                )
+              ) =
+              'internal'
       `,
       [
         tenantId,
