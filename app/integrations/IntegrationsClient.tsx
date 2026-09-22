@@ -164,7 +164,17 @@ type AssignmentUser = {
   email: string;
   name: string;
   isOwner: boolean;
+  roleKeys: string[];
   assigned: boolean;
+};
+
+type AssignmentRule = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  priority: number;
+  conditions:
+    Record<string, unknown>;
 };
 
 const CLOSED_OVERLAY:
@@ -428,6 +438,47 @@ export default function IntegrationsClient({
       Set<string>
     >(
       new Set(),
+    );
+
+  const [
+    assignmentMode,
+    setAssignmentMode,
+  ] =
+    useState<
+      'manual' |
+      'all_internal' |
+      'rule'
+    >(
+      'manual',
+    );
+
+  const [
+    ruleRoleKeys,
+    setRuleRoleKeys,
+  ] =
+    useState<
+      Set<string>
+    >(
+      new Set(),
+    );
+
+  const [
+    ruleDomains,
+    setRuleDomains,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    ruleMatch,
+    setRuleMatch,
+  ] =
+    useState<
+      'all' |
+      'any'
+    >(
+      'all',
     );
 
   function show(
@@ -877,8 +928,14 @@ export default function IntegrationsClient({
             boolean;
           error?:
             string;
+          externalApp?: {
+            assignmentMode?:
+              string;
+          };
           users?:
             AssignmentUser[];
+          rules?:
+            AssignmentRule[];
         };
 
       if (
@@ -911,6 +968,87 @@ export default function IntegrationsClient({
                 user.id,
             ),
         ),
+      );
+
+      const mode =
+        data.externalApp
+          ?.assignmentMode ===
+            'all_internal' ||
+        data.externalApp
+          ?.assignmentMode ===
+            'rule'
+          ? data.externalApp
+              .assignmentMode
+          : 'manual';
+
+      setAssignmentMode(
+        mode,
+      );
+
+      const rule =
+        data.rules?.find(
+          item =>
+            item.enabled,
+        );
+
+      const conditions =
+        rule?.conditions &&
+        typeof rule.conditions ===
+          'object'
+          ? rule.conditions
+          : {};
+
+      const roleKeys =
+        Array.isArray(
+          conditions.roleKeysAny,
+        )
+          ? conditions
+              .roleKeysAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              ) as
+              string[]
+          : [];
+
+      const domains =
+        Array.isArray(
+          conditions.emailDomainsAny,
+        )
+          ? conditions
+              .emailDomainsAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              ) as
+              string[]
+          : [];
+
+      setRuleRoleKeys(
+        new Set(
+          roleKeys,
+        ),
+      );
+
+      setRuleDomains(
+        domains.join(
+          ', ',
+        ),
+      );
+
+      setRuleMatch(
+        conditions.match ===
+          'any'
+          ? 'any'
+          : 'all',
       );
 
       setAssignmentApp(
@@ -964,10 +1102,40 @@ export default function IntegrationsClient({
               'no-store',
             body:
               JSON.stringify({
+                mode:
+                  assignmentMode,
                 userIds:
-                  Array.from(
-                    selectedUsers,
-                  ),
+                  assignmentMode ===
+                    'manual'
+                    ? Array.from(
+                        selectedUsers,
+                      )
+                    : [],
+                rule:
+                  assignmentMode ===
+                    'rule'
+                    ? {
+                        match:
+                          ruleMatch,
+                        roleKeysAny:
+                          Array.from(
+                            ruleRoleKeys,
+                          ),
+                        emailDomainsAny:
+                          ruleDomains
+                            .split(
+                              /[\n,]+/,
+                            )
+                            .map(
+                              value =>
+                                value
+                                  .trim(),
+                            )
+                            .filter(
+                              Boolean,
+                            ),
+                      }
+                    : null,
               }),
           },
         );
@@ -1596,7 +1764,7 @@ export default function IntegrationsClient({
                       Open
                     </a>
 
-                    {state.canManage && app.assignmentMode !== 'all_internal' && (
+                    {state.canManage && (
                       <button
                         type="button"
                         onClick={() =>
@@ -1953,7 +2121,169 @@ export default function IntegrationsClient({
               </button>
             </div>
 
-            <div className="mt-5 max-h-[50vh] space-y-2 overflow-y-auto">
+            <div className="mt-5 space-y-4">
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                  Access policy
+                </span>
+                <select
+                  value={
+                    assignmentMode
+                  }
+                  onChange={event =>
+                    setAssignmentMode(
+                      event.target.value ===
+                        'all_internal'
+                        ? 'all_internal'
+                        : event.target.value ===
+                            'rule'
+                          ? 'rule'
+                          : 'manual',
+                    )
+                  }
+                  className="mt-1.5 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm outline-none"
+                >
+                  <option value="manual">
+                    Selected users
+                  </option>
+                  <option value="all_internal">
+                    Everyone with company access
+                  </option>
+                  <option value="rule">
+                    Conditional rule
+                  </option>
+                </select>
+              </label>
+
+              {assignmentMode === 'rule' && (
+                <div className="rounded-2xl border border-[var(--sami-border)] p-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Match
+                      </span>
+                      <select
+                        value={
+                          ruleMatch
+                        }
+                        onChange={event =>
+                          setRuleMatch(
+                            event.target.value ===
+                              'any'
+                              ? 'any'
+                              : 'all',
+                          )
+                        }
+                        className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                      >
+                        <option value="all">
+                          All configured conditions
+                        </option>
+                        <option value="any">
+                          Any configured condition
+                        </option>
+                      </select>
+                    </label>
+
+                    <label>
+                      <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Email domains
+                      </span>
+                      <input
+                        value={
+                          ruleDomains
+                        }
+                        onChange={event =>
+                          setRuleDomains(
+                            event.target.value,
+                          )
+                        }
+                        placeholder="company.com, partner.org"
+                        className="mt-1.5 h-10 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                      SaMi roles
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Array.from(
+                        new Set(
+                          assignmentUsers
+                            .flatMap(
+                              user =>
+                                user.roleKeys ||
+                                [],
+                            ),
+                        ),
+                      )
+                        .sort()
+                        .map(
+                          role => (
+                            <label
+                              key={
+                                role
+                              }
+                              className={[
+                                'inline-flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-bold',
+                                ruleRoleKeys.has(
+                                  role,
+                                )
+                                  ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300'
+                                  : 'border-[var(--sami-border)] text-slate-500 dark:text-slate-300',
+                              ].join(
+                                ' ',
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={
+                                  ruleRoleKeys.has(
+                                    role,
+                                  )
+                                }
+                                onChange={event =>
+                                  setRuleRoleKeys(
+                                    current => {
+                                      const next =
+                                        new Set(
+                                          current,
+                                        );
+
+                                      if (
+                                        event.target
+                                          .checked
+                                      ) {
+                                        next.add(
+                                          role,
+                                        );
+                                      } else {
+                                        next.delete(
+                                          role,
+                                        );
+                                      }
+
+                                      return next;
+                                    },
+                                  )
+                                }
+                                className="sr-only"
+                              />
+                              {role}
+                            </label>
+                          ),
+                        )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {assignmentMode === 'manual' && (
+              <div className="mt-5 max-h-[50vh] space-y-2 overflow-y-auto">
               {assignmentUsers.map(
                 user => (
                   <label
@@ -2013,7 +2343,14 @@ export default function IntegrationsClient({
                   </label>
                 ),
               )}
-            </div>
+              </div>
+            )}
+
+            {assignmentMode === 'all_internal' && (
+              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-[11px] leading-5 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                Every active internal member with access to the current company will see this app in their SaMi launcher.
+              </div>
+            )}
 
             <div className="mt-5 flex justify-end gap-2">
               <button
