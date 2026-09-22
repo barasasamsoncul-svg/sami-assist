@@ -3,6 +3,7 @@ import {
 } from 'next/server';
 
 import {
+  changeWorkspaceSubscriptionPlan,
   getWorkspaceBillingState,
   startWorkspaceBillingCheckout,
 } from '@/lib/services/workspace-billing';
@@ -70,35 +71,52 @@ export async function POST(
         : '';
 
     if (
-      action !==
+      action ===
         'checkout'
     ) {
-      return billingJson(
-        {
-          success:
-            false,
-          code:
-            'INVALID_BILLING_ACTION',
-          error:
-            'Choose a valid billing action.',
-        },
-        400,
-      );
+      const result =
+        await startWorkspaceBillingCheckout({
+          origin:
+            request.nextUrl
+              .origin,
+        });
+
+      return billingJson({
+        success:
+          true,
+        checkout:
+          result,
+      });
     }
 
-    const result =
-      await startWorkspaceBillingCheckout({
-        origin:
-          request.nextUrl
-            .origin,
-      });
+    if (
+      action ===
+        'change_plan'
+    ) {
+      const result =
+        await changeWorkspaceSubscriptionPlan(
+          body.targetPlan,
+        );
 
-    return billingJson({
-      success:
-        true,
-      checkout:
-        result,
-    });
+      return billingJson({
+        success:
+          true,
+        planChange:
+          result,
+      });
+    }
+
+    return billingJson(
+      {
+        success:
+          false,
+        code:
+          'INVALID_BILLING_ACTION',
+        error:
+          'Choose a valid billing action.',
+      },
+      400,
+    );
   } catch (
     error
   ) {
