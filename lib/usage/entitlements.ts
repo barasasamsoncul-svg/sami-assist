@@ -684,6 +684,58 @@ export async function getWorkspaceUsageSnapshot(
       policy,
     );
 
+  const seatLimits =
+    [
+      policy.users
+        .maxActiveInternalUsers,
+      subscription
+        .scheduledPolicy
+        ?.users
+        .maxActiveInternalUsers ??
+        null,
+    ]
+      .filter(
+        (
+          value,
+        ): value is number =>
+          value !==
+          null,
+      );
+
+  const activeInternalUserLimit =
+    seatLimits.length >
+      0
+      ? Math.min(
+          ...seatLimits,
+        )
+      : null;
+
+  const appLimits =
+    [
+      policy.apps
+        .maxInstalledBusinessApps,
+      subscription
+        .scheduledPolicy
+        ?.apps
+        .maxInstalledBusinessApps ??
+        null,
+    ]
+      .filter(
+        (
+          value,
+        ): value is number =>
+          value !==
+          null,
+      );
+
+  const installedBusinessAppLimit =
+    appLimits.length >
+      0
+      ? Math.min(
+          ...appLimits,
+        )
+      : null;
+
   return {
     period: {
       start:
@@ -697,6 +749,9 @@ export async function getWorkspaceUsageSnapshot(
     subscription: {
       planKey:
         policy.key,
+      scheduledPlanKey:
+        subscription
+          .scheduledPlanKey,
       status:
         subscription
           .effectiveStatus,
@@ -856,17 +911,14 @@ export async function getWorkspaceUsageSnapshot(
           control
             .activeInternalUsers,
         limit:
-          policy.users
-            .maxActiveInternalUsers,
+          activeInternalUserLimit,
         remaining:
-          policy.users
-            .maxActiveInternalUsers ===
+          activeInternalUserLimit ===
             null
             ? null
             : Math.max(
                 0,
-                policy.users
-                  .maxActiveInternalUsers -
+                activeInternalUserLimit -
                 control
                   .activeInternalUsers,
               ),
@@ -874,21 +926,21 @@ export async function getWorkspaceUsageSnapshot(
           usagePercent(
             control
               .activeInternalUsers,
-            policy.users
-              .maxActiveInternalUsers,
+            activeInternalUserLimit,
           ),
         mode:
-          policy.users
-            .maxActiveInternalUsers ===
+          activeInternalUserLimit ===
             null
             ? 'platform_controlled' as const
             : 'fixed' as const,
         enforced:
-          policy.users
-            .maxActiveInternalUsers !==
+          activeInternalUserLimit !==
           null,
         label:
-          'Active internal workspace users.',
+          subscription
+            .scheduledPlanKey
+            ? `Active internal users. A pending move to ${subscription.scheduledPlanKey} may enforce the stricter future-plan allowance for new seats.`
+            : 'Active internal workspace users.',
       },
 
       installedBusinessApps: {
@@ -898,17 +950,14 @@ export async function getWorkspaceUsageSnapshot(
           control
             .installedBusinessApps,
         limit:
-          policy.apps
-            .maxInstalledBusinessApps,
+          installedBusinessAppLimit,
         remaining:
-          policy.apps
-            .maxInstalledBusinessApps ===
+          installedBusinessAppLimit ===
             null
             ? null
             : Math.max(
                 0,
-                policy.apps
-                  .maxInstalledBusinessApps -
+                installedBusinessAppLimit -
                 control
                   .installedBusinessApps,
               ),
@@ -916,21 +965,21 @@ export async function getWorkspaceUsageSnapshot(
           usagePercent(
             control
               .installedBusinessApps,
-            policy.apps
-              .maxInstalledBusinessApps,
+            installedBusinessAppLimit,
           ),
         mode:
-          policy.apps
-            .maxInstalledBusinessApps ===
+          installedBusinessAppLimit ===
             null
             ? 'platform_controlled' as const
             : 'fixed' as const,
         enforced:
-          policy.apps
-            .maxInstalledBusinessApps !==
+          installedBusinessAppLimit !==
           null,
         label:
-          'Installed business apps.',
+          subscription
+            .scheduledPlanKey
+            ? `Installed business apps. A pending move to ${subscription.scheduledPlanKey} may enforce the stricter future-plan allowance for new installs.`
+            : 'Installed business apps.',
       },
     },
   };
