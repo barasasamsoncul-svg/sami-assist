@@ -10,6 +10,7 @@ import {
 
 import {
   getWorkspaceSubscriptionAccessState,
+  getWorkspaceSubscriptionAccessStateWithClient,
 } from '@/lib/billing/access';
 
 import type {
@@ -40,7 +41,8 @@ export class WorkspaceUsageError
     | 'USAGE_SUBSCRIPTION_UNAVAILABLE'
     | 'USAGE_WORKSPACE_SUSPENDED'
     | 'AI_MONTHLY_LIMIT_REACHED'
-    | 'STORAGE_QUOTA_EXCEEDED';
+    | 'STORAGE_QUOTA_EXCEEDED'
+    | 'INTERNAL_SEAT_LIMIT_REACHED';
 
   readonly details:
     Record<string, unknown>;
@@ -450,6 +452,151 @@ async function readTenantUsage(
         row
           .api_requests_workspace_month ||
         0,
+      ),
+  };
+}
+
+
+export async function assertInternalSeatAvailableWithClient(
+  client: {
+    query:
+      (
+        text: string,
+        values?: unknown[],
+      ) => Promise<{
+        rows: Array<
+          Record<
+            string,
+            unknown
+          >
+        >;
+      }>;
+  },
+  input: {
+    tenantId: string;
+  },
+) {
+  await client.query(
+    `
+      SELECT
+        pg_advisory_xact_lock(
+          hashtext(
+            $1
+          )
+        )
+    `,
+    [
+      `sami:usage:internal-seats:${input.tenantId}`,
+    ],
+  );
+
+  const access =
+    await getWorkspaceSubscriptionAccessStateWithClient(
+      client,
+      input.tenantId,
+    );
+
+  const policy =
+    access.policy;
+
+  if (
+    !policy ||
+    !access.entitled
+  ) {
+    throw new WorkspaceUsageError(
+      access.suspended
+        ? 'USAGE_WORKSPACE_SUSPENDED'
+        : 'USAGE_SUBSCRIPTION_UNAVAILABLE',
+      access.suspended
+        ? 'This workspace is suspended until its subscription is restored.'
+        : 'An active SaMi subscription is required before adding or reactivating internal users.',
+    );
+  }
+
+  const limit =
+    policy.users
+      .maxActiveInternalUsers;
+
+  if (
+    limit ===
+      null
+  ) {
+    return {
+      planKey:
+        policy.key,
+      used:
+        null,
+      limit:
+        null,
+      remaining:
+        null,
+    };
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT
+          COUNT(*)::int
+            AS active_internal_users
+        FROM tenant_users
+        WHERE tenant_id = $1
+          AND deleted_at IS NULL
+          AND LOWER(
+            COALESCE(
+              status,
+              ''
+            )
+          ) = 'active'
+          AND LOWER(
+            COALESCE(
+              member_type,
+              'internal'
+            )
+          ) = 'internal'
+      `,
+      [
+        input.tenantId,
+      ],
+    );
+
+  const used =
+    Number(
+      result.rows[0]
+        ?.active_internal_users ||
+      0,
+    );
+
+  if (
+    used >=
+      limit
+  ) {
+    throw new WorkspaceUsageError(
+      'INTERNAL_SEAT_LIMIT_REACHED',
+      'This workspace has reached the active internal-user allowance for its current plan.',
+      {
+        planKey:
+          policy.key,
+        used,
+        limit,
+        remaining:
+          0,
+        billingHref:
+          '/settings?tab=billing',
+      },
+    );
+  }
+
+  return {
+    planKey:
+      policy.key,
+    used,
+    limit,
+    remaining:
+      Math.max(
+        0,
+        limit -
+        used,
       ),
   };
 }
