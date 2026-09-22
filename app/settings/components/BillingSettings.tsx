@@ -1607,18 +1607,122 @@ export default function BillingSettings({
           {state.subscription
             .scheduledPlan && (
             <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
-              <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                Plan change scheduled
-              </p>
-              <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
-                {state.subscription.scheduledPlan.name}
-                {state.subscription.scheduledPlan.effectiveAt
-                  ? ` from ${formatDate(
-                      state.subscription.scheduledPlan.effectiveAt,
-                    )}`
-                  : ''}
-                . Your current plan remains entitled until then.
-              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                    Plan change scheduled
+                  </p>
+                  <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+                    {state.subscription.scheduledPlan.name}
+                    {state.subscription.scheduledPlan.effectiveAt
+                      ? ` from ${formatDate(
+                          state.subscription.scheduledPlan.effectiveAt,
+                        )}`
+                      : ''}
+                    . Your current plan remains entitled until then.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      confirmCancelPlanChange
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-3 text-[11px] font-black text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-500/30 dark:bg-transparent dark:text-violet-200 dark:hover:bg-violet-500/10"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Cancel change
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {state.subscription
+            .cancellation
+            .scheduled && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Subscription cancellation scheduled
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800/80 dark:text-amber-200/80">
+                    Paid access remains available
+                    {state.subscription.cancellation.effectiveAt
+                      ? ` until ${formatDate(
+                          state.subscription.cancellation.effectiveAt,
+                        )}`
+                      : ' until the current billing boundary'}
+                    . Renewal has been stopped. Workspace data will be retained after paid access ends.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      keepSubscription
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 text-[11px] font-black text-amber-800 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Keep subscription
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {state.subscription
+            .cancellation
+            .ended && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-500/20 dark:bg-red-500/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-red-700 dark:text-red-300">
+                    Paid subscription ended
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-red-800/80 dark:text-red-200/80">
+                    Paid workspace work is stopped, but SaMi has retained your data, files, settings and installed-app data. Billing remains available for reactivation.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      reactivateSubscription
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-3 text-[11px] font-black text-white transition hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Reactivate
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1946,7 +2050,13 @@ export default function BillingSettings({
                   {state.canManage &&
                     !current &&
                     !state.subscription
-                      .scheduledPlan && (
+                      .scheduledPlan &&
+                    !state.subscription
+                      .cancellation
+                      .scheduled &&
+                    !state.subscription
+                      .cancellation
+                      .ended && (
                     <button
                       type="button"
                       onClick={() =>
