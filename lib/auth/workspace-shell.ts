@@ -280,8 +280,6 @@ export function resolveWorkspaceShellAccess(
         ) &&
         !(
           subscription.pastDue ===
-            true &&
-          subscription.suspended !==
             true
         )
       )
