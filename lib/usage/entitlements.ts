@@ -294,6 +294,12 @@ async function readControlUsage(
                   ''
                 )
               ) = 'active'
+              AND LOWER(
+                COALESCE(
+                  tu.member_type,
+                  'internal'
+                )
+              ) = 'internal'
           ) AS active_internal_users,
 
           (
