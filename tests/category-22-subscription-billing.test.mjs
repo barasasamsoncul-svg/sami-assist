@@ -1481,7 +1481,7 @@ test('Category 22: billing worker and shell respect cancellation boundaries', as
 
   assert.match(
     shell,
-    /!isSubscriptionEntitledNow[\s\S]*workspaceLocked/s,
+    /const workspaceLocked[\s\S]*!isSubscriptionEntitledNow/s,
   );
 
   assert.match(
