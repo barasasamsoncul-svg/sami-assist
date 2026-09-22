@@ -508,9 +508,30 @@ export async function assertInternalSeatAvailableWithClient(
     );
   }
 
+  const seatLimits =
+    [
+      policy.users
+        .maxActiveInternalUsers,
+      access.scheduledPolicy
+        ?.users
+        .maxActiveInternalUsers ??
+        null,
+    ]
+      .filter(
+        (
+          value,
+        ): value is number =>
+          value !==
+          null,
+      );
+
   const limit =
-    policy.users
-      .maxActiveInternalUsers;
+    seatLimits.length >
+      0
+      ? Math.min(
+          ...seatLimits,
+        )
+      : null;
 
   if (
     limit ===
@@ -519,6 +540,8 @@ export async function assertInternalSeatAvailableWithClient(
     return {
       planKey:
         policy.key,
+      scheduledPlanKey:
+        access.scheduledPlanKey,
       used:
         null,
       limit:
@@ -572,6 +595,8 @@ export async function assertInternalSeatAvailableWithClient(
       {
         planKey:
           policy.key,
+        scheduledPlanKey:
+          access.scheduledPlanKey,
         used,
         limit,
         remaining:
@@ -585,6 +610,8 @@ export async function assertInternalSeatAvailableWithClient(
   return {
     planKey:
       policy.key,
+    scheduledPlanKey:
+      access.scheduledPlanKey,
     used,
     limit,
     remaining:
