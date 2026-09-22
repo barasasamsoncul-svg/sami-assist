@@ -85,6 +85,24 @@ test('Category 13: install resolves dependencies and never provisions a workspac
 
   assert.match(
     service,
+    /getSamiModuleManifest/,
+    'Install planning must include code-owned manifest dependencies.',
+  );
+
+  assert.match(
+    service,
+    /manifest[\s\S]*\.depends/s,
+    'Manifest dependencies must remain authoritative even if control DB metadata is stale.',
+  );
+
+  assert.match(
+    service,
+    /APP_NOT_INSTALLABLE/,
+    'Catalog-only modules must fail closed at the lifecycle service.',
+  );
+
+  assert.match(
+    service,
     /getTenantDatabaseName/,
   );
 
