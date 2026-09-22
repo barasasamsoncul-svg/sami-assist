@@ -3,7 +3,9 @@ import {
 } from 'next/server';
 
 import {
+  checkWorkspaceIntegrationHealth,
   disconnectWorkspaceIntegration,
+  runWorkspaceIntegrationSync,
 } from '@/lib/services/workspace-integrations';
 
 import {
@@ -65,32 +67,64 @@ export async function PATCH(
         : '';
 
     if (
-      operation !==
+      operation ===
         'disconnect'
     ) {
-      return integrationJson(
-        {
-          success:
-            false,
-          code:
-            'INVALID_INTEGRATION_OPERATION',
-          error:
-            'Choose a supported connection operation.',
-        },
-        400,
-      );
+      const result =
+        await disconnectWorkspaceIntegration(
+          params.connectionId,
+        );
+
+      return integrationJson({
+        success:
+          true,
+        result,
+      });
     }
 
-    const result =
-      await disconnectWorkspaceIntegration(
-        params.connectionId,
-      );
+    if (
+      operation ===
+        'health_check'
+    ) {
+      const result =
+        await checkWorkspaceIntegrationHealth(
+          params.connectionId,
+        );
 
-    return integrationJson({
-      success:
-        true,
-      result,
-    });
+      return integrationJson({
+        success:
+          true,
+        result,
+      });
+    }
+
+    if (
+      operation ===
+        'sync'
+    ) {
+      const result =
+        await runWorkspaceIntegrationSync(
+          params.connectionId,
+        );
+
+      return integrationJson({
+        success:
+          true,
+        result,
+      });
+    }
+
+    return integrationJson(
+      {
+        success:
+          false,
+        code:
+          'INVALID_INTEGRATION_OPERATION',
+        error:
+          'Choose a supported connection operation.',
+      },
+      400,
+    );
   } catch (
     error
   ) {
