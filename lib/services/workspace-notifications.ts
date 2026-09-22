@@ -117,6 +117,7 @@ export type CreateWorkspaceNotificationInput = {
   metadata?: Record<string, unknown>;
   expiresAt?: Date | string | null;
   forceSms?: boolean;
+  critical?: boolean;
 };
 
 function requireUuid(
@@ -1399,8 +1400,11 @@ export async function createWorkspaceNotification(
           sourceRecordId,
           dedupeKey,
           JSON.stringify(metadata),
-          preferences.inAppEnabled &&
-            !muted,
+          input.critical === true ||
+          (
+            preferences.inAppEnabled &&
+            !muted
+          ),
           expiresAt,
         ],
       );
@@ -1465,8 +1469,11 @@ export async function createWorkspaceNotification(
     }
 
     if (
-      preferences.emailEnabled &&
-      !muted
+      input.critical === true ||
+      (
+        preferences.emailEnabled &&
+        !muted
+      )
     ) {
       const delivery =
         await client.query(
@@ -1507,11 +1514,12 @@ export async function createWorkspaceNotification(
     }
 
     if (
+      input.critical === true ||
+      input.forceSms === true ||
       (
-        preferences.smsEnabled ||
-        input.forceSms === true
-      ) &&
-      !muted
+        preferences.smsEnabled &&
+        !muted
+      )
     ) {
       const delivery =
         await client.query(
