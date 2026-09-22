@@ -16,6 +16,14 @@ import {
   getPesaPalTransactionStatus,
 } from '@/lib/services/pesapal';
 
+import {
+  getSamiMonthlyAmount,
+} from '@/lib/billing/pricing';
+
+import {
+  applyVerifiedCheckoutPayment,
+} from '@/lib/billing/payment-application';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -434,6 +442,89 @@ function normalizeCurrency(
 
   return normalized ||
     null;
+}
+
+
+/* ============================================================
+   CURRENT SAMI CHECKOUT CONTRACT
+
+   One-time provider checkout must match the current server-owned
+   plan price × active internal users. This protects callbacks from
+   stale provider-specific price variables and old pending orders.
+   ============================================================ */
+
+async function getCurrentSamiCheckoutAmount(
+  payment:
+    PaymentTransactionRow
+): Promise<number | null> {
+  if (
+    !payment.subscription_id
+  ) {
+    return null;
+  }
+
+  const result =
+    await queryControl(
+      `
+        SELECT
+          p.key AS plan_key,
+          (
+            SELECT
+              COUNT(*)::int
+            FROM tenant_users tu
+            WHERE tu.tenant_id =
+                  s.tenant_id
+              AND tu.deleted_at
+                  IS NULL
+              AND LOWER(
+                    COALESCE(
+                      tu.status,
+                      ''
+                    )
+                  ) =
+                  'active'
+          ) AS active_users
+        FROM subscriptions s
+        INNER JOIN plans p
+          ON p.id =
+             s.plan_id
+        WHERE s.id = $1
+          AND s.tenant_id = $2
+          AND s.deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        payment.subscription_id,
+        payment.tenant_id,
+      ]
+    );
+
+  const row =
+    result.rows[0];
+
+  if (
+    !row ||
+    typeof row.plan_key !==
+      'string'
+  ) {
+    return null;
+  }
+
+  try {
+    return getSamiMonthlyAmount(
+      row.plan_key,
+      Math.max(
+        1,
+        Number(
+          row.active_users ||
+          0
+        )
+      )
+    );
+  } catch {
+    return null;
+  }
 }
 
 /* ============================================================
@@ -2121,11 +2212,11 @@ async function processInitialPayment({
   }
 
   /*
-   * New SaMi billing orders created after the free month use
-   * recurring enrollment.
+   * Category 22 provider-agnostic checkout uses one_time.
+   * Legacy PesaPal recurring enrollment rows remain supported.
    *
-   * Older rows may not contain billingPurpose, so we don't
-   * hard-fail merely because that metadata is absent.
+   * Older rows may not contain billingPurpose, so absence alone
+   * is not treated as a failure.
    */
   const billingPurpose =
     typeof metadata
@@ -2140,7 +2231,9 @@ async function processInitialPayment({
     billingPurpose !==
       'recurring_enrollment' &&
     billingPurpose !==
-      'subscription_payment'
+      'subscription_payment' &&
+    billingPurpose !==
+      'one_time'
   ) {
     console.error(
       '[PesaPal] Unexpected subscription payment purpose:',
@@ -2169,6 +2262,86 @@ async function processInitialPayment({
       'error',
       orderTrackingId
     );
+  }
+
+  const genericCheckout =
+    billingPurpose ===
+      'one_time' ||
+    billingPurpose ===
+      'subscription_payment';
+
+  if (
+    genericCheckout
+  ) {
+    const [
+      storedAmount,
+      contractAmount,
+    ] =
+      await Promise.all([
+        Promise.resolve(
+          numberOrNull(
+            payment.amount
+          )
+        ),
+        getCurrentSamiCheckoutAmount(
+          payment
+        ),
+      ]);
+
+    if (
+      storedAmount ===
+        null ||
+      contractAmount ===
+        null ||
+      !amountsMatch(
+        contractAmount,
+        storedAmount
+      )
+    ) {
+      console.error(
+        '[PesaPal] Checkout amount does not match current SaMi billing contract:',
+        {
+          paymentId:
+            payment.id,
+          storedAmount,
+          contractAmount,
+        }
+      );
+
+      await markPaymentFailed(
+        payment.id,
+        'FAILED',
+        {
+          securityFailure:
+            'billing_contract_mismatch',
+          storedAmount,
+          contractAmount,
+          checkedAt:
+            new Date()
+              .toISOString(),
+        }
+      );
+
+      if (
+        callbackType ===
+          'ipn'
+      ) {
+        return notificationResponse({
+          callbackType:
+            'ipn',
+          orderTrackingId,
+          merchantReference,
+          status:
+            500,
+        });
+      }
+
+      return redirectToBilling(
+        request.nextUrl.origin,
+        'error',
+        orderTrackingId
+      );
+    }
   }
 
   /* ==========================================================
@@ -2474,11 +2647,37 @@ async function processInitialPayment({
     );
   }
 
-  const result =
+  if (
+    genericCheckout
+  ) {
+    if (
+      providerAmount ===
+        null ||
+      !providerCurrency
+    ) {
+      throw new Error(
+        'Verified PesaPal checkout is missing amount or currency.'
+      );
+    }
+
+    await applyVerifiedCheckoutPayment({
+      provider:
+        'pesapal',
+      providerReference:
+        orderTrackingId,
+      amount:
+        providerAmount,
+      currency:
+        providerCurrency,
+      providerData:
+        statusData,
+    });
+  } else {
     await applyInitialSuccessfulPayment(
       payment,
       statusData
     );
+  }
 
   if (
     callbackType ===
