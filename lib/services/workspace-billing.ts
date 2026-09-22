@@ -42,6 +42,10 @@ import {
 } from '@/lib/billing/plan-transition';
 
 import {
+  notifyWorkspaceOwnersOfBillingEvent,
+} from '@/lib/billing/notifications';
+
+import {
   queryControl,
 } from '@/lib/db/control';
 
@@ -2905,6 +2909,32 @@ export async function changeWorkspaceSubscriptionPlan(
       },
     });
 
+    await notifyWorkspaceOwnersOfBillingEvent({
+      tenantId:
+        context.tenantId,
+      type:
+        'billing.plan_changed',
+      eventKey:
+        'billing.plan_changed',
+      title:
+        'Subscription plan updated',
+      message:
+        `Your SaMi workspace changed from ${currentPlan} to ${targetPlan}. Billing and access now follow the new plan.`,
+      priority:
+        'high',
+      dedupeKey:
+        `billing:plan-immediate:${subscriptionId}:${targetPlan}`,
+      metadata: {
+        subscriptionId,
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        mode:
+          'trial_immediate',
+      },
+    });
+
     return {
       mode:
         'immediate',
@@ -3027,6 +3057,45 @@ export async function changeWorkspaceSubscriptionPlan(
       eventType:
         'SUBSCRIPTION_PLAN_CHANGE_SCHEDULED',
       metadata: {
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        effectiveAt:
+          effectiveAt
+            .toISOString(),
+      },
+    });
+
+    await notifyWorkspaceOwnersOfBillingEvent({
+      tenantId:
+        context.tenantId,
+      type:
+        'billing.plan_change_scheduled',
+      eventKey:
+        'billing.plan_change_scheduled',
+      title:
+        'Subscription plan change scheduled',
+      message:
+        `Your SaMi plan will change from ${currentPlan} to ${targetPlan} on ${effectiveAt.toLocaleDateString(
+          'en-KE',
+          {
+            year:
+              'numeric',
+            month:
+              'short',
+            day:
+              'numeric',
+            timeZone:
+              'Africa/Nairobi',
+          },
+        )}.`,
+      priority:
+        'high',
+      dedupeKey:
+        `billing:plan-scheduled:${subscriptionId}:${targetPlan}:${effectiveAt.toISOString()}`,
+      metadata: {
+        subscriptionId,
         from:
           currentPlan,
         to:
