@@ -8,6 +8,14 @@ import crypto from 'crypto';
 import { queryControl } from '@/lib/db/control';
 import { createSession } from '@/lib/auth/session';
 
+import {
+  getAccountContextForUser,
+} from '@/lib/auth/account-context';
+
+import {
+  getBillingOnboardingNext,
+} from '@/lib/billing/onboarding';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -1423,11 +1431,22 @@ export async function GET(
         }
       );
 
-      const next =
+      const requestedNext =
         safeNextPath(
           request.cookies.get(
             GOOGLE_NEXT_COOKIE
           )?.value
+        );
+
+      const accountContext =
+        await getAccountContextForUser(
+          existingUser.id
+        );
+
+      const next =
+        await getBillingOnboardingNext(
+          accountContext,
+          requestedNext
         );
 
       const response =
