@@ -65,12 +65,39 @@ function safeReturnPath(
     ) ||
     path.startsWith(
       '//',
+    ) ||
+    path.includes(
+      '\\',
     )
   ) {
     return '/integrations';
   }
 
-  return path;
+  const sentinel =
+    'https://sami.invalid';
+
+  try {
+    const resolved =
+      new URL(
+        path,
+        sentinel,
+      );
+
+    if (
+      resolved.origin !==
+        sentinel
+    ) {
+      return '/integrations';
+    }
+
+    return (
+      resolved.pathname +
+      resolved.search +
+      resolved.hash
+    );
+  } catch {
+    return '/integrations';
+  }
 }
 
 function publicOrigin(
