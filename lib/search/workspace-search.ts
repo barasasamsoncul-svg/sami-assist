@@ -663,6 +663,55 @@ function corePageCandidates(
 
 
   if (
+    can(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_VIEW,
+    ) ||
+    can(
+      SAMI_PERMISSIONS
+        .INTEGRATIONS_MANAGE,
+    )
+  ) {
+    pages.push(
+      candidate({
+        id:
+          'page:integrations',
+        kind:
+          'page',
+        title:
+          'Integrations',
+        subtitle:
+          'Connections, webhooks & external apps',
+        description:
+          'Connect approved cloud services, manage webhooks and provision external business apps.',
+        href:
+          '/integrations',
+        iconKey:
+          'plug',
+        badge:
+          null,
+        score:
+          34,
+        action:
+          null,
+        source:
+          'core',
+        keywords: [
+          'connections',
+          'oauth',
+          'webhooks',
+          'external apps',
+          'google workspace',
+          'microsoft 365',
+          'slack',
+          'sso',
+        ],
+      }),
+    );
+  }
+
+
+  if (
     context.aiAvailable
   ) {
     pages.push(
