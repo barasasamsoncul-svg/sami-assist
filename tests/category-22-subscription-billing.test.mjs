@@ -737,6 +737,193 @@ test('Category 22: paid trial onboarding is shared across password, 2FA and Goog
   );
 });
 
+test('Category 22: past-due workspaces are recovery-only across pages, permissions and app shell', async () => {
+  const [
+    access,
+    pageGuard,
+    permissions,
+    shell,
+    recoveryPage,
+  ] = await Promise.all([
+    source(
+      'lib/billing/access.ts',
+    ),
+    source(
+      'lib/auth/require-page-session.ts',
+    ),
+    source(
+      'lib/auth/permission-context.ts',
+    ),
+    source(
+      'lib/auth/workspace-shell.ts',
+    ),
+    source(
+      'app/subscription-required/page.tsx',
+    ),
+  ]);
+
+  assert.match(
+    access,
+    /personal_account/,
+  );
+
+  assert.match(
+    access,
+    /payment_recovery/,
+  );
+
+  assert.match(
+    access,
+    /business_apps/,
+  );
+
+  assert.match(
+    access,
+    /messages/,
+  );
+
+  assert.match(
+    access,
+    /automation/,
+  );
+
+  assert.match(
+    access,
+    /integrations/,
+  );
+
+  assert.match(
+    pageGuard,
+    /access\.pastDue/,
+  );
+
+  assert.match(
+    pageGuard,
+    /redirect\([\s\S]*'\/subscription-required'/s,
+  );
+
+  assert.match(
+    permissions,
+    /recoveryPermissions/,
+  );
+
+  assert.match(
+    permissions,
+    /BILLING_VIEW/,
+  );
+
+  assert.match(
+    permissions,
+    /SETTINGS_VIEW/,
+  );
+
+  assert.match(
+    shell,
+    /workspaceLocked/,
+  );
+
+  assert.match(
+    shell,
+    /workspaceLocked[\s\S]*accessibleModules[\s\S]*\[\]/s,
+  );
+
+  assert.match(
+    recoveryPage,
+    /temporarily locked/,
+  );
+
+  assert.match(
+    recoveryPage,
+    /Open Billing/,
+  );
+
+  assert.match(
+    recoveryPage,
+    /Automatic restoration/,
+  );
+});
+
+test('Category 22: public pricing uses the same canonical server price contract', async () => {
+  const landing =
+    await source(
+      'app/page.tsx',
+    );
+
+  assert.match(
+    landing,
+    /getSamiPricePerUserMonthly/,
+  );
+
+  assert.match(
+    landing,
+    /STANDARD_PRICE/,
+  );
+
+  assert.match(
+    landing,
+    /CUSTOM_PRICE/,
+  );
+
+  assert.doesNotMatch(
+    landing,
+    /KSh 2,000|KSh 3,340/,
+    'The public site must not show stale pre-Category-22 prices.',
+  );
+});
+
+test('Category 22: billing state changes notify workspace owners through critical channels', async () => {
+  const [
+    notifications,
+    application,
+    reconcile,
+    transition,
+  ] = await Promise.all([
+    source(
+      'lib/billing/notifications.ts',
+    ),
+    source(
+      'lib/billing/payment-application.ts',
+    ),
+    source(
+      'lib/billing/reconcile.ts',
+    ),
+    source(
+      'lib/billing/plan-transition.ts',
+    ),
+  ]);
+
+  assert.match(
+    notifications,
+    /notifyWorkspaceOwnersOfBillingEvent/,
+  );
+
+  assert.match(
+    notifications,
+    /critical:[\s\S]*true/s,
+  );
+
+  assert.match(
+    application,
+    /billing\.payment_succeeded/,
+  );
+
+  assert.match(
+    application,
+    /billing\.payment_failed/,
+  );
+
+  assert.match(
+    reconcile,
+    /billing\.past_due/,
+  );
+
+  assert.match(
+    transition,
+    /billing\.plan_changed/,
+  );
+});
+
+
 test('Category 22: Billing UI is provider-aware and mobile-compact', async () => {
   const billing =
     await source(
