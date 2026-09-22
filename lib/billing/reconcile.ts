@@ -27,6 +27,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  notifyWorkspaceOwnersOfBillingEvent,
+} from '@/lib/billing/notifications';
+
 function closeEnough(
   left:
     number | null,
@@ -252,6 +256,58 @@ export async function reconcileWorkspaceBilling(
 
       report.statusUpdated +=
         1;
+    }
+
+    if (
+      effectiveStatus ===
+        'past_due'
+    ) {
+      const boundary =
+        row.current_period_end ||
+        row.trial_ends_at ||
+        'unknown';
+
+      try {
+        await notifyWorkspaceOwnersOfBillingEvent({
+          tenantId:
+            String(
+              row.tenant_id,
+            ),
+          type:
+            'billing.past_due',
+          eventKey:
+            'billing.past_due',
+          title:
+            'Subscription payment is due',
+          message:
+            'Your workspace remains available for recovery, messaging, notifications, settings and billing, but paid entitlement-expanding features are restricted until the subscription is settled.',
+          priority:
+            'urgent',
+          dedupeKey:
+            `billing:past-due:${row.id}:${String(
+              boundary,
+            )}`,
+          metadata: {
+            subscriptionId:
+              String(
+                row.id,
+              ),
+            plan:
+              planKey,
+            boundary:
+              String(
+                boundary,
+              ),
+          },
+        });
+      } catch (
+        error
+      ) {
+        console.error(
+          '[SaMi Billing] Past-due notification failed:',
+          error,
+        );
+      }
     }
 
     if (
