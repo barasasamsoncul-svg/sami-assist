@@ -1131,6 +1131,28 @@ test('Category 22: billing state changes notify workspace owners through critica
     /billing:plan-immediate/,
     'Immediate trial/free-to-paid plan changes must also notify owners.',
   );
+
+  for (
+    const event
+    of [
+      'billing.plan_change_cancelled',
+      'billing.subscription_cancellation_scheduled',
+      'billing.subscription_cancelled',
+      'billing.subscription_continues',
+      'billing.reactivation_payment_required',
+    ]
+  ) {
+    assert.match(
+      service,
+      new RegExp(
+        event.replace(
+          '.',
+          '\\.',
+        ),
+      ),
+      `Cancellation lifecycle must notify owners for ${event}.`,
+    );
+  }
 });
 
 
@@ -1316,6 +1338,7 @@ test('Category 22: paid subscription cancellation is distinct from downgrade and
   const [
     service,
     transition,
+    route,
     docs,
   ] =
     await Promise.all([
@@ -1324,6 +1347,9 @@ test('Category 22: paid subscription cancellation is distinct from downgrade and
       ),
       source(
         'lib/billing/plan-transition.ts',
+      ),
+      source(
+        'app/api/workspace/billing/route.ts',
       ),
       source(
         'docs/subscription-billing.md',
@@ -1377,6 +1403,17 @@ test('Category 22: paid subscription cancellation is distinct from downgrade and
   assert.match(
     transition,
     /status[\s\S]*'cancelled'/s,
+  );
+
+  assert.match(
+    transition,
+    /subscription_billing_profiles[\s\S]*recurring_status[\s\S]*'cancelled'/s,
+    'When cancellation takes effect, the recurring provider profile must be finalized too.',
+  );
+
+  assert.match(
+    route,
+    /cancel_subscription/,
   );
 
   assert.doesNotMatch(
@@ -1703,6 +1740,45 @@ test('Category 22: ended paid subscriptions can explicitly move to Free only thr
   assert.match(
     service,
     /Workspace moved to Free/,
+  );
+});
+
+test('Category 22: Stripe environment documentation matches provider configuration', async () => {
+  const [
+    stripe,
+    env,
+    docs,
+  ] =
+    await Promise.all([
+      source(
+        'lib/billing/providers/stripe.ts',
+      ),
+      source(
+        'docs/platform-env.example',
+      ),
+      source(
+        'docs/subscription-billing.md',
+      ),
+    ]);
+
+  assert.match(
+    stripe,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY/,
+  );
+
+  assert.match(
+    stripe,
+    /STRIPE_PUBLISHABLE_KEY/,
+  );
+
+  assert.match(
+    env,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=/,
+  );
+
+  assert.match(
+    docs,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=/,
   );
 });
 
