@@ -28,6 +28,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  resolveRequiredDependencyPlan,
+} from '@/lib/modules/dependency-plan';
+
+import {
   getPermissionContext,
   permissionContextHas,
   type PermissionContext,
@@ -36,6 +40,12 @@ import {
 import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
+
+import {
+  getEffectiveSubscriptionStatus,
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
 
 
 export type WorkspaceAppAuditContext = {
@@ -57,6 +67,9 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_NOT_INSTALLED'
   | 'APP_DEPENDENCY_BLOCKED'
   | 'APP_DEPENDENCY_CYCLE'
+  | 'APP_NOT_INSTALLABLE'
+  | 'APP_SUBSCRIPTION_REQUIRED'
+  | 'APP_PLAN_UPGRADE_REQUIRED'
   | 'APP_SCHEMA_MISSING'
   | 'APP_SCHEMA_UNSAFE'
   | 'APP_SCHEMA_FAILED';
@@ -724,35 +737,58 @@ async function resolveInstallPlan(
   rootKey:
     string,
 ): Promise<ModuleRow[]> {
-  const ordered:
-    ModuleRow[] = [];
+  try {
+    return await resolveRequiredDependencyPlan({
+      rootKeys: [
+        rootKey,
+      ],
+      load:
+        key =>
+          getModule(
+            client,
+            key,
+          ),
+      dependencies:
+        module => {
+          const manifest =
+            getSamiModuleManifest(
+              module.key,
+            );
 
-  const resolved =
-    new Set<string>();
-
-  const visiting =
-    new Set<string>();
-
-  async function visit(
-    moduleKey:
-      string,
+          return [
+            ...new Set([
+              ...normalizeDependencies(
+                module.dependencies,
+              ),
+              ...(
+                manifest
+                  ?.depends ||
+                []
+              )
+                .map(
+                  normalizeKey,
+                )
+                .filter(
+                  Boolean,
+                ),
+            ]),
+          ];
+        },
+    });
+  } catch (
+    error
   ) {
-    const key =
-      normalizeKey(
-        moduleKey,
-      );
-
     if (
-      resolved.has(
-        key,
-      )
+      error instanceof
+        WorkspaceAppLifecycleError
     ) {
-      return;
+      throw error;
     }
 
     if (
-      visiting.has(
-        key,
+      error instanceof Error &&
+      error.message.includes(
+        'dependency cycle',
       )
     ) {
       throw new WorkspaceAppLifecycleError(
@@ -761,45 +797,199 @@ async function resolveInstallPlan(
       );
     }
 
-    visiting.add(
-      key,
+    throw error;
+  }
+}
+
+async function assertInstallPlanEntitled(
+  client:
+    PoolClient,
+  tenantId:
+    string,
+  installPlan:
+    ModuleRow[],
+) {
+  const subscription =
+    await client.query(
+      `
+        SELECT
+          s.status,
+          s.trial_ends_at,
+          s.current_period_end,
+          p.key
+            AS plan_key
+        FROM subscriptions s
+        INNER JOIN plans p
+          ON p.id =
+             s.plan_id
+         AND p.deleted_at
+             IS NULL
+         AND p.is_active =
+             TRUE
+        WHERE s.tenant_id = $1
+          AND s.deleted_at
+              IS NULL
+        ORDER BY
+          s.created_at DESC
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
     );
 
-    const module =
-      await getModule(
-        client,
-        key,
-      );
+  const row =
+    subscription.rows[0];
 
-    for (
-      const dependency
-      of normalizeDependencies(
-        module.dependencies,
-      )
-    ) {
-      await visit(
-        dependency,
-      );
-    }
-
-    visiting.delete(
-      key,
+  const policy =
+    getSamiPlanPolicy(
+      row?.plan_key,
     );
 
-    resolved.add(
-      key,
-    );
+  const effectiveStatus =
+    row
+      ? getEffectiveSubscriptionStatus({
+          status:
+            row.status,
+          planKey:
+            row.plan_key,
+          trialEndsAt:
+            row.trial_ends_at,
+          currentPeriodEnd:
+            row.current_period_end,
+        })
+      : '';
 
-    ordered.push(
-      module,
+  if (
+    !row ||
+    !policy ||
+    !isSubscriptionEntitledNow(
+      effectiveStatus,
+    )
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SUBSCRIPTION_REQUIRED',
+      'An active SaMi subscription is required before workspace apps can be changed.',
+      {
+        billingHref:
+          '/settings?tab=billing',
+      },
     );
   }
 
-  await visit(
-    rootKey,
-  );
+  const limit =
+    policy.apps
+      .maxInstalledBusinessApps;
 
-  return ordered;
+  if (
+    policy.apps
+      .allBusinessApps ||
+    limit ===
+      null
+  ) {
+    return;
+  }
+
+  const active =
+    await client.query(
+      `
+        SELECT
+          LOWER(
+            m.key
+          )
+            AS key
+        FROM tenant_modules tm
+        INNER JOIN modules m
+          ON m.id =
+             tm.module_id
+        WHERE tm.tenant_id = $1
+          AND tm.deleted_at
+              IS NULL
+          AND m.deleted_at
+              IS NULL
+          AND COALESCE(
+                m.is_core,
+                FALSE
+              ) =
+              FALSE
+          AND LOWER(
+                COALESCE(
+                  tm.status,
+                  ''
+                )
+              ) IN (
+                'installed',
+                'active',
+                'enabled'
+              )
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  const prospective =
+    new Set(
+      active.rows
+        .map(
+          item =>
+            normalizeKey(
+              item.key,
+            ),
+        )
+        .filter(
+          Boolean,
+        ),
+    );
+
+  for (
+    const module
+    of installPlan
+  ) {
+    if (
+      !module.is_core
+    ) {
+      prospective.add(
+        module.key,
+      );
+    }
+  }
+
+  if (
+    prospective.size >
+      limit
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_PLAN_UPGRADE_REQUIRED',
+      'This app and its required dependencies exceed the Free plan app allowance. Upgrade to Standard or Custom to install all required business apps.',
+      {
+        currentPlan:
+          policy.key,
+        maxInstalledBusinessApps:
+          limit,
+        prospectiveBusinessApps:
+          prospective.size,
+        requiredApps:
+          installPlan
+            .filter(
+              module =>
+                !module.is_core,
+            )
+            .map(
+              module => ({
+                key:
+                  module.key,
+                name:
+                  module.name,
+              }),
+            ),
+        requiredPlan:
+          'standard',
+        billingHref:
+          '/settings?tab=billing',
+      },
+    );
+  }
 }
 
 
@@ -1027,15 +1217,34 @@ async function activateWorkspaceApp(
       appKey,
     );
 
+  const requestedManifest =
+    canonicalKey
+      ? getSamiModuleManifest(
+          canonicalKey,
+        )
+      : null;
+
   if (
     !canonicalKey ||
-    !getSamiModuleManifest(
-      canonicalKey,
-    )
+    !requestedManifest
   ) {
     throw new WorkspaceAppLifecycleError(
       'INVALID_APP',
       'Choose a valid SaMi app.',
+    );
+  }
+
+  if (
+    !requestedManifest
+      .installable
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_NOT_INSTALLABLE',
+      'This SaMi app is in the catalog but is not available to install yet.',
+      {
+        appKey:
+          canonicalKey,
+      },
     );
   }
 
@@ -1116,6 +1325,12 @@ async function activateWorkspaceApp(
         controlClient,
         canonicalKey,
       );
+
+    await assertInstallPlanEntitled(
+      controlClient,
+      context.tenantId,
+      plan,
+    );
 
     const root =
       plan[

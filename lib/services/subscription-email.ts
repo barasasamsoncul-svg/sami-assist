@@ -27,11 +27,10 @@ export interface SendSubscriptionConfirmationEmailInput {
   /*
    * Backend-calculated price per billable user.
    *
-   * Free     = 0
-   * Standard = 2000
-   * Custom   = 3340
+   * Free = 0.
+   * Paid-plan prices come from SaMi's server-side billing configuration.
    *
-   * Do not calculate this from client input.
+   * Do not calculate or accept this value from client input.
    */
   pricePerUserMonthly: number;
 
@@ -762,7 +761,7 @@ function buildTextEmail({
 
       'Your paid plan and workspace are available during the free month.',
 
-      'When the first paid billing cycle becomes due, you will complete the first genuine payment. Recurring billing can then continue after successful enrollment.',
+      'Before the first paid billing cycle, SaMi will guide you through the payment setup supported by the workspace billing provider. No charge is made during the free month.',
 
       '',
 

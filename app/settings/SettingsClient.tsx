@@ -45,9 +45,12 @@ import AppsSettings from './components/AppsSettings';
 
 import AiSettings from './components/AiSettings';
 
+import BillingSettings, {
+  type BillingState,
+} from './components/BillingSettings';
+
 import {
   DEFAULT_USER_DISPLAY_PREFERENCES,
-  formatUserDateTime,
   type UserDisplayPreferences,
   type UserTheme,
 } from '@/lib/account/user-formatting';
@@ -242,6 +245,9 @@ type Props = {
 
   subscription:
     SubscriptionData;
+
+  billingState:
+    BillingState | null;
 
   accessibleModules:
     ModuleData[];
@@ -469,6 +475,7 @@ export default function SettingsClient({
   tenant,
   membership,
   subscription,
+  billingState,
   accessibleModules,
   managedModules,
   capabilities,
@@ -957,22 +964,6 @@ export default function SettingsClient({
      DISPLAY
      ============================================================== */
 
-  const currentPlan =
-    subscription
-      ? (
-          subscription.planName ||
-          (
-            subscription.planKey
-              ? formatLabel(
-                  subscription
-                    .planKey,
-                )
-              : 'Subscription'
-          )
-        )
-      : null;
-
-
   const pageLabel =
     getSectionLabel(
       active,
@@ -1204,24 +1195,23 @@ export default function SettingsClient({
               ) && (
                 <SettingsSurface>
 
-                  <BillingSection
-                    subscription={
-                      subscription
-                    }
-
-                    currentPlan={
-                      currentPlan
-                    }
-
-                    preferences={
-                      displayPreferences
-                    }
-
-                    canManage={
-                      capabilities
-                        .billingManage
-                    }
-                  />
+                  {billingState
+                    ? (
+                      <BillingSettings
+                        initialState={
+                          billingState
+                        }
+                      />
+                    )
+                    : (
+                      <EmptyState
+                        icon={
+                          CreditCard
+                        }
+                        title="Billing information unavailable"
+                        description="SaMi could not load billing information for this workspace."
+                      />
+                    )}
 
                 </SettingsSurface>
               )}
@@ -1247,162 +1237,6 @@ function SettingsSurface({
     <section className="sami-surface min-w-0 rounded-[24px] p-4 sm:p-6">
       {children}
     </section>
-  );
-}
-
-
-/* ================================================================
-   BILLING
-   ================================================================ */
-
-function BillingSection({
-  subscription,
-  currentPlan,
-  preferences,
-  canManage,
-}: {
-  subscription:
-    SubscriptionData;
-
-  currentPlan:
-    string | null;
-
-  preferences:
-    UserDisplayPreferences;
-
-  canManage:
-    boolean;
-}) {
-  if (
-    !subscription
-  ) {
-    return (
-      <EmptyState
-        icon={
-          CreditCard
-        }
-        title="Billing information unavailable"
-        description="Subscription information is not currently available for this workspace."
-      />
-    );
-  }
-
-
-  return (
-    <div className="max-w-4xl">
-
-      <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900/50 dark:bg-blue-950/20">
-
-        <div className="flex items-start gap-4">
-
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
-            <CreditCard className="h-5 w-5" />
-          </div>
-
-
-          <div>
-
-            <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-              Current subscription
-            </p>
-
-            <h2 className="mt-1 text-xl font-bold">
-              {currentPlan ||
-                'Subscription'}
-            </h2>
-
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              {canManage
-                ? 'You can manage workspace billing.'
-                : 'You have read-only billing access.'}
-            </p>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
-        <InfoCard
-          label="Plan"
-          value={
-            currentPlan ||
-            'Not available'
-          }
-        />
-
-
-        <InfoCard
-          label="Subscription status"
-          value={
-            formatLabel(
-              subscription.status,
-            )
-          }
-        />
-
-
-        <InfoCard
-          label="Billing cycle"
-          value={
-            formatLabel(
-              subscription
-                .billingCycle,
-            )
-          }
-        />
-
-
-        <InfoCard
-          label="Current period ends"
-          value={
-            subscription
-              .currentPeriodEnd
-              ? formatUserDateTime(
-                  subscription
-                    .currentPeriodEnd,
-                  preferences,
-                )
-              : 'Not available'
-          }
-        />
-
-      </div>
-
-    </div>
-  );
-}
-
-
-/* ================================================================
-   INFO CARD
-   ================================================================ */
-
-function InfoCard({
-  label,
-  value,
-}: {
-  label:
-    string;
-
-  value:
-    string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-white/10 dark:bg-white/[0.025]">
-
-      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-2 break-words text-sm font-bold">
-        {value}
-      </p>
-
-    </div>
   );
 }
 

@@ -15,6 +15,11 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
+import {
   resolveWorkspaceShellAccess,
 } from '@/lib/auth/workspace-shell';
 
@@ -167,6 +172,23 @@ export async function GET() {
       has(
         SAMI_PERMISSIONS
           .API_MANAGE,
+      );
+
+
+    const developerPlanEnabled =
+      Boolean(
+        account.subscription &&
+        isSubscriptionEntitledNow(
+          account.subscription
+            .status,
+        ) &&
+        getSamiPlanPolicy(
+          account.subscription
+            .planKey,
+        )
+          ?.developerApi
+          .enabled ===
+          true,
       );
 
 
@@ -400,15 +422,21 @@ export async function GET() {
 
 
         apiManage:
-          context.isOwner ||
-          apiManage,
+          developerPlanEnabled &&
+          (
+            context.isOwner ||
+            apiManage
+          ),
 
         apiView:
-          context.isOwner ||
-          apiManage ||
-          has(
-            SAMI_PERMISSIONS
-              .API_VIEW,
+          developerPlanEnabled &&
+          (
+            context.isOwner ||
+            apiManage ||
+            has(
+              SAMI_PERMISSIONS
+                .API_VIEW,
+            )
           ),
 
 

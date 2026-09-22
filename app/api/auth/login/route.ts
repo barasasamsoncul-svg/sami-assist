@@ -24,6 +24,10 @@ import {
 } from '@/lib/auth/two-factor-methods';
 
 import {
+  getBillingOnboardingNext,
+} from '@/lib/billing/onboarding';
+
+import {
   findUserForLogin,
   getAccountContextForUser,
   validateAccountCanLogin,
@@ -1542,6 +1546,12 @@ export async function POST(
        13. SUCCESS
        ======================================================== */
 
+    const resolvedNext =
+      await getBillingOnboardingNext(
+        accountContext,
+        requestedNext,
+      );
+
     return jsonResponse({
       success:
         true,
@@ -1608,7 +1618,12 @@ export async function POST(
       },
 
       next:
-        requestedNext,
+        resolvedNext,
+
+      billingOnboardingRequired:
+        resolvedNext.startsWith(
+          '/settings?tab=billing',
+        ),
     });
   } catch (
     error

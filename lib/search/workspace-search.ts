@@ -17,6 +17,11 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
+import {
   getSession,
 } from '@/lib/auth/session';
 
@@ -108,6 +113,9 @@ type SearchRuntimeContext = {
     boolean;
 
   canViewBilling:
+    boolean;
+
+  developerPlanEnabled:
     boolean;
 
   aiAvailable:
@@ -444,6 +452,22 @@ async function resolveSearchContext():
     canViewBilling:
       shell.canViewBilling,
 
+    developerPlanEnabled:
+      Boolean(
+        account.subscription &&
+        isSubscriptionEntitledNow(
+          account.subscription
+            .status,
+        ) &&
+        getSamiPlanPolicy(
+          account.subscription
+            .planKey,
+        )
+          ?.developerApi
+          .enabled ===
+          true,
+      ),
+
     aiAvailable:
       shell.aiAvailable,
   };
@@ -716,13 +740,16 @@ function corePageCandidates(
 
 
   if (
-    can(
-      SAMI_PERMISSIONS
-        .API_VIEW,
-    ) ||
-    can(
-      SAMI_PERMISSIONS
-        .API_MANAGE,
+    context.developerPlanEnabled &&
+    (
+      can(
+        SAMI_PERMISSIONS
+          .API_VIEW,
+      ) ||
+      can(
+        SAMI_PERMISSIONS
+          .API_MANAGE,
+      )
     )
   ) {
     pages.push(

@@ -53,6 +53,14 @@ export function handleOrganizationApiError(
           error: error.message,
         }, 403);
 
+      case 'MULTI_COMPANY_PLAN_REQUIRED':
+        return organizationJson({
+          success: false,
+          code: error.code,
+          error: error.message,
+          billingHref: '/settings?tab=billing',
+        }, 402);
+
       case 'COMPANY_NOT_FOUND':
       case 'BRANCH_NOT_FOUND':
         return organizationJson({

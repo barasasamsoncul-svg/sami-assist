@@ -17,6 +17,11 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
+import {
   requirePageSession,
 } from '@/lib/auth/require-page-session';
 
@@ -54,15 +59,34 @@ export default async function DeveloperPage() {
       getPermissionContext(),
     ]);
 
+  const planAllowsDeveloper =
+    Boolean(
+      account.subscription &&
+      isSubscriptionEntitledNow(
+        account.subscription
+          .status,
+      ) &&
+      getSamiPlanPolicy(
+        account.subscription
+          .planKey,
+      )
+        ?.developerApi
+        .enabled ===
+        true,
+    );
+
   const canDeveloper =
-    permissions.isOwner ||
-    permissions.permissionSet.has(
-      SAMI_PERMISSIONS
-        .API_VIEW,
-    ) ||
-    permissions.permissionSet.has(
-      SAMI_PERMISSIONS
-        .API_MANAGE,
+    planAllowsDeveloper &&
+    (
+      permissions.isOwner ||
+      permissions.permissionSet.has(
+        SAMI_PERMISSIONS
+          .API_VIEW,
+      ) ||
+      permissions.permissionSet.has(
+        SAMI_PERMISSIONS
+          .API_MANAGE,
+      )
     );
 
   if (

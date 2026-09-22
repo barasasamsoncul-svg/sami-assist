@@ -6,6 +6,16 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getSamiMonthlyAmount,
+  getSamiPricePerUserMonthly,
+  SAMI_BILLING_CURRENCY,
+} from '@/lib/billing/pricing';
+
+import {
+  getSamiModuleDependencyPlan,
+} from '@/lib/modules/registry';
+
+import {
   hashPassword,
 } from '@/lib/auth/password';
 
@@ -31,7 +41,7 @@ export const dynamic = 'force-dynamic';
    FREE
    ------------------------------------------------------------
    - KES 0
-   - No PesaPal
+   - No payment method required
    - No trial
    - Workspace provisioned immediately
    - Subscription becomes active after provisioning
@@ -40,22 +50,19 @@ export const dynamic = 'force-dynamic';
    ------------------------------------------------------------
    - First calendar month free
    - KES 0 due today
-   - NO PesaPal transaction during signup
    - Workspace provisioned immediately
    - Subscription starts as trialing immediately
    - Full paid-plan entitlements during trial
-   - First payment becomes due after one calendar month
-   - First successful PesaPal payment creates recurring
-     enrollment
-   - Later monthly payments can run automatically through
-     PesaPal recurring billing
+   - SaMi billing provider is selected server-side by environment
+   - Providers that support zero-charge setup may authorize a
+     future payment method after the user's authenticated sign-in
+   - First paid charge begins only after the free month
+   - Subscription price and seats remain SaMi-authoritative
    ============================================================ */
 
 const VERIFICATION_EXPIRY_MINUTES = 15;
 
 const PAID_TRIAL_MONTHS = 1;
-
-const BILLING_CURRENCY = 'KES';
 
 const MAX_SELECTED_APPS = 50;
 
@@ -102,7 +109,6 @@ type PlanRow = {
   id: unknown;
   key: unknown;
   name?: unknown;
-  included_apps?: unknown;
 };
 
 type GoogleSignupRow = {
@@ -810,32 +816,6 @@ async function cleanupRegistration(
    SaMi billing is per-user.
    ============================================================ */
 
-function getPerUserMonthlyPrice(
-  plan: string
-): number {
-  if (
-    plan === 'standard'
-  ) {
-    return Number(
-      process.env
-        .PESAPAL_PRICE_STANDARD_MONTHLY ||
-        2000
-    );
-  }
-
-  if (
-    plan === 'custom'
-  ) {
-    return Number(
-      process.env
-        .PESAPAL_PRICE_CUSTOM_MONTHLY ||
-        3340
-    );
-  }
-
-  return 0;
-}
-
 /* ============================================================
    BILLABLE USERS
    ============================================================ */
@@ -1262,8 +1242,44 @@ export async function POST(
     }
 
     /* ========================================================
-       6. VALIDATE APPS
+       6. VALIDATE APPS + REQUIRED DEPENDENCIES
+
+       Registration and runtime installation share the same
+       code-owned dependency graph. A root app can never enter
+       a new workspace without every required dependency.
        ======================================================== */
+
+    let resolvedApps:
+      string[];
+
+    try {
+      resolvedApps =
+        [
+          ...new Set(
+            selectedApps.flatMap(
+              appKey =>
+                getSamiModuleDependencyPlan(
+                  appKey,
+                )
+                  .map(
+                    manifest =>
+                      manifest.key,
+                  ),
+            ),
+          ),
+        ];
+    } catch (
+      error
+    ) {
+      return errorResponse(
+        400,
+        'INVALID_SELECTED_APPS',
+        error instanceof
+          Error
+          ? error.message
+          : 'One or more selected SaMi apps are unavailable.'
+      );
+    }
 
     const moduleResult =
       await queryControl(
@@ -1284,7 +1300,7 @@ export async function POST(
             AND status = 'active'
         `,
         [
-          selectedApps,
+          resolvedApps,
         ]
       );
 
@@ -1303,7 +1319,7 @@ export async function POST(
       );
 
     const invalidApps =
-      selectedApps.filter(
+      resolvedApps.filter(
         (appKey) =>
           !validAppSet.has(
             appKey
@@ -1327,10 +1343,11 @@ export async function POST(
     /* ========================================================
        7. FINAL PLAN
 
-       Free supports only one business app.
+       Free supports only one installed business app, including
+       required dependencies.
 
-       Selecting multiple apps while Free is selected upgrades
-       the workspace to Standard.
+       If the resolved dependency plan contains more than one
+       business app, Free upgrades to Standard.
 
        Explicit Custom is never downgraded.
        ======================================================== */
@@ -1338,7 +1355,7 @@ export async function POST(
     const finalPlan =
       requestedPlan ===
         'free' &&
-      selectedApps.length >
+      resolvedApps.length >
         1
         ? 'standard'
         : requestedPlan;
@@ -1357,8 +1374,7 @@ export async function POST(
           SELECT
             id,
             key,
-            name,
-            included_apps
+            name
 
           FROM plans
 
@@ -1391,56 +1407,6 @@ export async function POST(
         plan.id,
         'subscription plan'
       );
-
-    /* ========================================================
-       9. PLAN APP LIMIT
-       ======================================================== */
-
-    if (
-      plan.included_apps !==
-        null &&
-      plan.included_apps !==
-        undefined
-    ) {
-      const includedApps =
-        Number(
-          plan.included_apps
-        );
-
-      if (
-        !Number.isFinite(
-          includedApps
-        )
-      ) {
-        throw new Error(
-          `Plan "${finalPlan}" has invalid included_apps configuration.`
-        );
-      }
-
-      /*
-       * -1 = unlimited.
-       */
-      if (
-        includedApps >= 0 &&
-        selectedApps.length >
-          includedApps
-      ) {
-        return errorResponse(
-          400,
-          'PLAN_APP_LIMIT_EXCEEDED',
-          'The selected apps exceed this plan’s allowance.',
-          {
-            plan:
-              finalPlan,
-
-            includedApps,
-
-            selectedApps:
-              selectedApps.length,
-          }
-        );
-      }
-    }
 
     /* ========================================================
        10. PASSWORD HASH
@@ -2079,7 +2045,7 @@ export async function POST(
       );
 
     const perUserMonthlyPrice =
-      getPerUserMonthlyPrice(
+      getSamiPricePerUserMonthly(
         finalPlan
       );
 
@@ -2100,8 +2066,10 @@ export async function POST(
 
     const monthlyAmount =
       isPaidPlan
-        ? perUserMonthlyPrice *
-          billableUsers
+        ? getSamiMonthlyAmount(
+            finalPlan,
+            billableUsers,
+          )
         : 0;
 
     /* ========================================================
@@ -2174,7 +2142,7 @@ export async function POST(
           0,
 
         currency:
-          BILLING_CURRENCY,
+          SAMI_BILLING_CURRENCY,
 
         firstBillingAt:
           isPaidPlan
@@ -2304,7 +2272,7 @@ export async function POST(
              * This is when the first paid billing cycle becomes
              * due.
              *
-             * It is NOT a PesaPal payment created today.
+             * It is NOT a provider payment created today.
              */
             firstBillingAt:
               isPaidPlan
@@ -2321,7 +2289,7 @@ export async function POST(
             monthlyAmount,
 
             currency:
-              BILLING_CURRENCY,
+              SAMI_BILLING_CURRENCY,
 
             paymentMethodOnFile:
               false,

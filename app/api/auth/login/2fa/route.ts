@@ -35,6 +35,10 @@ import {
 } from '@/lib/auth/two-factor-methods';
 
 import {
+  getBillingOnboardingNext,
+} from '@/lib/billing/onboarding';
+
+import {
   verifyEmailTwoFactorCode,
 } from '@/lib/auth/email-two-factor';
 
@@ -2043,11 +2047,18 @@ export async function POST(
       /* ======================================================
          22. SUCCESS
 
-         Do not force /dashboard here.
-
-         The login client already preserves the destination
-         across password → 2FA.
+         The original destination remains authoritative unless
+         ordinary dashboard login needs paid-trial billing setup.
          ====================================================== */
+
+      const intendedNext =
+        '/dashboard';
+
+      const resolvedNext =
+        await getBillingOnboardingNext(
+          accountContext,
+          intendedNext,
+        );
 
       return jsonResponse({
         success:
@@ -2096,6 +2107,17 @@ export async function POST(
               .expiresAt
               .toISOString(),
         },
+
+        next:
+          resolvedNext ===
+            '/dashboard'
+            ? undefined
+            : resolvedNext,
+
+        billingOnboardingRequired:
+          resolvedNext.startsWith(
+            '/settings?tab=billing',
+          ),
       });
     } finally {
       /* ======================================================

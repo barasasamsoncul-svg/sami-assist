@@ -85,6 +85,24 @@ test('Category 13: install resolves dependencies and never provisions a workspac
 
   assert.match(
     service,
+    /getSamiModuleManifest/,
+    'Install planning must include code-owned manifest dependencies.',
+  );
+
+  assert.match(
+    service,
+    /manifest[\s\S]*\.depends/s,
+    'Manifest dependencies must remain authoritative even if control DB metadata is stale.',
+  );
+
+  assert.match(
+    service,
+    /APP_NOT_INSTALLABLE/,
+    'Catalog-only modules must fail closed at the lifecycle service.',
+  );
+
+  assert.match(
+    service,
     /getTenantDatabaseName/,
   );
 
@@ -542,7 +560,7 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
   );
 });
 
-test('Category 13: every first-party manifest has a schema payload and unsafe replacement SQL is guarded', async () => {
+test('Category 13: every installable first-party manifest has a schema payload and unsafe replacement SQL is guarded', async () => {
   const [
     manifests,
     lifecycle,
@@ -568,7 +586,7 @@ test('Category 13: every first-party manifest has a schema payload and unsafe re
   assert.equal(
     keys.length,
     36,
-    'All first-party business apps must be represented by canonical manifests.',
+    'All currently installable first-party business apps must remain schema-backed.',
   );
 
   const directories =
@@ -665,6 +683,311 @@ test('Category 13: every first-party manifest has a schema payload and unsafe re
     lifecycle,
     /DROP\\s\+TABLE\\s\+IF\\s\+EXISTS/,
   );
+});
+
+
+test('Category 13: SaMi exposes one unified 80-app first-party module catalog', async () => {
+  const [
+    canonical,
+    additional,
+    compatibility,
+    onboarding,
+    settings,
+  ] = await Promise.all([
+    source(
+      'lib/modules/first-party.ts',
+    ),
+    source(
+      'lib/modules/additional-first-party.ts',
+    ),
+    source(
+      'lib/sami-apps.ts',
+    ),
+    source(
+      'app/select-apps/page.tsx',
+    ),
+    source(
+      'app/settings/components/AppsSettings.tsx',
+    ),
+  ]);
+
+  const originalKeys = [
+    ...canonical.matchAll(
+      /defineSamiModule\(\{\s*key:\s*"([^"]+)"/g,
+    ),
+  ].map(
+    match =>
+      match[1],
+  );
+
+  const additionalKeys = [
+    ...additional.matchAll(
+      /key:\s*['"]([^'"]+)['"]/g,
+    ),
+  ]
+    .map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    originalKeys.length,
+    36,
+    'SaMi must preserve the original 36 first-party module foundations.',
+  );
+
+  assert.equal(
+    additionalKeys.length,
+    44,
+    'SaMi must add 44 more module foundations for 80 business apps total.',
+  );
+
+  assert.equal(
+    new Set([
+      ...originalKeys,
+      ...additionalKeys,
+    ]).size,
+    80,
+    'All 80 first-party business app keys must be unique.',
+  );
+
+  assert.match(
+    canonical,
+    /\.\.\.ADDITIONAL_FIRST_PARTY_SAMI_MODULES/,
+  );
+
+  assert.match(
+    additional,
+    /installable:\s*true/,
+    'The additional 44 must use the same module-install foundation as the original catalog.',
+  );
+
+  assert.match(
+    additional,
+    /version:\s*['"]1\.0\.0['"]/,
+  );
+
+  assert.match(
+    additional,
+    /navigation:[\s\S]*actions:[\s\S]*views:/s,
+    'Additional modules must expose the same generic route/action/view contract as the original foundations.',
+  );
+
+  assert.match(
+    additional,
+    /schemaPath:\s*`lib\/apps\/\$\{key\}\/schema\.sql`/,
+  );
+
+  const appDirectories =
+    await readdir(
+      path.join(
+        root,
+        'lib/apps',
+      ),
+      {
+        withFileTypes:
+          true,
+      },
+    );
+
+  const directorySet =
+    new Set(
+      appDirectories
+        .filter(
+          entry =>
+            entry.isDirectory(),
+        )
+        .map(
+          entry =>
+            entry.name,
+        ),
+    );
+
+  for (
+    const key
+    of additionalKeys
+  ) {
+    assert.ok(
+      directorySet.has(
+        key,
+      ),
+      `Missing schema directory for additional app ${key}.`,
+    );
+
+    const schema =
+      await source(
+        `lib/apps/${key}/schema.sql`,
+      );
+
+    assert.match(
+      schema,
+      /company_id UUID NOT NULL REFERENCES public\.companies\(id\)/,
+      `Schema ${key} must remain company-scoped.`,
+    );
+
+    assert.match(
+      schema,
+      /created_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
+      `Schema ${key} must have creation timestamps.`,
+    );
+
+    assert.match(
+      schema,
+      /updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
+      `Schema ${key} must have update timestamps.`,
+    );
+
+    assert.match(
+      schema,
+      /deleted_at TIMESTAMPTZ/,
+      `Schema ${key} must support soft deletion.`,
+    );
+  }
+
+  const registeredKeys =
+    new Set([
+      ...originalKeys,
+      ...additionalKeys,
+    ]);
+
+  const dependencyLists = [
+    ...additional.matchAll(
+      /depends:\s*\[([^\]]*)\]/g,
+    ),
+  ]
+    .map(
+      match =>
+        [
+          ...match[1].matchAll(
+            /['"]([^'"]+)['"]/g,
+          ),
+        ]
+          .map(
+            item =>
+              item[1],
+          ),
+    );
+
+  for (
+    const dependencies
+    of dependencyLists
+  ) {
+    for (
+      const dependency
+      of dependencies
+    ) {
+      assert.ok(
+        registeredKeys.has(
+          dependency,
+        ),
+        `App dependency ${dependency} must be a registered SaMi module.`,
+      );
+    }
+  }
+
+  assert.match(
+    additional,
+    /depends:\s*\["invoicing"\]/,
+    'Billing must declare Invoicing as a required dependency.',
+  );
+
+  assert.match(
+    additional,
+    /depends:\s*\["employees"\]/,
+    'People extensions must declare Employees where required.',
+  );
+
+  assert.match(
+    additional,
+    /depends:\s*\["inventory"\]/,
+    'Supply-chain extensions must declare Inventory where required.',
+  );
+
+  assert.doesNotMatch(
+    compatibility,
+    /availability|PLANNED_SAMI_APPS|INSTALLABLE_SAMI_APPS/,
+    'The compatibility catalog must not create a second-class planned-app registry.',
+  );
+
+  assert.match(
+    onboarding,
+    /APP_CATEGORIES,[\s\S]*SAMI_APPS/s,
+    'Registration must use the same unified catalog.',
+  );
+
+  assert.doesNotMatch(
+    settings,
+    /coming_soon|Coming soon|Planned/,
+    'Settings must not divide the canonical app catalog into fake ready/planned classes.',
+  );
+});
+
+
+
+test('Category 13: control registry migration adds the same 44 module foundations for 80 business apps', async () => {
+  const migration =
+    await source(
+      'lib/schema/control-migrations/002-category-22-expand-app-catalog.sql',
+    );
+
+  assert.match(
+    migration,
+    /INSERT INTO modules/,
+  );
+
+  assert.match(
+    migration,
+    /ON CONFLICT \(key\)/,
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE/i,
+    'Catalog registration must be additive and non-destructive.',
+  );
+
+  const rows = [
+    ...migration.matchAll(
+      /\(\s*'([^']+)',\s*'[^']+',\s*'1\.0\.0'/g,
+    ),
+  ].map(
+    match =>
+      match[1],
+  );
+
+  assert.equal(
+    rows.length,
+    44,
+    'Control DB migration must register all 44 added business module keys.',
+  );
+
+  assert.equal(
+    new Set(
+      rows,
+    ).size,
+    44,
+    'Every added control module key must be unique.',
+  );
+
+  for (
+    const key
+    of [
+      'billing',
+      'payments',
+      'ecommerce',
+      'payroll',
+      'mail',
+      'calendar',
+      'whiteboard',
+    ]
+  ) {
+    assert.ok(
+      rows.includes(
+        key,
+      ),
+      `Control module migration must include ${key}.`,
+    );
+  }
 });
 
 

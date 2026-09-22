@@ -256,25 +256,25 @@ export default async function AppEntryPage({
             </p>
 
             <p className="mt-2 text-sm font-bold">
-              Ready for module features
+              App installed
             </p>
 
             <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {app.name} is installed and available to your current role. Its future records, workflows and AI tools will stay inside the same company context and permission boundaries already enforced by SaMi.
+              {app.name} is available in your workspace and follows your current company access and permissions. Additional features for this app will appear here as they become available.
             </p>
 
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               <AppFact
-                label="Company context"
-                value="Inherited"
+                label="Company"
+                value="Current"
               />
               <AppFact
-                label="Permissions"
-                value="Enforced"
+                label="Access"
+                value="Applied"
               />
               <AppFact
                 label="SaMi AI"
-                value="Boundary-ready"
+                value="Available"
               />
             </div>
           </div>
@@ -299,7 +299,7 @@ export default async function AppEntryPage({
             </div>
 
             <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              SaMi resolved this application from the installed app registry and your effective role access.
+              This app is available to you based on your workspace access and current company.
             </p>
 
             <Link

@@ -254,8 +254,14 @@ export default function AppsSettings({
     );
 
   const availableCount =
-    SAMI_APPS.length -
-    installedCount;
+    SAMI_APPS.filter(
+      app =>
+        !isInstalledState(
+          workspaceByKey.get(
+            app.key,
+          ),
+        ),
+    ).length;
 
   const catalog =
     useMemo(
@@ -486,7 +492,7 @@ export default function AppsSettings({
             </h2>
 
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Install any SaMi business app your workspace needs. App quantity is not a paid-plan limit; user seats and premium capabilities are managed separately.
+              Explore all 80 SaMi first-party app foundations in one catalog. Apps share the same module framework, schema lifecycle and dependency rules while their full business features are implemented app by app.
             </p>
           </div>
 
@@ -559,6 +565,7 @@ export default function AppsSettings({
               )
             }
           />
+
         </div>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -787,6 +794,7 @@ export default function AppsSettings({
                               : 'Install'}
                           </button>
                         )}
+
                       </div>
                     </div>
                   </div>

@@ -20,6 +20,7 @@ export type SamiApp = {
   description: string;
   icon: string;
   route: string;
+  installable: boolean;
   recommended?: boolean;
 };
 
@@ -57,6 +58,8 @@ export const SAMI_APPS:
           manifest.icon,
         route:
           manifest.route,
+        installable:
+          manifest.installable,
         recommended:
           manifest.recommended,
       }),
@@ -154,5 +157,17 @@ export function isValidAppKey(
     getApp(
       key,
     ),
+  );
+}
+
+export function isInstallableAppKey(
+  key:
+    string,
+): boolean {
+  return Boolean(
+    getApp(
+      key,
+    )
+      ?.installable,
   );
 }
