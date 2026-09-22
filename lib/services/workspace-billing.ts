@@ -16,8 +16,12 @@ import {
   getEffectiveSubscriptionStatus,
   getSamiPlanPolicy,
   normalizeSamiPlanKey,
-  type SamiPlanKey,
 } from '@/lib/billing/plan-policy';
+
+import {
+  getActiveBillingProvider,
+  getBillingProviderCatalog,
+} from '@/lib/billing/registry';
 
 import {
   getSamiBillingPriceSource,
@@ -30,9 +34,6 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
-import {
-  createPesaPalOrder,
-} from '@/lib/services/pesapal';
 
 export type WorkspaceBillingErrorCode =
   | 'UNAUTHENTICATED'
@@ -559,6 +560,104 @@ async function getPayments(
   );
 }
 
+async function persistProviderCheckout({
+  tenantId,
+  subscriptionId,
+  provider,
+  providerReference,
+  amount,
+  currency,
+  plan,
+  billableUsers,
+  pricePerUserMonthly,
+  checkoutUrl,
+}: {
+  tenantId:
+    string;
+  subscriptionId:
+    string;
+  provider:
+    string;
+  providerReference:
+    string;
+  amount:
+    number;
+  currency:
+    string;
+  plan:
+    string;
+  billableUsers:
+    number;
+  pricePerUserMonthly:
+    number;
+  checkoutUrl:
+    string;
+}) {
+  if (
+    provider ===
+      'pesapal'
+  ) {
+    /*
+     * Legacy PesaPal service already stores the transaction.
+     * Keep this compatibility path until its callback is
+     * fully moved behind the generic provider webhook layer.
+     */
+    return;
+  }
+
+  await queryControl(
+    `
+      INSERT INTO payment_transactions (
+        tenant_id,
+        subscription_id,
+        provider,
+        provider_transaction_id,
+        amount,
+        currency,
+        status,
+        description,
+        metadata,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        $4,
+        $5,
+        $6,
+        'pending',
+        $7,
+        $8::jsonb,
+        NOW(),
+        NOW()
+      )
+    `,
+    [
+      tenantId,
+      subscriptionId,
+      provider,
+      providerReference,
+      amount,
+      currency,
+      `SaMi ${plan} subscription payment`,
+      JSON.stringify({
+        checkoutUrl,
+        billingPurpose:
+          'subscription_payment',
+        plan,
+        billableUsers,
+        pricePerUserMonthly,
+        createdAt:
+          new Date()
+            .toISOString(),
+      }),
+    ],
+  );
+}
+
+
 async function persistPastDueIfNeeded(
   subscriptionId:
     string,
@@ -764,16 +863,38 @@ export async function getWorkspaceBillingState() {
 
     payments,
 
-    collection: {
-      provider:
-        'pesapal',
-      mode:
-        'monthly_checkout',
-      automaticRecurring:
-        false,
-      explanation:
-        'SaMi recalculates each monthly bill from the current active-user count and server-configured plan price before opening PesaPal.',
-    },
+    collection: (() => {
+      const provider =
+        getActiveBillingProvider();
+
+      return {
+        provider:
+          provider.key,
+        providerName:
+          provider.name,
+        mode:
+          provider.capabilities
+            .automaticRecurring &&
+          provider.capabilities
+            .variableRecurringAmount
+            ? 'recurring_capable'
+            : 'monthly_checkout',
+        automaticRecurring:
+          provider.capabilities
+            .automaticRecurring,
+        capabilities:
+          provider.capabilities,
+        providerCatalog:
+          getBillingProviderCatalog(),
+        explanation:
+          provider.capabilities
+            .automaticRecurring &&
+          provider.capabilities
+            .variableRecurringAmount
+            ? `SaMi can use ${provider.name} for future recurring billing while still recalculating seats and server-configured prices.`
+            : `SaMi recalculates each monthly bill from the current active-user count and server-configured plan price before opening ${provider.name}.`,
+      };
+    })(),
   };
 }
 
@@ -893,6 +1014,9 @@ export async function startWorkspaceBillingCheckout(
     );
   }
 
+  const provider =
+    getActiveBillingProvider();
+
   const recentPending =
     await queryControl(
       `
@@ -901,8 +1025,7 @@ export async function startWorkspaceBillingCheckout(
         FROM payment_transactions
         WHERE tenant_id = $1
           AND subscription_id = $2
-          AND provider =
-              'pesapal'
+          AND provider = $3
           AND status =
               'pending'
           AND created_at >
@@ -915,6 +1038,7 @@ export async function startWorkspaceBillingCheckout(
       [
         context.tenantId,
         subscription.id,
+        provider.key,
       ],
     );
 
@@ -942,7 +1066,7 @@ export async function startWorkspaceBillingCheckout(
 
     throw new WorkspaceBillingError(
       'PAYMENT_ALREADY_PENDING',
-      'A PesaPal checkout was created recently for this subscription.',
+      `A ${provider.name} checkout was created recently for this subscription.`,
       {
         checkoutUrl,
       },
@@ -1041,34 +1165,45 @@ export async function startWorkspaceBillingCheckout(
     );
 
   try {
+    const pricePerUserMonthly =
+      getSamiPricePerUserMonthly(
+        planKey,
+      );
+
     const order =
-      await createPesaPalOrder({
-        tenantId:
-          context.tenantId,
-        subscriptionId:
-          String(
-            subscription.id,
-          ),
+      await provider.createCheckout({
+        customer: {
+          tenantId:
+            context.tenantId,
+          subscriptionId:
+            String(
+              subscription.id,
+            ),
+          email:
+            user.email,
+          firstName:
+            typeof user.first_name ===
+              'string'
+              ? user.first_name
+              : '',
+          lastName:
+            typeof user.last_name ===
+              'string'
+              ? user.last_name
+              : '',
+          businessName:
+            typeof user.business_name ===
+              'string'
+              ? user.business_name
+              : 'SaMi Workspace',
+          phone:
+            null,
+        },
         amount,
-        email:
-          user.email,
-        firstName:
-          typeof user.first_name ===
-            'string'
-            ? user.first_name
-            : '',
-        lastName:
-          typeof user.last_name ===
-            'string'
-            ? user.last_name
-            : '',
-        businessName:
-          typeof user.business_name ===
-            'string'
-            ? user.business_name
-            : 'SaMi Workspace',
         plan:
           planKey,
+        billableUsers,
+        pricePerUserMonthly,
         selectedApps:
           apps.rows
             .map(
@@ -1083,25 +1218,45 @@ export async function startWorkspaceBillingCheckout(
             ),
         origin:
           input.origin ||
-          undefined,
+          null,
         currency:
           SAMI_BILLING_CURRENCY,
       });
 
-    return {
-      checkoutUrl:
-        order.redirectUrl,
-      orderTrackingId:
-        order.orderTrackingId,
-      amount:
-        order.amount,
-      currency:
-        order.currency,
-      billableUsers,
-      pricePerUserMonthly:
-        getSamiPricePerUserMonthly(
-          planKey,
+    await persistProviderCheckout({
+      tenantId:
+        context.tenantId,
+      subscriptionId:
+        String(
+          subscription.id,
         ),
+      provider:
+        order.provider,
+      providerReference:
+        order.providerReference,
+      amount,
+      currency:
+        SAMI_BILLING_CURRENCY,
+      plan:
+        planKey,
+      billableUsers,
+      pricePerUserMonthly,
+      checkoutUrl:
+        order.checkoutUrl,
+    });
+
+    return {
+      provider:
+        order.provider,
+      checkoutUrl:
+        order.checkoutUrl,
+      providerReference:
+        order.providerReference,
+      amount,
+      currency:
+        SAMI_BILLING_CURRENCY,
+      billableUsers,
+      pricePerUserMonthly,
       nextPeriodEnd:
         addCalendarMonths(
           new Date(),
@@ -1113,13 +1268,21 @@ export async function startWorkspaceBillingCheckout(
     error
   ) {
     console.error(
-      '[SaMi Billing] PesaPal checkout failed:',
-      error,
+      '[SaMi Billing] Provider checkout failed:',
+      {
+        provider:
+          provider.key,
+        error,
+      },
     );
 
     throw new WorkspaceBillingError(
       'PAYMENT_PROVIDER_FAILED',
-      'SaMi could not start PesaPal checkout. Please try again.',
+      `SaMi could not start ${provider.name} checkout. Please try again.`,
+      {
+        provider:
+          provider.key,
+      },
     );
   }
-}
+}}
