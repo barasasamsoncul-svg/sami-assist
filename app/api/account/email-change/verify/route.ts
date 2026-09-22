@@ -26,6 +26,10 @@ import {
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -464,6 +468,26 @@ export async function POST(
       metadata: {
         previousEmail,
 
+        newEmail:
+          account.email,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId:
+        session.user.id,
+      eventKey:
+        'security.email_changed',
+      title:
+        'Email address changed',
+      message:
+        'Your SaMi sign-in email was changed successfully. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:email-changed:${session.user.id}:${Date.now()}`,
+      metadata: {
+        previousEmail,
         newEmail:
           account.email,
       },
