@@ -24,6 +24,7 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getEffectiveSubscriptionStatus,
   getSamiPlanPolicy,
   isSubscriptionEntitledNow,
 } from '@/lib/billing/plan-policy';
@@ -1840,6 +1841,8 @@ async function requireMultiCompanyPlan(
       `
         SELECT
           s.status,
+          s.trial_ends_at,
+          s.current_period_end,
           p.key
             AS plan_key
         FROM subscriptions s
@@ -1868,7 +1871,16 @@ async function requireMultiCompanyPlan(
   if (
     !row ||
     !isSubscriptionEntitledNow(
-      row.status,
+      getEffectiveSubscriptionStatus({
+        status:
+          row.status,
+        planKey:
+          row.plan_key,
+        trialEndsAt:
+          row.trial_ends_at,
+        currentPeriodEnd:
+          row.current_period_end,
+      }),
     ) ||
     getSamiPlanPolicy(
       row.plan_key,
