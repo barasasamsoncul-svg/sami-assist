@@ -116,6 +116,7 @@ export type CreateWorkspaceNotificationInput = {
   dedupeKey?: string | null;
   metadata?: Record<string, unknown>;
   expiresAt?: Date | string | null;
+  forceSms?: boolean;
 };
 
 function requireUuid(
@@ -1506,7 +1507,10 @@ export async function createWorkspaceNotification(
     }
 
     if (
-      preferences.smsEnabled &&
+      (
+        preferences.smsEnabled ||
+        input.forceSms === true
+      ) &&
       !muted
     ) {
       const delivery =
