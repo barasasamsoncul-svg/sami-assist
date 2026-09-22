@@ -294,6 +294,95 @@ test('Category 23: Usage & Limits UI is responsive and permission-aware in navig
   );
 });
 
+test('Category 23: SaMi AI attachments reuse private workspace storage and message links', async () => {
+  const [
+    attachments,
+    ai,
+    route,
+    client,
+    env,
+  ] = await Promise.all([
+    source(
+      'lib/ai/attachments.ts',
+    ),
+    source(
+      'lib/services/workspace-ai.ts',
+    ),
+    source(
+      'app/api/workspace/ai/chat/route.ts',
+    ),
+    source(
+      'app/components/workspace/WorkspaceAiClient.tsx',
+    ),
+    source(
+      'docs/platform-env.example',
+    ),
+  ]);
+
+  assert.match(
+    attachments,
+    /FROM files[\s\S]*company_id = \$1[\s\S]*status = 'active'/s,
+  );
+
+  assert.match(
+    attachments,
+    /INSERT INTO file_links[\s\S]*'core\.ai'[\s\S]*'ai_message'/s,
+  );
+
+  assert.match(
+    attachments,
+    /getPrivateObjectBytes/,
+    'Readable text attachments must be read from private object storage server-side.',
+  );
+
+  assert.match(
+    attachments,
+    /Do not claim to have read its contents/,
+    'Unsupported binary attachments must not be presented to the model as if their contents were read.',
+  );
+
+  assert.match(
+    ai,
+    /resolveSamiAiAttachments[\s\S]*linkSamiAiAttachmentsToMessage/s,
+  );
+
+  assert.match(
+    ai,
+    /loadSamiAiAttachmentContextForMessages/,
+    'Regeneration/history must reconstruct attachment context from durable message links.',
+  );
+
+  assert.match(
+    route,
+    /attachmentIds:[\s\S]*body\?\.attachmentIds/s,
+  );
+
+  assert.match(
+    client,
+    /Paperclip/,
+  );
+
+  assert.match(
+    client,
+    /upload-intent/,
+  );
+
+  assert.match(
+    client,
+    /ai_attachment/,
+  );
+
+  assert.match(
+    env,
+    /SAMI_AI_MAX_ATTACHMENTS_PER_MESSAGE=5/,
+  );
+
+  assert.match(
+    env,
+    /SAMI_AI_ATTACHMENT_TEXT_MAX_BYTES=524288/,
+  );
+});
+
 test('Category 23: tenant migration runner repairs physically completed audit history', async () => {
   const migrations =
     await source(
