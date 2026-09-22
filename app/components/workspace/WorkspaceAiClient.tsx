@@ -1479,8 +1479,8 @@ export default function WorkspaceAiClient({
             icon={
               ShieldCheck
             }
-            title="SaMi AI is not included in this workspace"
-            description="AI availability follows the workspace subscription. Your normal workspace access remains unchanged."
+            title="SaMi AI is temporarily unavailable"
+            description="SaMi AI is part of the workspace, but usage is currently unavailable. Check the workspace subscription or billing status to restore access."
           />
         </div>
       ) : loading ? (
