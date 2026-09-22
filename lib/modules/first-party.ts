@@ -3,6 +3,10 @@ import {
   type SamiModuleManifest,
 } from '@/lib/modules/types';
 
+import {
+  PLANNED_FIRST_PARTY_SAMI_MODULES,
+} from '@/lib/modules/planned-first-party';
+
 /*
  * Canonical first-party module manifests.
  *
@@ -2391,6 +2395,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       integrationProviders: false,
       apiEndpoints: false,
     },
-  })
-];
+  }),
 
+  ...PLANNED_FIRST_PARTY_SAMI_MODULES,
+];
