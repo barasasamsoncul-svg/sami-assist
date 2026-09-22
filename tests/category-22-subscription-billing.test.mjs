@@ -474,6 +474,44 @@ test('Category 22: recurring invoices must match the SaMi billing profile before
   );
 });
 
+test('Category 22: failed checkout starts dunning only when paid access has actually expired', async () => {
+  const application =
+    await source(
+      'lib/billing/payment-application.ts',
+    );
+
+  const failedStart =
+    application.indexOf(
+      'export async function markVerifiedCheckoutFailed',
+    );
+
+  assert.ok(
+    failedStart >= 0,
+  );
+
+  const failedBlock =
+    application.slice(
+      failedStart,
+      application.indexOf(
+        'export async function applyVerifiedRecurringInvoice',
+        failedStart,
+      ),
+    );
+
+  assert.match(
+    failedBlock,
+    /status\s*=\s*'active'[\s\S]*current_period_end[\s\S]*<=\s*NOW\(\)/s,
+    'A failed retry must not shorten an already-paid active period.',
+  );
+
+  assert.match(
+    failedBlock,
+    /status IN \([\s\S]*'trial'[\s\S]*'trialing'[\s\S]*trial_ends_at[\s\S]*<=\s*NOW\(\)/s,
+    'A failed trial checkout must not end a still-valid free month early.',
+  );
+});
+
+
 test('Category 22: billing reconciliation follows provider pinning and live seats/prices', async () => {
   const [
     reconcile,
