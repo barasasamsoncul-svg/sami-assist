@@ -635,6 +635,180 @@ export async function checkIntegrationConnectionHealth(
   return health;
 }
 
+export async function sendSlackIntegrationMessage(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  input: {
+    connectionId:
+      string;
+    channel:
+      string;
+    text:
+      string;
+  },
+) {
+  const channel =
+    input.channel
+      .trim()
+      .toUpperCase();
+
+  const text =
+    input.text
+      .replace(
+        /\u0000/g,
+        '',
+      )
+      .trim()
+      .slice(
+        0,
+        3000,
+      );
+
+  if (
+    !/^[A-Z][A-Z0-9]{7,30}$/.test(
+      channel,
+    )
+  ) {
+    throw new Error(
+      'Slack channel must be a valid channel or conversation ID.',
+    );
+  }
+
+  if (
+    !text
+  ) {
+    throw new Error(
+      'Slack message text is required.',
+    );
+  }
+
+  const loaded =
+    await loadCredential({
+      tenantId:
+        runtime.tenantId,
+      companyId:
+        runtime.companyId,
+      connectionId:
+        input.connectionId,
+    });
+
+  if (
+    loaded.providerKey !==
+      'slack' ||
+    loaded.revoked ||
+    !loaded.credential
+      ?.accessToken
+  ) {
+    throw new Error(
+      'Connected Slack credentials are not available.',
+    );
+  }
+
+  if (
+    credentialExpired(
+      loaded.credential,
+    )
+  ) {
+    throw new Error(
+      'The Slack connection has expired and must be reconnected.',
+    );
+  }
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+  try {
+    const response =
+      await fetch(
+        'https://slack.com/api/chat.postMessage',
+        {
+          method:
+            'POST',
+          headers: {
+            Accept:
+              'application/json',
+            Authorization:
+              'Bearer ' +
+              loaded.credential
+                .accessToken,
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify({
+              channel,
+              text,
+            }),
+          cache:
+            'no-store',
+          signal:
+            controller.signal,
+        },
+      );
+
+    const payload =
+      safeObject(
+        await response.json()
+          .catch(
+            () => ({}),
+          ),
+      );
+
+    if (
+      !response.ok ||
+      payload.ok !==
+        true
+    ) {
+      const code =
+        typeof payload.error ===
+          'string'
+          ? payload.error
+              .replace(
+                /[^a-z0-9_:-]/gi,
+                '',
+              )
+              .slice(
+                0,
+                120,
+              )
+          : 'slack_message_failed';
+
+      throw new Error(
+        'Slack rejected the message (' +
+        code +
+        ').',
+      );
+    }
+
+    return {
+      provider:
+        'slack',
+      channel:
+        typeof payload.channel ===
+          'string'
+          ? payload.channel
+          : channel,
+      messageTs:
+        typeof payload.ts ===
+          'string'
+          ? payload.ts
+          : null,
+    };
+  } finally {
+    clearTimeout(
+      timeout,
+    );
+  }
+}
+
+
 export function getIntegrationSyncHandler(
   providerKey:
     string,
