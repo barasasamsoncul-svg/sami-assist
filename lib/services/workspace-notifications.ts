@@ -11,6 +11,7 @@ import {
 } from '@/lib/auth/permission-context';
 import { requireCompanyAccess } from '@/lib/services/company-access';
 import { sendWorkspaceNotificationEmail } from '@/lib/services/email';
+import { sendWorkspaceNotificationSms } from '@/lib/services/sms';
 import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
@@ -507,6 +508,7 @@ async function resolveRecipient(
           u.email,
           u.first_name,
           u.last_name,
+          u.phone,
           tu.is_owner
         FROM tenant_users tu
         INNER JOIN users u
@@ -550,6 +552,7 @@ async function resolveRecipient(
       email: string;
       first_name: string | null;
       last_name: string | null;
+      phone: string | null;
       is_owner: boolean;
     };
 
@@ -753,6 +756,7 @@ export async function updateWorkspaceNotificationPreferences(
   patch: {
     inAppEnabled?: unknown;
     emailEnabled?: unknown;
+    smsEnabled?: unknown;
     muteUntil?: unknown;
   },
 ): Promise<WorkspaceNotificationPreferences> {
@@ -781,6 +785,11 @@ export async function updateWorkspaceNotificationPreferences(
     typeof patch.emailEnabled === 'boolean'
       ? patch.emailEnabled
       : current.emailEnabled;
+
+  const smsEnabled =
+    typeof patch.smsEnabled === 'boolean'
+      ? patch.smsEnabled
+      : current.smsEnabled;
 
   let muteUntil =
     current.muteUntil;
@@ -835,8 +844,8 @@ export async function updateWorkspaceNotificationPreferences(
           $3,
           $4,
           FALSE,
-          FALSE,
           $5,
+          $6,
           NOW(),
           NOW()
         )
@@ -850,6 +859,8 @@ export async function updateWorkspaceNotificationPreferences(
             EXCLUDED.in_app_enabled,
           email_enabled =
             EXCLUDED.email_enabled,
+          sms_enabled =
+            EXCLUDED.sms_enabled,
           mute_until =
             EXCLUDED.mute_until,
           updated_at =
@@ -866,6 +877,7 @@ export async function updateWorkspaceNotificationPreferences(
         context.userId,
         inAppEnabled,
         emailEnabled,
+        smsEnabled,
         muteUntil,
       ],
     );
@@ -926,6 +938,12 @@ export async function updateWorkspaceNotificationPreferences(
             current.emailEnabled,
           to:
             updatedPreferences.emailEnabled,
+        },
+        smsEnabled: {
+          from:
+            current.smsEnabled,
+          to:
+            updatedPreferences.smsEnabled,
         },
         muteUntil: {
           from:
@@ -1310,6 +1328,9 @@ export async function createWorkspaceNotification(
   let emailQueued =
     false;
 
+  let smsQueued =
+    false;
+
   try {
     await client.query(
       'BEGIN',
@@ -1484,6 +1505,48 @@ export async function createWorkspaceNotification(
         delivery.rows.length === 1;
     }
 
+    if (
+      preferences.smsEnabled &&
+      !muted
+    ) {
+      const delivery =
+        await client.query(
+          `
+            INSERT INTO notification_deliveries (
+              notification_id,
+              recipient_user_id,
+              channel,
+              status,
+              attempts,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              $1,
+              $2,
+              'sms',
+              'pending',
+              0,
+              NOW(),
+              NOW()
+            )
+            ON CONFLICT (
+              notification_id,
+              channel
+            )
+            DO NOTHING
+            RETURNING id
+          `,
+          [
+            row.id,
+            recipientUserId,
+          ],
+        );
+
+      smsQueued =
+        delivery.rows.length === 1;
+    }
+
     await client.query(
       'COMMIT',
     );
@@ -1594,6 +1657,100 @@ export async function createWorkspaceNotification(
           error instanceof Error
             ? error.message.slice(0, 1000)
             : 'Email delivery failed.',
+        ],
+      );
+    }
+  }
+
+  if (smsQueued) {
+    try {
+      const delivery =
+        await sendWorkspaceNotificationSms(
+          recipient.phone,
+          {
+            title,
+            message,
+          },
+        );
+
+      await pool.query(
+        `
+          UPDATE notification_deliveries
+          SET
+            status = $3,
+            attempts = attempts + 1,
+            provider_message_id = $4,
+            last_attempt_at = NOW(),
+            sent_at =
+              CASE
+                WHEN $3 = 'sent'
+                THEN NOW()
+                ELSE sent_at
+              END,
+            failed_at =
+              CASE
+                WHEN $3 = 'failed'
+                THEN NOW()
+                ELSE NULL
+              END,
+            error_code =
+              CASE
+                WHEN $3 = 'failed'
+                THEN $5
+                ELSE NULL
+              END,
+            error_message = NULL,
+            updated_at = NOW()
+          WHERE notification_id = $1
+            AND recipient_user_id = $2
+            AND channel = 'sms'
+        `,
+        [
+          row.id,
+          recipientUserId,
+          delivery.success
+            ? 'sent'
+            : 'failed',
+          delivery.messageId ||
+          null,
+          delivery.errorCode ||
+          'DELIVERY_UNAVAILABLE',
+        ],
+      );
+    } catch (error) {
+      console.error(
+        '[SaMi Notifications] SMS delivery failed:',
+        {
+          notificationId:
+            row.id,
+          error,
+        },
+      );
+
+      await pool.query(
+        `
+          UPDATE notification_deliveries
+          SET
+            status = 'failed',
+            attempts = attempts + 1,
+            last_attempt_at = NOW(),
+            failed_at = NOW(),
+            error_code = 'DELIVERY_FAILED',
+            error_message = $3,
+            updated_at = NOW()
+          WHERE notification_id = $1
+            AND recipient_user_id = $2
+            AND channel = 'sms'
+        `,
+        [
+          row.id,
+          recipientUserId,
+          error instanceof Error
+            ? error.message.slice(
+                0,
+                1000,
+              )
+            : 'SMS delivery failed.',
         ],
       );
     }
