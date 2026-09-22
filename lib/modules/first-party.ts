@@ -78,6 +78,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -142,6 +143,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -206,6 +208,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -270,6 +273,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -334,6 +338,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -398,6 +403,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -462,6 +468,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -526,6 +533,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -590,6 +598,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -654,6 +663,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -718,6 +728,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -782,6 +793,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -846,6 +858,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -910,6 +923,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -974,6 +988,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1038,6 +1053,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1102,6 +1118,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1166,6 +1183,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1230,6 +1248,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1294,6 +1313,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1358,6 +1378,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1422,6 +1443,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1486,6 +1508,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1550,6 +1573,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1614,6 +1638,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1678,6 +1703,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1742,6 +1768,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1806,6 +1833,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1870,6 +1898,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1934,6 +1963,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -1998,6 +2028,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -2062,6 +2093,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -2126,6 +2158,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -2190,6 +2223,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -2254,6 +2288,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   }),
 
@@ -2318,6 +2353,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationTriggers: false,
       automationActions: false,
       aiTools: false,
+      integrationProviders: false,
     },
   })
 ];
