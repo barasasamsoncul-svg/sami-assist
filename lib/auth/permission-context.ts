@@ -369,8 +369,12 @@ export async function resolvePermissionContext(
         .SETTINGS_MANAGE,
     ]);
 
+  const subscriptionRestricted =
+    subscriptionAccess.suspended ||
+    !subscriptionAccess.entitled;
+
   const permissions =
-    subscriptionAccess.suspended
+    subscriptionRestricted
       ? resolvedPermissions.filter(
           permission =>
             recoveryPermissions.has(
