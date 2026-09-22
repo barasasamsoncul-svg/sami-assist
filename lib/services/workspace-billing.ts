@@ -2247,8 +2247,10 @@ async function synchronizeRecurringPlanChange(
       string;
     seats:
       number;
-    scheduleCancellation:
-      boolean;
+    cancellationMode:
+      'immediate' |
+      'period_end' |
+      null;
   },
 ) {
   const profile =
@@ -2289,8 +2291,47 @@ async function synchronizeRecurringPlanChange(
   }
 
   if (
-    input.scheduleCancellation
+    input.cancellationMode
   ) {
+    if (
+      input.cancellationMode ===
+        'immediate'
+    ) {
+      if (
+        !provider
+          .cancelRecurringSubscription
+      ) {
+        throw new WorkspaceBillingError(
+          'PLAN_CHANGE_PROVIDER_UNSUPPORTED',
+          `${provider.name} cannot safely cancel this recurring subscription.`,
+          {
+            provider:
+              provider.key,
+          },
+        );
+      }
+
+      await provider
+        .cancelRecurringSubscription(
+          profile.providerSubscriptionId,
+        );
+
+      await updateActiveSubscriptionBillingProfile(
+        input.subscriptionId,
+        {
+          recurringStatus:
+            'cancelled',
+          metadata: {
+            cancelledForPlanChangeAt:
+              new Date()
+                .toISOString(),
+          },
+        },
+      );
+
+      return;
+    }
+
     if (
       !provider
         .scheduleRecurringCancellation
@@ -2680,8 +2721,8 @@ export async function changeWorkspaceSubscriptionPlan(
         targetPlan,
         seats:
           capacity.users,
-        scheduleCancellation:
-          false,
+        cancellationMode:
+          null,
       });
     } else {
       await synchronizeRecurringPlanChange({
@@ -2689,8 +2730,8 @@ export async function changeWorkspaceSubscriptionPlan(
         targetPlan,
         seats:
           capacity.users,
-        scheduleCancellation:
-          true,
+        cancellationMode:
+          'immediate',
       });
     }
 
@@ -2837,8 +2878,10 @@ export async function changeWorkspaceSubscriptionPlan(
       targetPlan,
       seats:
         capacity.users,
-      scheduleCancellation:
-        !targetPolicy.paid,
+      cancellationMode:
+        targetPolicy.paid
+          ? null
+          : 'period_end',
     });
 
     await queryControl(
