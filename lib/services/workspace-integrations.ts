@@ -1726,6 +1726,129 @@ export async function getWorkspaceIntegrationAssignableUsers() {
     );
 }
 
+export async function getWorkspaceExternalAppAssignmentState(
+  externalAppId:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const appId =
+    requireUuid(
+      externalAppId,
+      'external app',
+    );
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const app =
+    await pool.query(
+      `
+        SELECT
+          id,
+          name,
+          assignment_mode
+        FROM integration_external_apps
+        WHERE id = $1
+          AND company_id = $2
+          AND archived_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+  if (
+    app.rows.length !==
+      1
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INTEGRATION_NOT_FOUND',
+      'External app could not be found in the current company.',
+    );
+  }
+
+  const [
+    users,
+    assignments,
+  ] =
+    await Promise.all([
+      getWorkspaceIntegrationAssignableUsers(),
+      pool.query(
+        `
+          SELECT
+            user_id,
+            assignment_source,
+            assigned_by,
+            created_at
+          FROM integration_external_app_assignments
+          WHERE external_app_id = $1
+            AND company_id = $2
+          ORDER BY
+            created_at,
+            user_id
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+        ],
+      ),
+    ]);
+
+  const assigned =
+    new Set(
+      assignments.rows.map(
+        row =>
+          String(
+            row.user_id,
+          ),
+      ),
+    );
+
+  return {
+    externalApp: {
+      id:
+        String(
+          app.rows[0]
+            .id,
+        ),
+      name:
+        String(
+          app.rows[0]
+            .name,
+        ),
+      assignmentMode:
+        String(
+          app.rows[0]
+            .assignment_mode,
+        ),
+    },
+
+    users:
+      users.map(
+        user => ({
+          ...user,
+          assigned:
+            assigned.has(
+              user.id,
+            ),
+        }),
+      ),
+  };
+}
+
+
 export async function setWorkspaceExternalAppAssignments(
   externalAppId:
     unknown,
