@@ -542,7 +542,7 @@ test('Category 13: legacy onboarding no longer enforces an app-count plan limit'
   );
 });
 
-test('Category 13: every first-party manifest has a schema payload and unsafe replacement SQL is guarded', async () => {
+test('Category 13: every installable first-party manifest has a schema payload and unsafe replacement SQL is guarded', async () => {
   const [
     manifests,
     lifecycle,
@@ -568,7 +568,7 @@ test('Category 13: every first-party manifest has a schema payload and unsafe re
   assert.equal(
     keys.length,
     36,
-    'All first-party business apps must be represented by canonical manifests.',
+    'All currently installable first-party business apps must remain schema-backed.',
   );
 
   const directories =
@@ -664,6 +664,124 @@ test('Category 13: every first-party manifest has a schema payload and unsafe re
   assert.match(
     lifecycle,
     /DROP\\s\+TABLE\\s\+IF\\s\+EXISTS/,
+  );
+});
+
+
+test('Category 13: SaMi exposes an 80-app catalog without pretending planned modules are installable', async () => {
+  const [
+    canonical,
+    planned,
+    compatibility,
+    onboarding,
+    settings,
+  ] = await Promise.all([
+    source(
+      'lib/modules/first-party.ts',
+    ),
+    source(
+      'lib/modules/planned-first-party.ts',
+    ),
+    source(
+      'lib/sami-apps.ts',
+    ),
+    source(
+      'app/select-apps/page.tsx',
+    ),
+    source(
+      'app/settings/components/AppsSettings.tsx',
+    ),
+  ]);
+
+  const readyKeys = [
+    ...canonical.matchAll(
+      /defineSamiModule\(\{\s*key:\s*"([^"]+)"/g,
+    ),
+  ].map(
+    match =>
+      match[1],
+  );
+
+  const plannedKeys = [
+    ...planned.matchAll(
+      /key:\s*\n?\s*'([^']+)'/g,
+    ),
+  ]
+    .map(
+      match =>
+        match[1],
+    )
+    .filter(
+      key =>
+        key !==
+        'ready' &&
+        key !==
+        'planned',
+    );
+
+  assert.equal(
+    readyKeys.length,
+    36,
+    'SaMi must preserve the 36 schema-backed apps already implemented.',
+  );
+
+  assert.equal(
+    plannedKeys.length,
+    44,
+    'The expansion must add 44 roadmap apps for an 80-app first-party catalog.',
+  );
+
+  assert.match(
+    canonical,
+    /\.\.\.PLANNED_FIRST_PARTY_SAMI_MODULES/,
+  );
+
+  assert.match(
+    planned,
+    /installable:\s*false/,
+  );
+
+  assert.match(
+    planned,
+    /schemaPath:\s*null/,
+  );
+
+  assert.doesNotMatch(
+    planned,
+    /installable:\s*true/,
+    'Roadmap-only modules must never silently become installable.',
+  );
+
+  assert.match(
+    compatibility,
+    /INSTALLABLE_SAMI_APPS/,
+  );
+
+  assert.match(
+    compatibility,
+    /availability:[\s\S]*planned/s,
+  );
+
+  assert.match(
+    onboarding,
+    /INSTALLABLE_SAMI_APPS as SAMI_APPS/,
+    'Registration must expose only real schema-backed apps.',
+  );
+
+  assert.match(
+    settings,
+    /coming_soon/,
+  );
+
+  assert.match(
+    settings,
+    /Coming soon/,
+  );
+
+  assert.match(
+    settings,
+    /app\.installable/,
+    'Settings must gate lifecycle actions on manifest installability.',
   );
 });
 
