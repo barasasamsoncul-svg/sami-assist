@@ -6,6 +6,14 @@ import {
   type TrustedTenantContext,
 } from '@/lib/auth/tenant-context';
 
+import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
+
 export interface EffectiveRole {
   id: string;
   key: string | null;
@@ -338,11 +346,38 @@ export async function resolvePermissionContext(
     loadMembershipAppBoundary(tenantContext),
   ]);
 
-  const permissions = uniquePermissions(
+  const resolvedPermissions = uniquePermissions(
     tenantContext.isOwner
       ? rawPermissions
       : applyAppBoundary(rawPermissions, appBoundary),
   );
+
+  const subscriptionAccess =
+    await getWorkspaceSubscriptionAccessState(
+      tenantContext.tenantId,
+    );
+
+  const recoveryPermissions =
+    new Set<string>([
+      SAMI_PERMISSIONS
+        .BILLING_VIEW,
+      SAMI_PERMISSIONS
+        .BILLING_MANAGE,
+      SAMI_PERMISSIONS
+        .SETTINGS_VIEW,
+      SAMI_PERMISSIONS
+        .SETTINGS_MANAGE,
+    ]);
+
+  const permissions =
+    subscriptionAccess.pastDue
+      ? resolvedPermissions.filter(
+          permission =>
+            recoveryPermissions.has(
+              permission.key,
+            ),
+        )
+      : resolvedPermissions;
 
   const permissionKeys = permissions.map(permission => permission.key);
   const permissionSet = new Set<string>(permissionKeys);
