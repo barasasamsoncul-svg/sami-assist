@@ -27,11 +27,10 @@ export interface SendSubscriptionConfirmationEmailInput {
   /*
    * Backend-calculated price per billable user.
    *
-   * Free     = 0
-   * Standard = 2000
-   * Custom   = 3340
+   * Free = 0.
+   * Paid-plan prices come from SaMi's server-side billing configuration.
    *
-   * Do not calculate this from client input.
+   * Do not calculate or accept this value from client input.
    */
   pricePerUserMonthly: number;
 
