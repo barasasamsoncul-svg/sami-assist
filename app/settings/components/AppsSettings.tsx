@@ -59,7 +59,8 @@ type WorkspaceModule = {
 type Filter =
   | 'all'
   | 'installed'
-  | 'available';
+  | 'available'
+  | 'coming_soon';
 
 
 type PendingLifecycleAction = {
@@ -254,8 +255,21 @@ export default function AppsSettings({
     );
 
   const availableCount =
-    SAMI_APPS.length -
-    installedCount;
+    SAMI_APPS.filter(
+      app =>
+        app.installable &&
+        !isInstalledState(
+          workspaceByKey.get(
+            app.key,
+          ),
+        ),
+    ).length;
+
+  const comingSoonCount =
+    SAMI_APPS.filter(
+      app =>
+        !app.installable,
+    ).length;
 
   const catalog =
     useMemo(
@@ -285,7 +299,18 @@ export default function AppsSettings({
             if (
               filter ===
                 'available' &&
-              installed
+              (
+                installed ||
+                !app.installable
+              )
+            ) {
+              return false;
+            }
+
+            if (
+              filter ===
+                'coming_soon' &&
+              app.installable
             ) {
               return false;
             }
@@ -486,7 +511,7 @@ export default function AppsSettings({
             </h2>
 
             <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              Install any SaMi business app your workspace needs. App quantity is not a paid-plan limit; user seats and premium capabilities are managed separately.
+              Explore the full SaMi business suite. Ready apps can be installed now; planned apps are visible as Coming soon so the product roadmap stays transparent without exposing unfinished modules.
             </p>
           </div>
 
@@ -556,6 +581,22 @@ export default function AppsSettings({
             onClick={() =>
               setFilter(
                 'available',
+              )
+            }
+          />
+
+          <FilterButton
+            label="Coming soon"
+            count={
+              comingSoonCount
+            }
+            active={
+              filter ===
+              'coming_soon'
+            }
+            onClick={() =>
+              setFilter(
+                'coming_soon',
               )
             }
           />
@@ -658,6 +699,9 @@ export default function AppsSettings({
                           installed={
                             installed
                           }
+                          installable={
+                            app.installable
+                          }
                         />
                       </div>
 
@@ -759,8 +803,9 @@ export default function AppsSettings({
                           </span>
                         )}
 
-                        {(!installed ||
-                          failed) &&
+                        {app.installable &&
+                          (!installed ||
+                            failed) &&
                           !pending && (
                           <button
                             type="button"
@@ -786,6 +831,12 @@ export default function AppsSettings({
                               ? 'Retry'
                               : 'Install'}
                           </button>
+                        )}
+
+                        {!app.installable && (
+                          <span className="inline-flex h-8 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-bold text-slate-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-slate-400">
+                            Planned
+                          </span>
                         )}
                       </div>
                     </div>
@@ -880,10 +931,13 @@ export default function AppsSettings({
 function StatusBadge({
   status,
   installed,
+  installable,
 }: {
   status:
     string;
   installed:
+    boolean;
+  installable:
     boolean;
 }) {
   if (
@@ -926,6 +980,16 @@ function StatusBadge({
       <span className="inline-flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[9px] font-semibold text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">
         <CheckCircle2 className="h-3 w-3" />
         Installed
+      </span>
+    );
+  }
+
+  if (
+    !installable
+  ) {
+    return (
+      <span className="shrink-0 rounded-md bg-violet-50 px-2 py-1 text-[9px] font-semibold text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">
+        Coming soon
       </span>
     );
   }
