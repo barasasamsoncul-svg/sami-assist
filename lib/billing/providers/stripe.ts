@@ -231,7 +231,18 @@ export const stripeBillingProvider:
     return Boolean(
       process.env
         .STRIPE_SECRET_KEY
-        ?.trim(),
+        ?.trim() &&
+      (
+        process.env
+          .NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+          ?.trim() ||
+        process.env
+          .STRIPE_PUBLISHABLE_KEY
+          ?.trim()
+      ) &&
+      process.env
+        .STRIPE_WEBHOOK_SECRET
+        ?.trim()
     );
   },
 
