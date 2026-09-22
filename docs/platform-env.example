@@ -26,6 +26,8 @@ PESAPAL_IPN_ID=<your-registered-pesapal-ipn-id>
 # ============================================================
 
 STRIPE_SECRET_KEY=
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+# Optional server-side compatibility alias; normally leave blank when NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY is set.
 STRIPE_PUBLISHABLE_KEY=
 STRIPE_WEBHOOK_SECRET=
 
