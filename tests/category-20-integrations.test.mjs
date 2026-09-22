@@ -985,6 +985,48 @@ test('Category 20: Integrations UI, navigation and search are permission-aware a
   );
 });
 
+test('Category 20: Automation uses real webhook and Slack connection selectors instead of UUID-paste UX', async () => {
+  const client =
+    await source(
+      'app/automation/AutomationClient.tsx',
+    );
+
+  assert.match(
+    client,
+    /\/api\/workspace\/integrations/,
+  );
+
+  assert.match(
+    client,
+    /integrations\.webhook\.received/,
+  );
+
+  assert.match(
+    client,
+    /Webhook endpoint/,
+  );
+
+  assert.match(
+    client,
+    /Choose webhook/,
+  );
+
+  assert.match(
+    client,
+    /integrations\.slack\.send_message/,
+  );
+
+  assert.match(
+    client,
+    /Choose Slack connection/,
+  );
+
+  assert.match(
+    client,
+    /connection\.providerKey ===\s*['"]slack['"]/,
+  );
+});
+
 test('Category 20: browser management APIs are narrow, same-origin protected and no-cache', async () => {
   const [
     helper,
