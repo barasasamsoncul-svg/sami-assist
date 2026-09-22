@@ -232,4 +232,11 @@ export type SamiBillingProvider = {
         string,
     ) =>
       Promise<void>;
+
+  resumeRecurringSubscription?:
+    (
+      providerSubscriptionId:
+        string,
+    ) =>
+      Promise<void>;
 };
