@@ -37,6 +37,10 @@ import {
 } from '@/lib/services/workspace-messages';
 
 import {
+  getWorkspaceExternalAppLauncherEntries,
+} from '@/lib/services/workspace-integrations';
+
+import {
   getWorkspaceSearchProviders,
 } from '@/lib/search/registry';
 
@@ -936,6 +940,51 @@ function appCandidates(
     );
 }
 
+async function externalAppCandidates() {
+  try {
+    const apps =
+      await getWorkspaceExternalAppLauncherEntries();
+
+    return apps.map(
+      app =>
+        candidate({
+          id:
+            'external-app:' +
+            app.id,
+          kind:
+            'app',
+          title:
+            app.name,
+          subtitle:
+            'External business app',
+          description:
+            app.description ||
+            'Assigned external application.',
+          href:
+            app.launchUrl,
+          iconKey:
+            'external-link',
+          badge:
+            'External',
+          score:
+            40,
+          action:
+            null,
+          source:
+            'integrations',
+          keywords: [
+            'external',
+            'connected',
+            'launcher',
+            app.authMode,
+          ],
+        }),
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function companyCandidates() {
   const state =
     await getCompanySelectorState();
@@ -1157,11 +1206,13 @@ export async function searchWorkspace(
 
   const [
     companiesResult,
+    externalAppsResult,
     peopleResult,
     filesResult,
   ] =
     await Promise.allSettled([
       companyCandidates(),
+      externalAppCandidates(),
       query
         ? peopleCandidates(
             raw,
@@ -1186,6 +1237,12 @@ export async function searchWorkspace(
       companiesResult.status ===
         'fulfilled'
         ? companiesResult.value
+        : []
+    ),
+    ...(
+      externalAppsResult.status ===
+        'fulfilled'
+        ? externalAppsResult.value
         : []
     ),
     ...(
