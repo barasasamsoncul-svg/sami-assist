@@ -1612,7 +1612,8 @@ export async function getWorkspaceExternalAppLauncherEntries() {
           a.description,
           a.launch_url,
           a.icon_key,
-          a.auth_mode
+          a.auth_mode,
+          a.assignment_mode
         FROM integration_external_apps a
         WHERE a.company_id = $1
           AND a.status =
@@ -1622,6 +1623,8 @@ export async function getWorkspaceExternalAppLauncherEntries() {
           AND (
             a.assignment_mode =
               'all_internal'
+            OR a.assignment_mode =
+              'rule'
             OR EXISTS (
               SELECT 1
               FROM integration_external_app_assignments aa
@@ -1641,38 +1644,334 @@ export async function getWorkspaceExternalAppLauncherEntries() {
       ],
     );
 
-  return result.rows.map(
-    row => ({
-      id:
-        String(
-          row.id,
+  const ruleAppIds =
+    result.rows
+      .filter(
+        row =>
+          String(
+            row.assignment_mode ||
+            '',
+          ) ===
+          'rule',
+      )
+      .map(
+        row =>
+          String(
+            row.id,
+          ),
+      );
+
+  let allowedRuleApps =
+    new Set<string>();
+
+  if (
+    ruleAppIds.length >
+      0
+  ) {
+    const [
+      identity,
+      rules,
+    ] =
+      await Promise.all([
+        queryControl(
+          `
+            SELECT
+              u.email,
+              COALESCE(
+                ARRAY_AGG(
+                  DISTINCT LOWER(r.key)
+                ) FILTER (
+                  WHERE r.key IS NOT NULL
+                ),
+                ARRAY[]::text[]
+              )
+                AS role_keys
+            FROM users u
+            LEFT JOIN user_roles ur
+              ON ur.user_id =
+                 u.id
+             AND ur.tenant_id =
+                 $2
+             AND ur.deleted_at
+                 IS NULL
+            LEFT JOIN roles r
+              ON r.id =
+                 ur.role_id
+             AND r.deleted_at
+                 IS NULL
+             AND LOWER(
+                   COALESCE(
+                     r.status,
+                     'active'
+                   )
+                 ) =
+                 'active'
+            WHERE u.id = $1
+              AND u.deleted_at
+                  IS NULL
+            GROUP BY
+              u.id,
+              u.email
+          `,
+          [
+            permissions.userId,
+            permissions.tenantId,
+          ],
         ),
-      name:
-        String(
-          row.name,
+
+        pool.query(
+          `
+            SELECT
+              external_app_id,
+              conditions
+            FROM integration_assignment_rules
+            WHERE company_id = $1
+              AND external_app_id =
+                  ANY($2::uuid[])
+              AND enabled =
+                  TRUE
+            ORDER BY
+              priority,
+              created_at,
+              id
+          `,
+          [
+            companyId,
+            ruleAppIds,
+          ],
         ),
-      description:
-        row.description
-          ? String(
-              row.description,
-            )
-          : null,
-      launchUrl:
+      ]);
+
+    const email =
+      String(
+        identity.rows[0]
+          ?.email ||
+        '',
+      )
+        .trim()
+        .toLowerCase();
+
+    const emailDomain =
+      email.includes(
+        '@',
+      )
+        ? email.split(
+            '@',
+          )[1] ||
+          ''
+        : '';
+
+    const roleKeys =
+      new Set(
+        Array.isArray(
+          identity.rows[0]
+            ?.role_keys,
+        )
+          ? identity.rows[0]
+              .role_keys
+              .map(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  String(
+                    value ||
+                    '',
+                  )
+                    .trim()
+                    .toLowerCase(),
+              )
+              .filter(
+                Boolean,
+              )
+          : [],
+      );
+
+    for (
+      const row
+      of rules.rows
+    ) {
+      const conditions =
+        row.conditions &&
+        typeof row.conditions ===
+          'object' &&
+        !Array.isArray(
+          row.conditions,
+        )
+          ? row.conditions as
+              Record<
+                string,
+                unknown
+              >
+          : {};
+
+      const match =
+        conditions.match ===
+          'any'
+          ? 'any'
+          : 'all';
+
+      const requestedRoles =
+        Array.isArray(
+          conditions.roleKeysAny,
+        )
+          ? conditions
+              .roleKeysAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .trim()
+                    .toLowerCase(),
+              )
+              .filter(
+                Boolean,
+              )
+          : [];
+
+      const requestedDomains =
+        Array.isArray(
+          conditions.emailDomainsAny,
+        )
+          ? conditions
+              .emailDomainsAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .trim()
+                    .toLowerCase()
+                    .replace(
+                      /^@/,
+                      '',
+                    ),
+              )
+              .filter(
+                Boolean,
+              )
+          : [];
+
+      const checks:
+        boolean[] =
+        [];
+
+      if (
+        requestedRoles.length >
+          0
+      ) {
+        checks.push(
+          requestedRoles.some(
+            role =>
+              roleKeys.has(
+                role,
+              ),
+          ),
+        );
+      }
+
+      if (
+        requestedDomains.length >
+          0
+      ) {
+        checks.push(
+          requestedDomains.includes(
+            emailDomain,
+          ),
+        );
+      }
+
+      const ruleMatches =
+        checks.length >
+          0 &&
+        (
+          match ===
+            'any'
+            ? checks.some(
+                Boolean,
+              )
+            : checks.every(
+                Boolean,
+              )
+        );
+
+      if (
+        ruleMatches
+      ) {
+        allowedRuleApps.add(
+          String(
+            row.external_app_id,
+          ),
+        );
+      }
+    }
+  }
+
+  return result.rows
+    .filter(
+      row =>
         String(
-          row.launch_url,
+          row.assignment_mode ||
+          '',
+        ) !==
+          'rule' ||
+        allowedRuleApps.has(
+          String(
+            row.id,
+          ),
         ),
-      iconKey:
-        row.icon_key
-          ? String(
-              row.icon_key,
-            )
-          : null,
-      authMode:
-        String(
-          row.auth_mode,
-        ),
-    }),
-  );
+    )
+    .map(
+      row => ({
+        id:
+          String(
+            row.id,
+          ),
+        name:
+          String(
+            row.name,
+          ),
+        description:
+          row.description
+            ? String(
+                row.description,
+              )
+            : null,
+        launchUrl:
+          String(
+            row.launch_url,
+          ),
+        iconKey:
+          row.icon_key
+            ? String(
+                row.icon_key,
+              )
+            : null,
+        authMode:
+          String(
+            row.auth_mode,
+          ),
+      }),
+    );
 }
 
 export async function getWorkspaceIntegrationAssignableUsers() {
@@ -1742,6 +2041,81 @@ export async function getWorkspaceIntegrationAssignableUsers() {
           .tenantId,
       ],
     );
+
+  const roleRows =
+    await queryControl(
+      `
+        SELECT
+          ur.user_id,
+          LOWER(r.key)
+            AS role_key
+        FROM user_roles ur
+        INNER JOIN roles r
+          ON r.id =
+             ur.role_id
+        WHERE ur.tenant_id = $1
+          AND ur.deleted_at
+              IS NULL
+          AND r.deleted_at
+              IS NULL
+          AND LOWER(
+                COALESCE(
+                  r.status,
+                  'active'
+                )
+              ) =
+              'active'
+      `,
+      [
+        context.runtime
+          .tenantId,
+      ],
+    );
+
+  const rolesByUser =
+    new Map<
+      string,
+      Set<string>
+    >();
+
+  for (
+    const row
+    of roleRows.rows
+  ) {
+    const userId =
+      String(
+        row.user_id,
+      );
+
+    const roleKey =
+      String(
+        row.role_key ||
+        '',
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      !roleKey
+    ) {
+      continue;
+    }
+
+    const set =
+      rolesByUser.get(
+        userId,
+      ) ||
+      new Set<string>();
+
+    set.add(
+      roleKey,
+    );
+
+    rolesByUser.set(
+      userId,
+      set,
+    );
+  }
 
   const pool =
     await getTenantPoolByTenantId(
@@ -1834,6 +2208,16 @@ export async function getWorkspaceIntegrationAssignableUsers() {
         isOwner:
           row.is_owner ===
             true,
+        roleKeys:
+          Array.from(
+            rolesByUser.get(
+              String(
+                row.id,
+              ),
+            ) ||
+            [],
+          )
+            .sort(),
       }),
     );
 }
@@ -1893,6 +2277,7 @@ export async function getWorkspaceExternalAppAssignmentState(
   const [
     users,
     assignments,
+    rules,
   ] =
     await Promise.all([
       getWorkspaceIntegrationAssignableUsers(),
@@ -1909,6 +2294,29 @@ export async function getWorkspaceExternalAppAssignmentState(
           ORDER BY
             created_at,
             user_id
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+        ],
+      ),
+
+      pool.query(
+        `
+          SELECT
+            id,
+            name,
+            enabled,
+            priority,
+            conditions
+          FROM integration_assignment_rules
+          WHERE external_app_id = $1
+            AND company_id = $2
+          ORDER BY
+            priority,
+            created_at,
+            id
         `,
         [
           appId,
@@ -1957,7 +2365,508 @@ export async function getWorkspaceExternalAppAssignmentState(
             ),
         }),
       ),
+
+    rules:
+      rules.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          enabled:
+            row.enabled ===
+              true,
+          priority:
+            Number(
+              row.priority ||
+              100,
+            ),
+          conditions:
+            row.conditions &&
+            typeof row.conditions ===
+              'object' &&
+            !Array.isArray(
+              row.conditions,
+            )
+              ? row.conditions
+              : {},
+        }),
+      ),
   };
+}
+
+
+export async function setWorkspaceExternalAppAccessPolicy(
+  externalAppId:
+    unknown,
+  input: {
+    mode?:
+      unknown;
+    userIds?:
+      unknown;
+    rule?:
+      unknown;
+  },
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const appId =
+    requireUuid(
+      externalAppId,
+      'external app',
+    );
+
+  const mode =
+    input.mode ===
+      'all_internal' ||
+    input.mode ===
+      'rule'
+      ? input.mode
+      : 'manual';
+
+  const requestedUsers =
+    Array.isArray(
+      input.userIds,
+    )
+      ? Array.from(
+          new Set(
+            input.userIds
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string' &&
+                  UUID_RE.test(
+                    value,
+                  ),
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .toLowerCase(),
+              ),
+          ),
+        )
+          .slice(
+            0,
+            500,
+          )
+      : [];
+
+  const ruleSource =
+    input.rule &&
+    typeof input.rule ===
+      'object' &&
+    !Array.isArray(
+      input.rule,
+    )
+      ? input.rule as
+          Record<
+            string,
+            unknown
+          >
+      : {};
+
+  const roleKeysAny =
+    Array.isArray(
+      ruleSource.roleKeysAny,
+    )
+      ? Array.from(
+          new Set(
+            ruleSource
+              .roleKeysAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .trim()
+                    .toLowerCase(),
+              )
+              .filter(
+                value =>
+                  /^[a-z0-9_.:-]{1,120}$/.test(
+                    value,
+                  ),
+              ),
+          ),
+        )
+          .slice(
+            0,
+            100,
+          )
+      : [];
+
+  const emailDomainsAny =
+    Array.isArray(
+      ruleSource.emailDomainsAny,
+    )
+      ? Array.from(
+          new Set(
+            ruleSource
+              .emailDomainsAny
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string',
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .trim()
+                    .toLowerCase()
+                    .replace(
+                      /^@/,
+                      '',
+                    ),
+              )
+              .filter(
+                value =>
+                  /^[a-z0-9.-]+\.[a-z]{2,}$/i.test(
+                    value,
+                  ),
+              ),
+          ),
+        )
+          .slice(
+            0,
+            100,
+          )
+      : [];
+
+  const match =
+    ruleSource.match ===
+      'any'
+      ? 'any'
+      : 'all';
+
+  if (
+    mode ===
+      'rule' &&
+    roleKeysAny.length ===
+      0 &&
+    emailDomainsAny.length ===
+      0
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'Rule-based access needs at least one role or email domain.',
+    );
+  }
+
+  const assignable =
+    await getWorkspaceIntegrationAssignableUsers();
+
+  const allowedUsers =
+    new Set(
+      assignable.map(
+        user =>
+          user.id
+            .toLowerCase(),
+      ),
+    );
+
+  if (
+    requestedUsers.some(
+      id =>
+        !allowedUsers.has(
+          id,
+        ),
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'One or more selected users do not have access to the current company.',
+    );
+  }
+
+  const availableRoles =
+    new Set(
+      assignable.flatMap(
+        user =>
+          Array.isArray(
+            user.roleKeys,
+          )
+            ? user.roleKeys
+            : [],
+      ),
+    );
+
+  if (
+    roleKeysAny.some(
+      role =>
+        !availableRoles.has(
+          role,
+        ),
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'One or more selected roles are not active in this workspace.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const app =
+      await client.query(
+        `
+          SELECT
+            id,
+            name
+          FROM integration_external_apps
+          WHERE id = $1
+            AND company_id = $2
+            AND archived_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      app.rows.length !==
+        1
+    ) {
+      throw new WorkspaceIntegrationError(
+        'INTEGRATION_NOT_FOUND',
+        'External app could not be found in the current company.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE integration_external_apps
+        SET
+          assignment_mode =
+            $3,
+          updated_by =
+            $4,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+        mode,
+        context.runtime
+          .userId,
+      ],
+    );
+
+    await client.query(
+      `
+        DELETE FROM integration_external_app_assignments
+        WHERE external_app_id = $1
+          AND company_id = $2
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+    await client.query(
+      `
+        DELETE FROM integration_assignment_rules
+        WHERE external_app_id = $1
+          AND company_id = $2
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+    if (
+      mode ===
+        'manual'
+    ) {
+      for (
+        const userId
+        of requestedUsers
+      ) {
+        await client.query(
+          `
+            INSERT INTO integration_external_app_assignments (
+              external_app_id,
+              company_id,
+              user_id,
+              assignment_source,
+              assigned_by
+            )
+            VALUES (
+              $1,
+              $2,
+              $3,
+              'manual',
+              $4
+            )
+          `,
+          [
+            appId,
+            context.runtime
+              .companyId,
+            userId,
+            context.runtime
+              .userId,
+          ],
+        );
+      }
+    }
+
+    if (
+      mode ===
+        'rule'
+    ) {
+      await client.query(
+        `
+          INSERT INTO integration_assignment_rules (
+            external_app_id,
+            company_id,
+            name,
+            enabled,
+            priority,
+            conditions,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,
+            $2,
+            'Launcher access rule',
+            TRUE,
+            100,
+            $3::jsonb,
+            $4,
+            $4
+          )
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+          JSON.stringify({
+            match,
+            roleKeysAny,
+            emailDomainsAny,
+          }),
+          context.runtime
+            .userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await auditIntegration(
+      context.runtime,
+      {
+        action:
+          'integration.external_app.access_policy.updated',
+        resourceId:
+          appId,
+        summary:
+          `Updated external app access policy for "${String(
+            app.rows[0]
+              .name,
+          )}".`,
+        metadata: {
+          mode,
+          assignedUsers:
+            mode ===
+              'manual'
+              ? requestedUsers.length
+              : 0,
+          roleRules:
+            roleKeysAny.length,
+          domainRules:
+            emailDomainsAny.length,
+        },
+      },
+    );
+
+    return {
+      externalAppId:
+        appId,
+      mode,
+      userIds:
+        mode ===
+          'manual'
+          ? requestedUsers
+          : [],
+      rule:
+        mode ===
+          'rule'
+          ? {
+              match,
+              roleKeysAny,
+              emailDomainsAny,
+            }
+          : null,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
