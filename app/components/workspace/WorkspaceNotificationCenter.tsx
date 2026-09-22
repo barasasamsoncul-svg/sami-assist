@@ -9,6 +9,7 @@ import {
   Loader2,
   Mail,
   Megaphone,
+  Smartphone,
   MessageSquare,
   Plus,
   Send,
@@ -2057,6 +2058,40 @@ export default function WorkspaceNotificationCenter({
                   checked =>
                     void updatePreferences({
                       emailEnabled:
+                        checked,
+                    })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-slate-200 p-4 dark:border-white/10">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+                <Smartphone className="h-4 w-4" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold">
+                  SMS notifications
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  Receive important workspace alerts, messages and billing updates by SMS using the phone number on your SaMi profile.
+                </p>
+              </div>
+
+              <Toggle
+                checked={
+                  preferences.smsEnabled
+                }
+                disabled={
+                  busy ===
+                  'preferences'
+                }
+                onChange={
+                  checked =>
+                    void updatePreferences({
+                      smsEnabled:
                         checked,
                     })
                 }
