@@ -67,6 +67,8 @@ export async function notifyCriticalSecurityEvent(
       metadata:
         input.metadata ||
         {},
+      forceEmail:
+        true,
       forceSms:
         true,
       critical:
