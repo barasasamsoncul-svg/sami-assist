@@ -16,9 +16,39 @@ import Hero from './components/landing/Hero';
 import Features from './components/landing/Features';
 import Footer from './components/landing/Footer';
 
+import {
+  getSamiPricePerUserMonthly,
+} from '@/lib/billing/pricing';
+
 /* ============================================================
    PRICING
    ============================================================ */
+
+const formatPrice =
+  (
+    value:
+      number,
+  ) =>
+    new Intl.NumberFormat(
+      'en-KE',
+      {
+        maximumFractionDigits:
+          0,
+      },
+    )
+      .format(
+        value,
+      );
+
+const STANDARD_PRICE =
+  getSamiPricePerUserMonthly(
+    'standard',
+  );
+
+const CUSTOM_PRICE =
+  getSamiPricePerUserMonthly(
+    'custom',
+  );
 
 const plans = [
   {
@@ -45,7 +75,10 @@ const plans = [
     name: 'Standard',
     description:
       'For businesses ready to use SaMi as an everyday workspace for their team and operations.',
-    price: 'KSh 2,000',
+    price:
+      `KSh ${formatPrice(
+        STANDARD_PRICE,
+      )}`,
     suffix: '/user/month',
     trial: 'First month free',
     featured: true,
@@ -64,7 +97,10 @@ const plans = [
     name: 'Custom',
     description:
       'For businesses that need a broader SaMi setup as their operations, teams and workflows become more complex.',
-    price: 'KSh 3,340',
+    price:
+      `KSh ${formatPrice(
+        CUSTOM_PRICE,
+      )}`,
     suffix: '/user/month',
     trial: 'First month free',
     featured: false,
