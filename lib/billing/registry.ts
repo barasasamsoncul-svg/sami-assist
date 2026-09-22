@@ -38,7 +38,7 @@ export function getConfiguredBillingProviderKey():
     (
       process.env
         .SAMI_BILLING_PROVIDER ||
-      'stripe'
+      'pesapal'
     )
       .trim()
       .toLowerCase();
