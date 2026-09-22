@@ -526,6 +526,73 @@ test('Category 23: tenant migration runner repairs physically completed audit hi
   );
 });
 
+test('Category 23: pending downgrades immediately constrain new capacity without removing current access', async () => {
+  const [
+    access,
+    usage,
+    apps,
+    organization,
+    integrations,
+  ] =
+    await Promise.all([
+      source(
+        'lib/billing/access.ts',
+      ),
+      source(
+        'lib/usage/entitlements.ts',
+      ),
+      source(
+        'lib/services/workspace-app-lifecycle.ts',
+      ),
+      source(
+        'lib/services/organization-profile.ts',
+      ),
+      source(
+        'lib/services/workspace-integrations.ts',
+      ),
+    ]);
+
+  assert.match(
+    access,
+    /scheduled_plan_key/,
+  );
+
+  assert.match(
+    access,
+    /scheduledPolicy/,
+  );
+
+  assert.match(
+    usage,
+    /access\.scheduledPolicy[\s\S]*maxActiveInternalUsers/s,
+    'New internal seats must obey a stricter pending target plan.',
+  );
+
+  assert.match(
+    usage,
+    /subscription[\s\S]*scheduledPolicy[\s\S]*maxInstalledBusinessApps/s,
+    'Usage state must show pending-plan app limits.',
+  );
+
+  assert.match(
+    apps,
+    /access\.scheduledPolicy[\s\S]*maxInstalledBusinessApps/s,
+    'New app installs must not make a pending downgrade impossible.',
+  );
+
+  assert.match(
+    organization,
+    /access\.scheduledPolicy[\s\S]*multiCompany/s,
+    'A pending single-company plan must block creating or reactivating extra companies.',
+  );
+
+  assert.match(
+    integrations,
+    /access\.scheduledPolicy[\s\S]*customIntegrations/s,
+    'A pending non-Custom plan must block creation or re-enabling of Custom-only integrations.',
+  );
+});
+
 test('Category 23: full-suite gate includes Usage & Entitlements regression coverage', async () => {
   const pkg =
     JSON.parse(
