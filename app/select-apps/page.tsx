@@ -34,7 +34,7 @@ import {
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   APP_CATEGORIES,
-  SAMI_APPS,
+  INSTALLABLE_SAMI_APPS as SAMI_APPS,
 } from '@/lib/sami-apps';
 
 /* ============================================================
