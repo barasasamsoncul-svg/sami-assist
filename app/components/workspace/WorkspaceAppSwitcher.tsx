@@ -3,17 +3,28 @@
 import Link from 'next/link';
 
 import {
+  ExternalLink,
   LayoutGrid,
   Search,
   X,
 } from 'lucide-react';
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
+
+type ExternalAppData = {
+  id: string;
+  name: string;
+  description: string | null;
+  launchUrl: string;
+  iconKey: string | null;
+  authMode: string;
+};
 
 type ModuleData = {
   key: string;
@@ -44,6 +55,81 @@ export default function WorkspaceAppSwitcher({
     setSearch,
   ] =
     useState('');
+
+  const [
+    externalApps,
+    setExternalApps,
+  ] =
+    useState<
+      ExternalAppData[]
+    >([]);
+
+  useEffect(
+    () => {
+      let active =
+        true;
+
+      async function loadExternalApps() {
+        try {
+          const response =
+            await fetch(
+              '/api/workspace/integrations/launcher',
+              {
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+              },
+            );
+
+          const data =
+            await response.json() as {
+              success?:
+                boolean;
+              apps?:
+                ExternalAppData[];
+            };
+
+          if (
+            active &&
+            response.ok &&
+            data.success ===
+              true
+          ) {
+            setExternalApps(
+              Array.isArray(
+                data.apps,
+              )
+                ? data.apps
+                : [],
+            );
+          }
+        } catch {
+          if (
+            active
+          ) {
+            setExternalApps(
+              [],
+            );
+          }
+        }
+      }
+
+      if (
+        open
+      ) {
+        void loadExternalApps();
+      }
+
+      return () => {
+        active =
+          false;
+      };
+    },
+    [
+      open,
+    ],
+  );
 
   const visible =
     useMemo(
@@ -86,6 +172,45 @@ export default function WorkspaceAppSwitcher({
       },
       [
         modules,
+        search,
+      ],
+    );
+
+  const visibleExternal =
+    useMemo(
+      () => {
+        const query =
+          search
+            .trim()
+            .toLowerCase();
+
+        if (
+          !query
+        ) {
+          return externalApps;
+        }
+
+        return externalApps.filter(
+          app =>
+            [
+              app.name,
+              app.description ||
+                '',
+              app.launchUrl,
+              app.authMode,
+              'external app',
+            ]
+              .join(
+                ' ',
+              )
+              .toLowerCase()
+              .includes(
+                query,
+              ),
+        );
+      },
+      [
+        externalApps,
         search,
       ],
     );
@@ -166,7 +291,9 @@ export default function WorkspaceAppSwitcher({
             </div>
 
             <div className="sami-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-              {visible.length > 0 ? (
+              {(visible.length > 0 ||
+                visibleExternal.length >
+                  0) ? (
                 <div className="grid grid-cols-3 gap-x-3 gap-y-5 sm:grid-cols-4 md:grid-cols-5">
                   {visible.map(
                     module => (
@@ -205,6 +332,38 @@ export default function WorkspaceAppSwitcher({
                       </Link>
                     ),
                   )}
+
+                  {visibleExternal.map(
+                    app => (
+                      <a
+                        key={
+                          'external:' +
+                          app.id
+                        }
+                        href={
+                          app.launchUrl
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={
+                          close
+                        }
+                        className="group flex min-w-0 flex-col items-center rounded-2xl px-2 py-2 text-center transition hover:bg-[var(--sami-surface-soft)]"
+                      >
+                        <span className="flex h-12 w-12 items-center justify-center rounded-[15px] bg-gradient-to-br from-slate-600 to-slate-900 text-white shadow-sm transition duration-200 group-hover:-translate-y-0.5 group-hover:scale-[1.03]">
+                          <ExternalLink className="h-5 w-5" />
+                        </span>
+
+                        <span className="mt-2.5 w-full truncate text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                          {app.name}
+                        </span>
+
+                        <span className="mt-0.5 text-[8px] font-black uppercase tracking-wide text-slate-400">
+                          External
+                        </span>
+                      </a>
+                    ),
+                  )}
                 </div>
               ) : (
                 <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
@@ -221,8 +380,10 @@ export default function WorkspaceAppSwitcher({
 
             <div className="flex items-center justify-between gap-3 border-t border-[var(--sami-border)] px-4 py-3 sm:px-5">
               <p className="text-[10px] text-slate-400">
-                {modules.length}{' '}
-                {modules.length === 1
+                {modules.length +
+                  externalApps.length}{' '}
+                {modules.length +
+                  externalApps.length === 1
                   ? 'app'
                   : 'apps'} available
               </p>
