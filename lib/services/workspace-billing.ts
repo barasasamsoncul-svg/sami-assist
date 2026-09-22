@@ -20,8 +20,15 @@ import {
 
 import {
   getActiveBillingProvider,
+  getBillingProvider,
   getBillingProviderCatalog,
 } from '@/lib/billing/registry';
+
+import {
+  createSubscriptionBillingProfile,
+  getActiveSubscriptionBillingProfile,
+  updateActiveSubscriptionBillingProfile,
+} from '@/lib/billing/profiles';
 
 import {
   getSamiBillingPriceSource,
@@ -44,7 +51,11 @@ export type WorkspaceBillingErrorCode =
   | 'PLAN_NOT_SUPPORTED'
   | 'PAYMENT_NOT_DUE'
   | 'PAYMENT_ALREADY_PENDING'
-  | 'PAYMENT_PROVIDER_FAILED';
+  | 'PAYMENT_PROVIDER_FAILED'
+  | 'PAYMENT_SETUP_UNSUPPORTED'
+  | 'PAYMENT_SETUP_FAILED'
+  | 'PAYMENT_SETUP_INCOMPLETE'
+  | 'BILLING_PROVIDER_MIGRATION_REQUIRED';
 
 export class WorkspaceBillingError
   extends Error {
@@ -751,6 +762,7 @@ export async function getWorkspaceBillingState() {
     billableUsers,
     plans,
     payments,
+    billingProfile,
   ] =
     await Promise.all([
       getBillableUsers(
@@ -759,6 +771,11 @@ export async function getWorkspaceBillingState() {
       getPlans(),
       getPayments(
         context.tenantId,
+      ),
+      getActiveSubscriptionBillingProfile(
+        String(
+          subscription.id,
+        ),
       ),
     ]);
 
@@ -862,6 +879,32 @@ export async function getWorkspaceBillingState() {
     plans,
 
     payments,
+
+    billingProfile:
+      billingProfile
+        ? {
+            provider:
+              billingProfile.provider,
+            recurringStatus:
+              billingProfile.recurringStatus,
+            providerCustomerId:
+              billingProfile.providerCustomerId
+                ? 'configured'
+                : null,
+            providerSubscriptionId:
+              billingProfile.providerSubscriptionId
+                ? 'configured'
+                : null,
+            providerPaymentMethodId:
+              billingProfile.providerPaymentMethodId
+                ? 'configured'
+                : null,
+            pricePerUserMonthly:
+              billingProfile.pricePerUserMonthly,
+            seatQuantity:
+              billingProfile.seatQuantity,
+          }
+        : null,
 
     collection: (() => {
       const provider =
@@ -1286,3 +1329,620 @@ export async function startWorkspaceBillingCheckout(
     );
   }
 }
+
+export async function startWorkspaceRecurringBillingSetup(
+  input: {
+    origin?:
+      string | null;
+  } = {},
+) {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const planKey =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  const policy =
+    planKey
+      ? getSamiPlanPolicy(
+          planKey,
+        )
+      : null;
+
+  if (
+    !planKey ||
+    !policy ||
+    !policy.paid
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'Recurring billing setup is only available on paid plans.',
+    );
+  }
+
+  const effectiveStatus =
+    getEffectiveSubscriptionStatus({
+      status:
+        subscription.status,
+      planKey,
+      trialEndsAt:
+        subscription.trial_ends_at,
+      currentPeriodEnd:
+        subscription.current_period_end,
+    });
+
+  if (
+    ![
+      'trial',
+      'trialing',
+      'active',
+      'past_due',
+    ].includes(
+      effectiveStatus,
+    )
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      'This subscription cannot set up recurring billing in its current state.',
+      {
+        status:
+          effectiveStatus,
+      },
+    );
+  }
+
+  const provider =
+    getActiveBillingProvider();
+
+  if (
+    !provider.capabilities
+      .savePaymentMethodWithoutCharge ||
+    !provider
+      .createPaymentMethodSetup
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_UNSUPPORTED',
+      `${provider.name} does not support SaMi's no-charge recurring setup flow.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  const existing =
+    await getActiveSubscriptionBillingProfile(
+      String(
+        subscription.id,
+      ),
+    );
+
+  if (
+    existing &&
+    existing.provider !==
+      provider.key &&
+    (
+      existing
+        .providerSubscriptionId ||
+      [
+        'trialing',
+        'active',
+      ].includes(
+        existing
+          .recurringStatus,
+      )
+    )
+  ) {
+    throw new WorkspaceBillingError(
+      'BILLING_PROVIDER_MIGRATION_REQUIRED',
+      'This subscription already has an active recurring profile with another provider. Migrate or cancel that mandate before changing providers.',
+      {
+        currentProvider:
+          existing.provider,
+        configuredProvider:
+          provider.key,
+      },
+    );
+  }
+
+  if (
+    existing &&
+    existing.provider ===
+      provider.key &&
+    [
+      'trialing',
+      'active',
+    ].includes(
+      existing
+        .recurringStatus,
+    )
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      'Automatic billing is already configured for this subscription.',
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  const identity =
+    await queryControl(
+      `
+        SELECT
+          u.email,
+          u.first_name,
+          u.last_name,
+          t.name
+            AS business_name
+        FROM users u
+        INNER JOIN tenants t
+          ON t.id = $2
+         AND t.deleted_at
+             IS NULL
+        WHERE u.id = $1
+          AND u.deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        context.userId,
+        context.tenantId,
+      ],
+    );
+
+  const user =
+    identity.rows[0];
+
+  if (
+    !user ||
+    typeof user.email !==
+      'string'
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      'SaMi could not resolve the billing contact for this workspace.',
+    );
+  }
+
+  try {
+    const setup =
+      await provider
+        .createPaymentMethodSetup({
+          customer: {
+            tenantId:
+              context.tenantId,
+            subscriptionId:
+              String(
+                subscription.id,
+              ),
+            email:
+              user.email,
+            firstName:
+              typeof user.first_name ===
+                'string'
+                ? user.first_name
+                : '',
+            lastName:
+              typeof user.last_name ===
+                'string'
+                ? user.last_name
+                : '',
+            businessName:
+              typeof user.business_name ===
+                'string'
+                ? user.business_name
+                : 'SaMi Workspace',
+            phone:
+              null,
+          },
+          origin:
+            input.origin ||
+            null,
+        });
+
+    const billableUsers =
+      await getBillableUsers(
+        context.tenantId,
+      );
+
+    await createSubscriptionBillingProfile({
+      tenantId:
+        context.tenantId,
+      subscriptionId:
+        String(
+          subscription.id,
+        ),
+      provider:
+        provider.key,
+      providerCustomerId:
+        setup.providerCustomerId,
+      recurringStatus:
+        'setup_pending',
+      currency:
+        SAMI_BILLING_CURRENCY,
+      pricePerUserMonthly:
+        getSamiPricePerUserMonthly(
+          planKey,
+        ),
+      seatQuantity:
+        billableUsers,
+      metadata: {
+        setupReference:
+          setup.setupReference,
+        setupCreatedAt:
+          new Date()
+            .toISOString(),
+        selectedByEnv:
+          true,
+      },
+    });
+
+    const publicKey =
+      provider.key ===
+        'stripe'
+        ? (
+            process.env
+              .NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+            process.env
+              .STRIPE_PUBLISHABLE_KEY ||
+            ''
+          )
+            .trim() ||
+          null
+        : null;
+
+    if (
+      provider.key ===
+        'stripe' &&
+      !publicKey
+    ) {
+      throw new WorkspaceBillingError(
+        'PAYMENT_SETUP_FAILED',
+        'Stripe publishable key is not configured.',
+      );
+    }
+
+    return {
+      provider:
+        provider.key,
+      providerName:
+        provider.name,
+      setupReference:
+        setup.setupReference,
+      clientSecret:
+        setup.clientSecret,
+      redirectUrl:
+        setup.redirectUrl,
+      publicKey,
+      chargedToday:
+        false,
+    };
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        WorkspaceBillingError
+    ) {
+      throw error;
+    }
+
+    console.error(
+      '[SaMi Billing] Payment-method setup failed:',
+      {
+        provider:
+          provider.key,
+        error,
+      },
+    );
+
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      `SaMi could not start ${provider.name} automatic billing setup.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+}
+
+
+export async function completeWorkspaceRecurringBillingSetup() {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const planKey =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  const policy =
+    planKey
+      ? getSamiPlanPolicy(
+          planKey,
+        )
+      : null;
+
+  if (
+    !planKey ||
+    !policy ||
+    !policy.paid
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'Recurring billing setup is only available on paid plans.',
+    );
+  }
+
+  const profile =
+    await getActiveSubscriptionBillingProfile(
+      String(
+        subscription.id,
+      ),
+    );
+
+  if (
+    !profile
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_INCOMPLETE',
+      'Start automatic billing setup before completing it.',
+    );
+  }
+
+  const provider =
+    getBillingProvider(
+      profile.provider,
+    );
+
+  if (
+    !provider
+      .getPaymentMethodSetupStatus ||
+    !provider
+      .createRecurringSubscription
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_UNSUPPORTED',
+      `${provider.name} cannot complete this recurring billing setup.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  const setupReference =
+    typeof profile
+      .metadata
+      .setupReference ===
+      'string'
+      ? profile
+          .metadata
+          .setupReference
+      : '';
+
+  if (
+    !setupReference
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_INCOMPLETE',
+      'The recurring billing setup reference is missing.',
+    );
+  }
+
+  const setup =
+    await provider
+      .getPaymentMethodSetupStatus(
+        setupReference,
+      );
+
+  if (
+    setup.status !==
+      'succeeded' ||
+    !setup
+      .providerPaymentMethodId
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_INCOMPLETE',
+      'Payment method setup has not been completed successfully yet.',
+      {
+        provider:
+          provider.key,
+        setupStatus:
+          setup.status,
+      },
+    );
+  }
+
+  const identity =
+    await queryControl(
+      `
+        SELECT
+          u.email,
+          u.first_name,
+          u.last_name,
+          t.name
+            AS business_name
+        FROM users u
+        INNER JOIN tenants t
+          ON t.id = $2
+         AND t.deleted_at
+             IS NULL
+        WHERE u.id = $1
+          AND u.deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        context.userId,
+        context.tenantId,
+      ],
+    );
+
+  const user =
+    identity.rows[0];
+
+  if (
+    !user ||
+    typeof user.email !==
+      'string'
+  ) {
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      'SaMi could not resolve the billing contact for this workspace.',
+    );
+  }
+
+  const billableUsers =
+    await getBillableUsers(
+      context.tenantId,
+    );
+
+  try {
+    const recurring =
+      await provider
+        .createRecurringSubscription({
+          customer: {
+            tenantId:
+              context.tenantId,
+            subscriptionId:
+              String(
+                subscription.id,
+              ),
+            email:
+              user.email,
+            firstName:
+              typeof user.first_name ===
+                'string'
+                ? user.first_name
+                : '',
+            lastName:
+              typeof user.last_name ===
+                'string'
+                ? user.last_name
+                : '',
+            businessName:
+              typeof user.business_name ===
+                'string'
+                ? user.business_name
+                : 'SaMi Workspace',
+            phone:
+              null,
+          },
+          providerCustomerId:
+            setup.providerCustomerId,
+          providerPaymentMethodId:
+            setup.providerPaymentMethodId,
+          plan:
+            planKey,
+          currency:
+            SAMI_BILLING_CURRENCY,
+          pricePerUserMonthly:
+            getSamiPricePerUserMonthly(
+              planKey,
+            ),
+          billableUsers,
+          trialEndsAt:
+            subscription.trial_ends_at ||
+            null,
+        });
+
+    await updateActiveSubscriptionBillingProfile(
+      String(
+        subscription.id,
+      ),
+      {
+        providerCustomerId:
+          recurring
+            .providerCustomerId,
+        providerSubscriptionId:
+          recurring
+            .providerSubscriptionId,
+        providerPaymentMethodId:
+          recurring
+            .providerPaymentMethodId,
+        recurringStatus:
+          recurring.status ===
+            'trialing'
+            ? 'trialing'
+            : recurring.status ===
+                'active'
+              ? 'active'
+              : 'setup_pending',
+        pricePerUserMonthly:
+          getSamiPricePerUserMonthly(
+            planKey,
+          ),
+        seatQuantity:
+          billableUsers,
+        metadata: {
+          setupCompletedAt:
+            new Date()
+              .toISOString(),
+          providerStatus:
+            recurring.status,
+        },
+      },
+    );
+
+    return {
+      provider:
+        provider.key,
+      providerName:
+        provider.name,
+      recurringStatus:
+        recurring.status,
+      chargedToday:
+        false,
+      trialEndsAt:
+        toIso(
+          subscription.trial_ends_at,
+        ),
+      billableUsers,
+      pricePerUserMonthly:
+        getSamiPricePerUserMonthly(
+          planKey,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Billing] Recurring subscription creation failed:',
+      {
+        provider:
+          provider.key,
+        error,
+      },
+    );
+
+    throw new WorkspaceBillingError(
+      'PAYMENT_SETUP_FAILED',
+      `SaMi could not activate ${provider.name} automatic billing.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+}
+
