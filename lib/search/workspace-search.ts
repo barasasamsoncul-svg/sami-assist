@@ -716,6 +716,53 @@ function corePageCandidates(
 
 
   if (
+    can(
+      SAMI_PERMISSIONS
+        .API_VIEW,
+    ) ||
+    can(
+      SAMI_PERMISSIONS
+        .API_MANAGE,
+    )
+  ) {
+    pages.push(
+      candidate({
+        id:
+          'page:developer',
+        kind:
+          'page',
+        title:
+          'Developer Access',
+        subtitle:
+          'API keys, scopes & usage',
+        description:
+          'Create company-scoped API credentials and review developer API activity.',
+        href:
+          '/developer',
+        iconKey:
+          'key',
+        badge:
+          null,
+        score:
+          34,
+        action:
+          null,
+        source:
+          'core',
+        keywords: [
+          'api',
+          'developer',
+          'keys',
+          'token',
+          'scopes',
+          'rate limits',
+        ],
+      }),
+    );
+  }
+
+
+  if (
     context.aiAvailable
   ) {
     pages.push(
