@@ -441,6 +441,7 @@ export async function getWorkspaceIntegrationState() {
   const [
     connections,
     webhooks,
+    webhookDeliveries,
     externalApps,
     syncJobs,
   ] =
@@ -499,6 +500,41 @@ export async function getWorkspaceIntegrationState() {
           ORDER BY
             created_at DESC,
             id DESC
+        `,
+        [
+          context.runtime
+            .companyId,
+        ],
+      ),
+
+      pool.query(
+        `
+          SELECT
+            d.id,
+            d.endpoint_id,
+            e.name
+              AS endpoint_name,
+            d.direction,
+            d.external_event_id,
+            d.payload_bytes,
+            d.signature_valid,
+            d.status,
+            d.http_status,
+            d.error_code,
+            d.error_message,
+            d.correlation_id,
+            d.received_at,
+            d.processed_at,
+            d.created_at
+          FROM integration_webhook_deliveries d
+          INNER JOIN integration_webhook_endpoints e
+            ON e.id =
+               d.endpoint_id
+          WHERE d.company_id = $1
+          ORDER BY
+            d.received_at DESC,
+            d.id DESC
+          LIMIT 40
         `,
         [
           context.runtime
@@ -731,6 +767,78 @@ export async function getWorkspaceIntegrationState() {
             row.created_at,
           updatedAt:
             row.updated_at,
+        }),
+      ),
+
+    webhookDeliveries:
+      webhookDeliveries.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          endpointId:
+            String(
+              row.endpoint_id,
+            ),
+          endpointName:
+            String(
+              row.endpoint_name,
+            ),
+          direction:
+            String(
+              row.direction,
+            ),
+          externalEventId:
+            row.external_event_id
+              ? String(
+                  row.external_event_id,
+                )
+              : null,
+          payloadBytes:
+            Number(
+              row.payload_bytes ||
+              0,
+            ),
+          signatureValid:
+            row.signature_valid ===
+              true,
+          status:
+            String(
+              row.status,
+            ),
+          httpStatus:
+            row.http_status ===
+              null ||
+            row.http_status ===
+              undefined
+              ? null
+              : Number(
+                  row.http_status,
+                ),
+          errorCode:
+            row.error_code
+              ? String(
+                  row.error_code,
+                )
+              : null,
+          errorMessage:
+            row.error_message
+              ? String(
+                  row.error_message,
+                )
+              : null,
+          correlationId:
+            String(
+              row.correlation_id,
+            ),
+          receivedAt:
+            row.received_at,
+          processedAt:
+            row.processed_at ||
+            null,
+          createdAt:
+            row.created_at,
         }),
       ),
 
@@ -1111,6 +1219,318 @@ export async function createWorkspaceWebhookEndpoint(
     secret,
   };
 }
+
+export async function manageWorkspaceWebhookEndpoint(
+  endpointId:
+    unknown,
+  operation:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const id =
+    requireUuid(
+      endpointId,
+      'webhook endpoint',
+    );
+
+  const action =
+    typeof operation ===
+      'string'
+      ? operation
+          .trim()
+          .toLowerCase()
+      : '';
+
+  if (
+    ![
+      'pause',
+      'resume',
+      'rotate_secret',
+      'revoke',
+    ].includes(
+      action,
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'Choose a supported webhook operation.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  let secret:
+    string | null =
+    null;
+
+  let endpointKey =
+    '';
+
+  let name =
+    '';
+
+  let connectionId:
+    string | null =
+    null;
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const current =
+      await client.query(
+        `
+          SELECT
+            id,
+            endpoint_key,
+            name,
+            status,
+            connection_id
+          FROM integration_webhook_endpoints
+          WHERE id = $1
+            AND company_id = $2
+            AND archived_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      current.rows.length !==
+        1
+    ) {
+      throw new WorkspaceIntegrationError(
+        'INTEGRATION_NOT_FOUND',
+        'Webhook endpoint could not be found in the current company.',
+      );
+    }
+
+    const row =
+      current.rows[0];
+
+    endpointKey =
+      String(
+        row.endpoint_key,
+      );
+
+    name =
+      String(
+        row.name,
+      );
+
+    connectionId =
+      row.connection_id
+        ? String(
+            row.connection_id,
+          )
+        : null;
+
+    if (
+      action ===
+        'rotate_secret'
+    ) {
+      if (
+        row.status ===
+          'revoked'
+      ) {
+        throw new WorkspaceIntegrationError(
+          'INVALID_INTEGRATION',
+          'A revoked webhook cannot rotate its secret.',
+        );
+      }
+
+      secret =
+        generateIntegrationToken(
+          32,
+        );
+
+      await client.query(
+        `
+          UPDATE integration_webhook_endpoints
+          SET
+            secret_hash = $3,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          hashIntegrationToken(
+            secret,
+          ),
+        ],
+      );
+    } else {
+      const nextStatus =
+        action ===
+          'pause'
+          ? 'paused'
+          : action ===
+              'resume'
+            ? 'active'
+            : 'revoked';
+
+      if (
+        action ===
+          'resume' &&
+        row.status ===
+          'revoked'
+      ) {
+        throw new WorkspaceIntegrationError(
+          'INVALID_INTEGRATION',
+          'A revoked webhook cannot be resumed.',
+        );
+      }
+
+      await client.query(
+        `
+          UPDATE integration_webhook_endpoints
+          SET
+            status = $3,
+            archived_at =
+              CASE
+                WHEN $3 =
+                     'revoked'
+                THEN COALESCE(
+                  archived_at,
+                  NOW()
+                )
+                ELSE archived_at
+              END,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          nextStatus,
+        ],
+      );
+
+      if (
+        action ===
+          'revoke' &&
+        connectionId
+      ) {
+        await client.query(
+          `
+            UPDATE integration_connections
+            SET
+              status =
+                'revoked',
+              health_status =
+                'revoked',
+              disconnected_at =
+                NOW(),
+              updated_by =
+                $3,
+              updated_at =
+                NOW()
+            WHERE id = $1
+              AND company_id = $2
+          `,
+          [
+            connectionId,
+            context.runtime
+              .companyId,
+            context.runtime
+              .userId,
+          ],
+        );
+
+        await client.query(
+          `
+            DELETE FROM integration_credentials
+            WHERE connection_id = $1
+          `,
+          [
+            connectionId,
+          ],
+        );
+      }
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await auditIntegration(
+    context.runtime,
+    {
+      action:
+        'integration.webhook.' +
+        (
+          action ===
+            'rotate_secret'
+            ? 'secret_rotated'
+            : action +
+              'd'
+        ),
+      resourceId:
+        id,
+      summary:
+        action ===
+          'rotate_secret'
+          ? `Rotated webhook secret for "${name}".`
+          : `${action === 'pause' ? 'Paused' : action === 'resume' ? 'Resumed' : 'Revoked'} webhook "${name}".`,
+      metadata: {
+        connectionId,
+      },
+    },
+  );
+
+  return {
+    endpointId:
+      id,
+    endpointKey,
+    endpointPath:
+      '/api/integrations/webhooks/inbound/' +
+      context.runtime.tenantId +
+      '/' +
+      endpointKey,
+    operation:
+      action,
+    ...(secret
+      ? {
+          secret,
+        }
+      : {}),
+  };
+}
+
 
 export async function createWorkspaceExternalApp(
   input: {
