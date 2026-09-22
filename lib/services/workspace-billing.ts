@@ -3635,19 +3635,32 @@ export async function changeWorkspaceSubscriptionPlan(
     );
   }
 
+  const storedStatus =
+    String(
+      subscription.status ||
+      '',
+    )
+      .trim()
+      .toLowerCase();
+
+  const endedCancellationToFree =
+    Boolean(
+      subscription.cancelled_at &&
+      storedStatus ===
+        'cancelled' &&
+      targetPlan ===
+        'free',
+    );
+
   if (
-    subscription.cancelled_at
+    subscription.cancelled_at &&
+    !endedCancellationToFree
   ) {
     throw new WorkspaceBillingError(
       'SUBSCRIPTION_CANCELLATION_ALREADY_SCHEDULED',
-      String(
-        subscription.status ||
-        '',
-      )
-        .trim()
-        .toLowerCase() ===
+      storedStatus ===
         'cancelled'
-        ? 'Reactivate the ended subscription before changing paid plans.'
+        ? 'Reactivate the ended subscription before changing to another paid plan. You can still move to Free if the workspace fits Free plan limits.'
         : 'Keep the subscription first, then request a different plan.',
       {
         cancellationRequestedAt:
@@ -3714,6 +3727,142 @@ export async function changeWorkspaceSubscriptionPlan(
     String(
       subscription.id,
     );
+
+  /*
+   * Ended paid subscription -> Free:
+   *
+   * Cancellation must never force a workspace into Free when its
+   * current users/apps/companies exceed Free's capacity. Once the
+   * owner has brought the workspace within Free limits, however,
+   * they may explicitly choose Free without reactivating paid
+   * billing first.
+   */
+  if (
+    effectiveStatus ===
+      'cancelled' &&
+    targetPlan ===
+      'free'
+  ) {
+    const target =
+      await queryControl(
+        `
+          SELECT id
+          FROM plans
+          WHERE LOWER(key) =
+                'free'
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+      );
+
+    if (
+      target.rows.length !==
+        1
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_NOT_SUPPORTED',
+        'The Free plan is currently unavailable.',
+      );
+    }
+
+    await queryControl(
+      `
+        UPDATE subscriptions
+        SET
+          plan_id = $2,
+          status =
+            'active',
+          billing_cycle =
+            NULL,
+          current_period_start =
+            NULL,
+          current_period_end =
+            NULL,
+          cancelled_at =
+            NULL,
+          scheduled_plan_id =
+            NULL,
+          scheduled_plan_effective_at =
+            NULL,
+          scheduled_plan_requested_by =
+            NULL,
+          scheduled_plan_requested_at =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        subscriptionId,
+        target.rows[0]
+          .id,
+      ],
+    );
+
+    await auditPlanChange({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      subscriptionId,
+      eventType:
+        'SUBSCRIPTION_MOVED_TO_FREE_AFTER_CANCELLATION',
+      metadata: {
+        from:
+          currentPlan,
+        to:
+          'free',
+        previousStatus:
+          'cancelled',
+        dataRetained:
+          true,
+      },
+    });
+
+    await notifyWorkspaceOwnersOfBillingEvent({
+      tenantId:
+        context.tenantId,
+      type:
+        'billing.plan_changed',
+      eventKey:
+        'billing.plan_changed',
+      title:
+        'Workspace moved to Free',
+      message:
+        'Your ended paid subscription has been moved to the SaMi Free plan. Workspace data was retained and access now follows Free plan limits.',
+      priority:
+        'high',
+      dedupeKey:
+        `billing:cancelled-to-free:${subscriptionId}`,
+      metadata: {
+        subscriptionId,
+        from:
+          currentPlan,
+        to:
+          'free',
+        dataRetained:
+          true,
+      },
+    });
+
+    return {
+      mode:
+        'immediate',
+      currentPlan:
+        'free',
+      targetPlan:
+        'free',
+      status:
+        'active',
+      dataRetained:
+        true,
+    };
+  }
 
   /*
    * Free -> paid:
