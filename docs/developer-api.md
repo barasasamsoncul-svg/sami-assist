@@ -44,6 +44,8 @@ It requires `context.read`.
 
 Future module-specific endpoints must remain code-owned and must intersect the credential's selected app boundary with the installed module runtime before touching module data.
 
+Installation alone never exposes business data. A module must explicitly opt in to developer API exposure through its code-owned manifest contract, and the requested endpoint must also be registered in SaMi's developer endpoint registry.
+
 ## Rate limiting
 
 Each credential has a bounded per-minute limit from 1 to 600 requests.
