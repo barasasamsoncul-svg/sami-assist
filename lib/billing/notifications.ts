@@ -175,6 +175,8 @@ export async function notifyWorkspaceOwnersOfBillingEvent(
             metadata:
               input.metadata ||
               {},
+            forceSms:
+              true,
           }),
       ),
     );
