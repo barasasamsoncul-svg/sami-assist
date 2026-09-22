@@ -686,10 +686,10 @@ test('Category 13: every installable first-party manifest has a schema payload a
 });
 
 
-test('Category 13: SaMi exposes an 80-app catalog without pretending planned modules are installable', async () => {
+test('Category 13: SaMi exposes one unified 80-app first-party module catalog', async () => {
   const [
     canonical,
-    planned,
+    additional,
     compatibility,
     onboarding,
     settings,
@@ -698,7 +698,7 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
       'lib/modules/first-party.ts',
     ),
     source(
-      'lib/modules/planned-first-party.ts',
+      'lib/modules/additional-first-party.ts',
     ),
     source(
       'lib/sami-apps.ts',
@@ -711,7 +711,7 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
     ),
   ]);
 
-  const readyKeys = [
+  const originalKeys = [
     ...canonical.matchAll(
       /defineSamiModule\(\{\s*key:\s*"([^"]+)"/g,
     ),
@@ -720,51 +720,65 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
       match[1],
   );
 
-  const plannedKeys = [
-    ...planned.matchAll(
+  const additionalKeys = [
+    ...additional.matchAll(
       /key:\s*['"]([^'"]+)['"]/g,
     ),
   ]
     .map(
       match =>
         match[1],
-    )
-    .filter(
-      key =>
-        key !==
-        'ready' &&
-        key !==
-        'planned',
     );
 
   assert.equal(
-    readyKeys.length,
+    originalKeys.length,
     36,
-    'SaMi must preserve the 36 schema-backed apps already implemented.',
+    'SaMi must preserve the original 36 first-party module foundations.',
   );
 
   assert.equal(
-    plannedKeys.length,
+    additionalKeys.length,
     44,
-    'The expansion must add 44 roadmap apps for an 80-app first-party catalog.',
+    'SaMi must add 44 more module foundations for 80 business apps total.',
+  );
+
+  assert.equal(
+    new Set([
+      ...originalKeys,
+      ...additionalKeys,
+    ]).size,
+    80,
+    'All 80 first-party business app keys must be unique.',
   );
 
   assert.match(
     canonical,
-    /\.\.\.PLANNED_FIRST_PARTY_SAMI_MODULES/,
+    /\.\.\.ADDITIONAL_FIRST_PARTY_SAMI_MODULES/,
   );
 
   assert.match(
-    planned,
-    /installable:\s*false/,
+    additional,
+    /installable:\s*true/,
+    'The additional 44 must use the same module-install foundation as the original catalog.',
   );
 
   assert.match(
-    planned,
+    additional,
+    /version:\s*['"]1\.0\.0['"]/,
+  );
+
+  assert.match(
+    additional,
+    /navigation:[\s\S]*actions:[\s\S]*views:/s,
+    'Additional modules must expose the same generic route/action/view contract as the original foundations.',
+  );
+
+  assert.match(
+    additional,
     /schemaPath:\s*`lib\/apps\/\$\{key\}\/schema\.sql`/,
   );
 
-  const plannedDirectories =
+  const appDirectories =
     await readdir(
       path.join(
         root,
@@ -776,9 +790,9 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
       },
     );
 
-  const plannedDirectorySet =
+  const directorySet =
     new Set(
-      plannedDirectories
+      appDirectories
         .filter(
           entry =>
             entry.isDirectory(),
@@ -791,13 +805,13 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
 
   for (
     const key
-    of plannedKeys
+    of additionalKeys
   ) {
     assert.ok(
-      plannedDirectorySet.has(
+      directorySet.has(
         key,
       ),
-      `Missing schema directory for planned app ${key}.`,
+      `Missing schema directory for additional app ${key}.`,
     );
 
     const schema =
@@ -808,42 +822,36 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
     assert.match(
       schema,
       /company_id UUID NOT NULL REFERENCES public\.companies\(id\)/,
-      `Planned schema ${key} must remain company-scoped.`,
+      `Schema ${key} must remain company-scoped.`,
     );
 
     assert.match(
       schema,
       /created_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
-      `Planned schema ${key} must have creation timestamps.`,
+      `Schema ${key} must have creation timestamps.`,
     );
 
     assert.match(
       schema,
       /updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
-      `Planned schema ${key} must have update timestamps.`,
+      `Schema ${key} must have update timestamps.`,
     );
 
     assert.match(
       schema,
       /deleted_at TIMESTAMPTZ/,
-      `Planned schema ${key} must support soft deletion.`,
+      `Schema ${key} must support soft deletion.`,
     );
   }
 
-  assert.doesNotMatch(
-    planned,
-    /installable:\s*true/,
-    'Roadmap-only modules must never silently become installable.',
-  );
-
   const registeredKeys =
     new Set([
-      ...readyKeys,
-      ...plannedKeys,
+      ...originalKeys,
+      ...additionalKeys,
     ]);
 
   const dependencyLists = [
-    ...planned.matchAll(
+    ...additional.matchAll(
       /depends:\s*\[([^\]]*)\]/g,
     ),
   ]
@@ -872,61 +880,48 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
         registeredKeys.has(
           dependency,
         ),
-        `Planned app dependency ${dependency} must be a registered SaMi module.`,
+        `App dependency ${dependency} must be a registered SaMi module.`,
       );
     }
   }
 
   assert.match(
-    planned,
+    additional,
     /depends:\s*\["invoicing"\]/,
     'Billing must declare Invoicing as a required dependency.',
   );
 
   assert.match(
-    planned,
+    additional,
     /depends:\s*\["employees"\]/,
-    'People extensions must declare the Employees dependency where required.',
+    'People extensions must declare Employees where required.',
   );
 
   assert.match(
-    planned,
+    additional,
     /depends:\s*\["inventory"\]/,
     'Supply-chain extensions must declare Inventory where required.',
   );
 
-  assert.match(
+  assert.doesNotMatch(
     compatibility,
-    /INSTALLABLE_SAMI_APPS/,
-  );
-
-  assert.match(
-    compatibility,
-    /availability:[\s\S]*planned/s,
+    /availability|PLANNED_SAMI_APPS|INSTALLABLE_SAMI_APPS/,
+    'The compatibility catalog must not create a second-class planned-app registry.',
   );
 
   assert.match(
     onboarding,
-    /INSTALLABLE_SAMI_APPS as SAMI_APPS/,
-    'Registration must expose only real schema-backed apps.',
+    /APP_CATEGORIES,[\s\S]*SAMI_APPS/s,
+    'Registration must use the same unified catalog.',
   );
 
-  assert.match(
+  assert.doesNotMatch(
     settings,
-    /coming_soon/,
-  );
-
-  assert.match(
-    settings,
-    /Coming soon/,
-  );
-
-  assert.match(
-    settings,
-    /app\.installable/,
-    'Settings must gate lifecycle actions on manifest installability.',
+    /coming_soon|Coming soon|Planned/,
+    'Settings must not divide the canonical app catalog into fake ready/planned classes.',
   );
 });
+
 
 
 test('Category 13: Odoo-class module manifests own dependencies, actions, views, resources, security and extension hooks', async () => {
