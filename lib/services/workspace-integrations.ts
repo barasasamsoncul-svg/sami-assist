@@ -44,6 +44,11 @@ import type {
 } from '@/lib/integrations/types';
 
 import {
+  checkIntegrationConnectionHealth,
+  runIntegrationSync,
+} from '@/lib/integrations/runtime';
+
+import {
   requireCompanyAccess,
 } from '@/lib/services/company-access';
 
@@ -1440,6 +1445,113 @@ export async function disconnectWorkspaceIntegration(
     client.release();
   }
 }
+
+export async function checkWorkspaceIntegrationHealth(
+  connectionId:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const id =
+    requireUuid(
+      connectionId,
+      'connection',
+    );
+
+  try {
+    const result =
+      await checkIntegrationConnectionHealth(
+        context.runtime,
+        id,
+      );
+
+    await auditIntegration(
+      context.runtime,
+      {
+        action:
+          'integration.health.checked',
+        resourceId:
+          id,
+        summary:
+          'Checked integration connection health.',
+        metadata: {
+          healthStatus:
+            result.status,
+        },
+      },
+    );
+
+    return result;
+  } catch (
+    error
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      error instanceof
+        Error
+        ? error.message
+        : 'Integration health check failed.',
+    );
+  }
+}
+
+export async function runWorkspaceIntegrationSync(
+  connectionId:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const id =
+    requireUuid(
+      connectionId,
+      'connection',
+    );
+
+  try {
+    const result =
+      await runIntegrationSync(
+        context.runtime,
+        id,
+      );
+
+    await auditIntegration(
+      context.runtime,
+      {
+        action:
+          'integration.sync.completed',
+        resourceId:
+          id,
+        summary:
+          'Ran integration sync.',
+        metadata: {
+          jobId:
+            result.jobId,
+          correlationId:
+            result.correlationId,
+        },
+      },
+    );
+
+    return result;
+  } catch (
+    error
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      error instanceof
+        Error
+        ? error.message
+        : 'Integration sync failed.',
+    );
+  }
+}
+
 
 export async function getWorkspaceExternalAppLauncherEntries() {
   const [
