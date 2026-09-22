@@ -196,15 +196,26 @@ function normalizeExternalLaunchUrl(
     );
   }
 
+  const localHttp =
+    url.protocol ===
+      'http:' &&
+    (
+      url.hostname ===
+        'localhost' ||
+      url.hostname ===
+        '127.0.0.1' ||
+      url.hostname ===
+        '::1'
+    );
+
   if (
     url.protocol !==
       'https:' &&
-    url.protocol !==
-      'http:'
+    !localHttp
   ) {
     throw new WorkspaceIntegrationError(
       'INVALID_INTEGRATION',
-      'External apps must use an HTTP or HTTPS URL.',
+      'External apps require HTTPS outside local development.',
     );
   }
 
