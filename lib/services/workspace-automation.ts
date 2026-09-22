@@ -1159,6 +1159,7 @@ export async function activateWorkspaceAutomation(
         SET
           status = 'active',
           active_version = $3,
+          run_as_user_id = $4,
           updated_by = $4,
           last_activated_at = NOW(),
           updated_at = NOW()
