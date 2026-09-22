@@ -374,6 +374,16 @@ export default function IntegrationsClient({
     );
 
   const [
+    externalEditing,
+    setExternalEditing,
+  ] =
+    useState<
+      ExternalApp | null
+    >(
+      null,
+    );
+
+  const [
     webhookName,
     setWebhookName,
   ] =
@@ -948,6 +958,183 @@ export default function IntegrationsClient({
     }
   }
 
+  function resetExternalEditor() {
+    setExternalOpen(
+      false,
+    );
+
+    setExternalEditing(
+      null,
+    );
+
+    setExternalName(
+      '',
+    );
+
+    setExternalDescription(
+      '',
+    );
+
+    setExternalUrl(
+      '',
+    );
+
+    setExternalAssignmentMode(
+      'manual',
+    );
+  }
+
+  function openExternalEditor(
+    app?:
+      ExternalApp,
+  ) {
+    if (
+      app
+    ) {
+      setExternalEditing(
+        app,
+      );
+
+      setExternalName(
+        app.name,
+      );
+
+      setExternalDescription(
+        app.description ||
+        '',
+      );
+
+      setExternalUrl(
+        app.launchUrl,
+      );
+
+      setExternalAssignmentMode(
+        app.assignmentMode ===
+          'all_internal'
+          ? 'all_internal'
+          : 'manual',
+      );
+    } else {
+      setExternalEditing(
+        null,
+      );
+
+      setExternalName(
+        '',
+      );
+
+      setExternalDescription(
+        '',
+      );
+
+      setExternalUrl(
+        '',
+      );
+
+      setExternalAssignmentMode(
+        'manual',
+      );
+    }
+
+    setExternalOpen(
+      true,
+    );
+  }
+
+  async function externalAppOperation(
+    app:
+      ExternalApp,
+    operation:
+      'enable' |
+      'disable' |
+      'archive',
+  ) {
+    const key =
+      'external:' +
+      app.id +
+      ':' +
+      operation;
+
+    setBusy(
+      key,
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/workspace/integrations/external-apps/${app.id}`,
+          {
+            method:
+              'PATCH',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            body:
+              JSON.stringify({
+                operation,
+              }),
+          },
+        );
+
+      const data =
+        await response.json() as {
+          success?:
+            boolean;
+          error?:
+            string;
+        };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'External app operation failed.',
+        );
+      }
+
+      await refresh();
+
+      show(
+        'success',
+        operation ===
+          'enable'
+          ? 'External app enabled'
+          : operation ===
+              'disable'
+            ? 'External app disabled'
+            : 'External app archived',
+        operation ===
+          'archive'
+          ? 'The app is removed from active launcher administration without deleting SaMi business data.'
+          : 'Launcher availability has been updated.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'External app operation failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'External app operation failed.',
+      );
+    } finally {
+      setBusy(
+        null,
+      );
+    }
+  }
+
   async function createExternalApp() {
     if (
       !externalName
@@ -970,10 +1157,14 @@ export default function IntegrationsClient({
     try {
       const response =
         await fetch(
-          '/api/workspace/integrations',
+          externalEditing
+            ? `/api/workspace/integrations/external-apps/${externalEditing.id}`
+            : '/api/workspace/integrations',
           {
             method:
-              'POST',
+              externalEditing
+                ? 'PATCH'
+                : 'POST',
             headers: {
               'Content-Type':
                 'application/json',
@@ -985,18 +1176,31 @@ export default function IntegrationsClient({
             cache:
               'no-store',
             body:
-              JSON.stringify({
-                operation:
-                  'create_external_app',
-                name:
-                  externalName,
-                description:
-                  externalDescription,
-                launchUrl:
-                  externalUrl,
-                assignmentMode:
-                  externalAssignmentMode,
-              }),
+              JSON.stringify(
+                externalEditing
+                  ? {
+                      operation:
+                        'update',
+                      name:
+                        externalName,
+                      description:
+                        externalDescription,
+                      launchUrl:
+                        externalUrl,
+                    }
+                  : {
+                      operation:
+                        'create_external_app',
+                      name:
+                        externalName,
+                      description:
+                        externalDescription,
+                      launchUrl:
+                        externalUrl,
+                      assignmentMode:
+                        externalAssignmentMode,
+                    },
+              ),
           },
         );
 
@@ -1018,28 +1222,23 @@ export default function IntegrationsClient({
         );
       }
 
-      setExternalOpen(
-        false,
-      );
-      setExternalName(
-        '',
-      );
-      setExternalDescription(
-        '',
-      );
-      setExternalUrl(
-        '',
-      );
-      setExternalAssignmentMode(
-        'manual',
-      );
+      const wasEditing =
+        Boolean(
+          externalEditing,
+        );
+
+      resetExternalEditor();
 
       await refresh();
 
       show(
         'success',
-        'External app added',
-        'The app is now available according to its assignment policy.',
+        wasEditing
+          ? 'External app updated'
+          : 'External app added',
+        wasEditing
+          ? 'The launcher entry now uses the updated app details.'
+          : 'The app is now available according to its assignment policy.',
       );
     } catch (
       error
@@ -1442,9 +1641,7 @@ export default function IntegrationsClient({
               <button
                 type="button"
                 onClick={() =>
-                  setExternalOpen(
-                    true,
-                  )
+                  openExternalEditor()
                 }
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-xs font-bold text-white dark:bg-white dark:text-slate-950"
               >
@@ -2042,23 +2239,81 @@ export default function IntegrationsClient({
                     </a>
 
                     {state.canManage && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openAssignments(
-                            app,
-                          )
-                        }
-                        disabled={
-                          Boolean(
-                            busy,
-                          )
-                        }
-                        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
-                      >
-                        <Users className="h-3 w-3" />
-                        Assign
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openAssignments(
+                              app,
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                        >
+                          <Users className="h-3 w-3" />
+                          Access
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openExternalEditor(
+                              app,
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            externalAppOperation(
+                              app,
+                              app.status ===
+                                'active'
+                                ? 'disable'
+                                : 'enable',
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                        >
+                          {app.status === 'active' ? 'Disable' : 'Enable'}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            externalAppOperation(
+                              app,
+                              'archive',
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          className="h-8 rounded-lg border border-rose-200 px-2.5 text-[10px] font-bold text-rose-600 disabled:opacity-50 dark:border-rose-500/20 dark:text-rose-300"
+                        >
+                          Archive
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2252,19 +2507,19 @@ export default function IntegrationsClient({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-base font-black">
-                  Add external app
+                  {externalEditing ? 'Edit external app' : 'Add external app'}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Add an approved cloud or internal business URL to the SaMi launcher.
+                  {externalEditing
+                    ? 'Update the approved launcher details. Existing access assignments stay intact.'
+                    : 'Add an approved cloud or internal business URL to the SaMi launcher.'}
                 </p>
               </div>
               <button
                 type="button"
                 aria-label="Close"
-                onClick={() =>
-                  setExternalOpen(
-                    false,
-                  )
+                onClick={
+                  resetExternalEditor
                 }
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 hover:bg-[var(--sami-surface-soft)]"
               >
@@ -2313,41 +2568,41 @@ export default function IntegrationsClient({
                 className="w-full resize-none rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 py-2.5 text-sm outline-none"
               />
 
-              <label className="block">
-                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                  Initial access
-                </span>
-                <select
-                  value={
-                    externalAssignmentMode
-                  }
-                  onChange={event =>
-                    setExternalAssignmentMode(
-                      event.target.value ===
-                        'all_internal'
-                        ? 'all_internal'
-                        : 'manual',
-                    )
-                  }
-                  className="mt-1.5 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm outline-none"
-                >
-                  <option value="manual">
-                    Only me initially
-                  </option>
-                  <option value="all_internal">
-                    Everyone with company access
-                  </option>
-                </select>
-              </label>
+              {!externalEditing && (
+                <label className="block">
+                  <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                    Initial access
+                  </span>
+                  <select
+                    value={
+                      externalAssignmentMode
+                    }
+                    onChange={event =>
+                      setExternalAssignmentMode(
+                        event.target.value ===
+                          'all_internal'
+                          ? 'all_internal'
+                          : 'manual',
+                      )
+                    }
+                    className="mt-1.5 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-sm outline-none"
+                  >
+                    <option value="manual">
+                      Only me initially
+                    </option>
+                    <option value="all_internal">
+                      Everyone with company access
+                    </option>
+                  </select>
+                </label>
+              )}
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() =>
-                  setExternalOpen(
-                    false,
-                  )
+                onClick={
+                  resetExternalEditor
                 }
                 className="h-10 rounded-xl px-4 text-xs font-bold text-slate-500"
               >
@@ -2365,7 +2620,7 @@ export default function IntegrationsClient({
                 className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white disabled:opacity-50 dark:bg-white dark:text-slate-950"
               >
                 {busy === 'create-external' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Add app
+                {externalEditing ? 'Save changes' : 'Add app'}
               </button>
             </div>
           </div>
