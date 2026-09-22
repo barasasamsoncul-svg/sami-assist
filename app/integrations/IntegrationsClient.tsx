@@ -95,6 +95,29 @@ type WebhookEndpoint = {
   updatedAt: string;
 };
 
+type WebhookDelivery = {
+  id: string;
+  endpointId: string;
+  endpointName: string;
+  direction: string;
+  externalEventId:
+    string | null;
+  payloadBytes: number;
+  signatureValid: boolean;
+  status: string;
+  httpStatus:
+    number | null;
+  errorCode:
+    string | null;
+  errorMessage:
+    string | null;
+  correlationId: string;
+  receivedAt: string;
+  processedAt:
+    string | null;
+  createdAt: string;
+};
+
 type ExternalApp = {
   id: string;
   name: string;
@@ -144,6 +167,8 @@ type IntegrationState = {
     Connection[];
   webhooks:
     WebhookEndpoint[];
+  webhookDeliveries:
+    WebhookDelivery[];
   externalApps:
     ExternalApp[];
   syncJobs:
@@ -549,6 +574,9 @@ export default function IntegrationsClient({
         webhooks:
           data.webhooks ||
           [],
+        webhookDeliveries:
+          data.webhookDeliveries ||
+          [],
         externalApps:
           data.externalApps ||
           [],
@@ -662,6 +690,134 @@ export default function IntegrationsClient({
           Error
           ? error.message
           : 'Integration operation failed.',
+      );
+    } finally {
+      setBusy(
+        null,
+      );
+    }
+  }
+
+  async function webhookOperation(
+    webhook:
+      WebhookEndpoint,
+    operation:
+      'pause' |
+      'resume' |
+      'rotate_secret' |
+      'revoke',
+  ) {
+    const key =
+      'webhook:' +
+      webhook.id +
+      ':' +
+      operation;
+
+    setBusy(
+      key,
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/workspace/integrations/webhooks/${webhook.id}`,
+          {
+            method:
+              'PATCH',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            body:
+              JSON.stringify({
+                operation,
+              }),
+          },
+        );
+
+      const data =
+        await response.json() as {
+          success?:
+            boolean;
+          error?:
+            string;
+          result?: {
+            endpointPath?:
+              string;
+            secret?:
+              string;
+          };
+        };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'Webhook operation failed.',
+        );
+      }
+
+      if (
+        operation ===
+          'rotate_secret' &&
+        data.result
+          ?.endpointPath &&
+        data.result
+          ?.secret
+      ) {
+        setWebhookSecret({
+          endpointPath:
+            data.result
+              .endpointPath,
+          secret:
+            data.result
+              .secret,
+        });
+
+        setWebhookOpen(
+          true,
+        );
+      }
+
+      await refresh();
+
+      if (
+        operation !==
+          'rotate_secret'
+      ) {
+        show(
+          'success',
+          operation ===
+            'pause'
+            ? 'Webhook paused'
+            : operation ===
+                'resume'
+              ? 'Webhook resumed'
+              : 'Webhook revoked',
+          operation ===
+            'revoke'
+            ? 'The endpoint can no longer receive events.'
+            : 'The webhook lifecycle was updated.',
+        );
+      }
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Webhook operation failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'Webhook operation failed.',
       );
     } finally {
       setBusy(
@@ -1681,12 +1837,131 @@ export default function IntegrationsClient({
                         {webhook.status}
                       </span>
                     </div>
+
+                    {state.canManage && webhook.status !== 'revoked' && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          onClick={() =>
+                            webhookOperation(
+                              webhook,
+                              webhook.status ===
+                                'paused'
+                                ? 'resume'
+                                : 'pause',
+                            )
+                          }
+                          className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                        >
+                          {webhook.status === 'paused' ? 'Resume' : 'Pause'}
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          onClick={() =>
+                            webhookOperation(
+                              webhook,
+                              'rotate_secret',
+                            )
+                          }
+                          className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[10px] font-bold disabled:opacity-50"
+                        >
+                          Rotate secret
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={
+                            Boolean(
+                              busy,
+                            )
+                          }
+                          onClick={() =>
+                            webhookOperation(
+                              webhook,
+                              'revoke',
+                            )
+                          }
+                          className="h-8 rounded-lg border border-rose-200 px-2.5 text-[10px] font-bold text-rose-600 disabled:opacity-50 dark:border-rose-500/20 dark:text-rose-300"
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ),
               )}
             </div>
           )}
         </div>
+      </section>
+
+      <section className="mt-5 sami-surface overflow-hidden rounded-[24px]">
+        <div className="border-b border-[var(--sami-border)] px-4 py-4 sm:px-5">
+          <p className="text-sm font-black">
+            Recent webhook deliveries
+          </p>
+          <p className="mt-1 text-[10px] text-slate-400">
+            Delivery metadata is retained for operations and audit; raw secrets are never shown here.
+          </p>
+        </div>
+
+        {state.webhookDeliveries.length === 0 ? (
+          <div className="px-5 py-10 text-center text-[11px] text-slate-400">
+            No webhook deliveries yet.
+          </div>
+        ) : (
+          <div className="divide-y divide-[var(--sami-border)]">
+            {state.webhookDeliveries.slice(0, 12).map(
+              delivery => (
+                <div
+                  key={
+                    delivery.id
+                  }
+                  className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-bold">
+                      {delivery.endpointName}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-slate-400">
+                      {formatDate(delivery.receivedAt)}
+                      {' · '}
+                      {delivery.payloadBytes.toLocaleString()} bytes
+                      {delivery.externalEventId ? ` · ${delivery.externalEventId}` : ''}
+                    </p>
+                    {delivery.errorMessage && (
+                      <p className="mt-1 line-clamp-1 text-[10px] text-rose-500">
+                        {delivery.errorMessage}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {delivery.signatureValid && (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        Verified
+                      </span>
+                    )}
+                    <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wide ${tone(delivery.status)}`}>
+                      {delivery.status}
+                    </span>
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+        )}
       </section>
 
       <section className="mt-5 sami-surface overflow-hidden rounded-[24px]">
