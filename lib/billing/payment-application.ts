@@ -819,6 +819,17 @@ export async function applyVerifiedRecurringInvoice(
         `
           UPDATE subscriptions
           SET
+            plan_id =
+              CASE
+                WHEN scheduled_plan_id
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at <=
+                       $2
+                THEN scheduled_plan_id
+                ELSE plan_id
+              END,
             status =
               'active',
             started_at =
@@ -832,6 +843,42 @@ export async function applyVerifiedRecurringInvoice(
               $3,
             cancelled_at =
               NULL,
+            scheduled_plan_id =
+              CASE
+                WHEN scheduled_plan_effective_at
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at <=
+                       $2
+                THEN NULL
+                ELSE scheduled_plan_id
+              END,
+            scheduled_plan_effective_at =
+              CASE
+                WHEN scheduled_plan_effective_at
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at <=
+                       $2
+                THEN NULL
+                ELSE scheduled_plan_effective_at
+              END,
+            scheduled_plan_requested_by =
+              CASE
+                WHEN scheduled_plan_effective_at
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at <=
+                       $2
+                THEN NULL
+                ELSE scheduled_plan_requested_by
+              END,
+            scheduled_plan_requested_at =
+              CASE
+                WHEN scheduled_plan_effective_at
+                       IS NOT NULL
+                 AND scheduled_plan_effective_at <=
+                       $2
+                THEN NULL
+                ELSE scheduled_plan_requested_at
+              END,
             updated_at =
               NOW()
           WHERE id = $1
