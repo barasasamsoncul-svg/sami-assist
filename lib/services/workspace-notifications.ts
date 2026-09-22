@@ -120,6 +120,7 @@ export type CreateWorkspaceNotificationInput = {
   expiresAt?: Date | string | null;
   forceSms?: boolean;
   critical?: boolean;
+  smsMessage?: string | null;
 };
 
 function requireUuid(
@@ -1697,7 +1698,11 @@ export async function createWorkspaceNotification(
           recipient.phone,
           {
             title,
-            message,
+            message:
+              input.smsMessage !==
+                undefined
+                ? input.smsMessage
+                : message,
           },
         );
 
