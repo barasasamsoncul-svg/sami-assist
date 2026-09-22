@@ -38,6 +38,10 @@ import {
 } from '@/lib/billing/pricing';
 
 import {
+  applyDueScheduledPlanChanges,
+} from '@/lib/billing/plan-transition';
+
+import {
   queryControl,
 } from '@/lib/db/control';
 
@@ -209,144 +213,11 @@ async function resolveBillingContext(
   };
 }
 
-async function applyDueScheduledPlanChange(
-  tenantId:
-    string,
-) {
-  const result =
-    await queryControl(
-      `
-        UPDATE subscriptions s
-        SET
-          plan_id =
-            s.scheduled_plan_id,
-          status =
-            CASE
-              WHEN LOWER(
-                     target.key
-                   ) =
-                   'free'
-              THEN 'active'
-              ELSE 'past_due'
-            END,
-          billing_cycle =
-            CASE
-              WHEN LOWER(
-                     target.key
-                   ) =
-                   'free'
-              THEN NULL
-              ELSE 'monthly'
-            END,
-          current_period_start =
-            CASE
-              WHEN LOWER(
-                     target.key
-                   ) =
-                   'free'
-              THEN NULL
-              ELSE s.current_period_start
-            END,
-          current_period_end =
-            CASE
-              WHEN LOWER(
-                     target.key
-                   ) =
-                   'free'
-              THEN NULL
-              ELSE s.current_period_end
-            END,
-          cancelled_at =
-            NULL,
-          scheduled_plan_id =
-            NULL,
-          scheduled_plan_effective_at =
-            NULL,
-          scheduled_plan_requested_by =
-            NULL,
-          scheduled_plan_requested_at =
-            NULL,
-          updated_at =
-            NOW()
-        FROM plans target
-        WHERE s.tenant_id = $1
-          AND s.deleted_at
-              IS NULL
-          AND s.scheduled_plan_id =
-              target.id
-          AND target.deleted_at
-              IS NULL
-          AND target.is_active =
-              TRUE
-          AND s.scheduled_plan_effective_at
-              IS NOT NULL
-          AND s.scheduled_plan_effective_at <=
-              NOW()
-        RETURNING
-          s.id,
-          s.status,
-          target.key
-            AS applied_plan_key
-      `,
-      [
-        tenantId,
-      ],
-    );
-
-  for (
-    const row
-    of result.rows
-  ) {
-    try {
-      await queryControl(
-        `
-          INSERT INTO audit_logs (
-            tenant_id,
-            actor_type,
-            event_type,
-            entity_type,
-            entity_id,
-            metadata,
-            created_at
-          )
-          VALUES (
-            $1,
-            'system',
-            'SUBSCRIPTION_PLAN_CHANGE_APPLIED',
-            'subscription',
-            $2,
-            $3::jsonb,
-            NOW()
-          )
-        `,
-        [
-          tenantId,
-          row.id,
-          JSON.stringify({
-            plan:
-              row.applied_plan_key,
-            status:
-              row.status,
-          }),
-        ],
-      );
-    } catch (
-      error
-    ) {
-      console.error(
-        '[SaMi Billing] Scheduled plan audit failed:',
-        error,
-      );
-    }
-  }
-}
-
-
 async function loadSubscription(
   tenantId:
     string,
 ) {
-  await applyDueScheduledPlanChange(
+  await applyDueScheduledPlanChanges(
     tenantId,
   );
 
