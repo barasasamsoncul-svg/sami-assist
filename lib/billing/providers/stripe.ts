@@ -683,4 +683,20 @@ export const stripeBillingProvider:
         providerSubscriptionId,
       );
   },
+
+  async resumeRecurringSubscription(
+    providerSubscriptionId,
+  ) {
+    const stripe =
+      stripeClient();
+
+    await stripe.subscriptions
+      .update(
+        providerSubscriptionId,
+        {
+          cancel_at_period_end:
+            false,
+        },
+      );
+  },
 };
