@@ -4,6 +4,10 @@ import {
   isIntegrationEncryptionConfigured,
 } from '@/lib/integrations/crypto';
 
+import {
+  getSamiModuleManifest,
+} from '@/lib/modules/registry';
+
 import type {
   SamiIntegrationProviderDefinition,
   SamiIntegrationPublicProvider,
@@ -274,11 +278,21 @@ export function getAccessibleIntegrationProviders(
           return true;
         }
 
-        return context
-          .accessibleModuleKeys
-          .includes(
+        const manifest =
+          getSamiModuleManifest(
             provider.moduleKey,
           );
+
+        return Boolean(
+          manifest &&
+          manifest.extensions
+            .integrationProviders &&
+          context
+            .accessibleModuleKeys
+            .includes(
+              provider.moduleKey,
+            ),
+        );
       },
     );
 }
