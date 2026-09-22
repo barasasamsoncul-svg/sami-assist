@@ -24,6 +24,10 @@ import {
   applyVerifiedCheckoutPayment,
 } from '@/lib/billing/payment-application';
 
+import {
+  notifyWorkspaceOwnersOfBillingEvent,
+} from '@/lib/billing/notifications';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -978,43 +982,88 @@ async function markPaymentFailed(
     unknown
   >
 ) {
-  await queryControl(
-    `
-      UPDATE payment_transactions
+  const result =
+    await queryControl(
+      `
+        UPDATE payment_transactions
 
-      SET
-        status =
-          'failed',
+        SET
+          status =
+            'failed',
 
-        metadata =
-          COALESCE(
-            metadata,
-            '{}'::jsonb
-          )
-          ||
-          jsonb_build_object(
-            'pesapalStatus',
-            $2::jsonb,
+          metadata =
+            COALESCE(
+              metadata,
+              '{}'::jsonb
+            )
+            ||
+            jsonb_build_object(
+              'pesapalStatus',
+              $2::jsonb,
 
-            'failureState',
-            $3,
+              'failureState',
+              $3,
 
-            'failedAt',
-            NOW()
-          )
+              'failedAt',
+              NOW()
+            )
 
-      WHERE id = $1
-    `,
-    [
-      paymentId,
+        WHERE id = $1
+        RETURNING
+          tenant_id
+      `,
+      [
+        paymentId,
 
-      JSON.stringify(
-        statusData
-      ),
+        JSON.stringify(
+          statusData
+        ),
 
-      paymentState,
-    ]
-  );
+        paymentState,
+      ]
+    );
+
+  const tenantId =
+    result.rows[0]
+      ?.tenant_id;
+
+  if (
+    tenantId
+  ) {
+    try {
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          String(
+            tenantId,
+          ),
+        type:
+          'billing.payment_failed',
+        eventKey:
+          'billing.payment_failed',
+        title:
+          'Payment needs attention',
+        message:
+          'SaMi could not confirm the latest PesaPal subscription payment. Open Billing to review the payment and restore workspace access.',
+        priority:
+          'urgent',
+        dedupeKey:
+          `billing:pesapal-failed:${paymentId}:${paymentState}`,
+        metadata: {
+          provider:
+            'pesapal',
+          paymentId,
+          paymentState,
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        '[PesaPal] Failed-payment notification could not be delivered:',
+        error
+      );
+    }
+  }
 }
 
 /* ============================================================
