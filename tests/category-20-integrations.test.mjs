@@ -1334,6 +1334,55 @@ test('Category 20: public provider catalog strips OAuth runtime internals', asyn
   );
 });
 
+test('Category 20: OAuth return paths are origin-pinned against slash and backslash open redirects', async () => {
+  const oauth =
+    await source(
+      'lib/integrations/oauth.ts',
+    );
+
+  const start =
+    oauth.indexOf(
+      'function safeReturnPath',
+    );
+
+  const end =
+    oauth.indexOf(
+      'function publicOrigin',
+      start,
+    );
+
+  const block =
+    oauth.slice(
+      start,
+      end,
+    );
+
+  assert.match(
+    block,
+    /path\.startsWith\([\s\S]*['"]\/\/['"]/,
+  );
+
+  assert.match(
+    block,
+    /path\.includes\([\s\S]*['"]\\\\['"]/,
+  );
+
+  assert.match(
+    block,
+    /https:\/\/sami\.invalid/,
+  );
+
+  assert.match(
+    block,
+    /resolved\.origin !==[\s\S]*sentinel/,
+  );
+
+  assert.match(
+    block,
+    /resolved\.pathname[\s\S]*resolved\.search[\s\S]*resolved\.hash/,
+  );
+});
+
 test('Category 20: OAuth initiation clears stale state and UI exposes explicit reconnect', async () => {
   const [
     oauth,
