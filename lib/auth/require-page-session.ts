@@ -89,8 +89,12 @@ export async function requirePageSession(
           '/help?',
         );
 
+      const subscriptionRestricted =
+        access.suspended ||
+        !access.entitled;
+
       if (
-        access.suspended &&
+        subscriptionRestricted &&
         !recoveryPath
       ) {
         redirect(
