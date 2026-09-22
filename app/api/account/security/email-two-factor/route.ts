@@ -47,6 +47,10 @@ import {
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime =
   'nodejs';
 
@@ -1580,6 +1584,24 @@ export async function DELETE(
 
         otherSessionsRevoked:
           true,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId,
+      eventKey:
+        'security.email_two_factor_disabled',
+      title:
+        'Email verification disabled',
+      message:
+        'Email login verification was disabled on your SaMi account. Other sessions were signed out where required. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:email-two-factor-disabled:${userId}:${Date.now()}`,
+      metadata: {
+        twoFactorStillEnabled:
+          finalStatus.enabled,
       },
     });
 
