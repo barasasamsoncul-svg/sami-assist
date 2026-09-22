@@ -1,14 +1,17 @@
 'use client';
 
 import {
+  Ban,
   Check,
   CircleDollarSign,
   CreditCard,
   Loader2,
   ReceiptText,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   Users,
+  XCircle,
 } from 'lucide-react';
 
 import {
@@ -131,6 +134,16 @@ export type BillingState = {
       string | null;
     cancelledAt:
       string | null;
+    cancellation: {
+      requestedAt:
+        string | null;
+      effectiveAt:
+        string | null;
+      scheduled:
+        boolean;
+      ended:
+        boolean;
+    };
     scheduledPlan:
       | {
           key:
@@ -243,6 +256,13 @@ type MobileSection =
   | 'plans'
   | 'payments';
 
+type OverlayAction = {
+  label:
+    string;
+  onClick?:
+    () => void;
+};
+
 type Overlay = {
   open: boolean;
   type:
@@ -252,6 +272,10 @@ type Overlay = {
     'info';
   title: string;
   message: string;
+  primaryAction?:
+    OverlayAction;
+  secondaryAction?:
+    OverlayAction;
 };
 
 const CLOSED_OVERLAY:
@@ -449,6 +473,12 @@ export default function BillingSettings({
 
   const automaticBillingActive =
     Boolean(
+      !state.subscription
+        .cancellation
+        .scheduled &&
+      !state.subscription
+        .cancellation
+        .ended &&
       state.billingProfile &&
       [
         'trialing',
