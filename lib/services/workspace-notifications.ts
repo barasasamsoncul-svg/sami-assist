@@ -118,8 +118,10 @@ export type CreateWorkspaceNotificationInput = {
   dedupeKey?: string | null;
   metadata?: Record<string, unknown>;
   expiresAt?: Date | string | null;
+  forceEmail?: boolean;
   forceSms?: boolean;
   critical?: boolean;
+  emailMessage?: string | null;
   smsMessage?: string | null;
 };
 
@@ -1487,6 +1489,7 @@ export async function createWorkspaceNotification(
 
     if (
       input.critical === true ||
+      input.forceEmail === true ||
       (
         preferences.emailEnabled &&
         !muted
@@ -1609,7 +1612,11 @@ export async function createWorkspaceNotification(
           name,
           {
             title,
-            message,
+            message:
+              input.emailMessage !==
+                undefined
+                ? input.emailMessage
+                : message,
             actionHref: href,
           },
         );
