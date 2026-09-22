@@ -170,7 +170,17 @@ export function handleBillingError(
                   error.code ===
                     'PLAN_CHANGE_PROVIDER_UNSUPPORTED' ||
                   error.code ===
-                    'PLAN_CHANGE_ALREADY_SCHEDULED'
+                    'PLAN_CHANGE_ALREADY_SCHEDULED' ||
+                  error.code ===
+                    'PLAN_CHANGE_NOT_SCHEDULED' ||
+                  error.code ===
+                    'SUBSCRIPTION_CANCELLATION_ALREADY_SCHEDULED' ||
+                  error.code ===
+                    'SUBSCRIPTION_CANCELLATION_NOT_SCHEDULED' ||
+                  error.code ===
+                    'SUBSCRIPTION_CANCELLATION_EFFECTIVE' ||
+                  error.code ===
+                    'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED'
                 ? 409
                 : error.code ===
                     'PAYMENT_PROVIDER_FAILED'
