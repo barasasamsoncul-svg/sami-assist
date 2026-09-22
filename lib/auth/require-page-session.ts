@@ -90,7 +90,7 @@ export async function requirePageSession(
         );
 
       if (
-        access.pastDue &&
+        access.suspended &&
         !recoveryPath
       ) {
         redirect(
