@@ -31,6 +31,10 @@ import {
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime =
   'nodejs';
 
@@ -1013,6 +1017,24 @@ export async function POST(
         recoveryCodesCreated:
           recoveryCodes.length >
           0,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId,
+      eventKey:
+        'security.email_two_factor_enabled',
+      title:
+        'Email verification enabled',
+      message:
+        'Email login verification is now enabled on your SaMi account. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:email-two-factor-enabled:${userId}:${Date.now()}`,
+      metadata: {
+        firstTwoFactorMethod:
+          !hadExistingTwoFactor,
       },
     });
 
