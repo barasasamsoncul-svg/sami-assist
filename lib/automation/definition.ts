@@ -167,7 +167,62 @@ function normalizeTriggerConfig(
     };
   }
 
-  return {};
+  if (
+    triggerKey ===
+      'integrations.webhook.received'
+  ) {
+    const endpointId =
+      typeof value.endpointId ===
+        'string'
+        ? value.endpointId
+            .trim()
+            .toLowerCase()
+        : '';
+
+    const eventKey =
+      typeof value.eventKey ===
+        'string'
+        ? value.eventKey
+            .trim()
+            .toLowerCase()
+            .slice(
+              0,
+              200,
+            )
+        : '';
+
+    if (
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        endpointId,
+      )
+    ) {
+      throw new SamiAutomationDefinitionError(
+        'Choose a valid webhook endpoint for this trigger.',
+      );
+    }
+
+    if (
+      eventKey &&
+      !/^[a-z0-9_.:-]+$/.test(
+        eventKey,
+      )
+    ) {
+      throw new SamiAutomationDefinitionError(
+        'Webhook event key is invalid.',
+      );
+    }
+
+    return {
+      endpointId,
+      ...(eventKey
+        ? {
+            eventKey,
+          }
+        : {}),
+    };
+  }
+
+  return value;
 }
 
 function safePath(
