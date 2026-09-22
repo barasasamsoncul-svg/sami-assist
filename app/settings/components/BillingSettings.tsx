@@ -13,7 +13,6 @@ import {
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -39,6 +38,10 @@ type BillingPlan = {
     allBusinessApps: boolean;
     maxInstalledBusinessApps:
       number | null;
+    users: {
+      maxActiveInternalUsers:
+        number | null;
+    };
     ai: {
       enabled: boolean;
       monthlyQueriesPerUser: {
@@ -128,6 +131,18 @@ export type BillingState = {
       string | null;
     cancelledAt:
       string | null;
+    scheduledPlan:
+      | {
+          key:
+            string;
+          name:
+            string;
+          effectiveAt:
+            string | null;
+          requestedAt:
+            string | null;
+        }
+      | null;
     firstMonthFree: boolean;
     pricePerUserMonthly: number;
     monthlyAmount: number;
@@ -347,6 +362,12 @@ function planHighlights(
       : ai.label ||
         'Advanced AI allowance',
     plan.entitlements
+      .users
+      .maxActiveInternalUsers ===
+      null
+      ? 'Unlimited plan seats billed per active user'
+      : `Up to ${plan.entitlements.users.maxActiveInternalUsers} active internal user`,
+    plan.entitlements
       .companies
       .multiCompany
       ? 'Multi-company'
@@ -396,6 +417,16 @@ export default function BillingSettings({
     );
 
   const [
+    planBusy,
+    setPlanBusy,
+  ] =
+    useState<
+      string | null
+    >(
+      null,
+    );
+
+  const [
     overlay,
     setOverlay,
   ] =
@@ -414,24 +445,6 @@ export default function BillingSettings({
   const automaticSetupStarted =
     useRef(
       false,
-    );
-
-  const currentPlan =
-    useMemo(
-      () =>
-        state.plans
-          .find(
-            plan =>
-              plan.key ===
-              state.subscription
-                .planKey,
-          ) ||
-        null,
-      [
-        state.plans,
-        state.subscription
-          .planKey,
-      ],
     );
 
   const automaticBillingActive =
@@ -816,6 +829,158 @@ export default function BillingSettings({
     );
   }
 
+  async function changePlan(
+    targetPlan:
+      BillingPlan['key'],
+  ) {
+    if (
+      !state.canManage ||
+      planBusy
+    ) {
+      return;
+    }
+
+    setPlanBusy(
+      targetPlan,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/billing',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                action:
+                  'change_plan',
+                targetPlan,
+              }),
+          },
+        );
+
+      const data =
+        await response.json() as {
+          success?:
+            boolean;
+          error?:
+            string;
+          blockers?:
+            string[];
+          planChange?: {
+            mode?:
+              string;
+            currentPlan?:
+              string;
+            targetPlan?:
+              string;
+            effectiveAt?:
+              string | null;
+            billingSetupRecommended?:
+              boolean;
+            paymentRequired?:
+              boolean;
+          };
+        };
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.planChange
+      ) {
+        const blockerText =
+          Array.isArray(
+            data.blockers,
+          ) &&
+          data.blockers.length >
+            0
+            ? data.blockers.join(
+                ' ',
+              )
+            : '';
+
+        throw new Error(
+          blockerText ||
+          data.error ||
+          'SaMi could not change the subscription plan.',
+        );
+      }
+
+      await refresh();
+
+      if (
+        data.planChange
+          .mode ===
+          'scheduled'
+      ) {
+        show(
+          'success',
+          'Plan change scheduled',
+          `The plan will change at the current paid-period boundary${data.planChange.effectiveAt ? ` on ${formatDate(data.planChange.effectiveAt)}` : ''}.`,
+        );
+      } else if (
+        data.planChange
+          .paymentRequired
+      ) {
+        setMobileSection(
+          'overview',
+        );
+
+        show(
+          'info',
+          'Plan changed — payment required',
+          'This workspace has already used its paid-plan free month. The new paid plan will become entitled after payment.',
+        );
+      } else if (
+        data.planChange
+          .billingSetupRecommended
+      ) {
+        setMobileSection(
+          'overview',
+        );
+
+        show(
+          'success',
+          'Paid plan started',
+          'Your first paid-plan month is free. Set up automatic billing in Overview so future renewal can run securely.',
+        );
+      } else {
+        show(
+          'success',
+          'Plan changed',
+          'SaMi updated the workspace subscription and re-evaluated its plan entitlements.',
+        );
+      }
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Plan change blocked',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not change the subscription plan.',
+      );
+    } finally {
+      setPlanBusy(
+        null,
+      );
+    }
+  }
+
+
   async function checkout() {
     if (
       busy ||
@@ -1035,6 +1200,24 @@ export default function BillingSettings({
             </span>
           </div>
 
+          {state.subscription
+            .scheduledPlan && (
+            <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
+              <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                Plan change scheduled
+              </p>
+              <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+                {state.subscription.scheduledPlan.name}
+                {state.subscription.scheduledPlan.effectiveAt
+                  ? ` from ${formatDate(
+                      state.subscription.scheduledPlan.effectiveAt,
+                    )}`
+                  : ''}
+                . Your current plan remains entitled until then.
+              </p>
+            </div>
+          )}
+
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-[var(--sami-border)] p-3">
               <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
@@ -1131,6 +1314,13 @@ export default function BillingSettings({
               {state.collection
                 .explanation}
             </p>
+
+            {!state.collection
+              .configured && (
+              <p className="mt-2 text-[11px] font-bold text-amber-600 dark:text-amber-300">
+                Billing collection is unavailable until {state.collection.providerName} credentials are configured.
+              </p>
+            )}
 
             {state.subscription.planKey !==
               'free' &&
@@ -1347,6 +1537,38 @@ export default function BillingSettings({
                         Multi-company, external API and customization capability.
                       </p>
                     </div>
+                  )}
+
+                  {state.canManage &&
+                    !current &&
+                    !state.subscription
+                      .scheduledPlan && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        changePlan(
+                          plan.key,
+                        )
+                      }
+                      disabled={
+                        planBusy !==
+                        null
+                      }
+                      className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-black transition hover:bg-[var(--sami-surface-soft)] disabled:opacity-50"
+                    >
+                      {planBusy ===
+                        plan.key && (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      )}
+                      {state.subscription
+                        .status ===
+                        'active' &&
+                      state.subscription
+                        .planKey !==
+                        'free'
+                        ? 'Change at renewal'
+                        : `Switch to ${plan.name}`}
+                    </button>
                   )}
                 </article>
               );
