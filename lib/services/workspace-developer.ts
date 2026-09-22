@@ -14,8 +14,11 @@ import {
 
 import {
   getSamiPlanPolicy,
-  isSubscriptionEntitledNow,
 } from '@/lib/billing/plan-policy';
+
+import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
 
 import {
   getSession,
@@ -297,18 +300,26 @@ async function resolveWorkspaceDeveloperContext(
       permissions.tenantId,
     );
 
-  const planPolicy =
-    getSamiPlanPolicy(
-      account.subscription
-        ?.planKey,
-    );
+  const [
+    planPolicy,
+    subscriptionAccess,
+  ] =
+    await Promise.all([
+      Promise.resolve(
+        getSamiPlanPolicy(
+          account.subscription
+            ?.planKey,
+        ),
+      ),
+      getWorkspaceSubscriptionAccessState(
+        permissions.tenantId,
+      ),
+    ]);
 
   if (
     !account.subscription ||
-    !isSubscriptionEntitledNow(
-      account.subscription
-        .status,
-    ) ||
+    !subscriptionAccess
+      .entitled ||
     planPolicy
       ?.developerApi
       .enabled !==
