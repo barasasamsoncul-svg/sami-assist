@@ -1,6 +1,10 @@
 import 'server-only';
 
 import {
+  SAMI_PERMISSIONS,
+} from '@/lib/auth/permission-catalog';
+
+import {
   getSamiModuleManifest,
 } from '@/lib/modules/registry';
 
@@ -72,6 +76,43 @@ export const CORE_AUTOMATION_TRIGGERS:
         required: [
           'intervalMinutes',
           'timezone',
+        ],
+      },
+    },
+    {
+      key:
+        'integrations.webhook.received',
+      name:
+        'Webhook received',
+      description:
+        'Run when a verified SaMi custom-webhook endpoint receives an allowed event.',
+      type:
+        'event',
+      moduleKey:
+        null,
+      requiredPermissions: [
+        SAMI_PERMISSIONS
+          .INTEGRATIONS_VIEW,
+      ],
+      companyScoped:
+        true,
+      configSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          endpointId: {
+            type:
+              'string',
+          },
+          eventKey: {
+            type:
+              'string',
+          },
+        },
+        required: [
+          'endpointId',
         ],
       },
     },
