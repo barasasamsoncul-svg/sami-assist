@@ -45,6 +45,7 @@ import type {
 
 import {
   checkIntegrationConnectionHealth,
+  getIntegrationSyncHandler,
   runIntegrationSync,
 } from '@/lib/integrations/runtime';
 
@@ -649,6 +650,14 @@ export async function getWorkspaceIntegrationState() {
             )
               ? row.capabilities
               : [],
+          syncAvailable:
+            Boolean(
+              getIntegrationSyncHandler(
+                String(
+                  row.provider_key,
+                ),
+              ),
+            ),
           healthStatus:
             String(
               row.health_status ||
