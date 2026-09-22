@@ -2097,9 +2097,13 @@ export default function BillingSettings({
                     !state.subscription
                       .cancellation
                       .scheduled &&
-                    !state.subscription
-                      .cancellation
-                      .ended && (
+                    (
+                      !state.subscription
+                        .cancellation
+                        .ended ||
+                      plan.key ===
+                        'free'
+                    ) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -2118,19 +2122,25 @@ export default function BillingSettings({
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       )}
                       {state.subscription
-                        .planKey !==
-                        'free' &&
+                        .cancellation
+                        .ended &&
                       plan.key ===
-                        'free' &&
-                      (
-                        state.subscription
-                          .status ===
-                          'trial' ||
-                        state.subscription
-                          .status ===
-                          'trialing'
-                      )
-                        ? 'Move to Free at trial end'
+                        'free'
+                        ? 'Move retained workspace to Free'
+                        : state.subscription
+                              .planKey !==
+                              'free' &&
+                            plan.key ===
+                              'free' &&
+                            (
+                              state.subscription
+                                .status ===
+                                'trial' ||
+                              state.subscription
+                                .status ===
+                                'trialing'
+                            )
+                          ? 'Move to Free at trial end'
                         : state.subscription
                               .status ===
                               'active' &&
