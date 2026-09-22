@@ -28,6 +28,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  resolveRequiredDependencyPlan,
+} from '@/lib/modules/dependency-plan';
+
+import {
   getPermissionContext,
   permissionContextHas,
   type PermissionContext,
@@ -732,35 +736,37 @@ async function resolveInstallPlan(
   rootKey:
     string,
 ): Promise<ModuleRow[]> {
-  const ordered:
-    ModuleRow[] = [];
-
-  const resolved =
-    new Set<string>();
-
-  const visiting =
-    new Set<string>();
-
-  async function visit(
-    moduleKey:
-      string,
+  try {
+    return await resolveRequiredDependencyPlan({
+      rootKeys: [
+        rootKey,
+      ],
+      load:
+        key =>
+          getModule(
+            client,
+            key,
+          ),
+      dependencies:
+        module =>
+          normalizeDependencies(
+            module.dependencies,
+          ),
+    });
+  } catch (
+    error
   ) {
-    const key =
-      normalizeKey(
-        moduleKey,
-      );
-
     if (
-      resolved.has(
-        key,
-      )
+      error instanceof
+        WorkspaceAppLifecycleError
     ) {
-      return;
+      throw error;
     }
 
     if (
-      visiting.has(
-        key,
+      error instanceof Error &&
+      error.message.includes(
+        'dependency cycle',
       )
     ) {
       throw new WorkspaceAppLifecycleError(
@@ -769,47 +775,9 @@ async function resolveInstallPlan(
       );
     }
 
-    visiting.add(
-      key,
-    );
-
-    const module =
-      await getModule(
-        client,
-        key,
-      );
-
-    for (
-      const dependency
-      of normalizeDependencies(
-        module.dependencies,
-      )
-    ) {
-      await visit(
-        dependency,
-      );
-    }
-
-    visiting.delete(
-      key,
-    );
-
-    resolved.add(
-      key,
-    );
-
-    ordered.push(
-      module,
-    );
+    throw error;
   }
-
-  await visit(
-    rootKey,
-  );
-
-  return ordered;
 }
-
 
 async function assertInstallPlanEntitled(
   client:
