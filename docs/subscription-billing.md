@@ -183,6 +183,40 @@ can extend subscription access.
 The subscription plan in SaMi remains the entitlement authority even when a
 provider has its own recurring subscription object.
 
+## Past-due workspace suspension
+
+A paid workspace remains fully operational during its valid trial or paid
+period. When its effective subscription status becomes `past_due`, SaMi
+switches the workspace into recovery-only mode.
+
+Available while suspended:
+
+- sign in and sign out
+- personal account and security
+- Billing and payment recovery
+- Help/support
+
+Paused while suspended:
+
+- dashboard business work
+- business apps and business records
+- Files, Search and Activity
+- Messages and ordinary Notification Center work
+- SaMi AI execution
+- Automation and Integrations
+- Developer API
+- app installation/enabling
+- adding/reactivating internal users
+- creating/reactivating companies
+
+SaMi does not delete tenant data or uninstall apps during billing suspension.
+A verified successful payment returns the subscription to `active`; normal
+workspace access is then restored automatically from the subscription state.
+
+Critical billing notifications are sent to workspace owners through SaMi's
+shared communications service, including transactional SMS when an SMS provider
+is configured.
+
 ## Dependency and access order
 
 Business app authority follows:
