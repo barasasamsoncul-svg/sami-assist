@@ -130,14 +130,10 @@ never claim a provider capability that the adapter cannot safely complete.
 ### PesaPal
 
 Existing PesaPal credentials remain supported through the PesaPal adapter.
-Legacy price variables remain fallback-only during migration:
 
-```env
-PESAPAL_PRICE_STANDARD_MONTHLY=...
-PESAPAL_PRICE_CUSTOM_MONTHLY=...
-```
+PesaPal does not own SaMi pricing. Legacy provider-specific price variables are ignored by Category 22. Only the canonical `SAMI_BILLING_*` price variables may override the default SaMi plan prices.
 
-New deployments should use the canonical `SAMI_BILLING_*` price variables.
+New PesaPal checkouts persist the server-calculated active-seat count and per-user price snapshot. The callback also validates one-time checkout amounts against the current SaMi billing contract before subscription access can be activated.
 
 ## Provider switching
 
