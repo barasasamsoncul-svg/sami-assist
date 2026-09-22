@@ -78,6 +78,72 @@ function originOrThrow(
   return value;
 }
 
+async function findOrCreatePlanProduct(
+  plan:
+    string,
+) {
+  const stripe =
+    stripeClient();
+
+  const normalizedPlan =
+    plan
+      .trim()
+      .toLowerCase();
+
+  const configured =
+    normalizedPlan ===
+      'standard'
+      ? process.env
+          .STRIPE_STANDARD_PRODUCT_ID
+          ?.trim()
+      : normalizedPlan ===
+          'custom'
+        ? process.env
+            .STRIPE_CUSTOM_PRODUCT_ID
+            ?.trim()
+        : null;
+
+  if (
+    configured
+  ) {
+    return stripe.products
+      .retrieve(
+        configured,
+      );
+  }
+
+  const search =
+    await stripe.products
+      .search({
+        query:
+          `metadata['sami_plan']:'${normalizedPlan.replace(
+            /'/g,
+            "\\'",
+          )}'`,
+        limit:
+          1,
+      });
+
+  if (
+    search.data[0]
+  ) {
+    return search.data[0];
+  }
+
+  return stripe.products
+    .create({
+      name:
+        `SaMi ${normalizedPlan} plan`,
+      metadata: {
+        sami_plan:
+          normalizedPlan,
+        sami_product_type:
+          'workspace_subscription',
+      },
+    });
+}
+
+
 async function findOrCreateCustomer(
   input: {
     tenantId:
@@ -376,6 +442,11 @@ export const stripeBillingProvider:
           )
         : undefined;
 
+    const product =
+      await findOrCreatePlanProduct(
+        input.plan,
+      );
+
     const subscription =
       await stripe.subscriptions
         .create({
@@ -400,10 +471,8 @@ export const stripeBillingProvider:
                   interval:
                     'month',
                 },
-                product_data: {
-                  name:
-                    `SaMi ${input.plan} plan`,
-                },
+                product:
+                  product.id,
               },
             },
           ],
