@@ -68,6 +68,12 @@ import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
 
+import {
+  assertAiMonthlyUsageAvailable,
+  getWorkspaceUsageSnapshot,
+  WorkspaceUsageError,
+} from '@/lib/usage/entitlements';
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1648,6 +1654,16 @@ export async function getWorkspaceAiStatus() {
       .rows[0] ||
     {};
 
+  const usage =
+    await getWorkspaceUsageSnapshot({
+      tenantId:
+        context.runtime
+          .tenantId,
+      userId:
+        context.runtime
+          .userId,
+    });
+
   return {
     entitled: true,
     configured:
@@ -1676,6 +1692,13 @@ export async function getWorkspaceAiStatus() {
       responseStyle:
         context.runtime
           .responseStyle,
+    },
+    usage: {
+      period:
+        usage.period,
+      monthlyQueries:
+        usage.usage
+          .aiQueriesUserMonth,
     },
     performance: {
       requests24h:
@@ -2547,6 +2570,32 @@ export async function sendWorkspaceAiMessage(
 
   const config =
     requireSamiAiProviderConfig();
+
+  try {
+    await assertAiMonthlyUsageAvailable({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+    });
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        WorkspaceUsageError
+    ) {
+      throw new WorkspaceAiError(
+        error.code ===
+          'AI_MONTHLY_LIMIT_REACHED'
+          ? 'AI_RATE_LIMITED'
+          : 'AI_NOT_ENTITLED',
+        error.message,
+      );
+    }
+
+    throw error;
+  }
 
   await enforceRateLimit(
     context,
