@@ -711,12 +711,16 @@ test('Category 22: Custom-only multi-company and Developer API are enforced belo
 test('Category 22: plan changes are capacity-checked and paid-period changes are scheduled at renewal', async () => {
   const [
     service,
+    capacity,
     migration,
     transition,
   ] =
     await Promise.all([
       source(
         'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'lib/billing/capacity.ts',
       ),
       source(
         'lib/schema/control-migrations/001-category-22-subscription-billing-profiles.sql',
@@ -732,12 +736,12 @@ test('Category 22: plan changes are capacity-checked and paid-period changes are
   );
 
   assert.match(
-    service,
+    capacity,
     /Required app dependencies count toward this allowance/,
   );
 
   assert.match(
-    service,
+    capacity,
     /Archive extra companies/,
   );
 
@@ -764,6 +768,22 @@ test('Category 22: plan changes are capacity-checked and paid-period changes are
   assert.match(
     transition,
     /scheduled_plan_effective_at <=[\s\S]*NOW\(\)/s,
+  );
+
+  assert.match(
+    transition,
+    /getWorkspacePlanCapacityAssessment/,
+    'Scheduled plans must be capacity-checked again at the actual effective boundary.',
+  );
+
+  assert.match(
+    transition,
+    /SUBSCRIPTION_PLAN_CHANGE_BLOCKED_AT_BOUNDARY/,
+  );
+
+  assert.match(
+    transition,
+    /billing\.plan_change_blocked/,
   );
 });
 
