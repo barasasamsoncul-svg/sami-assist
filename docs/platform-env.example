@@ -1,0 +1,65 @@
+# ============================================================
+# SaMi commercial pricing
+# ============================================================
+
+SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY=2500
+SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY=4500
+
+# Keep the billing provider explicit.
+# Supported: pesapal | stripe | paystack
+SAMI_BILLING_PROVIDER=pesapal
+
+# Manual/internal billing-worker authentication.
+SAMI_BILLING_WORKER_SECRET=<generate-a-long-random-secret>
+
+# Vercel Cron authentication for daily billing reconciliation.
+# Use a different long random secret from SAMI_BILLING_WORKER_SECRET.
+CRON_SECRET=<generate-another-long-random-secret>
+
+
+# ============================================================
+# SaMi branded SMS — recommended Kenya setup: Africa's Talking
+# ============================================================
+
+SAMI_SMS_PROVIDER=africastalking
+SAMI_SMS_DEFAULT_COUNTRY_CODE=254
+
+# Sandbox while integrating/testing:
+AFRICASTALKING_ENVIRONMENT=sandbox
+AFRICASTALKING_USERNAME=sandbox
+AFRICASTALKING_API_KEY=<your-sandbox-api-key>
+
+# Leave this unset in sandbox unless your sandbox account provides a sender.
+# AFRICASTALKING_SENDER_ID=SaMi
+
+# Production after the SaMi sender ID and production application are approved:
+# AFRICASTALKING_ENVIRONMENT=production
+# AFRICASTALKING_USERNAME=<your-production-application-username>
+# AFRICASTALKING_API_KEY=<your-production-api-key>
+# AFRICASTALKING_SENDER_ID=SaMi
+
+# Normally leave endpoint unset; SaMi chooses sandbox/production automatically.
+# AFRICASTALKING_SMS_ENDPOINT=
+
+
+# ============================================================
+# Alternative SMS provider — Twilio
+# Use these only if SAMI_SMS_PROVIDER=twilio
+# ============================================================
+
+# TWILIO_ACCOUNT_SID=
+# TWILIO_AUTH_TOKEN=
+# TWILIO_MESSAGING_SERVICE_SID=
+# Or instead:
+# TWILIO_FROM_NUMBER=+...
+
+
+# ============================================================
+# IMPORTANT cleanup
+# ============================================================
+
+# Remove old provider-specific price variables if present.
+# They no longer control SaMi pricing:
+#
+# PESAPAL_PRICE_STANDARD_MONTHLY
+# PESAPAL_PRICE_CUSTOM_MONTHLY
