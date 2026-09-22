@@ -47,13 +47,12 @@ import {
 } from '@/lib/billing/notifications';
 
 import {
-  queryControl,
-} from '@/lib/db/control';
+  getWorkspacePlanCapacityAssessment,
+} from '@/lib/billing/capacity';
 
 import {
-  getTenantPoolByTenantId,
-} from '@/lib/db/tenant';
-
+  queryControl,
+} from '@/lib/db/control';
 
 export type WorkspaceBillingErrorCode =
   | 'UNAUTHENTICATED'
@@ -345,96 +344,21 @@ async function getBillableUsers(
   );
 }
 
-async function getActiveBusinessAppCount(
-  tenantId:
-    string,
-) {
-  const result =
-    await queryControl(
-      `
-        SELECT
-          COUNT(*)::int
-            AS count
-        FROM tenant_modules tm
-        INNER JOIN modules m
-          ON m.id =
-             tm.module_id
-        WHERE tm.tenant_id = $1
-          AND tm.deleted_at
-              IS NULL
-          AND m.deleted_at
-              IS NULL
-          AND COALESCE(
-                m.is_core,
-                FALSE
-              ) =
-              FALSE
-          AND LOWER(
-                COALESCE(
-                  tm.status,
-                  ''
-                )
-              ) IN (
-                'installed',
-                'active',
-                'enabled'
-              )
-      `,
-      [
-        tenantId,
-      ],
-    );
-
-  return Number(
-    result.rows[0]
-      ?.count ||
-    0,
-  );
-}
-
-async function getActiveCompanyCount(
-  tenantId:
-    string,
-) {
-  const pool =
-    await getTenantPoolByTenantId(
-      tenantId,
-    );
-
-  const result =
-    await pool.query(
-      `
-        SELECT
-          COUNT(*)::int
-            AS count
-        FROM companies
-        WHERE is_active =
-              TRUE
-          AND archived_at
-              IS NULL
-      `,
-    );
-
-  return Number(
-    result.rows[0]
-      ?.count ||
-    0,
-  );
-}
-
 async function assertPlanCapacity(
   tenantId:
     string,
   targetPlan:
     string,
 ) {
-  const policy =
-    getSamiPlanPolicy(
+  const assessment =
+    await getWorkspacePlanCapacityAssessment(
+      tenantId,
       targetPlan,
     );
 
   if (
-    !policy
+    !assessment.supported ||
+    !assessment.policy
   ) {
     throw new WorkspaceBillingError(
       'PLAN_NOT_SUPPORTED',
@@ -442,86 +366,36 @@ async function assertPlanCapacity(
     );
   }
 
-  const [
-    users,
-    apps,
-    companies,
-  ] =
-    await Promise.all([
-      getBillableUsers(
-        tenantId,
-      ),
-      getActiveBusinessAppCount(
-        tenantId,
-      ),
-      getActiveCompanyCount(
-        tenantId,
-      ),
-    ]);
-
-  const blockers:
-    string[] =
-    [];
-
   if (
-    policy.users
-      .maxActiveInternalUsers !==
-      null &&
-    users >
-      policy.users
-        .maxActiveInternalUsers
-  ) {
-    blockers.push(
-      `Reduce active internal users to ${policy.users.maxActiveInternalUsers} before switching to ${policy.name}.`,
-    );
-  }
-
-  if (
-    policy.apps
-      .maxInstalledBusinessApps !==
-      null &&
-    apps >
-      policy.apps
-        .maxInstalledBusinessApps
-  ) {
-    blockers.push(
-      `Reduce installed business apps to ${policy.apps.maxInstalledBusinessApps} before switching to ${policy.name}. Required app dependencies count toward this allowance.`,
-    );
-  }
-
-  if (
-    !policy.companies
-      .multiCompany &&
-    companies >
-      1
-  ) {
-    blockers.push(
-      `Archive extra companies before switching to ${policy.name}. Multi-company is available only on Custom.`,
-    );
-  }
-
-  if (
-    blockers.length >
-      0
+    !assessment.allowed
   ) {
     throw new WorkspaceBillingError(
       'PLAN_CHANGE_BLOCKED',
-      blockers[0],
+      assessment.blockers[0] ||
+      'The workspace does not currently fit the requested SaMi plan.',
       {
-        blockers,
-        users,
-        apps,
-        companies,
+        blockers:
+          assessment.blockers,
+        users:
+          assessment.users,
+        apps:
+          assessment.apps,
+        companies:
+          assessment.companies,
         targetPlan:
-          policy.key,
+          assessment.policy
+            .key,
       },
     );
   }
 
   return {
-    users,
-    apps,
-    companies,
+    users:
+      assessment.users,
+    apps:
+      assessment.apps,
+    companies:
+      assessment.companies,
   };
 }
 
