@@ -8,10 +8,12 @@ import {
 
 import {
   openIntegrationSecret,
+  sealIntegrationSecret,
 } from '@/lib/integrations/crypto';
 
 import {
   getIntegrationProvider,
+  requireConfiguredOAuthProvider,
 } from '@/lib/integrations/registry';
 
 import type {
@@ -283,6 +285,244 @@ async function loadCredential(
   };
 }
 
+function normalizedScope(
+  value:
+    unknown,
+  fallback:
+    string | undefined,
+) {
+  if (
+    typeof value ===
+      'string' &&
+    value.trim()
+  ) {
+    return value
+      .trim()
+      .replace(
+        /\s+/g,
+        ' ',
+      );
+  }
+
+  return fallback;
+}
+
+async function refreshOAuthCredential(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+  providerKey:
+    string,
+  credential:
+    SamiIntegrationCredentialPayload,
+) {
+  if (
+    !credential.refreshToken
+  ) {
+    return null;
+  }
+
+  let configured;
+
+  try {
+    configured =
+      requireConfiguredOAuthProvider(
+        providerKey,
+      );
+  } catch {
+    return null;
+  }
+
+  const controller =
+    new AbortController();
+
+  const timeout =
+    setTimeout(
+      () =>
+        controller.abort(),
+      REQUEST_TIMEOUT_MS,
+    );
+
+  try {
+    const body =
+      new URLSearchParams();
+
+    body.set(
+      'grant_type',
+      'refresh_token',
+    );
+
+    body.set(
+      'refresh_token',
+      credential.refreshToken,
+    );
+
+    body.set(
+      'client_id',
+      configured.clientId,
+    );
+
+    body.set(
+      'client_secret',
+      configured.clientSecret,
+    );
+
+    const response =
+      await fetch(
+        configured.oauth
+          .tokenUrl,
+        {
+          method:
+            'POST',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/x-www-form-urlencoded',
+          },
+          body,
+          cache:
+            'no-store',
+          signal:
+            controller.signal,
+        },
+      );
+
+    const payload =
+      safeObject(
+        await response.json()
+          .catch(
+            () => ({}),
+          ),
+      );
+
+    if (
+      !response.ok ||
+      payload.ok ===
+        false ||
+      typeof payload.access_token !==
+        'string'
+    ) {
+      return null;
+    }
+
+    const expiresIn =
+      Number(
+        payload.expires_in,
+      );
+
+    const expiresAt =
+      Number.isFinite(
+        expiresIn,
+      ) &&
+      expiresIn >
+        0
+        ? new Date(
+            Date.now() +
+            expiresIn *
+            1000,
+          )
+            .toISOString()
+        : null;
+
+    const next:
+      SamiIntegrationCredentialPayload = {
+      ...credential,
+      accessToken:
+        payload.access_token,
+      refreshToken:
+        typeof payload.refresh_token ===
+          'string'
+          ? payload.refresh_token
+          : credential.refreshToken,
+      tokenType:
+        typeof payload.token_type ===
+          'string'
+          ? payload.token_type
+          : credential.tokenType,
+      scope:
+        normalizedScope(
+          payload.scope,
+          credential.scope,
+        ),
+      expiresAt,
+    };
+
+    const sealed =
+      sealIntegrationSecret(
+        next,
+      );
+
+    const pool =
+      await getTenantPoolByTenantId(
+        runtime.tenantId,
+      );
+
+    await pool.query(
+      `
+        UPDATE integration_credentials cr
+        SET
+          sealed_payload = $4,
+          key_version = $5,
+          expires_at = $6,
+          rotated_at = NOW(),
+          updated_at = NOW()
+        FROM integration_connections c
+        WHERE cr.connection_id = $1
+          AND c.id =
+              cr.connection_id
+          AND c.company_id = $2
+          AND c.provider_key = $3
+          AND c.archived_at
+              IS NULL
+      `,
+      [
+        connectionId,
+        runtime.companyId,
+        providerKey,
+        sealed.sealed,
+        sealed.version,
+        expiresAt,
+      ],
+    );
+
+    return next;
+  } finally {
+    clearTimeout(
+      timeout,
+    );
+  }
+}
+
+async function usableOAuthCredential(
+  runtime:
+    SamiIntegrationRuntimeContext,
+  connectionId:
+    string,
+  providerKey:
+    string,
+  credential:
+    SamiIntegrationCredentialPayload,
+) {
+  if (
+    credential.accessToken &&
+    !credentialExpired(
+      credential,
+    )
+  ) {
+    return credential;
+  }
+
+  return refreshOAuthCredential(
+    runtime,
+    connectionId,
+    providerKey,
+    credential,
+  );
+}
+
+
 async function testOAuthProvider(
   providerKey:
     string,
@@ -544,9 +784,7 @@ export async function checkIntegrationConnectionHealth(
         'healthy',
     };
   } else if (
-    !loaded.credential ||
     !loaded.credential
-      .accessToken
   ) {
     health = {
       healthy:
@@ -554,24 +792,62 @@ export async function checkIntegrationConnectionHealth(
       status:
         'degraded',
     };
-  } else if (
-    credentialExpired(
-      loaded.credential,
-    )
-  ) {
-    health = {
-      healthy:
-        false,
-      status:
-        'expired',
-    };
   } else {
-    health =
-      await testOAuthProvider(
+    const usable =
+      await usableOAuthCredential(
+        runtime,
+        connectionId,
         loaded.providerKey,
-        loaded.credential
-          .accessToken,
+        loaded.credential,
       );
+
+    if (
+      !usable
+        ?.accessToken
+    ) {
+      health = {
+        healthy:
+          false,
+        status:
+          credentialExpired(
+            loaded.credential,
+          )
+            ? 'expired'
+            : 'degraded',
+      };
+    } else {
+      health =
+        await testOAuthProvider(
+          loaded.providerKey,
+          usable.accessToken,
+        );
+
+      if (
+        health.status ===
+          'expired' &&
+        usable.refreshToken
+      ) {
+        const refreshed =
+          await refreshOAuthCredential(
+            runtime,
+            connectionId,
+            loaded.providerKey,
+            usable,
+          );
+
+        if (
+          refreshed
+            ?.accessToken
+        ) {
+          health =
+            await testOAuthProvider(
+              loaded.providerKey,
+              refreshed
+                .accessToken,
+            );
+        }
+      }
+    }
   }
 
   const pool =
@@ -704,10 +980,17 @@ export async function sendSlackIntegrationMessage(
     );
   }
 
-  if (
-    credentialExpired(
+  const usable =
+    await usableOAuthCredential(
+      runtime,
+      input.connectionId,
+      loaded.providerKey,
       loaded.credential,
-    )
+    );
+
+  if (
+    !usable
+      ?.accessToken
   ) {
     throw new Error(
       'The Slack connection has expired and must be reconnected.',
@@ -736,7 +1019,7 @@ export async function sendSlackIntegrationMessage(
               'application/json',
             Authorization:
               'Bearer ' +
-              loaded.credential
+              usable
                 .accessToken,
             'Content-Type':
               'application/json',
