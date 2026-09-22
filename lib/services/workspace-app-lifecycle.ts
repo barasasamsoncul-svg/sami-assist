@@ -67,6 +67,7 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_NOT_INSTALLED'
   | 'APP_DEPENDENCY_BLOCKED'
   | 'APP_DEPENDENCY_CYCLE'
+  | 'APP_NOT_INSTALLABLE'
   | 'APP_SUBSCRIPTION_REQUIRED'
   | 'APP_PLAN_UPGRADE_REQUIRED'
   | 'APP_SCHEMA_MISSING'
@@ -748,10 +749,31 @@ async function resolveInstallPlan(
             key,
           ),
       dependencies:
-        module =>
-          normalizeDependencies(
-            module.dependencies,
-          ),
+        module => {
+          const manifest =
+            getSamiModuleManifest(
+              module.key,
+            );
+
+          return [
+            ...new Set([
+              ...normalizeDependencies(
+                module.dependencies,
+              ),
+              ...(
+                manifest
+                  ?.depends ||
+                []
+              )
+                .map(
+                  normalizeKey,
+                )
+                .filter(
+                  Boolean,
+                ),
+            ]),
+          ];
+        },
     });
   } catch (
     error
@@ -1181,15 +1203,34 @@ async function activateWorkspaceApp(
       appKey,
     );
 
+  const requestedManifest =
+    canonicalKey
+      ? getSamiModuleManifest(
+          canonicalKey,
+        )
+      : null;
+
   if (
     !canonicalKey ||
-    !getSamiModuleManifest(
-      canonicalKey,
-    )
+    !requestedManifest
   ) {
     throw new WorkspaceAppLifecycleError(
       'INVALID_APP',
       'Choose a valid SaMi app.',
+    );
+  }
+
+  if (
+    !requestedManifest
+      .installable
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_NOT_INSTALLABLE',
+      'This SaMi app is in the catalog but is not available to install yet.',
+      {
+        appKey:
+          canonicalKey,
+      },
     );
   }
 
