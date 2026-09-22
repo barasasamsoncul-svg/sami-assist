@@ -16,10 +16,12 @@ import {
 } from '@/lib/db/control';
 
 import {
-  getEffectiveSubscriptionStatus,
   getSamiPlanPolicy,
-  isSubscriptionEntitledNow,
 } from '@/lib/billing/plan-policy';
+
+import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
 
 import {
   developerSecretMatches,
@@ -149,55 +151,14 @@ async function assertDeveloperSubscriptionEntitlement(
   requestId:
     string,
 ) {
-  const result =
-    await queryControl(
-      `
-        SELECT
-          s.status,
-          s.trial_ends_at,
-          s.current_period_end,
-          p.key
-            AS plan_key
-        FROM subscriptions s
-        INNER JOIN plans p
-          ON p.id =
-             s.plan_id
-         AND p.deleted_at
-             IS NULL
-         AND p.is_active =
-             TRUE
-        WHERE s.tenant_id = $1
-          AND s.deleted_at
-              IS NULL
-        ORDER BY
-          s.created_at DESC
-        LIMIT 1
-      `,
-      [
-        tenantId,
-      ],
+  const access =
+    await getWorkspaceSubscriptionAccessState(
+      tenantId,
     );
 
-  const row =
-    result.rows[0];
-
   if (
-    !row ||
-    !isSubscriptionEntitledNow(
-      getEffectiveSubscriptionStatus({
-        status:
-          row.status,
-        planKey:
-          row.plan_key,
-        trialEndsAt:
-          row.trial_ends_at,
-        currentPeriodEnd:
-          row.current_period_end,
-      }),
-    ) ||
-    getSamiPlanPolicy(
-      row.plan_key,
-    )
+    !access.entitled ||
+    access.policy
       ?.developerApi
       .enabled !==
       true
@@ -210,7 +171,6 @@ async function assertDeveloperSubscriptionEntitlement(
     );
   }
 }
-
 
 async function recordRateLimit(
   tenantId:
