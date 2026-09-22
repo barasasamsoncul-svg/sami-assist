@@ -7,6 +7,10 @@ import {
 } from '@/lib/db/tenant';
 
 import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
+
+import {
   hashIntegrationToken,
 } from '@/lib/integrations/crypto';
 
@@ -408,6 +412,35 @@ export async function receiveIntegrationWebhook(
       'WEBHOOK_UNAUTHORIZED',
       'Webhook authorization is invalid.',
     );
+  }
+
+  if (
+    String(
+      endpoint.provider_key ||
+      '',
+    )
+      .trim()
+      .toLowerCase() ===
+      'custom_webhook'
+  ) {
+    const access =
+      await getWorkspaceSubscriptionAccessState(
+        input.tenantId,
+      );
+
+    if (
+      !access.entitled ||
+      access.policy
+        ?.integrations
+        .customIntegrations !==
+        true
+    ) {
+      throw new IntegrationWebhookError(
+        403,
+        'WEBHOOK_PLAN_INACTIVE',
+        'This custom webhook is not available on the workspace’s current plan.',
+      );
+    }
   }
 
   const allowedEvents =
