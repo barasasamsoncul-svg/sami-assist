@@ -12,11 +12,13 @@ import {
 } from 'lucide-react';
 
 import {
+  useEffect,
   useMemo,
   useState,
 } from 'react';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
+import StripeRecurringSetup from './StripeRecurringSetup';
 
 type BillingPlan = {
   id: string;
@@ -135,13 +137,88 @@ export type BillingState = {
     BillingPlan[];
   payments:
     BillingPayment[];
+  billingProfile:
+    | {
+        provider:
+          string;
+        recurringStatus:
+          string;
+        providerCustomerId:
+          string | null;
+        providerSubscriptionId:
+          string | null;
+        providerPaymentMethodId:
+          string | null;
+        pricePerUserMonthly:
+          number | null;
+        seatQuantity:
+          number | null;
+      }
+    | null;
   collection: {
-    provider: string;
-    mode: string;
-    automaticRecurring: boolean;
-    explanation: string;
+    provider:
+      string;
+    providerName:
+      string;
+    mode:
+      string;
+    automaticRecurring:
+      boolean;
+    capabilities: {
+      checkout:
+        boolean;
+      savePaymentMethodWithoutCharge:
+        boolean;
+      automaticRecurring:
+        boolean;
+      variableRecurringAmount:
+        boolean;
+      updateRecurringQuantity:
+        boolean;
+      customerPortal:
+        boolean;
+      mpesaCheckout:
+        boolean;
+    };
+    providerCatalog:
+      Array<{
+        key:
+          string;
+        name:
+          string;
+        configured:
+          boolean;
+        active:
+          boolean;
+        capabilities:
+          Record<
+            string,
+            boolean
+          >;
+      }>;
+    explanation:
+      string;
   };
 };
+
+type BillingSetupState =
+  | {
+      provider:
+        string;
+      providerName:
+        string;
+      setupReference:
+        string;
+      clientSecret:
+        string | null;
+      redirectUrl:
+        string | null;
+      publicKey:
+        string | null;
+      chargedToday:
+        boolean;
+    }
+  | null;
 
 type MobileSection =
   | 'overview'
@@ -323,6 +400,14 @@ export default function BillingSettings({
       CLOSED_OVERLAY,
     );
 
+  const [
+    setup,
+    setSetup,
+  ] =
+    useState<BillingSetupState>(
+      null,
+    );
+
   const currentPlan =
     useMemo(
       () =>
@@ -340,6 +425,273 @@ export default function BillingSettings({
           .planKey,
       ],
     );
+
+  const automaticBillingActive =
+    Boolean(
+      state.billingProfile &&
+      [
+        'trialing',
+        'active',
+      ].includes(
+        state.billingProfile
+          .recurringStatus,
+      ),
+    );
+
+  useEffect(
+    () => {
+      const params =
+        new URLSearchParams(
+          window.location.search,
+        );
+
+      if (
+        params.get(
+          'billing_setup',
+        ) !==
+          'return'
+      ) {
+        return;
+      }
+
+      let cancelled =
+        false;
+
+      async function completeReturnedSetup() {
+        try {
+          const response =
+            await fetch(
+              '/api/workspace/billing/setup',
+              {
+                method:
+                  'POST',
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+                headers: {
+                  Accept:
+                    'application/json',
+                  'Content-Type':
+                    'application/json',
+                },
+                body:
+                  JSON.stringify({
+                    action:
+                      'complete',
+                  }),
+              },
+            );
+
+          const data =
+            await response.json() as {
+              success?:
+                boolean;
+              error?:
+                string;
+            };
+
+          if (
+            !response.ok ||
+            !data.success
+          ) {
+            throw new Error(
+              data.error ||
+              'Automatic billing setup could not be completed.',
+            );
+          }
+
+          if (
+            !cancelled
+          ) {
+            await refresh();
+
+            show(
+              'success',
+              'Automatic billing ready',
+              'Your payment method is authorized. SaMi will use the current seat count and server-configured plan price for future billing.',
+            );
+
+            const clean =
+              new URL(
+                window.location.href,
+              );
+
+            clean.searchParams
+              .delete(
+                'billing_setup',
+              );
+
+            window.history
+              .replaceState(
+                {},
+                '',
+                `${clean.pathname}${clean.search}${clean.hash}`,
+              );
+          }
+        } catch (
+          error
+        ) {
+          if (
+            !cancelled
+          ) {
+            show(
+              'error',
+              'Billing setup incomplete',
+              error instanceof
+                Error
+                ? error.message
+                : 'SaMi could not finish automatic billing setup.',
+            );
+          }
+        }
+      }
+
+      void completeReturnedSetup();
+
+      return () => {
+        cancelled =
+          true;
+      };
+    },
+    [],
+  );
+
+  async function startAutomaticBilling() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/billing/setup',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+              'Content-Type':
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                action:
+                  'start',
+              }),
+          },
+        );
+
+      const data =
+        await response.json() as {
+          success?:
+            boolean;
+          error?:
+            string;
+          setup?:
+            BillingSetupState;
+        };
+
+      if (
+        !response.ok ||
+        !data.success ||
+        !data.setup
+      ) {
+        throw new Error(
+          data.error ||
+          'Automatic billing setup could not be started.',
+        );
+      }
+
+      setSetup(
+        data.setup,
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Automatic billing unavailable',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not start automatic billing setup.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+  async function completeAutomaticBilling() {
+    const response =
+      await fetch(
+        '/api/workspace/billing/setup',
+        {
+          method:
+            'POST',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify({
+              action:
+                'complete',
+            }),
+        },
+      );
+
+    const data =
+      await response.json() as {
+        success?:
+          boolean;
+        error?:
+          string;
+      };
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        data.error ||
+        'Automatic billing setup could not be completed.',
+      );
+    }
+
+    setSetup(
+      null,
+    );
+
+    await refresh();
+
+    show(
+      'success',
+      'Automatic billing ready',
+      'No charge was made today. SaMi will bill after the free month using the live seat count and server-configured price.',
+    );
+  }
+
 
   function show(
     type:
@@ -476,7 +828,7 @@ export default function BillingSettings({
         !checkoutUrl
       ) {
         throw new Error(
-          'PesaPal did not return a checkout URL.',
+          'The billing provider did not return a checkout URL.',
         );
       }
 
@@ -492,7 +844,7 @@ export default function BillingSettings({
         error instanceof
           Error
           ? error.message
-          : 'SaMi could not start PesaPal checkout.',
+          : 'SaMi could not start billing checkout.',
       );
 
       try {
@@ -680,7 +1032,7 @@ export default function BillingSettings({
                 state.subscription
                   .amountDue,
                 state.currency,
-              )} with PesaPal
+              )} with {state.collection.providerName}
             </button>
           )}
 
@@ -711,8 +1063,85 @@ export default function BillingSettings({
               {state.collection
                 .explanation}
             </p>
+
+            {state.subscription.planKey !==
+              'free' &&
+              state.canManage &&
+              state.collection.capabilities
+                .savePaymentMethodWithoutCharge &&
+              !automaticBillingActive && (
+              <button
+                type="button"
+                onClick={
+                  startAutomaticBilling
+                }
+                disabled={
+                  busy
+                }
+                className="mt-3 inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-[11px] font-black disabled:opacity-50"
+              >
+                {busy && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                )}
+                Set up automatic billing
+              </button>
+            )}
+
+            {automaticBillingActive && (
+              <p className="mt-3 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                Automatic billing is configured with {state.billingProfile?.provider || state.collection.providerName}.
+              </p>
+            )}
           </div>
         </div>
+
+        {setup &&
+          setup.provider ===
+            'stripe' &&
+          setup.clientSecret &&
+          setup.publicKey && (
+          <div className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm dark:border-blue-500/20 dark:bg-[#11141a]">
+            <div className="mb-4">
+              <p className="text-xs font-black">
+                Set up automatic billing
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                Securely save a payment method with {setup.providerName}. No subscription charge is made today.
+              </p>
+            </div>
+
+            <StripeRecurringSetup
+              publicKey={
+                setup.publicKey
+              }
+              clientSecret={
+                setup.clientSecret
+              }
+              onCompleted={
+                completeAutomaticBilling
+              }
+              onError={message =>
+                show(
+                  'error',
+                  'Payment method not saved',
+                  message,
+                )
+              }
+            />
+
+            <button
+              type="button"
+              onClick={() =>
+                setSetup(
+                  null,
+                )
+              }
+              className="mt-3 h-9 w-full rounded-xl border border-[var(--sami-border)] text-[11px] font-bold text-slate-500"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
 
         <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
           <p className="text-xs font-black">
@@ -876,7 +1305,7 @@ export default function BillingSettings({
             </h2>
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            PesaPal transaction history for this workspace.
+            Subscription payment history across SaMi billing providers.
           </p>
         </div>
 
