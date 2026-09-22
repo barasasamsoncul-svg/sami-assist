@@ -42,10 +42,8 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
-  getEffectiveSubscriptionStatus,
-  getSamiPlanPolicy,
-  isSubscriptionEntitledNow,
-} from '@/lib/billing/plan-policy';
+  getWorkspaceSubscriptionAccessStateWithClient,
+} from '@/lib/billing/access';
 
 
 export type WorkspaceAppAuditContext = {
@@ -809,63 +807,18 @@ async function assertInstallPlanEntitled(
   installPlan:
     ModuleRow[],
 ) {
-  const subscription =
-    await client.query(
-      `
-        SELECT
-          s.status,
-          s.trial_ends_at,
-          s.current_period_end,
-          p.key
-            AS plan_key
-        FROM subscriptions s
-        INNER JOIN plans p
-          ON p.id =
-             s.plan_id
-         AND p.deleted_at
-             IS NULL
-         AND p.is_active =
-             TRUE
-        WHERE s.tenant_id = $1
-          AND s.deleted_at
-              IS NULL
-        ORDER BY
-          s.created_at DESC
-        LIMIT 1
-      `,
-      [
-        tenantId,
-      ],
+  const access =
+    await getWorkspaceSubscriptionAccessStateWithClient(
+      client,
+      tenantId,
     );
-
-  const row =
-    subscription.rows[0];
 
   const policy =
-    getSamiPlanPolicy(
-      row?.plan_key,
-    );
-
-  const effectiveStatus =
-    row
-      ? getEffectiveSubscriptionStatus({
-          status:
-            row.status,
-          planKey:
-            row.plan_key,
-          trialEndsAt:
-            row.trial_ends_at,
-          currentPeriodEnd:
-            row.current_period_end,
-        })
-      : '';
+    access.policy;
 
   if (
-    !row ||
     !policy ||
-    !isSubscriptionEntitledNow(
-      effectiveStatus,
-    )
+    !access.entitled
   ) {
     throw new WorkspaceAppLifecycleError(
       'APP_SUBSCRIPTION_REQUIRED',
