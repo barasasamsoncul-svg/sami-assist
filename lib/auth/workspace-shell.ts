@@ -210,8 +210,6 @@ export function isWorkspaceAiAvailable(
     ) &&
     !(
       subscription.pastDue ===
-        true &&
-      subscription.suspended !==
         true
     )
   ) {
