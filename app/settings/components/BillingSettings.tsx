@@ -1940,6 +1940,49 @@ export default function BillingSettings({
             </div>
           </div>
         </div>
+
+        {state.subscription
+          .planKey !==
+            'free' &&
+          state.canManage &&
+          !state.subscription
+            .cancellation
+            .scheduled &&
+          !state.subscription
+            .cancellation
+            .ended && (
+          <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/[0.06]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black text-red-700 dark:text-red-300">
+                  <Ban className="h-4 w-4" />
+                  Subscription controls
+                </div>
+                <p className="mt-2 max-w-2xl text-[11px] leading-5 text-red-700/75 dark:text-red-200/70">
+                  Cancelling stops future renewal. It does not delete the workspace, files, settings, payment history or installed-app data. Paid access continues through any remaining trial or paid period, then paid workspace work stops.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  confirmCancelSubscription
+                }
+                disabled={
+                  busy
+                }
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-[11px] font-black text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-200 dark:hover:bg-red-500/10"
+              >
+                {busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5" />
+                )}
+                Cancel subscription
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
 
@@ -2178,6 +2221,12 @@ export default function BillingSettings({
         }
         message={
           overlay.message
+        }
+        primaryAction={
+          overlay.primaryAction
+        }
+        secondaryAction={
+          overlay.secondaryAction
         }
         onClose={() =>
           setOverlay(
