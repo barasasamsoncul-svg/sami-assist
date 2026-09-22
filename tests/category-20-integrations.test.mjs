@@ -741,6 +741,16 @@ test('Category 20: health checks are code-owned and Sync is unavailable without 
 
   assert.match(
     runtime,
+    /CORE_INTEGRATION_SYNC_HANDLERS/,
+  );
+
+  assert.match(
+    runtime,
+    /APP_INTEGRATION_SYNC_HANDLERS/,
+  );
+
+  assert.match(
+    runtime,
     /SYNC_HANDLERS/,
   );
 
