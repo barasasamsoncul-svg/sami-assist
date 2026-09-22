@@ -23,6 +23,10 @@ import {
 } from '@/lib/auth/workspace-shell';
 
 import {
+  queryControl,
+} from '@/lib/db/control';
+
+import {
   getTenantPoolByTenantId,
 } from '@/lib/db/tenant';
 
@@ -1438,15 +1442,53 @@ export async function disconnectWorkspaceIntegration(
 }
 
 export async function getWorkspaceExternalAppLauncherEntries() {
-  const context =
-    await resolveWorkspaceIntegrationContext(
-      'view',
+  const [
+    permissions,
+    session,
+  ] =
+    await Promise.all([
+      getPermissionContext(),
+      getSession(),
+    ]);
+
+  if (
+    !session ||
+    session.sessionId !==
+      permissions.sessionId ||
+    session.user.id !==
+      permissions.userId ||
+    session.currentTenantId !==
+      permissions.tenantId
+  ) {
+    return [];
+  }
+
+  const companyId =
+    session.currentCompanyId;
+
+  if (
+    !companyId
+  ) {
+    return [];
+  }
+
+  try {
+    await requireCompanyAccess(
+      permissions.tenantId,
+      permissions.userId,
+      companyId,
     );
+  } catch {
+    if (
+      !permissions.isOwner
+    ) {
+      return [];
+    }
+  }
 
   const pool =
     await getTenantPoolByTenantId(
-      context.runtime
-        .tenantId,
+      permissions.tenantId,
     );
 
   const result =
@@ -1478,14 +1520,12 @@ export async function getWorkspaceExternalAppLauncherEntries() {
             )
           )
         ORDER BY
-          a.name,
+          LOWER(a.name),
           a.id
       `,
       [
-        context.runtime
-          .companyId,
-        context.runtime
-          .userId,
+        companyId,
+        permissions.userId,
       ],
     );
 
@@ -1521,4 +1561,414 @@ export async function getWorkspaceExternalAppLauncherEntries() {
         ),
     }),
   );
+}
+
+export async function getWorkspaceIntegrationAssignableUsers() {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const members =
+    await queryControl(
+      `
+        SELECT
+          u.id,
+          u.email,
+          u.first_name,
+          u.last_name,
+          tu.is_owner
+        FROM tenant_users tu
+        INNER JOIN users u
+          ON u.id =
+             tu.user_id
+        WHERE tu.tenant_id = $1
+          AND tu.deleted_at
+              IS NULL
+          AND u.deleted_at
+              IS NULL
+          AND LOWER(
+                COALESCE(
+                  tu.status,
+                  ''
+                )
+              ) =
+              'active'
+          AND LOWER(
+                COALESCE(
+                  tu.member_type,
+                  ''
+                )
+              ) =
+              'internal'
+          AND LOWER(
+                COALESCE(
+                  u.status,
+                  ''
+                )
+              ) =
+              'active'
+        ORDER BY
+          tu.is_owner DESC,
+          LOWER(
+            COALESCE(
+              u.first_name,
+              ''
+            )
+          ),
+          LOWER(
+            COALESCE(
+              u.last_name,
+              ''
+            )
+          ),
+          LOWER(u.email)
+        LIMIT 500
+      `,
+      [
+        context.runtime
+          .tenantId,
+      ],
+    );
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const candidateIds =
+    members.rows.map(
+      row =>
+        String(
+          row.id,
+        ),
+    );
+
+  const companyAccess =
+    candidateIds.length >
+      0
+      ? await pool.query(
+          `
+            SELECT user_id
+            FROM company_users
+            WHERE company_id = $1
+              AND user_id =
+                  ANY($2::uuid[])
+              AND LOWER(
+                    COALESCE(
+                      status,
+                      ''
+                    )
+                  ) =
+                  'active'
+          `,
+          [
+            context.runtime
+              .companyId,
+            candidateIds,
+          ],
+        )
+      : {
+          rows: [],
+        };
+
+  const allowed =
+    new Set(
+      companyAccess.rows.map(
+        row =>
+          String(
+            row.user_id,
+          ),
+      ),
+    );
+
+  return members.rows
+    .filter(
+      row =>
+        row.is_owner ===
+          true ||
+        allowed.has(
+          String(
+            row.id,
+          ),
+        ),
+    )
+    .map(
+      row => ({
+        id:
+          String(
+            row.id,
+          ),
+        email:
+          String(
+            row.email,
+          ),
+        name:
+          [
+            row.first_name,
+            row.last_name,
+          ]
+            .filter(
+              Boolean,
+            )
+            .join(
+              ' ',
+            )
+            .trim() ||
+          String(
+            row.email,
+          ),
+        isOwner:
+          row.is_owner ===
+            true,
+      }),
+    );
+}
+
+export async function setWorkspaceExternalAppAssignments(
+  externalAppId:
+    unknown,
+  userIds:
+    unknown,
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const appId =
+    requireUuid(
+      externalAppId,
+      'external app',
+    );
+
+  const requested =
+    Array.isArray(
+      userIds,
+    )
+      ? Array.from(
+          new Set(
+            userIds
+              .filter(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  typeof value ===
+                    'string' &&
+                  UUID_RE.test(
+                    value,
+                  ),
+              )
+              .map(
+                (
+                  value:
+                    string,
+                ) =>
+                  value
+                    .toLowerCase(),
+              ),
+          ),
+        )
+          .slice(
+            0,
+            500,
+          )
+      : [];
+
+  const assignable =
+    await getWorkspaceIntegrationAssignableUsers();
+
+  const allowed =
+    new Set(
+      assignable.map(
+        user =>
+          user.id
+            .toLowerCase(),
+      ),
+    );
+
+  if (
+    requested.some(
+      id =>
+        !allowed.has(
+          id,
+        ),
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'One or more selected users do not have access to the current company.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const app =
+      await client.query(
+        `
+          SELECT
+            id,
+            name
+          FROM integration_external_apps
+          WHERE id = $1
+            AND company_id = $2
+            AND archived_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      app.rows.length !==
+        1
+    ) {
+      throw new WorkspaceIntegrationError(
+        'INTEGRATION_NOT_FOUND',
+        'External app could not be found in the current company.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE integration_external_apps
+        SET
+          assignment_mode =
+            'manual',
+          updated_by =
+            $3,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+        context.runtime
+          .userId,
+      ],
+    );
+
+    await client.query(
+      `
+        DELETE FROM integration_external_app_assignments
+        WHERE external_app_id = $1
+          AND company_id = $2
+          AND NOT (
+            user_id =
+            ANY($3::uuid[])
+          )
+      `,
+      [
+        appId,
+        context.runtime
+          .companyId,
+        requested,
+      ],
+    );
+
+    for (
+      const userId
+      of requested
+    ) {
+      await client.query(
+        `
+          INSERT INTO integration_external_app_assignments (
+            external_app_id,
+            company_id,
+            user_id,
+            assignment_source,
+            assigned_by
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'manual',
+            $4
+          )
+          ON CONFLICT (
+            external_app_id,
+            user_id
+          )
+          DO UPDATE SET
+            company_id =
+              EXCLUDED.company_id,
+            assignment_source =
+              'manual',
+            assigned_by =
+              EXCLUDED.assigned_by
+        `,
+        [
+          appId,
+          context.runtime
+            .companyId,
+          userId,
+          context.runtime
+            .userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    await auditIntegration(
+      context.runtime,
+      {
+        action:
+          'integration.external_app.assignments.updated',
+        resourceId:
+          appId,
+        summary:
+          `Updated external app assignments for "${String(
+            app.rows[0]
+              .name,
+          )}".`,
+        metadata: {
+          assignedUsers:
+            requested.length,
+        },
+      },
+    );
+
+    return {
+      externalAppId:
+        appId,
+      userIds:
+        requested,
+    };
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
