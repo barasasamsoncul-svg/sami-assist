@@ -13,6 +13,10 @@ import {
   recordAuthEvent,
 } from '@/lib/auth/auth-events';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime =
   'nodejs';
 
@@ -278,6 +282,35 @@ export async function DELETE(
           targetSession
             .browser,
 
+        operatingSystem:
+          targetSession
+            .operatingSystem,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        currentSession
+          .currentTenantId,
+      userId:
+        currentSession
+          .user.id,
+      eventKey:
+        'security.session_revoked',
+      title:
+        'Device signed out',
+      message:
+        `A SaMi session was signed out remotely (${targetSession.deviceType}, ${targetSession.browser} on ${targetSession.operatingSystem}). If this was not you, review your account security immediately.`,
+      dedupeKey:
+        `security:session-revoked:${targetSessionId}`,
+      metadata: {
+        targetSessionId,
+        deviceType:
+          targetSession
+            .deviceType,
+        browser:
+          targetSession
+            .browser,
         operatingSystem:
           targetSession
             .operatingSystem,
