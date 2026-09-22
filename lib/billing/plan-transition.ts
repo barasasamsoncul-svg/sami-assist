@@ -589,6 +589,8 @@ export async function applyDueSubscriptionCancellations(
         dedupeKey:
           `billing:subscription-cancelled:${String(
             row.id,
+          )}:${String(
+            row.cancelled_at,
           )}`,
         metadata: {
           subscriptionId:
