@@ -1169,14 +1169,20 @@ export async function getWorkspaceBillingState() {
         effectiveAt:
           subscription.cancelled_at
             ? toIso(
-                (
-                  effectiveStatus ===
-                    'trial' ||
-                  effectiveStatus ===
-                    'trialing'
-                )
-                  ? subscription.trial_ends_at
-                  : subscription.current_period_end,
+                effectiveStatus ===
+                  'cancelled'
+                  ? (
+                      subscription.current_period_end ||
+                      subscription.trial_ends_at
+                    )
+                  : (
+                      effectiveStatus ===
+                        'trial' ||
+                      effectiveStatus ===
+                        'trialing'
+                    )
+                    ? subscription.trial_ends_at
+                    : subscription.current_period_end,
               )
             : null,
         scheduled:
@@ -3624,6 +3630,29 @@ export async function changeWorkspaceSubscriptionPlan(
         effectiveAt:
           toIso(
             subscription.scheduled_plan_effective_at,
+          ),
+      },
+    );
+  }
+
+  if (
+    subscription.cancelled_at
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_ALREADY_SCHEDULED',
+      String(
+        subscription.status ||
+        '',
+      )
+        .trim()
+        .toLowerCase() ===
+        'cancelled'
+        ? 'Reactivate the ended subscription before changing paid plans.'
+        : 'Keep the subscription first, then request a different plan.',
+      {
+        cancellationRequestedAt:
+          toIso(
+            subscription.cancelled_at,
           ),
       },
     );
