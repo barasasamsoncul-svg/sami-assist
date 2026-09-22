@@ -802,6 +802,7 @@ async function storePaymentTransaction({
   amount,
   currency,
   description,
+  redirectUrl,
   mode,
   accountNumber,
   recurringStartDate,
@@ -824,6 +825,9 @@ async function storePaymentTransaction({
     string;
 
   description:
+    string;
+
+  redirectUrl:
     string;
 
   mode:
@@ -884,6 +888,9 @@ async function storePaymentTransaction({
 
       JSON.stringify({
         merchantReference,
+
+        checkoutUrl:
+          redirectUrl,
 
         billingPurpose:
           mode,
@@ -1012,7 +1019,7 @@ async function submitPesaPalOrder({
     `${origin}/api/auth/pesapal-callback`;
 
   const cancellationUrl =
-    `${origin}/auth/payment-cancelled`;
+    `${origin}/settings?tab=billing&payment=cancelled`;
 
   const email =
     normalizeEmail(
@@ -1236,6 +1243,8 @@ async function submitPesaPalOrder({
     currency,
 
     description,
+
+    redirectUrl,
 
     mode,
 
