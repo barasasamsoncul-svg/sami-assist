@@ -87,6 +87,19 @@ export type SamiBillingSetupResult = {
     string | null;
 };
 
+export type SamiBillingSetupStatus = {
+  provider:
+    SamiBillingProviderKey;
+  setupReference:
+    string;
+  status:
+    string;
+  providerCustomerId:
+    string;
+  providerPaymentMethodId:
+    string | null;
+};
+
 export type SamiBillingRecurringInput = {
   customer:
     SamiBillingCustomer;
@@ -167,6 +180,15 @@ export type SamiBillingProvider = {
     ) =>
       Promise<
         SamiBillingSetupResult
+      >;
+
+  getPaymentMethodSetupStatus?:
+    (
+      setupReference:
+        string,
+    ) =>
+      Promise<
+        SamiBillingSetupStatus
       >;
 
   createRecurringSubscription?:
