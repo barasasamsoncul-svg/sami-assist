@@ -61,6 +61,11 @@ export type SamiPlanPolicy = {
       number | null;
   };
 
+  users: {
+    maxActiveInternalUsers:
+      number | null;
+  };
+
   ai: {
     enabled:
       boolean;
@@ -144,6 +149,10 @@ export const SAMI_PLAN_POLICIES:
         maxInstalledBusinessApps:
           1,
       },
+      users: {
+        maxActiveInternalUsers:
+          1,
+      },
       ai: {
         enabled:
           true,
@@ -217,6 +226,10 @@ export const SAMI_PLAN_POLICIES:
         maxInstalledBusinessApps:
           null,
       },
+      users: {
+        maxActiveInternalUsers:
+          null,
+      },
       ai: {
         enabled:
           true,
@@ -288,6 +301,10 @@ export const SAMI_PLAN_POLICIES:
         allBusinessApps:
           true,
         maxInstalledBusinessApps:
+          null,
+      },
+      users: {
+        maxActiveInternalUsers:
           null,
       },
       ai: {
