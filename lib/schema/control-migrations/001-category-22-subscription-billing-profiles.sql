@@ -2,6 +2,28 @@
 -- SaMi Control DB Migration
 -- Category 22: Subscription billing provider profiles
 -- ============================================================
+
+-- Scheduled plan changes remain on the SaMi subscription.
+-- Provider subscriptions are synchronized separately and never
+-- become the authority for plan entitlement.
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS scheduled_plan_id UUID
+        REFERENCES plans(id);
+
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS scheduled_plan_effective_at TIMESTAMPTZ;
+
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS scheduled_plan_requested_by UUID;
+
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS scheduled_plan_requested_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_subscriptions_scheduled_plan
+    ON subscriptions(scheduled_plan_effective_at)
+    WHERE scheduled_plan_id IS NOT NULL;
+
+
 --
 -- This table pins an existing payment mandate/subscription to
 -- the provider that created it. Changing SAMI_BILLING_PROVIDER
