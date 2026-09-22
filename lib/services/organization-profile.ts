@@ -1844,7 +1844,14 @@ async function requireMultiCompanyPlan(
     access.policy
       ?.companies
       .multiCompany !==
-      true
+      true ||
+    (
+      access.scheduledPolicy &&
+      access.scheduledPolicy
+        .companies
+        .multiCompany !==
+        true
+    )
   ) {
     throw new OrganizationProfileError(
       'MULTI_COMPANY_PLAN_REQUIRED',
