@@ -22,7 +22,7 @@ export const CORE_INTEGRATION_PROVIDERS:
       name:
         'Google Workspace',
       description:
-        'Connect Google Workspace services through an organization-managed OAuth connection.',
+        'Establish an organization-managed Google Workspace identity connection for registered SaMi provider extensions.',
       category:
         'productivity',
       iconKey:
@@ -33,12 +33,7 @@ export const CORE_INTEGRATION_PROVIDERS:
         'https://workspace.google.com',
       docsUrl:
         'https://developers.google.com/identity/protocols/oauth2',
-      capabilities: [
-        'sync',
-        'automation_triggers',
-        'automation_actions',
-        'ai_context',
-      ],
+      capabilities: [],
       oauth: {
         authorizationUrl:
           'https://accounts.google.com/o/oauth2/v2/auth',
@@ -71,7 +66,7 @@ export const CORE_INTEGRATION_PROVIDERS:
       name:
         'Microsoft 365',
       description:
-        'Connect Microsoft 365 through Microsoft identity and Graph-compatible OAuth.',
+        'Establish an organization-managed Microsoft 365 identity connection for registered SaMi provider extensions.',
       category:
         'productivity',
       iconKey:
@@ -82,12 +77,7 @@ export const CORE_INTEGRATION_PROVIDERS:
         'https://www.microsoft.com/microsoft-365',
       docsUrl:
         'https://learn.microsoft.com/entra/identity-platform/v2-oauth2-auth-code-flow',
-      capabilities: [
-        'sync',
-        'automation_triggers',
-        'automation_actions',
-        'ai_context',
-      ],
+      capabilities: [],
       oauth: {
         authorizationUrl:
           'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
@@ -114,7 +104,7 @@ export const CORE_INTEGRATION_PROVIDERS:
       name:
         'Slack',
       description:
-        'Connect a Slack workspace for approved messaging, events and workflow actions.',
+        'Connect a Slack workspace for approved SaMi workflow messaging actions.',
       category:
         'communication',
       iconKey:
@@ -126,9 +116,6 @@ export const CORE_INTEGRATION_PROVIDERS:
       docsUrl:
         'https://api.slack.com/authentication/oauth-v2',
       capabilities: [
-        'inbound_webhook',
-        'outbound_webhook',
-        'automation_triggers',
         'automation_actions',
       ],
       oauth: {
@@ -140,7 +127,9 @@ export const CORE_INTEGRATION_PROVIDERS:
           'SAMI_SLACK_OAUTH_CLIENT_ID',
         clientSecretEnv:
           'SAMI_SLACK_OAUTH_CLIENT_SECRET',
-        scopes: [],
+        scopes: [
+          'chat:write',
+        ],
         usePkce:
           false,
       },
