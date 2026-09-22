@@ -6,6 +6,12 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getSamiMonthlyAmount,
+  getSamiPricePerUserMonthly,
+  SAMI_SAMI_BILLING_CURRENCY,
+} from '@/lib/billing/pricing';
+
+import {
   hashPassword,
 } from '@/lib/auth/password';
 
@@ -54,8 +60,6 @@ export const dynamic = 'force-dynamic';
 const VERIFICATION_EXPIRY_MINUTES = 15;
 
 const PAID_TRIAL_MONTHS = 1;
-
-const BILLING_CURRENCY = 'KES';
 
 const MAX_SELECTED_APPS = 50;
 
@@ -809,32 +813,6 @@ async function cleanupRegistration(
 
    SaMi billing is per-user.
    ============================================================ */
-
-function getPerUserMonthlyPrice(
-  plan: string
-): number {
-  if (
-    plan === 'standard'
-  ) {
-    return Number(
-      process.env
-        .PESAPAL_PRICE_STANDARD_MONTHLY ||
-        2000
-    );
-  }
-
-  if (
-    plan === 'custom'
-  ) {
-    return Number(
-      process.env
-        .PESAPAL_PRICE_CUSTOM_MONTHLY ||
-        3340
-    );
-  }
-
-  return 0;
-}
 
 /* ============================================================
    BILLABLE USERS
@@ -2079,7 +2057,7 @@ export async function POST(
       );
 
     const perUserMonthlyPrice =
-      getPerUserMonthlyPrice(
+      getSamiPricePerUserMonthly(
         finalPlan
       );
 
@@ -2100,8 +2078,10 @@ export async function POST(
 
     const monthlyAmount =
       isPaidPlan
-        ? perUserMonthlyPrice *
-          billableUsers
+        ? getSamiMonthlyAmount(
+            finalPlan,
+            billableUsers,
+          )
         : 0;
 
     /* ========================================================
@@ -2174,7 +2154,7 @@ export async function POST(
           0,
 
         currency:
-          BILLING_CURRENCY,
+          SAMI_BILLING_CURRENCY,
 
         firstBillingAt:
           isPaidPlan
@@ -2321,7 +2301,7 @@ export async function POST(
             monthlyAmount,
 
             currency:
-              BILLING_CURRENCY,
+              SAMI_BILLING_CURRENCY,
 
             paymentMethodOnFile:
               false,
