@@ -301,6 +301,62 @@ export const stripeBillingProvider:
     };
   },
 
+  async getPaymentMethodSetupStatus(
+    setupReference,
+  ) {
+    const stripe =
+      stripeClient();
+
+    const setupIntent =
+      await stripe.setupIntents
+        .retrieve(
+          setupReference,
+        );
+
+    const customerId =
+      typeof setupIntent
+        .customer ===
+        'string'
+        ? setupIntent
+            .customer
+        : setupIntent
+            .customer
+            ?.id ||
+          '';
+
+    if (
+      !customerId
+    ) {
+      throw new Error(
+        'Stripe setup does not have a customer.',
+      );
+    }
+
+    const paymentMethodId =
+      typeof setupIntent
+        .payment_method ===
+        'string'
+        ? setupIntent
+            .payment_method
+        : setupIntent
+            .payment_method
+            ?.id ||
+          null;
+
+    return {
+      provider:
+        'stripe',
+      setupReference:
+        setupIntent.id,
+      status:
+        setupIntent.status,
+      providerCustomerId:
+        customerId,
+      providerPaymentMethodId:
+        paymentMethodId,
+    };
+  },
+
   async createRecurringSubscription(
     input,
   ): Promise<
