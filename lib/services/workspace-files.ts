@@ -21,6 +21,11 @@ import {
   ObjectStorageError,
 } from '@/lib/storage/object-storage';
 
+import {
+  assertStorageAllocationAvailable,
+  WorkspaceUsageError,
+} from '@/lib/usage/entitlements';
+
 export const MAX_WORKSPACE_FILE_BYTES = 100 * 1024 * 1024;
 export const WORKSPACE_FILE_UPLOAD_TTL_SECONDS = 10 * 60;
 
@@ -52,7 +57,9 @@ export type WorkspaceFileErrorCode =
   | 'UPLOAD_EXPIRED'
   | 'UPLOAD_INCOMPLETE'
   | 'UPLOAD_VALIDATION_FAILED'
-  | 'STORAGE_UNAVAILABLE';
+  | 'STORAGE_UNAVAILABLE'
+  | 'STORAGE_QUOTA_EXCEEDED'
+  | 'WORKSPACE_SUBSCRIPTION_REQUIRED';
 
 export class WorkspaceFileError extends Error {
   readonly code: WorkspaceFileErrorCode;
@@ -469,6 +476,49 @@ export async function createWorkspaceFileUploadIntent(
 
   const mimeType = safeMimeType(input.mimeType);
   const sizeBytes = safeFileSize(input.sizeBytes);
+
+  try {
+    await assertStorageAllocationAvailable({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      incomingBytes:
+        sizeBytes,
+    });
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        WorkspaceUsageError
+    ) {
+      if (
+        error.code ===
+          'STORAGE_QUOTA_EXCEEDED'
+      ) {
+        throw new WorkspaceFileError(
+          'STORAGE_QUOTA_EXCEEDED',
+          error.message,
+          error.details,
+        );
+      }
+
+      if (
+        error.code ===
+          'USAGE_WORKSPACE_SUSPENDED'
+      ) {
+        throw new WorkspaceFileError(
+          'WORKSPACE_SUBSCRIPTION_REQUIRED',
+          error.message,
+          error.details,
+        );
+      }
+    }
+
+    throw error;
+  }
+
   const purpose = safePurpose(input.purpose);
   const extension = fileExtension(fileName);
   const fileId = crypto.randomUUID();
