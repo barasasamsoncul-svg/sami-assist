@@ -782,13 +782,15 @@ test('Category 22: paid trial onboarding is shared across password, 2FA and Goog
   );
 });
 
-test('Category 22: past-due workspaces are recovery-only across pages, permissions and app shell', async () => {
+test('Category 22: overdue billing follows grace, dunning, suspension and automatic recovery boundaries', async () => {
   const [
     access,
     pageGuard,
     permissions,
-    shell,
+    shellAccess,
+    shellUi,
     recoveryPage,
+    reconcile,
   ] = await Promise.all([
     source(
       'lib/billing/access.ts',
@@ -803,13 +805,35 @@ test('Category 22: past-due workspaces are recovery-only across pages, permissio
       'lib/auth/workspace-shell.ts',
     ),
     source(
+      'app/components/workspace/WorkspaceShell.tsx',
+    ),
+    source(
       'app/subscription-required/page.tsx',
+    ),
+    source(
+      'lib/billing/reconcile.ts',
     ),
   ]);
 
   assert.match(
     access,
-    /personal_account/,
+    /SAMI_BILLING_PAST_DUE_GRACE_DAYS/,
+  );
+
+  assert.match(
+    access,
+    /DEFAULT_PAST_DUE_GRACE_DAYS\s*=\s*14/,
+    'SaMi must use a safe default dunning grace when no env override is configured.',
+  );
+
+  assert.match(
+    access,
+    /getSubscriptionSuspensionWindow/,
+  );
+
+  assert.match(
+    access,
+    /suspended:/,
   );
 
   assert.match(
@@ -839,12 +863,24 @@ test('Category 22: past-due workspaces are recovery-only across pages, permissio
 
   assert.match(
     pageGuard,
-    /access\.pastDue/,
+    /access\.suspended/,
+    'Past due alone must not bypass the configured grace period.',
+  );
+
+  assert.doesNotMatch(
+    pageGuard,
+    /access\.pastDue\s*&&/,
   );
 
   assert.match(
     pageGuard,
-    /redirect\([\s\S]*'\/subscription-required'/s,
+    /redirect\([\s\S]*['"]\/subscription-required['"]/s,
+  );
+
+  assert.match(
+    permissions,
+    /subscriptionAccess\.suspended/,
+    'The API permission boundary must hard-lock only after grace expires.',
   );
 
   assert.match(
@@ -863,13 +899,23 @@ test('Category 22: past-due workspaces are recovery-only across pages, permissio
   );
 
   assert.match(
-    shell,
-    /workspaceLocked/,
+    shellAccess,
+    /subscription[\s\S]*\.suspended/s,
   );
 
   assert.match(
-    shell,
-    /workspaceLocked[\s\S]*accessibleModules[\s\S]*\[\]/s,
+    shellUi,
+    /showDunningWarning/,
+  );
+
+  assert.match(
+    shellUi,
+    /subscriptionSuspended/,
+  );
+
+  assert.match(
+    shellUi,
+    /Workspace temporarily suspended/,
   );
 
   assert.match(
@@ -886,7 +932,24 @@ test('Category 22: past-due workspaces are recovery-only across pages, permissio
     recoveryPage,
     /Automatic restoration/,
   );
+
+  assert.match(
+    reconcile,
+    /getSubscriptionSuspensionWindow/,
+  );
+
+  assert.match(
+    reconcile,
+    /final_warning/,
+  );
+
+  assert.match(
+    reconcile,
+    /billing\.suspended/,
+  );
 });
+
+
 
 test('Category 22: public pricing uses the same canonical server price contract', async () => {
   const landing =
@@ -945,6 +1008,18 @@ test('Category 22: billing state changes notify workspace owners through critica
   assert.match(
     notifications,
     /critical:[\s\S]*true/s,
+  );
+
+  assert.match(
+    notifications,
+    /forceEmail:[\s\S]*true/s,
+    'Critical billing events must use transactional email.',
+  );
+
+  assert.match(
+    notifications,
+    /forceSms:[\s\S]*true/s,
+    'Critical billing events must use transactional SMS.',
   );
 
   assert.match(
