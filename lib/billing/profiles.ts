@@ -1,6 +1,7 @@
 import 'server-only';
 
 import {
+  getControlPool,
   queryControl,
 } from '@/lib/db/control';
 
@@ -232,86 +233,131 @@ export async function createSubscriptionBillingProfile(
       >;
   },
 ) {
-  await queryControl(
-    `
-      UPDATE subscription_billing_profiles
-      SET
-        is_active =
-          FALSE,
-        updated_at =
-          NOW()
-      WHERE subscription_id = $1
-        AND is_active =
-            TRUE
-    `,
-    [
-      input.subscriptionId,
-    ],
-  );
+  const client =
+    await getControlPool()
+      .connect();
 
-  const result =
-    await queryControl(
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    /*
+     * Serialize billing-profile replacement for one subscription.
+     * This keeps the partial unique index and provider history
+     * deterministic even if two setup requests race.
+     */
+    await client.query(
       `
-        INSERT INTO subscription_billing_profiles (
-          tenant_id,
-          subscription_id,
-          provider,
-          provider_customer_id,
-          provider_subscription_id,
-          provider_payment_method_id,
-          recurring_status,
-          currency,
-          price_per_user_monthly,
-          seat_quantity,
-          metadata,
-          is_active,
-          created_at,
-          updated_at
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11::jsonb,
-          TRUE,
-          NOW(),
-          NOW()
-        )
-        RETURNING *
+        SELECT
+          pg_advisory_xact_lock(
+            hashtext($1)::bigint
+          )
       `,
       [
-        input.tenantId,
-        input.subscriptionId,
-        input.provider,
-        input.providerCustomerId ||
-        null,
-        input.providerSubscriptionId ||
-        null,
-        input.providerPaymentMethodId ||
-        null,
-        input.recurringStatus,
-        input.currency,
-        input.pricePerUserMonthly ??
-        null,
-        input.seatQuantity ??
-        null,
-        JSON.stringify(
-          input.metadata ||
-          {},
-        ),
+        `sami:billing-profile:${input.subscriptionId}`,
       ],
     );
 
-  return rowToProfile(
-    result.rows[0],
-  );
+    await client.query(
+      `
+        UPDATE subscription_billing_profiles
+        SET
+          is_active =
+            FALSE,
+          updated_at =
+            NOW()
+        WHERE subscription_id = $1
+          AND is_active =
+              TRUE
+      `,
+      [
+        input.subscriptionId,
+      ],
+    );
+
+    const result =
+      await client.query(
+        `
+          INSERT INTO subscription_billing_profiles (
+            tenant_id,
+            subscription_id,
+            provider,
+            provider_customer_id,
+            provider_subscription_id,
+            provider_payment_method_id,
+            recurring_status,
+            currency,
+            price_per_user_monthly,
+            seat_quantity,
+            metadata,
+            is_active,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11::jsonb,
+            TRUE,
+            NOW(),
+            NOW()
+          )
+          RETURNING *
+        `,
+        [
+          input.tenantId,
+          input.subscriptionId,
+          input.provider,
+          input.providerCustomerId ||
+          null,
+          input.providerSubscriptionId ||
+          null,
+          input.providerPaymentMethodId ||
+          null,
+          input.recurringStatus,
+          input.currency,
+          input.pricePerUserMonthly ??
+          null,
+          input.seatQuantity ??
+          null,
+          JSON.stringify(
+            input.metadata ||
+            {},
+          ),
+        ],
+      );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return rowToProfile(
+      result.rows[0],
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {
+      // Preserve the original profile error.
+    }
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function updateActiveSubscriptionBillingProfile(
