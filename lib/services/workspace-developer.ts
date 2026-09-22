@@ -88,7 +88,7 @@ type DeveloperWorkspaceContext = {
   isOwner:
     boolean;
   permissionSet:
-    Set<string>;
+    ReadonlySet<string>;
   accessibleApps:
     {
       key:
