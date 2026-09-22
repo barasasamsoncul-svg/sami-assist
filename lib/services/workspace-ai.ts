@@ -55,7 +55,6 @@ import {
 } from '@/lib/ai/tool-registry';
 
 import {
-  buildSamiAiAttachmentContext,
   canUploadSamiAiAttachments,
   getSamiAiAttachmentLimits,
   linkSamiAiAttachmentsToMessage,
