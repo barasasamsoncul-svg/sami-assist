@@ -5,6 +5,10 @@ import {
   type Session,
 } from '@/lib/auth/session';
 
+import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
+
 /* ============================================================
    SAFE INTERNAL PATH
    ============================================================ */
@@ -60,6 +64,41 @@ export async function requirePageSession(
     await getSession();
 
   if (session) {
+    if (
+      session.currentTenantId
+    ) {
+      const access =
+        await getWorkspaceSubscriptionAccessState(
+          session.currentTenantId,
+        );
+
+      const recoveryPath =
+        nextPath ===
+          '/subscription-required' ||
+        nextPath.startsWith(
+          '/subscription-required?',
+        ) ||
+        nextPath ===
+          '/settings' ||
+        nextPath.startsWith(
+          '/settings?',
+        ) ||
+        nextPath ===
+          '/help' ||
+        nextPath.startsWith(
+          '/help?',
+        );
+
+      if (
+        access.pastDue &&
+        !recoveryPath
+      ) {
+        redirect(
+          '/subscription-required',
+        );
+      }
+    }
+
     return session;
   }
 
