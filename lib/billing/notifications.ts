@@ -175,6 +175,8 @@ export async function notifyWorkspaceOwnersOfBillingEvent(
             metadata:
               input.metadata ||
               {},
+            forceEmail:
+              true,
             forceSms:
               true,
             critical:
