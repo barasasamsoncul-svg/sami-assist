@@ -27,6 +27,10 @@ import {
   isTrustedSecurityMutation,
 } from '@/lib/auth/security-action';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime =
   'nodejs';
 
@@ -461,6 +465,30 @@ export async function POST(
 
         otherSessionsRevoked:
           firstAuthenticator,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId:
+        session.user.id,
+      eventKey:
+        firstAuthenticator
+          ? 'security.two_factor_enabled'
+          : 'security.authenticator_added',
+      title:
+        firstAuthenticator
+          ? 'Two-factor authentication enabled'
+          : 'Authenticator added',
+      message:
+        firstAuthenticator
+          ? 'Two-factor authentication is now enabled on your SaMi account. Other active sessions were revoked where applicable.'
+          : 'A new authenticator was added to your SaMi account. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:authenticator:${session.user.id}:${Date.now()}`,
+      metadata: {
+        firstAuthenticator,
       },
     });
 
