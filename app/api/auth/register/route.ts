@@ -8,7 +8,7 @@ import {
 import {
   getSamiMonthlyAmount,
   getSamiPricePerUserMonthly,
-  SAMI_SAMI_BILLING_CURRENCY,
+  SAMI_BILLING_CURRENCY,
 } from '@/lib/billing/pricing';
 
 import {
@@ -37,7 +37,7 @@ export const dynamic = 'force-dynamic';
    FREE
    ------------------------------------------------------------
    - KES 0
-   - No PesaPal
+   - No payment method required
    - No trial
    - Workspace provisioned immediately
    - Subscription becomes active after provisioning
@@ -46,15 +46,14 @@ export const dynamic = 'force-dynamic';
    ------------------------------------------------------------
    - First calendar month free
    - KES 0 due today
-   - NO PesaPal transaction during signup
    - Workspace provisioned immediately
    - Subscription starts as trialing immediately
    - Full paid-plan entitlements during trial
-   - First payment becomes due after one calendar month
-   - First successful PesaPal payment creates recurring
-     enrollment
-   - Later monthly payments can run automatically through
-     PesaPal recurring billing
+   - SaMi billing provider is selected server-side by environment
+   - Providers that support zero-charge setup may authorize a
+     future payment method after the user's authenticated sign-in
+   - First paid charge begins only after the free month
+   - Subscription price and seats remain SaMi-authoritative
    ============================================================ */
 
 const VERIFICATION_EXPIRY_MINUTES = 15;
@@ -2284,7 +2283,7 @@ export async function POST(
              * This is when the first paid billing cycle becomes
              * due.
              *
-             * It is NOT a PesaPal payment created today.
+             * It is NOT a provider payment created today.
              */
             firstBillingAt:
               isPaidPlan
