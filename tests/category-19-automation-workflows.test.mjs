@@ -329,11 +329,29 @@ test('Category 19: automation authority derives from session, company, core perm
 });
 
 test('Category 19: saving a draft version never silently changes the active version', async () => {
-  const service =
-    compact(
-      await source(
+  const [
+    service,
+    engine,
+  ] =
+    await Promise.all([
+      source(
         'lib/services/workspace-automation.ts',
       ),
+      source(
+        'lib/automation/execution-engine.ts',
+      ),
+    ]).then(
+      ([
+        serviceSource,
+        engineSource,
+      ]) => [
+        compact(
+          serviceSource,
+        ),
+        compact(
+          engineSource,
+        ),
+      ],
     );
 
   assert.match(
@@ -374,7 +392,7 @@ test('Category 19: saving a draft version never silently changes the active vers
     /active_version = \$3/,
   );
   assert.match(
-    service,
+    engine,
     /v\.version = w\.active_version/,
     'Runs must load the explicitly active version, never the latest draft.',
   );
