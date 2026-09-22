@@ -156,6 +156,13 @@ export async function GET() {
       );
 
 
+    const integrationsManage =
+      has(
+        SAMI_PERMISSIONS
+          .INTEGRATIONS_MANAGE,
+      );
+
+
     const billingManage =
       has(
         SAMI_PERMISSIONS
@@ -369,6 +376,19 @@ export async function GET() {
           has(
             SAMI_PERMISSIONS
               .AUTOMATION_VIEW,
+          ),
+
+
+        integrationsManage:
+          context.isOwner ||
+          integrationsManage,
+
+        integrationsView:
+          context.isOwner ||
+          integrationsManage ||
+          has(
+            SAMI_PERMISSIONS
+              .INTEGRATIONS_VIEW,
           ),
 
 
