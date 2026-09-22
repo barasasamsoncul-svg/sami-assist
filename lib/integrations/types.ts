@@ -56,7 +56,10 @@ export type SamiIntegrationProviderDefinition = {
 };
 
 export type SamiIntegrationPublicProvider =
-  SamiIntegrationProviderDefinition & {
+  Omit<
+    SamiIntegrationProviderDefinition,
+    'oauth'
+  > & {
     configured: boolean;
   };
 
