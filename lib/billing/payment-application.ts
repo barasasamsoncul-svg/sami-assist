@@ -1013,7 +1013,8 @@ export async function applyVerifiedRecurringInvoice(
           RETURNING
             status,
             current_period_start,
-            current_period_end
+            current_period_end,
+            cancelled_at
         `,
         [
           profile.subscription_id,
@@ -1087,17 +1088,30 @@ export async function applyVerifiedRecurringInvoice(
         title:
           'Subscription renewed',
         message:
-          `SaMi confirmed the recurring payment of ${normalizedCurrency(
-            input.currency,
-          )} ${Number(
-            input.amount,
-          ).toLocaleString(
-            'en-KE',
-            {
-              maximumFractionDigits:
-                2,
-            },
-          )}. Your subscription remains active.`,
+          subscription.rows[0]
+            .cancelled_at
+            ? `SaMi confirmed the recurring payment of ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. This paid period is active, but your cancellation remains scheduled and future renewal stays stopped.`
+            : `SaMi confirmed the recurring payment of ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. Your subscription remains active.`,
         priority:
           'high',
         dedupeKey:
