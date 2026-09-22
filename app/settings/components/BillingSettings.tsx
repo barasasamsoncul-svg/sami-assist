@@ -2118,13 +2118,27 @@ export default function BillingSettings({
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       )}
                       {state.subscription
-                        .status ===
-                        'active' &&
-                      state.subscription
                         .planKey !==
-                        'free'
-                        ? 'Change at renewal'
-                        : `Switch to ${plan.name}`}
+                        'free' &&
+                      plan.key ===
+                        'free' &&
+                      (
+                        state.subscription
+                          .status ===
+                          'trial' ||
+                        state.subscription
+                          .status ===
+                          'trialing'
+                      )
+                        ? 'Move to Free at trial end'
+                        : state.subscription
+                              .status ===
+                              'active' &&
+                            state.subscription
+                              .planKey !==
+                              'free'
+                          ? 'Change at renewal'
+                          : `Switch to ${plan.name}`}
                     </button>
                   )}
                 </article>
