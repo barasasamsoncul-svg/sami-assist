@@ -704,7 +704,7 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
 
   const plannedKeys = [
     ...planned.matchAll(
-      /key:\s*\n?\s*'([^']+)'/g,
+      /key:\s*['"]([^'"]+)['"]/g,
     ),
   ]
     .map(
@@ -743,13 +743,138 @@ test('Category 13: SaMi exposes an 80-app catalog without pretending planned mod
 
   assert.match(
     planned,
-    /schemaPath:\s*null/,
+    /schemaPath:\s*`lib\/apps\/\$\{key\}\/schema\.sql`/,
   );
+
+  const plannedDirectories =
+    await readdir(
+      path.join(
+        root,
+        'lib/apps',
+      ),
+      {
+        withFileTypes:
+          true,
+      },
+    );
+
+  const plannedDirectorySet =
+    new Set(
+      plannedDirectories
+        .filter(
+          entry =>
+            entry.isDirectory(),
+        )
+        .map(
+          entry =>
+            entry.name,
+        ),
+    );
+
+  for (
+    const key
+    of plannedKeys
+  ) {
+    assert.ok(
+      plannedDirectorySet.has(
+        key,
+      ),
+      `Missing schema directory for planned app ${key}.`,
+    );
+
+    const schema =
+      await source(
+        `lib/apps/${key}/schema.sql`,
+      );
+
+    assert.match(
+      schema,
+      /company_id UUID NOT NULL REFERENCES public\.companies\(id\)/,
+      `Planned schema ${key} must remain company-scoped.`,
+    );
+
+    assert.match(
+      schema,
+      /created_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
+      `Planned schema ${key} must have creation timestamps.`,
+    );
+
+    assert.match(
+      schema,
+      /updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW\(\)/,
+      `Planned schema ${key} must have update timestamps.`,
+    );
+
+    assert.match(
+      schema,
+      /deleted_at TIMESTAMPTZ/,
+      `Planned schema ${key} must support soft deletion.`,
+    );
+  }
 
   assert.doesNotMatch(
     planned,
     /installable:\s*true/,
     'Roadmap-only modules must never silently become installable.',
+  );
+
+  const registeredKeys =
+    new Set([
+      ...readyKeys,
+      ...plannedKeys,
+    ]);
+
+  const dependencyLists = [
+    ...planned.matchAll(
+      /depends:\s*\[([^\]]*)\]/g,
+    ),
+  ]
+    .map(
+      match =>
+        [
+          ...match[1].matchAll(
+            /['"]([^'"]+)['"]/g,
+          ),
+        ]
+          .map(
+            item =>
+              item[1],
+          ),
+    );
+
+  for (
+    const dependencies
+    of dependencyLists
+  ) {
+    for (
+      const dependency
+      of dependencies
+    ) {
+      assert.ok(
+        registeredKeys.has(
+          dependency,
+        ),
+        `Planned app dependency ${dependency} must be a registered SaMi module.`,
+      );
+    }
+  }
+
+  assert.match(
+    planned,
+    /depends:\s*\["invoicing"\]/,
+    'Billing must declare Invoicing as a required dependency.',
+  );
+
+  assert.match(
+    planned,
+    /depends:\s*\["employees"\]/,
+    'People extensions must declare the Employees dependency where required.',
+  );
+
+  assert.match(
+    planned,
+    /depends:\s*\["inventory"\]/,
+    'Supply-chain extensions must declare Inventory where required.',
   );
 
   assert.match(
