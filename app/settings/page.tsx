@@ -19,6 +19,10 @@ import {
   resolveWorkspaceShellAccess,
 } from '@/lib/auth/workspace-shell';
 
+import {
+  getWorkspaceBillingState,
+} from '@/lib/services/workspace-billing';
+
 import SettingsClient from './SettingsClient';
 
 
@@ -30,7 +34,22 @@ export const dynamic =
   'force-dynamic';
 
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams:
+    Promise<
+      Record<
+        string,
+        string |
+        string[] |
+        undefined
+      >
+    >;
+}) {
+  const params =
+    await searchParams;
+
   const session =
     await requirePageSession(
       '/settings',
@@ -124,6 +143,47 @@ export default async function SettingsPage() {
       true;
 
 
+  const requestedTab =
+    Array.isArray(
+      params.tab,
+    )
+      ? params.tab[0]
+      : params.tab;
+
+  let billingState:
+    Awaited<
+      ReturnType<
+        typeof getWorkspaceBillingState
+      >
+    > |
+    null =
+    null;
+
+  if (
+    requestedTab ===
+      'billing' &&
+    (
+      shell.canViewBilling ||
+      can(
+        SAMI_PERMISSIONS
+          .BILLING_MANAGE,
+      )
+    )
+  ) {
+    try {
+      billingState =
+        await getWorkspaceBillingState();
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Settings] Billing state could not be loaded:',
+        error,
+      );
+    }
+  }
+
+
   /* ==============================================================
      RENDER
      ============================================================== */
@@ -148,6 +208,16 @@ export default async function SettingsPage() {
        */
       subscription={
         shell.subscription
+      }
+
+      billingState={
+        billingState
+          ? JSON.parse(
+              JSON.stringify(
+                billingState,
+              ),
+            )
+          : null
       }
 
       accessibleModules={
