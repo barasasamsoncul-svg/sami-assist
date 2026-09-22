@@ -1,5 +1,9 @@
 import 'server-only';
 
+import type {
+  PoolClient,
+} from 'pg';
+
 import {
   queryControl,
 } from '@/lib/db/control';
@@ -458,20 +462,11 @@ async function readTenantUsage(
 
 
 export async function assertInternalSeatAvailableWithClient(
-  client: {
-    query:
-      (
-        text: string,
-        values?: unknown[],
-      ) => Promise<{
-        rows: Array<
-          Record<
-            string,
-            unknown
-          >
-        >;
-      }>;
-  },
+  client:
+    Pick<
+      PoolClient,
+      'query'
+    >,
   input: {
     tenantId: string;
   },
