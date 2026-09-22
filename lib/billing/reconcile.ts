@@ -12,6 +12,10 @@ import {
 } from '@/lib/billing/pricing';
 
 import {
+  applyDueScheduledPlanChanges,
+} from '@/lib/billing/plan-transition';
+
+import {
   getBillingProvider,
 } from '@/lib/billing/registry';
 
@@ -81,6 +85,8 @@ export async function reconcileWorkspaceBilling(
   limit =
     100,
 ) {
+  await applyDueScheduledPlanChanges();
+
   const result =
     await queryControl(
       `
@@ -92,6 +98,8 @@ export async function reconcileWorkspaceBilling(
           s.current_period_end,
           p.key
             AS plan_key,
+          sp.key
+            AS scheduled_plan_key,
           bp.provider,
           bp.provider_subscription_id,
           bp.recurring_status,
@@ -104,6 +112,13 @@ export async function reconcileWorkspaceBilling(
          AND p.deleted_at
              IS NULL
          AND p.is_active =
+             TRUE
+        LEFT JOIN plans sp
+          ON sp.id =
+             s.scheduled_plan_id
+         AND sp.deleted_at
+             IS NULL
+         AND sp.is_active =
              TRUE
         LEFT JOIN subscription_billing_profiles bp
           ON bp.subscription_id =
@@ -176,6 +191,19 @@ export async function reconcileWorkspaceBilling(
           )
         : null;
 
+    const providerPlanKey =
+      normalizeSamiPlanKey(
+        row.scheduled_plan_key,
+      ) ||
+      planKey;
+
+    const providerPlanPolicy =
+      providerPlanKey
+        ? getSamiPlanPolicy(
+            providerPlanKey,
+          )
+        : null;
+
     if (
       !planKey ||
       !policy
@@ -228,6 +256,8 @@ export async function reconcileWorkspaceBilling(
 
     if (
       !policy.paid ||
+      !providerPlanPolicy ||
+      !providerPlanPolicy.paid ||
       !row.provider ||
       !row.provider_subscription_id ||
       ![
@@ -275,7 +305,7 @@ export async function reconcileWorkspaceBilling(
 
       const price =
         getSamiPricePerUserMonthly(
-          planKey,
+          providerPlanKey,
         );
 
       const storedPrice =
