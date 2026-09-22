@@ -924,6 +924,73 @@ test('Category 13: SaMi exposes one unified 80-app first-party module catalog', 
 
 
 
+test('Category 13: control registry migration adds the same 44 module foundations for 80 business apps', async () => {
+  const migration =
+    await source(
+      'lib/schema/control-migrations/002-category-22-expand-app-catalog.sql',
+    );
+
+  assert.match(
+    migration,
+    /INSERT INTO modules/,
+  );
+
+  assert.match(
+    migration,
+    /ON CONFLICT \(key\)/,
+  );
+
+  assert.doesNotMatch(
+    migration,
+    /DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE/i,
+    'Catalog registration must be additive and non-destructive.',
+  );
+
+  const rows = [
+    ...migration.matchAll(
+      /\(\s*'([^']+)',\s*'[^']+',\s*'1\.0\.0'/g,
+    ),
+  ].map(
+    match =>
+      match[1],
+  );
+
+  assert.equal(
+    rows.length,
+    44,
+    'Control DB migration must register all 44 added business module keys.',
+  );
+
+  assert.equal(
+    new Set(
+      rows,
+    ).size,
+    44,
+    'Every added control module key must be unique.',
+  );
+
+  for (
+    const key
+    of [
+      'billing',
+      'payments',
+      'ecommerce',
+      'payroll',
+      'mail',
+      'calendar',
+      'whiteboard',
+    ]
+  ) {
+    assert.ok(
+      rows.includes(
+        key,
+      ),
+      `Control module migration must include ${key}.`,
+    );
+  }
+});
+
+
 test('Category 13: Odoo-class module manifests own dependencies, actions, views, resources, security and extension hooks', async () => {
   const [
     types,
