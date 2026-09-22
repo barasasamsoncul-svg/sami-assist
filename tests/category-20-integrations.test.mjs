@@ -658,6 +658,54 @@ test('Category 20: Slack Automation action uses only a current-company encrypted
   );
 });
 
+test('Category 20: OAuth credentials refresh and rotate server-side without exposing refreshed tokens', async () => {
+  const runtime =
+    await source(
+      'lib/integrations/runtime.ts',
+    );
+
+  assert.match(
+    runtime,
+    /refreshOAuthCredential/,
+  );
+
+  assert.match(
+    runtime,
+    /grant_type/,
+  );
+
+  assert.match(
+    runtime,
+    /refresh_token/,
+  );
+
+  assert.match(
+    runtime,
+    /requireConfiguredOAuthProvider/,
+  );
+
+  assert.match(
+    runtime,
+    /sealIntegrationSecret/,
+  );
+
+  assert.match(
+    runtime,
+    /rotated_at = NOW\(\)/,
+  );
+
+  assert.match(
+    runtime,
+    /usableOAuthCredential/,
+  );
+
+  assert.doesNotMatch(
+    runtime,
+    /console\.log\([^)]*(accessToken|refreshToken|sealed)/i,
+    'Credential refresh must never log decrypted OAuth material.',
+  );
+});
+
 test('Category 20: health checks are code-owned and Sync is unavailable without a registered handler', async () => {
   const [
     runtime,
@@ -804,6 +852,168 @@ test('Category 20: external app consumption is separate from integration adminis
   assert.match(
     switcher,
     /External/,
+  );
+});
+
+test('Category 20: webhook lifecycle supports pause, resume, one-time secret rotation, revoke and delivery history', async () => {
+  const [
+    service,
+    route,
+    client,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-integrations.ts',
+      ),
+      source(
+        'app/api/workspace/integrations/webhooks/[endpointId]/route.ts',
+      ),
+      source(
+        'app/integrations/IntegrationsClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    service,
+    /manageWorkspaceWebhookEndpoint/,
+  );
+
+  for (
+    const operation
+    of [
+      'pause',
+      'resume',
+      'rotate_secret',
+      'revoke',
+    ]
+  ) {
+    assert.match(
+      service,
+      new RegExp(
+        operation,
+      ),
+    );
+  }
+
+  assert.match(
+    service,
+    /generateIntegrationToken/,
+  );
+
+  assert.match(
+    service,
+    /hashIntegrationToken/,
+  );
+
+  assert.match(
+    service,
+    /integration_webhook_deliveries/,
+  );
+
+  assert.match(
+    service,
+    /webhookDeliveries/,
+  );
+
+  assert.match(
+    route,
+    /manageWorkspaceWebhookEndpoint/,
+  );
+
+  assert.match(
+    route,
+    /rejectIntegrationCrossOrigin/,
+  );
+
+  assert.match(
+    client,
+    /Recent webhook deliveries/,
+  );
+
+  assert.match(
+    client,
+    /Rotate secret/,
+  );
+
+  assert.match(
+    client,
+    /webhookOperation/,
+  );
+});
+
+test('Category 20: external apps have governed edit, enable, disable and archive lifecycle', async () => {
+  const [
+    service,
+    route,
+    client,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-integrations.ts',
+      ),
+      source(
+        'app/api/workspace/integrations/external-apps/[externalAppId]/route.ts',
+      ),
+      source(
+        'app/integrations/IntegrationsClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    service,
+    /manageWorkspaceExternalApp/,
+  );
+
+  for (
+    const operation
+    of [
+      'update',
+      'enable',
+      'disable',
+      'archive',
+    ]
+  ) {
+    assert.match(
+      service,
+      new RegExp(
+        operation,
+      ),
+    );
+  }
+
+  assert.match(
+    service,
+    /normalizeExternalLaunchUrl/,
+  );
+
+  assert.match(
+    route,
+    /manageWorkspaceExternalApp/,
+  );
+
+  assert.match(
+    route,
+    /rejectIntegrationCrossOrigin/,
+  );
+
+  assert.match(
+    client,
+    /openExternalEditor/,
+  );
+
+  assert.match(
+    client,
+    /externalAppOperation/,
+  );
+
+  assert.match(
+    client,
+    /Save changes/,
+  );
+
+  assert.match(
+    client,
+    /Archive/,
   );
 });
 
@@ -1032,6 +1242,8 @@ test('Category 20: browser management APIs are narrow, same-origin protected and
     helper,
     collection,
     connection,
+    webhook,
+    externalApp,
     assignments,
   ] =
     await Promise.all([
@@ -1043,6 +1255,12 @@ test('Category 20: browser management APIs are narrow, same-origin protected and
       ),
       source(
         'app/api/workspace/integrations/connections/[connectionId]/route.ts',
+      ),
+      source(
+        'app/api/workspace/integrations/webhooks/[endpointId]/route.ts',
+      ),
+      source(
+        'app/api/workspace/integrations/external-apps/[externalAppId]/route.ts',
       ),
       source(
         'app/api/workspace/integrations/external-apps/[externalAppId]/assignments/route.ts',
@@ -1075,6 +1293,16 @@ test('Category 20: browser management APIs are narrow, same-origin protected and
   );
 
   assert.match(
+    webhook,
+    /rejectIntegrationCrossOrigin/,
+  );
+
+  assert.match(
+    externalApp,
+    /rejectIntegrationCrossOrigin/,
+  );
+
+  assert.match(
     assignments,
     /rejectIntegrationCrossOrigin/,
   );
@@ -1082,6 +1310,8 @@ test('Category 20: browser management APIs are narrow, same-origin protected and
   assert.doesNotMatch(
     collection +
       connection +
+      webhook +
+      externalApp +
       assignments,
     /queryControl|getTenantPool|sealed_payload|access_token|refresh_token/i,
     'Browser management routes must call trusted services rather than touch credentials or databases directly.',
