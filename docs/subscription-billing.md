@@ -182,6 +182,19 @@ can extend subscription access.
 - Downgrades are blocked if active users, installed apps/dependencies or active
   companies exceed the target plan's capacity.
 
+While a stricter downgrade is pending, the current plan remains usable until
+the effective boundary, but the future plan's stricter limits apply to **new**
+capacity. For example, a pending move to Free prevents adding a second active
+internal user or business app, and a pending move away from Custom prevents
+creating/reactivating extra companies or creating/re-enabling Custom-only
+integrations.
+
+SaMi re-checks target-plan capacity again at the actual effective boundary. If
+the workspace no longer fits, SaMi keeps the plan change pending, notifies the
+workspace owners, and requires cleanup or cancellation of the plan change. It
+does not delete users, apps, companies, files or business records to force the
+new plan through.
+
 The subscription plan in SaMi remains the entitlement authority even when a
 provider has its own recurring subscription object.
 
