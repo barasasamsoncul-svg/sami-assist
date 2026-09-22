@@ -108,8 +108,11 @@ export function handleNotificationApiError(
         'UNAUTHENTICATED'
         ? 401
         : error.code ===
-            'COMPANY_ACCESS_DENIED'
-          ? 403
+            'WORKSPACE_SUSPENDED'
+          ? 402
+          : error.code ===
+              'COMPANY_ACCESS_DENIED'
+            ? 403
           : error.code ===
               'NOTIFICATION_NOT_FOUND'
             ? 404
