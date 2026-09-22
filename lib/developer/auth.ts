@@ -181,6 +181,19 @@ async function recordRateLimit(
       ],
     );
 
+  await pool.query(
+    `
+      DELETE FROM api_rate_limit_windows
+      WHERE credential_id = $1
+        AND window_start <
+            NOW() -
+            INTERVAL '1 day'
+    `,
+    [
+      credentialId,
+    ],
+  );
+
   return Number(
     result.rows[0]
       ?.request_count ||
@@ -556,6 +569,19 @@ export async function recordDeveloperRequest(
     ],
   );
 }
+
+  await pool.query(
+    `
+      DELETE FROM api_request_logs
+      WHERE company_id = $1
+        AND created_at <
+            NOW() -
+            INTERVAL '90 days'
+    `,
+    [
+      context.companyId,
+    ],
+  );
 
 export function developerApiJson(
   body:
