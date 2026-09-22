@@ -76,6 +76,9 @@ export interface WorkspaceShellAccess {
 
   accessibleModuleKeys:
     string[];
+
+  workspaceLocked:
+    boolean;
 }
 
 
@@ -254,11 +257,23 @@ export function resolveWorkspaceShellAccess(
      the complete active installed application set.
      ============================================================== */
 
+  const workspaceLocked =
+    normalizeKey(
+      subscription
+        ?.status,
+    ) ===
+    'past_due';
+
   let accessibleModules:
     ModuleContext[];
 
 
   if (
+    workspaceLocked
+  ) {
+    accessibleModules =
+      [];
+  } else if (
     permissions.isOwner
   ) {
     accessibleModules =
@@ -292,10 +307,13 @@ export function resolveWorkspaceShellAccess(
      ============================================================== */
 
   const canManageApps =
-    permissions.isOwner ||
-    permissions.permissionSet.has(
+    !workspaceLocked &&
+    (
+      permissions.isOwner ||
+      permissions.permissionSet.has(
       SAMI_PERMISSIONS
         .APPS_MANAGE,
+      )
     );
 
 
@@ -358,5 +376,7 @@ export function resolveWorkspaceShellAccess(
             module.key,
           ),
       ),
+
+    workspaceLocked,
   };
 }
