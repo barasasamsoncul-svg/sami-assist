@@ -22,7 +22,7 @@ export const pesapalBillingProvider:
     savePaymentMethodWithoutCharge:
       false,
     automaticRecurring:
-      true,
+      false,
     variableRecurringAmount:
       false,
     updateRecurringQuantity:
@@ -85,6 +85,10 @@ export const pesapalBillingProvider:
           undefined,
         currency:
           input.currency,
+        billableUsers:
+          input.billableUsers,
+        pricePerUserMonthly:
+          input.pricePerUserMonthly,
       });
 
     return {
