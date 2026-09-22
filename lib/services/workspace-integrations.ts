@@ -1982,6 +1982,265 @@ export async function runWorkspaceIntegrationSync(
 }
 
 
+export async function manageWorkspaceExternalApp(
+  externalAppId:
+    unknown,
+  input: {
+    operation?:
+      unknown;
+    name?:
+      unknown;
+    description?:
+      unknown;
+    launchUrl?:
+      unknown;
+  },
+) {
+  const context =
+    await resolveWorkspaceIntegrationContext(
+      'manage',
+    );
+
+  const id =
+    requireUuid(
+      externalAppId,
+      'external app',
+    );
+
+  const operation =
+    typeof input.operation ===
+      'string'
+      ? input.operation
+          .trim()
+          .toLowerCase()
+      : '';
+
+  if (
+    ![
+      'update',
+      'enable',
+      'disable',
+      'archive',
+    ].includes(
+      operation,
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'INVALID_INTEGRATION',
+      'Choose a supported external app operation.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  let appName =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const current =
+      await client.query(
+        `
+          SELECT
+            id,
+            name,
+            description,
+            launch_url,
+            status
+          FROM integration_external_apps
+          WHERE id = $1
+            AND company_id = $2
+            AND archived_at
+                IS NULL
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    if (
+      current.rows.length !==
+        1
+    ) {
+      throw new WorkspaceIntegrationError(
+        'INTEGRATION_NOT_FOUND',
+        'External app could not be found in the current company.',
+      );
+    }
+
+    appName =
+      String(
+        current.rows[0]
+          .name,
+      );
+
+    if (
+      operation ===
+        'update'
+    ) {
+      const name =
+        cleanText(
+          input.name,
+          200,
+        );
+
+      if (
+        !name
+      ) {
+        throw new WorkspaceIntegrationError(
+          'INVALID_INTEGRATION',
+          'External app name is required.',
+        );
+      }
+
+      const description =
+        cleanDescription(
+          input.description,
+        );
+
+      const launchUrl =
+        normalizeExternalLaunchUrl(
+          input.launchUrl,
+        );
+
+      await client.query(
+        `
+          UPDATE integration_external_apps
+          SET
+            name = $3,
+            description = $4,
+            launch_url = $5,
+            updated_by = $6,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          name,
+          description ||
+            null,
+          launchUrl,
+          context.runtime
+            .userId,
+        ],
+      );
+
+      appName =
+        name;
+    } else {
+      const status =
+        operation ===
+          'enable'
+          ? 'active'
+          : operation ===
+              'disable'
+            ? 'disabled'
+            : 'disabled';
+
+      await client.query(
+        `
+          UPDATE integration_external_apps
+          SET
+            status = $3,
+            archived_at =
+              CASE
+                WHEN $4::boolean
+                THEN COALESCE(
+                  archived_at,
+                  NOW()
+                )
+                ELSE archived_at
+              END,
+            updated_by = $5,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+        `,
+        [
+          id,
+          context.runtime
+            .companyId,
+          status,
+          operation ===
+            'archive',
+          context.runtime
+            .userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await auditIntegration(
+    context.runtime,
+    {
+      action:
+        'integration.external_app.' +
+        (
+          operation ===
+            'update'
+            ? 'updated'
+            : operation ===
+                'enable'
+              ? 'enabled'
+              : operation ===
+                  'disable'
+                ? 'disabled'
+                : 'archived'
+        ),
+      resourceId:
+        id,
+      summary:
+        operation ===
+          'update'
+          ? `Updated external app "${appName}".`
+          : operation ===
+              'enable'
+            ? `Enabled external app "${appName}".`
+            : operation ===
+                'disable'
+              ? `Disabled external app "${appName}".`
+              : `Archived external app "${appName}".`,
+    },
+  );
+
+  return {
+    id,
+    operation,
+  };
+}
+
+
 export async function getWorkspaceExternalAppLauncherEntries() {
   const [
     permissions,
