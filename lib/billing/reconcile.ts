@@ -13,6 +13,7 @@ import {
 
 import {
   applyDueScheduledPlanChanges,
+  applyDueSubscriptionCancellations,
 } from '@/lib/billing/plan-transition';
 
 import {
@@ -101,6 +102,7 @@ export async function reconcileWorkspaceBilling(
     100,
 ) {
   await applyDueScheduledPlanChanges();
+  await applyDueSubscriptionCancellations();
 
   const result =
     await queryControl(
@@ -111,6 +113,7 @@ export async function reconcileWorkspaceBilling(
           s.status,
           s.trial_ends_at,
           s.current_period_end,
+          s.cancelled_at,
           p.key
             AS plan_key,
           sp.key
@@ -237,6 +240,8 @@ export async function reconcileWorkspaceBilling(
           row.trial_ends_at,
         currentPeriodEnd:
           row.current_period_end,
+        cancelledAt:
+          row.cancelled_at,
       });
 
     const suspension =
@@ -250,6 +255,7 @@ export async function reconcileWorkspaceBilling(
 
     if (
       policy.paid &&
+      !row.cancelled_at &&
       [
         'trial',
         'trialing',
@@ -515,6 +521,7 @@ export async function reconcileWorkspaceBilling(
     }
 
     if (
+      row.cancelled_at ||
       !policy.paid ||
       !providerPlanPolicy ||
       !providerPlanPolicy.paid ||
