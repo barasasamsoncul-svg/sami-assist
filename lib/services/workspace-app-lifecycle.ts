@@ -846,11 +846,25 @@ async function assertInstallPlanEntitled(
       row?.plan_key,
     );
 
+  const effectiveStatus =
+    row
+      ? getEffectiveSubscriptionStatus({
+          status:
+            row.status,
+          planKey:
+            row.plan_key,
+          trialEndsAt:
+            row.trial_ends_at,
+          currentPeriodEnd:
+            row.current_period_end,
+        })
+      : '';
+
   if (
     !row ||
     !policy ||
     !isSubscriptionEntitledNow(
-      row.status,
+      effectiveStatus,
     )
   ) {
     throw new WorkspaceAppLifecycleError(
