@@ -697,6 +697,7 @@ test('Category 13: Odoo-class module manifests own dependencies, actions, views,
       'automationTriggers',
       'automationActions',
       'aiTools',
+      'integrationProviders',
     ]
   ) {
     assert.match(
