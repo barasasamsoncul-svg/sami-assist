@@ -11,6 +11,10 @@ import {
   getEffectiveSubscriptionStatus,
 } from '@/lib/billing/plan-policy';
 
+import {
+  getSubscriptionSuspensionWindow,
+} from '@/lib/billing/access';
+
 
 /* ============================================================
    TYPES
@@ -88,6 +92,12 @@ export interface SubscriptionContext {
   currentPeriodEnd: string | null;
   planKey: string | null;
   planName: string | null;
+  pastDue: boolean;
+  suspended: boolean;
+  dueAt: string | null;
+  graceEndsAt: string | null;
+  graceDays: number;
+  daysPastDue: number | null;
 }
 
 
@@ -1617,23 +1627,35 @@ async function getTenantSubscription(
   const row =
     result.rows[0];
 
+  const status =
+    getEffectiveSubscriptionStatus({
+      status:
+        row.status,
+      planKey:
+        row.plan_key,
+      trialEndsAt:
+        row.trial_ends_at,
+      currentPeriodEnd:
+        row.current_period_end,
+    }) ||
+    'unknown';
+
+  const suspension =
+    getSubscriptionSuspensionWindow({
+      effectiveStatus:
+        status,
+      trialEndsAt:
+        row.trial_ends_at,
+      currentPeriodEnd:
+        row.current_period_end,
+    });
+
 
   return {
     id:
       row.id,
 
-    status:
-      getEffectiveSubscriptionStatus({
-        status:
-          row.status,
-        planKey:
-          row.plan_key,
-        trialEndsAt:
-          row.trial_ends_at,
-        currentPeriodEnd:
-          row.current_period_end,
-      }) ||
-      'unknown',
+    status,
 
     billingCycle:
       row.billing_cycle ||
@@ -1666,6 +1688,24 @@ async function getTenantSubscription(
     planName:
       row.plan_name ||
       null,
+
+    pastDue:
+      suspension.pastDue,
+
+    suspended:
+      suspension.suspended,
+
+    dueAt:
+      suspension.dueAt,
+
+    graceEndsAt:
+      suspension.graceEndsAt,
+
+    graceDays:
+      suspension.graceDays,
+
+    daysPastDue:
+      suspension.daysPastDue,
   };
 }
 
