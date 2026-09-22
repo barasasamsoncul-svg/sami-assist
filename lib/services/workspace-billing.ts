@@ -1285,4 +1285,4 @@ export async function startWorkspaceBillingCheckout(
       },
     );
   }
-}}
+}
