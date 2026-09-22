@@ -153,6 +153,7 @@ function handleError(
         'APP_NOT_INSTALLED',
         'APP_DEPENDENCY_BLOCKED',
         'APP_DEPENDENCY_CYCLE',
+        'APP_NOT_INSTALLABLE',
       ]);
 
     const server =
