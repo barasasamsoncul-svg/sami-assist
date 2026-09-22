@@ -139,6 +139,12 @@ function handleError(
         'APP_NOT_FOUND',
       ]);
 
+    const paymentRequired =
+      new Set([
+        'APP_SUBSCRIPTION_REQUIRED',
+        'APP_PLAN_UPGRADE_REQUIRED',
+      ]);
+
     const conflict =
       new Set([
         'WORKSPACE_NOT_READY',
@@ -171,19 +177,23 @@ function handleError(
         error.code,
       )
         ? 403
-        : notFound.has(
+        : paymentRequired.has(
               error.code,
             )
-          ? 404
-          : conflict.has(
+          ? 402
+          : notFound.has(
                 error.code,
               )
-            ? 409
-            : server.has(
+            ? 404
+            : conflict.has(
                   error.code,
                 )
-              ? 500
-              : 400,
+              ? 409
+              : server.has(
+                    error.code,
+                  )
+                ? 500
+                : 400,
     );
   }
 
