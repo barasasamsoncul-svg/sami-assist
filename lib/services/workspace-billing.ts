@@ -2583,6 +2583,989 @@ async function synchronizeRecurringPlanChange(
   );
 }
 
+async function scheduleProviderSubscriptionCancellation(
+  subscriptionId:
+    string,
+  mode:
+    'period_end' |
+    'immediate',
+) {
+  const profile =
+    await getActiveSubscriptionBillingProfile(
+      subscriptionId,
+    );
+
+  if (
+    !profile ||
+    !profile.providerSubscriptionId ||
+    ![
+      'trialing',
+      'active',
+    ].includes(
+      profile.recurringStatus,
+    )
+  ) {
+    return;
+  }
+
+  const provider =
+    getBillingProvider(
+      profile.provider,
+    );
+
+  if (
+    !provider.isConfigured()
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED',
+      `${provider.name} is not configured, so SaMi cannot safely change this recurring mandate.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  if (
+    mode ===
+      'immediate'
+  ) {
+    if (
+      !provider
+        .cancelRecurringSubscription
+    ) {
+      throw new WorkspaceBillingError(
+        'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED',
+        `${provider.name} cannot safely cancel this recurring mandate.`,
+        {
+          provider:
+            provider.key,
+        },
+      );
+    }
+
+    await provider
+      .cancelRecurringSubscription(
+        profile.providerSubscriptionId,
+      );
+
+    await updateActiveSubscriptionBillingProfile(
+      subscriptionId,
+      {
+        recurringStatus:
+          'cancelled',
+        metadata: {
+          subscriptionCancelledAt:
+            new Date()
+              .toISOString(),
+          cancellationMode:
+            'immediate',
+        },
+      },
+    );
+
+    return;
+  }
+
+  if (
+    !provider
+      .scheduleRecurringCancellation
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED',
+      `${provider.name} cannot safely stop renewal at the end of the current period.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  await provider
+    .scheduleRecurringCancellation(
+      profile.providerSubscriptionId,
+    );
+
+  await updateActiveSubscriptionBillingProfile(
+    subscriptionId,
+    {
+      metadata: {
+        subscriptionCancellationScheduledAt:
+          new Date()
+            .toISOString(),
+        cancellationMode:
+          'period_end',
+      },
+    },
+  );
+}
+
+
+async function resumeProviderSubscriptionRenewal(
+  subscriptionId:
+    string,
+) {
+  const profile =
+    await getActiveSubscriptionBillingProfile(
+      subscriptionId,
+    );
+
+  if (
+    !profile ||
+    !profile.providerSubscriptionId ||
+    ![
+      'trialing',
+      'active',
+    ].includes(
+      profile.recurringStatus,
+    )
+  ) {
+    return;
+  }
+
+  const provider =
+    getBillingProvider(
+      profile.provider,
+    );
+
+  if (
+    !provider.isConfigured() ||
+    !provider
+      .resumeRecurringSubscription
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_PROVIDER_UNSUPPORTED',
+      `${provider.name} cannot safely restore automatic renewal for this subscription.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  await provider
+    .resumeRecurringSubscription(
+      profile.providerSubscriptionId,
+    );
+
+  await updateActiveSubscriptionBillingProfile(
+    subscriptionId,
+    {
+      metadata: {
+        subscriptionCancellationResumedAt:
+          new Date()
+            .toISOString(),
+        cancellationMode:
+          null,
+      },
+    },
+  );
+}
+
+
+async function undoScheduledPlanProviderChange(
+  input: {
+    subscriptionId:
+      string;
+    tenantId:
+      string;
+    currentPlan:
+      string;
+    scheduledPlan:
+      string;
+  },
+) {
+  if (
+    input.scheduledPlan ===
+      'free'
+  ) {
+    await resumeProviderSubscriptionRenewal(
+      input.subscriptionId,
+    );
+
+    return;
+  }
+
+  await synchronizeRecurringPlanChange({
+    subscriptionId:
+      input.subscriptionId,
+    targetPlan:
+      input.currentPlan,
+    seats:
+      await getBillableUsers(
+        input.tenantId,
+      ),
+    cancellationMode:
+      null,
+  });
+}
+
+
+export async function cancelScheduledWorkspacePlanChange() {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const currentPlan =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  const scheduledPlan =
+    normalizeSamiPlanKey(
+      subscription
+        .scheduled_plan_key,
+    );
+
+  if (
+    !currentPlan ||
+    !scheduledPlan ||
+    !subscription
+      .scheduled_plan_id
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_CHANGE_NOT_SCHEDULED',
+      'There is no pending SaMi plan change to cancel.',
+    );
+  }
+
+  const subscriptionId =
+    String(
+      subscription.id,
+    );
+
+  await undoScheduledPlanProviderChange({
+    subscriptionId,
+    tenantId:
+      context.tenantId,
+    currentPlan,
+    scheduledPlan,
+  });
+
+  await queryControl(
+    `
+      UPDATE subscriptions
+      SET
+        scheduled_plan_id =
+          NULL,
+        scheduled_plan_effective_at =
+          NULL,
+        scheduled_plan_requested_by =
+          NULL,
+        scheduled_plan_requested_at =
+          NULL,
+        updated_at =
+          NOW()
+      WHERE id = $1
+        AND deleted_at
+            IS NULL
+    `,
+    [
+      subscriptionId,
+    ],
+  );
+
+  await auditPlanChange({
+    tenantId:
+      context.tenantId,
+    userId:
+      context.userId,
+    subscriptionId,
+    eventType:
+      'SUBSCRIPTION_PLAN_CHANGE_CANCELLED',
+    metadata: {
+      currentPlan,
+      cancelledTargetPlan:
+        scheduledPlan,
+    },
+  });
+
+  await notifyWorkspaceOwnersOfBillingEvent({
+    tenantId:
+      context.tenantId,
+    type:
+      'billing.plan_change_cancelled',
+    eventKey:
+      'billing.plan_change_cancelled',
+    title:
+      'Scheduled plan change cancelled',
+    message:
+      `The pending change from ${currentPlan} to ${scheduledPlan} was cancelled. Your current SaMi plan will continue.`,
+    priority:
+      'high',
+    dedupeKey:
+      `billing:plan-change-cancelled:${subscriptionId}:${scheduledPlan}`,
+    metadata: {
+      subscriptionId,
+      currentPlan,
+      cancelledTargetPlan:
+        scheduledPlan,
+    },
+  });
+
+  return {
+    cancelled:
+      true,
+    currentPlan,
+    cancelledTargetPlan:
+      scheduledPlan,
+  };
+}
+
+
+export async function cancelWorkspaceSubscription() {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  let subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const currentPlan =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  const currentPolicy =
+    currentPlan
+      ? getSamiPlanPolicy(
+          currentPlan,
+        )
+      : null;
+
+  if (
+    !currentPlan ||
+    !currentPolicy ||
+    !currentPolicy.paid
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_NOT_APPLICABLE',
+      'There is no paid SaMi subscription to cancel.',
+    );
+  }
+
+  const subscriptionId =
+    String(
+      subscription.id,
+    );
+
+  let effectiveStatus =
+    getEffectiveSubscriptionStatus({
+      status:
+        subscription.status,
+      planKey:
+        currentPlan,
+      trialEndsAt:
+        subscription.trial_ends_at,
+      currentPeriodEnd:
+        subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
+    });
+
+  if (
+    effectiveStatus ===
+      'cancelled'
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_EFFECTIVE',
+      'This SaMi subscription has already ended.',
+    );
+  }
+
+  if (
+    subscription.cancelled_at
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_ALREADY_SCHEDULED',
+      'Subscription cancellation is already scheduled.',
+      {
+        effectiveAt:
+          toIso(
+            (
+              effectiveStatus ===
+                'trial' ||
+              effectiveStatus ===
+                'trialing'
+            )
+              ? subscription.trial_ends_at
+              : subscription.current_period_end,
+          ),
+      },
+    );
+  }
+
+  if (
+    subscription
+      .scheduled_plan_id
+  ) {
+    const scheduledPlan =
+      normalizeSamiPlanKey(
+        subscription
+          .scheduled_plan_key,
+      );
+
+    if (
+      scheduledPlan &&
+      scheduledPlan !==
+        'free'
+    ) {
+      await undoScheduledPlanProviderChange({
+        subscriptionId,
+        tenantId:
+          context.tenantId,
+        currentPlan,
+        scheduledPlan,
+      });
+    }
+
+    await queryControl(
+      `
+        UPDATE subscriptions
+        SET
+          scheduled_plan_id =
+            NULL,
+          scheduled_plan_effective_at =
+            NULL,
+          scheduled_plan_requested_by =
+            NULL,
+          scheduled_plan_requested_at =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        subscriptionId,
+      ],
+    );
+
+    subscription =
+      await loadSubscription(
+        context.tenantId,
+      );
+
+    effectiveStatus =
+      getEffectiveSubscriptionStatus({
+        status:
+          subscription.status,
+        planKey:
+          currentPlan,
+        trialEndsAt:
+          subscription.trial_ends_at,
+        currentPeriodEnd:
+          subscription.current_period_end,
+        cancelledAt:
+          subscription.cancelled_at,
+      });
+  }
+
+  const boundaryValue =
+    (
+      effectiveStatus ===
+        'trial' ||
+      effectiveStatus ===
+        'trialing'
+    )
+      ? subscription.trial_ends_at
+      : effectiveStatus ===
+          'active'
+        ? subscription.current_period_end
+        : null;
+
+  const boundary =
+    boundaryValue
+      ? new Date(
+          boundaryValue,
+        )
+      : null;
+
+  const scheduleAtBoundary =
+    Boolean(
+      boundary &&
+      !Number.isNaN(
+        boundary.getTime(),
+      ) &&
+      boundary.getTime() >
+        Date.now() &&
+      [
+        'trial',
+        'trialing',
+        'active',
+      ].includes(
+        effectiveStatus,
+      )
+    );
+
+  if (
+    scheduleAtBoundary &&
+    boundary
+  ) {
+    await scheduleProviderSubscriptionCancellation(
+      subscriptionId,
+      'period_end',
+    );
+
+    await queryControl(
+      `
+        UPDATE subscriptions
+        SET
+          cancelled_at =
+            NOW(),
+          scheduled_plan_id =
+            NULL,
+          scheduled_plan_effective_at =
+            NULL,
+          scheduled_plan_requested_by =
+            NULL,
+          scheduled_plan_requested_at =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        subscriptionId,
+      ],
+    );
+
+    await auditPlanChange({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      subscriptionId,
+      eventType:
+        'SUBSCRIPTION_CANCELLATION_SCHEDULED',
+      metadata: {
+        plan:
+          currentPlan,
+        effectiveAt:
+          boundary
+            .toISOString(),
+        dataRetained:
+          true,
+      },
+    });
+
+    await notifyWorkspaceOwnersOfBillingEvent({
+      tenantId:
+        context.tenantId,
+      type:
+        'billing.subscription_cancellation_scheduled',
+      eventKey:
+        'billing.subscription_cancellation_scheduled',
+      title:
+        'Subscription cancellation scheduled',
+      message:
+        `Your ${currentPolicy.name} subscription will end on ${boundary.toLocaleDateString(
+          'en-KE',
+          {
+            year:
+              'numeric',
+            month:
+              'short',
+            day:
+              'numeric',
+            timeZone:
+              'Africa/Nairobi',
+          },
+        )}. Paid access remains available until then. SaMi will retain your workspace data after the subscription ends.`,
+      priority:
+        'high',
+      dedupeKey:
+        `billing:subscription-cancellation-scheduled:${subscriptionId}:${boundary.toISOString()}`,
+      metadata: {
+        subscriptionId,
+        plan:
+          currentPlan,
+        effectiveAt:
+          boundary
+            .toISOString(),
+        dataRetained:
+          true,
+      },
+    });
+
+    return {
+      mode:
+        'scheduled',
+      plan:
+        currentPlan,
+      effectiveAt:
+        boundary
+          .toISOString(),
+      dataRetained:
+        true,
+    };
+  }
+
+  await scheduleProviderSubscriptionCancellation(
+    subscriptionId,
+    'immediate',
+  );
+
+  await queryControl(
+    `
+      UPDATE subscriptions
+      SET
+        status =
+          'cancelled',
+        billing_cycle =
+          NULL,
+        cancelled_at =
+          COALESCE(
+            cancelled_at,
+            NOW()
+          ),
+        scheduled_plan_id =
+          NULL,
+        scheduled_plan_effective_at =
+          NULL,
+        scheduled_plan_requested_by =
+          NULL,
+        scheduled_plan_requested_at =
+          NULL,
+        updated_at =
+          NOW()
+      WHERE id = $1
+        AND deleted_at
+            IS NULL
+    `,
+    [
+      subscriptionId,
+    ],
+  );
+
+  await auditPlanChange({
+    tenantId:
+      context.tenantId,
+    userId:
+      context.userId,
+    subscriptionId,
+    eventType:
+      'SUBSCRIPTION_CANCELLED',
+    metadata: {
+      plan:
+        currentPlan,
+      mode:
+        'immediate',
+      dataRetained:
+        true,
+    },
+  });
+
+  await notifyWorkspaceOwnersOfBillingEvent({
+    tenantId:
+      context.tenantId,
+    type:
+      'billing.subscription_cancelled',
+    eventKey:
+      'billing.subscription_cancelled',
+    title:
+      'SaMi subscription ended',
+    message:
+      'Your paid SaMi subscription has ended. No future renewal is scheduled. Workspace data, files, settings and installed app data are retained.',
+    priority:
+      'high',
+    dedupeKey:
+      `billing:subscription-cancelled:${subscriptionId}:immediate`,
+    metadata: {
+      subscriptionId,
+      plan:
+        currentPlan,
+      dataRetained:
+        true,
+    },
+  });
+
+  return {
+    mode:
+      'immediate',
+    plan:
+      currentPlan,
+    dataRetained:
+      true,
+  };
+}
+
+
+export async function resumeWorkspaceSubscriptionCancellation() {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const currentPlan =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  if (
+    !currentPlan ||
+    !subscription
+      .cancelled_at
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_NOT_SCHEDULED',
+      'There is no pending subscription cancellation to undo.',
+    );
+  }
+
+  const effectiveStatus =
+    getEffectiveSubscriptionStatus({
+      status:
+        subscription.status,
+      planKey:
+        currentPlan,
+      trialEndsAt:
+        subscription.trial_ends_at,
+      currentPeriodEnd:
+        subscription.current_period_end,
+      cancelledAt:
+        subscription.cancelled_at,
+    });
+
+  if (
+    effectiveStatus ===
+      'cancelled'
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_EFFECTIVE',
+      'This subscription has already ended. Reactivate billing instead of undoing the old cancellation.',
+    );
+  }
+
+  const subscriptionId =
+    String(
+      subscription.id,
+    );
+
+  await resumeProviderSubscriptionRenewal(
+    subscriptionId,
+  );
+
+  await queryControl(
+    `
+      UPDATE subscriptions
+      SET
+        cancelled_at =
+          NULL,
+        updated_at =
+          NOW()
+      WHERE id = $1
+        AND deleted_at
+            IS NULL
+    `,
+    [
+      subscriptionId,
+    ],
+  );
+
+  await auditPlanChange({
+    tenantId:
+      context.tenantId,
+    userId:
+      context.userId,
+    subscriptionId,
+    eventType:
+      'SUBSCRIPTION_CANCELLATION_REVERSED',
+    metadata: {
+      plan:
+        currentPlan,
+    },
+  });
+
+  await notifyWorkspaceOwnersOfBillingEvent({
+    tenantId:
+      context.tenantId,
+    type:
+      'billing.subscription_continues',
+    eventKey:
+      'billing.subscription_continues',
+    title:
+      'Subscription will continue',
+    message:
+      `The pending cancellation was removed. Your ${currentPlan} subscription will continue and automatic renewal has been restored where supported.`,
+    priority:
+      'high',
+    dedupeKey:
+      `billing:subscription-cancellation-reversed:${subscriptionId}`,
+    metadata: {
+      subscriptionId,
+      plan:
+        currentPlan,
+    },
+  });
+
+  return {
+    resumed:
+      true,
+    plan:
+      currentPlan,
+  };
+}
+
+
+export async function reactivateCancelledWorkspaceSubscription() {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const currentPlan =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  const policy =
+    currentPlan
+      ? getSamiPlanPolicy(
+          currentPlan,
+        )
+      : null;
+
+  const effectiveStatus =
+    currentPlan
+      ? getEffectiveSubscriptionStatus({
+          status:
+            subscription.status,
+          planKey:
+            currentPlan,
+          trialEndsAt:
+            subscription.trial_ends_at,
+          currentPeriodEnd:
+            subscription.current_period_end,
+          cancelledAt:
+            subscription.cancelled_at,
+        })
+      : 'unknown';
+
+  if (
+    !currentPlan ||
+    !policy ||
+    !policy.paid ||
+    effectiveStatus !==
+      'cancelled'
+  ) {
+    throw new WorkspaceBillingError(
+      'SUBSCRIPTION_CANCELLATION_NOT_APPLICABLE',
+      'This workspace does not have an ended paid subscription to reactivate.',
+    );
+  }
+
+  const subscriptionId =
+    String(
+      subscription.id,
+    );
+
+  await queryControl(
+    `
+      UPDATE subscriptions
+      SET
+        status =
+          'past_due',
+        billing_cycle =
+          'monthly',
+        cancelled_at =
+          NULL,
+        current_period_start =
+          NULL,
+        current_period_end =
+          NULL,
+        scheduled_plan_id =
+          NULL,
+        scheduled_plan_effective_at =
+          NULL,
+        scheduled_plan_requested_by =
+          NULL,
+        scheduled_plan_requested_at =
+          NULL,
+        updated_at =
+          NOW()
+      WHERE id = $1
+        AND deleted_at
+            IS NULL
+    `,
+    [
+      subscriptionId,
+    ],
+  );
+
+  await auditPlanChange({
+    tenantId:
+      context.tenantId,
+    userId:
+      context.userId,
+    subscriptionId,
+    eventType:
+      'SUBSCRIPTION_REACTIVATION_REQUESTED',
+    metadata: {
+      plan:
+        currentPlan,
+      paymentRequired:
+        true,
+    },
+  });
+
+  await notifyWorkspaceOwnersOfBillingEvent({
+    tenantId:
+      context.tenantId,
+    type:
+      'billing.reactivation_payment_required',
+    eventKey:
+      'billing.reactivation_payment_required',
+    title:
+      'Subscription ready to reactivate',
+    message:
+      `Your ${policy.name} subscription is ready for reactivation. Complete payment in Billing to start a new paid period. No previous workspace data was removed.`,
+    priority:
+      'urgent',
+    dedupeKey:
+      `billing:subscription-reactivation:${subscriptionId}`,
+    metadata: {
+      subscriptionId,
+      plan:
+        currentPlan,
+      paymentRequired:
+        true,
+    },
+  });
+
+  return {
+    reactivationReady:
+      true,
+    plan:
+      currentPlan,
+    paymentRequired:
+      true,
+  };
+}
+
+
 export async function changeWorkspaceSubscriptionPlan(
   targetPlanInput:
     unknown,
