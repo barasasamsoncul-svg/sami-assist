@@ -1274,7 +1274,7 @@ export default function WorkspaceNotificationCenter({
       className={
         mode === 'page'
           ? 'sami-surface min-h-[680px] rounded-[24px]'
-          : 'flex h-full flex-col bg-[var(--sami-surface)]'
+          : 'flex h-full flex-col bg-white dark:bg-[#11141a]'
       }
     >
       <div className="flex items-center gap-3 border-b border-[var(--sami-border)] px-4 py-4 dark:border-white/10 sm:px-5">
@@ -2128,7 +2128,7 @@ export default function WorkspaceNotificationCenter({
             className="absolute inset-0 bg-slate-950/45 backdrop-blur-sm"
           />
 
-          <aside className="absolute inset-y-0 right-0 w-full max-w-[520px] border-l border-[var(--sami-border)] bg-[var(--sami-surface)] shadow-[var(--sami-shadow-lg)]">
+          <aside className="absolute inset-y-0 right-0 isolate w-full max-w-[520px] overflow-hidden border-l border-[var(--sami-border)] bg-white shadow-[var(--sami-shadow-lg)] dark:bg-[#11141a]">
             {content}
           </aside>
         </div>
