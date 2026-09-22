@@ -1167,12 +1167,6 @@ export default function WorkspaceSidebar({
       ?.apiView ===
       true;
 
-  const canUseAi =
-    navigationPermissions
-      ?.aiAvailable ===
-      true;
-
-
   /* ============================================================
      ADMINISTRATIVE SETTINGS
 
@@ -3159,25 +3153,23 @@ export default function WorkspaceSidebar({
             />
 
 
-            {canUseAi && (
-              <NavLink
-                href="/ai"
-                icon={
-                  Bot
-                }
-                label="SaMi AI"
-                active={
-                  pathname ===
-                    '/ai' ||
-                  pathname.startsWith(
-                    '/ai/',
-                  )
-                }
-                onNavigate={
-                  onClose
-                }
-              />
-            )}
+            <NavLink
+              href="/ai"
+              icon={
+                Bot
+              }
+              label="SaMi AI"
+              active={
+                pathname ===
+                  '/ai' ||
+                pathname.startsWith(
+                  '/ai/',
+                )
+              }
+              onNavigate={
+                onClose
+              }
+            />
 
 
           </div>
