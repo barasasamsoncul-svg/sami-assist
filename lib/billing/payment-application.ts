@@ -4,6 +4,10 @@ import {
   getControlPool,
 } from '@/lib/db/control';
 
+import {
+  notifyWorkspaceOwnersOfBillingEvent,
+} from '@/lib/billing/notifications';
+
 function normalizedCurrency(
   value:
     string | null | undefined,
@@ -357,6 +361,58 @@ export async function applyVerifiedCheckoutPayment(
       'COMMIT',
     );
 
+    try {
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          String(
+            payment.tenant_id,
+          ),
+        type:
+          'billing.payment_succeeded',
+        eventKey:
+          'billing.payment_succeeded',
+        title:
+          'Payment received',
+        message:
+          `SaMi received ${normalizedCurrency(
+            input.currency,
+          )} ${Number(
+            input.amount,
+          ).toLocaleString(
+            'en-KE',
+            {
+              maximumFractionDigits:
+                2,
+            },
+          )}. Your workspace subscription is active.`,
+        priority:
+          'high',
+        dedupeKey:
+          `billing:payment-succeeded:${payment.id}`,
+        metadata: {
+          provider:
+            input.provider,
+          paymentId:
+            String(
+              payment.id,
+            ),
+          amount:
+            input.amount,
+          currency:
+            normalizedCurrency(
+              input.currency,
+            ),
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Billing] Payment-success notification failed:',
+        error,
+      );
+    }
+
     return {
       alreadyProcessed:
         false,
@@ -433,6 +489,7 @@ export async function markVerifiedCheckoutFailed(
           WHERE provider = $1
             AND provider_transaction_id = $2
           RETURNING
+            tenant_id,
             subscription_id
         `,
         [
@@ -494,6 +551,48 @@ export async function markVerifiedCheckoutFailed(
     await client.query(
       'COMMIT',
     );
+
+    const tenantId =
+      result.rows[0]
+        ?.tenant_id;
+
+    if (
+      tenantId
+    ) {
+      try {
+        await notifyWorkspaceOwnersOfBillingEvent({
+          tenantId:
+            String(
+              tenantId,
+            ),
+          type:
+            'billing.payment_failed',
+          eventKey:
+            'billing.payment_failed',
+          title:
+            'Payment needs attention',
+          message:
+            'SaMi could not confirm the latest subscription payment. Open Billing to review the payment and restore full paid access.',
+          priority:
+            'urgent',
+          dedupeKey:
+            `billing:payment-failed:${input.provider}:${input.providerReference}`,
+          metadata: {
+            provider:
+              input.provider,
+            providerReference:
+              input.providerReference,
+          },
+        });
+      } catch (
+        error
+      ) {
+        console.error(
+          '[SaMi Billing] Payment-failure notification failed:',
+          error,
+        );
+      }
+    }
   } catch (
     error
   ) {
@@ -947,6 +1046,55 @@ export async function applyVerifiedRecurringInvoice(
     await client.query(
       'COMMIT',
     );
+
+    try {
+      await notifyWorkspaceOwnersOfBillingEvent({
+        tenantId:
+          String(
+            profile.tenant_id,
+          ),
+        type:
+          'billing.payment_succeeded',
+        eventKey:
+          'billing.payment_succeeded',
+        title:
+          'Subscription renewed',
+        message:
+          `SaMi confirmed the recurring payment of ${normalizedCurrency(
+            input.currency,
+          )} ${Number(
+            input.amount,
+          ).toLocaleString(
+            'en-KE',
+            {
+              maximumFractionDigits:
+                2,
+            },
+          )}. Your subscription remains active.`,
+        priority:
+          'high',
+        dedupeKey:
+          `billing:recurring-succeeded:${paymentId}`,
+        metadata: {
+          provider:
+            input.provider,
+          paymentId,
+          amount:
+            input.amount,
+          currency:
+            normalizedCurrency(
+              input.currency,
+            ),
+        },
+      });
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi Billing] Recurring-payment notification failed:',
+        error,
+      );
+    }
 
     return {
       ignored:
