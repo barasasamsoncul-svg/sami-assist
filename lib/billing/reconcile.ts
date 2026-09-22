@@ -69,6 +69,13 @@ async function billableUsers(
                 )
               ) =
               'active'
+          AND LOWER(
+                COALESCE(
+                  member_type,
+                  ''
+                )
+              ) =
+              'internal'
       `,
       [
         tenantId,
@@ -280,7 +287,7 @@ export async function reconcileWorkspaceBilling(
           title:
             'Subscription payment is due',
           message:
-            'Your workspace remains available for recovery, messaging, notifications, settings and billing, but paid entitlement-expanding features are restricted until the subscription is settled.',
+            'Your SaMi workspace is temporarily locked because the subscription is past due. Sign-in, personal account and security, Billing, payment recovery and Help remain available until payment is verified.',
           priority:
             'urgent',
           dedupeKey:
