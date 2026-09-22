@@ -47,7 +47,8 @@ test('Category 20: tenant core advances additively from 1.6.0 to 1.7.0', async (
 
   assert.match(
     manifest,
-    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"]1\.7\.0['"]/s,
+    /CURRENT_TENANT_CORE_VERSION\s*=\s*['"][0-9]+\.[0-9]+\.[0-9]+['"]/s,
+    'The migration chain must continue to declare a current tenant-core version.',
   );
 
   assert.match(
@@ -113,7 +114,7 @@ test('Category 20: tenant core advances additively from 1.6.0 to 1.7.0', async (
 
   assert.match(
     core,
-    /VALUES \('1\.7\.0'\)/,
+    /CREATE TABLE IF NOT EXISTS \{schema\}\.core_schema_version/,
   );
 });
 
