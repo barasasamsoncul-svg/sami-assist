@@ -112,7 +112,7 @@ export type SamiPlanPolicy = {
  * Category 22 commercial contract.
  *
  * IMPORTANT:
- * - Prices are loaded from the control database plans table.
+ * - Price resolution lives in lib/billing/pricing.ts and is server-authoritative.
  * - This file owns plan feature semantics, not payment-provider state.
  * - Category 23 owns measured usage, counters and hard quota enforcement.
  * - null never means "unlimited" for costly resources. The quota mode
