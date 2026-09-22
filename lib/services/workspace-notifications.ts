@@ -10,6 +10,7 @@ import {
   type PermissionContext,
 } from '@/lib/auth/permission-context';
 import { requireCompanyAccess } from '@/lib/services/company-access';
+import { getWorkspaceSubscriptionAccessState } from '@/lib/billing/access';
 import { sendWorkspaceNotificationEmail } from '@/lib/services/email';
 import { sendWorkspaceNotificationSms } from '@/lib/services/sms';
 import {
@@ -26,6 +27,7 @@ const MAX_METADATA_BYTES = 16 * 1024;
 export type WorkspaceNotificationErrorCode =
   | 'UNAUTHENTICATED'
   | 'WORKSPACE_CONTEXT_CHANGED'
+  | 'WORKSPACE_SUSPENDED'
   | 'COMPANY_REQUIRED'
   | 'COMPANY_ACCESS_DENIED'
   | 'NOTIFICATIONS_MANAGE_REQUIRED'
@@ -313,6 +315,20 @@ export async function getWorkspaceNotificationContext():
     throw new WorkspaceNotificationError(
       'WORKSPACE_CONTEXT_CHANGED',
       'Your selected workspace changed. Please try again.',
+    );
+  }
+
+  const subscriptionAccess =
+    await getWorkspaceSubscriptionAccessState(
+      permissions.tenantId,
+    );
+
+  if (
+    subscriptionAccess.pastDue
+  ) {
+    throw new WorkspaceNotificationError(
+      'WORKSPACE_SUSPENDED',
+      'This workspace is temporarily locked until the subscription payment is restored.',
     );
   }
 
