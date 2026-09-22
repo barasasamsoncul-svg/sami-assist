@@ -41,6 +41,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getTenantPoolByTenantId,
+} from '@/lib/db/tenant';
+
 
 export type WorkspaceBillingErrorCode =
   | 'UNAUTHENTICATED'
@@ -55,7 +59,10 @@ export type WorkspaceBillingErrorCode =
   | 'PAYMENT_SETUP_UNSUPPORTED'
   | 'PAYMENT_SETUP_FAILED'
   | 'PAYMENT_SETUP_INCOMPLETE'
-  | 'BILLING_PROVIDER_MIGRATION_REQUIRED';
+  | 'BILLING_PROVIDER_MIGRATION_REQUIRED'
+  | 'PLAN_CHANGE_BLOCKED'
+  | 'PLAN_CHANGE_PROVIDER_UNSUPPORTED'
+  | 'PLAN_CHANGE_ALREADY_SCHEDULED';
 
 export class WorkspaceBillingError
   extends Error {
@@ -218,6 +225,13 @@ async function loadSubscription(
           s.current_period_start,
           s.current_period_end,
           s.cancelled_at,
+          s.scheduled_plan_id,
+          s.scheduled_plan_effective_at,
+          s.scheduled_plan_requested_at,
+          sp.key
+            AS scheduled_plan_key,
+          sp.name
+            AS scheduled_plan_name,
           p.id
             AS plan_id,
           p.key
@@ -231,6 +245,13 @@ async function loadSubscription(
          AND p.deleted_at
              IS NULL
          AND p.is_active =
+             TRUE
+        LEFT JOIN plans sp
+          ON sp.id =
+             s.scheduled_plan_id
+         AND sp.deleted_at
+             IS NULL
+         AND sp.is_active =
              TRUE
         WHERE s.tenant_id = $1
           AND s.deleted_at
@@ -293,6 +314,248 @@ async function getBillableUsers(
     ),
   );
 }
+
+async function getActiveBusinessAppCount(
+  tenantId:
+    string,
+) {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          COUNT(*)::int
+            AS count
+        FROM tenant_modules tm
+        INNER JOIN modules m
+          ON m.id =
+             tm.module_id
+        WHERE tm.tenant_id = $1
+          AND tm.deleted_at
+              IS NULL
+          AND m.deleted_at
+              IS NULL
+          AND COALESCE(
+                m.is_core,
+                FALSE
+              ) =
+              FALSE
+          AND LOWER(
+                COALESCE(
+                  tm.status,
+                  ''
+                )
+              ) IN (
+                'installed',
+                'active',
+                'enabled'
+              )
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  return Number(
+    result.rows[0]
+      ?.count ||
+    0,
+  );
+}
+
+async function getActiveCompanyCount(
+  tenantId:
+    string,
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*)::int
+            AS count
+        FROM companies
+        WHERE is_active =
+              TRUE
+          AND archived_at
+              IS NULL
+      `,
+    );
+
+  return Number(
+    result.rows[0]
+      ?.count ||
+    0,
+  );
+}
+
+async function assertPlanCapacity(
+  tenantId:
+    string,
+  targetPlan:
+    string,
+) {
+  const policy =
+    getSamiPlanPolicy(
+      targetPlan,
+    );
+
+  if (
+    !policy
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'The requested SaMi plan is not supported.',
+    );
+  }
+
+  const [
+    users,
+    apps,
+    companies,
+  ] =
+    await Promise.all([
+      getBillableUsers(
+        tenantId,
+      ),
+      getActiveBusinessAppCount(
+        tenantId,
+      ),
+      getActiveCompanyCount(
+        tenantId,
+      ),
+    ]);
+
+  const blockers:
+    string[] =
+    [];
+
+  if (
+    policy.users
+      .maxActiveInternalUsers !==
+      null &&
+    users >
+      policy.users
+        .maxActiveInternalUsers
+  ) {
+    blockers.push(
+      `Reduce active internal users to ${policy.users.maxActiveInternalUsers} before switching to ${policy.name}.`,
+    );
+  }
+
+  if (
+    policy.apps
+      .maxInstalledBusinessApps !==
+      null &&
+    apps >
+      policy.apps
+        .maxInstalledBusinessApps
+  ) {
+    blockers.push(
+      `Reduce installed business apps to ${policy.apps.maxInstalledBusinessApps} before switching to ${policy.name}. Required app dependencies count toward this allowance.`,
+    );
+  }
+
+  if (
+    !policy.companies
+      .multiCompany &&
+    companies >
+      1
+  ) {
+    blockers.push(
+      `Archive extra companies before switching to ${policy.name}. Multi-company is available only on Custom.`,
+    );
+  }
+
+  if (
+    blockers.length >
+      0
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_CHANGE_BLOCKED',
+      blockers[0],
+      {
+        blockers,
+        users,
+        apps,
+        companies,
+        targetPlan:
+          policy.key,
+      },
+    );
+  }
+
+  return {
+    users,
+    apps,
+    companies,
+  };
+}
+
+async function auditPlanChange(
+  input: {
+    tenantId:
+      string;
+    userId:
+      string;
+    subscriptionId:
+      string;
+    eventType:
+      string;
+    metadata:
+      Record<
+        string,
+        unknown
+      >;
+  },
+) {
+  try {
+    await queryControl(
+      `
+        INSERT INTO audit_logs (
+          tenant_id,
+          user_id,
+          actor_type,
+          event_type,
+          entity_type,
+          entity_id,
+          metadata,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          'human',
+          $3,
+          'subscription',
+          $4,
+          $5::jsonb,
+          NOW()
+        )
+      `,
+      [
+        input.tenantId,
+        input.userId,
+        input.eventType,
+        input.subscriptionId,
+        JSON.stringify(
+          input.metadata,
+        ),
+      ],
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Billing] Plan-change audit failed:',
+      error,
+    );
+  }
+}
+
 
 async function getPlans() {
   const result =
@@ -864,6 +1127,28 @@ export async function getWorkspaceBillingState() {
         toIso(
           subscription.cancelled_at,
         ),
+      scheduledPlan:
+        subscription.scheduled_plan_key
+          ? {
+              key:
+                String(
+                  subscription.scheduled_plan_key,
+                ),
+              name:
+                String(
+                  subscription.scheduled_plan_name ||
+                  subscription.scheduled_plan_key,
+                ),
+              effectiveAt:
+                toIso(
+                  subscription.scheduled_plan_effective_at,
+                ),
+              requestedAt:
+                toIso(
+                  subscription.scheduled_plan_requested_at,
+                ),
+            }
+          : null,
       firstMonthFree:
         policy.billing
           .firstMonthFree,
@@ -1952,5 +2237,674 @@ export async function completeWorkspaceRecurringBillingSetup() {
       },
     );
   }
+}
+
+async function synchronizeRecurringPlanChange(
+  input: {
+    subscriptionId:
+      string;
+    targetPlan:
+      string;
+    seats:
+      number;
+    scheduleCancellation:
+      boolean;
+  },
+) {
+  const profile =
+    await getActiveSubscriptionBillingProfile(
+      input.subscriptionId,
+    );
+
+  if (
+    !profile ||
+    !profile.providerSubscriptionId ||
+    ![
+      'trialing',
+      'active',
+    ].includes(
+      profile.recurringStatus,
+    )
+  ) {
+    return;
+  }
+
+  const provider =
+    getBillingProvider(
+      profile.provider,
+    );
+
+  if (
+    !provider
+      .isConfigured()
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_CHANGE_PROVIDER_UNSUPPORTED',
+      `${provider.name} is not configured, so SaMi cannot safely change this recurring subscription.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  if (
+    input.scheduleCancellation
+  ) {
+    if (
+      !provider
+        .scheduleRecurringCancellation
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_CHANGE_PROVIDER_UNSUPPORTED',
+        `${provider.name} cannot safely schedule cancellation for this recurring subscription.`,
+        {
+          provider:
+            provider.key,
+        },
+      );
+    }
+
+    await provider
+      .scheduleRecurringCancellation(
+        profile.providerSubscriptionId,
+      );
+
+    await updateActiveSubscriptionBillingProfile(
+      input.subscriptionId,
+      {
+        metadata: {
+          cancellationScheduledAt:
+            new Date()
+              .toISOString(),
+        },
+      },
+    );
+
+    return;
+  }
+
+  if (
+    !provider.capabilities
+      .updateRecurringQuantity ||
+    !provider
+      .updateRecurringSubscription
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_CHANGE_PROVIDER_UNSUPPORTED',
+      `${provider.name} cannot safely update the recurring amount for this plan change.`,
+      {
+        provider:
+          provider.key,
+      },
+    );
+  }
+
+  const price =
+    getSamiPricePerUserMonthly(
+      input.targetPlan,
+    );
+
+  const updated =
+    await provider
+      .updateRecurringSubscription({
+        providerSubscriptionId:
+          profile.providerSubscriptionId,
+        pricePerUserMonthly:
+          price,
+        billableUsers:
+          input.seats,
+        currency:
+          SAMI_BILLING_CURRENCY,
+      });
+
+  await updateActiveSubscriptionBillingProfile(
+    input.subscriptionId,
+    {
+      recurringStatus:
+        updated.status ===
+          'active'
+          ? 'active'
+          : updated.status ===
+              'trialing'
+            ? 'trialing'
+            : profile.recurringStatus,
+      pricePerUserMonthly:
+        price,
+      seatQuantity:
+        input.seats,
+      metadata: {
+        planChangeProviderSyncedAt:
+          new Date()
+            .toISOString(),
+        nextPlan:
+          input.targetPlan,
+      },
+    },
+  );
+}
+
+export async function changeWorkspaceSubscriptionPlan(
+  targetPlanInput:
+    unknown,
+) {
+  const context =
+    await resolveBillingContext(
+      'manage',
+    );
+
+  const targetPlan =
+    normalizeSamiPlanKey(
+      typeof targetPlanInput ===
+        'string'
+        ? targetPlanInput
+        : null,
+    );
+
+  if (
+    !targetPlan
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'Choose a valid SaMi plan.',
+    );
+  }
+
+  const subscription =
+    await loadSubscription(
+      context.tenantId,
+    );
+
+  const currentPlan =
+    normalizeSamiPlanKey(
+      subscription.plan_key,
+    );
+
+  if (
+    !currentPlan
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'The current SaMi plan is not supported.',
+    );
+  }
+
+  if (
+    subscription.scheduled_plan_id
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_CHANGE_ALREADY_SCHEDULED',
+      'A plan change is already scheduled for this subscription.',
+      {
+        scheduledPlan:
+          subscription.scheduled_plan_key ||
+          null,
+        effectiveAt:
+          toIso(
+            subscription.scheduled_plan_effective_at,
+          ),
+      },
+    );
+  }
+
+  if (
+    currentPlan ===
+      targetPlan
+  ) {
+    return {
+      mode:
+        'unchanged',
+      currentPlan,
+      targetPlan,
+    };
+  }
+
+  const capacity =
+    await assertPlanCapacity(
+      context.tenantId,
+      targetPlan,
+    );
+
+  const currentPolicy =
+    getSamiPlanPolicy(
+      currentPlan,
+    );
+
+  const targetPolicy =
+    getSamiPlanPolicy(
+      targetPlan,
+    );
+
+  if (
+    !currentPolicy ||
+    !targetPolicy
+  ) {
+    throw new WorkspaceBillingError(
+      'PLAN_NOT_SUPPORTED',
+      'The requested plan change is not supported.',
+    );
+  }
+
+  const effectiveStatus =
+    getEffectiveSubscriptionStatus({
+      status:
+        subscription.status,
+      planKey:
+        currentPlan,
+      trialEndsAt:
+        subscription.trial_ends_at,
+      currentPeriodEnd:
+        subscription.current_period_end,
+    });
+
+  const subscriptionId =
+    String(
+      subscription.id,
+    );
+
+  /*
+   * Free -> paid:
+   * The first paid upgrade gets the one calendar-month free trial.
+   * A workspace that already had a paid trial does not receive
+   * another free month by cycling through Free.
+   */
+  if (
+    !currentPolicy.paid &&
+    targetPolicy.paid
+  ) {
+    const firstPaidTrial =
+      !subscription
+        .trial_ends_at;
+
+    const target =
+      await queryControl(
+        `
+          SELECT id
+          FROM plans
+          WHERE LOWER(key) = $1
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          targetPlan,
+        ],
+      );
+
+    if (
+      target.rows.length !==
+        1
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_NOT_SUPPORTED',
+        'The requested SaMi plan is unavailable.',
+      );
+    }
+
+    await queryControl(
+      firstPaidTrial
+        ? `
+            UPDATE subscriptions
+            SET
+              plan_id = $2,
+              status =
+                'trialing',
+              billing_cycle =
+                'monthly',
+              started_at =
+                NOW(),
+              trial_ends_at =
+                NOW() +
+                INTERVAL '1 month',
+              current_period_start =
+                NULL,
+              current_period_end =
+                NULL,
+              cancelled_at =
+                NULL,
+              updated_at =
+                NOW()
+            WHERE id = $1
+              AND deleted_at
+                  IS NULL
+          `
+        : `
+            UPDATE subscriptions
+            SET
+              plan_id = $2,
+              status =
+                'past_due',
+              billing_cycle =
+                'monthly',
+              current_period_start =
+                NULL,
+              current_period_end =
+                NULL,
+              cancelled_at =
+                NULL,
+              updated_at =
+                NOW()
+            WHERE id = $1
+              AND deleted_at
+                  IS NULL
+          `,
+      [
+        subscriptionId,
+        target.rows[0]
+          .id,
+      ],
+    );
+
+    await auditPlanChange({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      subscriptionId,
+      eventType:
+        'SUBSCRIPTION_PLAN_CHANGED',
+      metadata: {
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        mode:
+          'immediate',
+        firstPaidTrial,
+      },
+    });
+
+    return {
+      mode:
+        'immediate',
+      currentPlan:
+        targetPlan,
+      targetPlan,
+      status:
+        firstPaidTrial
+          ? 'trialing'
+          : 'past_due',
+      billingSetupRecommended:
+        firstPaidTrial,
+      paymentRequired:
+        !firstPaidTrial,
+    };
+  }
+
+  /*
+   * During the free paid trial, moving between Standard/Custom
+   * is immediate and does not reset the original trial end.
+   * Moving to Free is also immediate because nothing has been
+   * charged yet.
+   */
+  if (
+    effectiveStatus ===
+      'trial' ||
+    effectiveStatus ===
+      'trialing'
+  ) {
+    const target =
+      await queryControl(
+        `
+          SELECT id
+          FROM plans
+          WHERE LOWER(key) = $1
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          targetPlan,
+        ],
+      );
+
+    if (
+      target.rows.length !==
+        1
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_NOT_SUPPORTED',
+        'The requested SaMi plan is unavailable.',
+      );
+    }
+
+    if (
+      targetPolicy.paid
+    ) {
+      await synchronizeRecurringPlanChange({
+        subscriptionId,
+        targetPlan,
+        seats:
+          capacity.users,
+        scheduleCancellation:
+          false,
+      });
+    } else {
+      await synchronizeRecurringPlanChange({
+        subscriptionId,
+        targetPlan,
+        seats:
+          capacity.users,
+        scheduleCancellation:
+          true,
+      });
+    }
+
+    await queryControl(
+      `
+        UPDATE subscriptions
+        SET
+          plan_id = $2,
+          status = $3,
+          billing_cycle =
+            CASE
+              WHEN $3 =
+                   'active'
+              THEN NULL
+              ELSE 'monthly'
+            END,
+          current_period_start =
+            CASE
+              WHEN $3 =
+                   'active'
+              THEN NULL
+              ELSE current_period_start
+            END,
+          current_period_end =
+            CASE
+              WHEN $3 =
+                   'active'
+              THEN NULL
+              ELSE current_period_end
+            END,
+          cancelled_at =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        subscriptionId,
+        target.rows[0]
+          .id,
+        targetPolicy.paid
+          ? 'trialing'
+          : 'active',
+      ],
+    );
+
+    await auditPlanChange({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      subscriptionId,
+      eventType:
+        'SUBSCRIPTION_PLAN_CHANGED',
+      metadata: {
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        mode:
+          'trial_immediate',
+      },
+    });
+
+    return {
+      mode:
+        'immediate',
+      currentPlan:
+        targetPlan,
+      targetPlan,
+      status:
+        targetPolicy.paid
+          ? 'trialing'
+          : 'active',
+    };
+  }
+
+  /*
+   * Once a paid period has started, every plan change is
+   * scheduled for the paid-period boundary. This avoids both
+   * free mid-cycle upgrades and premature downgrades.
+   */
+  if (
+    currentPolicy.paid &&
+    effectiveStatus ===
+      'active'
+  ) {
+    const effectiveAt =
+      subscription
+        .current_period_end
+        ? new Date(
+            subscription
+              .current_period_end,
+          )
+        : null;
+
+    if (
+      !effectiveAt ||
+      Number.isNaN(
+        effectiveAt
+          .getTime(),
+      ) ||
+      effectiveAt
+        .getTime() <=
+        Date.now()
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_CHANGE_BLOCKED',
+        'The current paid period must be resolved before changing plans.',
+      );
+    }
+
+    const target =
+      await queryControl(
+        `
+          SELECT id
+          FROM plans
+          WHERE LOWER(key) = $1
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          targetPlan,
+        ],
+      );
+
+    if (
+      target.rows.length !==
+        1
+    ) {
+      throw new WorkspaceBillingError(
+        'PLAN_NOT_SUPPORTED',
+        'The requested SaMi plan is unavailable.',
+      );
+    }
+
+    await synchronizeRecurringPlanChange({
+      subscriptionId,
+      targetPlan,
+      seats:
+        capacity.users,
+      scheduleCancellation:
+        !targetPolicy.paid,
+    });
+
+    await queryControl(
+      `
+        UPDATE subscriptions
+        SET
+          scheduled_plan_id =
+            $2,
+          scheduled_plan_effective_at =
+            $3,
+          scheduled_plan_requested_by =
+            $4,
+          scheduled_plan_requested_at =
+            NOW(),
+          updated_at =
+            NOW()
+        WHERE id = $1
+          AND deleted_at
+              IS NULL
+      `,
+      [
+        subscriptionId,
+        target.rows[0]
+          .id,
+        effectiveAt,
+        context.userId,
+      ],
+    );
+
+    await auditPlanChange({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+      subscriptionId,
+      eventType:
+        'SUBSCRIPTION_PLAN_CHANGE_SCHEDULED',
+      metadata: {
+        from:
+          currentPlan,
+        to:
+          targetPlan,
+        effectiveAt:
+          effectiveAt
+            .toISOString(),
+      },
+    });
+
+    return {
+      mode:
+        'scheduled',
+      currentPlan,
+      targetPlan,
+      effectiveAt:
+        effectiveAt
+          .toISOString(),
+    };
+  }
+
+  throw new WorkspaceBillingError(
+    'PLAN_CHANGE_BLOCKED',
+    'Resolve the current subscription billing state before changing plans.',
+    {
+      status:
+        effectiveStatus,
+    },
+  );
 }
 
