@@ -37,6 +37,11 @@ import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
 
+import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
 
 export type WorkspaceAppAuditContext = {
   ipAddress?: string | null;
@@ -57,6 +62,8 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_NOT_INSTALLED'
   | 'APP_DEPENDENCY_BLOCKED'
   | 'APP_DEPENDENCY_CYCLE'
+  | 'APP_SUBSCRIPTION_REQUIRED'
+  | 'APP_PLAN_UPGRADE_REQUIRED'
   | 'APP_SCHEMA_MISSING'
   | 'APP_SCHEMA_UNSAFE'
   | 'APP_SCHEMA_FAILED';
@@ -803,6 +810,182 @@ async function resolveInstallPlan(
 }
 
 
+async function assertInstallPlanEntitled(
+  client:
+    PoolClient,
+  tenantId:
+    string,
+  installPlan:
+    ModuleRow[],
+) {
+  const subscription =
+    await client.query(
+      `
+        SELECT
+          s.status,
+          p.key
+            AS plan_key
+        FROM subscriptions s
+        INNER JOIN plans p
+          ON p.id =
+             s.plan_id
+         AND p.deleted_at
+             IS NULL
+         AND p.is_active =
+             TRUE
+        WHERE s.tenant_id = $1
+          AND s.deleted_at
+              IS NULL
+        ORDER BY
+          s.created_at DESC
+        LIMIT 1
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  const row =
+    subscription.rows[0];
+
+  const policy =
+    getSamiPlanPolicy(
+      row?.plan_key,
+    );
+
+  if (
+    !row ||
+    !policy ||
+    !isSubscriptionEntitledNow(
+      row.status,
+    )
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_SUBSCRIPTION_REQUIRED',
+      'An active SaMi subscription is required before workspace apps can be changed.',
+      {
+        billingHref:
+          '/settings?tab=billing',
+      },
+    );
+  }
+
+  const limit =
+    policy.apps
+      .maxInstalledBusinessApps;
+
+  if (
+    policy.apps
+      .allBusinessApps ||
+    limit ===
+      null
+  ) {
+    return;
+  }
+
+  const active =
+    await client.query(
+      `
+        SELECT
+          LOWER(
+            m.key
+          )
+            AS key
+        FROM tenant_modules tm
+        INNER JOIN modules m
+          ON m.id =
+             tm.module_id
+        WHERE tm.tenant_id = $1
+          AND tm.deleted_at
+              IS NULL
+          AND m.deleted_at
+              IS NULL
+          AND COALESCE(
+                m.is_core,
+                FALSE
+              ) =
+              FALSE
+          AND LOWER(
+                COALESCE(
+                  tm.status,
+                  ''
+                )
+              ) IN (
+                'installed',
+                'active',
+                'enabled'
+              )
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  const prospective =
+    new Set(
+      active.rows
+        .map(
+          item =>
+            normalizeKey(
+              item.key,
+            ),
+        )
+        .filter(
+          Boolean,
+        ),
+    );
+
+  for (
+    const module
+    of installPlan
+  ) {
+    if (
+      !module.is_core
+    ) {
+      prospective.add(
+        module.key,
+      );
+    }
+  }
+
+  if (
+    prospective.size >
+      limit
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_PLAN_UPGRADE_REQUIRED',
+      'This app and its required dependencies exceed the Free plan app allowance. Upgrade to Standard or Custom to install all required business apps.',
+      {
+        currentPlan:
+          policy.key,
+        maxInstalledBusinessApps:
+          limit,
+        prospectiveBusinessApps:
+          prospective.size,
+        requiredApps:
+          installPlan
+            .filter(
+              module =>
+                !module.is_core,
+            )
+            .map(
+              module => ({
+                key:
+                  module.key,
+                name:
+                  module.name,
+              }),
+            ),
+        requiredPlan:
+          'standard',
+        billingHref:
+          '/settings?tab=billing',
+      },
+    );
+  }
+}
+
+
 async function getActiveDependents(
   client:
     PoolClient,
@@ -1116,6 +1299,12 @@ async function activateWorkspaceApp(
         controlClient,
         canonicalKey,
       );
+
+    await assertInstallPlanEntitled(
+      controlClient,
+      context.tenantId,
+      plan,
+    );
 
     const root =
       plan[
