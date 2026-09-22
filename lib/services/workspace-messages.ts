@@ -1161,6 +1161,8 @@ export async function startWorkspaceDirectConversation(
       `New message from ${senderName}`,
     message:
       body.slice(0, 240),
+    smsMessage:
+      'Open SaMi to view your new workspace message.',
     href:
       '/notifications?tab=messages&conversation=' +
       encodeURIComponent(
@@ -1759,6 +1761,8 @@ export async function sendWorkspaceCompanyAnnouncement(
           subject,
         message:
           body.slice(0, 300),
+        smsMessage:
+          'Open SaMi to view the company announcement.',
         href:
           '/notifications?tab=messages&conversation=' +
           encodeURIComponent(
