@@ -69,6 +69,12 @@ type ApiRequestRow = {
   createdAt: string;
 };
 
+type MobileSection =
+  | 'overview'
+  | 'create'
+  | 'keys'
+  | 'requests';
+
 type DeveloperState = {
   canManage: boolean;
   scopes:
@@ -239,6 +245,14 @@ export default function DeveloperClient({
   ] =
     useState(
       CLOSED_OVERLAY,
+    );
+
+  const [
+    mobileSection,
+    setMobileSection,
+  ] =
+    useState<MobileSection>(
+      'overview',
     );
 
   const activeCount =
@@ -602,9 +616,46 @@ export default function DeveloperClient({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="sticky top-[68px] z-20 -mx-1 overflow-x-auto bg-[var(--sami-canvas)] px-1 py-1 lg:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-max gap-1 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-1 shadow-[var(--sami-shadow-sm)]">
+          {([
+            ['overview', 'Overview'],
+            ['create', 'Create'],
+            ['keys', 'Keys'],
+            ['requests', 'Requests'],
+          ] as const).map(
+            ([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() =>
+                  setMobileSection(
+                    key,
+                  )
+                }
+                className={[
+                  'h-8 rounded-lg px-3 text-[11px] font-black transition',
+                  mobileSection ===
+                    key
+                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                    : 'text-slate-500',
+                ].join(' ')}
+              >
+                {label}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+
+      <div className={[
+        'grid gap-3 sm:grid-cols-3',
+        mobileSection === 'overview'
+          ? ''
+          : 'hidden lg:grid',
+      ].join(' ')}> 
 
         <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
           <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-400">
@@ -671,7 +722,12 @@ export default function DeveloperClient({
 
 
       {state.canManage && (
-        <section className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5">
+        <section className={[
+          'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5',
+          mobileSection === 'create'
+            ? ''
+            : 'hidden lg:block',
+        ].join(' ')}> 
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-base font-black">
@@ -906,7 +962,12 @@ export default function DeveloperClient({
       )}
 
 
-      <section className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]">
+      <section className={[
+        'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]',
+        mobileSection === 'keys'
+          ? ''
+          : 'hidden lg:block',
+      ].join(' ')}>
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
           <h2 className="text-base font-black">
             API credentials
@@ -1025,7 +1086,12 @@ export default function DeveloperClient({
 
       <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
 
-        <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5">
+        <div className={[
+          'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4 sm:p-5',
+          mobileSection === 'overview'
+            ? ''
+            : 'hidden lg:block',
+        ].join(' ')}> 
           <h2 className="text-base font-black">
             API v1
           </h2>
@@ -1047,7 +1113,12 @@ export default function DeveloperClient({
         </div>
 
 
-        <div className="rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]">
+        <div className={[
+          'rounded-2xl border border-[var(--sami-border)] bg-[var(--sami-surface)]',
+          mobileSection === 'requests'
+            ? ''
+            : 'hidden lg:block',
+        ].join(' ')}>
           <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
             <h2 className="text-base font-black">
               Recent API requests
