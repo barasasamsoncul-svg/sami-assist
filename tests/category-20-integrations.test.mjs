@@ -941,6 +941,55 @@ test('Category 20: webhook lifecycle supports pause, resume, one-time secret rot
   );
 });
 
+test('Category 20: external launcher URLs require HTTPS outside local development', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-integrations.ts',
+    );
+
+  const start =
+    service.indexOf(
+      'function normalizeExternalLaunchUrl',
+    );
+
+  const end =
+    service.indexOf(
+      'export async function resolveWorkspaceIntegrationContext',
+      start,
+    );
+
+  const block =
+    service.slice(
+      start,
+      end,
+    );
+
+  assert.match(
+    block,
+    /url\.protocol !==[\s\S]*['"]https:['"]/,
+  );
+
+  assert.match(
+    block,
+    /localhost/,
+  );
+
+  assert.match(
+    block,
+    /127\.0\.0\.1/,
+  );
+
+  assert.match(
+    block,
+    /::1/,
+  );
+
+  assert.match(
+    block,
+    /url\.username|url\.password/,
+  );
+});
+
 test('Category 20: external apps have governed edit, enable, disable and archive lifecycle', async () => {
   const [
     service,
