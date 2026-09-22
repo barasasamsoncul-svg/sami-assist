@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Loader2,
   LogOut,
+  Plug,
   Search,
   Settings,
   ShieldCheck,
@@ -404,6 +405,12 @@ type NavigationPermissionState = {
     boolean;
 
   automationManage:
+    boolean;
+
+  integrationsView:
+    boolean;
+
+  integrationsManage:
     boolean;
 
 
@@ -1143,6 +1150,11 @@ export default function WorkspaceSidebar({
       ?.automationView ===
       true;
 
+  const canUseIntegrations =
+    navigationPermissions
+      ?.integrationsView ===
+      true;
+
   const canUseAi =
     navigationPermissions
       ?.aiAvailable ===
@@ -1379,6 +1391,11 @@ export default function WorkspaceSidebar({
       '/automation' ||
     pathname.startsWith(
       '/automation/',
+    ) ||
+    pathname ===
+      '/integrations' ||
+    pathname.startsWith(
+      '/integrations/',
     );
 
 
@@ -3234,7 +3251,8 @@ export default function WorkspaceSidebar({
           {(canUseNotifications ||
             canUseActivity ||
             canUseSearch ||
-            canUseAutomation) && (
+            canUseAutomation ||
+            canUseIntegrations) && (
             <div className="mt-6">
 
               <NavSectionLabel>
@@ -3319,6 +3337,27 @@ export default function WorkspaceSidebar({
                           '/automation' ||
                         pathname.startsWith(
                           '/automation/',
+                        )
+                      }
+                      onNavigate={
+                        onClose
+                      }
+                    />
+                  )}
+
+
+                  {canUseIntegrations && (
+                    <ChildNavLink
+                      href="/integrations"
+                      icon={
+                        Plug
+                      }
+                      label="Integrations"
+                      active={
+                        pathname ===
+                          '/integrations' ||
+                        pathname.startsWith(
+                          '/integrations/',
                         )
                       }
                       onNavigate={
