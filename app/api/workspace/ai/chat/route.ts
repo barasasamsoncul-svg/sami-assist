@@ -45,6 +45,8 @@ export async function POST(
           body?.mode,
         targetMessageId:
           body?.targetMessageId,
+        attachmentIds:
+          body?.attachmentIds,
         signal:
           request.signal,
       });
