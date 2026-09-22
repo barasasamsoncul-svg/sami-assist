@@ -102,6 +102,21 @@ export function currentIntegrationKeyVersion() {
   );
 }
 
+export function isIntegrationEncryptionConfigured() {
+  try {
+    const version =
+      currentIntegrationKeyVersion();
+
+    keyForVersion(
+      version,
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sealIntegrationSecret(
   value:
     unknown,
