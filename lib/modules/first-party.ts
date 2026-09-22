@@ -79,6 +79,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -144,6 +145,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -209,6 +211,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -274,6 +277,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -339,6 +343,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -404,6 +409,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -469,6 +475,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -534,6 +541,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -599,6 +607,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -664,6 +673,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -729,6 +739,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -794,6 +805,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -859,6 +871,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -924,6 +937,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -989,6 +1003,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1054,6 +1069,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1119,6 +1135,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1184,6 +1201,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1249,6 +1267,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1314,6 +1333,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1379,6 +1399,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1444,6 +1465,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1509,6 +1531,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1574,6 +1597,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1639,6 +1663,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1704,6 +1729,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1769,6 +1795,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1834,6 +1861,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1899,6 +1927,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -1964,6 +1993,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2029,6 +2059,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2094,6 +2125,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2159,6 +2191,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2224,6 +2257,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2289,6 +2323,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   }),
 
@@ -2354,6 +2389,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: false,
       integrationProviders: false,
+      apiEndpoints: false,
     },
   })
 ];
