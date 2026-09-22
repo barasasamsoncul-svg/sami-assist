@@ -761,7 +761,7 @@ function buildTextEmail({
 
       'Your paid plan and workspace are available during the free month.',
 
-      'When the first paid billing cycle becomes due, you will complete the first genuine payment. Recurring billing can then continue after successful enrollment.',
+      'Before the first paid billing cycle, SaMi will guide you through the payment setup supported by the workspace billing provider. No charge is made during the free month.',
 
       '',
 
