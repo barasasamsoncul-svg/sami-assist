@@ -26,6 +26,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  notifyCriticalSecurityEvent,
+} from '@/lib/security/notifications';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -661,6 +665,25 @@ export async function POST(
       userId: user.id,
       eventType:
         'PASSWORD_CHANGED',
+      metadata: {
+        otherSessionsRevoked:
+          revokedCount,
+      },
+    });
+
+    await notifyCriticalSecurityEvent({
+      tenantId:
+        session.currentTenantId,
+      userId:
+        user.id,
+      eventKey:
+        'security.password_changed',
+      title:
+        'Password changed',
+      message:
+        'Your SaMi password was changed. Other active sessions were revoked where applicable. If this was not you, secure your account immediately.',
+      dedupeKey:
+        `security:password-changed:${user.id}:${Date.now()}`,
       metadata: {
         otherSessionsRevoked:
           revokedCount,
