@@ -7,6 +7,10 @@ import {
   sortAppNavigation,
 } from '@/lib/apps/navigation-registry';
 
+import {
+  getEffectiveSubscriptionStatus,
+} from '@/lib/billing/plan-policy';
+
 
 /* ============================================================
    TYPES
@@ -1619,7 +1623,16 @@ async function getTenantSubscription(
       row.id,
 
     status:
-      row.status ||
+      getEffectiveSubscriptionStatus({
+        status:
+          row.status,
+        planKey:
+          row.plan_key,
+        trialEndsAt:
+          row.trial_ends_at,
+        currentPeriodEnd:
+          row.current_period_end,
+      }) ||
       'unknown',
 
     billingCycle:
