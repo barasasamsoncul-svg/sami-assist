@@ -63,15 +63,9 @@ function envPrice(
     plan ===
       'standard'
   ) {
-    return (
-      positiveMoney(
-        process.env
-          .SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY,
-      ) ??
-      positiveMoney(
-        process.env
-          .PESAPAL_PRICE_STANDARD_MONTHLY,
-      )
+    return positiveMoney(
+      process.env
+        .SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY,
     );
   }
 
@@ -79,15 +73,9 @@ function envPrice(
     plan ===
       'custom'
   ) {
-    return (
-      positiveMoney(
-        process.env
-          .SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY,
-      ) ??
-      positiveMoney(
-        process.env
-          .PESAPAL_PRICE_CUSTOM_MONTHLY,
-      )
+    return positiveMoney(
+      process.env
+        .SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY,
     );
   }
 
@@ -98,9 +86,11 @@ function envPrice(
  * Server-authoritative subscription price.
  *
  * Priority:
- * 1. New SaMi billing env variable.
- * 2. Legacy PesaPal price env variable for compatibility.
- * 3. SaMi launch default.
+ * 1. Canonical SaMi billing env variable.
+ * 2. SaMi launch default.
+ *
+ * Provider-specific price variables are deliberately ignored so
+ * changing payment providers can never silently change SaMi pricing.
  *
  * Never accept a billing amount from browser input.
  */
@@ -196,24 +186,6 @@ export function getSamiBillingPriceSource(
       .SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY
   ) {
     return 'env';
-  }
-
-  if (
-    plan ===
-      'standard' &&
-    process.env
-      .PESAPAL_PRICE_STANDARD_MONTHLY
-  ) {
-    return 'legacy_env';
-  }
-
-  if (
-    plan ===
-      'custom' &&
-    process.env
-      .PESAPAL_PRICE_CUSTOM_MONTHLY
-  ) {
-    return 'legacy_env';
   }
 
   return 'default';
