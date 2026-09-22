@@ -13,6 +13,11 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  getSamiPlanPolicy,
+  isSubscriptionEntitledNow,
+} from '@/lib/billing/plan-policy';
+
+import {
   getSession,
 } from '@/lib/auth/session';
 
@@ -54,6 +59,7 @@ export type WorkspaceDeveloperErrorCode =
   | 'COMPANY_ACCESS_DENIED'
   | 'API_VIEW_REQUIRED'
   | 'API_MANAGE_REQUIRED'
+  | 'API_PLAN_REQUIRED'
   | 'INVALID_API_CREDENTIAL'
   | 'API_CREDENTIAL_NOT_FOUND'
   | 'API_SCOPE_NOT_ALLOWED'
@@ -290,6 +296,29 @@ async function resolveWorkspaceDeveloperContext(
       permissions.userId,
       permissions.tenantId,
     );
+
+  const planPolicy =
+    getSamiPlanPolicy(
+      account.subscription
+        ?.planKey,
+    );
+
+  if (
+    !account.subscription ||
+    !isSubscriptionEntitledNow(
+      account.subscription
+        .status,
+    ) ||
+    planPolicy
+      ?.developerApi
+      .enabled !==
+      true
+  ) {
+    throw new WorkspaceDeveloperError(
+      'API_PLAN_REQUIRED',
+      'Developer API access requires an active Custom subscription.',
+    );
+  }
 
   const shell =
     resolveWorkspaceShellAccess({
