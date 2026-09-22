@@ -525,9 +525,16 @@ export async function markVerifiedCheckoutFailed(
             AND deleted_at
                 IS NULL
             AND (
-              status IN (
-                'active',
+              status =
                 'past_due'
+              OR (
+                status =
+                  'active'
+                AND (
+                  current_period_end IS NULL
+                  OR current_period_end <=
+                     NOW()
+                )
               )
               OR (
                 status IN (
