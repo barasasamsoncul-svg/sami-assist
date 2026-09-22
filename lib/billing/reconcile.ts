@@ -1,0 +1,378 @@
+import 'server-only';
+
+import {
+  getEffectiveSubscriptionStatus,
+  getSamiPlanPolicy,
+  normalizeSamiPlanKey,
+} from '@/lib/billing/plan-policy';
+
+import {
+  getSamiPricePerUserMonthly,
+  SAMI_BILLING_CURRENCY,
+} from '@/lib/billing/pricing';
+
+import {
+  getBillingProvider,
+} from '@/lib/billing/registry';
+
+import {
+  updateActiveSubscriptionBillingProfile,
+} from '@/lib/billing/profiles';
+
+import {
+  queryControl,
+} from '@/lib/db/control';
+
+function closeEnough(
+  left:
+    number | null,
+  right:
+    number,
+) {
+  return (
+    left !==
+      null &&
+    Math.abs(
+      left -
+      right,
+    ) <
+      0.01
+  );
+}
+
+async function billableUsers(
+  tenantId:
+    string,
+) {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          COUNT(*)::int
+            AS count
+        FROM tenant_users
+        WHERE tenant_id = $1
+          AND deleted_at
+              IS NULL
+          AND LOWER(
+                COALESCE(
+                  status,
+                  ''
+                )
+              ) =
+              'active'
+      `,
+      [
+        tenantId,
+      ],
+    );
+
+  return Math.max(
+    1,
+    Number(
+      result.rows[0]
+        ?.count ||
+      0,
+    ),
+  );
+}
+
+export async function reconcileWorkspaceBilling(
+  limit =
+    100,
+) {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          s.id,
+          s.tenant_id,
+          s.status,
+          s.trial_ends_at,
+          s.current_period_end,
+          p.key
+            AS plan_key,
+          bp.provider,
+          bp.provider_subscription_id,
+          bp.recurring_status,
+          bp.price_per_user_monthly,
+          bp.seat_quantity
+        FROM subscriptions s
+        INNER JOIN plans p
+          ON p.id =
+             s.plan_id
+         AND p.deleted_at
+             IS NULL
+         AND p.is_active =
+             TRUE
+        LEFT JOIN subscription_billing_profiles bp
+          ON bp.subscription_id =
+             s.id
+         AND bp.is_active =
+             TRUE
+        WHERE s.deleted_at
+              IS NULL
+          AND LOWER(
+                COALESCE(
+                  s.status,
+                  ''
+                )
+              ) IN (
+                'trial',
+                'trialing',
+                'active',
+                'past_due'
+              )
+        ORDER BY
+          COALESCE(
+            s.current_period_end,
+            s.trial_ends_at,
+            s.updated_at
+          ) ASC NULLS LAST
+        LIMIT $1
+      `,
+      [
+        Math.max(
+          1,
+          Math.min(
+            500,
+            Math.floor(
+              limit,
+            ),
+          ),
+        ),
+      ],
+    );
+
+  const report = {
+    checked:
+      0,
+    statusUpdated:
+      0,
+    recurringUpdated:
+      0,
+    skipped:
+      0,
+    failures:
+      0,
+  };
+
+  for (
+    const row
+    of result.rows
+  ) {
+    report.checked +=
+      1;
+
+    const planKey =
+      normalizeSamiPlanKey(
+        row.plan_key,
+      );
+
+    const policy =
+      planKey
+        ? getSamiPlanPolicy(
+            planKey,
+          )
+        : null;
+
+    if (
+      !planKey ||
+      !policy
+    ) {
+      report.skipped +=
+        1;
+      continue;
+    }
+
+    const effectiveStatus =
+      getEffectiveSubscriptionStatus({
+        status:
+          row.status,
+        planKey,
+        trialEndsAt:
+          row.trial_ends_at,
+        currentPeriodEnd:
+          row.current_period_end,
+      });
+
+    if (
+      effectiveStatus ===
+        'past_due' &&
+      String(
+        row.status,
+      )
+        .toLowerCase() !==
+        'past_due'
+    ) {
+      await queryControl(
+        `
+          UPDATE subscriptions
+          SET
+            status =
+              'past_due',
+            updated_at =
+              NOW()
+          WHERE id = $1
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          row.id,
+        ],
+      );
+
+      report.statusUpdated +=
+        1;
+    }
+
+    if (
+      !policy.paid ||
+      !row.provider ||
+      !row.provider_subscription_id ||
+      ![
+        'trialing',
+        'active',
+      ].includes(
+        String(
+          row.recurring_status ||
+          '',
+        )
+          .toLowerCase(),
+      )
+    ) {
+      continue;
+    }
+
+    try {
+      const provider =
+        getBillingProvider(
+          String(
+            row.provider,
+          ),
+        );
+
+      if (
+        !provider
+          .isConfigured() ||
+        !provider
+          .capabilities
+          .updateRecurringQuantity ||
+        !provider
+          .updateRecurringSubscription
+      ) {
+        report.skipped +=
+          1;
+        continue;
+      }
+
+      const seats =
+        await billableUsers(
+          String(
+            row.tenant_id,
+          ),
+        );
+
+      const price =
+        getSamiPricePerUserMonthly(
+          planKey,
+        );
+
+      const storedPrice =
+        row.price_per_user_monthly ===
+          null ||
+        row.price_per_user_monthly ===
+          undefined
+          ? null
+          : Number(
+              row.price_per_user_monthly,
+            );
+
+      const storedSeats =
+        row.seat_quantity ===
+          null ||
+        row.seat_quantity ===
+          undefined
+          ? null
+          : Number(
+              row.seat_quantity,
+            );
+
+      if (
+        storedSeats ===
+          seats &&
+        closeEnough(
+          storedPrice,
+          price,
+        )
+      ) {
+        continue;
+      }
+
+      const updated =
+        await provider
+          .updateRecurringSubscription({
+            providerSubscriptionId:
+              String(
+                row.provider_subscription_id,
+              ),
+            pricePerUserMonthly:
+              price,
+            billableUsers:
+              seats,
+            currency:
+              SAMI_BILLING_CURRENCY,
+          });
+
+      await updateActiveSubscriptionBillingProfile(
+        String(
+          row.id,
+        ),
+        {
+          recurringStatus:
+            updated.status ===
+              'active'
+              ? 'active'
+              : updated.status ===
+                  'trialing'
+                ? 'trialing'
+                : String(
+                    row.recurring_status,
+                  ),
+          pricePerUserMonthly:
+            price,
+          seatQuantity:
+            seats,
+          metadata: {
+            lastReconciledAt:
+              new Date()
+                .toISOString(),
+            lastProviderStatus:
+              updated.status,
+          },
+        },
+      );
+
+      report.recurringUpdated +=
+        1;
+    } catch (
+      error
+    ) {
+      report.failures +=
+        1;
+
+      console.error(
+        '[SaMi Billing] Recurring billing reconciliation failed:',
+        {
+          subscriptionId:
+            row.id,
+          provider:
+            row.provider,
+          error,
+        },
+      );
+    }
+  }
+
+  return report;
+}
