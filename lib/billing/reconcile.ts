@@ -31,6 +31,10 @@ import {
   notifyWorkspaceOwnersOfBillingEvent,
 } from '@/lib/billing/notifications';
 
+import {
+  getSubscriptionSuspensionWindow,
+} from '@/lib/billing/access';
+
 function closeEnough(
   left:
     number | null,
@@ -235,6 +239,15 @@ export async function reconcileWorkspaceBilling(
           row.current_period_end,
       });
 
+    const suspension =
+      getSubscriptionSuspensionWindow({
+        effectiveStatus,
+        trialEndsAt:
+          row.trial_ends_at,
+        currentPeriodEnd:
+          row.current_period_end,
+      });
+
     if (
       policy.paid &&
       [
@@ -394,13 +407,49 @@ export async function reconcileWorkspaceBilling(
     }
 
     if (
-      effectiveStatus ===
-        'past_due'
+      suspension.pastDue
     ) {
       const boundary =
-        row.current_period_end ||
-        row.trial_ends_at ||
+        suspension.dueAt ||
         'unknown';
+
+      const phase =
+        suspension.suspended
+          ? 'suspended'
+          : (
+              suspension.daysPastDue !==
+                null &&
+              suspension.daysPastDue >=
+                Math.max(
+                  1,
+                  Math.floor(
+                    suspension.graceDays /
+                    2,
+                  ),
+                )
+            )
+            ? 'final_warning'
+            : 'overdue';
+
+      const graceDate =
+        suspension.graceEndsAt
+          ? new Date(
+              suspension.graceEndsAt,
+            )
+              .toLocaleDateString(
+                'en-KE',
+                {
+                  year:
+                    'numeric',
+                  month:
+                    'short',
+                  day:
+                    'numeric',
+                  timeZone:
+                    'Africa/Nairobi',
+                },
+              )
+          : null;
 
       try {
         await notifyWorkspaceOwnersOfBillingEvent({
@@ -409,17 +458,28 @@ export async function reconcileWorkspaceBilling(
               row.tenant_id,
             ),
           type:
-            'billing.past_due',
+            suspension.suspended
+              ? 'billing.suspended'
+              : 'billing.past_due',
           eventKey:
-            'billing.past_due',
+            suspension.suspended
+              ? 'billing.suspended'
+              : 'billing.past_due',
           title:
-            'Subscription payment is due',
+            suspension.suspended
+              ? 'Workspace suspended for overdue payment'
+              : phase ===
+                  'final_warning'
+                ? 'Final payment reminder'
+                : 'Subscription payment is overdue',
           message:
-            'Your SaMi workspace is temporarily locked because the subscription is past due. Sign-in, personal account and security, Billing, payment recovery and Help remain available until payment is verified.',
+            suspension.suspended
+              ? 'SaMi has suspended normal workspace work because the subscription remains unpaid after the grace period. Your data is retained. Open Billing and complete payment to restore access automatically.'
+              : `Your SaMi subscription is overdue. Normal workspace access remains available during the ${suspension.graceDays}-day grace period${graceDate ? ` until ${graceDate}` : ''}. Complete payment before the deadline to avoid suspension.`,
           priority:
             'urgent',
           dedupeKey:
-            `billing:past-due:${row.id}:${String(
+            `billing:${phase}:${row.id}:${String(
               boundary,
             )}`,
           metadata: {
@@ -433,6 +493,15 @@ export async function reconcileWorkspaceBilling(
               String(
                 boundary,
               ),
+            phase,
+            graceDays:
+              suspension.graceDays,
+            graceEndsAt:
+              suspension.graceEndsAt,
+            daysPastDue:
+              suspension.daysPastDue,
+            suspended:
+              suspension.suspended,
           },
         });
       } catch (
