@@ -67,11 +67,26 @@ export type SamiIntegrationSyncHandler =
       >;
   }>;
 
-const SYNC_HANDLERS =
+export const CORE_INTEGRATION_SYNC_HANDLERS =
   new Map<
     string,
     SamiIntegrationSyncHandler
   >();
+
+export const APP_INTEGRATION_SYNC_HANDLERS =
+  new Map<
+    string,
+    SamiIntegrationSyncHandler
+  >();
+
+const SYNC_HANDLERS =
+  new Map<
+    string,
+    SamiIntegrationSyncHandler
+  >([
+    ...CORE_INTEGRATION_SYNC_HANDLERS,
+    ...APP_INTEGRATION_SYNC_HANDLERS,
+  ]);
 
 function safeObject(
   value:
