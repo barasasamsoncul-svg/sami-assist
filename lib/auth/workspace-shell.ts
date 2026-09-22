@@ -198,8 +198,21 @@ export function isWorkspaceAiAvailable(
 
 
   if (
+    subscription.suspended ===
+      true
+  ) {
+    return false;
+  }
+
+  if (
     !isSubscriptionEntitledNow(
       subscription.status,
+    ) &&
+    !(
+      subscription.pastDue ===
+        true &&
+      subscription.suspended !==
+        true
     )
   ) {
     return false;
@@ -258,11 +271,9 @@ export function resolveWorkspaceShellAccess(
      ============================================================== */
 
   const workspaceLocked =
-    normalizeKey(
-      subscription
-        ?.status,
-    ) ===
-    'past_due';
+    subscription
+      ?.suspended ===
+    true;
 
   let accessibleModules:
     ModuleContext[];
