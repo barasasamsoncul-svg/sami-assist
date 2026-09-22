@@ -5,9 +5,19 @@
 SAMI_BILLING_STANDARD_PRICE_PER_USER_MONTHLY=2500
 SAMI_BILLING_CUSTOM_PRICE_PER_USER_MONTHLY=4500
 
+# Overdue grace before SaMi suspends normal workspace work.
+# 0–90 days; recommended/default: 14.
+SAMI_BILLING_PAST_DUE_GRACE_DAYS=14
+
 # Keep the billing provider explicit.
 # Supported: pesapal | stripe | paystack
 SAMI_BILLING_PROVIDER=pesapal
+
+# PesaPal API 3.0
+PESAPAL_ENV=sandbox
+PESAPAL_CONSUMER_KEY=<your-pesapal-consumer-key>
+PESAPAL_CONSUMER_SECRET=<your-pesapal-consumer-secret>
+PESAPAL_IPN_ID=<your-registered-pesapal-ipn-id>
 
 # Manual/internal billing-worker authentication.
 SAMI_BILLING_WORKER_SECRET=<generate-a-long-random-secret>
