@@ -441,6 +441,17 @@ export async function listAdminTenants(
             t.status,
             t.created_at,
 
+            td.status
+              AS database_status,
+            td.health_status
+              AS database_health_status,
+            td.schema_version
+              AS database_schema_version,
+            td.last_health_check_at
+              AS database_last_health_check_at,
+            td.failure_code
+              AS database_failure_code,
+
             owner_user.id
               AS owner_user_id,
             owner_user.email
@@ -480,6 +491,10 @@ export async function listAdminTenants(
               AS active_members
 
           FROM tenants t
+
+          LEFT JOIN tenant_databases td
+            ON td.tenant_id =
+               t.id
 
           LEFT JOIN LATERAL (
             SELECT
@@ -582,6 +597,36 @@ export async function listAdminTenants(
               row.status ||
               'unknown',
             ),
+          database: {
+            lifecycleStatus:
+              row.database_status
+                ? String(
+                    row.database_status,
+                  )
+                : 'unregistered',
+            healthStatus:
+              row.database_health_status
+                ? String(
+                    row.database_health_status,
+                  )
+                : 'unknown',
+            schemaVersion:
+              row.database_schema_version
+                ? String(
+                    row.database_schema_version,
+                  )
+                : null,
+            lastHealthCheckAt:
+              toIso(
+                row.database_last_health_check_at,
+              ),
+            failureCode:
+              row.database_failure_code
+                ? String(
+                    row.database_failure_code,
+                  )
+                : null,
+          },
           owner: {
             userId:
               row.owner_user_id
