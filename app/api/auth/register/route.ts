@@ -2547,9 +2547,12 @@ export async function POST(
         draft
       );
 
-    registrationRequestNonceHash =
+    const activeRegistrationNonceHash =
       registrationClaim
         .nonceHash;
+
+    registrationRequestNonceHash =
+      activeRegistrationNonceHash;
 
     if (
       registrationClaim.state ===
@@ -2609,7 +2612,7 @@ export async function POST(
       context.userId
     ) {
       await updateRegistrationRequestProgress(
-        registrationRequestNonceHash,
+        activeRegistrationNonceHash,
         context
       );
     }
@@ -3483,7 +3486,7 @@ export async function POST(
     }
 
     await completeRegistrationRequest(
-      registrationRequestNonceHash,
+      activeRegistrationNonceHash,
       context
     );
 
