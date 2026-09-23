@@ -864,6 +864,238 @@ test('Registration: Control DB migration runner applies registration idempotency
 });
 
 
+test('Registration: final workspace creation enforces same-origin, JSON and real body-size boundaries', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  assert.match(
+    route,
+    /isSameOriginRequest/,
+  );
+
+  assert.match(
+    route,
+    /INVALID_ORIGIN/,
+  );
+
+  assert.match(
+    route,
+    /isJsonRequest/,
+  );
+
+  assert.match(
+    route,
+    /UNSUPPORTED_MEDIA_TYPE/,
+  );
+
+  assert.match(
+    route,
+    /await request\.text\(\)/,
+    'Final registration must inspect the actual request body instead of trusting Content-Length alone.',
+  );
+
+  assert.match(
+    route,
+    /Buffer\.byteLength[\s\S]*MAX_REGISTRATION_REQUEST_BYTES/s,
+  );
+});
+
+
+test('Registration: no failure path can silently escape after the idempotency claim', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  const claimed =
+    route.indexOf(
+      'registrationRequestClaimed =\n      true;',
+    );
+
+  const completed =
+    route.indexOf(
+      'await completeRegistrationRequest(',
+      claimed,
+    );
+
+  assert.ok(
+    claimed >=
+      0 &&
+    completed >
+      claimed,
+  );
+
+  const claimedBlock =
+    route.slice(
+      claimed,
+      completed,
+    );
+
+  assert.doesNotMatch(
+    claimedBlock,
+    /return\s+errorResponse\s*\(/,
+    'After a draft is claimed, every failure must pass through cleanup + idempotency failure-state handling.',
+  );
+
+  assert.match(
+    route,
+    /Registration idempotency progress could not be persisted/,
+    'User/tenant/subscription progress writes must be proven instead of silently ignored.',
+  );
+});
+
+
+test('Registration: durable completion precedes external emails and best-effort session switching', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  const complete =
+    route.indexOf(
+      'await completeRegistrationRequest(',
+      route.indexOf(
+        'registrationRequestClaimed =\n      true;',
+      ),
+    );
+
+  const verification =
+    route.indexOf(
+      'await createVerification(',
+      complete,
+    );
+
+  const subscriptionEmail =
+    route.indexOf(
+      'await sendSubscriptionConfirmationEmail(',
+      complete,
+    );
+
+  const workspaceSwitch =
+    route.indexOf(
+      'await setCurrentTenantForSession(',
+      complete,
+    );
+
+  const googleConsume =
+    route.indexOf(
+      'await consumeGoogleSignupState(',
+      complete,
+    );
+
+  assert.ok(
+    complete >=
+      0,
+  );
+
+  assert.ok(
+    verification >
+      complete,
+    'Verification mail must never be sent for a registration that can still roll back.',
+  );
+
+  assert.ok(
+    subscriptionEmail >
+      complete,
+    'Subscription confirmation must only be sent after durable registration.',
+  );
+
+  assert.ok(
+    workspaceSwitch >
+      complete,
+    'Session switching is post-commit convenience, not part of workspace durability.',
+  );
+
+  assert.ok(
+    googleConsume >
+      complete,
+    'Temporary Google signup state is consumed only after durable registration.',
+  );
+
+  assert.match(
+    route,
+    /registrationDurablyCompleted/,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_RESPONSE_RETRY/,
+    'Unexpected post-commit response errors must preserve the workspace and allow idempotent replay.',
+  );
+});
+
+
+test('Registration: Google OAuth state is the idempotency key across concurrent browser drafts', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  assert.match(
+    route,
+    /draft\.mode ===[\s\S]*'google'[\s\S]*draft\.googleStateHash/s,
+  );
+
+  assert.match(
+    route,
+    /google:\$\{draft\.googleStateHash\}/,
+    'Two drafts from the same Google OAuth signup state must converge on one registration request.',
+  );
+});
+
+
+test('Registration: failed provisioning rollback removes physical tenant storage before Control DB identity is released', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  const cleanupStart =
+    route.indexOf(
+      'async function cleanupRegistration',
+    );
+
+  const cleanupEnd =
+    route.indexOf(
+      '/* ============================================================',
+      cleanupStart +
+        20,
+    );
+
+  const cleanup =
+    route.slice(
+      cleanupStart,
+      cleanupEnd,
+    );
+
+  const deleteTenantDatabaseIndex =
+    cleanup.indexOf(
+      'deleteTenantDatabase',
+    );
+
+  const deleteTenantControlIndex =
+    cleanup.indexOf(
+      'DELETE FROM tenants',
+    );
+
+  assert.ok(
+    deleteTenantDatabaseIndex >=
+      0 &&
+    deleteTenantControlIndex >
+      deleteTenantDatabaseIndex,
+    'Physical tenant database cleanup must happen before removing the Control DB tenant reference.',
+  );
+
+  assert.match(
+    cleanup,
+    /Tenant database rollback failed[\s\S]*return false/s,
+    'Uncertain physical cleanup must block automatic retry rather than risk duplicate tenant storage.',
+  );
+});
+
+
 test('Registration: billing seat count includes active internal members only', async () => {
   const registerRoute =
     await source(
