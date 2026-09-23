@@ -36,6 +36,9 @@ export async function getPublicInvoice(
     string,
   tokenInput:
     string,
+  options: {
+    markViewed?: boolean;
+  } = {},
 ) {
   const tenantId =
     requireUuid(
@@ -115,7 +118,26 @@ export async function getPublicInvoice(
           company.city,
           company.country,
           company.tax_id,
-          company.registration_number
+          company.registration_number,
+          template.name
+            AS template_name,
+          template.layout
+            AS template_layout,
+          template.primary_color,
+          template.secondary_color,
+          template.accent_color,
+          template.logo_url
+            AS template_logo_url,
+          template.font_family,
+          template.show_company_logo,
+          template.show_company_address,
+          template.show_company_contact,
+          template.show_tax_id,
+          template.show_payment_instructions,
+          template.show_tax_breakdown,
+          template.show_discount,
+          template.footer_text,
+          template.terms_text
         FROM invoicing_invoices i
         INNER JOIN invoicing_customers c
           ON c.id =
@@ -123,6 +145,13 @@ export async function getPublicInvoice(
         INNER JOIN companies company
           ON company.id =
              i.company_id
+        LEFT JOIN invoicing_templates template
+          ON template.id =
+             i.template_id
+         AND template.company_id =
+             i.company_id
+         AND template.deleted_at
+             IS NULL
         WHERE i.public_token_hash =
               $1
           AND i.public_enabled =
@@ -196,7 +225,12 @@ export async function getPublicInvoice(
       ),
     ]);
 
+  const markViewed =
+    options.markViewed !==
+    false;
+
   if (
+    markViewed &&
     invoice.status ===
       'sent'
   ) {
@@ -234,6 +268,7 @@ export async function getPublicInvoice(
         invoice.invoice_number,
       ),
     status:
+      markViewed &&
       invoice.status ===
         'sent'
         ? 'viewed'
@@ -331,6 +366,81 @@ export async function getPublicInvoice(
           : null,
     },
 
+    template: {
+      name:
+        invoice.template_name
+          ? String(
+              invoice.template_name,
+            )
+          : 'Modern',
+      layout:
+        invoice.template_layout
+          ? String(
+              invoice.template_layout,
+            )
+          : 'modern',
+      primaryColor:
+        String(
+          invoice.primary_color ||
+          '#164a9f',
+        ),
+      secondaryColor:
+        String(
+          invoice.secondary_color ||
+          '#0f172a',
+        ),
+      accentColor:
+        invoice.accent_color
+          ? String(
+              invoice.accent_color,
+            )
+          : null,
+      logoUrl:
+        invoice.template_logo_url
+          ? String(
+              invoice.template_logo_url,
+            )
+          : null,
+      fontFamily:
+        String(
+          invoice.font_family ||
+          'Inter',
+        ),
+      showCompanyLogo:
+        invoice.show_company_logo !==
+        false,
+      showCompanyAddress:
+        invoice.show_company_address !==
+        false,
+      showCompanyContact:
+        invoice.show_company_contact !==
+        false,
+      showTaxId:
+        invoice.show_tax_id !==
+        false,
+      showPaymentInstructions:
+        invoice.show_payment_instructions !==
+        false,
+      showTaxBreakdown:
+        invoice.show_tax_breakdown !==
+        false,
+      showDiscount:
+        invoice.show_discount !==
+        false,
+      footerText:
+        invoice.footer_text
+          ? String(
+              invoice.footer_text,
+            )
+          : null,
+      termsText:
+        invoice.terms_text
+          ? String(
+              invoice.terms_text,
+            )
+          : null,
+    },
+
     company: {
       name:
         String(
@@ -338,11 +448,15 @@ export async function getPublicInvoice(
           invoice.company_name,
         ),
       logoUrl:
-        invoice.logo_url
+        invoice.template_logo_url
           ? String(
-              invoice.logo_url,
+              invoice.template_logo_url,
             )
-          : null,
+          : invoice.logo_url
+            ? String(
+                invoice.logo_url,
+              )
+            : null,
       email:
         invoice.company_email
           ? String(

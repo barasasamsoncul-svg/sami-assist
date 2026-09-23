@@ -60,6 +60,27 @@ export type InvoicingCatalogItemSummary = {
   taxRate: number;
 };
 
+export type InvoicingTemplateSummary = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  layout: string;
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string | null;
+  logoUrl: string | null;
+  fontFamily: string;
+  showCompanyLogo: boolean;
+  showCompanyAddress: boolean;
+  showCompanyContact: boolean;
+  showTaxId: boolean;
+  showPaymentInstructions: boolean;
+  showTaxBreakdown: boolean;
+  showDiscount: boolean;
+  footerText: string | null;
+  termsText: string | null;
+};
+
 export type InvoicingPaymentSummary = {
   id: string;
   paymentNumber: string;
@@ -76,6 +97,8 @@ export type InvoicingRecurringSummary = {
   id: string;
   name: string;
   customerName: string;
+  sourceInvoiceId: string | null;
+  sourceInvoiceNumber: string | null;
   status: string;
   intervalUnit: string;
   intervalCount: number;
@@ -202,18 +225,27 @@ export type InvoicingWorkspaceData = {
   customers: InvoicingCustomerSummary[];
   payments: InvoicingPaymentSummary[];
   recurring: InvoicingRecurringSummary[];
+  templates: InvoicingTemplateSummary[];
   paymentTerms: Array<{ id: string; name: string; dueDays: number; isDefault: boolean }>;
   taxRates: Array<{ id: string; name: string; rate: number; isDefault: boolean }>;
   catalogItems: InvoicingCatalogItemSummary[];
   settings: {
     defaultCurrency: string;
     defaultDueDays: number;
+    defaultTemplateId: string | null;
     taxCalculation: string;
     allowPartialPayments: boolean;
     allowCreditNotes: boolean;
     requireApproval: boolean;
     autoSendRecurring: boolean;
     reminderEnabled: boolean;
+    reminderChannels: Array<
+      'email' |
+      'whatsapp' |
+      'sms'
+    >;
+    reminderDaysBefore: number;
+    reminderDaysAfter: number[];
     paymentInstructions: string | null;
     bankDetails: string | null;
     termsAndConditions: string | null;
@@ -238,6 +270,7 @@ export type CreateInvoiceInput = {
   invoiceDate?: unknown;
   dueDate?: unknown;
   currency?: unknown;
+  templateId?: unknown;
   reference?: unknown;
   purchaseOrderNumber?: unknown;
   notes?: unknown;

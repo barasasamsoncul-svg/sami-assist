@@ -185,6 +185,19 @@ export default function InvoiceComposer({
   );
 
   const [
+    templateId,
+    setTemplateId,
+  ] = useState(
+    data.settings.defaultTemplateId ||
+    data.templates.find(
+      template =>
+        template.isDefault,
+    )?.id ||
+    data.templates[0]?.id ||
+    '',
+  );
+
+  const [
     reference,
     setReference,
   ] = useState(
@@ -514,6 +527,7 @@ export default function InvoiceComposer({
       invoiceDate,
       dueDate,
       currency,
+      templateId,
       reference,
       purchaseOrderNumber,
       shippingTotal,
@@ -684,6 +698,50 @@ export default function InvoiceComposer({
                   }
                   className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm uppercase"
                 />
+              </label>
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Invoice appearance
+                </span>
+
+                <select
+                  value={templateId}
+                  onChange={
+                    event =>
+                      setTemplateId(
+                        event.target.value,
+                      )
+                  }
+                  className="h-12 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    Workspace default
+                  </option>
+
+                  {
+                    data.templates.map(
+                      template => (
+                        <option
+                          key={
+                            template.id
+                          }
+                          value={
+                            template.id
+                          }
+                        >
+                          {
+                            template.name
+                          }{
+                            template.isDefault
+                              ? ' · default'
+                              : ''
+                          }
+                        </option>
+                      ),
+                    )
+                  }
+                </select>
               </label>
 
               <label className="block space-y-1">

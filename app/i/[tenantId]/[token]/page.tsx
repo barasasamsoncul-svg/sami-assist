@@ -93,9 +93,14 @@ export default async function PublicInvoicePage({
   return (
     <main className="min-h-screen bg-slate-100 px-3 py-6 text-slate-950 sm:px-6 sm:py-10 print:bg-white print:p-0">
       <div className="mx-auto max-w-4xl">
-        <div className="mb-4 flex items-center justify-between gap-3 print:hidden">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600">
+            <p className="text-[10px] font-black uppercase tracking-[0.14em]"
+              style={{
+                color:
+                  invoice.template
+                    .primaryColor,
+              }}>
               SaMi secure invoice
             </p>
 
@@ -104,21 +109,67 @@ export default async function PublicInvoicePage({
             </p>
           </div>
 
-          <span className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-black text-white">
-            {
-              invoice.status
-                .replaceAll(
-                  '_',
-                  ' ',
-                )
-            }
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={
+                '/i/' +
+                tenantId +
+                '/' +
+                token +
+                '/pdf'
+              }
+              className="inline-flex h-10 items-center rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700"
+            >
+              Open PDF
+            </a>
+
+            <span
+              className="rounded-xl px-3 py-2 text-xs font-black text-white"
+              style={{
+                backgroundColor:
+                  invoice.template
+                    .secondaryColor,
+              }}
+            >
+              {
+                invoice.status
+                  .replaceAll(
+                    '_',
+                    ' ',
+                  )
+              }
+            </span>
+          </div>
         </div>
 
-        <article className="rounded-[28px] bg-white p-5 shadow-xl shadow-slate-900/5 sm:p-10 print:rounded-none print:p-0 print:shadow-none">
+        <article
+          className={[
+            'bg-white p-5 shadow-xl shadow-slate-900/5 sm:p-10 print:rounded-none print:p-0 print:shadow-none',
+            invoice.template.layout ===
+              'compact'
+              ? 'rounded-xl'
+              : invoice.template.layout ===
+                  'classic'
+                ? 'rounded-none border-t-4'
+                : 'rounded-[28px] border-t-4',
+          ].join(
+            ' ',
+          )}
+          style={{
+            borderTopColor:
+              invoice.template
+                .primaryColor,
+            fontFamily:
+              invoice.template
+                .fontFamily +
+              ', Arial, sans-serif',
+          }}
+        >
           <header className="flex flex-col gap-7 border-b border-slate-200 pb-8 sm:flex-row sm:items-start sm:justify-between">
             <div>
               {
+                invoice.template
+                  .showCompanyLogo &&
                 invoice
                   .company
                   .logoUrl
@@ -146,6 +197,8 @@ export default async function PublicInvoicePage({
               </h1>
 
               {
+                invoice.template
+                  .showCompanyAddress &&
                 invoice
                   .company
                   .address &&
@@ -160,7 +213,11 @@ export default async function PublicInvoicePage({
                 )
               }
 
-              <div className="mt-2 text-xs leading-5 text-slate-500">
+              {
+                invoice.template
+                  .showCompanyContact &&
+                (
+                  <div className="mt-2 text-xs leading-5 text-slate-500">
                 {
                   invoice
                     .company
@@ -192,6 +249,8 @@ export default async function PublicInvoicePage({
                 }
 
                 {
+                  invoice.template
+                    .showTaxId &&
                   invoice
                     .company
                     .taxId &&
@@ -205,11 +264,18 @@ export default async function PublicInvoicePage({
                     </p>
                   )
                 }
-              </div>
+                  </div>
+                )
+              }
             </div>
 
             <div className="sm:text-right">
-              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600">
+              <p className="text-[10px] font-black uppercase tracking-[0.14em]"
+              style={{
+                color:
+                  invoice.template
+                    .primaryColor,
+              }}>
                 Invoice
               </p>
 
@@ -441,6 +507,8 @@ export default async function PublicInvoicePage({
               />
 
               {
+                invoice.template
+                  .showDiscount &&
                 invoice
                   .discountTotal >
                   0 &&
@@ -460,6 +528,10 @@ export default async function PublicInvoicePage({
                 )
               }
 
+              {
+                invoice.template
+                  .showTaxBreakdown &&
+                (
               <TotalRow
                 label="Tax"
                 value={
@@ -471,6 +543,8 @@ export default async function PublicInvoicePage({
                   )
                 }
               />
+                )
+              }
 
               {
                 invoice
@@ -514,7 +588,14 @@ export default async function PublicInvoicePage({
                     Balance due
                   </p>
 
-                  <p className="mt-1 text-lg font-black text-blue-700">
+                  <p
+                    className="mt-1 text-lg font-black"
+                    style={{
+                      color:
+                        invoice.template
+                          .primaryColor,
+                    }}
+                  >
                     {
                       formatMoney(
                         invoice
@@ -541,6 +622,8 @@ export default async function PublicInvoicePage({
             (
               <section className="mt-10 grid gap-5 border-t border-slate-200 pt-7 sm:grid-cols-2">
                 {
+                  invoice.template
+                    .showPaymentInstructions &&
                   invoice
                     .paymentInstructions &&
                   (
@@ -569,15 +652,22 @@ export default async function PublicInvoicePage({
                 }
 
                 {
-                  invoice
-                    .terms &&
+                  (
+                    invoice.template
+                      .termsText ||
+                    invoice
+                      .terms
+                  ) &&
                   (
                     <div className="sm:col-span-2">
                       <CopyBlock
                         title="Terms"
                         value={
+                          invoice.template
+                            .termsText ||
                           invoice
-                            .terms
+                            .terms ||
+                          ''
                         }
                       />
                     </div>
@@ -589,7 +679,11 @@ export default async function PublicInvoicePage({
         </article>
 
         <p className="mt-4 text-center text-[11px] text-slate-400 print:hidden">
-          Generated and delivered securely through SaMi.
+          {
+            invoice.template
+              .footerText ||
+            'Generated and delivered securely through SaMi.'
+          }
         </p>
       </div>
     </main>

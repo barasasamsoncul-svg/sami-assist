@@ -125,6 +125,7 @@ export async function getInvoicingWorkspaceData():
     customers,
     payments,
     recurring,
+    templates,
     paymentTerms,
     taxRates,
     catalogItems,
@@ -298,9 +299,15 @@ export async function getInvoicingWorkspaceData():
               AS id,
             a.invoice_number,
             a.customer_id,
-            c.name
+            COALESCE(
+              i.bill_to_name,
+              c.name
+            )
               AS customer_name,
-            c.email
+            COALESCE(
+              i.bill_to_email,
+              c.email
+            )
               AS customer_email,
             a.effective_status
               AS status,
@@ -481,6 +488,9 @@ export async function getInvoicingWorkspaceData():
             r.name,
             c.name
               AS customer_name,
+            r.source_invoice_id,
+            source.invoice_number
+              AS source_invoice_number,
             r.status,
             r.interval_unit,
             r.interval_count,
@@ -492,6 +502,9 @@ export async function getInvoicingWorkspaceData():
           INNER JOIN invoicing_customers c
             ON c.id =
                r.customer_id
+          LEFT JOIN invoicing_invoices source
+            ON source.id =
+               r.source_invoice_id
           WHERE r.company_id =
                 $1
             AND r.deleted_at
@@ -500,6 +513,43 @@ export async function getInvoicingWorkspaceData():
             r.next_run_at ASC,
             r.created_at DESC
           LIMIT 200
+        `,
+        [
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            name,
+            is_default,
+            layout,
+            primary_color,
+            secondary_color,
+            accent_color,
+            logo_url,
+            font_family,
+            show_company_logo,
+            show_company_address,
+            show_company_contact,
+            show_tax_id,
+            show_payment_instructions,
+            show_tax_breakdown,
+            show_discount,
+            footer_text,
+            terms_text
+          FROM invoicing_templates
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+            AND is_active =
+                TRUE
+          ORDER BY
+            is_default DESC,
+            LOWER(name) ASC
         `,
         [
           context.companyId,
@@ -599,12 +649,16 @@ export async function getInvoicingWorkspaceData():
           SELECT
             default_currency,
             default_due_days,
+            default_template_id,
             tax_calculation,
             allow_partial_payments,
             allow_credit_notes,
             require_approval,
             auto_send_recurring,
             reminder_enabled,
+            reminder_channels,
+            reminder_days_before,
+            reminder_days_after,
             payment_instructions,
             bank_details,
             terms_and_conditions
@@ -984,6 +1038,18 @@ export async function getInvoicingWorkspaceData():
             String(
               row.customer_name,
             ),
+          sourceInvoiceId:
+            row.source_invoice_id
+              ? String(
+                  row.source_invoice_id,
+                )
+              : null,
+          sourceInvoiceNumber:
+            row.source_invoice_number
+              ? String(
+                  row.source_invoice_number,
+                )
+              : null,
           status:
             String(
               row.status,
@@ -1008,6 +1074,88 @@ export async function getInvoicingWorkspaceData():
             String(
               row.currency,
             ),
+        }),
+      ),
+
+    templates:
+      templates.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          name:
+            String(
+              row.name,
+            ),
+          isDefault:
+            row.is_default ===
+            true,
+          layout:
+            String(
+              row.layout ||
+              'modern',
+            ),
+          primaryColor:
+            String(
+              row.primary_color ||
+              '#164a9f',
+            ),
+          secondaryColor:
+            String(
+              row.secondary_color ||
+              '#0f172a',
+            ),
+          accentColor:
+            row.accent_color
+              ? String(
+                  row.accent_color,
+                )
+              : null,
+          logoUrl:
+            row.logo_url
+              ? String(
+                  row.logo_url,
+                )
+              : null,
+          fontFamily:
+            String(
+              row.font_family ||
+              'Inter',
+            ),
+          showCompanyLogo:
+            row.show_company_logo !==
+            false,
+          showCompanyAddress:
+            row.show_company_address !==
+            false,
+          showCompanyContact:
+            row.show_company_contact !==
+            false,
+          showTaxId:
+            row.show_tax_id !==
+            false,
+          showPaymentInstructions:
+            row.show_payment_instructions !==
+            false,
+          showTaxBreakdown:
+            row.show_tax_breakdown !==
+            false,
+          showDiscount:
+            row.show_discount !==
+            false,
+          footerText:
+            row.footer_text
+              ? String(
+                  row.footer_text,
+                )
+              : null,
+          termsText:
+            row.terms_text
+              ? String(
+                  row.terms_text,
+                )
+              : null,
         }),
       ),
 
@@ -1123,6 +1271,12 @@ export async function getInvoicingWorkspaceData():
           setting.default_due_days ||
           30,
         ),
+      defaultTemplateId:
+        setting.default_template_id
+          ? String(
+              setting.default_template_id,
+            )
+          : null,
       taxCalculation:
         String(
           setting.tax_calculation ||
@@ -1143,6 +1297,76 @@ export async function getInvoicingWorkspaceData():
       reminderEnabled:
         setting.reminder_enabled !==
         false,
+      reminderChannels:
+        Array.isArray(
+          setting.reminder_channels,
+        )
+          ? setting.reminder_channels
+              .map(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  String(
+                    value,
+                  )
+                    .trim()
+                    .toLowerCase(),
+              )
+              .filter(
+                (
+                  value:
+                    string,
+                ):
+                  value is
+                    'email' |
+                    'whatsapp' |
+                    'sms' =>
+                  value ===
+                    'email' ||
+                  value ===
+                    'whatsapp' ||
+                  value ===
+                    'sms',
+              )
+          : [
+              'email',
+            ],
+      reminderDaysBefore:
+        Number(
+          setting.reminder_days_before ??
+          3,
+        ),
+      reminderDaysAfter:
+        Array.isArray(
+          setting.reminder_days_after,
+        )
+          ? setting.reminder_days_after
+              .map(
+                (
+                  value:
+                    unknown,
+                ) =>
+                  Number(
+                    value,
+                  ),
+              )
+              .filter(
+                (
+                  value:
+                    number,
+                ) =>
+                  Number.isInteger(
+                    value,
+                  ) &&
+                  value >=
+                    0,
+              )
+          : [
+              1,
+              7,
+              14,
+            ],
       paymentInstructions:
         setting.payment_instructions
           ? String(

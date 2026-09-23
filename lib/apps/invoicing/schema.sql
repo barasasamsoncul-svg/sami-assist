@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_settings (
   require_approval BOOLEAN NOT NULL DEFAULT FALSE,
   auto_send_recurring BOOLEAN NOT NULL DEFAULT FALSE,
   reminder_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  reminder_channels JSONB NOT NULL DEFAULT '["email"]'::jsonb,
   reminder_days_before INTEGER NOT NULL DEFAULT 3,
   reminder_days_after INTEGER[] NOT NULL DEFAULT ARRAY[1,7,14],
   payment_instructions TEXT,
@@ -397,6 +398,7 @@ CREATE TABLE IF NOT EXISTS public.invoicing_recurring_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
   customer_id UUID NOT NULL REFERENCES public.invoicing_customers(id) ON DELETE RESTRICT,
+  source_invoice_id UUID REFERENCES public.invoicing_invoices(id) ON DELETE SET NULL,
   name VARCHAR(255) NOT NULL,
   status VARCHAR(30) NOT NULL DEFAULT 'active'
     CHECK (status IN ('active','paused','completed','cancelled')),
@@ -440,6 +442,9 @@ CREATE TABLE IF NOT EXISTS public.invoicing_reminders (
 CREATE INDEX IF NOT EXISTS idx_invoicing_reminders_due
   ON public.invoicing_reminders(company_id, scheduled_for)
   WHERE status = 'scheduled';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoicing_reminders_once
+  ON public.invoicing_reminders(invoice_id, reminder_type, channel);
 
 CREATE TABLE IF NOT EXISTS public.invoicing_delivery_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

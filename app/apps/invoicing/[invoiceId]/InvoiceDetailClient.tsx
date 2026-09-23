@@ -408,31 +408,102 @@ export default function InvoiceDetailClient({
                 invoice.status,
               ) &&
               (
-                <button
-                  type="button"
-                  disabled={
-                    pending
+                <>
+                  {
+                    invoice.customer
+                      .email &&
+                    (
+                      <button
+                        type="button"
+                        disabled={
+                          pending
+                        }
+                        onClick={
+                          () =>
+                            run(
+                              {
+                                action:
+                                  'send_invoice',
+                                invoiceId:
+                                  invoice.id,
+                                channels: [
+                                  'email',
+                                ],
+                              },
+                              'Invoice emailed with PDF attachment.',
+                            )
+                        }
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
+                      >
+                        <Send className="h-4 w-4" />
+                        Email PDF
+                      </button>
+                    )
                   }
-                  onClick={
-                    () =>
-                      run(
-                        {
-                          action:
-                            'send_invoice',
-                          invoiceId:
-                            invoice.id,
-                          channels: [
-                            'email',
-                          ],
-                        },
-                        'Invoice sent.',
-                      )
+
+                  {
+                    invoice.customer
+                      .phone &&
+                    (
+                      <button
+                        type="button"
+                        disabled={
+                          pending
+                        }
+                        onClick={
+                          () =>
+                            run(
+                              {
+                                action:
+                                  'send_invoice',
+                                invoiceId:
+                                  invoice.id,
+                                channels: [
+                                  'whatsapp',
+                                ],
+                              },
+                              'Invoice sent on WhatsApp.',
+                            )
+                        }
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-black text-emerald-700 dark:text-emerald-300"
+                      >
+                        <Send className="h-4 w-4" />
+                        WhatsApp
+                      </button>
+                    )
                   }
-                  className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
-                >
-                  <Send className="h-4 w-4" />
-                  Send
-                </button>
+
+                  {
+                    invoice.customer
+                      .phone &&
+                    (
+                      <button
+                        type="button"
+                        disabled={
+                          pending
+                        }
+                        onClick={
+                          () =>
+                            run(
+                              {
+                                action:
+                                  'send_invoice',
+                                invoiceId:
+                                  invoice.id,
+                                channels: [
+                                  'sms',
+                                ],
+                              },
+                              'Invoice link sent by SMS.',
+                            )
+                        }
+                        className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+                      >
+                        SMS
+                      </button>
+                    )
+                  }
+                </>
               )
             }
           </div>

@@ -9,11 +9,14 @@ import {
   createInvoice,
   createInvoicingCatalogItem,
   createInvoicingCustomer,
+  createInvoicingPaymentTerm,
+  createInvoicingTaxRate,
   createRecurringInvoiceTemplate,
   getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
   recordInvoicePayment,
+  saveInvoicingTemplate,
   sendInvoiceToCustomer,
   updateInvoiceDraft,
   updateInvoicingSettings,
@@ -312,6 +315,27 @@ export async function POST(
       case 'create_catalog_item':
         result =
           await createInvoicingCatalogItem(
+            payload,
+          );
+        break;
+
+      case 'create_payment_term':
+        result =
+          await createInvoicingPaymentTerm(
+            payload,
+          );
+        break;
+
+      case 'create_tax_rate':
+        result =
+          await createInvoicingTaxRate(
+            payload,
+          );
+        break;
+
+      case 'save_template':
+        result =
+          await saveInvoicingTemplate(
             payload,
           );
         break;

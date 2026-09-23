@@ -113,7 +113,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.1\.0['"]/,
+    /version:\s*['"]2\.2\.0['"]/,
   );
 
   assert.match(
@@ -235,7 +235,7 @@ test('Invoicing server authority uses trusted workspace/company context and neve
 
   assert.match(
     commands,
-    /normalizeInvoiceLines/,
+    /normalizeInvoicingLines/,
   );
 
   assert.match(
@@ -467,6 +467,36 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
     /INVOICING_2_0_0_TO_2_1_0/,
   );
 
+  const runtimeMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.1.0-to-2.2.0.ts',
+    );
+
+  assert.match(
+    runtimeMigration,
+    /fromVersion:\s*['"]2\.1\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigration,
+    /toVersion:\s*['"]2\.2\.0['"]/,
+  );
+
+  assert.match(
+    runtimeMigration,
+    /source_invoice_id/,
+  );
+
+  assert.match(
+    runtimeMigration,
+    /reminder_channels/,
+  );
+
+  assert.match(
+    registry,
+    /INVOICING_2_1_0_TO_2_2_0/,
+  );
+
   assert.match(
     migration,
     /executeSafeSamiModuleMigrationSql/,
@@ -576,5 +606,246 @@ test('professional invoice composer uses real customers and catalog products wit
   assert.match(
     queries,
     /payment_terms_name_snapshot/,
+  );
+});
+
+
+test('Invoicing v2.2 owns professional document appearance and delivery without leaking provider secrets', async () => {
+  const [
+    composer,
+    appearance,
+    publicInvoice,
+    publicPage,
+    pdf,
+    pdfRoute,
+    delivery,
+    whatsapp,
+    email,
+    detail,
+  ] =
+    await Promise.all([
+      source(
+        'app/apps/invoicing/InvoiceComposer.tsx',
+      ),
+      source(
+        'app/apps/invoicing/InvoiceAppearanceSettings.tsx',
+      ),
+      source(
+        'lib/apps/invoicing/public.ts',
+      ),
+      source(
+        'app/i/[tenantId]/[token]/page.tsx',
+      ),
+      source(
+        'lib/apps/invoicing/pdf.ts',
+      ),
+      source(
+        'app/i/[tenantId]/[token]/pdf/route.ts',
+      ),
+      source(
+        'lib/apps/invoicing/delivery.ts',
+      ),
+      source(
+        'lib/services/whatsapp.ts',
+      ),
+      source(
+        'lib/services/email.ts',
+      ),
+      source(
+        'app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    composer,
+    /Invoice appearance/,
+  );
+
+  assert.match(
+    appearance,
+    /Create appearance template/,
+  );
+
+  assert.match(
+    appearance,
+    /showTaxBreakdown/,
+  );
+
+  assert.match(
+    publicInvoice,
+    /markViewed/,
+  );
+
+  assert.match(
+    publicInvoice,
+    /invoicing_templates/,
+  );
+
+  assert.match(
+    publicPage,
+    /Open PDF/,
+  );
+
+  assert.match(
+    pdf,
+    /renderInvoicePdf/,
+  );
+
+  assert.match(
+    pdfRoute,
+    /application\/pdf/,
+  );
+
+  assert.match(
+    delivery,
+    /attachments/,
+  );
+
+  assert.match(
+    delivery,
+    /whatsapp/,
+  );
+
+  assert.match(
+    delivery,
+    /markViewed:\s*false/,
+    'Provider-side PDF rendering must not mark a customer invoice as viewed.',
+  );
+
+  assert.match(
+    whatsapp,
+    /SAMI_WHATSAPP_PROVIDER/,
+  );
+
+  assert.match(
+    whatsapp,
+    /META_WHATSAPP_ACCESS_TOKEN/,
+  );
+
+  assert.match(
+    email,
+    /WorkspaceNotificationEmailAttachment/,
+  );
+
+  assert.match(
+    detail,
+    /Email PDF/,
+  );
+
+  assert.match(
+    detail,
+    /WhatsApp/,
+  );
+});
+
+
+test('Invoicing v2.2 runs recurring generation and payment reminders through one auditable worker', async () => {
+  const [
+    schema,
+    commands,
+    worker,
+    route,
+    vercel,
+    client,
+  ] =
+    await Promise.all([
+      source(
+        'lib/apps/invoicing/schema.sql',
+      ),
+      source(
+        'lib/apps/invoicing/commands.ts',
+      ),
+      source(
+        'lib/apps/invoicing/worker.ts',
+      ),
+      source(
+        'app/api/internal/invoicing/tick/route.ts',
+      ),
+      source(
+        'vercel.json',
+      ),
+      source(
+        'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    schema,
+    /source_invoice_id/,
+  );
+
+  assert.match(
+    schema,
+    /reminder_channels/,
+  );
+
+  assert.match(
+    schema,
+    /uq_invoicing_reminders_once/,
+  );
+
+  assert.match(
+    commands,
+    /sourceInvoiceId/,
+  );
+
+  assert.match(
+    commands,
+    /saveInvoicingTemplate/,
+  );
+
+  assert.match(
+    commands,
+    /createInvoicingPaymentTerm/,
+  );
+
+  assert.match(
+    commands,
+    /createInvoicingTaxRate/,
+  );
+
+  assert.match(
+    worker,
+    /FOR UPDATE OF r[\s\S]*SKIP LOCKED/,
+  );
+
+  assert.match(
+    worker,
+    /nextDocumentNumber/,
+  );
+
+  assert.match(
+    worker,
+    /deliverInvoice/,
+  );
+
+  assert.match(
+    worker,
+    /invoicing_reminders/,
+  );
+
+  assert.match(
+    route,
+    /SAMI_INVOICING_WORKER_SECRET/,
+  );
+
+  assert.match(
+    vercel,
+    /\/api\/internal\/invoicing\/tick/,
+  );
+
+  assert.match(
+    client,
+    /Source invoice/,
+  );
+
+  assert.match(
+    client,
+    /Reminder delivery channels/,
+  );
+
+  assert.match(
+    client,
+    /InvoiceAppearanceSettings/,
   );
 });

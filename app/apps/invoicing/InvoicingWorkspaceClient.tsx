@@ -13,6 +13,7 @@ import {
 } from 'next/navigation';
 
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
+import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
 
 import {
   AlertTriangle,
@@ -1970,6 +1971,10 @@ function Customers({
                       form.get(
                         'billingAddress',
                       ),
+                    paymentTermsId:
+                      form.get(
+                        'paymentTermsId',
+                      ),
                   },
                   'Customer created.',
                 );
@@ -2023,6 +2028,42 @@ function Customers({
                     .currency
                 }
               />
+
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Payment terms
+                </span>
+
+                <select
+                  name="paymentTermsId"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="">
+                    Workspace default
+                  </option>
+
+                  {
+                    data.paymentTerms.map(
+                      term => (
+                        <option
+                          key={
+                            term.id
+                          }
+                          value={
+                            term.id
+                          }
+                        >
+                          {
+                            term.name
+                          } · {
+                            term.dueDays
+                          } days
+                        </option>
+                      ),
+                    )
+                  }
+                </select>
+              </label>
 
               <TextArea
                 label="Billing address"
@@ -2576,9 +2617,9 @@ function Recurring({
                       form.get(
                         'name',
                       ),
-                    customerId:
+                    sourceInvoiceId:
                       form.get(
-                        'customerId',
+                        'sourceInvoiceId',
                       ),
                     intervalUnit:
                       form.get(
@@ -2597,11 +2638,29 @@ function Recurring({
                         'autoSend',
                       ) ===
                       'on',
-                    currency:
-                      data.company
-                        .currency,
-                    invoicePayload:
-                      {},
+                    deliveryChannels: [
+                      form.get(
+                        'deliveryEmail',
+                      ) ===
+                        'on'
+                        ? 'email'
+                        : null,
+                      form.get(
+                        'deliveryWhatsApp',
+                      ) ===
+                        'on'
+                        ? 'whatsapp'
+                        : null,
+                      form.get(
+                        'deliverySms',
+                      ) ===
+                        'on'
+                        ? 'sms'
+                        : null,
+                    ].filter(
+                      Boolean,
+                    ),
+
                   },
                   'Recurring schedule created.',
                 );
@@ -2613,7 +2672,7 @@ function Recurring({
             </p>
 
             <p className="mt-1 text-xs text-slate-500">
-              Store the cadence now; generated invoices remain governed by the same invoice rules.
+              Choose an existing invoice as the commercial template. SaMi reuses its customer, items, prices, discounts, taxes and terms for every scheduled invoice.
             </p>
 
             <div className="mt-4 space-y-3">
@@ -2625,32 +2684,49 @@ function Recurring({
 
               <label className="block space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-                  Customer
+                  Source invoice
                 </span>
 
                 <select
-                  name="customerId"
+                  name="sourceInvoiceId"
                   required
                   className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                 >
                   <option value="">
-                    Choose customer
+                    Choose invoice template
                   </option>
 
                   {
-                    data.customers
+                    data.invoices
+                      .filter(
+                        invoice =>
+                          ![
+                            'cancelled',
+                            'void',
+                            'written_off',
+                          ].includes(
+                            invoice.status,
+                          ),
+                      )
                       .map(
-                        customer => (
+                        invoice => (
                           <option
                             key={
-                              customer.id
+                              invoice.id
                             }
                             value={
-                              customer.id
+                              invoice.id
                             }
                           >
                             {
-                              customer.name
+                              invoice.invoiceNumber
+                            } · {
+                              invoice.customerName
+                            } · {
+                              formatMoney(
+                                invoice.totalAmount,
+                                invoice.currency,
+                              )
                             }
                           </option>
                         ),
@@ -2711,6 +2787,36 @@ function Recurring({
                 />
                 Auto-send generated invoices
               </label>
+
+              <div className="rounded-xl border border-[var(--sami-border)] p-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Auto-send channels
+                </p>
+
+                <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                  <Toggle
+                    name="deliveryEmail"
+                    label="Email PDF"
+                    defaultChecked={
+                      true
+                    }
+                  />
+                  <Toggle
+                    name="deliveryWhatsApp"
+                    label="WhatsApp PDF"
+                    defaultChecked={
+                      false
+                    }
+                  />
+                  <Toggle
+                    name="deliverySms"
+                    label="SMS link"
+                    defaultChecked={
+                      false
+                    }
+                  />
+                </div>
+              </div>
             </div>
 
             <button
@@ -2752,6 +2858,9 @@ function Recurring({
                       <p className="mt-1 text-xs text-slate-500">
                         {
                           item.customerName
+                        } · {
+                          item.sourceInvoiceNumber ||
+                          'invoice template'
                         } · every {
                           item.intervalCount
                         } {
@@ -2981,230 +3090,581 @@ function Settings({
   }
 
   return (
-    <form
-      className="sami-surface rounded-[24px] p-4 sm:p-5"
-      onSubmit={
-        async event => {
-          event
-            .preventDefault();
+    <div className="space-y-4">
+      <form
+        className="sami-surface rounded-[24px] p-4 sm:p-5"
+        onSubmit={
+          async event => {
+            event.preventDefault();
 
-          const form =
-            new FormData(
-              event
-                .currentTarget,
+            const form =
+              new FormData(
+                event.currentTarget,
+              );
+
+            await run(
+              {
+                action:
+                  'update_settings',
+                defaultCurrency:
+                  form.get(
+                    'defaultCurrency',
+                  ),
+                defaultDueDays:
+                  form.get(
+                    'defaultDueDays',
+                  ),
+                taxCalculation:
+                  form.get(
+                    'taxCalculation',
+                  ),
+                allowPartialPayments:
+                  form.get(
+                    'allowPartialPayments',
+                  ) ===
+                  'on',
+                allowCreditNotes:
+                  form.get(
+                    'allowCreditNotes',
+                  ) ===
+                  'on',
+                requireApproval:
+                  form.get(
+                    'requireApproval',
+                  ) ===
+                  'on',
+                autoSendRecurring:
+                  form.get(
+                    'autoSendRecurring',
+                  ) ===
+                  'on',
+                reminderEnabled:
+                  form.get(
+                    'reminderEnabled',
+                  ) ===
+                  'on',
+                reminderChannels: [
+                  form.get(
+                    'reminderEmail',
+                  ) ===
+                    'on'
+                    ? 'email'
+                    : null,
+                  form.get(
+                    'reminderWhatsApp',
+                  ) ===
+                    'on'
+                    ? 'whatsapp'
+                    : null,
+                  form.get(
+                    'reminderSms',
+                  ) ===
+                    'on'
+                    ? 'sms'
+                    : null,
+                ].filter(
+                  Boolean,
+                ),
+                reminderDaysBefore:
+                  form.get(
+                    'reminderDaysBefore',
+                  ),
+                reminderDaysAfter:
+                  form.get(
+                    'reminderDaysAfter',
+                  ),
+                paymentInstructions:
+                  form.get(
+                    'paymentInstructions',
+                  ),
+                bankDetails:
+                  form.get(
+                    'bankDetails',
+                  ),
+                termsAndConditions:
+                  form.get(
+                    'termsAndConditions',
+                  ),
+              },
+              'Invoicing settings saved.',
             );
-
-          await run(
-            {
-              action:
-                'update_settings',
-              defaultCurrency:
-                form.get(
-                  'defaultCurrency',
-                ),
-              defaultDueDays:
-                form.get(
-                  'defaultDueDays',
-                ),
-              taxCalculation:
-                form.get(
-                  'taxCalculation',
-                ),
-              allowPartialPayments:
-                form.get(
-                  'allowPartialPayments',
-                ) ===
-                'on',
-              allowCreditNotes:
-                form.get(
-                  'allowCreditNotes',
-                ) ===
-                'on',
-              requireApproval:
-                form.get(
-                  'requireApproval',
-                ) ===
-                'on',
-              autoSendRecurring:
-                form.get(
-                  'autoSendRecurring',
-                ) ===
-                'on',
-              reminderEnabled:
-                form.get(
-                  'reminderEnabled',
-                ) ===
-                'on',
-              paymentInstructions:
-                form.get(
-                  'paymentInstructions',
-                ),
-              bankDetails:
-                form.get(
-                  'bankDetails',
-                ),
-              termsAndConditions:
-                form.get(
-                  'termsAndConditions',
-                ),
-            },
-            'Invoicing settings saved.',
-          );
+          }
         }
-      }
-    >
-      <div>
-        <p className="text-sm font-black">
-          Invoicing settings
-        </p>
+      >
+        <div>
+          <p className="text-sm font-black">
+            Invoicing settings
+          </p>
 
-        <p className="mt-1 text-xs text-slate-500">
-          Company-specific commercial defaults. Provider infrastructure and secrets stay in SaMi Core.
-        </p>
-      </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Company commercial defaults. Delivery provider credentials stay in SaMi Integrations/Core.
+          </p>
+        </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <Field
-          label="Default currency"
-          name="defaultCurrency"
-          defaultValue={
-            data.settings
-              .defaultCurrency
-          }
-          maxLength={
-            3
-          }
-        />
-
-        <Field
-          label="Default due days"
-          name="defaultDueDays"
-          type="number"
-          min="0"
-          max="3650"
-          defaultValue={
-            String(
-              data.settings
-                .defaultDueDays,
-            )
-          }
-        />
-
-        <label className="block space-y-1">
-          <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-            Tax calculation
-          </span>
-
-          <select
-            name="taxCalculation"
+        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <Field
+            label="Default currency"
+            name="defaultCurrency"
             defaultValue={
               data.settings
-                .taxCalculation
+                .defaultCurrency
             }
-            className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+            maxLength={
+              3
+            }
+          />
+
+          <Field
+            label="Default due days"
+            name="defaultDueDays"
+            type="number"
+            min="0"
+            max="3650"
+            defaultValue={
+              String(
+                data.settings
+                  .defaultDueDays,
+              )
+            }
+          />
+
+          <label className="block space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+              Tax calculation
+            </span>
+
+            <select
+              name="taxCalculation"
+              defaultValue={
+                data.settings
+                  .taxCalculation
+              }
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+            >
+              <option value="exclusive">
+                Tax exclusive
+              </option>
+              <option value="inclusive">
+                Tax inclusive
+              </option>
+            </select>
+          </label>
+
+          <Field
+            label="Reminder before due"
+            name="reminderDaysBefore"
+            type="number"
+            min="0"
+            max="365"
+            defaultValue={
+              String(
+                data.settings
+                  .reminderDaysBefore,
+              )
+            }
+          />
+
+          <Field
+            label="Overdue reminders"
+            name="reminderDaysAfter"
+            defaultValue={
+              data.settings
+                .reminderDaysAfter
+                .join(
+                  ', ',
+                )
+            }
+          />
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+          <Toggle
+            name="allowPartialPayments"
+            label="Partial payments"
+            defaultChecked={
+              data.settings
+                .allowPartialPayments
+            }
+          />
+
+          <Toggle
+            name="allowCreditNotes"
+            label="Credit notes"
+            defaultChecked={
+              data.settings
+                .allowCreditNotes
+            }
+          />
+
+          <Toggle
+            name="requireApproval"
+            label="Require approval"
+            defaultChecked={
+              data.settings
+                .requireApproval
+            }
+          />
+
+          <Toggle
+            name="autoSendRecurring"
+            label="Auto-send recurring"
+            defaultChecked={
+              data.settings
+                .autoSendRecurring
+            }
+          />
+
+          <Toggle
+            name="reminderEnabled"
+            label="Payment reminders"
+            defaultChecked={
+              data.settings
+                .reminderEnabled
+            }
+          />
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[var(--sami-border)] p-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+            Reminder delivery channels
+          </p>
+
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <Toggle
+              name="reminderEmail"
+              label="Email PDF"
+              defaultChecked={
+                data.settings
+                  .reminderChannels
+                  .includes(
+                    'email',
+                  )
+              }
+            />
+            <Toggle
+              name="reminderWhatsApp"
+              label="WhatsApp PDF"
+              defaultChecked={
+                data.settings
+                  .reminderChannels
+                  .includes(
+                    'whatsapp',
+                  )
+              }
+            />
+            <Toggle
+              name="reminderSms"
+              label="SMS link"
+              defaultChecked={
+                data.settings
+                  .reminderChannels
+                  .includes(
+                    'sms',
+                  )
+              }
+            />
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-3">
+          <TextArea
+            label="Payment instructions"
+            name="paymentInstructions"
+            defaultValue={
+              data.settings
+                .paymentInstructions ||
+              ''
+            }
+          />
+
+          <TextArea
+            label="Bank details"
+            name="bankDetails"
+            defaultValue={
+              data.settings
+                .bankDetails ||
+              ''
+            }
+          />
+
+          <TextArea
+            label="Terms & conditions"
+            name="termsAndConditions"
+            defaultValue={
+              data.settings
+                .termsAndConditions ||
+              ''
+            }
+          />
+        </div>
+
+        <div className="mt-5 flex justify-end">
+          <button
+            type="submit"
+            disabled={
+              pending
+            }
+            className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
           >
-            <option value="exclusive">
-              Tax exclusive
-            </option>
+            Save settings
+          </button>
+        </div>
+      </form>
 
-            <option value="inclusive">
-              Tax inclusive
-            </option>
-          </select>
-        </label>
-      </div>
+      <InvoiceAppearanceSettings
+        data={
+          data
+        }
+        pending={
+          pending
+        }
+        run={
+          run
+        }
+      />
 
-      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <Toggle
-          name="allowPartialPayments"
-          label="Partial payments"
-          defaultChecked={
-            data.settings
-              .allowPartialPayments
+      <div className="grid gap-4 xl:grid-cols-2">
+        <form
+          className="sami-surface rounded-[24px] p-4 sm:p-5"
+          onSubmit={
+            async event => {
+              event.preventDefault();
+
+              const form =
+                new FormData(
+                  event.currentTarget,
+                );
+
+              await run(
+                {
+                  action:
+                    'create_payment_term',
+                  name:
+                    form.get(
+                      'name',
+                    ),
+                  dueDays:
+                    form.get(
+                      'dueDays',
+                    ),
+                  description:
+                    form.get(
+                      'description',
+                    ),
+                  isDefault:
+                    form.get(
+                      'isDefault',
+                    ) ===
+                    'on',
+                },
+                'Payment term created.',
+              );
+            }
           }
-        />
-
-        <Toggle
-          name="allowCreditNotes"
-          label="Credit notes"
-          defaultChecked={
-            data.settings
-              .allowCreditNotes
-          }
-        />
-
-        <Toggle
-          name="requireApproval"
-          label="Require approval"
-          defaultChecked={
-            data.settings
-              .requireApproval
-          }
-        />
-
-        <Toggle
-          name="autoSendRecurring"
-          label="Auto-send recurring"
-          defaultChecked={
-            data.settings
-              .autoSendRecurring
-          }
-        />
-
-        <Toggle
-          name="reminderEnabled"
-          label="Payment reminders"
-          defaultChecked={
-            data.settings
-              .reminderEnabled
-          }
-        />
-      </div>
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
-        <TextArea
-          label="Payment instructions"
-          name="paymentInstructions"
-          defaultValue={
-            data.settings
-              .paymentInstructions ||
-            ''
-          }
-        />
-
-        <TextArea
-          label="Bank details"
-          name="bankDetails"
-          defaultValue={
-            data.settings
-              .bankDetails ||
-            ''
-          }
-        />
-
-        <TextArea
-          label="Terms & conditions"
-          name="termsAndConditions"
-          defaultValue={
-            data.settings
-              .termsAndConditions ||
-            ''
-          }
-        />
-      </div>
-
-      <div className="mt-5 flex justify-end">
-        <button
-          type="submit"
-          disabled={
-            pending
-          }
-          className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
         >
-          Save settings
-        </button>
+          <p className="text-sm font-black">
+            Payment terms
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            Customer terms drive invoice due dates.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Term name"
+              name="name"
+              required
+            />
+
+            <Field
+              label="Due days"
+              name="dueDays"
+              type="number"
+              min="0"
+              max="3650"
+              required
+            />
+          </div>
+
+          <div className="mt-3">
+            <TextArea
+              label="Description"
+              name="description"
+            />
+          </div>
+
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
+            <input
+              type="checkbox"
+              name="isDefault"
+            />
+            Make workspace default
+          </label>
+
+          <button
+            type="submit"
+            disabled={
+              pending
+            }
+            className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
+          >
+            Add payment term
+          </button>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {
+              data.paymentTerms.map(
+                term => (
+                  <span
+                    key={
+                      term.id
+                    }
+                    className="rounded-xl border border-[var(--sami-border)] px-3 py-2 text-xs font-bold"
+                  >
+                    {
+                      term.name
+                    } · {
+                      term.dueDays
+                    } days{
+                      term.isDefault
+                        ? ' · default'
+                        : ''
+                    }
+                  </span>
+                ),
+              )
+            }
+          </div>
+        </form>
+
+        <form
+          className="sami-surface rounded-[24px] p-4 sm:p-5"
+          onSubmit={
+            async event => {
+              event.preventDefault();
+
+              const form =
+                new FormData(
+                  event.currentTarget,
+                );
+
+              await run(
+                {
+                  action:
+                    'create_tax_rate',
+                  name:
+                    form.get(
+                      'name',
+                    ),
+                  rate:
+                    form.get(
+                      'rate',
+                    ),
+                  taxType:
+                    form.get(
+                      'taxType',
+                    ),
+                  countryCode:
+                    form.get(
+                      'countryCode',
+                    ),
+                  isDefault:
+                    form.get(
+                      'isDefault',
+                    ) ===
+                    'on',
+                },
+                'Tax rate created.',
+              );
+            }
+          }
+        >
+          <p className="text-sm font-black">
+            Taxes
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            Reusable tax rates default onto items and can still be changed per invoice line.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Field
+              label="Tax name"
+              name="name"
+              required
+            />
+
+            <Field
+              label="Rate %"
+              name="rate"
+              type="number"
+              min="0"
+              max="100"
+              step="0.0001"
+              required
+            />
+
+            <Field
+              label="Tax type"
+              name="taxType"
+              defaultValue="vat"
+            />
+
+            <Field
+              label="Country code"
+              name="countryCode"
+              maxLength={
+                2
+              }
+            />
+          </div>
+
+          <label className="mt-3 flex min-h-11 items-center gap-2 text-xs font-bold">
+            <input
+              type="checkbox"
+              name="isDefault"
+            />
+            Make workspace default
+          </label>
+
+          <button
+            type="submit"
+            disabled={
+              pending
+            }
+            className="mt-4 h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white"
+          >
+            Add tax rate
+          </button>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {
+              data.taxRates.map(
+                tax => (
+                  <span
+                    key={
+                      tax.id
+                    }
+                    className="rounded-xl border border-[var(--sami-border)] px-3 py-2 text-xs font-bold"
+                  >
+                    {
+                      tax.name
+                    } · {
+                      tax.rate
+                    }%{
+                      tax.isDefault
+                        ? ' · default'
+                        : ''
+                    }
+                  </span>
+                ),
+              )
+            }
+          </div>
+        </form>
       </div>
-    </form>
+    </div>
   );
 }
 

@@ -1,7 +1,5 @@
 import 'server-only';
 
-import crypto from 'crypto';
-
 import type {
   PoolClient,
 } from 'pg';
@@ -11,12 +9,9 @@ import {
 } from '@/lib/auth/permission-context';
 
 import {
-  sendWorkspaceNotificationEmail,
-} from '@/lib/services/email';
-
-import {
-  sendWorkspaceNotificationSms,
-} from '@/lib/services/sms';
+  deliverInvoice,
+  normalizeInvoiceDeliveryChannels,
+} from '@/lib/apps/invoicing/delivery';
 
 import type {
   CreateInvoiceInput,
@@ -95,6 +90,54 @@ export async function createInvoicingCustomer(
       input.customerType,
       30,
     );
+
+  const requestedPaymentTermsId =
+    optionalUuid(
+      input.paymentTermsId,
+    );
+
+  let paymentTermsId:
+    string |
+    null =
+      null;
+
+  if (
+    requestedPaymentTermsId
+  ) {
+    const paymentTerm =
+      await context.pool.query(
+        `
+          SELECT id
+          FROM invoicing_payment_terms
+          WHERE id =
+                $1
+            AND company_id =
+                $2
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          requestedPaymentTermsId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentTerm.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Choose a valid payment term for this company.',
+      );
+    }
+
+    paymentTermsId =
+      requestedPaymentTermsId;
+  }
 
   const result =
     await context.pool.query(
@@ -197,9 +240,7 @@ export async function createInvoicingCustomer(
           120,
         ),
         currency,
-        optionalUuid(
-          input.paymentTermsId,
-        ),
+        paymentTermsId,
         input.creditLimit ===
           null ||
         input.creditLimit ===
@@ -255,6 +296,54 @@ export async function createInvoicingCatalogItem(
     );
   }
 
+  const requestedTaxRateId =
+    optionalUuid(
+      input.taxRateId,
+    );
+
+  let taxRateId:
+    string |
+    null =
+      null;
+
+  if (
+    requestedTaxRateId
+  ) {
+    const tax =
+      await context.pool.query(
+        `
+          SELECT id
+          FROM invoicing_tax_rates
+          WHERE id =
+                $1
+            AND company_id =
+                $2
+            AND is_active =
+                TRUE
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          requestedTaxRateId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      tax.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Choose a valid tax rate for this company.',
+      );
+    }
+
+    taxRateId =
+      requestedTaxRateId;
+  }
+
   const result =
     await context.pool.query(
       `
@@ -304,9 +393,7 @@ export async function createInvoicingCatalogItem(
           input.unitPrice,
           'Unit price',
         ),
-        optionalUuid(
-          input.taxRateId,
-        ),
+        taxRateId,
         context.userId,
       ],
     );
@@ -324,7 +411,7 @@ export async function createInvoicingCatalogItem(
 }
 
 
-async function normalizeInvoiceLines(
+export async function normalizeInvoicingLines(
   client:
     PoolClient,
   companyId:
@@ -684,6 +771,67 @@ async function normalizeInvoiceLines(
 }
 
 
+async function resolveInvoiceTemplateId(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  requested:
+    unknown,
+  fallback:
+    unknown,
+) {
+  const candidate =
+    optionalUuid(
+      requested,
+    ) ||
+    optionalUuid(
+      fallback,
+    );
+
+  if (
+    !candidate
+  ) {
+    return null;
+  }
+
+  const result =
+    await client.query(
+      `
+        SELECT id
+        FROM invoicing_templates
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+          AND is_active =
+              TRUE
+          AND deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        candidate,
+        companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid active invoice template.',
+    );
+  }
+
+  return String(
+    result.rows[0].id,
+  );
+}
+
+
 export async function createInvoice(
   input:
     CreateInvoiceInput,
@@ -781,6 +929,14 @@ export async function createInvoice(
       settingsResult.rows[0] ||
       {};
 
+    const templateId =
+      await resolveInvoiceTemplateId(
+        client,
+        context.companyId,
+        input.templateId,
+        settings.default_template_id,
+      );
+
     const invoiceDate =
       isoDate(
         input.invoiceDate,
@@ -834,7 +990,7 @@ export async function createInvoice(
     }
 
     const lines =
-      await normalizeInvoiceLines(
+      await normalizeInvoicingLines(
         client,
         context.companyId,
         input.lines,
@@ -1061,8 +1217,7 @@ export async function createInvoice(
             140,
           ),
           taxCalculation,
-          settings.default_template_id ||
-          null,
+          templateId,
           invoiceNumber,
           status,
           invoiceDate,
@@ -1376,6 +1531,14 @@ export async function updateInvoiceDraft(
       settingsResult.rows[0] ||
       {};
 
+    const templateId =
+      await resolveInvoiceTemplateId(
+        client,
+        context.companyId,
+        input.templateId,
+        settings.default_template_id,
+      );
+
     const taxCalculation:
       'exclusive' |
       'inclusive' =
@@ -1419,7 +1582,7 @@ export async function updateInvoiceDraft(
     }
 
     const lines =
-      await normalizeInvoiceLines(
+      await normalizeInvoicingLines(
         client,
         context.companyId,
         input.lines,
@@ -1566,36 +1729,38 @@ export async function updateInvoiceDraft(
             $9,
           tax_calculation =
             $10,
-          invoice_date =
+          template_id =
             $11,
-          due_date =
+          invoice_date =
             $12,
-          currency =
+          due_date =
             $13,
-          reference =
+          currency =
             $14,
-          purchase_order_number =
+          reference =
             $15,
-          subtotal =
+          purchase_order_number =
             $16,
-          discount_total =
+          subtotal =
             $17,
-          tax_total =
+          discount_total =
             $18,
-          shipping_total =
+          tax_total =
             $19,
-          rounding_adjustment =
+          shipping_total =
             $20,
-          total_amount =
+          rounding_adjustment =
             $21,
-          notes =
+          total_amount =
             $22,
-          terms =
+          notes =
             $23,
-          payment_instructions =
+          terms =
             $24,
-          updated_by =
+          payment_instructions =
             $25,
+          updated_by =
+            $26,
           updated_at =
             NOW()
         WHERE id =
@@ -1634,6 +1799,7 @@ export async function updateInvoiceDraft(
           140,
         ),
         taxCalculation,
+        templateId,
         invoiceDate,
         dueDate,
         currency,
@@ -2653,38 +2819,6 @@ export async function issueInvoiceCreditNote(
 }
 
 
-function sha256(
-  value:
-    string,
-) {
-  return crypto
-    .createHash(
-      'sha256',
-    )
-    .update(
-      value,
-    )
-    .digest(
-      'hex',
-    );
-}
-
-
-function publicBaseUrl() {
-  const raw =
-    process.env.APP_URL ||
-    process.env
-      .NEXT_PUBLIC_APP_URL ||
-    'http://localhost:3000';
-
-  return raw
-    .replace(
-      /\/+$/,
-      '',
-    );
-}
-
-
 export async function sendInvoiceToCustomer(
   input:
     Record<string, unknown>,
@@ -2701,431 +2835,27 @@ export async function sendInvoiceToCustomer(
       'Invoice',
     );
 
-  const result =
-    await context.pool.query(
-      `
-        SELECT
-          i.id,
-          i.invoice_number,
-          i.status,
-          i.total_amount,
-          i.currency,
-          c.name
-            AS customer_name,
-          c.email,
-          c.phone
-        FROM invoicing_invoices i
-        INNER JOIN invoicing_customers c
-          ON c.id =
-             i.customer_id
-        WHERE i.id =
-              $1
-          AND i.company_id =
-              $2
-          AND i.deleted_at
-              IS NULL
-        LIMIT 1
-      `,
-      [
-        invoiceId,
-        context.companyId,
-      ],
-    );
-
-  if (
-    result.rows.length !==
-      1
-  ) {
-    throw new InvoicingError(
-      'INVOICE_NOT_FOUND',
-      'Invoice was not found.',
-    );
-  }
-
-  const invoice =
-    result.rows[0];
-
-  if (
-    [
-      'paid',
-      'cancelled',
-      'void',
-      'written_off',
-    ].includes(
-      String(
-        invoice.status,
-      ),
-    )
-  ) {
-    throw new InvoicingError(
-      'INVOICE_STATE_INVALID',
-      'This invoice cannot be sent in its current state.',
-    );
-  }
-
-  const token =
-    crypto
-      .randomBytes(
-        32,
-      )
-      .toString(
-        'base64url',
-      );
-
-  const tokenHash =
-    sha256(
-      token,
-    );
-
-  const publicPath =
-    '/i/' +
-    context.tenantId +
-    '/' +
-    token;
-
   const channels =
-    Array.isArray(
+    normalizeInvoiceDeliveryChannels(
       input.channels,
-    )
-      ? input.channels
-          .map(
-            item =>
-              String(
-                item,
-              )
-                .trim()
-                .toLowerCase(),
-          )
-      : [
-          'email',
-        ];
-
-  const deliveries:
-    Array<{
-      channel: string;
-      success: boolean;
-      provider?: string;
-      messageId?: string;
-      errorCode?: string;
-    }> =
-      [];
-
-  if (
-    channels.includes(
-      'email',
-    ) &&
-    invoice.email
-  ) {
-    try {
-      const delivery =
-        await sendWorkspaceNotificationEmail(
-          String(
-            invoice.email,
-          ),
-          String(
-            invoice.customer_name,
-          ),
-          {
-            title:
-              'Invoice ' +
-              String(
-                invoice.invoice_number,
-              ),
-            message:
-              context.company
-                .currentCompany.name +
-              ' sent you invoice ' +
-              String(
-                invoice.invoice_number,
-              ) +
-              ' for ' +
-              String(
-                invoice.currency,
-              ) +
-              ' ' +
-              money(
-                invoice.total_amount,
-              ).toLocaleString() +
-              '.',
-            actionHref:
-              publicPath,
-          },
-        );
-
-      deliveries.push({
-        channel:
-          'email',
-        success:
-          delivery.success,
-        messageId:
-          delivery.messageId,
-      });
-    } catch {
-      deliveries.push({
-        channel:
-          'email',
-        success:
-          false,
-        errorCode:
-          'EMAIL_DELIVERY_FAILED',
-      });
-    }
-  }
-
-  if (
-    channels.includes(
-      'sms',
-    ) &&
-    invoice.phone
-  ) {
-    const delivery =
-      await sendWorkspaceNotificationSms(
-        String(
-          invoice.phone,
-        ),
-        {
-          title:
-            'Invoice ' +
-            String(
-              invoice.invoice_number,
-            ),
-          message:
-            'View: ' +
-            publicBaseUrl() +
-            publicPath,
-        },
-      );
-
-    deliveries.push({
-      channel:
-        'sms',
-      success:
-        delivery.success,
-      provider:
-        delivery.provider,
-      messageId:
-        delivery.messageId,
-      errorCode:
-        delivery.errorCode,
-    });
-  }
-
-  if (
-    deliveries.length ===
-      0
-  ) {
-    throw new InvoicingError(
-      'DELIVERY_FAILED',
-      'This customer does not have a usable email address or phone number for the selected channel.',
-    );
-  }
-
-  const successful =
-    deliveries.filter(
-      delivery =>
-        delivery.success,
     );
 
-  if (
-    successful.length ===
-      0
-  ) {
-    throw new InvoicingError(
-      'DELIVERY_FAILED',
-      'Invoice delivery failed on every selected channel.',
-      {
-        deliveries,
-      },
-    );
-  }
-
-  const client =
-    await context.pool.connect();
-
-  try {
-    await client.query(
-      'BEGIN',
-    );
-
-    const oldStatus =
-      String(
-        invoice.status,
-      );
-
-    await client.query(
-      `
-        UPDATE invoicing_invoices
-        SET
-          public_token_hash =
-            $3,
-          public_enabled =
-            TRUE,
-          status =
-            CASE
-              WHEN status IN (
-                'draft',
-                'confirmed'
-              )
-              THEN 'sent'
-              ELSE status
-            END,
-          confirmed_at =
-            COALESCE(
-              confirmed_at,
-              NOW()
-            ),
-          sent_at =
-            NOW(),
-          updated_by =
-            $4,
-          updated_at =
-            NOW()
-        WHERE id =
-              $1
-          AND company_id =
-              $2
-      `,
-      [
-        invoiceId,
-        context.companyId,
-        tokenHash,
-        context.userId,
-      ],
-    );
-
-    if (
-      [
-        'draft',
-        'confirmed',
-      ].includes(
-        oldStatus,
-      )
-    ) {
-      await client.query(
-        `
-          INSERT INTO invoicing_status_history (
-            invoice_id,
-            company_id,
-            from_status,
-            to_status,
-            reason,
-            changed_by
-          )
-          VALUES (
-            $1,$2,$3,
-            'sent',
-            'Invoice delivered to customer',
-            $4
-          )
-        `,
-        [
-          invoiceId,
-          context.companyId,
-          oldStatus,
-          context.userId,
-        ],
-      );
-    }
-
-    for (
-      const delivery
-      of deliveries
-    ) {
-      await client.query(
-        `
-          INSERT INTO invoicing_delivery_log (
-            company_id,
-            invoice_id,
-            channel,
-            destination_fingerprint,
-            provider,
-            provider_message_id,
-            status,
-            error_code,
-            created_by
-          )
-          VALUES (
-            $1,$2,$3,$4,$5,$6,$7,$8,$9
-          )
-        `,
-        [
-          context.companyId,
-          invoiceId,
-          delivery.channel,
-          sha256(
-            delivery.channel ===
-              'email'
-              ? String(
-                  invoice.email ||
-                  '',
-                )
-              : String(
-                  invoice.phone ||
-                  '',
-                ),
-          ),
-          delivery.provider ||
-          null,
-          delivery.messageId ||
-          null,
-          delivery.success
-            ? 'sent'
-            : 'failed',
-          delivery.errorCode ||
-          null,
-          context.userId,
-        ],
-      );
-    }
-
-    await recordInvoicingActivity(
-      client,
-      {
-        companyId:
-          context.companyId,
-        userId:
-          context.userId,
-        invoiceId,
-        type:
-          'invoice.sent',
-        content:
-          'Invoice ' +
-          String(
-            invoice.invoice_number,
-          ) +
-          ' sent to the customer.',
-        metadata: {
-          channels:
-            successful.map(
-              delivery =>
-                delivery.channel,
-            ),
-        },
-      },
-    );
-
-    await client.query(
-      'COMMIT',
-    );
-
-    return {
-      invoiceId,
-      publicPath,
-      deliveries,
-    };
-  } catch (
-    error
-  ) {
-    try {
-      await client.query(
-        'ROLLBACK',
-      );
-    } catch {}
-
-    throw error;
-  } finally {
-    client.release();
-  }
+  return deliverInvoice({
+    pool:
+      context.pool,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    companyName:
+      context.company
+        .currentCompany
+        .name,
+    userId:
+      context.userId,
+    invoiceId,
+    channels,
+  });
 }
 
 
@@ -3139,40 +2869,117 @@ export async function createRecurringInvoiceTemplate(
         .RECURRING_MANAGE,
     );
 
-  const customerId =
+  const sourceInvoiceId =
     requireUuid(
-      input.customerId,
-      'Customer',
+      input.sourceInvoiceId,
+      'Source invoice',
     );
 
-  const customer =
+  const source =
     await context.pool.query(
       `
-        SELECT id
-        FROM invoicing_customers
-        WHERE id =
+        SELECT
+          i.id,
+          i.customer_id,
+          i.invoice_number,
+          i.currency,
+          i.reference,
+          i.purchase_order_number,
+          i.shipping_total,
+          i.rounding_adjustment,
+          i.notes,
+          i.terms,
+          i.tax_calculation,
+          i.template_id,
+          i.status,
+          c.status
+            AS customer_status
+        FROM invoicing_invoices i
+        INNER JOIN invoicing_customers c
+          ON c.id =
+             i.customer_id
+        WHERE i.id =
               $1
-          AND company_id =
+          AND i.company_id =
               $2
-          AND deleted_at
+          AND i.deleted_at
               IS NULL
-          AND status =
-              'active'
+          AND c.deleted_at
+              IS NULL
         LIMIT 1
       `,
       [
-        customerId,
+        sourceInvoiceId,
         context.companyId,
       ],
     );
 
   if (
-    customer.rows.length !==
-      1
+    source.rows.length !==
+      1 ||
+    source.rows[0]
+      .customer_status !==
+      'active'
   ) {
     throw new InvoicingError(
-      'CUSTOMER_NOT_FOUND',
-      'Choose an active customer.',
+      'INVOICE_NOT_FOUND',
+      'Choose an invoice with an active customer.',
+    );
+  }
+
+  if (
+    [
+      'cancelled',
+      'void',
+      'written_off',
+    ].includes(
+      String(
+        source.rows[0].status,
+      ),
+    )
+  ) {
+    throw new InvoicingError(
+      'INVOICE_STATE_INVALID',
+      'Cancelled, void or written-off invoices cannot become recurring templates.',
+    );
+  }
+
+  const lines =
+    await context.pool.query(
+      `
+        SELECT
+          catalog_item_id,
+          description,
+          sku_snapshot,
+          unit,
+          quantity,
+          unit_price,
+          discount_type,
+          discount_value,
+          tax_rate_id,
+          tax_rate
+        FROM invoicing_invoice_items
+        WHERE invoice_id =
+              $1
+          AND company_id =
+              $2
+        ORDER BY
+          sort_order ASC,
+          id ASC
+      `,
+      [
+        sourceInvoiceId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    lines.rows.length ===
+      0
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'The source invoice has no line items.',
     );
   }
 
@@ -3231,17 +3038,107 @@ export async function createRecurringInvoiceTemplate(
     );
   }
 
-  const payload =
-    (
-      input.invoicePayload &&
-      typeof input.invoicePayload ===
-        'object' &&
-      !Array.isArray(
-        input.invoicePayload,
-      )
-    )
-      ? input.invoicePayload
-      : {};
+  const requestedDeliveryChannels =
+    normalizeInvoiceDeliveryChannels(
+      input.deliveryChannels,
+    );
+
+  const deliveryChannels =
+    requestedDeliveryChannels.length >
+      0
+      ? requestedDeliveryChannels
+      : [
+          'email',
+        ] as const;
+
+  const payload = {
+    sourceInvoiceNumber:
+      String(
+        source.rows[0]
+          .invoice_number,
+      ),
+    reference:
+      source.rows[0]
+        .reference ||
+      null,
+    purchaseOrderNumber:
+      source.rows[0]
+        .purchase_order_number ||
+      null,
+    shippingTotal:
+      money(
+        source.rows[0]
+          .shipping_total,
+      ),
+    roundingAdjustment:
+      money(
+        source.rows[0]
+          .rounding_adjustment,
+      ),
+    notes:
+      source.rows[0]
+        .notes ||
+      null,
+    terms:
+      source.rows[0]
+        .terms ||
+      null,
+    taxCalculation:
+      source.rows[0]
+        .tax_calculation ===
+          'inclusive'
+          ? 'inclusive'
+          : 'exclusive',
+    templateId:
+      source.rows[0]
+        .template_id ||
+      null,
+    deliveryChannels,
+    lines:
+      lines.rows.map(
+        line => ({
+          catalogItemId:
+            line.catalog_item_id ||
+            undefined,
+          description:
+            String(
+              line.description,
+            ),
+          sku:
+            line.sku_snapshot ||
+            undefined,
+          unit:
+            String(
+              line.unit ||
+              'unit',
+            ),
+          quantity:
+            money(
+              line.quantity,
+            ),
+          unitPrice:
+            money(
+              line.unit_price,
+            ),
+          discountType:
+            line.discount_type ===
+              'fixed'
+              ? 'fixed'
+              : 'percent',
+          discountValue:
+            money(
+              line.discount_value,
+            ),
+          taxRateId:
+            line.tax_rate_id ||
+            undefined,
+          taxRate:
+            money(
+              line.tax_rate,
+            ),
+        }),
+      ),
+  };
 
   const result =
     await context.pool.query(
@@ -3249,6 +3146,7 @@ export async function createRecurringInvoiceTemplate(
         INSERT INTO invoicing_recurring_templates (
           company_id,
           customer_id,
+          source_invoice_id,
           name,
           status,
           interval_unit,
@@ -3262,18 +3160,20 @@ export async function createRecurringInvoiceTemplate(
           updated_by
         )
         VALUES (
-          $1,$2,$3,
+          $1,$2,$3,$4,
           'active',
-          $4,$5,
+          $5,$6,
           CURRENT_DATE,
-          $6,$7,$8,$9::jsonb,$10,$10
+          $7,$8,$9,$10::jsonb,$11,$11
         )
         RETURNING
           id
       `,
       [
         context.companyId,
-        customerId,
+        source.rows[0]
+          .customer_id,
+        sourceInvoiceId,
         name,
         intervalUnit,
         intervalCount,
@@ -3283,13 +3183,10 @@ export async function createRecurringInvoiceTemplate(
         ),
         input.autoSend ===
           true,
-        cleanText(
-          input.currency ||
-          context.company
-            .currentCompany.currency ||
-          'KES',
-          3,
-        ).toUpperCase(),
+        String(
+          source.rows[0]
+            .currency,
+        ),
         JSON.stringify(
           payload,
         ),
@@ -3303,6 +3200,728 @@ export async function createRecurringInvoiceTemplate(
         result.rows[0].id,
       ),
   };
+}
+
+
+function normalizedHexColor(
+  value:
+    unknown,
+  fallback:
+    string,
+) {
+  const text =
+    cleanText(
+      value,
+      16,
+    );
+
+  return /^#[0-9a-f]{6}$/i.test(
+    text,
+  )
+    ? text.toLowerCase()
+    : fallback;
+}
+
+
+export async function saveInvoicingTemplate(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  await ensureCompanyDefaults(
+    context.pool,
+    context.companyId,
+    context.userId,
+  );
+
+  const templateId =
+    optionalUuid(
+      input.templateId,
+    );
+
+  const name =
+    cleanText(
+      input.name,
+      140,
+    );
+
+  if (
+    !name
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Template name is required.',
+    );
+  }
+
+  const layoutRaw =
+    cleanText(
+      input.layout,
+      40,
+    );
+
+  const layout =
+    [
+      'modern',
+      'classic',
+      'compact',
+      'bold',
+    ].includes(
+      layoutRaw,
+    )
+      ? layoutRaw
+      : 'modern';
+
+  const fontRaw =
+    cleanText(
+      input.fontFamily,
+      100,
+    );
+
+  const fontFamily =
+    [
+      'Inter',
+      'Arial',
+      'Helvetica',
+      'Georgia',
+    ].includes(
+      fontRaw,
+    )
+      ? fontRaw
+      : 'Inter';
+
+  const makeDefault =
+    input.isDefault ===
+    true;
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_templates
+          SET
+            is_default =
+              FALSE,
+            updated_by =
+              $2,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          context.companyId,
+          context.userId,
+        ],
+      );
+    }
+
+    let result;
+
+    if (
+      templateId
+    ) {
+      result =
+        await client.query(
+          `
+            UPDATE invoicing_templates
+            SET
+              name =
+                $3,
+              is_default =
+                $4,
+              primary_color =
+                $5,
+              secondary_color =
+                $6,
+              accent_color =
+                $7,
+              logo_url =
+                $8,
+              font_family =
+                $9,
+              layout =
+                $10,
+              show_company_logo =
+                $11,
+              show_company_address =
+                $12,
+              show_company_contact =
+                $13,
+              show_tax_id =
+                $14,
+              show_payment_instructions =
+                $15,
+              show_tax_breakdown =
+                $16,
+              show_discount =
+                $17,
+              footer_text =
+                $18,
+              terms_text =
+                $19,
+              updated_by =
+                $20,
+              updated_at =
+                NOW()
+            WHERE id =
+                  $1
+              AND company_id =
+                  $2
+              AND deleted_at
+                  IS NULL
+            RETURNING
+              id,
+              name
+          `,
+          [
+            templateId,
+            context.companyId,
+            name,
+            makeDefault,
+            normalizedHexColor(
+              input.primaryColor,
+              '#164a9f',
+            ),
+            normalizedHexColor(
+              input.secondaryColor,
+              '#0f172a',
+            ),
+            input.accentColor
+              ? normalizedHexColor(
+                  input.accentColor,
+                  '#d4af37',
+                )
+              : null,
+            nullableText(
+              input.logoUrl,
+              2000,
+            ),
+            fontFamily,
+            layout,
+            input.showCompanyLogo !==
+              false,
+            input.showCompanyAddress !==
+              false,
+            input.showCompanyContact !==
+              false,
+            input.showTaxId !==
+              false,
+            input.showPaymentInstructions !==
+              false,
+            input.showTaxBreakdown !==
+              false,
+            input.showDiscount !==
+              false,
+            nullableText(
+              input.footerText,
+              4000,
+            ),
+            nullableText(
+              input.termsText,
+              10000,
+            ),
+            context.userId,
+          ],
+        );
+
+      if (
+        result.rows.length !==
+          1
+      ) {
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'Invoice template was not found.',
+        );
+      }
+    } else {
+      result =
+        await client.query(
+          `
+            INSERT INTO invoicing_templates (
+              company_id,
+              name,
+              is_default,
+              primary_color,
+              secondary_color,
+              accent_color,
+              logo_url,
+              font_family,
+              layout,
+              show_company_logo,
+              show_company_address,
+              show_company_contact,
+              show_tax_id,
+              show_payment_instructions,
+              show_tax_breakdown,
+              show_discount,
+              footer_text,
+              terms_text,
+              created_by,
+              updated_by
+            )
+            VALUES (
+              $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+              $11,$12,$13,$14,$15,$16,$17,$18,$19,$19
+            )
+            RETURNING
+              id,
+              name
+          `,
+          [
+            context.companyId,
+            name,
+            makeDefault,
+            normalizedHexColor(
+              input.primaryColor,
+              '#164a9f',
+            ),
+            normalizedHexColor(
+              input.secondaryColor,
+              '#0f172a',
+            ),
+            input.accentColor
+              ? normalizedHexColor(
+                  input.accentColor,
+                  '#d4af37',
+                )
+              : null,
+            nullableText(
+              input.logoUrl,
+              2000,
+            ),
+            fontFamily,
+            layout,
+            input.showCompanyLogo !==
+              false,
+            input.showCompanyAddress !==
+              false,
+            input.showCompanyContact !==
+              false,
+            input.showTaxId !==
+              false,
+            input.showPaymentInstructions !==
+              false,
+            input.showTaxBreakdown !==
+              false,
+            input.showDiscount !==
+              false,
+            nullableText(
+              input.footerText,
+              4000,
+            ),
+            nullableText(
+              input.termsText,
+              10000,
+            ),
+            context.userId,
+          ],
+        );
+    }
+
+    const savedId =
+      String(
+        result.rows[0].id,
+      );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_settings
+          SET
+            default_template_id =
+              $2,
+            updated_by =
+              $3,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+        `,
+        [
+          context.companyId,
+          savedId,
+          context.userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        savedId,
+      name:
+        String(
+          result.rows[0].name,
+        ),
+      isDefault:
+        makeDefault,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function createInvoicingPaymentTerm(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  const name =
+    cleanText(
+      input.name,
+      120,
+    );
+
+  if (
+    !name
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Payment term name is required.',
+    );
+  }
+
+  const dueDays =
+    Math.floor(
+      numberInput(
+        input.dueDays,
+        'Due days',
+        {
+          min:
+            0,
+          max:
+            3650,
+        },
+      ),
+    );
+
+  const makeDefault =
+    input.isDefault ===
+    true;
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_payment_terms
+          SET
+            is_default =
+              FALSE,
+            updated_by =
+              $2,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          context.companyId,
+          context.userId,
+        ],
+      );
+    }
+
+    const result =
+      await client.query(
+        `
+          INSERT INTO invoicing_payment_terms (
+            company_id,
+            name,
+            description,
+            due_days,
+            is_default,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$6
+          )
+          RETURNING
+            id,
+            name
+        `,
+        [
+          context.companyId,
+          name,
+          nullableText(
+            input.description,
+            1000,
+          ),
+          dueDays,
+          makeDefault,
+          context.userId,
+        ],
+      );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_settings
+          SET
+            default_payment_terms_id =
+              $2,
+            default_due_days =
+              $3,
+            updated_by =
+              $4,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+        `,
+        [
+          context.companyId,
+          result.rows[0].id,
+          dueDays,
+          context.userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        String(
+          result.rows[0].id,
+        ),
+      name:
+        String(
+          result.rows[0].name,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function createInvoicingTaxRate(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .SETTINGS_MANAGE,
+    );
+
+  const name =
+    cleanText(
+      input.name,
+      120,
+    );
+
+  if (
+    !name
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Tax name is required.',
+    );
+  }
+
+  const rate =
+    numberInput(
+      input.rate,
+      'Tax rate',
+      {
+        min:
+          0,
+        max:
+          100,
+      },
+    );
+
+  const makeDefault =
+    input.isDefault ===
+    true;
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_tax_rates
+          SET
+            is_default =
+              FALSE,
+            updated_by =
+              $2,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          context.companyId,
+          context.userId,
+        ],
+      );
+    }
+
+    const result =
+      await client.query(
+        `
+          INSERT INTO invoicing_tax_rates (
+            company_id,
+            name,
+            rate,
+            tax_type,
+            country_code,
+            is_default,
+            created_by,
+            updated_by
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$7
+          )
+          RETURNING
+            id,
+            name
+        `,
+        [
+          context.companyId,
+          name,
+          rate,
+          cleanText(
+            input.taxType,
+            40,
+          ) ||
+          'vat',
+          nullableText(
+            input.countryCode,
+            2,
+          ),
+          makeDefault,
+          context.userId,
+        ],
+      );
+
+    if (
+      makeDefault
+    ) {
+      await client.query(
+        `
+          UPDATE invoicing_settings
+          SET
+            default_tax_rate_id =
+              $2,
+            updated_by =
+              $3,
+            updated_at =
+              NOW()
+          WHERE company_id =
+                $1
+        `,
+        [
+          context.companyId,
+          result.rows[0].id,
+          context.userId,
+        ],
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        String(
+          result.rows[0].id,
+        ),
+      name:
+        String(
+          result.rows[0].name,
+        ),
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 
@@ -3363,6 +3982,61 @@ export async function updateInvoicingSettings(
         )
       : 30;
 
+  const reminderDaysBeforeRaw =
+    Number(
+      input.reminderDaysBefore ??
+      3,
+    );
+
+  const reminderDaysBefore =
+    Number.isFinite(
+      reminderDaysBeforeRaw,
+    )
+      ? Math.max(
+          0,
+          Math.min(
+            365,
+            Math.floor(
+              reminderDaysBeforeRaw,
+            ),
+          ),
+        )
+      : 3;
+
+  const reminderDaysAfter =
+    cleanText(
+      input.reminderDaysAfter,
+      120,
+    )
+      .split(',')
+      .map(
+        value =>
+          Number.parseInt(
+            value.trim(),
+            10,
+          ),
+      )
+      .filter(
+        value =>
+          Number.isInteger(
+            value,
+          ) &&
+          value >=
+            0 &&
+          value <=
+            365,
+      )
+      .slice(
+        0,
+        12,
+      );
+
+  const reminderChannels =
+    normalizeInvoiceDeliveryChannels(
+      input.reminderChannels,
+    );
+
+
   await context.pool.query(
     `
       UPDATE invoicing_settings
@@ -3383,14 +4057,20 @@ export async function updateInvoicingSettings(
           $8,
         reminder_enabled =
           $9,
-        payment_instructions =
-          $10,
-        bank_details =
+        reminder_channels =
+          $10::jsonb,
+        reminder_days_before =
           $11,
-        terms_and_conditions =
+        reminder_days_after =
           $12,
-        updated_by =
+        payment_instructions =
           $13,
+        bank_details =
+          $14,
+        terms_and_conditions =
+          $15,
+        updated_by =
+          $16,
         updated_at =
           NOW()
       WHERE company_id =
@@ -3414,6 +4094,23 @@ export async function updateInvoicingSettings(
         true,
       input.reminderEnabled !==
         false,
+      JSON.stringify(
+        reminderChannels.length >
+          0
+          ? reminderChannels
+          : [
+              'email',
+            ],
+      ),
+      reminderDaysBefore,
+      reminderDaysAfter.length >
+        0
+        ? reminderDaysAfter
+        : [
+            1,
+            7,
+            14,
+          ],
       nullableText(
         input.paymentInstructions,
         10000,
