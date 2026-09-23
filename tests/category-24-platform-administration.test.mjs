@@ -95,6 +95,9 @@ test('Category 24 workspace error telemetry is authenticated bounded and fail-op
   assert.match(route, /MAX_BODY_BYTES/);
   assert.match(route, /currentTenantId/);
   assert.match(route, /session\.user\.id/);
+  assert.match(route, /session\.device\.deviceType/);
+  assert.match(route, /session\.device\.browser/);
+  assert.match(route, /session\.device\.operatingSystem/);
   assert.match(boundary, /\/api\/telemetry\/error/);
   assert.match(boundary, /Telemetry must never interfere with workspace recovery/);
 });
