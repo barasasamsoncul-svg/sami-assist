@@ -271,6 +271,69 @@ test('Category 24 global user controls preserve identities and revoke sessions',
   assert.match(page, /UserControlActions/);
 });
 
+test('Category 24 admin users are workspace billing-seat aware', async () => {
+  const oversight = await source('lib/admin/oversight.ts');
+  const page = await source('app/admin/(protected)/users/page.tsx');
+  const resource = await source('app/admin/components/AdminResourcePage.tsx');
+
+  assert.match(
+    oversight,
+    /FROM tenant_users tu/,
+  );
+  assert.match(
+    oversight,
+    /tu\.member_type[\s\S]*internal/,
+  );
+  assert.match(
+    oversight,
+    /tu\.status[\s\S]*active/,
+  );
+  assert.match(
+    oversight,
+    /getSamiPricePerUserMonthly/,
+  );
+  assert.match(
+    oversight,
+    /listAdminUserWorkspaceFilters/,
+  );
+  assert.match(
+    page,
+    /Users & billing seats/,
+  );
+  assert.match(
+    page,
+    /name="workspace"/,
+  );
+  assert.match(
+    page,
+    /name="seat"/,
+  );
+  assert.match(
+    page,
+    /Billing quantity/,
+  );
+  assert.match(
+    page,
+    /Paid-plan seats/,
+  );
+  assert.match(
+    page,
+    /row\.membershipId/,
+  );
+  assert.doesNotMatch(
+    page,
+    /Global identity registry/,
+  );
+  assert.match(
+    resource,
+    /persistentQuery/,
+  );
+  assert.match(
+    resource,
+    /filterFields/,
+  );
+});
+
 test('Category 24 provider credentials stay server-only', async () => {
   const env = await source('docs/platform-env.example');
 
