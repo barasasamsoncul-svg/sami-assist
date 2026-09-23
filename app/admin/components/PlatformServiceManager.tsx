@@ -3,8 +3,10 @@
 import {
   AlertTriangle,
   CheckCircle2,
+  Archive,
   ExternalLink,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
 } from 'lucide-react';
@@ -380,6 +382,52 @@ export default function PlatformServiceManager({
     );
 
   const [
+    adding,
+    setAdding,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    archivingKey,
+    setArchivingKey,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
+
+  const [
+    newService,
+    setNewService,
+  ] =
+    useState({
+      serviceKey:
+        '',
+      provider:
+        '',
+      serviceName:
+        '',
+      category:
+        'other',
+      billingCycle:
+        'custom',
+      amount:
+        '',
+      currency:
+        '',
+      renewalAt:
+        '',
+      expiresAt:
+        '',
+      managementUrl:
+        '',
+    });
+
+  const [
     forms,
     setForms,
   ] =
@@ -641,6 +689,222 @@ export default function PlatformServiceManager({
   }
 
 
+  async function addService() {
+    if (
+      !canManage ||
+      adding
+    ) {
+      return;
+    }
+
+    setAdding(
+      true,
+    );
+
+    setMessage(
+      null,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/operations/services',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                ...newService,
+              }),
+          },
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({
+              success:
+                false,
+            }),
+          ) as {
+            success?:
+              boolean;
+            error?:
+              string;
+          };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'SaMi could not add this platform service.',
+        );
+      }
+
+      setNewService({
+        serviceKey:
+          '',
+        provider:
+          '',
+        serviceName:
+          '',
+        category:
+          'other',
+        billingCycle:
+          'custom',
+        amount:
+          '',
+        currency:
+          '',
+        renewalAt:
+          '',
+        expiresAt:
+          '',
+        managementUrl:
+          '',
+      });
+
+      setMessage({
+        type:
+          'success',
+        text:
+          'Platform service added.',
+      });
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          'error',
+        text:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not add this platform service.',
+      });
+    } finally {
+      setAdding(
+        false,
+      );
+    }
+  }
+
+
+  async function archiveService(
+    service:
+      Service,
+  ) {
+    if (
+      !canManage ||
+      archivingKey
+    ) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Archive "${service.serviceName}" from Platform Administration? Historical events remain in the audit trail.`,
+      )
+    ) {
+      return;
+    }
+
+    setArchivingKey(
+      service.serviceKey,
+    );
+
+    setMessage(
+      null,
+    );
+
+    try {
+      const response =
+        await fetch(
+          `/api/admin/operations/services/${encodeURIComponent(
+            service.serviceKey,
+          )}`,
+          {
+            method:
+              'DELETE',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({
+              success:
+                false,
+            }),
+          ) as {
+            success?:
+              boolean;
+            error?:
+              string;
+          };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          'SaMi could not archive this platform service.',
+        );
+      }
+
+      setMessage({
+        type:
+          'success',
+        text:
+          `${service.serviceName} archived.`,
+      });
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          'error',
+        text:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not archive this platform service.',
+      });
+    } finally {
+      setArchivingKey(
+        null,
+      );
+    }
+  }
+
+
   return (
     <div className="space-y-5">
       <section className="rounded-[26px] border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 sm:p-6">
@@ -660,23 +924,33 @@ export default function PlatformServiceManager({
           </div>
 
           {canManage && (
-            <button
-              type="button"
-              disabled={
-                syncing
-              }
-              onClick={() =>
-                void syncAll()
-              }
-              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 text-[11px] font-black text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100"
-            >
-              {syncing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              Sync now
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href="#add-platform-service"
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-4 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                <Plus className="h-4 w-4" />
+                Add service
+              </a>
+
+              <button
+                type="button"
+                disabled={
+                  syncing
+                }
+                onClick={() =>
+                  void syncAll()
+                }
+                className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 text-[11px] font-black text-white transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100"
+              >
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Sync now
+              </button>
+            </div>
           )}
         </div>
 
@@ -702,6 +976,295 @@ export default function PlatformServiceManager({
           </div>
         )}
       </section>
+
+      {canManage && (
+        <section
+          id="add-platform-service"
+          className="rounded-[24px] border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <details>
+            <summary className="cursor-pointer text-sm font-black text-zinc-950 dark:text-white">
+              Add another SaMi dependency
+            </summary>
+
+            <p className="mt-2 max-w-3xl text-[11px] leading-5 text-zinc-500">
+              Use this for any future provider SaMi depends on. Contract and renewal monitoring works even when that provider has no automatic billing API.
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <input
+                value={
+                  newService.serviceName
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        serviceName:
+                          event.target.value,
+                      }),
+                    )
+                }
+                placeholder="Service name"
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              />
+
+              <input
+                value={
+                  newService.serviceKey
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        serviceKey:
+                          event.target.value
+                            .toLowerCase()
+                            .replace(
+                              /[^a-z0-9._-]+/g,
+                              '-',
+                            ),
+                      }),
+                    )
+                }
+                placeholder="service-key"
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 font-mono text-xs outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              />
+
+              <input
+                value={
+                  newService.provider
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        provider:
+                          event.target.value,
+                      }),
+                    )
+                }
+                placeholder="Provider"
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              />
+
+              <select
+                value={
+                  newService.category
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        category:
+                          event.target.value,
+                      }),
+                    )
+                }
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                {[
+                  'hosting',
+                  'database',
+                  'storage',
+                  'domain',
+                  'ai',
+                  'email',
+                  'sms',
+                  'billing',
+                  'monitoring',
+                  'other',
+                ].map(
+                  value => (
+                    <option
+                      key={
+                        value
+                      }
+                      value={
+                        value
+                      }
+                    >
+                      {value}
+                    </option>
+                  ),
+                )}
+              </select>
+
+              <select
+                value={
+                  newService.billingCycle
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        billingCycle:
+                          event.target.value,
+                      }),
+                    )
+                }
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                {[
+                  'monthly',
+                  'annual',
+                  'usage',
+                  'prepaid',
+                  'free',
+                  'custom',
+                ].map(
+                  value => (
+                    <option
+                      key={
+                        value
+                      }
+                      value={
+                        value
+                      }
+                    >
+                      {value}
+                    </option>
+                  ),
+                )}
+              </select>
+
+              <div className="grid grid-cols-[1fr_84px] gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={
+                    newService.amount
+                  }
+                  onChange={
+                    event =>
+                      setNewService(
+                        current => ({
+                          ...current,
+                          amount:
+                            event.target.value,
+                        }),
+                      )
+                  }
+                  placeholder="Cost"
+                  className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+                />
+
+                <input
+                  maxLength={
+                    3
+                  }
+                  value={
+                    newService.currency
+                  }
+                  onChange={
+                    event =>
+                      setNewService(
+                        current => ({
+                          ...current,
+                          currency:
+                            event.target.value
+                              .toUpperCase(),
+                        }),
+                      )
+                  }
+                  placeholder="KES"
+                  className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950"
+                />
+              </div>
+
+              <label className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
+                Renewal date
+                <input
+                  type="date"
+                  value={
+                    newService.renewalAt
+                  }
+                  onChange={
+                    event =>
+                      setNewService(
+                        current => ({
+                          ...current,
+                          renewalAt:
+                            event.target.value,
+                        }),
+                      )
+                  }
+                  className="mt-1 h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal outline-none dark:border-zinc-800 dark:bg-zinc-950"
+                />
+              </label>
+
+              <label className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
+                Expiry date
+                <input
+                  type="date"
+                  value={
+                    newService.expiresAt
+                  }
+                  onChange={
+                    event =>
+                      setNewService(
+                        current => ({
+                          ...current,
+                          expiresAt:
+                            event.target.value,
+                        }),
+                      )
+                  }
+                  className="mt-1 h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold normal-case tracking-normal outline-none dark:border-zinc-800 dark:bg-zinc-950"
+                />
+              </label>
+
+              <input
+                value={
+                  newService.managementUrl
+                }
+                onChange={
+                  event =>
+                    setNewService(
+                      current => ({
+                        ...current,
+                        managementUrl:
+                          event.target.value,
+                      }),
+                    )
+                }
+                placeholder="Provider dashboard URL"
+                className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-xs font-semibold outline-none dark:border-zinc-800 dark:bg-zinc-950 lg:col-span-2"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={
+                adding ||
+                !newService.serviceName
+                  .trim() ||
+                !newService.serviceKey
+                  .trim() ||
+                !newService.provider
+                  .trim()
+              }
+              onClick={() =>
+                void addService()
+              }
+              className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
+            >
+              {adding ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
+              Add tracked service
+            </button>
+          </details>
+        </section>
+      )}
 
       <div className="grid gap-4 xl:grid-cols-2">
         {services.map(
@@ -1160,27 +1723,59 @@ export default function PlatformServiceManager({
                   </div>
 
                   {canManage && (
-                    <button
-                      type="button"
-                      disabled={
-                        savingKey !==
-                          null
-                      }
-                      onClick={() =>
-                        void save(
-                          service,
-                        )
-                      }
-                      className="mt-4 inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {savingKey ===
-                        service.serviceKey ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Save className="h-3.5 w-3.5" />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={
+                          savingKey !==
+                            null ||
+                          archivingKey !==
+                            null
+                        }
+                        onClick={() =>
+                          void save(
+                            service,
+                          )
+                        }
+                        className="inline-flex h-9 items-center gap-2 rounded-xl bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {savingKey ===
+                          service.serviceKey ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Save className="h-3.5 w-3.5" />
+                        )}
+                        Save contract settings
+                      </button>
+
+                      {service.metadata
+                        .custom ===
+                        true && (
+                        <button
+                          type="button"
+                          disabled={
+                            savingKey !==
+                              null ||
+                            archivingKey !==
+                              null
+                          }
+                          onClick={() =>
+                            void archiveService(
+                              service,
+                            )
+                          }
+                          className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-200 px-3 text-[11px] font-black text-red-600 transition hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-500/10"
+                        >
+                          {archivingKey ===
+                            service.serviceKey ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Archive className="h-3.5 w-3.5" />
+                          )}
+                          Archive
+                        </button>
                       )}
-                      Save contract settings
-                    </button>
+                    </div>
                   )}
                 </details>
               </section>
