@@ -4,9 +4,56 @@
 -- ============================================================
 --
 -- Stores global, non-secret runtime configuration for SaMi.
--- Provider credentials, database URLs, API keys and other secrets
+-- Provider credentials, database URLs and other sensitive values
 -- remain environment-managed and are intentionally excluded.
+--
+-- Compatibility:
+-- Older SaMi control schemas used platform_settings as a generic
+-- key/value table. Category 25 uses a singleton revisioned document.
+-- If the legacy shape is present, preserve it under an archive name
+-- before creating the Category 25 table. Never overwrite the archive.
 -- ============================================================
+
+DO $$
+DECLARE
+    platform_settings_column_count INTEGER;
+    platform_settings_contract_count INTEGER;
+BEGIN
+    IF to_regclass('public.platform_settings') IS NOT NULL THEN
+        SELECT
+            COUNT(*)::INTEGER,
+            COUNT(*) FILTER (
+                WHERE column_name IN (
+                    'singleton_key',
+                    'revision',
+                    'settings',
+                    'updated_by_admin_id',
+                    'created_at',
+                    'updated_at'
+                )
+            )::INTEGER
+        INTO
+            platform_settings_column_count,
+            platform_settings_contract_count
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'platform_settings';
+
+        IF platform_settings_column_count <> 6
+           OR platform_settings_contract_count <> 6 THEN
+            IF to_regclass(
+                'public.platform_settings_legacy_category25'
+            ) IS NOT NULL THEN
+                RAISE EXCEPTION
+                    'Legacy platform settings archive already exists; refusing to overwrite it.';
+            END IF;
+
+            ALTER TABLE public.platform_settings
+                RENAME TO platform_settings_legacy_category25;
+        END IF;
+    END IF;
+END
+$$;
 
 CREATE TABLE IF NOT EXISTS platform_settings (
     singleton_key SMALLINT PRIMARY KEY DEFAULT 1,
