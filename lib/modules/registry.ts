@@ -213,6 +213,54 @@ export function filterAccessibleModuleExtensions<
   );
 }
 
+
+export function assertRegisteredSamiModuleExtension(
+  moduleKey:
+    string | null | undefined,
+  extension:
+    keyof SamiModuleManifest[
+      'extensions'
+    ],
+) {
+  const key =
+    normalizeModuleKey(
+      moduleKey,
+    );
+
+  if (
+    !key
+  ) {
+    return;
+  }
+
+  const manifest =
+    getSamiModuleManifest(
+      key,
+    );
+
+  /*
+   * Core services use source labels such as "core.billing",
+   * "automation" and "core.security". Only a key that resolves to a
+   * registered business module is governed by module extension flags.
+   */
+  if (
+    !manifest
+  ) {
+    return;
+  }
+
+  if (
+    manifest.extensions[
+      extension
+    ] !==
+    true
+  ) {
+    throw new Error(
+      `SaMi module "${key}" attempted to use extension "${extension}" before enabling it in the code-owned manifest.`,
+    );
+  }
+}
+
 export function getAccessibleSamiModuleRuntime(
   accessibleModuleKeys:
     string[],
