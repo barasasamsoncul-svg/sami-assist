@@ -518,29 +518,29 @@ export default function SelectPlanPage() {
      * Multiple apps therefore default
      * to Standard.
      */
-    if (apps.length > 1) {
+    if (
+      apps.length >
+        1
+    ) {
       if (
-        savedPlan === 'custom'
+        savedPlan ===
+          'custom'
       ) {
         setSelectedPlan(
           'custom'
         );
+      } else {
+        setSelectedPlan(
+          'standard'
+        );
 
-        return;
+        savePlan(
+          'standard'
+        );
       }
-
-      setSelectedPlan(
-        'standard'
-      );
-
-      savePlan(
-        'standard'
-      );
-
-      return;
-    }
-
-    if (savedPlan) {
+    } else if (
+      savedPlan
+    ) {
       setSelectedPlan(
         savedPlan
       );
