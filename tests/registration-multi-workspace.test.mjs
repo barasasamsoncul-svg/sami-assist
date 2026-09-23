@@ -489,6 +489,50 @@ test('Registration: workspace settings exposes switch and create controls for mu
 });
 
 
+test('Registration: sending an invitation never creates a placeholder global user', async () => {
+  const [
+    invitations,
+    acceptance,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/invitations.ts',
+      ),
+      source(
+        'lib/services/invitation-acceptance.ts',
+      ),
+    ]);
+
+  assert.doesNotMatch(
+    invitations,
+    /INSERT\s+INTO\s+users/i,
+    'Invitation creation must persist an invitation, not manufacture a global user account.',
+  );
+
+  assert.match(
+    acceptance,
+    /EXISTING SaMi ACCOUNT/,
+  );
+
+  assert.match(
+    acceptance,
+    /SIGN_IN_REQUIRED/,
+    'An invited email that already has a SaMi identity must sign in rather than create a duplicate account.',
+  );
+
+  assert.match(
+    acceptance,
+    /NEW SaMi ACCOUNT/,
+  );
+
+  assert.match(
+    acceptance,
+    /INSERT INTO users/,
+    'A new global identity may be created only during authenticated invitation acceptance/registration for an email that truly has no user.',
+  );
+});
+
+
 test('Registration: existing public email path explains multi-workspace sign-in instead of generic duplicate-user failure', async () => {
   const [
     draftRoute,
