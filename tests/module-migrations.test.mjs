@@ -158,3 +158,63 @@ test('module migrations: operator can upgrade one tenant or all tenants after de
     /migrate:modules/,
   );
 });
+
+
+test('module permissions: manifest definitions synchronize automatically on install and upgrade', async () => {
+  const [
+    types,
+    validation,
+    lifecycle,
+    upgrades,
+  ] = await Promise.all([
+    source('lib/modules/types.ts'),
+    source('lib/modules/validation.ts'),
+    source('lib/services/workspace-app-lifecycle.ts'),
+    source('lib/services/module-upgrades.ts'),
+  ]);
+
+  assert.match(
+    types,
+    /SamiModulePermissionDefinition/,
+  );
+
+  assert.match(
+    types,
+    /permissions:\s*SamiModulePermissionDefinition\[\]/,
+  );
+
+  assert.match(
+    validation,
+    /references undeclared permission/,
+  );
+
+  assert.match(
+    validation,
+    /must begin with/,
+  );
+
+  assert.match(
+    lifecycle,
+    /synchronizeModulePermissions/,
+  );
+
+  assert.match(
+    lifecycle,
+    /manifest\.security[\s\S]*?\.permissions/s,
+  );
+
+  assert.match(
+    lifecycle,
+    /APP_PERMISSION_SYNC_FAILED/,
+  );
+
+  assert.match(
+    upgrades,
+    /synchronizeModulePermissions/,
+  );
+
+  assert.match(
+    upgrades,
+    /manifest\.security[\s\S]*?\.permissions/s,
+  );
+});
