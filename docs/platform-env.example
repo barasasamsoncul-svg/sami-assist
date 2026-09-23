@@ -1,4 +1,15 @@
 # ============================================================
+# Authentication / secure registration
+# ============================================================
+#
+# Encrypts the short-lived HttpOnly registration draft used across
+# Account -> Apps -> Plan onboarding. Use a unique server-only secret
+# of at least 32 characters. Never expose it through NEXT_PUBLIC_*.
+#
+SAMI_REGISTRATION_DRAFT_SECRET=<generate-a-unique-long-random-secret>
+
+
+# ============================================================
 # SaMi commercial pricing
 # ============================================================
 
