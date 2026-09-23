@@ -25,8 +25,6 @@ import {
   X,
   ChevronDown,
   UserRound,
-  Laptop,
-  Palette,
   SlidersHorizontal,
   Activity,
   CircleAlert,
@@ -231,37 +229,6 @@ const navigation: readonly NavigationItem[] = [
         label: 'My Account',
         href: '/admin/settings/account',
         icon: UserRound,
-      },
-
-      {
-        label: 'Security',
-        href: '/admin/settings/security',
-        icon: ShieldCheck,
-
-        /*
-         * Visible architecture, but the actual Admin Category 4
-         * settings capability is not complete yet.
-         */
-        disabled: true,
-      },
-
-      {
-        label: 'Sessions & Devices',
-        href: '/admin/settings/sessions',
-        icon: Laptop,
-
-        /*
-         * Enabled when Platform Admin Category 3 is implemented.
-         */
-        disabled: true,
-      },
-
-      {
-        label: 'Preferences',
-        href: '/admin/settings/preferences',
-        icon: Palette,
-
-        disabled: true,
       },
 
       {
