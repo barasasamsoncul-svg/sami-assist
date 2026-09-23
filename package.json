@@ -31,7 +31,8 @@
     "test:category23": "node --test tests/category-23-usage-entitlements.test.mjs",
     "test:registration": "node --test tests/registration-multi-workspace.test.mjs",
     "migrate:control": "node --conditions=react-server --import tsx scripts/migrate-control.ts",
-    "test:category24": "node --test tests/category-24-platform-administration.test.mjs"
+    "test:category24": "node --test tests/category-24-platform-administration.test.mjs",
+    "test:ci": "npm run test:foundation && npm run test:registration && npm run test:category10 && npm run test:category11 && npm run test:category12 && npm run test:category13 && npm run test:category14 && npm run test:category15 && npm run test:category16 && npm run test:category17 && npm run test:category18 && npm run test:category19 && npm run test:category20 && npm run test:category21 && npm run test:category22 && npm run test:category23 && npm run test:category24 && npm run test:responsive && npm run build"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
