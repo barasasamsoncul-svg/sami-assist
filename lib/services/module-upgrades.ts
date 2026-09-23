@@ -13,6 +13,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  synchronizeModulePermissions,
+} from '@/lib/auth/module-permissions';
+
+import {
   compareSamiModuleVersions,
   runSamiModuleMigrations,
 } from '@/lib/modules/migrations';
@@ -150,6 +154,14 @@ export async function upgradeInstalledModulesForTenant(
 
     const targetVersion =
       manifest.version;
+
+    await synchronizeModulePermissions({
+      moduleKey:
+        manifest.key,
+      permissions:
+        manifest.security
+          .permissions,
+    });
 
     if (
       compareSamiModuleVersions(
