@@ -4,6 +4,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
 /* ============================================================
    TYPES
    ============================================================ */
@@ -672,7 +676,10 @@ function mapPreferencesRow(
   row:
     | UserPreferencesRow
     | undefined
-    | null
+    | null,
+  defaults:
+    UserPreferences =
+      DEFAULT_PREFERENCES,
 ): UserPreferences {
   if (!row) {
     return {
@@ -689,7 +696,7 @@ function mapPreferencesRow(
           row.theme as
             UserTheme
         )
-      : DEFAULT_PREFERENCES.theme;
+      : defaults.theme;
 
   const dateFormat =
     DATE_FORMATS.has(
@@ -700,7 +707,7 @@ function mapPreferencesRow(
           row.date_format as
             UserDateFormat
         )
-      : DEFAULT_PREFERENCES.dateFormat;
+      : defaults.dateFormat;
 
   const timeFormat =
     TIME_FORMATS.has(
@@ -711,7 +718,7 @@ function mapPreferencesRow(
           row.time_format as
             UserTimeFormat
         )
-      : DEFAULT_PREFERENCES.timeFormat;
+      : defaults.timeFormat;
 
   const firstDay =
     Number(
@@ -723,11 +730,11 @@ function mapPreferencesRow(
 
     locale:
       row.locale ||
-      DEFAULT_PREFERENCES.locale,
+      defaults.locale,
 
     timezone:
       row.timezone ||
-      DEFAULT_PREFERENCES.timezone,
+      defaults.timezone,
 
     dateFormat,
 
@@ -742,7 +749,7 @@ function mapPreferencesRow(
       firstDay <=
         6
         ? firstDay
-        : DEFAULT_PREFERENCES.firstDayOfWeek,
+        : defaults.firstDayOfWeek,
   };
 }
 
@@ -930,9 +937,26 @@ export async function getUserPreferences(
     throw new UserAccountNotFoundError();
   }
 
+  const platformSettings =
+    await getRuntimePlatformSettings();
+
   return mapPreferencesRow(
     result.rows[0] as
-      UserPreferencesRow
+      UserPreferencesRow,
+    {
+      theme:
+        'system',
+      locale:
+        platformSettings.defaults.locale,
+      timezone:
+        platformSettings.defaults.timezone,
+      dateFormat:
+        platformSettings.defaults.dateFormat,
+      timeFormat:
+        platformSettings.defaults.timeFormat,
+      firstDayOfWeek:
+        platformSettings.defaults.firstDayOfWeek,
+    },
   );
 }
 
@@ -1000,6 +1024,24 @@ export async function updateUserPreferences(
       id
     );
   }
+
+  const platformSettings =
+    await getRuntimePlatformSettings();
+
+  const defaults: UserPreferences = {
+    theme:
+      'system',
+    locale:
+      platformSettings.defaults.locale,
+    timezone:
+      platformSettings.defaults.timezone,
+    dateFormat:
+      platformSettings.defaults.dateFormat,
+    timeFormat:
+      platformSettings.defaults.timeFormat,
+    firstDayOfWeek:
+      platformSettings.defaults.firstDayOfWeek,
+  };
 
   /*
    * INSERT defaults are supplied for fields absent from the
@@ -1100,27 +1142,27 @@ export async function updateUserPreferences(
         id,
 
         patch.theme ??
-          DEFAULT_PREFERENCES.theme,
+          defaults.theme,
         hasTheme,
 
         patch.locale ??
-          DEFAULT_PREFERENCES.locale,
+          defaults.locale,
         hasLocale,
 
         patch.timezone ??
-          DEFAULT_PREFERENCES.timezone,
+          defaults.timezone,
         hasTimezone,
 
         patch.dateFormat ??
-          DEFAULT_PREFERENCES.dateFormat,
+          defaults.dateFormat,
         hasDateFormat,
 
         patch.timeFormat ??
-          DEFAULT_PREFERENCES.timeFormat,
+          defaults.timeFormat,
         hasTimeFormat,
 
         patch.firstDayOfWeek ??
-          DEFAULT_PREFERENCES.firstDayOfWeek,
+          defaults.firstDayOfWeek,
         hasFirstDay,
       ]
     );
