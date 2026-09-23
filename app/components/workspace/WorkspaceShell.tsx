@@ -273,6 +273,9 @@ export default function WorkspaceShell({
 
                 <WorkspaceNotificationCenter
                   userId={user.id}
+                  initialUnreadNotifications={
+                    unreadNotifications
+                  }
                   onUnreadChange={
                     setLiveUnreadNotifications
                   }
