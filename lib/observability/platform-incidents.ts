@@ -60,7 +60,7 @@ const SENSITIVE_KEY_RE =
   /(password|passwd|secret|token|authorization|cookie|api[_-]?key|client[_-]?secret|private[_-]?key|credential|database[_-]?url|connection[_-]?string)/i;
 
 const URL_CREDENTIAL_RE =
-  /([a-z][a-z0-9+.-]*://)([^\s:@/]+):([^\s@/]+)@/gi;
+  /([a-z][a-z0-9+.-]*:\/\/)([^\s:@/]+):([^\s@/]+)@/gi;
 
 const BEARER_RE =
   /\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi;
