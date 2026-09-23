@@ -11,9 +11,89 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 
-import type {
-  AdminOperationsDashboard,
-} from '@/lib/admin/dashboard-operations';
+type AdminOperationsDashboard = {
+  available:
+    boolean;
+
+  incidents: {
+    open:
+      number;
+    acknowledged:
+      number;
+    critical:
+      number;
+    errors:
+      number;
+  };
+
+  jobs: {
+    failedLast24Hours:
+      number;
+    running:
+      number;
+  };
+
+  tenantDatabases: {
+    total:
+      number;
+    healthy:
+      number;
+    degraded:
+      number;
+    unreachable:
+      number;
+    maintenance:
+      number;
+    unknown:
+      number;
+  };
+
+  services: Array<{
+    serviceKey:
+      string;
+    serviceName:
+      string;
+    provider:
+      string;
+    category:
+      string;
+    status:
+      string;
+    renewalAt:
+      string |
+      null;
+    expiresAt:
+      string |
+      null;
+    quotaUsed:
+      number |
+      null;
+    quotaLimit:
+      number |
+      null;
+    quotaUnit:
+      string |
+      null;
+    lastSyncedAt:
+      string |
+      null;
+  }>;
+
+  providerChecks: Array<{
+    provider:
+      string;
+    component:
+      string;
+    status:
+      string;
+    latencyMs:
+      number |
+      null;
+    checkedAt:
+      string |
+      null;
+  }>;
+};
 
 
 function statusClasses(
