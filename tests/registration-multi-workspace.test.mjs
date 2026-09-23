@@ -705,6 +705,109 @@ test('Registration: global workspace switcher is available to every authenticate
 });
 
 
+test('Registration: abandoned registration drops its physical tenant database before Control DB cleanup', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  const cleanupStart =
+    route.indexOf(
+      'async function cleanupRegistration',
+    );
+
+  const cleanupEnd =
+    route.indexOf(
+      '/* ============================================================\n   PLAN PRICE',
+      cleanupStart,
+    );
+
+  const cleanup =
+    route.slice(
+      cleanupStart,
+      cleanupEnd,
+    );
+
+  const physicalDelete =
+    cleanup.indexOf(
+      'deleteTenantDatabase',
+    );
+
+  const tenantControlDelete =
+    cleanup.indexOf(
+      'DELETE FROM tenants',
+    );
+
+  assert.ok(
+    physicalDelete >= 0,
+    'Abandoned registration must clean up the just-created physical tenant database.',
+  );
+
+  assert.ok(
+    tenantControlDelete >
+      physicalDelete,
+    'Physical tenant storage must be removed before deleting its Control DB tenant/registry authority.',
+  );
+
+  assert.match(
+    cleanup,
+    /Tenant database rollback failed:[\s\S]*return false/s,
+    'If physical storage cleanup cannot be proven, registration retry must be frozen for recovery.',
+  );
+});
+
+
+test('Registration: final registration endpoint enforces same-origin JSON and bounded request size', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  assert.match(
+    route,
+    /isSameOriginRequest/,
+  );
+
+  assert.match(
+    route,
+    /sec-fetch-site/,
+  );
+
+  assert.match(
+    route,
+    /isJsonRequest/,
+  );
+
+  assert.match(
+    route,
+    /MAX_REGISTRATION_REQUEST_BYTES/,
+  );
+
+  assert.match(
+    route,
+    /REQUEST_TOO_LARGE/,
+  );
+});
+
+
+test('Registration: billing recovery still permits switching to another accessible workspace', async () => {
+  const page =
+    await source(
+      'app/subscription-required/page.tsx',
+    );
+
+  assert.match(
+    page,
+    /WorkspaceTenantSwitcher/,
+  );
+
+  assert.match(
+    page,
+    /switch to another workspace you belong to/,
+  );
+});
+
+
 test('Registration: Control DB migration runner applies registration idempotency safely', async () => {
   const [
     script,
