@@ -264,11 +264,13 @@ test('Category 15: notification center is integrated into shared shell and full 
     center,
     page,
     sidebar,
+    service,
   ] = await Promise.all([
     source('app/components/workspace/WorkspaceShell.tsx'),
     source('app/components/workspace/WorkspaceNotificationCenter.tsx'),
     source('app/notifications/page.tsx'),
     source('app/components/workspace/WorkspaceSidebar.tsx'),
+    source('lib/services/workspace-notifications.ts'),
   ]);
 
   assert.match(
@@ -278,6 +280,10 @@ test('Category 15: notification center is integrated into shared shell and full 
   assert.match(
     shell,
     /liveUnreadNotifications/,
+  );
+  assert.match(
+    shell,
+    /initialUnreadNotifications/,
   );
   assert.match(
     center,
@@ -302,6 +308,30 @@ test('Category 15: notification center is integrated into shared shell and full 
   assert.match(
     center,
     /smsEnabled/,
+  );
+  assert.match(
+    center,
+    /window\.setInterval/,
+  );
+  assert.match(
+    center,
+    /visibilitychange/,
+  );
+  assert.match(
+    center,
+    /New workspace alert/,
+  );
+  assert.match(
+    center,
+    /aria-live="polite"/,
+  );
+  assert.match(
+    service,
+    /latestUnread:/,
+  );
+  assert.match(
+    service,
+    /is_read = FALSE[\s\S]*ORDER BY[\s\S]*created_at DESC/,
   );
   assert.match(
     page,

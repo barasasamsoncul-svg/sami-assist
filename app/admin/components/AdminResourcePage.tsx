@@ -54,6 +54,17 @@ type Props<T> = {
     string;
   actions?:
     ReactNode;
+  filterFields?:
+    ReactNode;
+  persistentQuery?:
+    Readonly<
+      Record<
+        string,
+        string |
+        null |
+        undefined
+      >
+    >;
 };
 
 
@@ -64,9 +75,37 @@ function hrefFor(
     number,
   search:
     string,
+  persistentQuery?:
+    Readonly<
+      Record<
+        string,
+        string |
+        null |
+        undefined
+      >
+    >,
 ) {
   const query =
     new URLSearchParams();
+
+  for (
+    const [
+      key,
+      value,
+    ] of Object.entries(
+      persistentQuery ||
+      {},
+    )
+  ) {
+    if (
+      value
+    ) {
+      query.set(
+        key,
+        value,
+      );
+    }
+  }
 
   if (
     page >
@@ -124,6 +163,8 @@ export function AdminStatusPill({
       'succeeded',
       'completed',
       'verified',
+      'cleared',
+      'free',
     ]);
 
   const warning =
@@ -137,6 +178,7 @@ export function AdminStatusPill({
       'degraded',
       'invited',
       'locked',
+      'pending_payment',
     ]);
 
   const negative =
@@ -150,6 +192,7 @@ export function AdminStatusPill({
       'suspended',
       'disabled',
       'revoked',
+      'due',
     ]);
 
   const className =
@@ -250,6 +293,8 @@ export default function AdminResourcePage<T>({
   rowKey,
   emptyMessage,
   actions,
+  filterFields,
+  persistentQuery,
 }: Props<T>) {
   return (
     <div className="space-y-6">
@@ -309,14 +354,22 @@ export default function AdminResourcePage<T>({
             />
           </div>
 
+          {filterFields}
+
           <button
             type="submit"
             className="h-11 rounded-xl bg-zinc-950 px-5 text-xs font-black text-white transition hover:bg-zinc-800 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100"
           >
-            Search
+            Apply
           </button>
 
-          {search && (
+          {(search ||
+            Object.values(
+              persistentQuery ||
+              {},
+            ).some(
+              Boolean,
+            )) && (
             <Link
               href={
                 baseHref
@@ -415,6 +468,7 @@ export default function AdminResourcePage<T>({
                     page -
                       1,
                     search,
+                    persistentQuery,
                   )
                 }
                 className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
@@ -436,6 +490,7 @@ export default function AdminResourcePage<T>({
                     page +
                       1,
                     search,
+                    persistentQuery,
                   )
                 }
                 className="inline-flex h-9 items-center justify-center rounded-xl border border-zinc-200 px-3 text-[11px] font-black text-zinc-700 transition hover:bg-zinc-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"

@@ -8,6 +8,17 @@ import {
   getControlMigrationStatus,
 } from '@/lib/admin/control-migration-status';
 
+import {
+  getEffectiveSubscriptionStatus,
+  getSamiPlanPolicy,
+  normalizeSamiPlanKey,
+} from '@/lib/billing/plan-policy';
+
+import {
+  getSamiMonthlyAmount,
+  getSamiPricePerUserMonthly,
+} from '@/lib/billing/pricing';
+
 
 const DEFAULT_PAGE_SIZE =
   25;
@@ -179,9 +190,144 @@ function pageResult<T>(
 }
 
 
+export type AdminUserListInput =
+  AdminListInput & {
+    workspaceId?:
+      unknown;
+  };
+
+
+function adminWorkspaceId(
+  value:
+    unknown,
+) {
+  if (
+    typeof value !==
+      'string'
+  ) {
+    return null;
+  }
+
+  const candidate =
+    value.trim();
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(
+      candidate,
+    )
+      ? candidate
+      : null;
+}
+
+
+export async function listAdminUserWorkspaceFilters() {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          t.id,
+          t.name,
+          t.slug,
+          current_subscription.plan_key,
+          current_subscription.plan_name,
+          current_subscription.subscription_status
+        FROM tenants t
+        LEFT JOIN LATERAL (
+          SELECT
+            s.status
+              AS subscription_status,
+            p.key
+              AS plan_key,
+            p.name
+              AS plan_name
+          FROM subscriptions s
+          LEFT JOIN plans p
+            ON p.id =
+               s.plan_id
+           AND p.deleted_at
+               IS NULL
+          WHERE s.tenant_id =
+                t.id
+            AND s.deleted_at
+                IS NULL
+          ORDER BY
+            s.created_at DESC,
+            s.id DESC
+          LIMIT 1
+        ) current_subscription
+          ON TRUE
+        WHERE t.deleted_at
+              IS NULL
+        ORDER BY
+          LOWER(
+            COALESCE(
+              t.name,
+              ''
+            )
+          ) ASC,
+          t.id ASC
+        LIMIT 2000
+      `,
+    );
+
+  return result.rows.map(
+    row => ({
+      id:
+        String(
+          row.id,
+        ),
+      name:
+        String(
+          row.name ||
+          '',
+        ),
+      slug:
+        String(
+          row.slug ||
+          '',
+        ),
+      planKey:
+        row.plan_key
+          ? String(
+              row.plan_key,
+            )
+          : null,
+      planName:
+        row.plan_name
+          ? String(
+              row.plan_name,
+            )
+          : null,
+      subscriptionStatus:
+        row.subscription_status
+          ? String(
+              row.subscription_status,
+            )
+          : null,
+    }),
+  );
+}
+
+
+type AdminWorkspaceMemberRow = {
+  id?:
+    unknown;
+  name?:
+    unknown;
+  email?:
+    unknown;
+  status?:
+    unknown;
+  isOwner?:
+    unknown;
+  lastLoginAt?:
+    unknown;
+};
+
+
 export async function listAdminUsers(
   input:
-    AdminListInput = {},
+    AdminUserListInput = {},
 ) {
   const {
     page,
@@ -198,6 +344,11 @@ export async function listAdminUsers(
       ? `%${search}%`
       : null;
 
+  const workspaceId =
+    adminWorkspaceId(
+      input.workspaceId,
+    );
+
   const [
     countResult,
     rowsResult,
@@ -208,110 +359,470 @@ export async function listAdminUsers(
           SELECT
             COUNT(*)::int
               AS count
-          FROM users u
-          WHERE u.deleted_at
+          FROM tenants t
+          LEFT JOIN LATERAL (
+            SELECT
+              u.email,
+              u.full_name,
+              u.first_name,
+              u.last_name
+            FROM tenant_users owner_membership
+            INNER JOIN users u
+              ON u.id =
+                 owner_membership.user_id
+             AND u.deleted_at
+                 IS NULL
+            WHERE owner_membership.tenant_id =
+                  t.id
+              AND owner_membership.deleted_at
+                  IS NULL
+              AND owner_membership.is_owner =
+                  TRUE
+            ORDER BY
+              CASE
+                WHEN LOWER(
+                  COALESCE(
+                    owner_membership.status,
+                    ''
+                  )
+                ) =
+                'active'
+                THEN 0
+                ELSE 1
+              END,
+              owner_membership.created_at ASC
+            LIMIT 1
+          ) owner_user
+            ON TRUE
+          WHERE t.deleted_at
                 IS NULL
             AND (
+              $2::uuid IS NULL
+              OR t.id =
+                 $2::uuid
+            )
+            AND (
               $1::text IS NULL
-              OR u.email
+              OR t.name
+                   ILIKE $1
+              OR t.slug
+                   ILIKE $1
+              OR owner_user.email
                    ILIKE $1
               OR COALESCE(
-                   u.full_name,
+                   owner_user.full_name,
                    ''
                  )
                    ILIKE $1
               OR COALESCE(
-                   u.first_name,
+                   owner_user.first_name,
                    ''
                  )
                    ILIKE $1
               OR COALESCE(
-                   u.last_name,
+                   owner_user.last_name,
                    ''
                  )
                    ILIKE $1
+              OR EXISTS (
+                SELECT 1
+                FROM tenant_users member
+                INNER JOIN users member_user
+                  ON member_user.id =
+                     member.user_id
+                 AND member_user.deleted_at
+                     IS NULL
+                WHERE member.tenant_id =
+                      t.id
+                  AND member.deleted_at
+                      IS NULL
+                  AND LOWER(
+                        COALESCE(
+                          member.member_type,
+                          ''
+                        )
+                      ) =
+                      'internal'
+                  AND (
+                    member_user.email
+                      ILIKE $1
+                    OR COALESCE(
+                         member_user.full_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.first_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.last_name,
+                         ''
+                       )
+                         ILIKE $1
+                  )
+              )
             )
         `,
         [
           pattern,
+          workspaceId,
         ],
       ),
 
       queryControl(
         `
           SELECT
-            u.id,
-            u.email,
-            u.first_name,
-            u.last_name,
-            u.full_name,
-            u.status,
-            u.email_verified,
-            u.email_verified_at,
-            u.two_factor_enabled,
-            u.locked_until,
-            u.last_login_at,
-            u.created_at,
-            COUNT(
-              DISTINCT tu.tenant_id
-            )::int
-              AS workspace_count
-          FROM users u
-          LEFT JOIN tenant_users tu
-            ON tu.user_id =
-               u.id
-           AND tu.deleted_at
-               IS NULL
-           AND LOWER(
-                 COALESCE(
-                   tu.status,
-                   ''
-                 )
-               ) =
-               'active'
-          WHERE u.deleted_at
+            t.id
+              AS tenant_id,
+            t.name
+              AS tenant_name,
+            t.slug
+              AS tenant_slug,
+            t.status
+              AS tenant_status,
+            t.created_at
+              AS tenant_created_at,
+
+            owner_user.user_id
+              AS owner_user_id,
+            owner_user.email
+              AS owner_email,
+            owner_user.full_name
+              AS owner_full_name,
+            owner_user.first_name
+              AS owner_first_name,
+            owner_user.last_name
+              AS owner_last_name,
+            owner_user.user_status
+              AS owner_user_status,
+            owner_user.email_verified
+              AS owner_email_verified,
+            owner_user.email_verified_at
+              AS owner_email_verified_at,
+            owner_user.two_factor_enabled
+              AS owner_two_factor_enabled,
+            owner_user.locked_until
+              AS owner_locked_until,
+            owner_user.last_login_at
+              AS owner_last_login_at,
+
+            member_summary.active_internal_users,
+            member_summary.internal_members,
+
+            current_subscription.subscription_id,
+            current_subscription.subscription_status,
+            current_subscription.billing_cycle,
+            current_subscription.trial_ends_at,
+            current_subscription.current_period_start,
+            current_subscription.current_period_end,
+            current_subscription.cancelled_at,
+            current_subscription.plan_key,
+            current_subscription.plan_name,
+            current_subscription.provider,
+            current_subscription.recurring_status,
+            current_subscription.profile_price_per_user_monthly,
+            current_subscription.profile_seat_quantity,
+
+            latest_payment.payment_id,
+            latest_payment.payment_provider,
+            latest_payment.payment_reference,
+            latest_payment.payment_amount,
+            latest_payment.payment_currency,
+            latest_payment.payment_status,
+            latest_payment.payment_created_at,
+            latest_payment.payment_updated_at
+
+          FROM tenants t
+
+          LEFT JOIN LATERAL (
+            SELECT
+              u.id
+                AS user_id,
+              u.email,
+              u.full_name,
+              u.first_name,
+              u.last_name,
+              u.status
+                AS user_status,
+              u.email_verified,
+              u.email_verified_at,
+              u.two_factor_enabled,
+              u.locked_until,
+              u.last_login_at
+            FROM tenant_users owner_membership
+            INNER JOIN users u
+              ON u.id =
+                 owner_membership.user_id
+             AND u.deleted_at
+                 IS NULL
+            WHERE owner_membership.tenant_id =
+                  t.id
+              AND owner_membership.deleted_at
+                  IS NULL
+              AND owner_membership.is_owner =
+                  TRUE
+            ORDER BY
+              CASE
+                WHEN LOWER(
+                  COALESCE(
+                    owner_membership.status,
+                    ''
+                  )
+                ) =
+                'active'
+                THEN 0
+                ELSE 1
+              END,
+              owner_membership.created_at ASC
+            LIMIT 1
+          ) owner_user
+            ON TRUE
+
+          LEFT JOIN LATERAL (
+            SELECT
+              COUNT(*) FILTER (
+                WHERE LOWER(
+                  COALESCE(
+                    membership.status,
+                    ''
+                  )
+                ) =
+                'active'
+              )::int
+                AS active_internal_users,
+
+              COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'id',
+                      member_user.id,
+                    'name',
+                      COALESCE(
+                        member_user.full_name,
+                        NULLIF(
+                          CONCAT_WS(
+                            ' ',
+                            member_user.first_name,
+                            member_user.last_name
+                          ),
+                          ''
+                        ),
+                        member_user.email
+                      ),
+                    'email',
+                      member_user.email,
+                    'status',
+                      membership.status,
+                    'isOwner',
+                      membership.is_owner,
+                    'lastLoginAt',
+                      member_user.last_login_at
+                  )
+                  ORDER BY
+                    membership.is_owner DESC,
+                    LOWER(
+                      COALESCE(
+                        member_user.full_name,
+                        member_user.email,
+                        ''
+                      )
+                    ) ASC
+                ),
+                '[]'::jsonb
+              )
+                AS internal_members
+
+            FROM tenant_users membership
+            INNER JOIN users member_user
+              ON member_user.id =
+                 membership.user_id
+             AND member_user.deleted_at
+                 IS NULL
+            WHERE membership.tenant_id =
+                  t.id
+              AND membership.deleted_at
+                  IS NULL
+              AND LOWER(
+                    COALESCE(
+                      membership.member_type,
+                      ''
+                    )
+                  ) =
+                  'internal'
+          ) member_summary
+            ON TRUE
+
+          LEFT JOIN LATERAL (
+            SELECT
+              s.id
+                AS subscription_id,
+              s.status
+                AS subscription_status,
+              s.billing_cycle,
+              s.trial_ends_at,
+              s.current_period_start,
+              s.current_period_end,
+              s.cancelled_at,
+              p.key
+                AS plan_key,
+              p.name
+                AS plan_name,
+              profile.provider,
+              profile.recurring_status,
+              profile.price_per_user_monthly
+                AS profile_price_per_user_monthly,
+              profile.seat_quantity
+                AS profile_seat_quantity
+            FROM subscriptions s
+            LEFT JOIN plans p
+              ON p.id =
+                 s.plan_id
+             AND p.deleted_at
+                 IS NULL
+            LEFT JOIN LATERAL (
+              SELECT
+                sbp.provider,
+                sbp.recurring_status,
+                sbp.price_per_user_monthly,
+                sbp.seat_quantity
+              FROM subscription_billing_profiles sbp
+              WHERE sbp.subscription_id =
+                    s.id
+                AND sbp.is_active =
+                    TRUE
+              ORDER BY
+                sbp.updated_at DESC
+              LIMIT 1
+            ) profile
+              ON TRUE
+            WHERE s.tenant_id =
+                  t.id
+              AND s.deleted_at
+                  IS NULL
+            ORDER BY
+              s.created_at DESC,
+              s.id DESC
+            LIMIT 1
+          ) current_subscription
+            ON TRUE
+
+          LEFT JOIN LATERAL (
+            SELECT
+              pt.id
+                AS payment_id,
+              pt.provider
+                AS payment_provider,
+              pt.provider_transaction_id
+                AS payment_reference,
+              pt.amount
+                AS payment_amount,
+              pt.currency
+                AS payment_currency,
+              pt.status
+                AS payment_status,
+              pt.created_at
+                AS payment_created_at,
+              pt.updated_at
+                AS payment_updated_at
+            FROM payment_transactions pt
+            WHERE pt.tenant_id =
+                  t.id
+              AND (
+                current_subscription.subscription_id
+                  IS NULL
+                OR pt.subscription_id =
+                   current_subscription.subscription_id
+              )
+            ORDER BY
+              pt.created_at DESC,
+              pt.id DESC
+            LIMIT 1
+          ) latest_payment
+            ON TRUE
+
+          WHERE t.deleted_at
                 IS NULL
             AND (
-              $1::text IS NULL
-              OR u.email
-                   ILIKE $1
-              OR COALESCE(
-                   u.full_name,
-                   ''
-                 )
-                   ILIKE $1
-              OR COALESCE(
-                   u.first_name,
-                   ''
-                 )
-                   ILIKE $1
-              OR COALESCE(
-                   u.last_name,
-                   ''
-                 )
-                   ILIKE $1
+              $2::uuid IS NULL
+              OR t.id =
+                 $2::uuid
             )
-          GROUP BY
-            u.id,
-            u.email,
-            u.first_name,
-            u.last_name,
-            u.full_name,
-            u.status,
-            u.email_verified,
-            u.email_verified_at,
-            u.two_factor_enabled,
-            u.locked_until,
-            u.last_login_at,
-            u.created_at
+            AND (
+              $1::text IS NULL
+              OR t.name
+                   ILIKE $1
+              OR t.slug
+                   ILIKE $1
+              OR owner_user.email
+                   ILIKE $1
+              OR COALESCE(
+                   owner_user.full_name,
+                   ''
+                 )
+                   ILIKE $1
+              OR COALESCE(
+                   owner_user.first_name,
+                   ''
+                 )
+                   ILIKE $1
+              OR COALESCE(
+                   owner_user.last_name,
+                   ''
+                 )
+                   ILIKE $1
+              OR EXISTS (
+                SELECT 1
+                FROM tenant_users member
+                INNER JOIN users member_user
+                  ON member_user.id =
+                     member.user_id
+                 AND member_user.deleted_at
+                     IS NULL
+                WHERE member.tenant_id =
+                      t.id
+                  AND member.deleted_at
+                      IS NULL
+                  AND LOWER(
+                        COALESCE(
+                          member.member_type,
+                          ''
+                        )
+                      ) =
+                      'internal'
+                  AND (
+                    member_user.email
+                      ILIKE $1
+                    OR COALESCE(
+                         member_user.full_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.first_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.last_name,
+                         ''
+                       )
+                         ILIKE $1
+                  )
+              )
+            )
+
           ORDER BY
-            u.created_at DESC,
-            u.id DESC
-          LIMIT $2
-          OFFSET $3
+            t.created_at DESC,
+            t.id DESC
+
+          LIMIT $3
+          OFFSET $4
         `,
         [
           pattern,
+          workspaceId,
           limit,
           offset,
         ],
@@ -329,63 +840,399 @@ export async function listAdminUsers(
       ),
     rows:
       rowsResult.rows.map(
-        row => ({
-          id:
-            String(
-              row.id,
-            ),
-          email:
-            String(
-              row.email ||
-              '',
-            ),
-          name:
-            String(
-              row.full_name ||
-              [
-                row.first_name,
-                row.last_name,
-              ]
-                .filter(
-                  Boolean,
+        row => {
+          const planKey =
+            normalizeSamiPlanKey(
+              row.plan_key
+                ? String(
+                    row.plan_key,
+                  )
+                : null,
+            );
+
+          const policy =
+            planKey
+              ? getSamiPlanPolicy(
+                  planKey,
                 )
-                .join(
-                  ' ',
-                ) ||
-              row.email ||
-              '',
-            ),
-          status:
-            String(
-              row.status ||
-              'unknown',
-            ),
-          emailVerified:
-            Boolean(
-              row.email_verified ||
-              row.email_verified_at,
-            ),
-          twoFactorEnabled:
-            row.two_factor_enabled ===
-            true,
-          lockedUntil:
-            toIso(
-              row.locked_until,
-            ),
-          lastLoginAt:
-            toIso(
-              row.last_login_at,
-            ),
-          workspaceCount:
+              : null;
+
+          const activeInternalUsers =
             Number(
-              row.workspace_count ||
+              row.active_internal_users ||
               0,
-            ),
-          createdAt:
-            toIso(
-              row.created_at,
-            ),
-        }),
+            );
+
+          const billableUsers =
+            Math.max(
+              1,
+              activeInternalUsers,
+            );
+
+          const pricePerUserMonthly =
+            planKey
+              ? getSamiPricePerUserMonthly(
+                  planKey,
+                )
+              : null;
+
+          const expectedMonthlyAmount =
+            planKey
+              ? getSamiMonthlyAmount(
+                  planKey,
+                  billableUsers,
+                )
+              : null;
+
+          const subscriptionStatus =
+            row.subscription_status
+              ? String(
+                  row.subscription_status,
+                )
+              : null;
+
+          const effectiveStatus =
+            planKey &&
+            subscriptionStatus
+              ? getEffectiveSubscriptionStatus({
+                  status:
+                    subscriptionStatus,
+                  planKey,
+                  trialEndsAt:
+                    row.trial_ends_at,
+                  currentPeriodEnd:
+                    row.current_period_end,
+                  cancelledAt:
+                    row.cancelled_at,
+                })
+              : 'missing';
+
+          const latestPaymentStatus =
+            row.payment_status
+              ? String(
+                  row.payment_status,
+                )
+                  .trim()
+                  .toLowerCase()
+              : null;
+
+          let settlement:
+            'free'
+            | 'trial'
+            | 'cleared'
+            | 'pending'
+            | 'due'
+            | 'cancelled'
+            | 'unknown' =
+              'unknown';
+
+          if (
+            policy &&
+            !policy.paid
+          ) {
+            settlement =
+              'free';
+          } else if (
+            effectiveStatus ===
+              'trial' ||
+            effectiveStatus ===
+              'trialing'
+          ) {
+            settlement =
+              'trial';
+          } else if (
+            effectiveStatus ===
+              'active'
+          ) {
+            settlement =
+              'cleared';
+          } else if (
+            effectiveStatus ===
+              'past_due'
+          ) {
+            settlement =
+              latestPaymentStatus ===
+                'pending' ||
+              latestPaymentStatus ===
+                'processing'
+                ? 'pending'
+                : 'due';
+          } else if (
+            effectiveStatus ===
+              'cancelled' ||
+            effectiveStatus ===
+              'canceled'
+          ) {
+            settlement =
+              'cancelled';
+          }
+
+          const rawMembers:
+            AdminWorkspaceMemberRow[] =
+              Array.isArray(
+                row.internal_members,
+              )
+                ? row.internal_members as
+                    AdminWorkspaceMemberRow[]
+                : [];
+
+          return {
+            workspace: {
+              id:
+                String(
+                  row.tenant_id,
+                ),
+              name:
+                String(
+                  row.tenant_name ||
+                  '',
+                ),
+              slug:
+                String(
+                  row.tenant_slug ||
+                  '',
+                ),
+              status:
+                String(
+                  row.tenant_status ||
+                  'unknown',
+                ),
+              createdAt:
+                toIso(
+                  row.tenant_created_at,
+                ),
+            },
+
+            owner:
+              row.owner_user_id
+                ? {
+                    userId:
+                      String(
+                        row.owner_user_id,
+                      ),
+                    email:
+                      String(
+                        row.owner_email ||
+                        '',
+                      ),
+                    name:
+                      String(
+                        row.owner_full_name ||
+                        [
+                          row.owner_first_name,
+                          row.owner_last_name,
+                        ]
+                          .filter(
+                            Boolean,
+                          )
+                          .join(
+                            ' ',
+                          ) ||
+                        row.owner_email ||
+                        '',
+                      ),
+                    status:
+                      String(
+                        row.owner_user_status ||
+                        'unknown',
+                      ),
+                    emailVerified:
+                      Boolean(
+                        row.owner_email_verified ||
+                        row.owner_email_verified_at,
+                      ),
+                    twoFactorEnabled:
+                      row.owner_two_factor_enabled ===
+                      true,
+                    lockedUntil:
+                      toIso(
+                        row.owner_locked_until,
+                      ),
+                    lastLoginAt:
+                      toIso(
+                        row.owner_last_login_at,
+                      ),
+                  }
+                : null,
+
+            users: {
+              activeInternal:
+                activeInternalUsers,
+              billable:
+                billableUsers,
+              allInternal:
+                rawMembers.map(
+                  member => ({
+                    id:
+                      String(
+                        member.id ||
+                        '',
+                      ),
+                    name:
+                      String(
+                        member.name ||
+                        member.email ||
+                        '',
+                      ),
+                    email:
+                      String(
+                        member.email ||
+                        '',
+                      ),
+                    status:
+                      String(
+                        member.status ||
+                        'unknown',
+                      ),
+                    isOwner:
+                      member.isOwner ===
+                        true,
+                    lastLoginAt:
+                      typeof member.lastLoginAt ===
+                        'string'
+                        ? toIso(
+                            member.lastLoginAt,
+                          )
+                        : null,
+                  }),
+                ),
+            },
+
+            subscription:
+              row.subscription_id
+                ? {
+                    id:
+                      String(
+                        row.subscription_id,
+                      ),
+                    status:
+                      effectiveStatus,
+                    storedStatus:
+                      subscriptionStatus ||
+                      'unknown',
+                    planKey,
+                    planName:
+                      row.plan_name
+                        ? String(
+                            row.plan_name,
+                          )
+                        : planKey,
+                    billingCycle:
+                      row.billing_cycle
+                        ? String(
+                            row.billing_cycle,
+                          )
+                        : null,
+                    trialEndsAt:
+                      toIso(
+                        row.trial_ends_at,
+                      ),
+                    currentPeriodStart:
+                      toIso(
+                        row.current_period_start,
+                      ),
+                    currentPeriodEnd:
+                      toIso(
+                        row.current_period_end,
+                      ),
+                    cancelledAt:
+                      toIso(
+                        row.cancelled_at,
+                      ),
+                    provider:
+                      row.provider
+                        ? String(
+                            row.provider,
+                          )
+                        : null,
+                    recurringStatus:
+                      row.recurring_status
+                        ? String(
+                            row.recurring_status,
+                          )
+                        : null,
+                    synchronizedPricePerUser:
+                      row.profile_price_per_user_monthly ===
+                        null ||
+                      row.profile_price_per_user_monthly ===
+                        undefined
+                        ? null
+                        : Number(
+                            row.profile_price_per_user_monthly,
+                          ),
+                    synchronizedSeats:
+                      row.profile_seat_quantity ===
+                        null ||
+                      row.profile_seat_quantity ===
+                        undefined
+                        ? null
+                        : Number(
+                            row.profile_seat_quantity,
+                          ),
+                  }
+                : null,
+
+            billing: {
+              currency:
+                'KES' as const,
+              pricePerUserMonthly,
+              expectedMonthlyAmount,
+              settlement,
+              cleared:
+                settlement ===
+                  'cleared' ||
+                settlement ===
+                  'free' ||
+                settlement ===
+                  'trial',
+            },
+
+            latestPayment:
+              row.payment_id
+                ? {
+                    id:
+                      String(
+                        row.payment_id,
+                      ),
+                    provider:
+                      row.payment_provider
+                        ? String(
+                            row.payment_provider,
+                          )
+                        : null,
+                    reference:
+                      row.payment_reference
+                        ? String(
+                            row.payment_reference,
+                          )
+                        : null,
+                    amount:
+                      Number(
+                        row.payment_amount ||
+                        0,
+                      ),
+                    currency:
+                      String(
+                        row.payment_currency ||
+                        'KES',
+                      ),
+                    status:
+                      String(
+                        row.payment_status ||
+                        'unknown',
+                      ),
+                    createdAt:
+                      toIso(
+                        row.payment_created_at,
+                      ),
+                    updatedAt:
+                      toIso(
+                        row.payment_updated_at,
+                      ),
+                  }
+                : null,
+          };
+        },
       ),
   });
 }

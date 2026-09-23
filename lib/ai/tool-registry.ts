@@ -4,6 +4,10 @@ import {
   CORE_SAMI_AI_TOOLS,
 } from '@/lib/ai/core-tools';
 
+import {
+  INVOICING_AI_TOOLS,
+} from '@/lib/apps/invoicing/ai-tools';
+
 import type {
   SamiAiRuntimeContext,
   SamiAiToolDefinition,
@@ -22,7 +26,9 @@ import {
  */
 export const APP_SAMI_AI_TOOLS:
   SamiAiToolDefinition[] =
-  [];
+  [
+    ...INVOICING_AI_TOOLS,
+  ];
 
 function hasAllPermissions(
   context: SamiAiRuntimeContext,

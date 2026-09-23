@@ -271,6 +271,85 @@ test('Category 24 global user controls preserve identities and revoke sessions',
   assert.match(page, /UserControlActions/);
 });
 
+test('Category 24 admin users are grouped by workspace owner with billing visibility', async () => {
+  const oversight = await source('lib/admin/oversight.ts');
+  const page = await source('app/admin/(protected)/users/page.tsx');
+  const resource = await source('app/admin/components/AdminResourcePage.tsx');
+
+  assert.match(
+    oversight,
+    /owner_membership\.is_owner[\s\S]*TRUE/,
+  );
+  assert.match(
+    oversight,
+    /active_internal_users/,
+  );
+  assert.match(
+    oversight,
+    /internal_members/,
+  );
+  assert.match(
+    oversight,
+    /payment_transactions/,
+  );
+  assert.match(
+    oversight,
+    /getSamiMonthlyAmount/,
+  );
+  assert.match(
+    oversight,
+    /getEffectiveSubscriptionStatus/,
+  );
+  assert.match(
+    oversight,
+    /settlement/,
+  );
+  assert.match(
+    page,
+    /Workspace customers/,
+  );
+  assert.match(
+    page,
+    /Owner → workspace → users → billing/,
+  );
+  assert.match(
+    page,
+    /billable/,
+  );
+  assert.match(
+    page,
+    /Monthly charge/,
+  );
+  assert.match(
+    page,
+    /Not cleared/,
+  );
+  assert.match(
+    page,
+    /<details/,
+  );
+  assert.match(
+    page,
+    /name="workspace"/,
+  );
+  assert.match(
+    page,
+    /row\.workspace\.id/,
+  );
+  assert.doesNotMatch(
+    page,
+    /Global identity registry/,
+  );
+  assert.match(
+    resource,
+    /persistentQuery/,
+  );
+  assert.match(
+    resource,
+    /filterFields/,
+  );
+});
+
 test('Category 24 provider credentials stay server-only', async () => {
   const env = await source('docs/platform-env.example');
 

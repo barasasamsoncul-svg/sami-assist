@@ -5,6 +5,10 @@ import type {
 } from '@/lib/search/types';
 
 import {
+  INVOICING_SEARCH_PROVIDER,
+} from '@/lib/apps/invoicing/search';
+
+import {
   filterAccessibleModuleExtensions,
 } from '@/lib/modules/registry';
 
@@ -17,7 +21,9 @@ import {
  */
 export const WORKSPACE_SEARCH_PROVIDERS:
   WorkspaceSearchProvider[] =
-  [];
+  [
+    INVOICING_SEARCH_PROVIDER,
+  ];
 
 export function getWorkspaceSearchProviders(
   accessibleModuleKeys: string[],

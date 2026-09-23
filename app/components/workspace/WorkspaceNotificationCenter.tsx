@@ -21,6 +21,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 
@@ -89,6 +90,7 @@ type Tab =
 type Props = {
   mode?: 'drawer' | 'page';
   userId: string;
+  initialUnreadNotifications?: number;
   onUnreadChange?: (count: number) => void;
 };
 
@@ -175,6 +177,7 @@ function initials(
 export default function WorkspaceNotificationCenter({
   mode = 'drawer',
   userId,
+  initialUnreadNotifications = 0,
   onUnreadChange,
 }: Props) {
   const [
@@ -244,7 +247,40 @@ export default function WorkspaceNotificationCenter({
     setAlertUnread,
   ] =
     useState(
-      0,
+      Math.max(
+        0,
+        initialUnreadNotifications,
+      ),
+    );
+
+  const [
+    liveAlert,
+    setLiveAlert,
+  ] =
+    useState<
+      NotificationItem | null
+    >(
+      null,
+    );
+
+  const alertUnreadRef =
+    useRef(
+      Math.max(
+        0,
+        initialUnreadNotifications,
+      ),
+    );
+
+  const latestAlertIdRef =
+    useRef<
+      string | null
+    >(
+      null,
+    );
+
+  const hasLoadedSummaryRef =
+    useRef(
+      false,
     );
 
   const [
@@ -419,14 +455,63 @@ export default function WorkspaceNotificationCenter({
             summaryResponse.ok &&
             summaryData.success
           ) {
-            setAlertUnread(
-              Number(
-                summaryData
-                  .summary
-                  ?.unreadCount ||
+            const nextUnread =
+              Math.max(
                 0,
-              ),
+                Number(
+                  summaryData
+                    .summary
+                    ?.unreadCount ||
+                  0,
+                ),
+              );
+
+            const latestUnread =
+              summaryData
+                .summary
+                ?.latestUnread as
+                NotificationItem |
+                null |
+                undefined;
+
+            if (
+              latestUnread?.id
+            ) {
+              if (
+                hasLoadedSummaryRef
+                  .current &&
+                latestAlertIdRef
+                  .current !==
+                  latestUnread.id &&
+                nextUnread >
+                  alertUnreadRef
+                    .current
+              ) {
+                setLiveAlert(
+                  latestUnread,
+                );
+              }
+
+              latestAlertIdRef
+                .current =
+                latestUnread.id;
+            } else {
+              latestAlertIdRef
+                .current =
+                null;
+            }
+
+            alertUnreadRef
+              .current =
+              nextUnread;
+
+            setAlertUnread(
+              nextUnread,
             );
+
+            hasLoadedSummaryRef
+              .current =
+              true;
           }
 
           if (
@@ -634,7 +719,98 @@ export default function WorkspaceNotificationCenter({
 
   useEffect(
     () => {
+      if (
+        mode !==
+        'drawer'
+      ) {
+        return;
+      }
+
+      const refresh =
+        () => {
+          if (
+            typeof document ===
+              'undefined' ||
+            document
+              .visibilityState ===
+              'visible'
+          ) {
+            void loadSummary();
+          }
+        };
+
+      const interval =
+        window.setInterval(
+          refresh,
+          20_000,
+        );
+
+      window.addEventListener(
+        'focus',
+        refresh,
+      );
+
+      document.addEventListener(
+        'visibilitychange',
+        refresh,
+      );
+
+      return () => {
+        window.clearInterval(
+          interval,
+        );
+
+        window.removeEventListener(
+          'focus',
+          refresh,
+        );
+
+        document.removeEventListener(
+          'visibilitychange',
+          refresh,
+        );
+      };
+    },
+    [
+      loadSummary,
+      mode,
+    ],
+  );
+
+  useEffect(
+    () => {
+      if (
+        !liveAlert
+      ) {
+        return;
+      }
+
+      const timeout =
+        window.setTimeout(
+          () =>
+            setLiveAlert(
+              null,
+            ),
+          8_000,
+        );
+
+      return () =>
+        window.clearTimeout(
+          timeout,
+        );
+    },
+    [
+      liveAlert,
+    ],
+  );
+
+  useEffect(
+    () => {
       if (open) {
+        setLiveAlert(
+          null,
+        );
+
         void loadPanel();
       }
     },
@@ -2127,17 +2303,125 @@ export default function WorkspaceNotificationCenter({
 
   return (
     <>
+      {liveAlert && (
+        <div
+          aria-live="polite"
+          className="fixed right-3 top-[72px] z-[145] w-[calc(100vw-1.5rem)] max-w-sm overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-2xl shadow-slate-950/20 dark:border-blue-500/20 dark:bg-[#11141a] sm:right-5"
+        >
+          <div className="flex items-start gap-3 p-4">
+            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+              <Bell className="h-4 w-4" />
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
+                New workspace alert
+              </p>
+
+              <p className="mt-1 text-xs font-black leading-5 text-slate-950 dark:text-white">
+                {liveAlert.title}
+              </p>
+
+              {liveAlert.message && (
+                <p className="mt-1 line-clamp-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                  {liveAlert.message}
+                </p>
+              )}
+
+              <div className="mt-3 flex items-center gap-2">
+                {liveAlert.href && (
+                  <Link
+                    href={
+                      liveAlert.href
+                    }
+                    onClick={() => {
+                      void markAlert(
+                        liveAlert,
+                        true,
+                      );
+
+                      setLiveAlert(
+                        null,
+                      );
+                    }}
+                    className="inline-flex h-8 items-center rounded-lg bg-blue-600 px-3 text-[10px] font-black text-white transition hover:bg-blue-700"
+                  >
+                    Open
+                  </Link>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLiveAlert(
+                      null,
+                    );
+
+                    setOpen(
+                      true,
+                    );
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg border border-slate-200 px-3 text-[10px] font-black text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/[0.05]"
+                >
+                  View notifications
+                </button>
+
+                <button
+                  type="button"
+                  aria-label="Dismiss workspace alert"
+                  onClick={() =>
+                    setLiveAlert(
+                      null,
+                    )
+                  }
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-white/10 dark:hover:text-white"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
-        aria-label="Open notifications"
-        onClick={() =>
+        aria-label={
+          totalUnread >
+          0
+            ? `Open notifications, ${totalUnread} unread`
+            : 'Open notifications'
+        }
+        onClick={() => {
+          setLiveAlert(
+            null,
+          );
+
           setOpen(
             true,
-          )
-        }
-        className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] text-slate-500 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] hover:text-slate-900 dark:text-slate-400 dark:hover:text-white"
+          );
+        }}
+        className={[
+          'relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border bg-[var(--sami-surface)] shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)]',
+          totalUnread >
+            0
+            ? 'border-blue-300 text-blue-600 ring-2 ring-blue-500/10 dark:border-blue-500/30 dark:text-blue-300'
+            : 'border-[var(--sami-border)] text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white',
+        ].join(
+          ' ',
+        )}
       >
-        <Bell className="h-4 w-4" />
+        <Bell
+          className={[
+            'h-4 w-4',
+            totalUnread >
+              0
+              ? 'fill-current'
+              : '',
+          ].join(
+            ' ',
+          )}
+        />
 
         {totalUnread >
         0 && (

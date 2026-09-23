@@ -2557,10 +2557,18 @@ export async function sendSecurityCodeEmail(
    WORKSPACE NOTIFICATION EMAIL
    ============================================================ */
 
+export type WorkspaceNotificationEmailAttachment = {
+  filename: string;
+  content: Buffer;
+  contentType: string;
+};
+
 export type WorkspaceNotificationEmailOptions = {
   title: string;
   message?: string | null;
   actionHref?: string | null;
+  actionLabel?: string | null;
+  attachments?: WorkspaceNotificationEmailAttachment[];
 
   /**
    * Backward-compatible default is workspace.
@@ -2664,6 +2672,76 @@ export async function sendWorkspaceNotificationEmail(
   const safeActionUrl =
     escapeHtml(actionUrl);
 
+  const actionLabel =
+    (
+      options.actionLabel ||
+      'Open in SaMi'
+    )
+      .trim()
+      .slice(
+        0,
+        80,
+      ) ||
+    'Open in SaMi';
+
+  const safeActionLabel =
+    escapeHtml(
+      actionLabel,
+    );
+
+  const attachments =
+    (
+      options.attachments ||
+      []
+    )
+      .filter(
+        attachment =>
+          attachment &&
+          typeof attachment.filename ===
+            'string' &&
+          attachment.filename.trim() &&
+          Buffer.isBuffer(
+            attachment.content,
+          ) &&
+          attachment.content.length >
+            0 &&
+          attachment.content.length <=
+            12 *
+            1024 *
+            1024,
+      )
+      .slice(
+        0,
+        5,
+      )
+      .map(
+        attachment => ({
+          filename:
+            attachment.filename
+              .trim()
+              .replace(
+                /[\r\n"]/g,
+                '',
+              )
+              .slice(
+                0,
+                180,
+              ),
+          content:
+            attachment.content,
+          contentType:
+            (
+              attachment.contentType ||
+              'application/octet-stream'
+            )
+              .trim()
+              .slice(
+                0,
+                120,
+              ),
+        }),
+      );
+
   const safeLogoUrl =
     escapeHtml(
       getEmailLogoUrl(),
@@ -2710,7 +2788,7 @@ export async function sendWorkspaceNotificationEmail(
               <h1 style="margin:0;font-size:24px;line-height:32px">${safeTitle}</h1>
               ${safeMessage ? `<p style="margin:16px 0 0;font-size:15px;line-height:24px;color:#475569">${safeMessage}</p>` : ''}
               <p style="margin:24px 0 0">
-                <a href="${safeActionUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">Open in SaMi</a>
+                <a href="${safeActionUrl}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 18px;border-radius:12px">${safeActionLabel}</a>
               </p>
             </td>
           </tr>
@@ -2751,6 +2829,12 @@ export async function sendWorkspaceNotificationEmail(
           text,
 
           html,
+
+          attachments:
+            attachments.length >
+              0
+              ? attachments
+              : undefined,
 
           headers: {
             'X-SaMi-Email-Type':
