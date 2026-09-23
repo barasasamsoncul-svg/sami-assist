@@ -8,6 +8,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
 import type {
   PlatformAdminRole,
   PlatformAdminStatus,
@@ -406,16 +410,15 @@ async function actorCanManageAdministrators(
     await queryControl(
       `
         SELECT
-          id
+          role,
+          status,
+          email_verified
 
         FROM
           platform_admins
 
         WHERE
           id = $1
-          AND role = 'super_admin'
-          AND status = 'active'
-          AND email_verified = TRUE
           AND deleted_at IS NULL
 
         LIMIT 1
@@ -425,9 +428,31 @@ async function actorCanManageAdministrators(
       ]
     );
 
-  return (
-    result.rows.length >
-    0
+  const row =
+    result.rows[0];
+
+  if (
+    !row ||
+    String(
+      row.status ||
+      '',
+    )
+      .trim()
+      .toLowerCase() !==
+      'active' ||
+    row.email_verified !==
+      true
+  ) {
+    return false;
+  }
+
+  return hasAdminCapability(
+    String(
+      row.role ||
+      '',
+    ) as
+      PlatformAdminRole,
+    'administrators.manage',
   );
 }
 
