@@ -178,7 +178,6 @@ export function AdminStatusPill({
       'degraded',
       'invited',
       'locked',
-      'due',
       'pending_payment',
     ]);
 
@@ -193,6 +192,7 @@ export function AdminStatusPill({
       'suspended',
       'disabled',
       'revoked',
+      'due',
     ]);
 
   const className =
