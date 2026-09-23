@@ -30,6 +30,7 @@ import {
   CircleAlert,
   CloudCog,
   ListChecks,
+  Database,
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -154,6 +155,13 @@ const navigation: readonly NavigationItem[] = [
         href: '/admin/operations/health',
         icon: Activity,
         capability: 'health.read',
+      },
+
+      {
+        label: 'Backups & Recovery',
+        href: '/admin/operations/recovery',
+        icon: Database,
+        capability: 'tenants.read',
       },
 
       {
