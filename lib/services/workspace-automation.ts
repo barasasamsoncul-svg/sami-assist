@@ -7,6 +7,10 @@ import {
 } from '@/lib/auth/account-context';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   getPermissionContext,
 } from '@/lib/auth/permission-context';
 
@@ -68,6 +72,7 @@ export type WorkspaceAutomationErrorCode =
   | 'WORKSPACE_CONTEXT_CHANGED'
   | 'COMPANY_REQUIRED'
   | 'COMPANY_ACCESS_DENIED'
+  | 'AUTOMATION_PLATFORM_DISABLED'
   | 'AUTOMATION_VIEW_REQUIRED'
   | 'AUTOMATION_MANAGE_REQUIRED'
   | 'INVALID_AUTOMATION'
@@ -184,11 +189,24 @@ async function resolveAutomationContext(
   const [
     permissions,
     session,
+    platformSettings,
   ] =
     await Promise.all([
       getPermissionContext(),
       getSession(),
+      getRuntimePlatformSettings(),
     ]);
+
+  if (
+    !platformSettings
+      .features
+      .automationEnabled
+  ) {
+    throw new WorkspaceAutomationError(
+      'AUTOMATION_PLATFORM_DISABLED',
+      'Automation is temporarily disabled by Platform Administration.',
+    );
+  }
 
   if (
     !session

@@ -5,6 +5,10 @@ import {
 
 import crypto from 'crypto';
 
+import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -456,6 +460,38 @@ export async function GET(
     );
 
   try {
+    if (
+      intent ===
+        'register'
+    ) {
+      const platformSettings =
+        await getRuntimePlatformSettings();
+
+      if (
+        !platformSettings
+          .registration
+          .publicRegistrationEnabled ||
+        !platformSettings
+          .registration
+          .googleRegistrationEnabled
+      ) {
+        const destination =
+          new URL(
+            '/register',
+            request.nextUrl.origin,
+          );
+
+        destination.searchParams.set(
+          'error',
+          'registration_disabled',
+        );
+
+        return NextResponse.redirect(
+          destination,
+        );
+      }
+    }
+
     /* ========================================================
        CONFIGURATION
        ======================================================== */

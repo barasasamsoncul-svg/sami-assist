@@ -24,7 +24,9 @@ export type PlatformAdminCapability =
   | 'providers.read'
   | 'providers.manage'
   | 'jobs.read'
-  | 'support.read';
+  | 'support.read'
+  | 'settings.read'
+  | 'settings.manage';
 
 
 const ALL_CAPABILITIES:
@@ -50,6 +52,8 @@ const ALL_CAPABILITIES:
     'providers.manage',
     'jobs.read',
     'support.read',
+    'settings.read',
+    'settings.manage',
   ];
 
 
@@ -74,6 +78,7 @@ const ROLE_CAPABILITIES:
       'incidents.manage',
       'providers.read',
       'jobs.read',
+      'settings.read',
     ],
 
     support_admin: [
@@ -112,6 +117,7 @@ const ROLE_CAPABILITIES:
       'jobs.read',
       'notifications.read',
       'support.read',
+      'settings.read',
     ],
 
     developer_admin: [
@@ -122,6 +128,7 @@ const ROLE_CAPABILITIES:
       'incidents.read',
       'providers.read',
       'jobs.read',
+      'settings.read',
     ],
 
     read_only_admin: [
@@ -138,6 +145,7 @@ const ROLE_CAPABILITIES:
       'providers.read',
       'jobs.read',
       'support.read',
+      'settings.read',
     ],
   };
 

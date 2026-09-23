@@ -6,6 +6,10 @@ import {
 } from '@/lib/auth/session';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   getWorkspaceSubscriptionAccessState,
 } from '@/lib/billing/access';
 
@@ -64,6 +68,37 @@ export async function requirePageSession(
     await getSession();
 
   if (session) {
+    const platformSettings =
+      await getRuntimePlatformSettings();
+
+    const maintenanceRecoveryPath =
+      nextPath ===
+        '/maintenance' ||
+      nextPath.startsWith(
+        '/maintenance?',
+      ) ||
+      nextPath ===
+        '/settings' ||
+      nextPath.startsWith(
+        '/settings?',
+      ) ||
+      nextPath ===
+        '/subscription-required' ||
+      nextPath.startsWith(
+        '/subscription-required?',
+      );
+
+    if (
+      platformSettings
+        .operations
+        .maintenanceMode &&
+      !maintenanceRecoveryPath
+    ) {
+      redirect(
+        '/maintenance',
+      );
+    }
+
     if (
       session.currentTenantId
     ) {

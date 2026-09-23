@@ -7,6 +7,10 @@ import {
 } from '@/lib/auth/account-context';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   getUserPreferences,
 } from '@/lib/account/user-account';
 
@@ -122,6 +126,7 @@ export type WorkspaceAiErrorCode =
   | 'COMPANY_REQUIRED'
   | 'COMPANY_ACCESS_DENIED'
   | 'AI_NOT_ENTITLED'
+  | 'AI_PLATFORM_DISABLED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_RATE_LIMITED'
   | 'AI_ATTACHMENT_INVALID'
@@ -2607,6 +2612,20 @@ export async function sendWorkspaceAiMessage(
 
   const context =
     resolved.runtime;
+
+  const platformSettings =
+    await getRuntimePlatformSettings();
+
+  if (
+    !platformSettings
+      .features
+      .samiAiEnabled
+  ) {
+    throw new WorkspaceAiError(
+      'AI_PLATFORM_DISABLED',
+      'SaMi AI is temporarily disabled by Platform Administration.',
+    );
+  }
 
   const mode =
     input.mode === 'edit' ||

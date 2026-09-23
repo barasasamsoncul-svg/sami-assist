@@ -127,6 +127,9 @@ export function handleAiApiError(
               'AI_NOT_ENTITLED'
           ? 403
           : error.code ===
+                'AI_PLATFORM_DISABLED'
+            ? 503
+            : error.code ===
                 'WORKSPACE_CONTEXT_CHANGED' ||
               error.code ===
                 'COMPANY_REQUIRED'
