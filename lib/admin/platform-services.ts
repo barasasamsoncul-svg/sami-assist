@@ -13,6 +13,10 @@ import {
   capturePlatformIncident,
 } from '@/lib/observability/platform-incidents';
 
+import {
+  notifyPlatformAdminsOfServiceEvent,
+} from '@/lib/admin/platform-alerts';
+
 
 type ServiceStatus =
   | 'active'
@@ -2182,44 +2186,80 @@ async function recordServiceEvent(
       null;
   }
 
-  await queryControl(
-    `
-      INSERT INTO platform_service_events (
-        subscription_id,
-        event_type,
+  const eventResult =
+    await queryControl(
+      `
+        INSERT INTO platform_service_events (
+          subscription_id,
+          event_type,
+          severity,
+          title,
+          message,
+          effective_at,
+          incident_id,
+          metadata,
+          created_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          NOW(),
+          $6,
+          $7::jsonb,
+          NOW()
+        )
+        RETURNING id
+      `,
+      [
+        row.id,
+        `status.${status}`,
         severity,
         title,
-        message,
-        effective_at,
-        incident_id,
-        metadata,
-        created_at
-      )
-      VALUES (
-        $1,
-        $2,
-        $3,
-        $4,
-        $5,
-        NOW(),
-        $6,
-        $7::jsonb,
-        NOW()
-      )
-    `,
-    [
-      row.id,
-      `status.${status}`,
-      severity,
+        `Status changed from ${previousStatus} to ${status}.`,
+        incidentId,
+        JSON.stringify({
+          previousStatus,
+          status,
+        }),
+      ],
+    );
+
+  const serviceEventId =
+    eventResult.rows[0]
+      ?.id
+      ? String(
+          eventResult.rows[0]
+            .id,
+        )
+      : null;
+
+  if (
+    important &&
+    serviceEventId
+  ) {
+    await notifyPlatformAdminsOfServiceEvent({
+      serviceEventId,
+      severity:
+        severity as
+          'warning' |
+          'error' |
+          'critical',
       title,
-      `Status changed from ${previousStatus} to ${status}.`,
-      incidentId,
-      JSON.stringify({
-        previousStatus,
-        status,
-      }),
-    ],
-  );
+      message:
+        `${row.service_name} changed from ${previousStatus.replace(
+          /_/g,
+          ' ',
+        )} to ${status.replace(
+          /_/g,
+          ' ',
+        )}. Open Platform Admin to review renewal, payment, quota or upgrade requirements.`,
+      serviceKey:
+        row.service_key,
+    });
+  }
 }
 
 
