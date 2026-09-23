@@ -5,6 +5,7 @@ import {
   Database,
   FileClock,
   ServerCog,
+  ShieldAlert,
 } from 'lucide-react';
 
 import {
@@ -93,9 +94,31 @@ export default async function AdminPlatformHealthPage() {
             </p>
           </div>
 
-          <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
-            <CheckCircle2 className="h-4 w-4" />
-            Control DB reachable
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <CheckCircle2 className="h-4 w-4" />
+              Control DB reachable
+            </div>
+
+            <div
+              className={[
+                'inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wide',
+                health.schema.ready
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
+              ].join(
+                ' ',
+              )}
+            >
+              {health.schema.ready ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <ShieldAlert className="h-4 w-4" />
+              )}
+              {health.schema.ready
+                ? 'Schema ready'
+                : `${health.schema.pendingCount} migration${health.schema.pendingCount === 1 ? '' : 's'} pending`}
+            </div>
           </div>
         </div>
 
@@ -190,10 +213,28 @@ export default async function AdminPlatformHealthPage() {
 
             <div className="flex items-center justify-between gap-4">
               <dt className="text-zinc-500">
-                Latest control migration
+                Latest expected migration
               </dt>
-              <dd className="text-right font-black">
-                {health.schema.latestVersion || '—'} {health.schema.latestName || ''}
+              <dd className="max-w-[60%] truncate text-right font-mono text-[10px] font-black">
+                {health.schema.latestExpected || '—'}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-zinc-500">
+                Latest applied migration
+              </dt>
+              <dd className="max-w-[60%] truncate text-right font-mono text-[10px] font-black">
+                {health.schema.latestApplied || '—'}
+              </dd>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-zinc-500">
+                Control migrations
+              </dt>
+              <dd className="font-black">
+                {health.schema.appliedCount}/{health.schema.expectedCount}
               </dd>
             </div>
 
@@ -224,6 +265,39 @@ export default async function AdminPlatformHealthPage() {
               </dd>
             </div>
           </dl>
+
+          {!health.schema.ready && (
+            <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-500/10">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+
+                <div>
+                  <p className="text-xs font-black text-amber-800 dark:text-amber-200">
+                    Control database migration required
+                  </p>
+
+                  <p className="mt-1 text-[10px] leading-5 text-amber-700 dark:text-amber-300">
+                    Apply the pending control migrations before treating this deployment as production-ready.
+                  </p>
+
+                  <div className="mt-2 space-y-1">
+                    {health.schema.pending.map(
+                      migration => (
+                        <p
+                          key={
+                            migration
+                          }
+                          className="font-mono text-[9px] text-amber-700 dark:text-amber-300"
+                        >
+                          {migration}
+                        </p>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>
