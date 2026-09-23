@@ -39,14 +39,10 @@ type Preferences = {
 };
 
 
-type SmsProvider = {
-  key?:
-    string;
-  name?:
-    string;
-  configured?:
-    boolean;
-};
+type SmsProvider =
+  | 'africastalking'
+  | 'twilio'
+  | 'disabled';
 
 
 function toggleClass(
@@ -86,8 +82,7 @@ export default function PlatformAlertPreferencesForm({
   initial:
     Preferences;
   smsProvider:
-    SmsProvider |
-    null;
+    SmsProvider;
 }) {
   const [
     state,
@@ -253,9 +248,8 @@ export default function PlatformAlertPreferencesForm({
 
 
   const smsAvailable =
-    smsProvider
-      ?.configured ===
-      true;
+    smsProvider !==
+      'disabled';
 
   return (
     <div className="space-y-6">
@@ -413,7 +407,7 @@ export default function PlatformAlertPreferencesForm({
           </div>
 
           <p className="mt-2 text-[11px] leading-5 text-zinc-500">
-            Provider: {smsProvider?.name || smsProvider?.key || 'Not configured'}.
+            Provider: {smsProvider === 'disabled' ? 'Not configured' : smsProvider}.
           </p>
 
           <div className="mt-5 space-y-4">
