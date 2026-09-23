@@ -1535,6 +1535,407 @@ async function getSubscriptionForResponse(
   );
 }
 
+async function buildCompletedRegistrationResponse(
+  input: {
+    request:
+      RegistrationRequestRow;
+    draft:
+      RegistrationDraft;
+    session:
+      Awaited<
+        ReturnType<
+          typeof getSession
+        >
+      >;
+  }
+) {
+  const {
+    request,
+    draft,
+    session,
+  } =
+    input;
+
+  if (
+    !request.user_id ||
+    !request.tenant_id ||
+    !request.subscription_id
+  ) {
+    return null;
+  }
+
+  const [
+    subscription,
+    tenantResult,
+    appResult,
+  ] =
+    await Promise.all([
+      getSubscriptionForResponse(
+        request.subscription_id,
+        request.user_id
+      ),
+
+      queryControl(
+        `
+          SELECT
+            id,
+            name,
+            slug,
+            status
+          FROM tenants
+          WHERE id = $1
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          request.tenant_id,
+        ]
+      ),
+
+      queryControl(
+        `
+          SELECT
+            m.key
+          FROM tenant_modules tm
+          INNER JOIN modules m
+            ON m.id =
+               tm.module_id
+          WHERE tm.tenant_id = $1
+            AND tm.deleted_at
+                IS NULL
+            AND m.deleted_at
+                IS NULL
+          ORDER BY
+            m.key
+        `,
+        [
+          request.tenant_id,
+        ]
+      ),
+    ]);
+
+  const tenant =
+    tenantResult.rows[0] ||
+    null;
+
+  if (
+    !subscription ||
+    !tenant
+  ) {
+    return null;
+  }
+
+  const authoritativeEmail =
+    normalizeEmail(
+      subscription
+        .owner_email
+    );
+
+  const authoritativeBusinessName =
+    normalizeName(
+      subscription
+        .tenant_name
+    );
+
+  if (
+    !isValidEmail(
+      authoritativeEmail
+    ) ||
+    !authoritativeBusinessName
+  ) {
+    return null;
+  }
+
+  const finalPlan =
+    normalizePlan(
+      subscription
+        .plan_key
+    );
+
+  const isPaidPlan =
+    finalPlan !==
+    'free';
+
+  const billableUsers =
+    await getBillableUserCount(
+      request.tenant_id
+    );
+
+  const perUserMonthlyPrice =
+    getSamiPricePerUserMonthly(
+      finalPlan
+    );
+
+  const monthlyAmount =
+    isPaidPlan
+      ? getSamiMonthlyAmount(
+          finalPlan,
+          billableUsers,
+        )
+      : 0;
+
+  const trialEndsAt =
+    toIsoString(
+      subscription
+        .trial_ends_at
+    );
+
+  const currentPeriodStart =
+    toIsoString(
+      subscription
+        .current_period_start
+    );
+
+  const currentPeriodEnd =
+    toIsoString(
+      subscription
+        .current_period_end
+    );
+
+  const emailVerified =
+    Boolean(
+      subscription
+        .owner_email_verified ||
+      subscription
+        .owner_email_verified_at
+    );
+
+  const provisioningSucceeded =
+    String(
+      tenant.status ||
+      ''
+    )
+      .trim()
+      .toLowerCase() ===
+      'active';
+
+  if (
+    draft.mode ===
+      'existing' &&
+    provisioningSucceeded &&
+    session &&
+    session.user.id ===
+      request.user_id
+  ) {
+    await setCurrentTenantForSession(
+      session.sessionId,
+      session.user.id,
+      request.tenant_id
+    );
+  }
+
+  const response =
+    jsonResponse(
+      {
+        success:
+          true,
+
+        code:
+          'REGISTRATION_ALREADY_COMPLETED',
+
+        idempotentReplay:
+          true,
+
+        requiresPayment:
+          false,
+
+        paymentRequiredNow:
+          false,
+
+        billingSetupRequired:
+          false,
+
+        billingSetupRequiredNow:
+          false,
+
+        billingSetupRequiredAtTrialEnd:
+          isPaidPlan,
+
+        firstMonthFree:
+          isPaidPlan,
+
+        amountDueToday:
+          0,
+
+        user: {
+          id:
+            request.user_id,
+
+          email:
+            authoritativeEmail,
+
+          emailVerified,
+
+          authProvider:
+            draft.mode,
+        },
+
+        tenant: {
+          id:
+            request.tenant_id,
+
+          name:
+            authoritativeBusinessName,
+
+          slug:
+            String(
+              tenant.slug ||
+              ''
+            ),
+
+          status:
+            String(
+              tenant.status ||
+              ''
+            ),
+        },
+
+        subscription: {
+          id:
+            request.subscription_id,
+
+          plan:
+            finalPlan,
+
+          planName:
+            subscription
+              .plan_name,
+
+          status:
+            subscription
+              .status,
+
+          billingCycle:
+            isPaidPlan
+              ? 'monthly'
+              : null,
+
+          firstMonthFree:
+            isPaidPlan,
+
+          trialMonths:
+            isPaidPlan
+              ? PAID_TRIAL_MONTHS
+              : 0,
+
+          startedAt:
+            toIsoString(
+              subscription
+                .started_at
+            ),
+
+          trialEndsAt,
+
+          currentPeriodStart,
+
+          currentPeriodEnd,
+
+          firstBillingAt:
+            isPaidPlan
+              ? trialEndsAt
+              : null,
+
+          amountDueToday:
+            0,
+
+          perUserMonthlyPrice,
+
+          billableUsers,
+
+          monthlyAmount,
+
+          currency:
+            SAMI_BILLING_CURRENCY,
+
+          paymentMethodOnFile:
+            false,
+
+          recurringBillingEnrolled:
+            false,
+        },
+
+        selectedApps:
+          appResult.rows
+            .map(
+              row =>
+                String(
+                  row.key ||
+                  ''
+                )
+                  .trim()
+                  .toLowerCase()
+            )
+            .filter(
+              Boolean
+            ),
+
+        verification: {
+          required:
+            draft.mode ===
+              'email' &&
+            !emailVerified,
+
+          email:
+            authoritativeEmail,
+
+          expiresInMinutes:
+            draft.mode ===
+                'email' &&
+              !emailVerified
+              ? VERIFICATION_EXPIRY_MINUTES
+              : null,
+
+          emailSent:
+            false,
+        },
+
+        next:
+          draft.mode ===
+            'existing'
+            ? (
+                provisioningSucceeded
+                  ? '/dashboard'
+                  : '/workspaces/new?workspace=preparing'
+              )
+            : draft.mode ===
+                'google'
+              ? (
+                  provisioningSucceeded
+                    ? '/login?google=registered'
+                    : '/login?workspace=preparing'
+                )
+              : emailVerified
+                ? '/login?registered=1'
+                : `/verify-email?email=${encodeURIComponent(
+                    authoritativeEmail
+                  )}`,
+
+        message:
+          'This workspace registration was already completed. SaMi returned the existing workspace instead of creating a duplicate.',
+      },
+      200
+    );
+
+  response.cookies.set(
+    REGISTRATION_DRAFT_COOKIE_NAME,
+    '',
+    clearRegistrationDraftCookieOptions()
+  );
+
+  if (
+    draft.mode ===
+      'google'
+  ) {
+    clearGoogleSignupCookie(
+      response
+    );
+  }
+
+  return response;
+}
+
+
 /* ============================================================
    POST /api/auth/register
    ============================================================ */
