@@ -1628,6 +1628,9 @@ export async function getAdminPlatformHealth() {
     activeSubscriptions,
     registrationRequests,
     migrations,
+    tenantDatabaseHealth,
+    incidents,
+    failedJobs,
   ] =
     await Promise.all([
       queryControl(
@@ -1705,6 +1708,90 @@ export async function getAdminPlatformHealth() {
           LIMIT 1
         `,
       ),
+
+      queryControl(
+        `
+          SELECT
+            COUNT(*)::int
+              AS total,
+            COUNT(*) FILTER (
+              WHERE health_status =
+                    'healthy'
+            )::int
+              AS healthy,
+            COUNT(*) FILTER (
+              WHERE health_status =
+                    'degraded'
+            )::int
+              AS degraded,
+            COUNT(*) FILTER (
+              WHERE health_status =
+                    'unreachable'
+            )::int
+              AS unreachable,
+            COUNT(*) FILTER (
+              WHERE health_status =
+                    'maintenance'
+            )::int
+              AS maintenance,
+            COUNT(*) FILTER (
+              WHERE health_status IS NULL
+                 OR health_status =
+                    'unknown'
+            )::int
+              AS unknown
+          FROM tenant_databases
+        `,
+      ),
+
+      queryControl(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE status =
+                    'open'
+            )::int
+              AS open,
+            COUNT(*) FILTER (
+              WHERE status =
+                    'acknowledged'
+            )::int
+              AS acknowledged,
+            COUNT(*) FILTER (
+              WHERE status IN (
+                'open',
+                'acknowledged'
+              )
+              AND severity =
+                  'critical'
+            )::int
+              AS critical,
+            COUNT(*) FILTER (
+              WHERE status IN (
+                'open',
+                'acknowledged'
+              )
+              AND severity =
+                  'error'
+            )::int
+              AS errors
+          FROM platform_incidents
+        `,
+      ),
+
+      queryControl(
+        `
+          SELECT
+            COUNT(*)::int
+              AS count
+          FROM platform_job_runs
+          WHERE status =
+                'failed'
+            AND created_at >=
+                NOW() -
+                INTERVAL '24 hours'
+        `,
+      ),
     ]);
 
   const elapsedMs =
@@ -1719,10 +1806,19 @@ export async function getAdminPlatformHealth() {
     migrations.rows[0] ||
     null;
 
+  const databases =
+    tenantDatabaseHealth.rows[0] ||
+    {};
+
+  const incidentCounts =
+    incidents.rows[0] ||
+    {};
+
   return {
     generatedAt:
       new Date()
         .toISOString(),
+
     controlDatabase: {
       reachable:
         true,
@@ -1734,18 +1830,84 @@ export async function getAdminPlatformHealth() {
             ?.database_time,
         ),
     },
+
     tenants:
       Number(
         tenantCount.rows[0]
           ?.count ||
         0,
       ),
+
     entitledSubscriptions:
       Number(
         activeSubscriptions.rows[0]
           ?.count ||
         0,
       ),
+
+    tenantDatabases: {
+      total:
+        Number(
+          databases.total ||
+          0,
+        ),
+      healthy:
+        Number(
+          databases.healthy ||
+          0,
+        ),
+      degraded:
+        Number(
+          databases.degraded ||
+          0,
+        ),
+      unreachable:
+        Number(
+          databases.unreachable ||
+          0,
+        ),
+      maintenance:
+        Number(
+          databases.maintenance ||
+          0,
+        ),
+      unknown:
+        Number(
+          databases.unknown ||
+          0,
+        ),
+    },
+
+    incidents: {
+      open:
+        Number(
+          incidentCounts.open ||
+          0,
+        ),
+      acknowledged:
+        Number(
+          incidentCounts.acknowledged ||
+          0,
+        ),
+      critical:
+        Number(
+          incidentCounts.critical ||
+          0,
+        ),
+      errors:
+        Number(
+          incidentCounts.errors ||
+          0,
+        ),
+    },
+
+    failedJobsLast24Hours:
+      Number(
+        failedJobs.rows[0]
+          ?.count ||
+        0,
+      ),
+
     registrationRequests: {
       processing:
         Number(
@@ -1763,6 +1925,7 @@ export async function getAdminPlatformHealth() {
           0,
         ),
     },
+
     schema: {
       latestVersion:
         latestMigration
@@ -1784,5 +1947,218 @@ export async function getAdminPlatformHealth() {
             ?.applied_at,
         ),
     },
+  };
+}
+
+
+export async function listAdminJobRuns(
+  input:
+    AdminListInput = {},
+) {
+  const {
+    page,
+    limit,
+    offset,
+    search,
+  } =
+    pagination(
+      input,
+    );
+
+  const pattern =
+    search
+      ? `%${search}%`
+      : null;
+
+  const [
+    countResult,
+    rowsResult,
+  ] =
+    await Promise.all([
+      queryControl(
+        `
+          SELECT
+            COUNT(*)::int
+              AS count
+          FROM platform_job_runs j
+          WHERE (
+            $1::text IS NULL
+            OR j.job_key
+                 ILIKE $1
+            OR COALESCE(
+                 j.status,
+                 ''
+               )
+                 ILIKE $1
+            OR COALESCE(
+                 j.provider,
+                 ''
+               )
+                 ILIKE $1
+            OR COALESCE(
+                 j.error_code,
+                 ''
+               )
+                 ILIKE $1
+          )
+        `,
+        [
+          pattern,
+        ],
+      ),
+
+      queryControl(
+        `
+          SELECT
+            j.id,
+            j.job_key,
+            j.status,
+            j.correlation_id,
+            j.trigger_type,
+            j.provider,
+            j.tenant_id,
+            j.started_at,
+            j.finished_at,
+            j.duration_ms,
+            j.error_code,
+            j.error_message,
+            j.created_at,
+            t.name
+              AS tenant_name
+          FROM platform_job_runs j
+          LEFT JOIN tenants t
+            ON t.id =
+               j.tenant_id
+          WHERE (
+            $1::text IS NULL
+            OR j.job_key
+                 ILIKE $1
+            OR COALESCE(
+                 j.status,
+                 ''
+               )
+                 ILIKE $1
+            OR COALESCE(
+                 j.provider,
+                 ''
+               )
+                 ILIKE $1
+            OR COALESCE(
+                 j.error_code,
+                 ''
+               )
+                 ILIKE $1
+          )
+          ORDER BY
+            j.created_at DESC,
+            j.id DESC
+          LIMIT $2
+          OFFSET $3
+        `,
+        [
+          pattern,
+          limit,
+          offset,
+        ],
+      ),
+    ]);
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  return {
+    page,
+    limit,
+    total,
+    totalPages:
+      Math.max(
+        1,
+        Math.ceil(
+          total /
+          limit,
+        ),
+      ),
+    items:
+      rowsResult.rows.map(
+        row => ({
+          id:
+            String(
+              row.id,
+            ),
+          jobKey:
+            String(
+              row.job_key,
+            ),
+          status:
+            String(
+              row.status,
+            ),
+          correlationId:
+            String(
+              row.correlation_id,
+            ),
+          triggerType:
+            row.trigger_type
+              ? String(
+                  row.trigger_type,
+                )
+              : null,
+          provider:
+            row.provider
+              ? String(
+                  row.provider,
+                )
+              : null,
+          tenantId:
+            row.tenant_id
+              ? String(
+                  row.tenant_id,
+                )
+              : null,
+          tenantName:
+            row.tenant_name
+              ? String(
+                  row.tenant_name,
+                )
+              : null,
+          startedAt:
+            toIso(
+              row.started_at,
+            ),
+          finishedAt:
+            toIso(
+              row.finished_at,
+            ),
+          durationMs:
+            row.duration_ms ===
+              null ||
+            row.duration_ms ===
+              undefined
+              ? null
+              : Number(
+                  row.duration_ms,
+                ),
+          errorCode:
+            row.error_code
+              ? String(
+                  row.error_code,
+                )
+              : null,
+          errorMessage:
+            row.error_message
+              ? String(
+                  row.error_message,
+                )
+              : null,
+          createdAt:
+            toIso(
+              row.created_at,
+            ),
+        }),
+      ),
   };
 }
