@@ -1,0 +1,40 @@
+name: Category 25 Platform Settings
+
+on:
+  push:
+    branches:
+      - feat/category-25-platform-settings
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: category-25-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Category 25
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full environment-independent regression chain and production build
+        run: npm run test:ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
