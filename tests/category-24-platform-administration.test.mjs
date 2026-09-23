@@ -693,7 +693,24 @@ test('Category 24 internal platform operations remain outside the workspace shel
   );
 });
 
-test('Category 24 full-suite gate includes Platform Administration', async () => {
+test('Category 24 release gates preserve live authorization checks and run CI-safe platform validation', async () => {
   const packageJson = JSON.parse(await source('package.json'));
+  const workflow = await source('.github/workflows/category-24-platform-administration.yml');
+
+  assert.match(packageJson.scripts['test:all'], /test:authorization/);
   assert.match(packageJson.scripts['test:all'], /test:category24/);
+
+  assert.match(packageJson.scripts['test:ci'], /test:foundation/);
+  assert.match(packageJson.scripts['test:ci'], /test:registration/);
+  assert.match(packageJson.scripts['test:ci'], /test:category24/);
+  assert.match(packageJson.scripts['test:ci'], /test:responsive/);
+  assert.match(packageJson.scripts['test:ci'], /npm run build/);
+  assert.doesNotMatch(
+    packageJson.scripts['test:ci'],
+    /test:authorization/,
+    'Credentialless CI must not pretend to execute the live PostgreSQL authorization-integrity suite.',
+  );
+
+  assert.match(workflow, /npm run test:ci/);
+  assert.match(workflow, /npx tsc --noEmit/);
 });
