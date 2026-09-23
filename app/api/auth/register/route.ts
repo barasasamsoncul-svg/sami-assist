@@ -983,38 +983,49 @@ async function updateRegistrationRequestProgress(
   nonceHash: string,
   context: RegistrationContext
 ) {
-  await queryControl(
-    `
-      UPDATE registration_requests
-      SET
-        user_id =
-          COALESCE(
-            $2::uuid,
-            user_id
-          ),
-        tenant_id =
-          COALESCE(
-            $3::uuid,
-            tenant_id
-          ),
-        subscription_id =
-          COALESCE(
-            $4::uuid,
-            subscription_id
-          ),
-        updated_at =
-          NOW()
-      WHERE nonce_hash = $1
-        AND status =
-            'processing'
-    `,
-    [
-      nonceHash,
-      context.userId,
-      context.tenantId,
-      context.subscriptionId,
-    ]
-  );
+  const result =
+    await queryControl(
+      `
+        UPDATE registration_requests
+        SET
+          user_id =
+            COALESCE(
+              $2::uuid,
+              user_id
+            ),
+          tenant_id =
+            COALESCE(
+              $3::uuid,
+              tenant_id
+            ),
+          subscription_id =
+            COALESCE(
+              $4::uuid,
+              subscription_id
+            ),
+          updated_at =
+            NOW()
+        WHERE nonce_hash = $1
+          AND status =
+              'processing'
+        RETURNING id
+      `,
+      [
+        nonceHash,
+        context.userId,
+        context.tenantId,
+        context.subscriptionId,
+      ]
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new Error(
+      'Registration idempotency progress could not be persisted.'
+    );
+  }
 }
 
 async function completeRegistrationRequest(
@@ -2096,6 +2107,9 @@ export async function POST(
   let registrationRequestClaimed =
     false;
 
+  let registrationDurablyCompleted =
+    false;
+
   try {
     /* ========================================================
        1. REQUEST BOUNDARY
@@ -2141,9 +2155,28 @@ export async function POST(
       RegistrationBody;
 
     try {
+      const rawBody =
+        await request.text();
+
+      if (
+        Buffer.byteLength(
+          rawBody,
+          'utf8'
+        ) >
+        MAX_REGISTRATION_REQUEST_BYTES
+      ) {
+        return errorResponse(
+          413,
+          'REQUEST_TOO_LARGE',
+          'The registration request is too large.'
+        );
+      }
+
       const parsed:
         unknown =
-        await request.json();
+        JSON.parse(
+          rawBody
+        );
 
       if (
         !parsed ||
@@ -3548,6 +3581,9 @@ export async function POST(
     registrationRequestClaimed =
       false;
 
+    registrationDurablyCompleted =
+      true;
+
     /* ========================================================
        23. CONSUME GOOGLE SIGNUP STATE
 
@@ -3906,6 +3942,16 @@ export async function POST(
       error
     );
 
+    if (
+      registrationDurablyCompleted
+    ) {
+      return errorResponse(
+        500,
+        'REGISTRATION_RESPONSE_RETRY',
+        'Your workspace was created successfully, but SaMi could not finish this response. Retry the same setup to reopen the existing workspace; a duplicate will not be created.'
+      );
+    }
+
     const cleanupSucceeded =
       await cleanupRegistration(
         context
@@ -3930,16 +3976,40 @@ export async function POST(
       }
     }
 
+    const invalidDraft =
+      error instanceof
+        Error &&
+      error.message ===
+        'REGISTRATION_DRAFT_INVALID';
+
     return errorResponse(
       cleanupSucceeded
-        ? 500
+        ? (
+            invalidDraft
+              ? 409
+              : 500
+          )
         : 409,
       cleanupSucceeded
-        ? 'REGISTRATION_ERROR'
+        ? (
+            invalidDraft
+              ? 'REGISTRATION_DRAFT_INVALID'
+              : 'REGISTRATION_ERROR'
+          )
         : 'REGISTRATION_RECOVERY_REQUIRED',
       cleanupSucceeded
-        ? 'Registration could not be completed. The partial setup was cleaned up safely, so you can try again.'
-        : 'Registration stopped after a partial setup and SaMi could not prove cleanup was complete. Automatic retry is blocked to prevent a duplicate workspace.'
+        ? (
+            invalidDraft
+              ? 'The secure registration credential is unavailable. Start registration again.'
+              : 'Registration could not be completed. The partial setup was cleaned up safely, so you can try again.'
+          )
+        : 'Registration stopped after a partial setup and SaMi could not prove cleanup was complete. Automatic retry is blocked to prevent a duplicate workspace.',
+      invalidDraft
+        ? {
+            next:
+              '/register',
+          }
+        : {}
     );
   }
 }
