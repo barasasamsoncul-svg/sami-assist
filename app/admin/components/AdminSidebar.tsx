@@ -250,15 +250,7 @@ const navigation: readonly NavigationItem[] = [
         href: '/admin/settings/platform',
         icon: SlidersHorizontal,
 
-        /*
-         * Category 25.
-         *
-         * This will later receive its own permission enforcement
-         * at both page and API boundaries.
-         */
-        capability: 'security.read',
-
-        disabled: true,
+        capability: 'settings.read',
       },
     ],
   },
