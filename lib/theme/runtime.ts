@@ -147,13 +147,3 @@ export function setSaMiTheme(
     },
   );
 }
-
-/*
- * This runs before React hydrates.
- *
- * It intentionally uses only the cached personal theme + the browser
- * system preference. SaMiThemeProvider then reconciles the cache with
- * the authenticated account preference from the server.
- */
-export const SAMI_THEME_BOOTSTRAP_SCRIPT =
-  `(function(){try{var k='sami_theme';var t=localStorage.getItem(k);if(t!=='dark'&&t!=='light'&&t!=='system'){t='system';}var s=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;var r=t==='dark'||(t==='system'&&s)?'dark':'light';var e=document.documentElement;e.classList.toggle('dark',r==='dark');e.dataset.themePreference=t;e.style.colorScheme=r;}catch(_){var d=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.classList.toggle('dark',!!d);document.documentElement.style.colorScheme=d?'dark':'light';}})();`;

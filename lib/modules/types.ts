@@ -107,6 +107,23 @@ export type SamiModuleResource = {
   fields?: SamiModuleField[];
 };
 
+export type SamiModulePermissionDefinition = {
+  key: string;
+  name: string;
+  description?: string | null;
+  resource: string;
+  action: string;
+  scope?:
+    | 'workspace'
+    | 'company'
+    | 'module'
+    | 'record';
+  defaultSystemRoles?: (
+    | 'admin'
+    | 'member'
+  )[];
+};
+
 export type SamiModuleRecordPolicy = {
   key: string;
   name: string;
@@ -134,6 +151,16 @@ export type SamiModuleExtensions = {
   aiTools: boolean;
   integrationProviders: boolean;
   apiEndpoints: boolean;
+
+  /*
+   * Data lifecycle is a first-class module contract.
+   *
+   * Business modules opt in only when code-owned handlers exist.
+   * This lets account/workspace exports and future erasure workflows
+   * discover module data without bypassing module security.
+   */
+  dataExport: boolean;
+  dataErasure: boolean;
 };
 
 export type SamiModuleManifest = {
@@ -162,7 +189,7 @@ export type SamiModuleManifest = {
   resources: SamiModuleResource[];
 
   security: {
-    permissions: string[];
+    permissions: SamiModulePermissionDefinition[];
     recordPolicies: SamiModuleRecordPolicy[];
     fieldPolicies: SamiModuleFieldPolicy[];
   };

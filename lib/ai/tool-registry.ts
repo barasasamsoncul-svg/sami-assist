@@ -128,6 +128,7 @@ export function getAvailableSamiAiTools(
       context.accessibleModuleKeys,
       tool =>
         tool.moduleKey,
+      'aiTools',
     );
 
   return [

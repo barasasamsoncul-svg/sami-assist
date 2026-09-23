@@ -11,6 +11,9 @@ import {
 import { SAMI_PERMISSIONS } from '@/lib/auth/permission-catalog';
 import { requireCompanyAccess } from '@/lib/services/company-access';
 import { getWorkspaceSubscriptionAccessState } from '@/lib/billing/access';
+import {
+  assertRegisteredSamiModuleExtension,
+} from '@/lib/modules/registry';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -891,6 +894,17 @@ export async function recordWorkspaceAuditEvent(
 
   const eventType =
     cleanKey(input.eventType || action, 150) || action;
+
+  const sourceModule =
+    cleanKey(
+      input.module,
+      150,
+    ) || null;
+
+  assertRegisteredSamiModuleExtension(
+    sourceModule,
+    'activity',
+  );
   const resourceType = cleanKey(input.resourceType, 150) || null;
   const resourceId = input.resourceId
     ? requireUuid(input.resourceId, 'resource')
@@ -943,7 +957,7 @@ export async function recordWorkspaceAuditEvent(
       action,
       resourceType,
       resourceId,
-      cleanKey(input.module, 150) || null,
+      sourceModule,
       cleanKey(input.result, 30) || null,
       JSON.stringify(safeJsonObject(input.metadata)),
       typeof input.ipAddress === 'string'

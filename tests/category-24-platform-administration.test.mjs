@@ -6,7 +6,18 @@ import path from 'node:path';
 const root = process.cwd();
 
 async function source(file) {
-  return readFile(path.join(root, file), 'utf8');
+  return (
+    await readFile(
+      path.join(
+        root,
+        file,
+      ),
+      'utf8',
+    )
+  ).replace(
+    /\r\n/g,
+    '\n',
+  );
 }
 
 test('Category 24 capability authority is centralized', async () => {

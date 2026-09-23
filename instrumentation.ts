@@ -79,6 +79,12 @@ function requestId(
   return (
     cleanHeader(
       headers[
+        'x-sami-request-id'
+      ],
+      255,
+    ) ||
+    cleanHeader(
+      headers[
         'x-vercel-id'
       ],
       255,

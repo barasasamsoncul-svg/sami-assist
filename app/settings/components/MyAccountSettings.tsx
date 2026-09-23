@@ -16,6 +16,8 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  Download,
+  FileJson,
   Globe2,
   Loader2,
   LockKeyhole,
@@ -99,7 +101,8 @@ type AccountView =
   | 'personal'
   | 'email'
   | 'preferences'
-  | 'security';
+  | 'security'
+  | 'data';
 
 type OverlayState = {
   type: SaMiOverlayType;
@@ -1519,6 +1522,11 @@ export default function MyAccountSettings() {
                 'security'
               )
             }
+            onData={() =>
+              navigate(
+                'data'
+              )
+            }
             onUploadAvatar={
               uploadAvatar
             }
@@ -1622,6 +1630,11 @@ export default function MyAccountSettings() {
         )}
 
         {view ===
+          'data' && (
+          <DataPrivacyView />
+        )}
+
+        {view ===
           'preferences' && (
           <PreferencesView
             preferences={
@@ -1676,6 +1689,7 @@ function AccountOverview({
   onEmail,
   onPreferences,
   onSecurity,
+  onData,
   onUploadAvatar,
   onRemoveAvatar,
   avatarSaving,
@@ -1687,6 +1701,7 @@ function AccountOverview({
   onPreferences:
     () => void;
   onSecurity: () => void;
+  onData: () => void;
   onUploadAvatar:
     (file: File | null) =>
       void;
@@ -1858,6 +1873,15 @@ function AccountOverview({
           description="Password, two-factor authentication, sessions and security activity"
           onClick={
             onSecurity
+          }
+        />
+
+        <AccountRow
+          icon={FileJson}
+          title="Data & privacy"
+          description="Download a portable copy of your SaMi account data"
+          onClick={
+            onData
           }
           last
         />
@@ -2313,6 +2337,55 @@ function EmailView({
     </div>
   );
 }
+
+function DataPrivacyView() {
+  return (
+    <div className="space-y-5">
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-2xl">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+              <FileJson className="h-5 w-5" />
+            </div>
+
+            <h2 className="mt-4 text-lg font-black text-slate-950 dark:text-white">
+              Your SaMi data
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              Download a machine-readable JSON copy of your global account,
+              personal preferences, workspace membership history, active
+              session metadata, and data exposed by any accessible SaMi
+              module that implements the platform data-export contract.
+            </p>
+          </div>
+
+          <a
+            href="/api/account/export"
+            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white shadow-sm transition hover:bg-blue-700"
+          >
+            <Download className="h-4 w-4" />
+            Download my data
+          </a>
+        </div>
+      </section>
+
+      <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#0d121b] sm:p-6">
+        <h3 className="text-sm font-black text-slate-950 dark:text-white">
+          Data deletion safety
+        </h3>
+
+        <p className="mt-2 text-xs leading-6 text-slate-500 dark:text-slate-400">
+          SaMi does not silently delete business records or bypass workspace
+          ownership, audit, billing, or legal-retention boundaries. Business
+          modules must implement the platform erasure contract before their
+          records can participate in a controlled account-erasure workflow.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 
 function PreferencesView({
   preferences,

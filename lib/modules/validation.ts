@@ -97,6 +97,35 @@ export function assertValidSamiModuleManifests(
       );
     }
 
+    for (
+      const extensionKey
+      of [
+        'dashboard',
+        'search',
+        'notifications',
+        'activity',
+        'automationTriggers',
+        'automationActions',
+        'aiTools',
+        'integrationProviders',
+        'apiEndpoints',
+        'dataExport',
+        'dataErasure',
+      ] as const
+    ) {
+      if (
+        typeof manifest
+          .extensions[
+            extensionKey
+          ] !==
+        'boolean'
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} must explicitly declare extension "${extensionKey}".`,
+        );
+      }
+    }
+
     if (
       manifest.depends.some(
         dependency =>
@@ -196,6 +225,131 @@ export function assertValidSamiModuleManifests(
         ),
       );
 
+    assertUnique(
+      manifest.security
+        .permissions
+        .map(
+          permission =>
+            permission.key,
+        ),
+      'permission',
+      moduleKey,
+    );
+
+    const permissionKeys =
+      new Set(
+        manifest.security
+          .permissions
+          .map(
+            permission =>
+              normalize(
+                permission.key,
+              ),
+          ),
+      );
+
+    for (
+      const permission
+      of manifest.security
+        .permissions
+    ) {
+      const key =
+        normalize(
+          permission.key,
+        );
+
+      if (
+        !key.startsWith(
+          `${moduleKey}.`,
+        )
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} permission "${permission.key}" must begin with "${moduleKey}.".`,
+        );
+      }
+
+      if (
+        !permission.name.trim() ||
+        !permission.resource.trim() ||
+        !permission.action.trim()
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} permission "${permission.key}" must define name, resource and action.`,
+        );
+      }
+    }
+
+    const assertPermissionReference =
+      (
+        permission:
+          string,
+        source:
+          string,
+      ) => {
+        const key =
+          normalize(
+            permission,
+          );
+
+        if (
+          !permissionKeys.has(
+            key,
+          )
+        ) {
+          throw new Error(
+            `SaMi module ${moduleKey} ${source} references undeclared permission "${permission}".`,
+          );
+        }
+      };
+
+    for (
+      const resource
+      of manifest.resources
+    ) {
+      for (
+        const permissions
+        of Object.values(
+          resource.permissions,
+        )
+      ) {
+        for (
+          const permission
+          of permissions ||
+          []
+        ) {
+          assertPermissionReference(
+            permission,
+            `resource "${resource.key}"`,
+          );
+        }
+      }
+
+      for (
+        const field
+        of resource.fields ||
+        []
+      ) {
+        for (
+          const permission
+          of [
+            ...(
+              field.readPermissions ||
+              []
+            ),
+            ...(
+              field.writePermissions ||
+              []
+            ),
+          ]
+        ) {
+          assertPermissionReference(
+            permission,
+            `field "${resource.key}.${field.key}"`,
+          );
+        }
+      }
+    }
+
     for (
       const item
       of manifest.navigation
@@ -273,6 +427,17 @@ export function assertValidSamiModuleManifests(
       of manifest.security
         .recordPolicies
     ) {
+      for (
+        const permission
+        of policy.requiredPermissions ||
+        []
+      ) {
+        assertPermissionReference(
+          permission,
+          `record policy "${policy.key}"`,
+        );
+      }
+
       if (
         !resourceByKey.has(
           normalize(
@@ -318,6 +483,25 @@ export function assertValidSamiModuleManifests(
               ),
           ),
         );
+
+      for (
+        const permission
+        of [
+          ...(
+            policy.readPermissions ||
+            []
+          ),
+          ...(
+            policy.writePermissions ||
+            []
+          ),
+        ]
+      ) {
+        assertPermissionReference(
+          permission,
+          `field policy "${policy.key}"`,
+        );
+      }
 
       if (
         !fields.has(

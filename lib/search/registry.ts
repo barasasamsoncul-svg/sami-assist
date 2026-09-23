@@ -27,5 +27,6 @@ export function getWorkspaceSearchProviders(
     accessibleModuleKeys,
     provider =>
       provider.key,
+    'search',
   );
 }

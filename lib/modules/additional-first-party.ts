@@ -24,6 +24,8 @@ const NO_EXTENSIONS = {
   aiTools: false,
   integrationProviders: false,
   apiEndpoints: false,
+  dataExport: false,
+  dataErasure: false,
 } as const;
 
 function additionalModule({

@@ -11,12 +11,17 @@ const root =
 async function source(
   file,
 ) {
-  return readFile(
-    path.join(
-      root,
-      file,
-    ),
-    'utf8',
+  return (
+    await readFile(
+      path.join(
+        root,
+        file,
+      ),
+      'utf8',
+    )
+  ).replace(
+    /\r\n/g,
+    '\n',
   );
 }
 
