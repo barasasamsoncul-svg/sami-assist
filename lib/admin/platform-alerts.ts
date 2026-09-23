@@ -778,6 +778,136 @@ export async function notifyPlatformAdminsOfServiceEvent(
 }
 
 
+export async function notifyPlatformAdminsOfIncident(
+  input: {
+    incidentId:
+      string;
+    severity:
+      AlertSeverity;
+    title:
+      string;
+    message:
+      string;
+  },
+) {
+  try {
+    const rows =
+      await recipients(
+        'incident',
+      );
+
+    let emailSent =
+      0;
+
+    let smsSent =
+      0;
+
+    let duplicate =
+      0;
+
+    for (
+      const recipient
+      of rows
+    ) {
+      if (
+        shouldEmail(
+          recipient,
+          input.severity,
+        )
+      ) {
+        const result =
+          await deliverEmail({
+            recipient,
+            incidentId:
+              input.incidentId,
+            title:
+              input.title,
+            message:
+              input.message,
+            actionHref:
+              `/admin/operations/incidents/${input.incidentId}`,
+          });
+
+        if (
+          result.sent
+        ) {
+          emailSent +=
+            1;
+        }
+
+        if (
+          result.duplicate
+        ) {
+          duplicate +=
+            1;
+        }
+      }
+
+      if (
+        shouldSms(
+          recipient,
+          input.severity,
+        )
+      ) {
+        const result =
+          await deliverSms({
+            recipient,
+            incidentId:
+              input.incidentId,
+            title:
+              input.title,
+            message:
+              input.message,
+          });
+
+        if (
+          result.sent
+        ) {
+          smsSent +=
+            1;
+        }
+
+        if (
+          result.duplicate
+        ) {
+          duplicate +=
+            1;
+        }
+      }
+    }
+
+    return {
+      recipients:
+        rows.length,
+      emailSent,
+      smsSent,
+      duplicate,
+    };
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Platform Alerts] Incident alert delivery failed:',
+      error instanceof
+        Error
+        ? error.message
+        : 'Unknown platform-alert failure',
+    );
+
+    return {
+      recipients:
+        0,
+      emailSent:
+        0,
+      smsSent:
+        0,
+      duplicate:
+        0,
+    };
+  }
+}
+
+
 export function getPlatformAlertSmsProvider() {
   return getSamiSmsProvider();
 }
