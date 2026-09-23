@@ -284,9 +284,10 @@ test('Category 25 page and API enforce settings capabilities and safe mutation b
     /MAX_BODY_BYTES/,
   );
 
-  assert.match(
-    route,
-    /application/json/,
+  assert.ok(
+    route.includes(
+      'application/json',
+    ),
   );
 
   assert.match(
