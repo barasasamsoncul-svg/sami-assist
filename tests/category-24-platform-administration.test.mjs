@@ -271,34 +271,62 @@ test('Category 24 global user controls preserve identities and revoke sessions',
   assert.match(page, /UserControlActions/);
 });
 
-test('Category 24 admin users are workspace billing-seat aware', async () => {
+test('Category 24 admin users are grouped by workspace owner with billing visibility', async () => {
   const oversight = await source('lib/admin/oversight.ts');
   const page = await source('app/admin/(protected)/users/page.tsx');
   const resource = await source('app/admin/components/AdminResourcePage.tsx');
 
   assert.match(
     oversight,
-    /FROM tenant_users tu/,
+    /owner_membership\.is_owner[\s\S]*TRUE/,
   );
   assert.match(
     oversight,
-    /tu\.member_type[\s\S]*internal/,
+    /active_internal_users/,
   );
   assert.match(
     oversight,
-    /tu\.status[\s\S]*active/,
+    /internal_members/,
   );
   assert.match(
     oversight,
-    /getSamiPricePerUserMonthly/,
+    /payment_transactions/,
   );
   assert.match(
     oversight,
-    /listAdminUserWorkspaceFilters/,
+    /getSamiMonthlyAmount/,
+  );
+  assert.match(
+    oversight,
+    /getEffectiveSubscriptionStatus/,
+  );
+  assert.match(
+    oversight,
+    /settlement/,
   );
   assert.match(
     page,
-    /Users & billing seats/,
+    /Workspace customers/,
+  );
+  assert.match(
+    page,
+    /Owner → workspace → users → billing/,
+  );
+  assert.match(
+    page,
+    /billable/,
+  );
+  assert.match(
+    page,
+    /Monthly charge/,
+  );
+  assert.match(
+    page,
+    /Not cleared/,
+  );
+  assert.match(
+    page,
+    /<details/,
   );
   assert.match(
     page,
@@ -306,19 +334,7 @@ test('Category 24 admin users are workspace billing-seat aware', async () => {
   );
   assert.match(
     page,
-    /name="seat"/,
-  );
-  assert.match(
-    page,
-    /Billing quantity/,
-  );
-  assert.match(
-    page,
-    /Paid-plan seats/,
-  );
-  assert.match(
-    page,
-    /row\.membershipId/,
+    /row\.workspace\.id/,
   );
   assert.doesNotMatch(
     page,
