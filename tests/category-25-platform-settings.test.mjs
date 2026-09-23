@@ -118,6 +118,18 @@ test('Category 25 settings authority validates and fails open before migration',
 
   assert.match(
     settings,
+    /withControlTransaction/,
+    'Settings row updates and revision history must commit atomically.',
+  );
+
+  assert.match(
+    settings,
+    /FOR UPDATE/,
+    'Concurrent administrators must serialize against the singleton settings row.',
+  );
+
+  assert.match(
+    settings,
     /code === '42P01'/,
     'Runtime settings must retain safe defaults before migration 007 is applied.',
   );
