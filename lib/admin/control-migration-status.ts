@@ -1,22 +1,12 @@
 import 'server-only';
 
 import {
-  readdir,
-} from 'node:fs/promises';
-import path from 'node:path';
-
-import {
   queryControl,
 } from '@/lib/db/control';
 
-
-const CONTROL_MIGRATION_DIRECTORY =
-  path.join(
-    process.cwd(),
-    'lib',
-    'schema',
-    'control-migrations',
-  );
+import {
+  CONTROL_MIGRATION_KEYS,
+} from '@/lib/schema/control-migrations/manifest';
 
 
 function migrationNumber(
@@ -38,32 +28,7 @@ function migrationNumber(
 
 export async function getControlMigrationStatus() {
   const files =
-    (
-      await readdir(
-        CONTROL_MIGRATION_DIRECTORY,
-      )
-    )
-      .filter(
-        file =>
-          /^\d+.*\.sql$/i.test(
-            file,
-          ),
-      )
-      .sort(
-        (
-          left,
-          right,
-        ) =>
-          left.localeCompare(
-            right,
-            'en',
-            {
-              numeric:
-                true,
-            },
-          ),
-      );
-
+    [...CONTROL_MIGRATION_KEYS];
   let appliedRows:
     Array<
       Record<
