@@ -443,6 +443,12 @@ function RegisterContent() {
   const [checking, setChecking] =
     useState(false);
 
+  const [
+    draftResetComplete,
+    setDraftResetComplete,
+  ] =
+    useState(false);
+
   const [googleLoading, setGoogleLoading] =
     useState(false);
 
@@ -493,6 +499,11 @@ function RegisterContent() {
     ).catch(
       () =>
         undefined,
+    ).finally(
+      () =>
+        setDraftResetComplete(
+          true
+        ),
     );
 
     try {
@@ -762,7 +773,8 @@ function RegisterContent() {
 
     if (
       checking ||
-      googleLoading
+      googleLoading ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -1045,7 +1057,8 @@ function RegisterContent() {
   function handleGoogle() {
     if (
       checking ||
-      googleLoading
+      googleLoading ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -1289,7 +1302,8 @@ function RegisterContent() {
                   onClick={handleGoogle}
                   disabled={
                     checking ||
-                    googleLoading
+                    googleLoading ||
+                    !draftResetComplete
                   }
                   aria-busy={
                     googleLoading
