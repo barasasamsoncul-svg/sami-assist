@@ -268,8 +268,6 @@ const navigation: readonly NavigationItem[] = [
         label: 'Notifications',
         href: '/admin/settings/notifications',
         icon: Bell,
-
-        disabled: true,
       },
 
       {
