@@ -4,6 +4,12 @@ import AdminResourcePage, {
   type AdminTableColumn,
 } from '@/app/admin/components/AdminResourcePage';
 
+import BillingReconcileButton from '@/app/admin/components/BillingReconcileButton';
+
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
 import {
   listAdminSubscriptions,
 } from '@/lib/admin/oversight';
@@ -34,9 +40,16 @@ export default async function AdminSubscriptionsPage({
   searchParams:
     Promise<SearchParams>;
 }) {
-  await requireAdminCapability(
-    'subscriptions.read',
-  );
+  const session =
+    await requireAdminCapability(
+      'subscriptions.read',
+    );
+
+  const canManage =
+    hasAdminCapability(
+      session.role,
+      'subscriptions.manage',
+    );
 
   const params =
     await searchParams;
@@ -179,6 +192,11 @@ export default async function AdminSubscriptionsPage({
           row.id
       }
       emptyMessage="No subscriptions match this search."
+      actions={
+        canManage
+          ? <BillingReconcileButton />
+          : null
+      }
     />
   );
 }
