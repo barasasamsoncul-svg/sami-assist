@@ -1027,6 +1027,43 @@ test('Registration: durable completion precedes external emails and best-effort 
 });
 
 
+test('Registration: post-commit response failures tell the user to retry safely', async () => {
+  const [
+    route,
+    plan,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/auth/register/route.ts',
+      ),
+      source(
+        'app/select-plan/page.tsx',
+      ),
+    ]);
+
+  assert.match(
+    route,
+    /REGISTRATION_RESPONSE_RETRY/,
+  );
+
+  assert.match(
+    plan,
+    /REGISTRATION_RESPONSE_RETRY/,
+  );
+
+  assert.match(
+    plan,
+    /Try again safely/,
+  );
+
+  assert.doesNotMatch(
+    plan,
+    /void handleCreateAccount\(\)/,
+    'The retry action must not recursively invoke the callback that defines it.',
+  );
+});
+
+
 test('Registration: Google OAuth state is the idempotency key across concurrent browser drafts', async () => {
   const route =
     await source(
