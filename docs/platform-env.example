@@ -219,6 +219,109 @@ R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
 # GEMINI_MODEL=
 
 
+
+# ============================================================
+# PostgreSQL — control DB + physical tenant databases
+# ============================================================
+#
+# SaMi's control database and tenant-database registry use these
+# server-only credentials. Tenant pools reuse the admin user/password
+# while resolving the physical database name and host from SaMi's
+# trusted tenant registry.
+#
+POSTGRES_HOST=<your-postgres-host>
+POSTGRES_PORT=5432
+POSTGRES_ADMIN_USER=<your-postgres-admin-user>
+POSTGRES_ADMIN_PASSWORD=<your-postgres-admin-password>
+POSTGRES_DB=sami_control
+POSTGRES_SSL=true
+
+
+# ============================================================
+# Authentication — Google sign-in / registration
+# ============================================================
+#
+# These are SaMi account authentication credentials. They are separate
+# from Category 20 workspace-integration OAuth credentials below.
+#
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+# Optional explicit callback. When blank SaMi derives it from APP_URL.
+GOOGLE_REDIRECT_URI=
+#
+# APP_URL is the preferred canonical public application URL.
+# NEXT_PUBLIC_APP_URL remains a compatibility/browser-visible fallback.
+# APP_URL is also used by transactional email links.
+#
+# APP_URL is defined in the Authentication / canonical URL section above.
+NEXT_PUBLIC_APP_URL=
+
+
+# ============================================================
+# Platform Admin session policy
+# ============================================================
+#
+# Milliseconds. Defaults in code are 12 hours and 7 days.
+#
+ADMIN_SESSION_DURATION_MS=43200000
+ADMIN_SESSION_REMEMBER_DURATION_MS=604800000
+
+
+# ============================================================
+# Category 19 — Automation worker
+# ============================================================
+#
+# Enable scheduled automation execution only after the internal worker
+# endpoint is protected by a secret and a scheduler/cron is configured.
+#
+SAMI_AUTOMATION_WORKER_ENABLED=false
+SAMI_AUTOMATION_WORKER_SECRET=<generate-a-long-random-secret>
+#
+# Optional worker tuning. Defaults are code-owned; set only when needed.
+SAMI_AUTOMATION_WORKER_TENANT_BATCH=
+SAMI_AUTOMATION_WORKER_ITEM_BATCH=
+
+
+# ============================================================
+# Category 20 — Integrations
+# ============================================================
+#
+# Public URL used to construct integration OAuth callback URLs.
+# If blank, NEXT_PUBLIC_APP_URL is used as a compatibility fallback.
+#
+SAMI_PUBLIC_APP_URL=https://your-sami-domain.example
+#
+# Versioned AES-256-GCM keyring. The active key must decode to exactly
+# 32 bytes (hex or base64). Rotate by creating a new version variable,
+# then changing SAMI_INTEGRATION_ENCRYPTION_KEY_VERSION.
+#
+SAMI_INTEGRATION_ENCRYPTION_KEY_VERSION=v1
+SAMI_INTEGRATION_ENCRYPTION_KEY_V1=<32-byte-key-as-hex-or-base64>
+#
+# Configure only providers you expose through workspace Integrations.
+#
+SAMI_GOOGLE_OAUTH_CLIENT_ID=
+SAMI_GOOGLE_OAUTH_CLIENT_SECRET=
+SAMI_MICROSOFT_OAUTH_CLIENT_ID=
+SAMI_MICROSOFT_OAUTH_CLIENT_SECRET=
+SAMI_SLACK_OAUTH_CLIENT_ID=
+SAMI_SLACK_OAUTH_CLIENT_SECRET=
+
+
+# ============================================================
+# Category 18 — SaMi AI runtime guardrails
+# ============================================================
+#
+# Provider keys/models are documented again in docs/sami-ai-env.example.
+# Configure exactly one active provider model unless using the explicit
+# SAMI_AI_PROVIDER compatibility override.
+#
+SAMI_AI_REQUESTS_PER_MINUTE=20
+SAMI_AI_REQUESTS_PER_DAY=500
+SAMI_AI_MAX_TOOL_ROUNDS=6
+SAMI_AI_CONTEXT_MESSAGES=24
+
+
 # ============================================================
 # IMPORTANT cleanup
 # ============================================================
