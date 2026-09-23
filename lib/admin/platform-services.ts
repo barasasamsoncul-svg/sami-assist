@@ -2726,6 +2726,557 @@ export async function listPlatformServiceSubscriptions() {
 }
 
 
+const SERVICE_CATEGORIES =
+  new Set([
+    'hosting',
+    'database',
+    'storage',
+    'domain',
+    'ai',
+    'email',
+    'sms',
+    'billing',
+    'monitoring',
+    'other',
+  ]);
+
+
+export async function createPlatformServiceSubscription(
+  input: {
+    serviceKey:
+      unknown;
+    provider:
+      unknown;
+    serviceName:
+      unknown;
+    category:
+      unknown;
+    billingCycle?:
+      unknown;
+    amount?:
+      unknown;
+    currency?:
+      unknown;
+    renewalAt?:
+      unknown;
+    expiresAt?:
+      unknown;
+    autoRenew?:
+      unknown;
+    quotaLimit?:
+      unknown;
+    quotaUnit?:
+      unknown;
+    warningThresholdPercent?:
+      unknown;
+    managementUrl?:
+      unknown;
+  },
+) {
+  const serviceKey =
+    typeof input.serviceKey ===
+      'string'
+      ? input.serviceKey
+          .trim()
+          .toLowerCase()
+      : '';
+
+  if (
+    !/^[a-z0-9][a-z0-9._-]{1,119}$/.test(
+      serviceKey,
+    )
+  ) {
+    throw new Error(
+      'INVALID_SERVICE',
+    );
+  }
+
+  const provider =
+    typeof input.provider ===
+      'string'
+      ? input.provider
+          .trim()
+          .toLowerCase()
+          .replace(
+            /[^a-z0-9._-]+/g,
+            '-',
+          )
+          .slice(
+            0,
+            80,
+          )
+      : '';
+
+  const serviceName =
+    typeof input.serviceName ===
+      'string'
+      ? input.serviceName
+          .trim()
+          .replace(
+            /\s+/g,
+            ' ',
+          )
+          .slice(
+            0,
+            160,
+          )
+      : '';
+
+  const category =
+    typeof input.category ===
+      'string'
+      ? input.category
+          .trim()
+          .toLowerCase()
+      : '';
+
+  if (
+    !provider ||
+    !serviceName
+  ) {
+    throw new Error(
+      'INVALID_SERVICE_IDENTITY',
+    );
+  }
+
+  if (
+    !SERVICE_CATEGORIES.has(
+      category,
+    )
+  ) {
+    throw new Error(
+      'INVALID_SERVICE_CATEGORY',
+    );
+  }
+
+  const billingCycle =
+    typeof input.billingCycle ===
+      'string'
+      ? input.billingCycle
+          .trim()
+          .toLowerCase()
+      : 'custom';
+
+  if (
+    ![
+      'monthly',
+      'annual',
+      'usage',
+      'prepaid',
+      'free',
+      'custom',
+    ].includes(
+      billingCycle,
+    )
+  ) {
+    throw new Error(
+      'INVALID_BILLING_CYCLE',
+    );
+  }
+
+  const amount =
+    input.amount ===
+        '' ||
+      input.amount ===
+        null ||
+      input.amount ===
+        undefined
+      ? null
+      : numberOrNull(
+          input.amount,
+        );
+
+  if (
+    amount !==
+      null &&
+    amount <
+      0
+  ) {
+    throw new Error(
+      'INVALID_AMOUNT',
+    );
+  }
+
+  const currency =
+    typeof input.currency ===
+      'string'
+      ? input.currency
+          .trim()
+          .toUpperCase()
+      : null;
+
+  if (
+    currency &&
+    !/^[A-Z]{3}$/.test(
+      currency,
+    )
+  ) {
+    throw new Error(
+      'INVALID_CURRENCY',
+    );
+  }
+
+  const renewalAt =
+    input.renewalAt
+      ? toIso(
+          String(
+            input.renewalAt,
+          ),
+        )
+      : null;
+
+  const expiresAt =
+    input.expiresAt
+      ? toIso(
+          String(
+            input.expiresAt,
+          ),
+        )
+      : null;
+
+  if (
+    input.renewalAt &&
+    !renewalAt
+  ) {
+    throw new Error(
+      'INVALID_RENEWAL_DATE',
+    );
+  }
+
+  if (
+    input.expiresAt &&
+    !expiresAt
+  ) {
+    throw new Error(
+      'INVALID_EXPIRY_DATE',
+    );
+  }
+
+  const quotaLimit =
+    input.quotaLimit ===
+        '' ||
+      input.quotaLimit ===
+        null ||
+      input.quotaLimit ===
+        undefined
+      ? null
+      : numberOrNull(
+          input.quotaLimit,
+        );
+
+  if (
+    quotaLimit !==
+      null &&
+    quotaLimit <
+      0
+  ) {
+    throw new Error(
+      'INVALID_QUOTA_LIMIT',
+    );
+  }
+
+  const threshold =
+    input.warningThresholdPercent ===
+        '' ||
+      input.warningThresholdPercent ===
+        null ||
+      input.warningThresholdPercent ===
+        undefined
+      ? 80
+      : numberOrNull(
+          input.warningThresholdPercent,
+        );
+
+  if (
+    threshold ===
+      null ||
+    threshold <
+      1 ||
+    threshold >
+      100
+  ) {
+    throw new Error(
+      'INVALID_WARNING_THRESHOLD',
+    );
+  }
+
+  const result =
+    await queryControl(
+      `
+        INSERT INTO platform_service_subscriptions (
+          service_key,
+          provider,
+          service_name,
+          category,
+          source,
+          status,
+          billing_cycle,
+          amount,
+          currency,
+          renewal_at,
+          expires_at,
+          auto_renew,
+          quota_limit,
+          quota_unit,
+          warning_threshold_percent,
+          management_url,
+          sync_adapter,
+          sync_status,
+          metadata,
+          created_at,
+          updated_at,
+          deleted_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          'manual',
+          'active',
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11,
+          $12,
+          $13,
+          $14,
+          'manual',
+          'not_supported',
+          '{"required_for_platform": false, "custom": true}'::jsonb,
+          NOW(),
+          NOW(),
+          NULL
+        )
+        ON CONFLICT (
+          service_key
+        )
+        DO UPDATE SET
+          provider =
+            EXCLUDED.provider,
+          service_name =
+            EXCLUDED.service_name,
+          category =
+            EXCLUDED.category,
+          source =
+            'manual',
+          status =
+            CASE
+              WHEN platform_service_subscriptions.status IN (
+                'expired',
+                'suspended',
+                'cancelled'
+              )
+              THEN 'active'
+              ELSE platform_service_subscriptions.status
+            END,
+          billing_cycle =
+            EXCLUDED.billing_cycle,
+          amount =
+            EXCLUDED.amount,
+          currency =
+            EXCLUDED.currency,
+          renewal_at =
+            EXCLUDED.renewal_at,
+          expires_at =
+            EXCLUDED.expires_at,
+          auto_renew =
+            EXCLUDED.auto_renew,
+          quota_limit =
+            EXCLUDED.quota_limit,
+          quota_unit =
+            EXCLUDED.quota_unit,
+          warning_threshold_percent =
+            EXCLUDED.warning_threshold_percent,
+          management_url =
+            EXCLUDED.management_url,
+          sync_adapter =
+            'manual',
+          sync_status =
+            'not_supported',
+          metadata =
+            COALESCE(
+              platform_service_subscriptions.metadata,
+              '{}'::jsonb
+            ) ||
+            '{"custom": true}'::jsonb,
+          deleted_at =
+            NULL,
+          updated_at =
+            NOW()
+        RETURNING *
+      `,
+      [
+        serviceKey,
+        provider,
+        serviceName,
+        category,
+        billingCycle,
+        amount,
+        currency,
+        renewalAt,
+        expiresAt,
+        input.autoRenew ===
+          true,
+        quotaLimit,
+        typeof input.quotaUnit ===
+          'string'
+          ? input.quotaUnit
+              .trim()
+              .slice(
+                0,
+                80,
+              ) ||
+            null
+          : null,
+        threshold,
+        typeof input.managementUrl ===
+          'string'
+          ? input.managementUrl
+              .trim()
+              .slice(
+                0,
+                2_000,
+              ) ||
+            null
+          : null,
+      ],
+    );
+
+  const row =
+    result.rows[0] as
+      ServiceRow;
+
+  const evaluated =
+    evaluateServiceStatus(
+      row,
+      {
+        syncStatus:
+          'not_supported',
+      },
+    );
+
+  if (
+    evaluated !==
+      row.status
+  ) {
+    await queryControl(
+      `
+        UPDATE platform_service_subscriptions
+        SET
+          status =
+            $2,
+          updated_at =
+            NOW()
+        WHERE id = $1
+      `,
+      [
+        row.id,
+        evaluated,
+      ],
+    );
+  }
+
+  return {
+    id:
+      String(
+        row.id,
+      ),
+    serviceKey,
+    status:
+      evaluated,
+  };
+}
+
+
+export async function archivePlatformServiceSubscription(
+  serviceKeyInput:
+    string,
+) {
+  const serviceKey =
+    serviceKeyInput
+      .trim()
+      .toLowerCase();
+
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          metadata
+        FROM platform_service_subscriptions
+        WHERE service_key = $1
+          AND deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        serviceKey,
+      ],
+    );
+
+  const row =
+    result.rows[0];
+
+  if (
+    !row
+  ) {
+    throw new Error(
+      'SERVICE_NOT_FOUND',
+    );
+  }
+
+  const metadata =
+    row.metadata &&
+    typeof row.metadata ===
+      'object' &&
+    !Array.isArray(
+      row.metadata,
+    )
+      ? row.metadata as
+          Record<
+            string,
+            unknown
+          >
+      : {};
+
+  if (
+    metadata.required_for_platform ===
+      true
+  ) {
+    throw new Error(
+      'CORE_SERVICE_CANNOT_BE_ARCHIVED',
+    );
+  }
+
+  await queryControl(
+    `
+      UPDATE platform_service_subscriptions
+      SET
+        status =
+          'cancelled',
+        deleted_at =
+          NOW(),
+        updated_at =
+          NOW()
+      WHERE id = $1
+    `,
+    [
+      row.id,
+    ],
+  );
+
+  return {
+    serviceKey,
+    archived:
+      true,
+  };
+}
+
+
 export async function updatePlatformServiceSubscription(
   input: {
     serviceKey:
