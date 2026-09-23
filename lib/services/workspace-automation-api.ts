@@ -171,6 +171,9 @@ export function handleAutomationApiError(
         'UNAUTHENTICATED'
         ? 401
         : error.code ===
+            'AUTOMATION_PLATFORM_DISABLED'
+          ? 503
+        : error.code ===
               'COMPANY_ACCESS_DENIED' ||
             error.code ===
               'AUTOMATION_VIEW_REQUIRED' ||
