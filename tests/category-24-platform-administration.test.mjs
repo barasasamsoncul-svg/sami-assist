@@ -263,6 +263,219 @@ test('Category 24 provider credentials stay server-only', async () => {
   assert.doesNotMatch(env, /NEXT_PUBLIC_(SAMI_VERCEL_API_TOKEN|SAMI_NEON_API_KEY|SAMI_CLOUDFLARE_API_TOKEN)/);
 });
 
+test('Category 24 captures unhandled Next.js server and browser errors globally', async () => {
+  const server = await source('instrumentation.ts');
+  const client = await source('instrumentation-client.ts');
+
+  assert.match(server, /Instrumentation\.onRequestError/);
+  assert.match(server, /NEXT_RUNTIME/);
+  assert.match(server, /capturePlatformIncident/);
+  assert.match(server, /unhandled_server_request_error/);
+  assert.match(server, /Global telemetry must never replace or mask the original application failure/);
+
+  assert.match(client, /window\.addEventListener[\s\S]*['"]error['"]/);
+  assert.match(client, /unhandledrejection/);
+  assert.match(client, /DEDUPE_WINDOW_MS/);
+  assert.match(client, /\/api\/telemetry\/error/);
+  assert.match(client, /Instrumentation must remain fail-open/);
+});
+
+
+test('Category 24 operator alert preferences are durable, deduplicated and server-side', async () => {
+  const migration = await source('lib/schema/control-migrations/006-category-24-platform-admin-alert-preferences.sql');
+  const alerts = await source('lib/admin/platform-alerts.ts');
+  const preferences = await source('lib/admin/alert-preferences.ts');
+
+  for (const table of [
+    'platform_admin_alert_preferences',
+    'platform_admin_alert_deliveries',
+  ]) {
+    assert.ok(migration.includes('CREATE TABLE IF NOT EXISTS ' + table));
+  }
+
+  assert.match(migration, /sms_phone_e164/);
+  assert.match(migration, /destination_fingerprint/);
+  assert.match(migration, /UNIQUE INDEX IF NOT EXISTS uq_platform_admin_alert_delivery_service/);
+  assert.match(migration, /UNIQUE INDEX IF NOT EXISTS uq_platform_admin_alert_delivery_incident/);
+  assert.doesNotMatch(migration, /DROP TABLE|DROP DATABASE|TRUNCATE/i);
+
+  assert.match(alerts, /sendWorkspaceNotificationEmail/);
+  assert.match(alerts, /sendWorkspaceNotificationSms/);
+  assert.match(alerts, /notifyPlatformAdminsOfServiceEvent/);
+  assert.match(alerts, /notifyPlatformAdminsOfIncident/);
+  assert.match(alerts, /claimDelivery/);
+  assert.match(alerts, /Alerting must never be able to stop the infrastructure monitor/);
+
+  assert.match(preferences, /normalizeSmsPhone/);
+  assert.match(preferences, /SMS_PHONE_REQUIRED/);
+  assert.match(preferences, /INVALID_TIMEZONE/);
+});
+
+
+test('Category 24 personal alert settings and test delivery are authenticated and audited', async () => {
+  const page = await source('app/admin/(protected)/settings/notifications/page.tsx');
+  const route = await source('app/api/admin/account/alert-preferences/route.ts');
+  const testRoute = await source('app/api/admin/account/alert-preferences/test/route.ts');
+  const form = await source('app/admin/components/PlatformAlertPreferencesForm.tsx');
+  const sidebar = await source('app/admin/components/AdminSidebar.tsx');
+
+  assert.match(page, /requireAdminSession/);
+  assert.match(route, /requireAdminSession/);
+  assert.match(route, /recordAdminAuditEvent/);
+  assert.match(route, /sec-fetch-site/);
+  assert.match(route, /REQUEST_TOO_LARGE/);
+
+  assert.match(testRoute, /sendWorkspaceNotificationEmail/);
+  assert.match(testRoute, /sendWorkspaceNotificationSms/);
+  assert.match(testRoute, /recordAdminAuditEvent/);
+  assert.match(testRoute, /NO_ALERT_CHANNEL_ENABLED/);
+
+  assert.match(form, /Save alert preferences/);
+  assert.match(form, /Send test alert/);
+  assert.match(form, /criticalSms/);
+  assert.match(form, /serviceAlertsEnabled/);
+  assert.match(form, /incidentAlertsEnabled/);
+
+  assert.ok(sidebar.includes("href: '/admin/settings/notifications'"));
+  assert.doesNotMatch(
+    sidebar,
+    /href: '\/admin\/settings\/notifications'[\s\S]{0,180}disabled:\s*true/,
+  );
+});
+
+
+test('Category 24 workspace controls coordinate logical workspace, tenant DB and current sessions', async () => {
+  const service = await source('lib/admin/workspace-control.ts');
+  const route = await source('app/api/admin/businesses/[tenantId]/control/route.ts');
+  const page = await source('app/admin/(protected)/businesses/page.tsx');
+
+  for (const action of [
+    'health_check',
+    'maintenance_on',
+    'maintenance_off',
+    'suspend',
+    'reactivate',
+  ]) {
+    assert.ok(service.includes(action), action);
+    assert.ok(route.includes(action), action);
+  }
+
+  assert.match(service, /suspendTenantDatabase/);
+  assert.match(service, /reactivateTenantDatabase/);
+  assert.match(service, /setTenantDatabaseMaintenance/);
+  assert.match(service, /checkTenantDatabaseHealth/);
+
+  assert.match(service, /UPDATE tenants[\s\S]*status[\s\S]*'suspended'/);
+  assert.match(service, /UPDATE sessions[\s\S]*current_tenant_id[\s\S]*NULL/);
+  assert.doesNotMatch(
+    service,
+    /UPDATE sessions[\s\S]*WHERE user_id/,
+    'Workspace suspension must not revoke or clear every session belonging to users who may own other workspaces.',
+  );
+
+  const reactivateDb = service.indexOf('await reactivateTenantDatabase');
+  const reactivateWorkspace = service.indexOf("await setWorkspaceStatus(\n        id,\n        'active'");
+  assert.ok(
+    reactivateDb >= 0 &&
+    reactivateWorkspace > reactivateDb,
+    'Tenant database must reactivate before the workspace is advertised as active.',
+  );
+
+  assert.ok(route.includes('tenants.manage'));
+  assert.match(route, /recordAdminAuditEvent/);
+  assert.match(route, /capturePlatformIncident/);
+  assert.match(page, /WorkspaceControlActions/);
+  assert.match(page, /database[\s\S]*healthStatus/);
+});
+
+
+test('Category 24 manual billing reconciliation reuses Category 22 billing authority', async () => {
+  const route = await source('app/api/admin/operations/billing/reconcile/route.ts');
+  const page = await source('app/admin/(protected)/subscriptions/page.tsx');
+  const control = await source('app/admin/components/BillingReconcileButton.tsx');
+
+  assert.ok(route.includes('subscriptions.manage'));
+  assert.match(route, /reconcileWorkspaceBilling/);
+  assert.match(route, /runTrackedPlatformJob/);
+  assert.match(route, /recordAdminAuditEvent/);
+  assert.doesNotMatch(
+    route,
+    /UPDATE subscriptions|INSERT INTO subscriptions|DELETE FROM subscriptions/,
+    'Platform Admin reconciliation must call the canonical Category 22 engine instead of editing subscriptions directly.',
+  );
+
+  assert.match(page, /BillingReconcileButton/);
+  assert.match(page, /subscriptions\.manage/);
+  assert.match(control, /Reconcile billing/);
+});
+
+
+test('Category 24 admin home includes a fail-open control-room summary', async () => {
+  const loader = await source('lib/admin/dashboard-operations.ts');
+  const page = await source('app/admin/(protected)/page.tsx');
+  const dashboard = await source('app/admin/components/dashboard/AdminDashboard.tsx');
+  const overview = await source('app/admin/components/dashboard/AdminOperationsOverview.tsx');
+
+  assert.match(loader, /platform_incidents/);
+  assert.match(loader, /platform_job_runs/);
+  assert.match(loader, /tenant_databases/);
+  assert.match(loader, /platform_service_subscriptions/);
+  assert.match(loader, /platform_provider_checks/);
+  assert.match(loader, /Keep the pre-Category-24 admin dashboard usable/);
+
+  assert.match(page, /getAdminOperationsDashboard/);
+  assert.match(dashboard, /AdminOperationsOverview/);
+
+  for (const label of [
+    'Active incidents',
+    'Tenant DB problems',
+    'Failed jobs',
+    'Services needing attention',
+    'Infrastructure attention',
+    'Last provider checks',
+  ]) {
+    assert.ok(overview.includes(label), label);
+  }
+});
+
+
+test('Category 24 supports future custom SaMi dependencies without weakening core services', async () => {
+  const service = await source('lib/admin/platform-services.ts');
+  const createRoute = await source('app/api/admin/operations/services/route.ts');
+  const resourceRoute = await source('app/api/admin/operations/services/[serviceKey]/route.ts');
+  const manager = await source('app/admin/components/PlatformServiceManager.tsx');
+
+  assert.match(service, /createPlatformServiceSubscription/);
+  assert.match(service, /archivePlatformServiceSubscription/);
+  assert.match(service, /CORE_SERVICE_CANNOT_BE_ARCHIVED/);
+  assert.match(service, /required_for_platform/);
+
+  assert.ok(createRoute.includes('providers.manage'));
+  assert.match(createRoute, /recordAdminAuditEvent/);
+  assert.match(resourceRoute, /export async function DELETE/);
+  assert.match(resourceRoute, /archivePlatformServiceSubscription/);
+  assert.match(resourceRoute, /recordAdminAuditEvent/);
+
+  assert.match(manager, /Add another SaMi dependency/);
+  assert.match(manager, /Add tracked service/);
+  assert.match(manager, /Archive/);
+});
+
+
+test('Category 24 new error and infrastructure alerts are deduplicated before operator delivery', async () => {
+  const incidents = await source('lib/observability/platform-incidents.ts');
+  const services = await source('lib/admin/platform-services.ts');
+  const alerts = await source('lib/admin/platform-alerts.ts');
+
+  assert.match(incidents, /occurrenceCount ===[\s\S]*1/);
+  assert.match(incidents, /notifyPlatformAdminsOfIncident/);
+  assert.match(services, /notifyPlatformAdminsOfServiceEvent/);
+
+  assert.match(alerts, /ON CONFLICT[\s\S]*DO NOTHING/);
+  assert.match(alerts, /platform_admin_alert_deliveries/);
+});
+
+
 test('Category 24 internal platform operations remain outside the workspace shell', async () => {
   const shell = await source('app/components/workspace/WorkspaceShell.tsx');
 
