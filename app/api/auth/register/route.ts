@@ -36,6 +36,7 @@ import {
   clearRegistrationDraftCookieOptions,
   readRegistrationDraft,
   REGISTRATION_DRAFT_COOKIE_NAME,
+  type RegistrationDraft,
 } from '@/lib/auth/registration-draft';
 
 import {
@@ -130,6 +131,49 @@ type GoogleSignupRow = {
   avatar_url: string | null;
   expires_at: Date | string;
 };
+
+type RegistrationRequestRow = {
+  id: string;
+  nonce_hash: string;
+  draft_mode:
+    | 'email'
+    | 'google'
+    | 'existing';
+  status:
+    | 'processing'
+    | 'completed'
+    | 'failed';
+  user_id: string | null;
+  tenant_id: string | null;
+  subscription_id: string | null;
+  started_at: Date | string;
+  completed_at: Date | string | null;
+  failed_at: Date | string | null;
+  error_code: string | null;
+};
+
+type RegistrationRequestClaim =
+  | {
+      state: 'claimed';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'completed';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'processing';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'recovery_required';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    };
+
 
 type SubscriptionResponseRow = {
   id: string;
@@ -451,6 +495,540 @@ function hashOpaqueToken(
     )
     .digest('hex');
 }
+
+function hashRegistrationNonce(
+  nonce: string
+): string {
+  return crypto
+    .createHash('sha256')
+    .update(
+      `registration:${nonce}`,
+      'utf8'
+    )
+    .digest('hex');
+}
+
+function registrationRequestHasResources(
+  row: RegistrationRequestRow
+): boolean {
+  return Boolean(
+    row.user_id ||
+    row.tenant_id ||
+    row.subscription_id
+  );
+}
+
+async function loadRegistrationRequest(
+  nonceHash: string
+): Promise<
+  RegistrationRequestRow | null
+> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          nonce_hash,
+          draft_mode,
+          status,
+          user_id,
+          tenant_id,
+          subscription_id,
+          started_at,
+          completed_at,
+          failed_at,
+          error_code
+        FROM registration_requests
+        WHERE nonce_hash = $1
+        LIMIT 1
+      `,
+      [
+        nonceHash,
+      ]
+    );
+
+  return (
+    result.rows[0] ||
+    null
+  ) as
+    RegistrationRequestRow | null;
+}
+
+async function claimRegistrationRequest(
+  draft: RegistrationDraft
+): Promise<
+  RegistrationRequestClaim
+> {
+  const nonceHash =
+    hashRegistrationNonce(
+      draft.nonce
+    );
+
+  const inserted =
+    await queryControl(
+      `
+        INSERT INTO registration_requests (
+          nonce_hash,
+          draft_mode,
+          status,
+          started_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          'processing',
+          NOW(),
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (
+          nonce_hash
+        )
+        DO NOTHING
+        RETURNING
+          id,
+          nonce_hash,
+          draft_mode,
+          status,
+          user_id,
+          tenant_id,
+          subscription_id,
+          started_at,
+          completed_at,
+          failed_at,
+          error_code
+      `,
+      [
+        nonceHash,
+        draft.mode,
+      ]
+    );
+
+  if (
+    inserted.rows.length ===
+      1
+  ) {
+    return {
+      state:
+        'claimed',
+      nonceHash,
+      row:
+        inserted.rows[0] as
+          RegistrationRequestRow,
+    };
+  }
+
+  let existing =
+    await loadRegistrationRequest(
+      nonceHash
+    );
+
+  if (
+    !existing
+  ) {
+    throw new Error(
+      'Registration idempotency state could not be loaded.'
+    );
+  }
+
+  if (
+    existing.draft_mode !==
+      draft.mode
+  ) {
+    return {
+      state:
+        'recovery_required',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  if (
+    existing.status ===
+      'completed'
+  ) {
+    return {
+      state:
+        'completed',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  if (
+    existing.status ===
+      'failed'
+  ) {
+    if (
+      registrationRequestHasResources(
+        existing
+      )
+    ) {
+      return {
+        state:
+          'recovery_required',
+        nonceHash,
+        row:
+          existing,
+      };
+    }
+
+    const retried =
+      await queryControl(
+        `
+          UPDATE registration_requests
+          SET
+            status =
+              'processing',
+            started_at =
+              NOW(),
+            completed_at =
+              NULL,
+            failed_at =
+              NULL,
+            error_code =
+              NULL,
+            updated_at =
+              NOW()
+          WHERE nonce_hash = $1
+            AND status =
+                'failed'
+            AND user_id
+                IS NULL
+            AND tenant_id
+                IS NULL
+            AND subscription_id
+                IS NULL
+          RETURNING
+            id,
+            nonce_hash,
+            draft_mode,
+            status,
+            user_id,
+            tenant_id,
+            subscription_id,
+            started_at,
+            completed_at,
+            failed_at,
+            error_code
+        `,
+        [
+          nonceHash,
+        ]
+      );
+
+    if (
+      retried.rows.length ===
+        1
+    ) {
+      return {
+        state:
+          'claimed',
+        nonceHash,
+        row:
+          retried.rows[0] as
+            RegistrationRequestRow,
+      };
+    }
+
+    existing =
+      await loadRegistrationRequest(
+        nonceHash
+      );
+
+    if (
+      !existing
+    ) {
+      throw new Error(
+        'Registration retry state could not be loaded.'
+      );
+    }
+
+    if (
+      existing.status ===
+        'completed'
+    ) {
+      return {
+        state:
+          'completed',
+        nonceHash,
+        row:
+          existing,
+      };
+    }
+
+    return {
+      state:
+        registrationRequestHasResources(
+          existing
+        )
+          ? 'recovery_required'
+          : 'processing',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  /*
+   * A processing request is not stolen while it may still be
+   * provisioning resources. Only a stale request that never
+   * recorded any resource ID can be safely reclaimed.
+   */
+  const startedAt =
+    new Date(
+      existing.started_at
+    );
+
+  const staleWithoutResources =
+    !registrationRequestHasResources(
+      existing
+    ) &&
+    !Number.isNaN(
+      startedAt.getTime()
+    ) &&
+    Date.now() -
+      startedAt.getTime() >
+      15 *
+      60 *
+      1000;
+
+  if (
+    staleWithoutResources
+  ) {
+    const reclaimed =
+      await queryControl(
+        `
+          UPDATE registration_requests
+          SET
+            started_at =
+              NOW(),
+            failed_at =
+              NULL,
+            error_code =
+              NULL,
+            updated_at =
+              NOW()
+          WHERE nonce_hash = $1
+            AND status =
+                'processing'
+            AND user_id
+                IS NULL
+            AND tenant_id
+                IS NULL
+            AND subscription_id
+                IS NULL
+            AND started_at = $2
+          RETURNING
+            id,
+            nonce_hash,
+            draft_mode,
+            status,
+            user_id,
+            tenant_id,
+            subscription_id,
+            started_at,
+            completed_at,
+            failed_at,
+            error_code
+        `,
+        [
+          nonceHash,
+          existing.started_at,
+        ]
+      );
+
+    if (
+      reclaimed.rows.length ===
+        1
+    ) {
+      return {
+        state:
+          'claimed',
+        nonceHash,
+        row:
+          reclaimed.rows[0] as
+            RegistrationRequestRow,
+      };
+    }
+
+    existing =
+      await loadRegistrationRequest(
+        nonceHash
+      );
+
+    if (
+      !existing
+    ) {
+      throw new Error(
+        'Registration processing state could not be loaded.'
+      );
+    }
+  }
+
+  return {
+    state:
+      registrationRequestHasResources(
+        existing
+      ) &&
+      existing.status !==
+        'completed'
+        ? 'recovery_required'
+        : 'processing',
+    nonceHash,
+    row:
+      existing,
+  };
+}
+
+async function updateRegistrationRequestProgress(
+  nonceHash: string,
+  context: RegistrationContext
+) {
+  await queryControl(
+    `
+      UPDATE registration_requests
+      SET
+        user_id =
+          COALESCE(
+            $2::uuid,
+            user_id
+          ),
+        tenant_id =
+          COALESCE(
+            $3::uuid,
+            tenant_id
+          ),
+        subscription_id =
+          COALESCE(
+            $4::uuid,
+            subscription_id
+          ),
+        updated_at =
+          NOW()
+      WHERE nonce_hash = $1
+        AND status =
+            'processing'
+    `,
+    [
+      nonceHash,
+      context.userId,
+      context.tenantId,
+      context.subscriptionId,
+    ]
+  );
+}
+
+async function completeRegistrationRequest(
+  nonceHash: string,
+  context: RegistrationContext
+) {
+  if (
+    !context.userId ||
+    !context.tenantId ||
+    !context.subscriptionId
+  ) {
+    throw new Error(
+      'Registration cannot complete without user, workspace and subscription IDs.'
+    );
+  }
+
+  const result =
+    await queryControl(
+      `
+        UPDATE registration_requests
+        SET
+          status =
+            'completed',
+          user_id =
+            $2,
+          tenant_id =
+            $3,
+          subscription_id =
+            $4,
+          completed_at =
+            NOW(),
+          failed_at =
+            NULL,
+          error_code =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE nonce_hash = $1
+          AND status =
+              'processing'
+        RETURNING id
+      `,
+      [
+        nonceHash,
+        context.userId,
+        context.tenantId,
+        context.subscriptionId,
+      ]
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new Error(
+      'Registration idempotency state could not be completed.'
+    );
+  }
+}
+
+async function failRegistrationRequest(
+  nonceHash: string,
+  cleanupSucceeded: boolean
+) {
+  await queryControl(
+    `
+      UPDATE registration_requests
+      SET
+        status =
+          'failed',
+        failed_at =
+          NOW(),
+        error_code =
+          $2,
+        user_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE user_id
+          END,
+        tenant_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE tenant_id
+          END,
+        subscription_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE subscription_id
+          END,
+        updated_at =
+          NOW()
+      WHERE nonce_hash = $1
+        AND status =
+            'processing'
+    `,
+    [
+      nonceHash,
+      cleanupSucceeded
+        ? 'REGISTRATION_FAILED_CLEAN'
+        : 'REGISTRATION_CLEANUP_REQUIRED',
+      cleanupSucceeded,
+    ]
+  );
+}
+
 
 async function getGoogleSignupState(
   request: NextRequest
