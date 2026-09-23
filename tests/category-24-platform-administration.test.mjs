@@ -530,6 +530,30 @@ test('Category 24 migration readiness matches every numbered control migration',
 });
 
 
+test('Category 24 administrator APIs use the canonical capability authority', async () => {
+  const collection = await source('app/api/admin/administrators/route.ts');
+  const resource = await source('app/api/admin/administrators/[adminId]/route.ts');
+  const provisioning = await source('lib/auth/admin-provisioning.ts');
+  const lifecycle = await source('lib/auth/admin-lifecycle.ts');
+
+  assert.match(collection, /requireAdminCapability/);
+  assert.ok(collection.includes('administrators.read'));
+  assert.ok(collection.includes('administrators.manage'));
+
+  assert.match(resource, /requireAdminCapability/);
+  assert.ok(resource.includes('administrators.manage'));
+
+  assert.doesNotMatch(collection, /requireAdminRole/);
+  assert.doesNotMatch(resource, /requireAdminRole/);
+
+  assert.match(provisioning, /hasAdminCapability/);
+  assert.ok(provisioning.includes('administrators.manage'));
+
+  assert.match(lifecycle, /hasAdminCapability/);
+  assert.ok(lifecycle.includes('administrators.manage'));
+});
+
+
 test('Category 24 internal platform operations remain outside the workspace shell', async () => {
   const shell = await source('app/components/workspace/WorkspaceShell.tsx');
 
