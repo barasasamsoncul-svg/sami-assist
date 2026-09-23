@@ -311,6 +311,59 @@ function isValidEmail(
   );
 }
 
+function isSameOriginRequest(
+  request: NextRequest
+): boolean {
+  const secFetchSite =
+    request.headers
+      .get(
+        'sec-fetch-site'
+      )
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    secFetchSite ===
+      'cross-site'
+  ) {
+    return false;
+  }
+
+  const origin =
+    request.headers
+      .get(
+        'origin'
+      );
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return (
+      new URL(origin).origin ===
+      request.nextUrl.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isJsonRequest(
+  request: NextRequest
+): boolean {
+  return (
+    request.headers
+      .get(
+        'content-type'
+      )
+      ?.toLowerCase()
+      .includes(
+        'application/json'
+      ) === true
+  );
+}
+
 /* ============================================================
    RESPONSE HELPERS
    ============================================================ */
@@ -497,12 +550,19 @@ function hashOpaqueToken(
 }
 
 function hashRegistrationNonce(
-  nonce: string
+  draft: RegistrationDraft
 ): string {
+  const material =
+    draft.mode ===
+        'google' &&
+      draft.googleStateHash
+      ? `google:${draft.googleStateHash}`
+      : `draft:${draft.nonce}`;
+
   return crypto
     .createHash('sha256')
     .update(
-      `registration:${nonce}`,
+      `registration:${material}`,
       'utf8'
     )
     .digest('hex');
@@ -561,7 +621,7 @@ async function claimRegistrationRequest(
 > {
   const nonceHash =
     hashRegistrationNonce(
-      draft.nonce
+      draft
     );
 
   const inserted =
@@ -1962,8 +2022,32 @@ export async function POST(
 
   try {
     /* ========================================================
-       1. REQUEST
+       1. REQUEST BOUNDARY
        ======================================================== */
+
+    if (
+      !isSameOriginRequest(
+        request
+      )
+    ) {
+      return errorResponse(
+        403,
+        'INVALID_ORIGIN',
+        'This registration request could not be verified.'
+      );
+    }
+
+    if (
+      !isJsonRequest(
+        request
+      )
+    ) {
+      return errorResponse(
+        415,
+        'UNSUPPORTED_MEDIA_TYPE',
+        'Registration requests must use JSON.'
+      );
+    }
 
     let body:
       RegistrationBody;
@@ -2651,10 +2735,8 @@ export async function POST(
       !existingAccountRegistration &&
       !passwordHash
     ) {
-      return errorResponse(
-        409,
-        'REGISTRATION_DRAFT_INVALID',
-        'The secure registration credential is unavailable. Start registration again.'
+      throw new Error(
+        'REGISTRATION_DRAFT_INVALID'
       );
     }
 
@@ -3082,24 +3164,7 @@ export async function POST(
     }
 
     /* ========================================================
-       18. CONSUME GOOGLE SIGNUP STATE
-
-       Core registration now exists.
-
-       Consume the OAuth signup state before starting physical
-       workspace provisioning so the state cannot be replayed.
-       ======================================================== */
-
-    if (
-      googleSignup
-    ) {
-      await consumeGoogleSignupState(
-        googleSignup.state_hash
-      );
-    }
-
-    /* ========================================================
-       19. PROVISION WORKSPACE IMMEDIATELY
+       18. PROVISION WORKSPACE IMMEDIATELY
 
        This applies equally to:
        - Free
@@ -3140,7 +3205,7 @@ export async function POST(
     }
 
     /* ========================================================
-       20. FINAL WORKSPACE / SUBSCRIPTION STATE
+       19. FINAL WORKSPACE / SUBSCRIPTION STATE
        ======================================================== */
 
     if (
@@ -3268,34 +3333,11 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       21. EMAIL VERIFICATION
-
-       Google identity is already verified.
-
-       Email/password registrations receive their verification
-       code immediately.
-
-       There is no PesaPal gate before verification anymore.
-       ======================================================== */
-
     let verificationEmailSent =
       false;
 
-    if (
-      draft.mode ===
-        'email' &&
-      context.userCreated
-    ) {
-      verificationEmailSent =
-        await createVerification({
-          email,
-          firstName,
-        });
-    }
-
     /* ========================================================
-       22. BILLABLE USERS / PRICE
+       20. BILLABLE USERS / PRICE
 
        Backend remains authoritative.
 
@@ -3338,7 +3380,7 @@ export async function POST(
         : 0;
 
     /* ========================================================
-       23. AUTHORITATIVE FINAL SUBSCRIPTION
+       21. AUTHORITATIVE FINAL SUBSCRIPTION
        ======================================================== */
 
     const subscription =
@@ -3401,21 +3443,112 @@ export async function POST(
     }
 
     /* ========================================================
-       24. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
+       22. DURABLE REGISTRATION COMPLETION
 
-       This is intentionally separate from email verification.
+       At this point the authoritative user, tenant, membership,
+       subscription, app reservations and final provisioning state
+       all exist. Mark the encrypted draft as consumed BEFORE
+       sending any external email. A lost HTTP response will then
+       replay the same workspace instead of creating another one.
+       ======================================================== */
 
-       EMAIL/PASSWORD:
-       - verification email
-       - subscription/plan confirmation email
+    await completeRegistrationRequest(
+      activeRegistrationNonceHash,
+      context
+    );
 
-       GOOGLE:
-       - Google identity is already verified
-       - subscription/plan confirmation email only
+    registrationRequestClaimed =
+      false;
 
-       IMPORTANT:
-       Email delivery must never roll back an otherwise
-       successful registration.
+    /* ========================================================
+       23. CONSUME GOOGLE SIGNUP STATE
+
+       Google registration idempotency is keyed by the OAuth
+       signup-state hash, so two browser drafts from the same
+       Google authorization cannot create two workspaces. Once
+       registration is durable, remove the temporary OAuth state.
+       ======================================================== */
+
+    if (
+      googleSignup
+    ) {
+      try {
+        await consumeGoogleSignupState(
+          googleSignup.state_hash
+        );
+      } catch (error) {
+        console.error(
+          '[SaMi] Google signup state cleanup failed after durable registration:',
+          error
+        );
+      }
+    }
+
+    /* ========================================================
+       24. EXISTING ACCOUNT WORKSPACE SWITCH
+
+       Workspace creation must not be rolled back merely because
+       the current browser session could not switch context.
+       The workspace remains accessible through the global
+       workspace switcher.
+       ======================================================== */
+
+    if (
+      existingAccountRegistration &&
+      provisioningSucceeded &&
+      session
+    ) {
+      try {
+        const switched =
+          await setCurrentTenantForSession(
+            session.sessionId,
+            session.user.id,
+            context.tenantId
+          );
+
+        if (
+          !switched
+        ) {
+          console.error(
+            '[SaMi] Workspace created but current session did not switch to the new workspace.'
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[SaMi] Workspace created but session switching failed:',
+          error
+        );
+      }
+    }
+
+    /* ========================================================
+       25. EMAIL VERIFICATION
+
+       External delivery happens only after durable registration.
+       Email/password users receive a verification code; delivery
+       failure never deletes the workspace/account.
+       ======================================================== */
+
+    if (
+      draft.mode ===
+        'email' &&
+      context.userCreated
+    ) {
+      verificationEmailSent =
+        await createVerification({
+          email:
+            authoritativeEmail,
+          firstName:
+            authoritativeFirstName,
+        });
+    }
+
+    /* ========================================================
+       26. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
+
+       The recipient and workspace label come from the exact
+       Control DB owner/workspace join, never browser state.
+       Delivery failure never rolls back registration.
        ======================================================== */
 
     try {
@@ -3459,44 +3592,7 @@ export async function POST(
     }
 
     /* ========================================================
-       25. EXISTING ACCOUNT WORKSPACE SWITCH
-
-       A signed-in user who creates another workspace should land
-       in that workspace immediately. This never creates a second
-       identity or bypasses the existing session/2FA boundary.
-       ======================================================== */
-
-    if (
-      existingAccountRegistration &&
-      provisioningSucceeded &&
-      session
-    ) {
-      const switched =
-        await setCurrentTenantForSession(
-          session.sessionId,
-          session.user.id,
-          context.tenantId
-        );
-
-      if (
-        !switched
-      ) {
-        throw new Error(
-          'The new workspace was created but the current session could not switch to it.'
-        );
-      }
-    }
-
-    await completeRegistrationRequest(
-      activeRegistrationNonceHash,
-      context
-    );
-
-    registrationRequestClaimed =
-      false;
-
-    /* ========================================================
-       26. RESPONSE
+       27. RESPONSE
        ======================================================== */
 
     const response =
