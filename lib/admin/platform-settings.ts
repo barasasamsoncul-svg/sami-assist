@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   queryControl,
+  withControlTransaction,
 } from '@/lib/db/control';
 
 
@@ -834,127 +835,191 @@ export async function updatePlatformSettings(
       input.settings,
     );
 
-  const current =
-    await getPlatformSettingsSnapshot();
+  const updated =
+    await withControlTransaction(
+      async client => {
+        const currentResult =
+          await client.query(
+            `
+              SELECT
+                revision,
+                settings,
+                updated_by_admin_id,
+                updated_at
+              FROM platform_settings
+              WHERE singleton_key = 1
+              FOR UPDATE
+            `,
+          );
 
-  if (
-    !current.ready ||
-    current.revision !==
-      input.expectedRevision
-  ) {
-    throw new PlatformSettingsConflictError(
-      current,
+        const currentRow =
+          currentResult.rows[0];
+
+        const current:
+          PlatformSettingsSnapshot =
+          currentRow
+            ? {
+                settings:
+                  validatePlatformSettings(
+                    currentRow.settings,
+                  ),
+                revision:
+                  Math.max(
+                    1,
+                    Number(
+                      currentRow.revision ||
+                      1,
+                    ),
+                  ),
+                ready:
+                  true,
+                updatedAt:
+                  toIso(
+                    currentRow.updated_at,
+                  ),
+                updatedByAdminId:
+                  currentRow.updated_by_admin_id
+                    ? String(
+                        currentRow.updated_by_admin_id,
+                      )
+                    : null,
+              }
+            : {
+                settings:
+                  cloneDefaults(),
+                revision:
+                  1,
+                ready:
+                  false,
+                updatedAt:
+                  null,
+                updatedByAdminId:
+                  null,
+              };
+
+        if (
+          !current.ready ||
+          current.revision !==
+            input.expectedRevision
+        ) {
+          throw new PlatformSettingsConflictError(
+            current,
+          );
+        }
+
+        const keys =
+          changedKeys(
+            current.settings,
+            next,
+          );
+
+        if (
+          keys.length ===
+            0
+        ) {
+          return {
+            ...current,
+            changedKeys:
+              [] as string[],
+          };
+        }
+
+        const result =
+          await client.query(
+            `
+              UPDATE platform_settings
+              SET
+                revision =
+                  revision + 1,
+                settings =
+                  $1::jsonb,
+                updated_by_admin_id =
+                  $2,
+                updated_at =
+                  NOW()
+              WHERE singleton_key = 1
+                AND revision = $3
+              RETURNING
+                revision,
+                settings,
+                updated_by_admin_id,
+                updated_at
+            `,
+            [
+              JSON.stringify(
+                next,
+              ),
+              input.adminId,
+              input.expectedRevision,
+            ],
+          );
+
+        const row =
+          result.rows[0];
+
+        if (!row) {
+          throw new PlatformSettingsConflictError(
+            current,
+          );
+        }
+
+        await client.query(
+          `
+            INSERT INTO platform_settings_history (
+              revision,
+              settings,
+              changed_keys,
+              changed_by_admin_id,
+              created_at
+            )
+            VALUES (
+              $1,
+              $2::jsonb,
+              $3::text[],
+              $4,
+              NOW()
+            )
+          `,
+          [
+            row.revision,
+            JSON.stringify(
+              next,
+            ),
+            keys,
+            input.adminId,
+          ],
+        );
+
+        return {
+          settings:
+            next,
+          revision:
+            Number(
+              row.revision,
+            ),
+          ready:
+            true,
+          updatedAt:
+            toIso(
+              row.updated_at,
+            ),
+          updatedByAdminId:
+            row.updated_by_admin_id
+              ? String(
+                  row.updated_by_admin_id,
+                )
+              : null,
+          changedKeys:
+            keys,
+        };
+      },
     );
-  }
-
-  const keys =
-    changedKeys(
-      current.settings,
-      next,
-    );
-
-  if (
-    keys.length ===
-      0
-  ) {
-    return current;
-  }
-
-  const result =
-    await queryControl(
-      `
-        UPDATE platform_settings
-        SET
-          revision =
-            revision + 1,
-          settings =
-            $1::jsonb,
-          updated_by_admin_id =
-            $2,
-          updated_at =
-            NOW()
-        WHERE singleton_key = 1
-          AND revision = $3
-        RETURNING
-          revision,
-          settings,
-          updated_by_admin_id,
-          updated_at
-      `,
-      [
-        JSON.stringify(
-          next,
-        ),
-        input.adminId,
-        input.expectedRevision,
-      ],
-    );
-
-  const row =
-    result.rows[0];
-
-  if (!row) {
-    throw new PlatformSettingsConflictError(
-      await getPlatformSettingsSnapshot(),
-    );
-  }
-
-  await queryControl(
-    `
-      INSERT INTO platform_settings_history (
-        revision,
-        settings,
-        changed_keys,
-        changed_by_admin_id,
-        created_at
-      )
-      VALUES (
-        $1,
-        $2::jsonb,
-        $3::text[],
-        $4,
-        NOW()
-      )
-      ON CONFLICT (revision)
-      DO NOTHING
-    `,
-    [
-      row.revision,
-      JSON.stringify(
-        next,
-      ),
-      keys,
-      input.adminId,
-    ],
-  );
 
   runtimeCache =
     null;
 
-  return {
-    settings:
-      next,
-    revision:
-      Number(
-        row.revision,
-      ),
-    ready:
-      true,
-    updatedAt:
-      toIso(
-        row.updated_at,
-      ),
-    updatedByAdminId:
-      row.updated_by_admin_id
-        ? String(
-            row.updated_by_admin_id,
-          )
-        : null,
-    changedKeys:
-      keys,
-  };
+  return updated;
 }
-
 
 export async function listPlatformSettingsHistory(
   limit =
