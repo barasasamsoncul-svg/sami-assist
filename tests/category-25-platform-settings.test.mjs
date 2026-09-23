@@ -53,6 +53,24 @@ test('Category 25 migration is additive revisioned and secret-free', async () =>
     ),
   );
 
+  assert.match(
+    migration,
+    /information_schema\.columns/,
+    'Category 25 must detect pre-existing platform settings table shapes before creating the singleton table.',
+  );
+
+  assert.match(
+    migration,
+    /platform_settings_legacy_category25/,
+    'Legacy key/value platform settings must be preserved rather than overwritten.',
+  );
+
+  assert.match(
+    migration,
+    /ALTER TABLE public\.platform_settings[\s\S]*RENAME TO platform_settings_legacy_category25/,
+    'Legacy settings storage must be renamed into a preserved archive before the new contract is created.',
+  );
+
   assert.doesNotMatch(
     migration,
     /DROP TABLE|DROP DATABASE|TRUNCATE/i,
