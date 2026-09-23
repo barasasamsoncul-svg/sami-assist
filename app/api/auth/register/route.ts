@@ -2771,7 +2771,7 @@ export async function POST(
     }
 
     await updateRegistrationRequestProgress(
-      registrationRequestNonceHash,
+      activeRegistrationNonceHash,
       context
     );
 
@@ -2829,7 +2829,7 @@ export async function POST(
       );
 
     await updateRegistrationRequestProgress(
-      registrationRequestNonceHash,
+      activeRegistrationNonceHash,
       context
     );
 
@@ -3027,7 +3027,7 @@ export async function POST(
       );
 
     await updateRegistrationRequestProgress(
-      registrationRequestNonceHash,
+      activeRegistrationNonceHash,
       context
     );
 
