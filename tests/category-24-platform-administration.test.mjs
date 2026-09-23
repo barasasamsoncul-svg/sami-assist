@@ -304,7 +304,7 @@ test('Category 24 operator alert preferences are durable, deduplicated and serve
   assert.match(alerts, /notifyPlatformAdminsOfServiceEvent/);
   assert.match(alerts, /notifyPlatformAdminsOfIncident/);
   assert.match(alerts, /claimDelivery/);
-  assert.match(alerts, /Alerting must never be able to stop the infrastructure monitor/);
+  assert.match(alerts, /Alerting must never[\s\S]*stop the infrastructure[\s\S]*monitor/);
 
   assert.match(preferences, /normalizeSmsPhone/);
   assert.match(preferences, /SMS_PHONE_REQUIRED/);
