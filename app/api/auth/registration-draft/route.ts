@@ -26,6 +26,10 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   checkRateLimit,
 } from '@/lib/auth/rate-limit';
 
@@ -692,6 +696,56 @@ export async function POST(
 
     const session =
       await getSession();
+
+    const platformSettings =
+      await getRuntimePlatformSettings();
+
+    const selfService =
+      source ===
+        'existing' ||
+      Boolean(
+        session,
+      );
+
+    if (
+      selfService &&
+      !platformSettings
+        .registration
+        .selfServiceWorkspaceCreationEnabled
+    ) {
+      return error(
+        403,
+        'WORKSPACE_CREATION_DISABLED',
+        'Creating additional SaMi workspaces is temporarily disabled by Platform Administration.',
+      );
+    }
+
+    if (
+      !selfService &&
+      !platformSettings
+        .registration
+        .publicRegistrationEnabled
+    ) {
+      return error(
+        403,
+        'PUBLIC_REGISTRATION_DISABLED',
+        'New SaMi account registration is temporarily disabled.',
+      );
+    }
+
+    if (
+      source ===
+        'google' &&
+      !platformSettings
+        .registration
+        .googleRegistrationEnabled
+    ) {
+      return error(
+        403,
+        'GOOGLE_REGISTRATION_DISABLED',
+        'New account registration with Google is temporarily disabled.',
+      );
+    }
 
     const generalLimit =
       await enforceDraftRateLimit({
