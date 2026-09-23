@@ -81,7 +81,7 @@ export async function getPlatformRecoveryOverview() {
       recoveryResult,
     ] = await Promise.all([
       queryControl(
-        \`
+        `
           SELECT
             t.id::text AS tenant_id,
             t.name::text AS tenant_name,
@@ -116,11 +116,11 @@ export async function getPlatformRecoveryOverview() {
             t.name ASC,
             t.id ASC
           LIMIT 500
-        \`,
+        `,
       ),
 
       queryControl(
-        \`
+        `
           SELECT
             rp.id::text,
             rp.tenant_id::text,
@@ -143,7 +143,7 @@ export async function getPlatformRecoveryOverview() {
           WHERE t.deleted_at IS NULL
           ORDER BY rp.created_at DESC
           LIMIT 250
-        \`,
+        `,
       ),
     ]);
 
