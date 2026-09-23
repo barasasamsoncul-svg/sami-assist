@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
 
 import {
   getAccountContextForUser,
@@ -87,8 +88,23 @@ export default async function SubscriptionRequiredPage() {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 dark:bg-[#0b0d12] dark:text-white sm:px-6 sm:py-12">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 flex justify-center">
+        <div className="mb-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:justify-between">
           <SaMiLogo />
+
+          <WorkspaceTenantSwitcher
+            currentTenant={
+              account.tenant
+                ? {
+                    id:
+                      account.tenant.id,
+                    name:
+                      account.tenant.name,
+                    slug:
+                      account.tenant.slug,
+                  }
+                : null
+            }
+          />
         </div>
 
         <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-xl shadow-slate-950/5 dark:border-amber-500/20 dark:bg-[#11141a]">
@@ -133,8 +149,8 @@ export default async function SubscriptionRequiredPage() {
                 title="Recovery stays available"
                 text={
                   subscriptionEnded
-                    ? 'You can still sign in, manage your personal account and security, open Billing, reactivate paid access or move to Free when the workspace fits Free plan limits, and contact support.'
-                    : 'You can still sign in, manage your personal account and security, open Billing, complete payment and contact support.'
+                    ? 'You can still sign in, switch to another workspace you belong to, manage your personal account and security, open Billing, reactivate paid access or move to Free when the workspace fits Free plan limits, and contact support.'
+                    : 'You can still sign in, switch to another workspace you belong to, manage your personal account and security, open Billing, complete payment and contact support.'
                 }
               />
             </div>
