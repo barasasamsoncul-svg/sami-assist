@@ -164,6 +164,7 @@ function handleError(
         'APP_SCHEMA_MISSING',
         'APP_SCHEMA_FAILED',
         'APP_MIGRATION_FAILED',
+        'APP_PERMISSION_SYNC_FAILED',
       ]);
 
     return json(
