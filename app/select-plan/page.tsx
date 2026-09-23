@@ -899,6 +899,46 @@ export default function SelectPlanPage() {
 
           if (
             code ===
+              'REGISTRATION_IN_PROGRESS'
+          ) {
+            setOverlay({
+              type:
+                'info',
+
+              title:
+                'Workspace creation is already running',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi is already processing this workspace setup. Wait a few seconds, then press Create workspace again. The same setup cannot create a duplicate workspace.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'REGISTRATION_RECOVERY_REQUIRED'
+          ) {
+            setOverlay({
+              type:
+                'error',
+
+              title:
+                'Workspace setup needs recovery',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi stopped automatic retry because part of this workspace setup may already exist. This protects you from duplicate workspaces.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
               'RATE_LIMITED' ||
             code ===
               'REGISTRATION_RATE_LIMITED'
