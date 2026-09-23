@@ -1088,10 +1088,12 @@ export async function listAdminUsers(
                       member.isOwner ===
                         true,
                     lastLoginAt:
-                      toIso(
-                        member.lastLoginAt ||
-                        null,
-                      ),
+                      typeof member.lastLoginAt ===
+                        'string'
+                        ? toIso(
+                            member.lastLoginAt,
+                          )
+                        : null,
                   }),
                 ),
             },
