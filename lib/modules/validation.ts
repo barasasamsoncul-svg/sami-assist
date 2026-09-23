@@ -97,6 +97,35 @@ export function assertValidSamiModuleManifests(
       );
     }
 
+    for (
+      const extensionKey
+      of [
+        'dashboard',
+        'search',
+        'notifications',
+        'activity',
+        'automationTriggers',
+        'automationActions',
+        'aiTools',
+        'integrationProviders',
+        'apiEndpoints',
+        'dataExport',
+        'dataErasure',
+      ] as const
+    ) {
+      if (
+        typeof manifest
+          .extensions[
+            extensionKey
+          ] !==
+        'boolean'
+      ) {
+        throw new Error(
+          `SaMi module ${moduleKey} must explicitly declare extension "${extensionKey}".`,
+        );
+      }
+    }
+
     if (
       manifest.depends.some(
         dependency =>
