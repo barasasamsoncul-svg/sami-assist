@@ -1,5 +1,5 @@
 import {
-  ShieldCheck,
+  CreditCard,
 } from 'lucide-react';
 
 import AdminResourcePage, {
@@ -16,6 +16,7 @@ import {
 
 import {
   listAdminUsers,
+  listAdminUserWorkspaceFilters,
 } from '@/lib/admin/oversight';
 
 import {
@@ -34,6 +35,10 @@ type SearchParams = {
   q?:
     string;
   page?:
+    string;
+  workspace?:
+    string;
+  seat?:
     string;
 };
 
@@ -58,19 +63,63 @@ export default async function AdminUsersPage({
   const params =
     await searchParams;
 
-  const data =
-    await listAdminUsers({
-      page:
-        params.page,
-      search:
-        params.q,
-    });
+  const seatFilter =
+    params.seat ===
+        'paid' ||
+      params.seat ===
+        'all'
+      ? params.seat
+      : 'billing';
+
+  const [
+    data,
+    workspaces,
+  ] =
+    await Promise.all([
+      listAdminUsers({
+        page:
+          params.page,
+        search:
+          params.q,
+        workspaceId:
+          params.workspace,
+        seatFilter,
+      }),
+      listAdminUserWorkspaceFilters(),
+    ]);
+
+  const selectedWorkspace =
+    workspaces.some(
+      workspace =>
+        workspace.id ===
+        params.workspace,
+    )
+      ? params.workspace ||
+        ''
+      : '';
 
   type Row =
     (typeof data.items)[number];
 
   const columns:
     readonly AdminTableColumn<Row>[] = [
+      {
+        key:
+          'workspace',
+        label:
+          'Workspace',
+        render:
+          row => (
+            <div className="min-w-[180px]">
+              <p className="font-black text-zinc-950 dark:text-white">
+                {row.workspace.name}
+              </p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {row.workspace.slug}
+              </p>
+            </div>
+          ),
+      },
       {
         key:
           'user',
@@ -90,26 +139,103 @@ export default async function AdminUsersPage({
       },
       {
         key:
-          'status',
+          'membership',
         label:
-          'Status',
+          'Membership',
         render:
           row => (
-            <AdminStatusPill
-              value={
-                row.status
-              }
-            />
+            <div className="min-w-[135px] space-y-1">
+              <p className="text-[11px] font-black text-zinc-700 dark:text-zinc-200">
+                {row.membership.label}
+              </p>
+              <AdminStatusPill
+                value={
+                  row.membership.status
+                }
+              />
+            </div>
+          ),
+      },
+      {
+        key:
+          'billing-seat',
+        label:
+          'Billing seat',
+        render:
+          row => (
+            <div className="min-w-[150px]">
+              <p className={[
+                'text-[11px] font-black',
+                row.billing
+                  .isBillingSeat
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-zinc-400',
+              ].join(
+                ' ',
+              )}>
+                {row.billing
+                  .isBillingSeat
+                  ? row.billing
+                      .isPaidPlanSeat
+                    ? 'Billable seat'
+                    : 'Active seat'
+                  : 'Not billed'}
+              </p>
+
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {row.billing
+                  .pricePerUserMonthly ===
+                  null
+                  ? 'Price unavailable'
+                  : `KES ${row.billing.pricePerUserMonthly.toLocaleString(
+                      'en-KE',
+                    )} / month`}
+              </p>
+            </div>
+          ),
+      },
+      {
+        key:
+          'plan',
+        label:
+          'Plan',
+        render:
+          row => (
+            <div className="min-w-[125px]">
+              <p className="text-[11px] font-black text-zinc-800 dark:text-zinc-200">
+                {row.subscription
+                  ?.planName ||
+                  row.subscription
+                    ?.planKey ||
+                  'No plan'}
+              </p>
+              <div className="mt-1">
+                <AdminStatusPill
+                  value={
+                    row.subscription
+                      ?.status ||
+                    'unknown'
+                  }
+                />
+              </div>
+            </div>
           ),
       },
       {
         key:
           'security',
         label:
-          'Security',
+          'Account',
         render:
           row => (
-            <div className="min-w-[150px] space-y-1 text-[11px]">
+            <div className="min-w-[155px] space-y-1 text-[11px]">
+              <div className="flex items-center gap-2">
+                <AdminStatusPill
+                  value={
+                    row.userStatus
+                  }
+                />
+              </div>
               <p>
                 Email: {row.emailVerified ? 'verified' : 'unverified'}
               </p>
@@ -126,18 +252,6 @@ export default async function AdminUsersPage({
       },
       {
         key:
-          'workspaces',
-        label:
-          'Workspaces',
-        render:
-          row => (
-            <span className="font-black">
-              {row.workspaceCount}
-            </span>
-          ),
-      },
-      {
-        key:
           'last-login',
         label:
           'Last login',
@@ -150,20 +264,6 @@ export default async function AdminUsersPage({
             />
           ),
       },
-      {
-        key:
-          'created',
-        label:
-          'Created',
-        render:
-          row => (
-            <AdminDate
-              value={
-                row.createdAt
-              }
-            />
-          ),
-      },
 
       ...(canManageSecurity
         ? [
@@ -171,15 +271,15 @@ export default async function AdminUsersPage({
               key:
                 'actions',
               label:
-                'Security controls',
+                'Global security',
               render:
                 (row: Row) => (
                   <UserControlActions
                     userId={
-                      row.id
+                      row.userId
                     }
                     status={
-                      row.status
+                      row.userStatus
                     }
                     lockedUntil={
                       row.lockedUntil
@@ -193,14 +293,14 @@ export default async function AdminUsersPage({
 
   return (
     <AdminResourcePage
-      title="Users"
-      description="Search global SaMi identities, account state, security posture and workspace membership count. User identity is global; business permissions remain isolated inside each workspace."
+      title="Users & billing seats"
+      description="Review users in the workspace context that SaMi actually bills. The default view mirrors the billing engine: one row per active internal workspace membership. Filter by workspace, narrow to paid-plan seats, or include inactive internal memberships when investigating access."
       baseHref="/admin/users"
       search={
         params.q ||
         ''
       }
-      searchPlaceholder="Search name or email"
+      searchPlaceholder="Search user or workspace"
       total={
         data.total
       }
@@ -218,13 +318,76 @@ export default async function AdminUsersPage({
       }
       rowKey={
         row =>
-          row.id
+          row.membershipId
       }
-      emptyMessage="No users match this search."
+      emptyMessage="No workspace user seats match these filters."
+      persistentQuery={{
+        workspace:
+          selectedWorkspace ||
+          null,
+        seat:
+          seatFilter ===
+            'billing'
+            ? null
+            : seatFilter,
+      }}
+      filterFields={
+        <>
+          <select
+            name="workspace"
+            defaultValue={
+              selectedWorkspace
+            }
+            aria-label="Filter users by workspace"
+            className="h-11 min-w-[180px] rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
+          >
+            <option value="">
+              All workspaces
+            </option>
+
+            {workspaces.map(
+              workspace => (
+                <option
+                  key={
+                    workspace.id
+                  }
+                  value={
+                    workspace.id
+                  }
+                >
+                  {workspace.name}
+                  {workspace.planName
+                    ? ` — ${workspace.planName}`
+                    : ''}
+                </option>
+              ),
+            )}
+          </select>
+
+          <select
+            name="seat"
+            defaultValue={
+              seatFilter
+            }
+            aria-label="Filter users by billing seat"
+            className="h-11 min-w-[190px] rounded-xl border border-zinc-200 bg-white px-3 text-xs font-bold text-zinc-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200"
+          >
+            <option value="billing">
+              Billing quantity
+            </option>
+            <option value="paid">
+              Paid-plan seats
+            </option>
+            <option value="all">
+              All internal memberships
+            </option>
+          </select>
+        </>
+      }
       actions={
         <div className="hidden items-center gap-2 rounded-xl border border-zinc-200 px-3 py-2 text-[11px] font-bold text-zinc-500 sm:flex dark:border-zinc-800">
-          <ShieldCheck className="h-4 w-4" />
-          Global identity registry
+          <CreditCard className="h-4 w-4" />
+          Per-workspace billing seats
         </div>
       }
     />
