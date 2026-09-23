@@ -118,9 +118,11 @@ test('pre-module hardening: external callbacks are not blanket-blocked by browse
     security,
     /requestRequiresSameOrigin/,
   );
-  assert.match(
-    security,
-    /startsWith\( '\/api\/' \)/,
+  assert.ok(
+    security.includes(
+      "'/api/'",
+    ),
+    'same-origin policy must be scoped to API routes',
   );
 
   assert.doesNotMatch(
