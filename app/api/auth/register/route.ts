@@ -29,6 +29,7 @@ import {
 } from '@/lib/services/subscription-email';
 
 import {
+  deleteTenantDatabase,
   provisionTenant,
 } from '@/lib/services/tenant-provisioning';
 
@@ -1350,6 +1351,35 @@ async function cleanupRegistration(
 ): Promise<boolean> {
   let cleanupSucceeded =
     true;
+
+  /*
+   * Physical tenant storage must be removed BEFORE deleting
+   * Control DB registry/tenant rows. If this fails, stop the
+   * rollback and preserve Control DB references for recovery.
+   *
+   * This applies only to a registration we are abandoning.
+   * A normal provisioning_failed workspace is retained and
+   * never reaches this outer rollback path.
+   */
+  if (
+    context.tenantId
+  ) {
+    try {
+      await deleteTenantDatabase(
+        context.tenantId
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi] Tenant database rollback failed:',
+        error
+      );
+
+      return false;
+    }
+  }
+
   if (
     context.tenantId
   ) {
@@ -1363,9 +1393,12 @@ async function cleanupRegistration(
           context.tenantId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       cleanupSucceeded =
         false;
+
       console.error(
         '[SaMi] Payment cleanup failed:',
         error
@@ -1386,9 +1419,12 @@ async function cleanupRegistration(
           context.subscriptionId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       cleanupSucceeded =
         false;
+
       console.error(
         '[SaMi] Subscription cleanup failed:',
         error
@@ -1429,9 +1465,12 @@ async function cleanupRegistration(
             context.tenantId,
           ]
         );
-      } catch (error) {
-      cleanupSucceeded =
-        false;
+      } catch (
+        error
+      ) {
+        cleanupSucceeded =
+          false;
+
         console.error(
           '[SaMi] Tenant cleanup failed:',
           error
@@ -1459,9 +1498,12 @@ async function cleanupRegistration(
           context.userId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       cleanupSucceeded =
         false;
+
       console.error(
         '[SaMi] Verification cleanup failed:',
         error
@@ -1478,9 +1520,12 @@ async function cleanupRegistration(
           context.userId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
       cleanupSucceeded =
         false;
+
       console.error(
         '[SaMi] User cleanup failed:',
         error
