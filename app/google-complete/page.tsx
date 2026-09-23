@@ -196,6 +196,11 @@ function GoogleCompleteContent() {
   ] = useState(false);
 
   const [
+    draftResetComplete,
+    setDraftResetComplete,
+  ] = useState(false);
+
+  const [
     ready,
     setReady,
   ] = useState(false);
@@ -244,6 +249,11 @@ function GoogleCompleteContent() {
     ).catch(
       () =>
         undefined,
+    ).finally(
+      () =>
+        setDraftResetComplete(
+          true
+        ),
     );
 
     try {
@@ -437,7 +447,8 @@ function GoogleCompleteContent() {
   async function handleNext() {
     if (
       loading ||
-      !ready
+      !ready ||
+      !draftResetComplete
     ) {
       return;
     }
