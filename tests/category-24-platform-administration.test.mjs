@@ -44,6 +44,7 @@ test('Category 24 admin pages enforce page-boundary capabilities', async () => {
     ['app/admin/(protected)/notifications/page.tsx', 'notifications.read'],
     ['app/admin/(protected)/audit/page.tsx', 'audit.read'],
     ['app/admin/(protected)/operations/health/page.tsx', 'health.read'],
+    ['app/admin/(protected)/operations/recovery/page.tsx', 'tenants.read'],
     ['app/admin/(protected)/operations/incidents/page.tsx', 'incidents.read'],
     ['app/admin/(protected)/operations/providers/page.tsx', 'providers.read'],
     ['app/admin/(protected)/operations/services/page.tsx', 'providers.read'],
@@ -129,6 +130,7 @@ test('Category 24 provider health is server-only and env-driven', async () => {
 
   for (const name of [
     'Neon',
+    'Object Storage & Backups',
     'Vercel',
     'SaMi AI Provider',
     'Billing Providers',
@@ -139,7 +141,14 @@ test('Category 24 provider health is server-only and env-driven', async () => {
 
   assert.ok(provider.includes('SAMI_VERCEL_API_TOKEN'));
   assert.ok(provider.includes('SAMI_NEON_API_KEY'));
-  assert.doesNotMatch(provider, /NEXT_PUBLIC_(VERCEL|NEON|CLOUDFLARE)/);
+  assert.ok(provider.includes('HeadBucketCommand'));
+  assert.ok(provider.includes('SAMI_BACKUP_S3_BUCKET'));
+  assert.ok(provider.includes('SAMI_STORAGE_BUCKET'));
+  assert.ok(provider.includes('R2_ENDPOINT'));
+  assert.ok(provider.includes('R2_ACCESS_KEY_ID'));
+  assert.ok(provider.includes('R2_SECRET_ACCESS_KEY'));
+  assert.ok(provider.includes('checkObjectStorageProvider'));
+  assert.doesNotMatch(provider, /NEXT_PUBLIC_(VERCEL|NEON|CLOUDFLARE|R2)/);
 });
 
 test('Category 24 infrastructure registry tracks paid dependencies and thresholds', async () => {
@@ -386,6 +395,75 @@ test('Category 24 workspace controls coordinate logical workspace, tenant DB and
   assert.match(route, /capturePlatformIncident/);
   assert.match(page, /WorkspaceControlActions/);
   assert.match(page, /database[\s\S]*healthStatus/);
+});
+
+
+test('Category 24 tenant backup and recovery operations are guarded audited and non-destructive', async () => {
+  const overview = await source('lib/admin/recovery-operations.ts');
+  const route = await source('app/api/admin/operations/recovery/route.ts');
+  const page = await source('app/admin/(protected)/operations/recovery/page.tsx');
+  const manager = await source('app/admin/components/TenantRecoveryManager.tsx');
+  const sidebar = await source('app/admin/components/AdminSidebar.tsx');
+
+  assert.match(overview, /tenant_database_recovery_points/);
+  assert.match(overview, /provider_reference/);
+  assert.doesNotMatch(
+    manager,
+    /providerReference|provider_reference/,
+    'Provider backup object references must never be rendered in the browser.',
+  );
+
+  assert.ok(route.includes('tenants.manage'));
+  assert.match(route, /recordAdminAuditEvent/);
+  assert.match(route, /capturePlatformIncident/);
+  assert.match(route, /sec-fetch-site/);
+
+  for (const action of [
+    'create',
+    'verify',
+    'restore',
+    'delete',
+  ]) {
+    assert.ok(route.includes("'" + action + "'"), action);
+  }
+
+  assert.match(route, /createTenantRecoveryPoint/);
+  assert.match(route, /verifyTenantRecoveryPoint/);
+  assert.match(route, /restoreTenantRecoveryPoint/);
+  assert.match(route, /deleteTenantRecoveryPoint/);
+  assert.match(route, /RESTORE /);
+  assert.match(route, /DELETE BACKUP/);
+  assert.match(route, /registryCutover[\s\S]*false/);
+  assert.doesNotMatch(
+    route,
+    /DROP DATABASE|UPDATE tenant_databases[\s\S]*database_name/,
+    'Platform Admin restore must never overwrite or silently cut over the active tenant database.',
+  );
+
+  assert.match(page, /TenantRecoveryManager/);
+  assert.match(page, /Fresh database only/);
+  assert.match(manager, /Create backup/);
+  assert.match(manager, /Restore safely/);
+  assert.match(manager, /Delete backup/);
+  assert.ok(sidebar.includes("href: '/admin/operations/recovery'"));
+});
+
+
+test('Category 24 live provider checks include private object storage used by backups', async () => {
+  const provider = await source('lib/admin/provider-health.ts');
+
+  assert.match(provider, /HeadBucketCommand/);
+  assert.match(provider, /Object Storage & Backups/);
+  assert.match(provider, /R2_ENDPOINT/);
+  assert.match(provider, /R2_ACCESS_KEY_ID/);
+  assert.match(provider, /R2_SECRET_ACCESS_KEY/);
+  assert.match(provider, /SAMI_BACKUP_S3_BUCKET/);
+  assert.match(provider, /checkObjectStorageProvider/);
+  assert.doesNotMatch(
+    provider,
+    /NEXT_PUBLIC_(R2|SAMI_BACKUP|SAMI_STORAGE)/,
+    'Storage credentials and backup configuration must remain server-only.',
+  );
 });
 
 
