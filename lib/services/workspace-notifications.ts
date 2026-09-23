@@ -717,46 +717,106 @@ export async function getWorkspaceNotificationSummary() {
       context.tenantId,
     );
 
-  const result =
-    await pool.query(
-      `
-        SELECT
-          COUNT(*) FILTER (
-            WHERE is_read = FALSE
-          )::int AS unread_count,
-          COUNT(*)::int AS total_count
-        FROM notifications
-        WHERE user_id = $1
-          AND (
-            company_id = $2
-            OR company_id IS NULL
-          )
-          AND in_app_visible = TRUE
-          AND archived_at IS NULL
-          AND (
-            expires_at IS NULL
-            OR expires_at > NOW()
-          )
-      `,
-      [
-        context.userId,
-        context.companyId,
-      ],
-    );
+  const [
+    countResult,
+    latestResult,
+  ] =
+    await Promise.all([
+      pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (
+              WHERE is_read = FALSE
+            )::int AS unread_count,
+            COUNT(*)::int AS total_count
+          FROM notifications
+          WHERE user_id = $1
+            AND (
+              company_id = $2
+              OR company_id IS NULL
+            )
+            AND in_app_visible = TRUE
+            AND archived_at IS NULL
+            AND (
+              expires_at IS NULL
+              OR expires_at > NOW()
+            )
+        `,
+        [
+          context.userId,
+          context.companyId,
+        ],
+      ),
+
+      pool.query(
+        `
+          SELECT
+            id,
+            company_id,
+            user_id,
+            type,
+            event_key,
+            priority,
+            title,
+            message,
+            link,
+            source_module,
+            source_model,
+            source_record_id,
+            metadata,
+            is_read,
+            read_at,
+            created_at,
+            updated_at
+          FROM notifications
+          WHERE user_id = $1
+            AND (
+              company_id = $2
+              OR company_id IS NULL
+            )
+            AND in_app_visible = TRUE
+            AND archived_at IS NULL
+            AND is_read = FALSE
+            AND (
+              expires_at IS NULL
+              OR expires_at > NOW()
+            )
+          ORDER BY
+            created_at DESC,
+            id DESC
+          LIMIT 1
+        `,
+        [
+          context.userId,
+          context.companyId,
+        ],
+      ),
+    ]);
+
+  const latestRow =
+    latestResult.rows[0] as
+      NotificationRow |
+      undefined;
 
   return {
     unreadCount:
       Number(
-        result.rows[0]
+        countResult.rows[0]
           ?.unread_count ||
         0,
       ),
     totalCount:
       Number(
-        result.rows[0]
+        countResult.rows[0]
           ?.total_count ||
         0,
       ),
+    latestUnread:
+      latestRow
+        ? mapNotification(
+            latestRow,
+          )
+        : null,
   };
 }
 
