@@ -6,6 +6,10 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   getSamiMonthlyAmount,
   getSamiPricePerUserMonthly,
   SAMI_BILLING_CURRENCY,
@@ -2233,6 +2237,51 @@ export async function POST(
 
     const session =
       await getSession();
+
+    const platformSettings =
+      await getRuntimePlatformSettings();
+
+    if (
+      draft.mode ===
+        'existing' &&
+      !platformSettings
+        .registration
+        .selfServiceWorkspaceCreationEnabled
+    ) {
+      return errorResponse(
+        403,
+        'WORKSPACE_CREATION_DISABLED',
+        'Creating additional SaMi workspaces is temporarily disabled by Platform Administration.',
+      );
+    }
+
+    if (
+      draft.mode !==
+        'existing' &&
+      !platformSettings
+        .registration
+        .publicRegistrationEnabled
+    ) {
+      return errorResponse(
+        403,
+        'PUBLIC_REGISTRATION_DISABLED',
+        'New SaMi account registration is temporarily disabled.',
+      );
+    }
+
+    if (
+      draft.mode ===
+        'google' &&
+      !platformSettings
+        .registration
+        .googleRegistrationEnabled
+    ) {
+      return errorResponse(
+        403,
+        'GOOGLE_REGISTRATION_DISABLED',
+        'New account registration with Google is temporarily disabled.',
+      );
+    }
 
     const googleRegistration =
       draft.mode ===
