@@ -955,14 +955,12 @@ export default function SelectPlanPage() {
 
               primaryAction: {
                 label:
-                  'Reopen workspace',
+                  'Try again safely',
 
                 onClick: () => {
                   setOverlay(
                     null
                   );
-
-                  void handleCreateAccount();
                 },
               },
             });
