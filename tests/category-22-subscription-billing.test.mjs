@@ -1247,16 +1247,22 @@ test('Category 22: overdue reconciliation runs automatically with an authenticat
       vercel,
     );
 
-  assert.deepEqual(
-    config.crons,
-    [
-      {
-        path:
-          '/api/internal/billing/reconcile',
-        schedule:
+  assert.ok(
+    Array.isArray(
+      config.crons,
+    ),
+    'Vercel cron configuration must remain an array.',
+  );
+
+  assert.ok(
+    config.crons.some(
+      cron =>
+        cron.path ===
+          '/api/internal/billing/reconcile' &&
+        cron.schedule ===
           '0 6 * * *',
-      },
-    ],
+    ),
+    'The authenticated daily billing reconciliation cron must remain configured even when later platform categories add their own workers.',
   );
 });
 
