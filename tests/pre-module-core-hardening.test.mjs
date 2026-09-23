@@ -404,3 +404,90 @@ test('pre-module hardening: account export is user-scoped and module data obeys 
     /\/api\/account\/export/,
   );
 });
+
+
+test('pre-module hardening: every module extension flag is enforced by a real runtime boundary', async () => {
+  const [
+    registry,
+    dashboard,
+    search,
+    ai,
+    automation,
+    integrations,
+    developer,
+    notifications,
+    activity,
+    lifecycle,
+  ] = await Promise.all([
+    source('lib/modules/registry.ts'),
+    source('lib/dashboard/providers/index.ts'),
+    source('lib/search/registry.ts'),
+    source('lib/ai/tool-registry.ts'),
+    source('lib/automation/registry.ts'),
+    source('lib/integrations/registry.ts'),
+    source('lib/developer/registry.ts'),
+    source('lib/services/workspace-notifications.ts'),
+    source('lib/services/workspace-activity.ts'),
+    source('lib/data-lifecycle/registry.ts'),
+  ]);
+
+  assert.match(
+    registry,
+    /requiredExtension/,
+  );
+
+  assert.match(
+    dashboard,
+    /'dashboard'/,
+  );
+
+  assert.match(
+    search,
+    /'search'/,
+  );
+
+  assert.match(
+    ai,
+    /'aiTools'/,
+  );
+
+  assert.match(
+    automation,
+    /'automationTriggers'/,
+  );
+
+  assert.match(
+    automation,
+    /'automationActions'/,
+  );
+
+  assert.match(
+    integrations,
+    /integrationProviders/,
+  );
+
+  assert.match(
+    developer,
+    /apiEndpoints/,
+  );
+
+  assert.match(
+    notifications,
+    /assertRegisteredSamiModuleExtension[\s\S]*?'notifications'/s,
+  );
+
+  assert.match(
+    activity,
+    /assertRegisteredSamiModuleExtension[\s\S]*?'activity'/s,
+  );
+
+  assert.match(
+    lifecycle,
+    /dataExport/,
+  );
+
+  assert.match(
+    lifecycle,
+    /dataErasure/,
+  );
+});
