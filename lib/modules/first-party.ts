@@ -436,7 +436,7 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: true,
       integrationProviders: false,
-      apiEndpoints: true,
+      apiEndpoints: false,
       dataExport: false,
       dataErasure: false,
     },
