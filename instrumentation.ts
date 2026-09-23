@@ -36,6 +36,37 @@ function cleanHeader(
 }
 
 
+function errorDigest(
+  error:
+    unknown,
+) {
+  if (
+    !error ||
+    typeof error !==
+      'object' ||
+    !('digest' in error)
+  ) {
+    return null;
+  }
+
+  const digest =
+    (
+      error as {
+        digest?:
+          unknown;
+      }
+    ).digest;
+
+  return typeof digest ===
+    'string'
+    ? digest.slice(
+        0,
+        500,
+      )
+    : null;
+}
+
+
 function requestId(
   headers:
     Record<
@@ -138,8 +169,9 @@ export const onRequestError:
         error,
         metadata: {
           digest:
-            error.digest ||
-            null,
+            errorDigest(
+              error,
+            ),
           routerKind:
             context.routerKind,
           routePath:
