@@ -865,11 +865,22 @@ export default function SelectPlanPage() {
             return;
           }
 
+          const paymentEmail =
+            data.verification
+              ?.email ||
+            data.user
+              ?.email ||
+            '';
+
           try {
-            sessionStorage.setItem(
-              VERIFICATION_EMAIL_STORAGE_KEY,
-              email
-            );
+            if (
+              paymentEmail
+            ) {
+              sessionStorage.setItem(
+                VERIFICATION_EMAIL_STORAGE_KEY,
+                paymentEmail
+              );
+            }
           } catch {
             // Server state remains authoritative.
           }
