@@ -4,6 +4,7 @@ import {
 } from 'next/server';
 
 import {
+  archivePlatformServiceSubscription,
   updatePlatformServiceSubscription,
 } from '@/lib/admin/platform-services';
 
@@ -330,6 +331,184 @@ export async function PATCH(
                   ' ',
                 )
                 .toLowerCase(),
+      },
+      {
+        status,
+        headers: {
+          'Cache-Control':
+            'no-store',
+        },
+      },
+    );
+  }
+}
+
+
+
+export async function DELETE(
+  request:
+    NextRequest,
+  context:
+    Context,
+) {
+  let session:
+    Awaited<
+      ReturnType<
+        typeof requireAdminCapability
+      >
+    > |
+    null =
+    null;
+
+  let serviceKey =
+    '';
+
+  try {
+    if (
+      !sameOrigin(
+        request,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+          error:
+            'This administrator request could not be verified.',
+        },
+        {
+          status:
+            403,
+        },
+      );
+    }
+
+    session =
+      await requireAdminCapability(
+        'providers.manage',
+      );
+
+    const params =
+      await context.params;
+
+    serviceKey =
+      params.serviceKey
+        .trim()
+        .toLowerCase();
+
+    const result =
+      await archivePlatformServiceSubscription(
+        serviceKey,
+      );
+
+    await recordAdminAuditEvent({
+      request,
+      adminId:
+        session.adminId,
+      sessionId:
+        session.sessionId,
+      eventType:
+        'platform.service.archived',
+      action:
+        'platform_service_archive',
+      targetType:
+        'platform_service_subscription',
+      targetId:
+        serviceKey,
+      successful:
+        true,
+    });
+
+    return NextResponse.json(
+      {
+        success:
+          true,
+        service:
+          result,
+      },
+      {
+        status:
+          200,
+        headers: {
+          'Cache-Control':
+            'no-store',
+        },
+      },
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Admin] Platform service archive failed:',
+      error,
+    );
+
+    if (
+      session
+    ) {
+      await recordAdminAuditEvent({
+        request,
+        adminId:
+          session.adminId,
+        sessionId:
+          session.sessionId,
+        eventType:
+          'platform.service.archive_failed',
+        action:
+          'platform_service_archive',
+        targetType:
+          'platform_service_subscription',
+        targetId:
+          serviceKey ||
+          null,
+        successful:
+          false,
+        failureReason:
+          error instanceof
+            Error
+            ? error.message
+            : 'unknown_error',
+      });
+    }
+
+    const code =
+      error instanceof
+        Error
+        ? error.message
+        : 'PLATFORM_SERVICE_ARCHIVE_FAILED';
+
+    const status =
+      code ===
+        'ADMIN_UNAUTHENTICATED'
+        ? 401
+        : code ===
+            'ADMIN_FORBIDDEN'
+          ? 403
+          : code ===
+              'SERVICE_NOT_FOUND'
+            ? 404
+            : code ===
+                'CORE_SERVICE_CANNOT_BE_ARCHIVED'
+              ? 409
+              : 500;
+
+    return NextResponse.json(
+      {
+        success:
+          false,
+        error:
+          code ===
+            'CORE_SERVICE_CANNOT_BE_ARCHIVED'
+            ? 'Core SaMi infrastructure services cannot be archived from Platform Admin.'
+            : status ===
+                500
+              ? 'SaMi could not archive this platform service.'
+              : code
+                  .replace(
+                    /_/g,
+                    ' ',
+                  )
+                  .toLowerCase(),
       },
       {
         status,
