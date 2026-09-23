@@ -4,8 +4,8 @@ import {
 } from 'next/server';
 
 import {
-  requireAdminRole,
-} from '@/lib/auth/admin-session';
+  requireAdminCapability,
+} from '@/lib/admin/require-capability';
 
 import {
   provisionPlatformAdmin,
@@ -378,9 +378,9 @@ export async function GET(
 ) {
   try {
     const session =
-      await requireAdminRole([
-        'super_admin',
-      ]);
+      await requireAdminCapability(
+        'administrators.read',
+      );
 
     if (
       session.status !==
@@ -793,7 +793,7 @@ export async function GET(
             'ADMIN_FORBIDDEN',
 
           error:
-            'Only a Super Administrator can manage Platform Administrators.',
+            'Your administrator role cannot manage Platform Administrators.',
         },
         403
       );
@@ -909,9 +909,9 @@ export async function POST(
     }
 
     const session =
-      await requireAdminRole([
-        'super_admin',
-      ]);
+      await requireAdminCapability(
+        'administrators.manage',
+      );
 
     actorAdminId =
       session.adminId;
