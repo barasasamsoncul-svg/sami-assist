@@ -41,7 +41,8 @@ function requestId(
     Record<
       string,
       string |
-      string[]
+      string[] |
+      undefined
     >,
 ) {
   return (

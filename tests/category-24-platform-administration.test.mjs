@@ -459,6 +459,7 @@ test('Category 24 tenant backup and recovery operations are guarded audited and 
 
 test('Category 24 live provider checks include private object storage used by backups', async () => {
   const provider = await source('lib/admin/provider-health.ts');
+  const env = await source('docs/platform-env.example');
 
   assert.match(provider, /HeadBucketCommand/);
   assert.match(provider, /Object Storage & Backups/);
@@ -467,6 +468,16 @@ test('Category 24 live provider checks include private object storage used by ba
   assert.match(provider, /R2_SECRET_ACCESS_KEY/);
   assert.match(provider, /SAMI_BACKUP_S3_BUCKET/);
   assert.match(provider, /checkObjectStorageProvider/);
+  for (const key of [
+    'SAMI_BACKUP_S3_BUCKET',
+    'SAMI_BACKUP_S3_REGION',
+    'SAMI_BACKUP_S3_ENDPOINT',
+    'SAMI_BACKUP_S3_FORCE_PATH_STYLE',
+    'SAMI_PG_DUMP_PATH',
+    'SAMI_PG_RESTORE_PATH',
+  ]) {
+    assert.ok(env.includes(key), key);
+  }
   assert.doesNotMatch(
     provider,
     /NEXT_PUBLIC_(R2|SAMI_BACKUP|SAMI_STORAGE)/,

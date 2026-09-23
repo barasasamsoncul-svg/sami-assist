@@ -189,6 +189,20 @@ R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=<your-r2-access-key-id>
 R2_SECRET_ACCESS_KEY=<your-r2-secret-access-key>
 
+# Optional dedicated tenant-backup storage. Leave these unset to reuse
+# the private R2 configuration above. Use a separate private bucket when
+# you want backup retention and lifecycle rules isolated from normal files.
+#
+# SAMI_BACKUP_S3_BUCKET=<your-private-backup-bucket>
+# SAMI_BACKUP_S3_REGION=auto
+# SAMI_BACKUP_S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+# SAMI_BACKUP_S3_FORCE_PATH_STYLE=false
+#
+# Optional PostgreSQL client binary overrides for the logical-backup worker.
+# The runtime performing create/restore must provide pg_dump and pg_restore.
+# SAMI_PG_DUMP_PATH=pg_dump
+# SAMI_PG_RESTORE_PATH=pg_restore
+
 # AI provider selection remains environment-driven. Configure exactly
 # one active provider/model unless SAMI_AI_PROVIDER explicitly selects it.
 #
