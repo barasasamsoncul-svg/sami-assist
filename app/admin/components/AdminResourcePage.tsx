@@ -163,6 +163,8 @@ export function AdminStatusPill({
       'succeeded',
       'completed',
       'verified',
+      'cleared',
+      'free',
     ]);
 
   const warning =
@@ -176,6 +178,8 @@ export function AdminStatusPill({
       'degraded',
       'invited',
       'locked',
+      'due',
+      'pending_payment',
     ]);
 
   const negative =
