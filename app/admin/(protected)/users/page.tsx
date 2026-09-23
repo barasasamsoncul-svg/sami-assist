@@ -8,6 +8,12 @@ import AdminResourcePage, {
   type AdminTableColumn,
 } from '@/app/admin/components/AdminResourcePage';
 
+import UserControlActions from '@/app/admin/components/UserControlActions';
+
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
 import {
   listAdminUsers,
 } from '@/lib/admin/oversight';
@@ -38,9 +44,16 @@ export default async function AdminUsersPage({
   searchParams:
     Promise<SearchParams>;
 }) {
-  await requireAdminCapability(
-    'users.read',
-  );
+  const session =
+    await requireAdminCapability(
+      'users.read',
+    );
+
+  const canManageSecurity =
+    hasAdminCapability(
+      session.role,
+      'users.security.manage',
+    );
 
   const params =
     await searchParams;
@@ -151,6 +164,31 @@ export default async function AdminUsersPage({
             />
           ),
       },
+
+      ...(canManageSecurity
+        ? [
+            {
+              key:
+                'actions',
+              label:
+                'Security controls',
+              render:
+                (row: Row) => (
+                  <UserControlActions
+                    userId={
+                      row.id
+                    }
+                    status={
+                      row.status
+                    }
+                    lockedUntil={
+                      row.lockedUntil
+                    }
+                  />
+                ),
+            } satisfies AdminTableColumn<Row>,
+          ]
+        : []),
     ];
 
   return (
