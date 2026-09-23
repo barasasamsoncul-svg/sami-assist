@@ -309,6 +309,22 @@ export async function listAdminUserWorkspaceFilters() {
 }
 
 
+type AdminWorkspaceMemberRow = {
+  id?:
+    unknown;
+  name?:
+    unknown;
+  email?:
+    unknown;
+  status?:
+    unknown;
+  isOwner?:
+    unknown;
+  lastLoginAt?:
+    unknown;
+};
+
+
 export async function listAdminUsers(
   input:
     AdminUserListInput = {},
@@ -951,12 +967,14 @@ export async function listAdminUsers(
               'cancelled';
           }
 
-          const rawMembers =
-            Array.isArray(
-              row.internal_members,
-            )
-              ? row.internal_members
-              : [];
+          const rawMembers:
+            AdminWorkspaceMemberRow[] =
+              Array.isArray(
+                row.internal_members,
+              )
+                ? row.internal_members as
+                    AdminWorkspaceMemberRow[]
+                : [];
 
           return {
             workspace: {
