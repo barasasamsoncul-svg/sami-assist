@@ -16,6 +16,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  hashPassword,
+} from '@/lib/auth/password';
+
+import {
   sendVerificationEmail,
 } from '@/lib/services/email';
 
@@ -1539,16 +1543,24 @@ export async function POST(
        and credentials unchanged.
        ======================================================== */
 
-    const passwordHash =
-      existingAccountRegistration
-        ? null
-        : googleRegistration
-          ? crypto
-              .randomBytes(64)
-              .toString(
-                'base64url'
-              )
+    let passwordHash:
+      string | null =
+      null;
+
+    if (
+      !existingAccountRegistration
+    ) {
+      passwordHash =
+        googleRegistration
+          ? await hashPassword(
+              crypto
+                .randomBytes(64)
+                .toString(
+                  'base64url'
+                )
+            )
           : draft.passwordHash;
+    }
 
     if (
       !existingAccountRegistration &&
