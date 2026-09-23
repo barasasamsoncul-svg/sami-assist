@@ -2179,12 +2179,6 @@ export async function sendEmailChangeVerificationEmail(
 
           html,
 
-          attachments:
-            attachments.length >
-              0
-              ? attachments
-              : undefined,
-
           headers: {
             'X-SaMi-Email-Type':
               'email-change-verification',
@@ -2835,6 +2829,12 @@ export async function sendWorkspaceNotificationEmail(
           text,
 
           html,
+
+          attachments:
+            attachments.length >
+              0
+              ? attachments
+              : undefined,
 
           headers: {
             'X-SaMi-Email-Type':
