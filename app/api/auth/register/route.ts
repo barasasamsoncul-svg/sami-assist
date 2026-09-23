@@ -16,10 +16,6 @@ import {
 } from '@/lib/modules/registry';
 
 import {
-  hashPassword,
-} from '@/lib/auth/password';
-
-import {
   sendVerificationEmail,
 } from '@/lib/services/email';
 
@@ -31,6 +27,17 @@ import {
 import {
   provisionTenant,
 } from '@/lib/services/tenant-provisioning';
+
+import {
+  clearRegistrationDraftCookieOptions,
+  readRegistrationDraft,
+  REGISTRATION_DRAFT_COOKIE_NAME,
+} from '@/lib/auth/registration-draft';
+
+import {
+  getSession,
+  setCurrentTenantForSession,
+} from '@/lib/auth/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,8 +79,6 @@ const MAX_PHONE_LENGTH = 40;
 
 const MAX_EMAIL_LENGTH = 254;
 
-const MAX_PASSWORD_LENGTH = 128;
-
 const GOOGLE_SIGNUP_COOKIE =
   'sami_google_signup_state';
 
@@ -95,6 +100,7 @@ type RegistrationContext = {
   userId: string | null;
   tenantId: string | null;
   subscriptionId: string | null;
+  userCreated: boolean;
 };
 
 type ModuleRow = {
@@ -130,6 +136,12 @@ type SubscriptionResponseRow = {
   current_period_end: Date | string | null;
   plan_key: string;
   plan_name: string;
+  tenant_name: string;
+  owner_email: string;
+  owner_first_name: string | null;
+  owner_last_name: string | null;
+  owner_email_verified: boolean;
+  owner_email_verified_at: Date | string | null;
 };
 
 /* ============================================================
@@ -248,16 +260,6 @@ function isValidEmail(
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
       email
     )
-  );
-}
-
-function isValidPassword(
-  password: string
-): boolean {
-  return (
-    password.length >= 8 &&
-    password.length <=
-      MAX_PASSWORD_LENGTH
   );
 }
 
@@ -444,17 +446,6 @@ function hashOpaqueToken(
       'utf8'
     )
     .digest('hex');
-}
-
-function isGoogleRegistration(
-  body: RegistrationBody
-): boolean {
-  return (
-    body.googleAuth ===
-      true ||
-    body.authProvider ===
-      'google'
-  );
 }
 
 async function getGoogleSignupState(
@@ -767,7 +758,8 @@ async function cleanupRegistration(
   }
 
   if (
-    context.userId
+    context.userId &&
+    context.userCreated
   ) {
     try {
       await queryControl(
@@ -832,7 +824,22 @@ async function getBillableUserCount(
         FROM tenant_users
 
         WHERE tenant_id = $1
-          AND status = 'active'
+          AND LOWER(
+                COALESCE(
+                  status,
+                  ''
+                )
+              ) =
+              'active'
+          AND LOWER(
+                COALESCE(
+                  member_type,
+                  'internal'
+                )
+              ) =
+              'internal'
+          AND deleted_at
+              IS NULL
       `,
       [
         tenantId,
@@ -859,7 +866,8 @@ async function getBillableUserCount(
    ============================================================ */
 
 async function getSubscriptionForResponse(
-  subscriptionId: string
+  subscriptionId: string,
+  ownerUserId: string
 ): Promise<
   SubscriptionResponseRow | null
 > {
@@ -875,21 +883,53 @@ async function getSubscriptionForResponse(
           s.current_period_end,
 
           p.key AS plan_key,
-          p.name AS plan_name
+          p.name AS plan_name,
+
+          t.name AS tenant_name,
+
+          u.email AS owner_email,
+          u.first_name AS owner_first_name,
+          u.last_name AS owner_last_name,
+          COALESCE(
+            u.email_verified,
+            FALSE
+          ) AS owner_email_verified,
+          u.email_verified_at AS owner_email_verified_at
 
         FROM subscriptions s
 
         INNER JOIN plans p
           ON p.id = s.plan_id
 
+        INNER JOIN tenants t
+          ON t.id = s.tenant_id
+
+        INNER JOIN tenant_users tu
+          ON tu.tenant_id = s.tenant_id
+         AND tu.user_id = $2
+         AND tu.is_owner = TRUE
+         AND LOWER(
+               COALESCE(
+                 tu.status,
+                 ''
+               )
+             ) = 'active'
+         AND tu.deleted_at IS NULL
+
+        INNER JOIN users u
+          ON u.id = tu.user_id
+         AND u.deleted_at IS NULL
+
         WHERE s.id = $1
           AND s.deleted_at IS NULL
           AND p.deleted_at IS NULL
+          AND t.deleted_at IS NULL
 
         LIMIT 1
       `,
       [
         subscriptionId,
+        ownerUserId,
       ]
     );
 
@@ -911,6 +951,7 @@ export async function POST(
       userId: null,
       tenantId: null,
       subscriptionId: null,
+      userCreated: false,
     };
 
   try {
@@ -950,13 +991,45 @@ export async function POST(
     }
 
     /* ========================================================
-       2. AUTH PROVIDER
+       2. SERVER-AUTHORITATIVE REGISTRATION DRAFT
+
+       The browser is allowed to submit only onboarding choices
+       such as plan and apps. Account identity, workspace name
+       and password authority come from the encrypted HttpOnly
+       draft created by /api/auth/registration-draft.
        ======================================================== */
 
-    const googleRegistration =
-      isGoogleRegistration(
-        body
+    const draft =
+      readRegistrationDraft(
+        request.cookies.get(
+          REGISTRATION_DRAFT_COOKIE_NAME
+        )?.value
       );
+
+    if (
+      !draft
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_DRAFT_REQUIRED',
+        'Your secure registration session is missing or expired. Start the workspace setup again.',
+        {
+          next:
+            '/register',
+        }
+      );
+    }
+
+    const session =
+      await getSession();
+
+    const googleRegistration =
+      draft.mode ===
+        'google';
+
+    const existingAccountRegistration =
+      draft.mode ===
+        'existing';
 
     let googleSignup:
       GoogleSignupRow | null =
@@ -971,85 +1044,91 @@ export async function POST(
         );
 
       if (
+        !googleSignup ||
         !googleSignup
+          .google_subject ||
+        googleSignup.state_hash !==
+          draft.googleStateHash
       ) {
         return errorResponse(
-          400,
+          409,
           'GOOGLE_SIGNUP_EXPIRED',
-          'Your Google registration has expired. Please start again.'
-        );
-      }
-
-      if (
-        !googleSignup.google_subject
-      ) {
-        return errorResponse(
-          400,
-          'GOOGLE_SIGNUP_INVALID',
-          'Google registration could not be verified.'
+          'Your Google registration can no longer be verified. Please start again.',
+          {
+            next:
+              '/register',
+          }
         );
       }
     }
 
+    if (
+      existingAccountRegistration
+    ) {
+      if (
+        !session ||
+        !draft.userId ||
+        session.user.id !==
+          draft.userId
+      ) {
+        return errorResponse(
+          401,
+          'AUTHENTICATION_REQUIRED',
+          'Sign in with the SaMi account that owns this workspace setup.',
+          {
+            next:
+              '/workspaces/new',
+          }
+        );
+      }
+    } else if (
+      session
+    ) {
+      return errorResponse(
+        409,
+        'AUTHENTICATED_ACCOUNT_MISMATCH',
+        'You are already signed in. Create the workspace under your current SaMi account or sign out before creating a different account.',
+        {
+          next:
+            '/workspaces/new',
+        }
+      );
+    }
+
     /* ========================================================
-       3. ACCOUNT DATA
+       3. AUTHORITATIVE ACCOUNT DATA
        ======================================================== */
 
     let firstName =
       normalizeName(
-        body.firstName
+        googleSignup
+          ?.first_name ??
+        draft.firstName
       );
 
     let lastName =
       normalizeName(
-        body.lastName
+        googleSignup
+          ?.last_name ??
+        draft.lastName
       );
 
     let email =
       normalizeEmail(
-        body.email
+        googleSignup
+          ?.email ??
+        draft.email
       );
 
     const phone =
       normalizePhone(
-        body.phone
+        draft.phone
       );
 
     const businessName =
       normalizeName(
-        body.businessName
+        draft.businessName
       );
-
-    const password =
-      typeof body.password ===
-      'string'
-        ? body.password
-        : '';
-
-    if (
-      googleSignup
-    ) {
-      /*
-       * Google identity values come from the authenticated
-       * server-side OAuth state, never from sessionStorage.
-       */
-      email =
-        normalizeEmail(
-          googleSignup.email
-        );
-
-      firstName =
-        normalizeName(
-          googleSignup.first_name
-        ) ||
-        firstName;
-
-      lastName =
-        normalizeName(
-          googleSignup.last_name
-        ) ||
-        lastName;
-    }
 
     const requestedPlan =
       normalizePlan(
@@ -1073,19 +1152,8 @@ export async function POST(
     ) {
       return errorResponse(
         400,
-        'REQUIRED_FIELDS_MISSING',
-        'First name, last name, email and business name are required.'
-      );
-    }
-
-    if (
-      !googleRegistration &&
-      !password
-    ) {
-      return errorResponse(
-        400,
-        'PASSWORD_REQUIRED',
-        'Password is required.'
+        'REGISTRATION_IDENTITY_INVALID',
+        'The secure registration identity is incomplete. Restart workspace setup.'
       );
     }
 
@@ -1110,20 +1178,7 @@ export async function POST(
       return errorResponse(
         400,
         'INVALID_EMAIL',
-        'Please enter a valid email address.'
-      );
-    }
-
-    if (
-      !googleRegistration &&
-      !isValidPassword(
-        password
-      )
-    ) {
-      return errorResponse(
-        400,
-        'PASSWORD_WEAK',
-        'Password must be between 8 and 128 characters.'
+        'The registration email is invalid.'
       );
     }
 
@@ -1175,7 +1230,12 @@ export async function POST(
     }
 
     /* ========================================================
-       5. EXISTING USER
+       5. ACCOUNT IDENTITY / MULTI-WORKSPACE OWNERSHIP
+
+       One users row represents one SaMi identity. The same
+       verified account may own or join many tenants through
+       tenant_users. We never create a duplicate users row just
+       because the person is creating another workspace.
        ======================================================== */
 
     const existingUser =
@@ -1184,7 +1244,11 @@ export async function POST(
           SELECT
             id,
             email,
+            first_name,
+            last_name,
+            phone,
             status,
+            email_verified,
             email_verified_at,
             deleted_at
 
@@ -1199,14 +1263,72 @@ export async function POST(
         ]
       );
 
-    if (
-      existingUser.rows
-        .length >
-      0
-    ) {
-      const existing =
-        existingUser.rows[0];
+    const existing =
+      existingUser.rows[0] ||
+      null;
 
+    if (
+      existingAccountRegistration
+    ) {
+      if (
+        !existing ||
+        existing.deleted_at ||
+        String(
+          existing.id
+        ) !==
+          draft.userId ||
+        String(
+          existing.id
+        ) !==
+          session?.user.id ||
+        String(
+          existing.status ||
+          ''
+        )
+          .trim()
+          .toLowerCase() !==
+          'active' ||
+        (
+          existing.email_verified !==
+            true &&
+          !existing
+            .email_verified_at
+        )
+      ) {
+        return errorResponse(
+          409,
+          'ACCOUNT_UNAVAILABLE',
+          'The signed-in SaMi account is not available for creating another workspace.'
+        );
+      }
+
+      context.userId =
+        requireDatabaseId(
+          existing.id,
+          'existing user'
+        );
+
+      email =
+        normalizeEmail(
+          existing.email
+        );
+
+      firstName =
+        normalizeName(
+          existing.first_name
+        ) ||
+        session?.user.firstName ||
+        firstName;
+
+      lastName =
+        normalizeName(
+          existing.last_name
+        ) ||
+        session?.user.lastName ||
+        lastName;
+    } else if (
+      existing
+    ) {
       if (
         existing.deleted_at
       ) {
@@ -1220,12 +1342,8 @@ export async function POST(
       if (
         !existing
           .email_verified_at &&
-        (
-          existing.status ===
-            'pending_verification' ||
-          existing.status ===
-            'pending'
-        )
+        existing.email_verified !==
+          true
       ) {
         return errorResponse(
           409,
@@ -1236,8 +1354,12 @@ export async function POST(
 
       return errorResponse(
         409,
-        'EMAIL_ALREADY_REGISTERED',
-        'An account with this email already exists.'
+        'ACCOUNT_SIGN_IN_REQUIRED',
+        'This email already belongs to a SaMi account. Sign in with it to create another workspace or accept workspace invitations.',
+        {
+          next:
+            '/workspaces/new',
+        }
       );
     }
 
@@ -1409,22 +1531,35 @@ export async function POST(
       );
 
     /* ========================================================
-       10. PASSWORD HASH
+       10. ACCOUNT CREDENTIAL MATERIAL
+
+       Email/password drafts contain only a server-created
+       password hash. Google receives a random unusable local
+       password. Existing accounts reuse their current identity
+       and credentials unchanged.
        ======================================================== */
 
-    const passwordSecret =
-      googleRegistration
-        ? crypto
-            .randomBytes(64)
-            .toString(
-              'base64url'
-            )
-        : password;
-
     const passwordHash =
-      await hashPassword(
-        passwordSecret
+      existingAccountRegistration
+        ? null
+        : googleRegistration
+          ? crypto
+              .randomBytes(64)
+              .toString(
+                'base64url'
+              )
+          : draft.passwordHash;
+
+    if (
+      !existingAccountRegistration &&
+      !passwordHash
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_DRAFT_INVALID',
+        'The secure registration credential is unavailable. Start registration again.'
       );
+    }
 
     /* ========================================================
        11. WORKSPACE SLUG
@@ -1436,93 +1571,109 @@ export async function POST(
       );
 
     /* ========================================================
-       12. CREATE USER
+       12. CREATE OR REUSE GLOBAL USER IDENTITY
        ======================================================== */
 
     const emailAlreadyVerified =
-      googleRegistration;
-
-    const userStatus =
-      googleRegistration
-        ? 'active'
-        : 'pending_verification';
-
-    const userResult =
-      await queryControl(
-        `
-          INSERT INTO users (
-            email,
-            password_hash,
-            first_name,
-            last_name,
-            full_name,
-            phone,
-            status,
-            email_verified,
-            email_verified_at,
-            created_at,
-            updated_at
-          )
-
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-
-            CASE
-              WHEN $8::boolean
-              THEN NOW()
-              ELSE NULL
-            END,
-
-            NOW(),
-            NOW()
-          )
-
-          RETURNING
-            id,
-            email
-        `,
-        [
-          email,
-
-          passwordHash,
-
-          firstName,
-
-          lastName,
-
-          `${firstName} ${lastName}`,
-
-          phone,
-
-          userStatus,
-
-          emailAlreadyVerified,
-        ]
-      );
+      googleRegistration ||
+      existingAccountRegistration;
 
     if (
-      userResult.rows
-        .length ===
-      0
+      !existingAccountRegistration
     ) {
-      throw new Error(
-        'User was not created by the database.'
-      );
+      const userStatus =
+        googleRegistration
+          ? 'active'
+          : 'pending_verification';
+
+      const userResult =
+        await queryControl(
+          `
+            INSERT INTO users (
+              email,
+              password_hash,
+              first_name,
+              last_name,
+              full_name,
+              phone,
+              status,
+              email_verified,
+              email_verified_at,
+              created_at,
+              updated_at
+            )
+
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+
+              CASE
+                WHEN $8::boolean
+                THEN NOW()
+                ELSE NULL
+              END,
+
+              NOW(),
+              NOW()
+            )
+
+            RETURNING
+              id,
+              email
+          `,
+          [
+            email,
+
+            passwordHash,
+
+            firstName,
+
+            lastName,
+
+            `${firstName} ${lastName}`,
+
+            phone,
+
+            userStatus,
+
+            emailAlreadyVerified,
+          ]
+        );
+
+      if (
+        userResult.rows
+          .length ===
+        0
+      ) {
+        throw new Error(
+          'User was not created by the database.'
+        );
+      }
+
+      context.userId =
+        requireDatabaseId(
+          userResult
+            .rows[0].id,
+          'user'
+        );
+
+      context.userCreated =
+        true;
     }
 
-    context.userId =
-      requireDatabaseId(
-        userResult
-          .rows[0].id,
-        'user'
+    if (
+      !context.userId
+    ) {
+      throw new Error(
+        'Registration does not have an authoritative SaMi user.'
       );
+    }
 
     /* ========================================================
        13. CREATE WORKSPACE
@@ -2020,7 +2171,9 @@ export async function POST(
       false;
 
     if (
-      !googleRegistration
+      draft.mode ===
+        'email' &&
+      context.userCreated
     ) {
       verificationEmailSent =
         await createVerification({
@@ -2078,7 +2231,8 @@ export async function POST(
 
     const subscription =
       await getSubscriptionForResponse(
-        context.subscriptionId
+        context.subscriptionId,
+        context.userId
       );
 
     if (!subscription) {
@@ -2104,6 +2258,36 @@ export async function POST(
           .current_period_end
       );
 
+    const authoritativeEmail =
+      normalizeEmail(
+        subscription
+          .owner_email
+      );
+
+    const authoritativeFirstName =
+      normalizeName(
+        subscription
+          .owner_first_name
+      ) ||
+      firstName;
+
+    const authoritativeBusinessName =
+      normalizeName(
+        subscription
+          .tenant_name
+      );
+
+    if (
+      !isValidEmail(
+        authoritativeEmail
+      ) ||
+      !authoritativeBusinessName
+    ) {
+      throw new Error(
+        'Authoritative workspace owner identity could not be resolved.'
+      );
+    }
+
     /* ========================================================
        24. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
 
@@ -2124,11 +2308,14 @@ export async function POST(
 
     try {
       await sendSubscriptionConfirmationEmail({
-        email,
+        email:
+          authoritativeEmail,
 
-        firstName,
+        firstName:
+          authoritativeFirstName,
 
-        businessName,
+        businessName:
+          authoritativeBusinessName,
 
         plan:
           finalPlan as SaMiRegistrationPlan,
@@ -2160,7 +2347,36 @@ export async function POST(
     }
 
     /* ========================================================
-       25. RESPONSE
+       25. EXISTING ACCOUNT WORKSPACE SWITCH
+
+       A signed-in user who creates another workspace should land
+       in that workspace immediately. This never creates a second
+       identity or bypasses the existing session/2FA boundary.
+       ======================================================== */
+
+    if (
+      existingAccountRegistration &&
+      provisioningSucceeded &&
+      session
+    ) {
+      const switched =
+        await setCurrentTenantForSession(
+          session.sessionId,
+          session.user.id,
+          context.tenantId
+        );
+
+      if (
+        !switched
+      ) {
+        throw new Error(
+          'The new workspace was created but the current session could not switch to it.'
+        );
+      }
+    }
+
+    /* ========================================================
+       26. RESPONSE
        ======================================================== */
 
     const response =
@@ -2204,15 +2420,23 @@ export async function POST(
             id:
               context.userId,
 
-            email,
+            email:
+              authoritativeEmail,
 
             emailVerified:
-              googleRegistration,
+              Boolean(
+                subscription
+                  .owner_email_verified ||
+                subscription
+                  .owner_email_verified_at
+              ),
 
             authProvider:
-              googleRegistration
-                ? 'google'
-                : 'email',
+              existingAccountRegistration
+                ? 'existing'
+                : googleRegistration
+                  ? 'google'
+                  : 'email',
           },
 
           tenant: {
@@ -2220,7 +2444,7 @@ export async function POST(
               context.tenantId,
 
             name:
-              businessName,
+              authoritativeBusinessName,
 
             slug,
 
@@ -2302,31 +2526,44 @@ export async function POST(
 
           verification: {
             required:
-              !googleRegistration,
+              draft.mode ===
+                'email' &&
+              context.userCreated,
 
-            email,
+            email:
+              authoritativeEmail,
 
             expiresInMinutes:
-              googleRegistration
-                ? null
-                : VERIFICATION_EXPIRY_MINUTES,
+              draft.mode ===
+                  'email' &&
+                context.userCreated
+                ? VERIFICATION_EXPIRY_MINUTES
+                : null,
 
             emailSent:
-              googleRegistration
-                ? false
-                : verificationEmailSent,
+              draft.mode ===
+                  'email' &&
+                context.userCreated
+                ? verificationEmailSent
+                : false,
           },
 
           next:
-            googleRegistration
+            existingAccountRegistration
               ? (
                   provisioningSucceeded
-                    ? '/login?google=registered'
-                    : '/login?workspace=preparing'
+                    ? '/dashboard'
+                    : '/workspaces/new?workspace=preparing'
                 )
-              : `/verify-email?email=${encodeURIComponent(
-                  email
-                )}`,
+              : googleRegistration
+                ? (
+                    provisioningSucceeded
+                      ? '/login?google=registered'
+                      : '/login?workspace=preparing'
+                  )
+                : `/verify-email?email=${encodeURIComponent(
+                    authoritativeEmail
+                  )}`,
 
           message:
             isPaidPlan
@@ -2343,6 +2580,12 @@ export async function POST(
         },
         201
       );
+
+    response.cookies.set(
+      REGISTRATION_DRAFT_COOKIE_NAME,
+      '',
+      clearRegistrationDraftCookieOptions()
+    );
 
     if (
       googleRegistration
