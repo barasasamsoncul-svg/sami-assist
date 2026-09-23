@@ -6,9 +6,13 @@ import {
   useTransition,
 } from 'react';
 
+import Link from 'next/link';
+
 import {
   useRouter,
 } from 'next/navigation';
+
+import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 
 import {
   AlertTriangle,
@@ -46,13 +50,6 @@ type ViewKey =
   | 'reports'
   | 'settings';
 
-
-type DraftLine = {
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  taxRate: number;
-};
 
 
 const NAV:
@@ -447,24 +444,7 @@ export default function InvoicingWorkspaceClient({
   ] =
     useTransition();
 
-  const [
-    lines,
-    setLines,
-  ] =
-    useState<
-      DraftLine[]
-    >([
-      {
-        description:
-          '',
-        quantity:
-          1,
-        unitPrice:
-          0,
-        taxRate:
-          0,
-      },
-    ]);
+
 
   const filteredInvoices =
     useMemo(
@@ -781,12 +761,6 @@ export default function InvoicingWorkspaceClient({
             }
             setSearch={
               setSearch
-            }
-            lines={
-              lines
-            }
-            setLines={
-              setLines
             }
             pending={
               pending
@@ -1182,8 +1156,6 @@ function Invoices({
   invoices,
   search,
   setSearch,
-  lines,
-  setLines,
   pending,
   run,
 }: {
@@ -1199,14 +1171,6 @@ function Invoices({
         string,
     ) =>
       void;
-  lines:
-    DraftLine[];
-  setLines:
-    React.Dispatch<
-      React.SetStateAction<
-        DraftLine[]
-      >
-    >;
   pending:
     boolean;
   run:
@@ -1235,406 +1199,23 @@ function Invoices({
                 </p>
 
                 <p className="mt-1 text-xs text-slate-500">
-                  Totals and invoice numbering are calculated on the server.
+                  Choose a customer and real products/services, then review live totals before saving or confirming.
                 </p>
               </div>
 
               <Plus className="h-5 w-5 text-blue-600" />
             </summary>
 
-            <form
-              className="border-t border-[var(--sami-border)] p-4 sm:p-5"
-              onSubmit={
-                async event => {
-                  event
-                    .preventDefault();
-
-                  const form =
-                    new FormData(
-                      event
-                        .currentTarget,
-                    );
-
-                  await run(
-                    {
-                      action:
-                        'create_invoice',
-                      customerId:
-                        form.get(
-                          'customerId',
-                        ),
-                      invoiceDate:
-                        form.get(
-                          'invoiceDate',
-                        ),
-                      dueDate:
-                        form.get(
-                          'dueDate',
-                        ),
-                      reference:
-                        form.get(
-                          'reference',
-                        ),
-                      purchaseOrderNumber:
-                        form.get(
-                          'purchaseOrderNumber',
-                        ),
-                      shippingTotal:
-                        form.get(
-                          'shippingTotal',
-                        ),
-                      notes:
-                        form.get(
-                          'notes',
-                        ),
-                      confirm:
-                        form.get(
-                          'confirm',
-                        ) ===
-                        'on',
-                      lines,
-                    },
-                    'Invoice created.',
-                  );
+            <div className="border-t border-[var(--sami-border)] p-3 sm:p-5">
+              <InvoiceComposer
+                data={
+                  data
                 }
-              }
-            >
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <label className="block space-y-1 xl:col-span-2">
-                  <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
-                    Customer
-                  </span>
-
-                  <select
-                    name="customerId"
-                    required
-                    className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                  >
-                    <option value="">
-                      Choose customer
-                    </option>
-
-                    {
-                      data.customers
-                        .map(
-                          customer => (
-                            <option
-                              key={
-                                customer.id
-                              }
-                              value={
-                                customer.id
-                              }
-                            >
-                              {
-                                customer.name
-                              }
-                            </option>
-                          ),
-                        )
-                    }
-                  </select>
-                </label>
-
-                <Field
-                  label="Invoice date"
-                  name="invoiceDate"
-                  type="date"
-                />
-
-                <Field
-                  label="Due date"
-                  name="dueDate"
-                  type="date"
-                />
-
-                <Field
-                  label="Shipping"
-                  name="shippingTotal"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  defaultValue="0"
-                />
-
-                <Field
-                  label="Reference"
-                  name="reference"
-                />
-
-                <Field
-                  label="PO number"
-                  name="purchaseOrderNumber"
-                />
-              </div>
-
-              <div className="mt-5 space-y-2">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.1em] text-slate-500">
-                      Line items
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      Quantity × price − discount + tax.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={
-                      () =>
-                        setLines(
-                          current => [
-                            ...current,
-                            {
-                              description:
-                                '',
-                              quantity:
-                                1,
-                              unitPrice:
-                                0,
-                              taxRate:
-                                0,
-                            },
-                          ],
-                        )
-                    }
-                    className="text-xs font-black text-blue-600"
-                  >
-                    + Add line
-                  </button>
-                </div>
-
-                {
-                  lines.map(
-                    (
-                      line,
-                      index,
-                    ) => (
-                      <div
-                        key={
-                          index
-                        }
-                        className="grid gap-2 rounded-2xl border border-[var(--sami-border)] p-3 md:grid-cols-[minmax(0,1fr)_100px_140px_100px_80px]"
-                      >
-                        <input
-                          value={
-                            line.description
-                          }
-                          onChange={
-                            event => {
-                              const value =
-                                event
-                                  .target
-                                  .value;
-
-                              setLines(
-                                current =>
-                                  current.map(
-                                    (
-                                      item,
-                                      itemIndex,
-                                    ) =>
-                                      itemIndex ===
-                                        index
-                                        ? {
-                                            ...item,
-                                            description:
-                                              value,
-                                          }
-                                        : item,
-                                  ),
-                              );
-                            }
-                          }
-                          placeholder="Description"
-                          required
-                          className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                        />
-
-                        <input
-                          value={
-                            line.quantity
-                          }
-                          onChange={
-                            event => {
-                              const value =
-                                Number(
-                                  event
-                                    .target
-                                    .value,
-                                );
-
-                              setLines(
-                                current =>
-                                  current.map(
-                                    (
-                                      item,
-                                      itemIndex,
-                                    ) =>
-                                      itemIndex ===
-                                        index
-                                        ? {
-                                            ...item,
-                                            quantity:
-                                              value,
-                                          }
-                                        : item,
-                                  ),
-                              );
-                            }
-                          }
-                          type="number"
-                          min="0.0001"
-                          step="0.0001"
-                          placeholder="Qty"
-                          className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                        />
-
-                        <input
-                          value={
-                            line.unitPrice
-                          }
-                          onChange={
-                            event => {
-                              const value =
-                                Number(
-                                  event
-                                    .target
-                                    .value,
-                                );
-
-                              setLines(
-                                current =>
-                                  current.map(
-                                    (
-                                      item,
-                                      itemIndex,
-                                    ) =>
-                                      itemIndex ===
-                                        index
-                                        ? {
-                                            ...item,
-                                            unitPrice:
-                                              value,
-                                          }
-                                        : item,
-                                  ),
-                              );
-                            }
-                          }
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          placeholder="Unit price"
-                          className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                        />
-
-                        <input
-                          value={
-                            line.taxRate
-                          }
-                          onChange={
-                            event => {
-                              const value =
-                                Number(
-                                  event
-                                    .target
-                                    .value,
-                                );
-
-                              setLines(
-                                current =>
-                                  current.map(
-                                    (
-                                      item,
-                                      itemIndex,
-                                    ) =>
-                                      itemIndex ===
-                                        index
-                                        ? {
-                                            ...item,
-                                            taxRate:
-                                              value,
-                                          }
-                                        : item,
-                                  ),
-                              );
-                            }
-                          }
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          placeholder="Tax %"
-                          className="h-10 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
-                        />
-
-                        <button
-                          type="button"
-                          disabled={
-                            lines.length ===
-                            1
-                          }
-                          onClick={
-                            () =>
-                              setLines(
-                                current =>
-                                  current.filter(
-                                    (
-                                      _item,
-                                      itemIndex,
-                                    ) =>
-                                      itemIndex !==
-                                      index,
-                                  ),
-                              )
-                          }
-                          className="h-10 rounded-xl text-xs font-bold text-red-600 disabled:opacity-30"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    ),
-                  )
+                run={
+                  run
                 }
-              </div>
-
-              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                <TextArea
-                  label="Customer-facing notes"
-                  name="notes"
-                />
-
-                <div className="flex flex-wrap items-center gap-3">
-                  {
-                    data.capabilities
-                      .canConfirm &&
-                    (
-                      <label className="inline-flex items-center gap-2 text-xs font-semibold">
-                        <input
-                          type="checkbox"
-                          name="confirm"
-                        />
-                        Confirm immediately
-                      </label>
-                    )
-                  }
-
-                  <button
-                    type="submit"
-                    disabled={
-                      pending
-                    }
-                    className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
-                  >
-                    <Receipt className="h-4 w-4" />
-                    Save invoice
-                  </button>
-                </div>
-              </div>
-            </form>
+              />
+            </div>
           </details>
         )
       }
@@ -1670,12 +1251,143 @@ function Invoices({
                   )
               }
               placeholder="Search invoice or customer"
-              className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm"
+              className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm"
             />
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="space-y-3 p-3 sm:hidden">
+          {
+            invoices.map(
+              invoice => (
+                <article
+                  key={
+                    invoice.id
+                  }
+                  className="rounded-2xl border border-[var(--sami-border)] p-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <Link
+                        href={
+                          '/apps/invoicing/' +
+                          invoice.id
+                        }
+                        className="font-black text-blue-700 dark:text-blue-300"
+                      >
+                        {
+                          invoice
+                            .invoiceNumber
+                        }
+                      </Link>
+
+                      <p className="mt-1 truncate text-xs font-semibold">
+                        {
+                          invoice
+                            .customerName
+                        }
+                      </p>
+
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        Due {
+                          invoice
+                            .dueDate
+                        }
+                      </p>
+                    </div>
+
+                    <StatusPill
+                      value={
+                        invoice
+                          .status
+                      }
+                    />
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
+                        Total
+                      </p>
+
+                      <p className="mt-1 text-sm font-black">
+                        {
+                          formatMoney(
+                            invoice
+                              .totalAmount,
+                            invoice
+                              .currency,
+                          )
+                        }
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
+                        Balance
+                      </p>
+
+                      <p className="mt-1 text-sm font-black">
+                        {
+                          formatMoney(
+                            invoice
+                              .balanceDue,
+                            invoice
+                              .currency,
+                          )
+                        }
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    {
+                      invoice
+                        .daysOverdue >
+                        0 &&
+                      invoice
+                        .balanceDue >
+                        0
+                        ? (
+                          <p className="text-[10px] font-bold text-red-600">
+                            {
+                              invoice
+                                .daysOverdue
+                            } days overdue
+                          </p>
+                        )
+                        : (
+                          <span />
+                        )
+                    }
+
+                    <Link
+                      href={
+                        '/apps/invoicing/' +
+                        invoice.id
+                      }
+                      className="inline-flex h-10 items-center justify-center rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
+                    >
+                      Open invoice
+                    </Link>
+                  </div>
+                </article>
+              ),
+            )
+          }
+
+          {
+            invoices.length ===
+              0 &&
+            (
+              <p className="py-8 text-center text-sm text-slate-500">
+                No invoices match this view.
+              </p>
+            )
+          }
+        </div>
+
+        <div className="hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[1080px] text-left">
             <thead className="bg-slate-50/70 text-[10px] uppercase tracking-[0.1em] text-slate-400 dark:bg-white/[0.02]">
               <tr>
@@ -1720,12 +1432,18 @@ function Invoices({
                       className="border-t border-[var(--sami-border)] text-sm"
                     >
                       <td className="px-4 py-3">
-                        <p className="font-black">
+                        <Link
+                          href={
+                            '/apps/invoicing/' +
+                            invoice.id
+                          }
+                          className="font-black text-blue-700 hover:underline dark:text-blue-300"
+                        >
                           {
                             invoice
                               .invoiceNumber
                           }
-                        </p>
+                        </Link>
 
                         <p className="mt-1 text-[11px] text-slate-500">
                           {
@@ -1809,41 +1527,35 @@ function Invoices({
                             )
                           }
                         </p>
-
-                        {
-                          invoice
-                            .paidAmount >
-                            0 &&
-                          (
-                            <p className="mt-1 text-[10px] text-slate-500">
-                              Paid {
-                                formatMoney(
-                                  invoice
-                                    .paidAmount,
-                                  invoice
-                                    .currency,
-                                )
-                              }
-                            </p>
-                          )
-                        }
                       </td>
 
                       <td className="px-4 py-3">
-                        <InvoiceActions
-                          invoice={
-                            invoice
-                          }
-                          capabilities={
-                            data.capabilities
-                          }
-                          pending={
-                            pending
-                          }
-                          run={
-                            run
-                          }
-                        />
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={
+                              '/apps/invoicing/' +
+                              invoice.id
+                            }
+                            className="rounded-xl border border-[var(--sami-border)] px-2.5 py-2 text-xs font-black"
+                          >
+                            Open
+                          </Link>
+
+                          <InvoiceActions
+                            invoice={
+                              invoice
+                            }
+                            capabilities={
+                              data.capabilities
+                            }
+                            pending={
+                              pending
+                            }
+                            run={
+                              run
+                            }
+                          />
+                        </div>
                       </td>
                     </tr>
                   ),

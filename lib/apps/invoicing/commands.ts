@@ -331,6 +331,9 @@ async function normalizeInvoiceLines(
     string,
   linesInput:
     unknown,
+  taxCalculation:
+    'exclusive' |
+    'inclusive',
 ) {
   if (
     !Array.isArray(
@@ -600,7 +603,7 @@ async function normalizeInvoiceLines(
       taxRate ??
       0;
 
-    const subtotal =
+    const discountedAmount =
       Math.max(
         0,
         gross -
@@ -608,9 +611,26 @@ async function normalizeInvoiceLines(
       );
 
     const taxAmount =
-      subtotal *
-      taxRate /
-      100;
+      taxCalculation ===
+        'inclusive' &&
+      taxRate >
+        0
+        ? discountedAmount *
+          taxRate /
+          (
+            100 +
+            taxRate
+          )
+        : discountedAmount *
+          taxRate /
+          100;
+
+    const lineTotal =
+      taxCalculation ===
+        'inclusive'
+        ? discountedAmount
+        : discountedAmount +
+          taxAmount;
 
     normalized.push({
       catalogItemId,
@@ -649,12 +669,11 @@ async function normalizeInvoiceLines(
         ),
       subtotal:
         money(
-          subtotal,
+          gross,
         ),
       lineTotal:
         money(
-          subtotal +
-          taxAmount,
+          lineTotal,
         ),
       sortOrder:
         index,
@@ -699,20 +718,32 @@ export async function createInvoice(
       await client.query(
         `
           SELECT
-            id,
-            name,
-            email,
-            phone,
-            currency,
-            payment_terms_id
-          FROM invoicing_customers
-          WHERE id =
+            c.id,
+            c.name,
+            c.email,
+            c.phone,
+            c.billing_address,
+            c.tax_id,
+            c.currency,
+            c.payment_terms_id,
+            pt.name
+              AS payment_terms_name,
+            pt.due_days
+          FROM invoicing_customers c
+          LEFT JOIN invoicing_payment_terms pt
+            ON pt.id =
+               c.payment_terms_id
+           AND pt.company_id =
+               c.company_id
+           AND pt.deleted_at
+               IS NULL
+          WHERE c.id =
                 $1
-            AND company_id =
+            AND c.company_id =
                 $2
-            AND status =
+            AND c.status =
                 'active'
-            AND deleted_at
+            AND c.deleted_at
                 IS NULL
           LIMIT 1
         `,
@@ -756,6 +787,14 @@ export async function createInvoice(
         new Date(),
       );
 
+    const taxCalculation:
+      'exclusive' |
+      'inclusive' =
+        settings.tax_calculation ===
+          'inclusive'
+          ? 'inclusive'
+          : 'exclusive';
+
     let dueDays =
       Number(
         settings.default_due_days ||
@@ -766,36 +805,12 @@ export async function createInvoice(
       customerResult.rows[0]
         .payment_terms_id
     ) {
-      const term =
-        await client.query(
-          `
-            SELECT
-              due_days
-            FROM invoicing_payment_terms
-            WHERE id =
-                  $1
-              AND company_id =
-                  $2
-              AND deleted_at
-                  IS NULL
-            LIMIT 1
-          `,
-          [
-            customerResult.rows[0]
-              .payment_terms_id,
-            context.companyId,
-          ],
+      dueDays =
+        Number(
+          customerResult.rows[0]
+            .due_days ||
+          dueDays,
         );
-
-      if (
-        term.rows[0]
-      ) {
-        dueDays =
-          Number(
-            term.rows[0].due_days ||
-            dueDays,
-          );
-      }
     }
 
     const dueDate =
@@ -823,6 +838,7 @@ export async function createInvoice(
         client,
         context.companyId,
         input.lines,
+        taxCalculation,
       );
 
     const subtotal =
@@ -899,8 +915,14 @@ export async function createInvoice(
 
     const totalAmount =
       money(
-        subtotal +
-        taxTotal +
+        subtotal -
+        discountTotal +
+        (
+          taxCalculation ===
+            'exclusive'
+            ? taxTotal
+            : 0
+        ) +
         shippingTotal +
         roundingAdjustment,
       );
@@ -966,6 +988,13 @@ export async function createInvoice(
           INSERT INTO invoicing_invoices (
             company_id,
             customer_id,
+            bill_to_name,
+            bill_to_email,
+            bill_to_phone,
+            bill_to_address,
+            bill_to_tax_id,
+            payment_terms_name_snapshot,
+            tax_calculation,
             template_id,
             invoice_number,
             status,
@@ -989,14 +1018,15 @@ export async function createInvoice(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            $12,$13,$14,$15,$16,$17,$18,$19,
+            $12,$13,$14,$15,$16,$17,$18,$19,$20,
+            $21,$22,$23,$24,$25,$26,
             CASE
-              WHEN $5 =
+              WHEN $12 =
                    'confirmed'
               THEN NOW()
               ELSE NULL
             END,
-            $20,$20
+            $27,$27
           )
           RETURNING
             id,
@@ -1006,6 +1036,31 @@ export async function createInvoice(
         [
           context.companyId,
           customerId,
+          nullableText(
+            customerResult.rows[0].name,
+            255,
+          ),
+          nullableText(
+            customerResult.rows[0].email,
+            255,
+          ),
+          nullableText(
+            customerResult.rows[0].phone,
+            60,
+          ),
+          nullableText(
+            customerResult.rows[0].billing_address,
+            4000,
+          ),
+          nullableText(
+            customerResult.rows[0].tax_id,
+            120,
+          ),
+          nullableText(
+            customerResult.rows[0].payment_terms_name,
+            140,
+          ),
+          taxCalculation,
           settings.default_template_id ||
           null,
           invoiceNumber,
@@ -1158,6 +1213,567 @@ export async function createInvoice(
         invoiceId,
       invoiceNumber,
       status,
+      totalAmount,
+      currency,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function updateInvoiceDraft(
+  input:
+    CreateInvoiceInput &
+    {
+      invoiceId?: unknown;
+    },
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_EDIT,
+    );
+
+  const invoiceId =
+    requireUuid(
+      input.invoiceId,
+      'Invoice',
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const existing =
+      await client.query(
+        `
+          SELECT
+            id,
+            invoice_number,
+            status
+          FROM invoicing_invoices
+          WHERE id =
+                $1
+            AND company_id =
+                $2
+            AND deleted_at
+                IS NULL
+          FOR UPDATE
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      existing.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVOICE_NOT_FOUND',
+        'Invoice was not found.',
+      );
+    }
+
+    if (
+      String(
+        existing.rows[0].status,
+      ) !==
+      'draft'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only draft invoices can be edited. Use payments, credit notes or cancellation after confirmation.',
+      );
+    }
+
+    const customerId =
+      requireUuid(
+        input.customerId,
+        'Customer',
+      );
+
+    const customerResult =
+      await client.query(
+        `
+          SELECT
+            c.id,
+            c.name,
+            c.email,
+            c.phone,
+            c.billing_address,
+            c.tax_id,
+            c.currency,
+            c.payment_terms_id,
+            pt.name
+              AS payment_terms_name,
+            pt.due_days
+          FROM invoicing_customers c
+          LEFT JOIN invoicing_payment_terms pt
+            ON pt.id =
+               c.payment_terms_id
+           AND pt.company_id =
+               c.company_id
+           AND pt.deleted_at
+               IS NULL
+          WHERE c.id =
+                $1
+            AND c.company_id =
+                $2
+            AND c.status =
+                'active'
+            AND c.deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          customerId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      customerResult.rows.length !==
+      1
+    ) {
+      throw new InvoicingError(
+        'CUSTOMER_NOT_FOUND',
+        'Choose an active customer.',
+      );
+    }
+
+    const settingsResult =
+      await client.query(
+        `
+          SELECT *
+          FROM invoicing_settings
+          WHERE company_id =
+                $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+        ],
+      );
+
+    const settings =
+      settingsResult.rows[0] ||
+      {};
+
+    const taxCalculation:
+      'exclusive' |
+      'inclusive' =
+        settings.tax_calculation ===
+          'inclusive'
+          ? 'inclusive'
+          : 'exclusive';
+
+    const invoiceDate =
+      isoDate(
+        input.invoiceDate,
+        new Date(),
+      );
+
+    const dueDays =
+      Number(
+        customerResult.rows[0]
+          .due_days ||
+        settings.default_due_days ||
+        30,
+      );
+
+    const dueDate =
+      input.dueDate
+        ? isoDate(
+            input.dueDate,
+          )
+        : datePlusDays(
+            invoiceDate,
+            dueDays,
+          );
+
+    if (
+      dueDate <
+      invoiceDate
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Due date cannot be before invoice date.',
+      );
+    }
+
+    const lines =
+      await normalizeInvoiceLines(
+        client,
+        context.companyId,
+        input.lines,
+        taxCalculation,
+      );
+
+    const subtotal =
+      money(
+        lines.reduce(
+          (
+            sum,
+            line,
+          ) =>
+            sum +
+            line.subtotal,
+          0,
+        ),
+      );
+
+    const discountTotal =
+      money(
+        lines.reduce(
+          (
+            sum,
+            line,
+          ) =>
+            sum +
+            line.discountAmount,
+          0,
+        ),
+      );
+
+    const taxTotal =
+      money(
+        lines.reduce(
+          (
+            sum,
+            line,
+          ) =>
+            sum +
+            line.taxAmount,
+          0,
+        ),
+      );
+
+    const shippingTotal =
+      numberInput(
+        input.shippingTotal ??
+        0,
+        'Shipping',
+      );
+
+    const rawRounding =
+      Number(
+        input.roundingAdjustment ??
+        0,
+      );
+
+    if (
+      !Number.isFinite(
+        rawRounding,
+      ) ||
+      Math.abs(
+        rawRounding,
+      ) >
+        1_000_000
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Rounding adjustment is invalid.',
+      );
+    }
+
+    const roundingAdjustment =
+      money(
+        rawRounding,
+      );
+
+    const totalAmount =
+      money(
+        subtotal -
+        discountTotal +
+        (
+          taxCalculation ===
+            'exclusive'
+            ? taxTotal
+            : 0
+        ) +
+        shippingTotal +
+        roundingAdjustment,
+      );
+
+    if (
+      totalAmount <
+      0
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Invoice total cannot be negative.',
+      );
+    }
+
+    const currency =
+      cleanText(
+        input.currency ||
+        customerResult.rows[0]
+          .currency ||
+        settings.default_currency ||
+        context.company
+          .currentCompany
+          .currency ||
+        'KES',
+        3,
+      ).toUpperCase();
+
+    if (
+      !/^[A-Z]{3}$/.test(
+        currency,
+      )
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Currency must be a three-letter code.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_invoices
+        SET
+          customer_id =
+            $3,
+          bill_to_name =
+            $4,
+          bill_to_email =
+            $5,
+          bill_to_phone =
+            $6,
+          bill_to_address =
+            $7,
+          bill_to_tax_id =
+            $8,
+          payment_terms_name_snapshot =
+            $9,
+          tax_calculation =
+            $10,
+          invoice_date =
+            $11,
+          due_date =
+            $12,
+          currency =
+            $13,
+          reference =
+            $14,
+          purchase_order_number =
+            $15,
+          subtotal =
+            $16,
+          discount_total =
+            $17,
+          tax_total =
+            $18,
+          shipping_total =
+            $19,
+          rounding_adjustment =
+            $20,
+          total_amount =
+            $21,
+          notes =
+            $22,
+          terms =
+            $23,
+          payment_instructions =
+            $24,
+          updated_by =
+            $25,
+          updated_at =
+            NOW()
+        WHERE id =
+              $1
+          AND company_id =
+              $2
+      `,
+      [
+        invoiceId,
+        context.companyId,
+        customerId,
+        nullableText(
+          customerResult.rows[0].name,
+          255,
+        ),
+        nullableText(
+          customerResult.rows[0].email,
+          255,
+        ),
+        nullableText(
+          customerResult.rows[0].phone,
+          60,
+        ),
+        nullableText(
+          customerResult.rows[0]
+            .billing_address,
+          4000,
+        ),
+        nullableText(
+          customerResult.rows[0].tax_id,
+          120,
+        ),
+        nullableText(
+          customerResult.rows[0]
+            .payment_terms_name,
+          140,
+        ),
+        taxCalculation,
+        invoiceDate,
+        dueDate,
+        currency,
+        nullableText(
+          input.reference,
+          255,
+        ),
+        nullableText(
+          input.purchaseOrderNumber,
+          180,
+        ),
+        subtotal,
+        discountTotal,
+        taxTotal,
+        shippingTotal,
+        roundingAdjustment,
+        totalAmount,
+        nullableText(
+          input.notes,
+          5000,
+        ),
+        nullableText(
+          input.terms ||
+          settings.terms_and_conditions,
+          10000,
+        ),
+        nullableText(
+          settings.payment_instructions,
+          10000,
+        ),
+        context.userId,
+      ],
+    );
+
+    await client.query(
+      `
+        DELETE FROM invoicing_invoice_items
+        WHERE invoice_id =
+              $1
+          AND company_id =
+              $2
+      `,
+      [
+        invoiceId,
+        context.companyId,
+      ],
+    );
+
+    for (
+      const line
+      of lines
+    ) {
+      await client.query(
+        `
+          INSERT INTO invoicing_invoice_items (
+            invoice_id,
+            company_id,
+            catalog_item_id,
+            sort_order,
+            description,
+            sku_snapshot,
+            unit,
+            quantity,
+            unit_price,
+            discount_type,
+            discount_value,
+            discount_amount,
+            tax_rate_id,
+            tax_name_snapshot,
+            tax_rate,
+            tax_amount,
+            subtotal,
+            line_total
+          )
+          VALUES (
+            $1,$2,$3,$4,$5,$6,$7,$8,$9,
+            $10,$11,$12,$13,$14,$15,$16,$17,$18
+          )
+        `,
+        [
+          invoiceId,
+          context.companyId,
+          line.catalogItemId,
+          line.sortOrder,
+          line.description,
+          line.sku,
+          line.unit,
+          line.quantity,
+          line.unitPrice,
+          line.discountType,
+          line.discountValue,
+          line.discountAmount,
+          line.taxRateId,
+          line.taxName,
+          line.taxRate,
+          line.taxAmount,
+          line.subtotal,
+          line.lineTotal,
+        ],
+      );
+    }
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId,
+        type:
+          'invoice.draft_updated',
+        content:
+          'Invoice ' +
+          String(
+            existing.rows[0]
+              .invoice_number,
+          ) +
+          ' draft updated.',
+        metadata: {
+          totalAmount,
+          currency,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        invoiceId,
+      invoiceNumber:
+        String(
+          existing.rows[0]
+            .invoice_number,
+        ),
+      status:
+        'draft',
       totalAmount,
       currency,
     };

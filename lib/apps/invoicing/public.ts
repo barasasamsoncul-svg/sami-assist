@@ -85,11 +85,21 @@ export async function getPublicInvoice(
           i.notes,
           i.terms,
           i.payment_instructions,
-          c.name
+          COALESCE(
+            i.bill_to_name,
+            c.name
+          )
             AS customer_name,
-          c.email
+          COALESCE(
+            i.bill_to_email,
+            c.email
+          )
             AS customer_email,
-          c.billing_address,
+          COALESCE(
+            i.bill_to_address,
+            c.billing_address
+          )
+            AS billing_address,
           company.name
             AS company_name,
           company.legal_name

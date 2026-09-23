@@ -92,7 +92,7 @@ export const FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "invoicing",
     name: "Invoicing",
-    version: '2.0.0',
+    version: '2.1.0',
     description: "Create invoices, collect payments, manage receivables, credit notes and recurring billing.",
     category: "finance",
     icon: "receipt",

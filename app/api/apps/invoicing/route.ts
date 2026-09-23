@@ -10,10 +10,12 @@ import {
   createInvoicingCatalogItem,
   createInvoicingCustomer,
   createRecurringInvoiceTemplate,
+  getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
   recordInvoicePayment,
   sendInvoiceToCustomer,
+  updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/service';
 
@@ -148,8 +150,49 @@ function handleError(
   );
 }
 
-export async function GET() {
+export async function GET(
+  request:
+    NextRequest,
+) {
   try {
+    const invoiceId =
+      request.nextUrl
+        .searchParams
+        .get(
+          'invoiceId',
+        );
+
+    if (
+      invoiceId
+    ) {
+      const invoice =
+        await getInvoicingInvoiceDetail(
+          invoiceId,
+        );
+
+      if (
+        !invoice
+      ) {
+        return respond(
+          {
+            success:
+              false,
+            code:
+              'INVOICE_NOT_FOUND',
+            error:
+              'Invoice was not found.',
+          },
+          404,
+        );
+      }
+
+      return respond({
+        success:
+          true,
+        invoice,
+      });
+    }
+
     return respond({
       success:
         true,
@@ -276,6 +319,13 @@ export async function POST(
       case 'create_invoice':
         result =
           await createInvoice(
+            payload,
+          );
+        break;
+
+      case 'update_invoice':
+        result =
+          await updateInvoiceDraft(
             payload,
           );
         break;

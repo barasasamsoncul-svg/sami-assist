@@ -13,6 +13,10 @@ import {
   INVOICING_1_0_0_TO_2_0_0,
 } from '@/lib/apps/invoicing/migrations/1.0.0-to-2.0.0';
 
+import {
+  INVOICING_2_0_0_TO_2_1_0,
+} from '@/lib/apps/invoicing/migrations/2.0.0-to-2.1.0';
+
 export type SamiModuleMigrationContext = {
   moduleKey: string;
   namespace: string;
@@ -89,6 +93,7 @@ export const APP_MODULE_MIGRATIONS:
   readonly SamiModuleMigrationDefinition[] =
   [
     INVOICING_1_0_0_TO_2_0_0,
+    INVOICING_2_0_0_TO_2_1_0,
   ];
 
 const VERSION_PATTERN =

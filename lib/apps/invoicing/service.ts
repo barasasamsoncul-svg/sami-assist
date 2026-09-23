@@ -4,6 +4,7 @@ export {
 } from '@/lib/apps/invoicing/context';
 
 export {
+  getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   searchInvoicingRecords,
 } from '@/lib/apps/invoicing/queries';
@@ -17,6 +18,7 @@ export {
   issueInvoiceCreditNote,
   recordInvoicePayment,
   sendInvoiceToCustomer,
+  updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/commands';
 

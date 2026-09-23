@@ -31,14 +31,33 @@ export type InvoicingInvoiceSummary = {
 export type InvoicingCustomerSummary = {
   id: string;
   name: string;
+  contactName: string | null;
   email: string | null;
   phone: string | null;
+  billingAddress: string | null;
+  taxId: string | null;
   currency: string;
+  paymentTermsId: string | null;
+  paymentTermsName: string | null;
+  dueDays: number | null;
   status: string;
   invoiceCount: number;
   invoicedTotal: number;
   paidTotal: number;
   outstandingTotal: number;
+};
+
+export type InvoicingCatalogItemSummary = {
+  id: string;
+  itemType: string;
+  name: string;
+  sku: string | null;
+  description: string | null;
+  unit: string;
+  unitPrice: number;
+  taxRateId: string | null;
+  taxRateName: string | null;
+  taxRate: number;
 };
 
 export type InvoicingPaymentSummary = {
@@ -63,6 +82,90 @@ export type InvoicingRecurringSummary = {
   nextRunAt: string;
   autoSend: boolean;
   currency: string;
+};
+
+export type InvoicingInvoiceLine = {
+  id: string;
+  catalogItemId: string | null;
+  description: string;
+  sku: string | null;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  discountType: 'percent' | 'fixed';
+  discountValue: number;
+  discountAmount: number;
+  taxRateId: string | null;
+  taxName: string | null;
+  taxRate: number;
+  taxAmount: number;
+  subtotal: number;
+  lineTotal: number;
+};
+
+export type InvoicingInvoiceDetail = {
+  id: string;
+  invoiceNumber: string;
+  status: string;
+  invoiceDate: string;
+  dueDate: string;
+  currency: string;
+  reference: string | null;
+  purchaseOrderNumber: string | null;
+  subtotal: number;
+  discountTotal: number;
+  taxTotal: number;
+  shippingTotal: number;
+  roundingAdjustment: number;
+  totalAmount: number;
+  paidAmount: number;
+  creditedAmount: number;
+  balanceDue: number;
+  taxCalculation: 'exclusive' | 'inclusive';
+  notes: string | null;
+  terms: string | null;
+  paymentInstructions: string | null;
+  customer: {
+    id: string;
+    name: string;
+    email: string | null;
+    phone: string | null;
+    billingAddress: string | null;
+    taxId: string | null;
+    paymentTermsName: string | null;
+  };
+  lines: InvoicingInvoiceLine[];
+  payments: Array<{
+    id: string;
+    paymentNumber: string;
+    paymentDate: string;
+    amount: number;
+    method: string;
+    reference: string | null;
+  }>;
+  creditNotes: Array<{
+    id: string;
+    creditNoteNumber: string;
+    issueDate: string;
+    status: string;
+    amount: number;
+    reason: string;
+  }>;
+  history: Array<{
+    id: string;
+    fromStatus: string | null;
+    toStatus: string;
+    reason: string | null;
+    createdAt: string;
+  }>;
+  deliveries: Array<{
+    id: string;
+    channel: string;
+    provider: string | null;
+    status: string;
+    errorCode: string | null;
+    createdAt: string;
+  }>;
 };
 
 export type InvoicingWorkspaceData = {
@@ -101,7 +204,7 @@ export type InvoicingWorkspaceData = {
   recurring: InvoicingRecurringSummary[];
   paymentTerms: Array<{ id: string; name: string; dueDays: number; isDefault: boolean }>;
   taxRates: Array<{ id: string; name: string; rate: number; isDefault: boolean }>;
-  catalogItems: Array<{ id: string; name: string; sku: string | null; unit: string; unitPrice: number; taxRateId: string | null }>;
+  catalogItems: InvoicingCatalogItemSummary[];
   settings: {
     defaultCurrency: string;
     defaultDueDays: number;

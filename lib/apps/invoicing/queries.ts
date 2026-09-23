@@ -10,6 +10,7 @@ import {
   INVOICING_PERMISSIONS,
   money,
   requireInvoicingContext,
+  requireUuid,
 } from '@/lib/apps/invoicing/context';
 
 import {
@@ -359,9 +360,16 @@ export async function getInvoicingWorkspaceData():
           SELECT
             c.id,
             c.name,
+            c.contact_name,
             c.email,
             c.phone,
+            c.billing_address,
+            c.tax_id,
             c.currency,
+            c.payment_terms_id,
+            pt.name
+              AS payment_terms_name,
+            pt.due_days,
             c.status,
             COALESCE(
               b.invoice_count,
@@ -390,6 +398,14 @@ export async function getInvoicingWorkspaceData():
                c.company_id
            AND b.customer_id =
                c.id
+          LEFT JOIN
+            invoicing_payment_terms pt
+            ON pt.id =
+               c.payment_terms_id
+           AND pt.company_id =
+               c.company_id
+           AND pt.deleted_at
+               IS NULL
           WHERE c.company_id =
                 $1
             AND c.deleted_at
@@ -540,21 +556,37 @@ export async function getInvoicingWorkspaceData():
       context.pool.query(
         `
           SELECT
-            id,
-            name,
-            sku,
-            unit,
-            unit_price,
-            default_tax_rate_id
-          FROM invoicing_catalog_items
-          WHERE company_id =
+            item.id,
+            item.item_type,
+            item.name,
+            item.sku,
+            item.description,
+            item.unit,
+            item.unit_price,
+            item.default_tax_rate_id,
+            tax.name
+              AS tax_rate_name,
+            COALESCE(
+              tax.rate,
+              0
+            )
+              AS tax_rate
+          FROM invoicing_catalog_items item
+          LEFT JOIN invoicing_tax_rates tax
+            ON tax.id =
+               item.default_tax_rate_id
+           AND tax.company_id =
+               item.company_id
+           AND tax.deleted_at
+               IS NULL
+          WHERE item.company_id =
                 $1
-            AND deleted_at
+            AND item.deleted_at
                 IS NULL
-            AND is_active =
+            AND item.is_active =
                 TRUE
           ORDER BY
-            LOWER(name) ASC
+            LOWER(item.name) ASC
           LIMIT 500
         `,
         [
@@ -801,6 +833,12 @@ export async function getInvoicingWorkspaceData():
             String(
               row.name,
             ),
+          contactName:
+            row.contact_name
+              ? String(
+                  row.contact_name,
+                )
+              : null,
           email:
             row.email
               ? String(
@@ -813,10 +851,43 @@ export async function getInvoicingWorkspaceData():
                   row.phone,
                 )
               : null,
+          billingAddress:
+            row.billing_address
+              ? String(
+                  row.billing_address,
+                )
+              : null,
+          taxId:
+            row.tax_id
+              ? String(
+                  row.tax_id,
+                )
+              : null,
           currency:
             String(
               row.currency,
             ),
+          paymentTermsId:
+            row.payment_terms_id
+              ? String(
+                  row.payment_terms_id,
+                )
+              : null,
+          paymentTermsName:
+            row.payment_terms_name
+              ? String(
+                  row.payment_terms_name,
+                )
+              : null,
+          dueDays:
+            row.due_days ===
+              null ||
+            row.due_days ===
+              undefined
+              ? null
+              : Number(
+                  row.due_days,
+                ),
           status:
             String(
               row.status,
@@ -990,6 +1061,11 @@ export async function getInvoicingWorkspaceData():
             String(
               row.id,
             ),
+          itemType:
+            String(
+              row.item_type ||
+              'service',
+            ),
           name:
             String(
               row.name,
@@ -998,6 +1074,12 @@ export async function getInvoicingWorkspaceData():
             row.sku
               ? String(
                   row.sku,
+                )
+              : null,
+          description:
+            row.description
+              ? String(
+                  row.description,
                 )
               : null,
           unit:
@@ -1015,6 +1097,16 @@ export async function getInvoicingWorkspaceData():
                   row.default_tax_rate_id,
                 )
               : null,
+          taxRateName:
+            row.tax_rate_name
+              ? String(
+                  row.tax_rate_name,
+                )
+              : null,
+          taxRate:
+            money(
+              row.tax_rate,
+            ),
         }),
       ),
 
@@ -1070,6 +1162,647 @@ export async function getInvoicingWorkspaceData():
             )
           : null,
     },
+  };
+}
+
+
+export async function getInvoicingInvoiceDetail(
+  invoiceIdInput:
+    unknown,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_VIEW,
+    );
+
+  const invoiceId =
+    requireUuid(
+      invoiceIdInput,
+      'Invoice',
+    );
+
+  const [
+    invoiceResult,
+    linesResult,
+    paymentsResult,
+    creditsResult,
+    historyResult,
+    deliveriesResult,
+  ] =
+    await Promise.all([
+      context.pool.query(
+        `
+          SELECT
+            i.id,
+            i.invoice_number,
+            a.effective_status
+              AS status,
+            i.invoice_date,
+            i.due_date,
+            i.currency,
+            i.reference,
+            i.purchase_order_number,
+            i.subtotal,
+            i.discount_total,
+            i.tax_total,
+            i.shipping_total,
+            i.rounding_adjustment,
+            i.total_amount,
+            a.balance_due,
+            GREATEST(
+              i.total_amount -
+              a.balance_due -
+              COALESCE(
+                (
+                  SELECT
+                    SUM(
+                      cn.total_amount
+                    )
+                  FROM invoicing_credit_notes cn
+                  WHERE cn.invoice_id =
+                        i.id
+                    AND cn.status IN (
+                      'issued',
+                      'applied',
+                      'refunded'
+                    )
+                    AND cn.deleted_at
+                        IS NULL
+                ),
+                0
+              ),
+              0
+            )
+              AS paid_amount,
+            COALESCE(
+              (
+                SELECT
+                  SUM(
+                    cn.total_amount
+                  )
+                FROM invoicing_credit_notes cn
+                WHERE cn.invoice_id =
+                      i.id
+                  AND cn.status IN (
+                    'issued',
+                    'applied',
+                    'refunded'
+                  )
+                  AND cn.deleted_at
+                      IS NULL
+              ),
+              0
+            )
+              AS credited_amount,
+            i.tax_calculation,
+            i.notes,
+            i.terms,
+            i.payment_instructions,
+            c.id
+              AS customer_id,
+            COALESCE(
+              i.bill_to_name,
+              c.name
+            )
+              AS customer_name,
+            COALESCE(
+              i.bill_to_email,
+              c.email
+            )
+              AS customer_email,
+            COALESCE(
+              i.bill_to_phone,
+              c.phone
+            )
+              AS customer_phone,
+            COALESCE(
+              i.bill_to_address,
+              c.billing_address
+            )
+              AS billing_address,
+            COALESCE(
+              i.bill_to_tax_id,
+              c.tax_id
+            )
+              AS tax_id,
+            COALESCE(
+              i.payment_terms_name_snapshot,
+              pt.name
+            )
+              AS payment_terms_name
+          FROM invoicing_invoices i
+          INNER JOIN invoicing_customers c
+            ON c.id =
+               i.customer_id
+          LEFT JOIN invoicing_payment_terms pt
+            ON pt.id =
+               c.payment_terms_id
+          INNER JOIN invoicing_aging a
+            ON a.invoice_id =
+               i.id
+          WHERE i.id =
+                $1
+            AND i.company_id =
+                $2
+            AND i.deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            catalog_item_id,
+            description,
+            sku_snapshot,
+            unit,
+            quantity,
+            unit_price,
+            discount_type,
+            discount_value,
+            discount_amount,
+            tax_rate_id,
+            tax_name_snapshot,
+            tax_rate,
+            tax_amount,
+            subtotal,
+            line_total
+          FROM invoicing_invoice_items
+          WHERE invoice_id =
+                $1
+            AND company_id =
+                $2
+          ORDER BY
+            sort_order ASC,
+            id ASC
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            p.id,
+            p.payment_number,
+            p.payment_date,
+            a.amount,
+            p.method,
+            p.reference
+          FROM invoicing_payment_allocations a
+          INNER JOIN invoicing_payments p
+            ON p.id =
+               a.payment_id
+          WHERE a.invoice_id =
+                $1
+            AND a.company_id =
+                $2
+            AND p.status =
+                'posted'
+            AND p.deleted_at
+                IS NULL
+          ORDER BY
+            p.payment_date DESC,
+            p.created_at DESC
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            credit_note_number,
+            issue_date,
+            status,
+            total_amount,
+            reason
+          FROM invoicing_credit_notes
+          WHERE invoice_id =
+                $1
+            AND company_id =
+                $2
+            AND deleted_at
+                IS NULL
+          ORDER BY
+            issue_date DESC,
+            created_at DESC
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            from_status,
+            to_status,
+            reason,
+            created_at
+          FROM invoicing_status_history
+          WHERE invoice_id =
+                $1
+            AND company_id =
+                $2
+          ORDER BY
+            created_at DESC,
+            id DESC
+          LIMIT 100
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+
+      context.pool.query(
+        `
+          SELECT
+            id,
+            channel,
+            provider,
+            status,
+            error_code,
+            created_at
+          FROM invoicing_delivery_log
+          WHERE invoice_id =
+                $1
+            AND company_id =
+                $2
+          ORDER BY
+            created_at DESC,
+            id DESC
+          LIMIT 100
+        `,
+        [
+          invoiceId,
+          context.companyId,
+        ],
+      ),
+    ]);
+
+  if (
+    invoiceResult.rows.length !==
+      1
+  ) {
+    return null;
+  }
+
+  const row =
+    invoiceResult.rows[0];
+
+  return {
+    id:
+      String(
+        row.id,
+      ),
+    invoiceNumber:
+      String(
+        row.invoice_number,
+      ),
+    status:
+      String(
+        row.status,
+      ),
+    invoiceDate:
+      String(
+        row.invoice_date,
+      ),
+    dueDate:
+      String(
+        row.due_date,
+      ),
+    currency:
+      String(
+        row.currency,
+      ),
+    reference:
+      row.reference
+        ? String(
+            row.reference,
+          )
+        : null,
+    purchaseOrderNumber:
+      row.purchase_order_number
+        ? String(
+            row.purchase_order_number,
+          )
+        : null,
+    subtotal:
+      money(
+        row.subtotal,
+      ),
+    discountTotal:
+      money(
+        row.discount_total,
+      ),
+    taxTotal:
+      money(
+        row.tax_total,
+      ),
+    shippingTotal:
+      money(
+        row.shipping_total,
+      ),
+    roundingAdjustment:
+      money(
+        row.rounding_adjustment,
+      ),
+    totalAmount:
+      money(
+        row.total_amount,
+      ),
+    paidAmount:
+      money(
+        row.paid_amount,
+      ),
+    creditedAmount:
+      money(
+        row.credited_amount,
+      ),
+    balanceDue:
+      money(
+        row.balance_due,
+      ),
+    taxCalculation:
+      row.tax_calculation ===
+        'inclusive'
+        ? 'inclusive' as const
+        : 'exclusive' as const,
+    notes:
+      row.notes
+        ? String(
+            row.notes,
+          )
+        : null,
+    terms:
+      row.terms
+        ? String(
+            row.terms,
+          )
+        : null,
+    paymentInstructions:
+      row.payment_instructions
+        ? String(
+            row.payment_instructions,
+          )
+        : null,
+    customer: {
+      id:
+        String(
+          row.customer_id,
+        ),
+      name:
+        String(
+          row.customer_name,
+        ),
+      email:
+        row.customer_email
+          ? String(
+              row.customer_email,
+            )
+          : null,
+      phone:
+        row.customer_phone
+          ? String(
+              row.customer_phone,
+            )
+          : null,
+      billingAddress:
+        row.billing_address
+          ? String(
+              row.billing_address,
+            )
+          : null,
+      taxId:
+        row.tax_id
+          ? String(
+              row.tax_id,
+            )
+          : null,
+      paymentTermsName:
+        row.payment_terms_name
+          ? String(
+              row.payment_terms_name,
+            )
+          : null,
+    },
+    lines:
+      linesResult.rows.map(
+        line => ({
+          id:
+            String(
+              line.id,
+            ),
+          catalogItemId:
+            line.catalog_item_id
+              ? String(
+                  line.catalog_item_id,
+                )
+              : null,
+          description:
+            String(
+              line.description,
+            ),
+          sku:
+            line.sku_snapshot
+              ? String(
+                  line.sku_snapshot,
+                )
+              : null,
+          unit:
+            String(
+              line.unit ||
+              'unit',
+            ),
+          quantity:
+            money(
+              line.quantity,
+            ),
+          unitPrice:
+            money(
+              line.unit_price,
+            ),
+          discountType:
+            line.discount_type ===
+              'fixed'
+              ? 'fixed' as const
+              : 'percent' as const,
+          discountValue:
+            money(
+              line.discount_value,
+            ),
+          discountAmount:
+            money(
+              line.discount_amount,
+            ),
+          taxRateId:
+            line.tax_rate_id
+              ? String(
+                  line.tax_rate_id,
+                )
+              : null,
+          taxName:
+            line.tax_name_snapshot
+              ? String(
+                  line.tax_name_snapshot,
+                )
+              : null,
+          taxRate:
+            money(
+              line.tax_rate,
+            ),
+          taxAmount:
+            money(
+              line.tax_amount,
+            ),
+          subtotal:
+            money(
+              line.subtotal,
+            ),
+          lineTotal:
+            money(
+              line.line_total,
+            ),
+        }),
+      ),
+    payments:
+      paymentsResult.rows.map(
+        payment => ({
+          id:
+            String(
+              payment.id,
+            ),
+          paymentNumber:
+            String(
+              payment.payment_number,
+            ),
+          paymentDate:
+            String(
+              payment.payment_date,
+            ),
+          amount:
+            money(
+              payment.amount,
+            ),
+          method:
+            String(
+              payment.method,
+            ),
+          reference:
+            payment.reference
+              ? String(
+                  payment.reference,
+                )
+              : null,
+        }),
+      ),
+    creditNotes:
+      creditsResult.rows.map(
+        credit => ({
+          id:
+            String(
+              credit.id,
+            ),
+          creditNoteNumber:
+            String(
+              credit.credit_note_number,
+            ),
+          issueDate:
+            String(
+              credit.issue_date,
+            ),
+          status:
+            String(
+              credit.status,
+            ),
+          amount:
+            money(
+              credit.total_amount,
+            ),
+          reason:
+            String(
+              credit.reason,
+            ),
+        }),
+      ),
+    history:
+      historyResult.rows.map(
+        history => ({
+          id:
+            String(
+              history.id,
+            ),
+          fromStatus:
+            history.from_status
+              ? String(
+                  history.from_status,
+                )
+              : null,
+          toStatus:
+            String(
+              history.to_status,
+            ),
+          reason:
+            history.reason
+              ? String(
+                  history.reason,
+                )
+              : null,
+          createdAt:
+            new Date(
+              history.created_at,
+            ).toISOString(),
+        }),
+      ),
+    deliveries:
+      deliveriesResult.rows.map(
+        delivery => ({
+          id:
+            String(
+              delivery.id,
+            ),
+          channel:
+            String(
+              delivery.channel,
+            ),
+          provider:
+            delivery.provider
+              ? String(
+                  delivery.provider,
+                )
+              : null,
+          status:
+            String(
+              delivery.status,
+            ),
+          errorCode:
+            delivery.error_code
+              ? String(
+                  delivery.error_code,
+                )
+              : null,
+          createdAt:
+            new Date(
+              delivery.created_at,
+            ).toISOString(),
+        }),
+      ),
   };
 }
 

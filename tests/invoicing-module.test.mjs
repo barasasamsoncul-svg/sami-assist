@@ -113,7 +113,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.0\.0['"]/,
+    /version:\s*['"]2\.1\.0['"]/,
   );
 
   assert.match(
@@ -434,6 +434,31 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
     /toVersion:\s*['"]2\.0\.0['"]/,
   );
 
+  const snapshotMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.0.0-to-2.1.0.ts',
+    );
+
+  assert.match(
+    snapshotMigration,
+    /fromVersion:\s*['"]2\.0\.0['"]/,
+  );
+
+  assert.match(
+    snapshotMigration,
+    /toVersion:\s*['"]2\.1\.0['"]/,
+  );
+
+  assert.match(
+    snapshotMigration,
+    /bill_to_name/,
+  );
+
+  assert.match(
+    registry,
+    /INVOICING_2_0_0_TO_2_1_0/,
+  );
+
   assert.match(
     migration,
     /executeSafeSamiModuleMigrationSql/,
@@ -447,5 +472,101 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     pkg,
     /test:invoicing/,
+  );
+});
+
+
+test('professional invoice composer uses real customers and catalog products with mobile-first controls', async () => {
+  const [
+    composer,
+    list,
+    detail,
+    commands,
+    queries,
+  ] =
+    await Promise.all([
+      source(
+        'app/apps/invoicing/InvoiceComposer.tsx',
+      ),
+      source(
+        'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
+      ),
+      source(
+        'app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx',
+      ),
+      source(
+        'lib/apps/invoicing/commands.ts',
+      ),
+      source(
+        'lib/apps/invoicing/queries.ts',
+      ),
+    ]);
+
+  assert.match(
+    composer,
+    /Choose customer/,
+  );
+
+  assert.match(
+    composer,
+    /Product \/ service/,
+  );
+
+  assert.match(
+    composer,
+    /discountType/,
+  );
+
+  assert.match(
+    composer,
+    /taxRateId/,
+  );
+
+  assert.match(
+    composer,
+    /fixed inset-x-0 bottom-0/,
+    'Mobile users keep primary invoice actions reachable.',
+  );
+
+  assert.match(
+    list,
+    /sm:hidden/,
+    'Invoice list has a phone card layout.',
+  );
+
+  assert.match(
+    detail,
+    /sm:hidden/,
+    'Invoice detail has a dedicated phone line-item layout.',
+  );
+
+  assert.match(
+    commands,
+    /updateInvoiceDraft/,
+  );
+
+  assert.match(
+    commands,
+    /Only draft invoices can be edited/,
+  );
+
+  assert.match(
+    commands,
+    /bill_to_name/,
+  );
+
+  assert.match(
+    commands,
+    /taxCalculation ===/,
+  );
+
+  assert.match(
+    queries,
+    /getInvoicingInvoiceDetail/,
+  );
+
+  assert.match(
+    queries,
+    /payment_terms_name_snapshot/,
   );
 });
