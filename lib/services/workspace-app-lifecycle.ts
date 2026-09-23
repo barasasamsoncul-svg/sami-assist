@@ -28,6 +28,11 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  runSamiModuleMigrations,
+  SamiModuleMigrationError,
+} from '@/lib/modules/migrations';
+
+import {
   resolveRequiredDependencyPlan,
 } from '@/lib/modules/dependency-plan';
 
@@ -70,7 +75,11 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_PLAN_UPGRADE_REQUIRED'
   | 'APP_SCHEMA_MISSING'
   | 'APP_SCHEMA_UNSAFE'
-  | 'APP_SCHEMA_FAILED';
+  | 'APP_SCHEMA_FAILED'
+  | 'APP_MIGRATION_MISSING'
+  | 'APP_MIGRATION_UNSAFE'
+  | 'APP_MIGRATION_FAILED'
+  | 'APP_DOWNGRADE_UNSUPPORTED';
 
 
 export class WorkspaceAppLifecycleError
@@ -372,11 +381,13 @@ async function getModule(
         'string'
         ? row.name
         : moduleKey,
+    /*
+     * Runtime target version comes from the code-owned manifest.
+     * The Control DB catalog remains descriptive metadata and may
+     * temporarily lag during a deploy before control migrations run.
+     */
     version:
-      typeof row.version ===
-        'string'
-        ? row.version
-        : '1.0.0',
+      manifest.version,
     status:
       normalizeKey(
         row.status,
@@ -1355,8 +1366,93 @@ async function activateWorkspaceApp(
           existing.status,
         )
       ) {
+        if (
+          existing.version &&
+          existing.version !==
+            module.version
+        ) {
+          try {
+            await runSamiModuleMigrations({
+              tenantPool,
+              moduleKey:
+                module.key,
+              currentVersion:
+                existing.version,
+              targetVersion:
+                module.version,
+            });
+
+            await controlClient.query(
+              `
+                UPDATE tenant_modules
+                SET
+                  version = $3,
+                  updated_at = NOW()
+                WHERE tenant_id = $1
+                  AND module_id = $2
+              `,
+              [
+                context.tenantId,
+                module.id,
+                module.version,
+              ],
+            );
+          } catch (
+            error
+          ) {
+            if (
+              error instanceof
+                SamiModuleMigrationError
+            ) {
+              if (
+                error.code ===
+                  'MODULE_MIGRATION_PATH_MISSING'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_MIGRATION_MISSING',
+                  error.message,
+                );
+              }
+
+              if (
+                error.code ===
+                  'MODULE_MIGRATION_UNSAFE' ||
+                error.code ===
+                  'MODULE_MIGRATION_REGISTRY_INVALID'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_MIGRATION_UNSAFE',
+                  error.message,
+                );
+              }
+
+              if (
+                error.code ===
+                  'MODULE_DOWNGRADE_UNSUPPORTED'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_DOWNGRADE_UNSUPPORTED',
+                  error.message,
+                );
+              }
+
+              throw new WorkspaceAppLifecycleError(
+                'APP_MIGRATION_FAILED',
+                error.message,
+              );
+            }
+
+            throw error;
+          }
+        }
+
         continue;
       }
+
+      const previousVersion =
+        existing
+          ?.version ||
+        module.version;
 
       const hadSuccessfulInstall =
         Boolean(
@@ -1398,7 +1494,10 @@ async function activateWorkspaceApp(
 
           DO UPDATE SET
             version =
-              EXCLUDED.version,
+              COALESCE(
+                tenant_modules.version,
+                EXCLUDED.version
+              ),
             status =
               'pending',
             uninstalled_at =
@@ -1460,6 +1559,67 @@ async function activateWorkspaceApp(
             throw error;
           } finally {
             schemaClient.release();
+          }
+        } else if (
+          previousVersion !==
+            module.version
+        ) {
+          try {
+            await runSamiModuleMigrations({
+              tenantPool,
+              moduleKey:
+                module.key,
+              currentVersion:
+                previousVersion,
+              targetVersion:
+                module.version,
+            });
+          } catch (
+            error
+          ) {
+            if (
+              error instanceof
+                SamiModuleMigrationError
+            ) {
+              if (
+                error.code ===
+                  'MODULE_MIGRATION_PATH_MISSING'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_MIGRATION_MISSING',
+                  error.message,
+                );
+              }
+
+              if (
+                error.code ===
+                  'MODULE_MIGRATION_UNSAFE' ||
+                error.code ===
+                  'MODULE_MIGRATION_REGISTRY_INVALID'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_MIGRATION_UNSAFE',
+                  error.message,
+                );
+              }
+
+              if (
+                error.code ===
+                  'MODULE_DOWNGRADE_UNSUPPORTED'
+              ) {
+                throw new WorkspaceAppLifecycleError(
+                  'APP_DOWNGRADE_UNSUPPORTED',
+                  error.message,
+                );
+              }
+
+              throw new WorkspaceAppLifecycleError(
+                'APP_MIGRATION_FAILED',
+                error.message,
+              );
+            }
+
+            throw error;
           }
         }
 
