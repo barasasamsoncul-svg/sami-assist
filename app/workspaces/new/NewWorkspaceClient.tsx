@@ -133,6 +133,21 @@ export default function NewWorkspaceClient({
 
 
   useEffect(() => {
+    void fetch(
+      '/api/auth/registration-draft',
+      {
+        method:
+          'DELETE',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+      },
+    ).catch(
+      () =>
+        undefined,
+    );
+
     try {
       /*
        * A public registration attempt may leave a safe
