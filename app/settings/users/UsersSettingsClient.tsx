@@ -2098,7 +2098,7 @@ export default function UsersSettingsClient({
 
                 <div className="rounded-xl bg-blue-50 p-4 dark:bg-blue-950/20">
                   <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">Direct app grant boundary</p>
-                  <p className="mt-1 text-[10px] leading-4 text-blue-600/80 dark:text-blue-300/70">An app can only be selected when the employee's roles contain at least one permission for that app.</p>
+                  <p className="mt-1 text-[10px] leading-4 text-blue-600/80 dark:text-blue-300/70">An app can only be selected when the employee&apos;s roles contain at least one permission for that app.</p>
                 </div>
 
                 <div className="mt-5">
@@ -2452,7 +2452,7 @@ function AppModeSelector({ mode, onChange }: { mode: AppAccessMode; onChange: (m
       </button>
       <button type="button" onClick={() => onChange('role_based')} className={`rounded-xl border p-3 text-left ${mode === 'role_based' ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' : 'border-slate-200 dark:border-white/10'}`}>
         <p className="flex items-center gap-2 text-xs font-semibold"><Sparkles className="h-4 w-4" /> From roles</p>
-        <p className="mt-1 text-[10px] leading-4 text-slate-400">Automatically allow every installed app represented by the employee's role permissions.</p>
+        <p className="mt-1 text-[10px] leading-4 text-slate-400">Automatically allow every installed app represented by the employee&apos;s role permissions.</p>
       </button>
     </div>
   );
