@@ -939,6 +939,39 @@ export default function SelectPlanPage() {
 
           if (
             code ===
+              'REGISTRATION_RESPONSE_RETRY'
+          ) {
+            setOverlay({
+              type:
+                'info',
+
+              title:
+                'Workspace created — reopen safely',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi already created this workspace. Retry the same setup to reopen it; the idempotency guard prevents a duplicate workspace.',
+
+              primaryAction: {
+                label:
+                  'Reopen workspace',
+
+                onClick: () => {
+                  setOverlay(
+                    null
+                  );
+
+                  void handleCreateAccount();
+                },
+              },
+            });
+
+            return;
+          }
+
+          if (
+            code ===
               'RATE_LIMITED' ||
             code ===
               'REGISTRATION_RATE_LIMITED'
