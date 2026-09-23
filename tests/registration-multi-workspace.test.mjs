@@ -534,6 +534,177 @@ test('Registration: existing public email path explains multi-workspace sign-in 
 });
 
 
+test('Registration: one secure draft can provision at most one workspace', async () => {
+  const [
+    route,
+    migration,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/auth/register/route.ts',
+      ),
+      source(
+        'lib/schema/control-migrations/003-registration-request-idempotency.sql',
+      ),
+    ]);
+
+  assert.match(
+    migration,
+    /CREATE TABLE IF NOT EXISTS registration_requests/,
+  );
+
+  assert.match(
+    migration,
+    /UNIQUE \(nonce_hash\)/,
+  );
+
+  assert.match(
+    route,
+    /claimRegistrationRequest/,
+  );
+
+  assert.match(
+    route,
+    /ON CONFLICT \([\s\S]*nonce_hash[\s\S]*\)[\s\S]*DO NOTHING/s,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_IN_PROGRESS/,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_ALREADY_COMPLETED/,
+  );
+
+  assert.match(
+    route,
+    /buildCompletedRegistrationResponse/,
+    'A lost HTTP response must replay the existing workspace instead of creating another one.',
+  );
+});
+
+
+test('Registration: idempotency progress follows user, tenant and subscription creation', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  const progressCalls =
+    route.match(
+      /updateRegistrationRequestProgress\(/g,
+    ) ||
+    [];
+
+  assert.ok(
+    progressCalls.length >=
+      4,
+    'The helper declaration plus user/tenant/subscription progress calls must be present.',
+  );
+
+  assert.match(
+    route,
+    /completeRegistrationRequest\([\s\S]*activeRegistrationNonceHash[\s\S]*context/s,
+  );
+
+  assert.match(
+    route,
+    /status =[\s\S]*'completed'[\s\S]*completed_at/s,
+  );
+});
+
+
+test('Registration: failed registration retries only after proven cleanup', async () => {
+  const route =
+    await source(
+      'app/api/auth/register/route.ts',
+    );
+
+  assert.match(
+    route,
+    /cleanupRegistration\([\s\S]*Promise<boolean>/s,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_FAILED_CLEAN/,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_CLEANUP_REQUIRED/,
+  );
+
+  assert.match(
+    route,
+    /registrationRequestHasResources/,
+  );
+
+  assert.match(
+    route,
+    /status =[\s\S]*'failed'[\s\S]*user_id[\s\S]*IS NULL[\s\S]*tenant_id[\s\S]*IS NULL[\s\S]*subscription_id[\s\S]*IS NULL/s,
+    'A failed draft is retryable only when no retained registration resource remains.',
+  );
+});
+
+
+test('Registration: global workspace switcher is available to every authenticated member', async () => {
+  const [
+    api,
+    switcher,
+    shell,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/account/workspaces/route.ts',
+      ),
+      source(
+        'app/components/workspace/WorkspaceTenantSwitcher.tsx',
+      ),
+      source(
+        'app/components/workspace/WorkspaceShell.tsx',
+      ),
+    ]);
+
+  assert.match(
+    api,
+    /listAccessibleWorkspaces/,
+  );
+
+  assert.match(
+    api,
+    /setCurrentTenantForSession/,
+  );
+
+  assert.match(
+    api,
+    /WORKSPACE_SWITCH_DENIED/,
+  );
+
+  assert.match(
+    api,
+    /account_workspace_switch/,
+  );
+
+  assert.match(
+    switcher,
+    /Create another workspace/,
+  );
+
+  assert.match(
+    switcher,
+    /\/api\/account\/workspaces/,
+  );
+
+  assert.match(
+    shell,
+    /WorkspaceTenantSwitcher/,
+  );
+});
+
+
 test('Registration: billing seat count includes active internal members only', async () => {
   const registerRoute =
     await source(
