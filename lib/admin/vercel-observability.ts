@@ -550,8 +550,7 @@ export async function getVercelOperationalSnapshot() {
                       'number'
                     ? item.status
                     : null,
-            })),
-          )
+            }))
           .filter(
             item =>
               Boolean(
