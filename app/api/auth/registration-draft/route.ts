@@ -16,6 +16,7 @@ import {
 import {
   createRegistrationDraft,
   clearRegistrationDraftCookieOptions,
+  readRegistrationDraft,
   registrationDraftCookieOptions,
   REGISTRATION_DRAFT_COOKIE_NAME,
 } from '@/lib/auth/registration-draft';
@@ -23,6 +24,10 @@ import {
 import {
   queryControl,
 } from '@/lib/db/control';
+
+import {
+  checkRateLimit,
+} from '@/lib/auth/rate-limit';
 
 
 export const runtime =
@@ -176,6 +181,77 @@ function error(
 }
 
 
+function requestIp(
+  request:
+    NextRequest,
+) {
+  return (
+    request.headers
+      .get(
+        'x-forwarded-for',
+      )
+      ?.split(
+        ',',
+      )[0]
+      ?.trim() ||
+    request.headers
+      .get(
+        'x-real-ip',
+      )
+      ?.trim() ||
+    'unknown'
+  );
+}
+
+
+async function enforceDraftRateLimit(
+  input: {
+    identifier:
+      string;
+    action:
+      string;
+    maxAttempts:
+      number;
+  },
+) {
+  const state =
+    await checkRateLimit({
+      identifier:
+        input.identifier,
+      action:
+        input.action,
+      maxAttempts:
+        input.maxAttempts,
+      windowMs:
+        15 *
+        60 *
+        1000,
+      blockMs:
+        15 *
+        60 *
+        1000,
+    });
+
+  if (
+    !state.allowed
+  ) {
+    return {
+      blocked:
+        true as const,
+      retryAfterSeconds:
+        state.retryAfterSeconds,
+    };
+  }
+
+  return {
+    blocked:
+      false as const,
+      retryAfterSeconds:
+        null,
+  };
+}
+
+
 function hashOpaqueToken(
   value:
     string,
@@ -315,6 +391,122 @@ function safeDraftSummary(
 }
 
 
+export async function GET(
+  request:
+    NextRequest,
+) {
+  try {
+    const draft =
+      readRegistrationDraft(
+        request.cookies
+          .get(
+            REGISTRATION_DRAFT_COOKIE_NAME,
+          )
+          ?.value,
+      );
+
+    const session =
+      await getSession();
+
+    if (
+      !draft
+    ) {
+      return error(
+        404,
+        'REGISTRATION_DRAFT_REQUIRED',
+        'Your secure workspace setup is missing or expired.',
+        {
+          next:
+            session
+              ? '/workspaces/new'
+              : '/register',
+        },
+      );
+    }
+
+    if (
+      draft.mode ===
+        'existing' &&
+      (
+        !session ||
+        !draft.userId ||
+        session.user.id !==
+          draft.userId
+      )
+    ) {
+      return error(
+        401,
+        'AUTHENTICATION_REQUIRED',
+        'Sign in with the SaMi account that owns this workspace setup.',
+        {
+          next:
+            '/workspaces/new',
+        },
+      );
+    }
+
+    if (
+      draft.mode ===
+        'google'
+    ) {
+      const google =
+        await loadGoogleSignupState(
+          request,
+        );
+
+      if (
+        !google ||
+        String(
+          google.state_hash,
+        ) !==
+          draft.googleStateHash
+      ) {
+        return error(
+          409,
+          'GOOGLE_SIGNUP_EXPIRED',
+          'Your Google workspace setup expired. Please start again.',
+          {
+            next:
+              '/register',
+          },
+        );
+      }
+    }
+
+    return json({
+      success:
+        true,
+      draft:
+        safeDraftSummary({
+          mode:
+            draft.mode,
+          email:
+            draft.email,
+          firstName:
+            draft.firstName,
+          lastName:
+            draft.lastName,
+          businessName:
+            draft.businessName,
+        }),
+    });
+  } catch (
+    errorValue
+  ) {
+    console.error(
+      '[SaMi Registration] Draft read failed:',
+      errorValue,
+    );
+
+    return error(
+      500,
+      'REGISTRATION_DRAFT_ERROR',
+      'SaMi could not verify this workspace setup.',
+    );
+  }
+}
+
+
 export async function POST(
   request:
     NextRequest,
@@ -385,6 +577,39 @@ export async function POST(
 
     const session =
       await getSession();
+
+    const generalLimit =
+      await enforceDraftRateLimit({
+        identifier:
+          session
+            ? `user:${session.user.id}`
+            : `ip:${requestIp(
+                request,
+              )}`,
+        action:
+          session
+            ? 'registration_draft_authenticated'
+            : 'registration_draft_public',
+        maxAttempts:
+          session
+            ? 30
+            : 15,
+      });
+
+    if (
+      generalLimit.blocked
+    ) {
+      return error(
+        429,
+        'REGISTRATION_RATE_LIMITED',
+        'Too many workspace registration attempts. Please wait before trying again.',
+        {
+          retryAfterSeconds:
+            generalLimit
+              .retryAfterSeconds,
+        },
+      );
+    }
 
     if (
       source ===
@@ -706,6 +931,31 @@ export async function POST(
         400,
         'PASSWORD_WEAK',
         'Password must be between 8 and 128 characters.',
+      );
+    }
+
+    const emailLimit =
+      await enforceDraftRateLimit({
+        identifier:
+          `email:${email}`,
+        action:
+          'registration_draft_email',
+        maxAttempts:
+          10,
+      });
+
+    if (
+      emailLimit.blocked
+    ) {
+      return error(
+        429,
+        'REGISTRATION_RATE_LIMITED',
+        'Too many registration attempts for this email. Please wait before trying again.',
+        {
+          retryAfterSeconds:
+            emailLimit
+              .retryAfterSeconds,
+        },
       );
     }
 
