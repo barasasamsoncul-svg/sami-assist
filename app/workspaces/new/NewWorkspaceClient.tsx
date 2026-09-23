@@ -122,6 +122,14 @@ export default function NewWorkspaceClient({
     );
 
   const [
+    draftResetComplete,
+    setDraftResetComplete,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
     overlay,
     setOverlay,
   ] =
@@ -146,6 +154,11 @@ export default function NewWorkspaceClient({
     ).catch(
       () =>
         undefined,
+    ).finally(
+      () =>
+        setDraftResetComplete(
+          true,
+        ),
     );
 
     try {
@@ -233,7 +246,8 @@ export default function NewWorkspaceClient({
     event.preventDefault();
 
     if (
-      loading
+      loading ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -593,7 +607,8 @@ export default function NewWorkspaceClient({
                 <button
                   type="submit"
                   disabled={
-                    loading
+                    loading ||
+                    !draftResetComplete
                   }
                   className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
                 >
