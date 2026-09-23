@@ -10,7 +10,7 @@
     "test": "npm run test:foundation",
     "test:foundation": "node --test tests/category-1-6-foundation.test.mjs tests/category-7-9-access-boundaries.test.mjs",
     "test:authorization": "tsx --test tests/category-8-authorization-security.test.ts",
-    "test:all": "npm run test:foundation && npm run test:authorization && npm run test:category10 && npm run test:category11 && npm run test:category12 && npm run test:category13 && npm run test:category14 && npm run test:category15 && npm run test:category16 && npm run test:category17 && npm run test:category18 && npm run test:category19 && npm run test:category20 && npm run test:category21 && npm run test:category22 && npm run test:category23 && npm run test:responsive && npm run build",
+    "test:all": "npm run test:foundation && npm run test:registration && npm run test:authorization && npm run test:category10 && npm run test:category11 && npm run test:category12 && npm run test:category13 && npm run test:category14 && npm run test:category15 && npm run test:category16 && npm run test:category17 && npm run test:category18 && npm run test:category19 && npm run test:category20 && npm run test:category21 && npm run test:category22 && npm run test:category23 && npm run test:responsive && npm run build",
     "check:backup": "node scripts/check-backup-readiness.mjs",
     "drill:backup": "node --conditions=react-server --import tsx scripts/tenant-recovery-drill.ts",
     "migrate:tenant-core": "node --conditions=react-server --import tsx scripts/migrate-tenant-core.ts",
@@ -28,7 +28,8 @@
     "test:category20": "node --test tests/category-20-integrations.test.mjs",
     "test:category21": "node --test tests/category-21-api-developer-access.test.mjs",
     "test:category22": "node --test tests/category-22-subscription-billing.test.mjs",
-    "test:category23": "node --test tests/category-23-usage-entitlements.test.mjs"
+    "test:category23": "node --test tests/category-23-usage-entitlements.test.mjs",
+    "test:registration": "node --test tests/registration-multi-workspace.test.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
