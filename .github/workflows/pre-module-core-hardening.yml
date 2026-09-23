@@ -1,0 +1,38 @@
+name: Pre-Module Core Hardening
+
+on:
+  push:
+    branches:
+      - feat/pre-module-core-hardening
+  pull_request:
+    branches:
+      - feat/category-25-platform-settings
+      - main
+
+concurrency:
+  group: pre-module-core-hardening-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate pre-module core
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run environment-independent platform regression suite
+        run: npm run test:ci
+
+      - name: TypeScript
+        run: npx tsc --noEmit
