@@ -154,12 +154,16 @@ function handleError(
         'APP_DEPENDENCY_BLOCKED',
         'APP_DEPENDENCY_CYCLE',
         'APP_NOT_INSTALLABLE',
+        'APP_MIGRATION_MISSING',
+        'APP_MIGRATION_UNSAFE',
+        'APP_DOWNGRADE_UNSUPPORTED',
       ]);
 
     const server =
       new Set([
         'APP_SCHEMA_MISSING',
         'APP_SCHEMA_FAILED',
+        'APP_MIGRATION_FAILED',
       ]);
 
     return json(
