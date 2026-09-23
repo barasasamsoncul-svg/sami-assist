@@ -29,7 +29,8 @@
     "test:category21": "node --test tests/category-21-api-developer-access.test.mjs",
     "test:category22": "node --test tests/category-22-subscription-billing.test.mjs",
     "test:category23": "node --test tests/category-23-usage-entitlements.test.mjs",
-    "test:registration": "node --test tests/registration-multi-workspace.test.mjs"
+    "test:registration": "node --test tests/registration-multi-workspace.test.mjs",
+    "migrate:control": "node --conditions=react-server --import tsx scripts/migrate-control.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1133.0",
