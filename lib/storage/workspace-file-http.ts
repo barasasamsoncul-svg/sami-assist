@@ -71,6 +71,7 @@ export function workspaceFileErrorResponse(error: unknown) {
       'COMPANY_ACCESS_DENIED',
       'FILES_VIEW_REQUIRED',
       'FILES_MANAGE_REQUIRED',
+      'WORKSPACE_SUBSCRIPTION_REQUIRED',
     ]);
     const notFound = new Set(['FILE_NOT_FOUND']);
     const conflict = new Set([
@@ -80,6 +81,7 @@ export function workspaceFileErrorResponse(error: unknown) {
       'UPLOAD_EXPIRED',
       'UPLOAD_INCOMPLETE',
       'UPLOAD_VALIDATION_FAILED',
+      'STORAGE_QUOTA_EXCEEDED',
     ]);
 
     const status =

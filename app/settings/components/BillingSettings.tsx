@@ -1,14 +1,17 @@
 'use client';
 
 import {
+  Ban,
   Check,
   CircleDollarSign,
   CreditCard,
   Loader2,
   ReceiptText,
+  RotateCcw,
   ShieldCheck,
   Sparkles,
   Users,
+  XCircle,
 } from 'lucide-react';
 
 import {
@@ -131,6 +134,16 @@ export type BillingState = {
       string | null;
     cancelledAt:
       string | null;
+    cancellation: {
+      requestedAt:
+        string | null;
+      effectiveAt:
+        string | null;
+      scheduled:
+        boolean;
+      ended:
+        boolean;
+    };
     scheduledPlan:
       | {
           key:
@@ -243,6 +256,13 @@ type MobileSection =
   | 'plans'
   | 'payments';
 
+type OverlayAction = {
+  label:
+    string;
+  onClick?:
+    () => void;
+};
+
 type Overlay = {
   open: boolean;
   type:
@@ -252,6 +272,10 @@ type Overlay = {
     'info';
   title: string;
   message: string;
+  primaryAction?:
+    OverlayAction;
+  secondaryAction?:
+    OverlayAction;
 };
 
 const CLOSED_OVERLAY:
@@ -449,6 +473,12 @@ export default function BillingSettings({
 
   const automaticBillingActive =
     Boolean(
+      !state.subscription
+        .cancellation
+        .scheduled &&
+      !state.subscription
+        .cancellation
+        .ended &&
       state.billingProfile &&
       [
         'trialing',
@@ -829,6 +859,380 @@ export default function BillingSettings({
     );
   }
 
+  async function postBillingLifecycleAction(
+    action:
+      'cancel_plan_change' |
+      'cancel_subscription' |
+      'resume_subscription' |
+      'reactivate_subscription',
+  ) {
+    const response =
+      await fetch(
+        '/api/workspace/billing',
+        {
+          method:
+            'POST',
+          credentials:
+            'same-origin',
+          cache:
+            'no-store',
+          headers: {
+            Accept:
+              'application/json',
+            'Content-Type':
+              'application/json',
+          },
+          body:
+            JSON.stringify({
+              action,
+            }),
+        },
+      );
+
+    const data =
+      await response.json() as {
+        success?:
+          boolean;
+        error?:
+          string;
+        subscriptionCancellation?: {
+          mode?:
+            string;
+          effectiveAt?:
+            string | null;
+        };
+        subscriptionReactivation?: {
+          paymentRequired?:
+            boolean;
+        };
+      };
+
+    if (
+      !response.ok ||
+      !data.success
+    ) {
+      throw new Error(
+        data.error ||
+        'SaMi could not update the subscription.',
+      );
+    }
+
+    return data;
+  }
+
+
+  function confirmCancelPlanChange() {
+    const scheduled =
+      state.subscription
+        .scheduledPlan;
+
+    if (
+      !scheduled ||
+      !state.canManage ||
+      busy
+    ) {
+      return;
+    }
+
+    setOverlay({
+      open:
+        true,
+      type:
+        'warning',
+      title:
+        'Cancel scheduled plan change?',
+      message:
+        `SaMi will keep the current ${state.subscription.planName} plan and undo the pending change to ${scheduled.name}${scheduled.effectiveAt ? ` on ${formatDate(scheduled.effectiveAt)}` : ''}. If the billing provider had already been prepared for the change, SaMi will restore the current renewal settings too.`,
+      primaryAction: {
+        label:
+          'Cancel plan change',
+        onClick: () => {
+          setOverlay(
+            CLOSED_OVERLAY,
+          );
+          void cancelPlanChange();
+        },
+      },
+      secondaryAction: {
+        label:
+          'Keep scheduled change',
+      },
+    });
+  }
+
+
+  async function cancelPlanChange() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'cancel_plan_change',
+      );
+
+      await refresh();
+
+      show(
+        'success',
+        'Plan change cancelled',
+        'Your current SaMi plan will continue. Any provider renewal settings changed for the pending plan change were restored where required.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Plan change could not be cancelled',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not cancel the pending plan change.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  function confirmCancelSubscription() {
+    if (
+      !state.canManage ||
+      busy ||
+      state.subscription
+        .planKey ===
+        'free' ||
+      state.subscription
+        .cancellation
+        .scheduled ||
+      state.subscription
+        .cancellation
+        .ended
+    ) {
+      return;
+    }
+
+    const boundary =
+      state.subscription
+        .status ===
+          'trial' ||
+      state.subscription
+        .status ===
+          'trialing'
+        ? state.subscription
+            .trialEndsAt
+        : state.subscription
+            .currentPeriodEnd;
+
+    setOverlay({
+      open:
+        true,
+      type:
+        'warning',
+      title:
+        'Cancel paid subscription?',
+      message:
+        boundary
+          ? `Automatic renewal will stop. Your current paid access remains available until ${formatDate(boundary)}. After that, paid workspace work stops, but SaMi keeps your data, files, settings and app data. This does not delete the workspace. You can undo the cancellation before that date.`
+          : 'Automatic renewal will stop and paid access may end immediately because there is no remaining paid billing period. SaMi keeps your workspace data, files, settings and app data.',
+      primaryAction: {
+        label:
+          'Cancel subscription',
+        onClick: () => {
+          setOverlay(
+            CLOSED_OVERLAY,
+          );
+          void cancelSubscription();
+        },
+      },
+      secondaryAction: {
+        label:
+          'Keep subscription',
+      },
+    });
+  }
+
+
+  async function cancelSubscription() {
+    if (
+      busy ||
+      !state.canManage
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      const data =
+        await postBillingLifecycleAction(
+          'cancel_subscription',
+        );
+
+      await refresh();
+
+      const effectiveAt =
+        data
+          .subscriptionCancellation
+          ?.effectiveAt ||
+        null;
+
+      show(
+        'success',
+        data
+          .subscriptionCancellation
+          ?.mode ===
+          'scheduled'
+          ? 'Cancellation scheduled'
+          : 'Subscription cancelled',
+        data
+          .subscriptionCancellation
+          ?.mode ===
+          'scheduled'
+          ? `Your paid subscription will end${effectiveAt ? ` on ${formatDate(effectiveAt)}` : ' at the current billing boundary'}. Paid access remains available until then and your workspace data will be retained.`
+          : 'Future renewal has stopped. Your workspace data remains retained and Billing stays available for reactivation.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be cancelled',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not cancel this subscription.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  async function keepSubscription() {
+    if (
+      busy ||
+      !state.canManage ||
+      !state.subscription
+        .cancellation
+        .scheduled
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'resume_subscription',
+      );
+
+      await refresh();
+
+      show(
+        'success',
+        'Subscription will continue',
+        'The pending cancellation was removed. Automatic renewal was restored where the billing provider supports recurring renewal.',
+      );
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be resumed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not undo the cancellation.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
+  async function reactivateSubscription() {
+    if (
+      busy ||
+      !state.canManage ||
+      !state.subscription
+        .cancellation
+        .ended
+    ) {
+      return;
+    }
+
+    setBusy(
+      true,
+    );
+
+    try {
+      await postBillingLifecycleAction(
+        'reactivate_subscription',
+      );
+
+      await refresh();
+
+      setOverlay({
+        open:
+          true,
+        type:
+          'info',
+        title:
+          'Complete payment to reactivate',
+        message:
+          'SaMi restored the subscription to payment-recovery state. Complete the current plan payment to start a new paid period. Your previous workspace data has remained in place.',
+        primaryAction: {
+          label:
+            'Pay now',
+          onClick: () => {
+            setOverlay(
+              CLOSED_OVERLAY,
+            );
+            void checkout();
+          },
+        },
+        secondaryAction: {
+          label:
+            'Pay later',
+        },
+      });
+    } catch (
+      error
+    ) {
+      show(
+        'error',
+        'Subscription could not be reactivated',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not prepare this subscription for reactivation.',
+      );
+    } finally {
+      setBusy(
+        false,
+      );
+    }
+  }
+
+
   async function changePlan(
     targetPlan:
       BillingPlan['key'],
@@ -1203,18 +1607,122 @@ export default function BillingSettings({
           {state.subscription
             .scheduledPlan && (
             <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/20 dark:bg-violet-500/10">
-              <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
-                Plan change scheduled
-              </p>
-              <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
-                {state.subscription.scheduledPlan.name}
-                {state.subscription.scheduledPlan.effectiveAt
-                  ? ` from ${formatDate(
-                      state.subscription.scheduledPlan.effectiveAt,
-                    )}`
-                  : ''}
-                . Your current plan remains entitled until then.
-              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-violet-700 dark:text-violet-300">
+                    Plan change scheduled
+                  </p>
+                  <p className="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+                    {state.subscription.scheduledPlan.name}
+                    {state.subscription.scheduledPlan.effectiveAt
+                      ? ` from ${formatDate(
+                          state.subscription.scheduledPlan.effectiveAt,
+                        )}`
+                      : ''}
+                    . Your current plan remains entitled until then.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      confirmCancelPlanChange
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-white px-3 text-[11px] font-black text-violet-700 transition hover:bg-violet-100 disabled:opacity-50 dark:border-violet-500/30 dark:bg-transparent dark:text-violet-200 dark:hover:bg-violet-500/10"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Cancel change
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {state.subscription
+            .cancellation
+            .scheduled && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-500/20 dark:bg-amber-500/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Subscription cancellation scheduled
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800/80 dark:text-amber-200/80">
+                    Paid access remains available
+                    {state.subscription.cancellation.effectiveAt
+                      ? ` until ${formatDate(
+                          state.subscription.cancellation.effectiveAt,
+                        )}`
+                      : ' until the current billing boundary'}
+                    . Renewal has been stopped. Workspace data will be retained after paid access ends.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      keepSubscription
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-3 text-[11px] font-black text-amber-800 transition hover:bg-amber-100 disabled:opacity-50 dark:border-amber-500/30 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Keep subscription
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {state.subscription
+            .cancellation
+            .ended && (
+            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-500/20 dark:bg-red-500/10">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-wide text-red-700 dark:text-red-300">
+                    Paid subscription ended
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-red-800/80 dark:text-red-200/80">
+                    Paid workspace work is stopped, but SaMi has retained your data, files, settings and installed-app data. Billing remains available for reactivation.
+                  </p>
+                </div>
+
+                {state.canManage && (
+                  <button
+                    type="button"
+                    onClick={
+                      reactivateSubscription
+                    }
+                    disabled={
+                      busy
+                    }
+                    className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-3 text-[11px] font-black text-white transition hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {busy ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    )}
+                    Reactivate
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
@@ -1432,6 +1940,49 @@ export default function BillingSettings({
             </div>
           </div>
         </div>
+
+        {state.subscription
+          .planKey !==
+            'free' &&
+          state.canManage &&
+          !state.subscription
+            .cancellation
+            .scheduled &&
+          !state.subscription
+            .cancellation
+            .ended && (
+          <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4 dark:border-red-500/20 dark:bg-red-500/[0.06]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-xs font-black text-red-700 dark:text-red-300">
+                  <Ban className="h-4 w-4" />
+                  Subscription controls
+                </div>
+                <p className="mt-2 max-w-2xl text-[11px] leading-5 text-red-700/75 dark:text-red-200/70">
+                  Cancelling stops future renewal. It does not delete the workspace, files, settings, payment history or installed-app data. Paid access continues through any remaining trial or paid period, then paid workspace work stops.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={
+                  confirmCancelSubscription
+                }
+                disabled={
+                  busy
+                }
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-300 bg-white px-3 text-[11px] font-black text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-500/30 dark:bg-transparent dark:text-red-200 dark:hover:bg-red-500/10"
+              >
+                {busy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <XCircle className="h-3.5 w-3.5" />
+                )}
+                Cancel subscription
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
 
@@ -1542,7 +2093,17 @@ export default function BillingSettings({
                   {state.canManage &&
                     !current &&
                     !state.subscription
-                      .scheduledPlan && (
+                      .scheduledPlan &&
+                    !state.subscription
+                      .cancellation
+                      .scheduled &&
+                    (
+                      !state.subscription
+                        .cancellation
+                        .ended ||
+                      plan.key ===
+                        'free'
+                    ) && (
                     <button
                       type="button"
                       onClick={() =>
@@ -1561,13 +2122,33 @@ export default function BillingSettings({
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
                       )}
                       {state.subscription
-                        .status ===
-                        'active' &&
-                      state.subscription
-                        .planKey !==
+                        .cancellation
+                        .ended &&
+                      plan.key ===
                         'free'
-                        ? 'Change at renewal'
-                        : `Switch to ${plan.name}`}
+                        ? 'Move retained workspace to Free'
+                        : state.subscription
+                              .planKey !==
+                              'free' &&
+                            plan.key ===
+                              'free' &&
+                            (
+                              state.subscription
+                                .status ===
+                                'trial' ||
+                              state.subscription
+                                .status ===
+                                'trialing'
+                            )
+                          ? 'Move to Free at trial end'
+                        : state.subscription
+                              .status ===
+                              'active' &&
+                            state.subscription
+                              .planKey !==
+                              'free'
+                          ? 'Change at renewal'
+                          : `Switch to ${plan.name}`}
                     </button>
                   )}
                 </article>
@@ -1664,6 +2245,12 @@ export default function BillingSettings({
         }
         message={
           overlay.message
+        }
+        primaryAction={
+          overlay.primaryAction
+        }
+        secondaryAction={
+          overlay.secondaryAction
         }
         onClose={() =>
           setOverlay(

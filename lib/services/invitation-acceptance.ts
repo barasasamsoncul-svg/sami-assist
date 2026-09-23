@@ -23,6 +23,11 @@ import {
   prepareInvitationAcceptance,
 } from '@/lib/services/invitations';
 
+import {
+  assertInternalSeatAvailableWithClient,
+  WorkspaceUsageError,
+} from '@/lib/usage/entitlements';
+
 
 /* ================================================================
    SaMi INVITATION ACCEPTANCE SERVICE
@@ -185,6 +190,7 @@ export type InvitationAcceptanceErrorCode =
   | 'INVALID_PASSWORD'
   | 'INVALID_PHONE'
   | 'MEMBER_ALREADY_EXISTS'
+  | 'INVITATION_PLAN_LIMIT_REACHED'
   | 'ROLE_REQUIRED'
   | 'ROLE_NOT_AVAILABLE'
   | 'PORTAL_ROLE_NOT_ALLOWED'
@@ -1848,6 +1854,34 @@ export async function acceptWorkspaceInvitation(
     /* ==========================================================
        11. MEMBERSHIP
        ========================================================== */
+
+    if (
+      memberType ===
+        'internal'
+    ) {
+      try {
+        await assertInternalSeatAvailableWithClient(
+          controlClient,
+          {
+            tenantId,
+          },
+        );
+      } catch (
+        error
+      ) {
+        if (
+          error instanceof
+            WorkspaceUsageError
+        ) {
+          throw new InvitationAcceptanceError(
+            'INVITATION_PLAN_LIMIT_REACHED',
+            error.message,
+          );
+        }
+
+        throw error;
+      }
+    }
 
     const existingMembership =
       await controlClient.query<MembershipRow>(

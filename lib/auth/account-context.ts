@@ -1586,6 +1586,7 @@ async function getTenantSubscription(
           s.trial_ends_at,
           s.current_period_start,
           s.current_period_end,
+          s.cancelled_at,
 
           p.key
             AS plan_key,
@@ -1637,6 +1638,8 @@ async function getTenantSubscription(
         row.trial_ends_at,
       currentPeriodEnd:
         row.current_period_end,
+      cancelledAt:
+        row.cancelled_at,
     }) ||
     'unknown';
 

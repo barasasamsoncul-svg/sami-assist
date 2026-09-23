@@ -228,8 +228,11 @@ async function readState(
           s.status,
           s.trial_ends_at,
           s.current_period_end,
+          s.cancelled_at,
           p.key
-            AS plan_key
+            AS plan_key,
+          sp.key
+            AS scheduled_plan_key
         FROM subscriptions s
         INNER JOIN plans p
           ON p.id =
@@ -237,6 +240,13 @@ async function readState(
          AND p.deleted_at
              IS NULL
          AND p.is_active =
+             TRUE
+        LEFT JOIN plans sp
+          ON sp.id =
+             s.scheduled_plan_id
+         AND sp.deleted_at
+             IS NULL
+         AND sp.is_active =
              TRUE
         WHERE s.tenant_id = $1
           AND s.deleted_at
@@ -279,12 +289,21 @@ async function readState(
         getSamiPastDueGraceDays(),
       policy:
         null,
+      scheduledPlanKey:
+        null,
+      scheduledPolicy:
+        null,
     };
   }
 
   const policy =
     getSamiPlanPolicy(
       row.plan_key,
+    );
+
+  const scheduledPolicy =
+    getSamiPlanPolicy(
+      row.scheduled_plan_key,
     );
 
   const effectiveStatus =
@@ -297,6 +316,8 @@ async function readState(
         row.trial_ends_at,
       currentPeriodEnd:
         row.current_period_end,
+      cancelledAt:
+        row.cancelled_at,
     });
 
   const suspension =
@@ -323,6 +344,10 @@ async function readState(
       ),
     ...suspension,
     policy,
+    scheduledPlanKey:
+      scheduledPolicy?.key ||
+      null,
+    scheduledPolicy,
   };
 }
 

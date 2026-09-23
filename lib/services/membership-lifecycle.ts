@@ -14,6 +14,11 @@ import {
   SAMI_PERMISSIONS,
 } from '@/lib/auth/permission-catalog';
 
+import {
+  assertInternalSeatAvailableWithClient,
+  WorkspaceUsageError,
+} from '@/lib/usage/entitlements';
+
 
 /* ================================================================
    SaMi WORKSPACE MEMBERSHIP LIFECYCLE
@@ -235,6 +240,7 @@ export type MembershipLifecycleErrorCode =
   | 'MEMBERSHIP_REMOVED'
   | 'MEMBERSHIP_NOT_REMOVED'
   | 'OWNER_PROTECTED'
+  | 'MEMBERSHIP_PLAN_LIMIT_REACHED'
   | 'INVALID_MEMBERSHIP_STATE';
 
 
@@ -1467,6 +1473,48 @@ export async function suspendWorkspaceMember(
 }
 
 
+async function assertMembershipSeatAvailable(
+  client:
+    PoolClient,
+  tenantId:
+    string,
+  target:
+    MembershipRow,
+) {
+  if (
+    normalizeMemberType(
+      target.member_type,
+    ) !==
+      'internal'
+  ) {
+    return;
+  }
+
+  try {
+    await assertInternalSeatAvailableWithClient(
+      client,
+      {
+        tenantId,
+      },
+    );
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        WorkspaceUsageError
+    ) {
+      throw new MembershipLifecycleError(
+        'MEMBERSHIP_PLAN_LIMIT_REACHED',
+        error.message,
+      );
+    }
+
+    throw error;
+  }
+}
+
+
 /* ================================================================
    REACTIVATE MEMBER
    ================================================================ */
@@ -1557,6 +1605,13 @@ export async function reactivateWorkspaceMember(
           false,
         );
       }
+
+
+      await assertMembershipSeatAvailable(
+        client,
+        tenantId,
+        target,
+      );
 
 
       const result =
@@ -1989,6 +2044,13 @@ export async function restoreWorkspaceMember(
         toIso(
           target.deleted_at,
         );
+
+
+      await assertMembershipSeatAvailable(
+        client,
+        tenantId,
+        target,
+      );
 
 
       const result =

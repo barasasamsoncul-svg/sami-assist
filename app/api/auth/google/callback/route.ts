@@ -518,7 +518,8 @@ function redirectWithError(
 
 function redirectToLogin(
   request: NextRequest,
-  code?: string
+  code?: string,
+  nextPath?: string
 ) {
   const url =
     new URL(
@@ -532,6 +533,22 @@ function redirectToLogin(
     url.searchParams.set(
       'google_error',
       code
+    );
+  }
+
+  const safeNext =
+    safeNextPath(
+      nextPath
+    );
+
+  if (
+    nextPath &&
+    safeNext !==
+      '/dashboard'
+  ) {
+    url.searchParams.set(
+      'next',
+      safeNext
     );
   }
 
@@ -1405,7 +1422,11 @@ export async function GET(
 
         return redirectToLogin(
           request,
-          'two_factor_required'
+          'two_factor_required',
+          intent ===
+            'register'
+            ? '/workspaces/new'
+            : undefined
         );
       }
 
@@ -1438,16 +1459,16 @@ export async function GET(
           )?.value
         );
 
-      const accountContext =
-        await getAccountContextForUser(
-          existingUser.id
-        );
-
       const next =
-        await getBillingOnboardingNext(
-          accountContext,
-          requestedNext
-        );
+        intent ===
+          'register'
+          ? '/workspaces/new'
+          : await getBillingOnboardingNext(
+              await getAccountContextForUser(
+                existingUser.id
+              ),
+              requestedNext
+            );
 
       const response =
         NextResponse.redirect(

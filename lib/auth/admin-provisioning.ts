@@ -21,6 +21,10 @@ import type {
 } from '@/lib/auth/admin-session';
 
 import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
+import {
   recordAdminAuditEvent,
 } from '@/lib/auth/admin-events';
 
@@ -530,39 +534,35 @@ async function validateProvisioningActor(
   boolean
 > {
   if (
-    actorRole !==
-      'super_admin' ||
     !isValidActorId(
       actorAdminId
+    ) ||
+    !hasAdminCapability(
+      actorRole,
+      'administrators.manage',
     )
   ) {
     return false;
   }
 
   /*
-   * Do not trust the role argument alone.
-   *
-   * The API obtains it from the authenticated session, but this
-   * identity-domain layer independently confirms that the actor
-   * still exists, is active, verified and remains a super admin.
-   *
-   * This protects against a stale session whose database role or
-   * account state changed after the session was created.
+   * Do not trust the session role argument alone.
+   * Re-read the administrator record and apply the same canonical
+   * capability map used by the route and navigation layers.
    */
   const result =
     await queryControl(
       `
         SELECT
-          id
+          role,
+          status,
+          email_verified
 
         FROM
           platform_admins
 
         WHERE
           id = $1
-          AND role = 'super_admin'
-          AND status = 'active'
-          AND email_verified = TRUE
           AND deleted_at IS NULL
 
         LIMIT 1
@@ -572,9 +572,31 @@ async function validateProvisioningActor(
       ]
     );
 
-  return (
-    result.rows.length >
-    0
+  const row =
+    result.rows[0];
+
+  if (
+    !row ||
+    String(
+      row.status ||
+      '',
+    )
+      .trim()
+      .toLowerCase() !==
+      'active' ||
+    row.email_verified !==
+      true
+  ) {
+    return false;
+  }
+
+  return hasAdminCapability(
+    String(
+      row.role ||
+      '',
+    ) as
+      PlatformAdminRole,
+    'administrators.manage',
   );
 }
 

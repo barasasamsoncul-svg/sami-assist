@@ -1,5 +1,13 @@
 import { queryControl } from '@/lib/db/control';
 
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
+import type {
+  PlatformAdminRole,
+} from '@/lib/auth/admin-session';
+
 /* ============================================================
    SaMi Platform Admin
    Dashboard Data Layer
@@ -97,6 +105,15 @@ export type AdminDashboardRecentTenant = {
 
 export type AdminDashboardData = {
   generatedAt: string;
+
+  visibility: {
+    users: boolean;
+    tenants: boolean;
+    subscriptions: boolean;
+    modules: boolean;
+    security: boolean;
+    audit: boolean;
+  };
 
   users: {
     total: number;
@@ -1447,9 +1464,127 @@ async function getRecentSecurityEvents(): Promise<
    MAIN DASHBOARD LOADER
    ============================================================ */
 
-export async function getAdminDashboardData(): Promise<
+export async function getAdminDashboardData(
+  role:
+    PlatformAdminRole,
+): Promise<
   AdminDashboardData
 > {
+  const visibility = {
+    users:
+      hasAdminCapability(
+        role,
+        'users.read',
+      ),
+
+    tenants:
+      hasAdminCapability(
+        role,
+        'tenants.read',
+      ),
+
+    subscriptions:
+      hasAdminCapability(
+        role,
+        'subscriptions.read',
+      ),
+
+    modules:
+      hasAdminCapability(
+        role,
+        'modules.read',
+      ),
+
+    security:
+      hasAdminCapability(
+        role,
+        'security.read',
+      ),
+
+    audit:
+      hasAdminCapability(
+        role,
+        'audit.read',
+      ),
+  };
+
+  const emptyUsers = {
+    total:
+      0,
+    active:
+      0,
+    unverified:
+      0,
+    locked:
+      0,
+    twoFactorEnabled:
+      0,
+    newLast7Days:
+      0,
+    newLast30Days:
+      0,
+    statuses:
+      [] as AdminDashboardStatusCount[],
+    recent:
+      [] as AdminDashboardRecentUser[],
+  };
+
+  const emptyTenants = {
+    total:
+      0,
+    active:
+      0,
+    newLast7Days:
+      0,
+    newLast30Days:
+      0,
+    statuses:
+      [] as AdminDashboardStatusCount[],
+    recent:
+      [] as AdminDashboardRecentTenant[],
+  };
+
+  const emptySubscriptions = {
+    total:
+      0,
+    active:
+      0,
+    trialing:
+      0,
+    pastDue:
+      0,
+    cancelled:
+      0,
+    trialsEndingNext7Days:
+      0,
+    statuses:
+      [] as AdminDashboardStatusCount[],
+  };
+
+  const emptyModules = {
+    total:
+      0,
+    active:
+      0,
+    core:
+      0,
+    aiEnabled:
+      0,
+    statuses:
+      [] as AdminDashboardStatusCount[],
+  };
+
+  const emptySecurity = {
+    lockedUsers:
+      0,
+    failedUserLoginsLast24Hours:
+      0,
+    failedAdminLoginsLast24Hours:
+      0,
+    activeAdminSessions:
+      0,
+  };
+
   const [
     users,
     tenants,
@@ -1460,24 +1595,54 @@ export async function getAdminDashboardData(): Promise<
     recentSecurityEvents,
   ] =
     await Promise.all([
-      getUserDashboardData(),
+      visibility.users
+        ? getUserDashboardData()
+        : Promise.resolve(
+            emptyUsers,
+          ),
 
-      getTenantDashboardData(),
+      visibility.tenants
+        ? getTenantDashboardData()
+        : Promise.resolve(
+            emptyTenants,
+          ),
 
-      getSubscriptionDashboardData(),
+      visibility.subscriptions
+        ? getSubscriptionDashboardData()
+        : Promise.resolve(
+            emptySubscriptions,
+          ),
 
-      getModuleDashboardData(),
+      visibility.modules
+        ? getModuleDashboardData()
+        : Promise.resolve(
+            emptyModules,
+          ),
 
-      getSecurityDashboardData(),
+      visibility.security
+        ? getSecurityDashboardData()
+        : Promise.resolve(
+            emptySecurity,
+          ),
 
-      getRecentPlatformActivity(),
+      visibility.audit
+        ? getRecentPlatformActivity()
+        : Promise.resolve(
+            [] as AdminDashboardActivity[],
+          ),
 
-      getRecentSecurityEvents(),
+      visibility.security
+        ? getRecentSecurityEvents()
+        : Promise.resolve(
+            [] as AdminDashboardSecurityEvent[],
+          ),
     ]);
 
   return {
     generatedAt:
       new Date().toISOString(),
+
+    visibility,
 
     users,
 
@@ -1491,19 +1656,29 @@ export async function getAdminDashboardData(): Promise<
 
     attention: {
       unverifiedUsers:
-        users.unverified,
+        visibility.users
+          ? users.unverified
+          : 0,
 
       lockedUsers:
-        users.locked,
+        visibility.users
+          ? users.locked
+          : 0,
 
       trialsEndingNext7Days:
-        subscriptions.trialsEndingNext7Days,
+        visibility.subscriptions
+          ? subscriptions.trialsEndingNext7Days
+          : 0,
 
       pastDueSubscriptions:
-        subscriptions.pastDue,
+        visibility.subscriptions
+          ? subscriptions.pastDue
+          : 0,
 
       failedAdminLoginsLast24Hours:
-        security.failedAdminLoginsLast24Hours,
+        visibility.security
+          ? security.failedAdminLoginsLast24Hours
+          : 0,
     },
 
     activity: {
@@ -1513,6 +1688,7 @@ export async function getAdminDashboardData(): Promise<
     },
   };
 }
+
 
 /* ============================================================
    DEFAULT EXPORT

@@ -1,18 +1,34 @@
 import AdminDashboard from '@/app/admin/components/dashboard/AdminDashboard';
 import { getAdminDashboardData } from '@/lib/admin/dashboard';
-import { requireAdminSession } from '@/lib/auth/admin-session';
+import { getAdminOperationsDashboard } from '@/lib/admin/dashboard-operations';
+import { requireAdminCapability } from '@/lib/admin/require-capability';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
-  const session = await requireAdminSession();
+  const session =
+    await requireAdminCapability(
+      'dashboard.read',
+    );
 
-  const dashboard = await getAdminDashboardData();
+  const [
+    dashboard,
+    operations,
+  ] =
+    await Promise.all([
+      getAdminDashboardData(
+        session.role,
+      ),
+      getAdminOperationsDashboard(
+        session.role,
+      ),
+    ]);
 
   return (
     <AdminDashboard
       dashboard={dashboard}
+      operations={operations}
     />
   );
 }

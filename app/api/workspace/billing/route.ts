@@ -3,8 +3,12 @@ import {
 } from 'next/server';
 
 import {
+  cancelScheduledWorkspacePlanChange,
+  cancelWorkspaceSubscription,
   changeWorkspaceSubscriptionPlan,
   getWorkspaceBillingState,
+  reactivateCancelledWorkspaceSubscription,
+  resumeWorkspaceSubscriptionCancellation,
   startWorkspaceBillingCheckout,
 } from '@/lib/services/workspace-billing';
 
@@ -102,6 +106,66 @@ export async function POST(
         success:
           true,
         planChange:
+          result,
+      });
+    }
+
+    if (
+      action ===
+        'cancel_plan_change'
+    ) {
+      const result =
+        await cancelScheduledWorkspacePlanChange();
+
+      return billingJson({
+        success:
+          true,
+        planChangeCancellation:
+          result,
+      });
+    }
+
+    if (
+      action ===
+        'cancel_subscription'
+    ) {
+      const result =
+        await cancelWorkspaceSubscription();
+
+      return billingJson({
+        success:
+          true,
+        subscriptionCancellation:
+          result,
+      });
+    }
+
+    if (
+      action ===
+        'resume_subscription'
+    ) {
+      const result =
+        await resumeWorkspaceSubscriptionCancellation();
+
+      return billingJson({
+        success:
+          true,
+        subscriptionResume:
+          result,
+      });
+    }
+
+    if (
+      action ===
+        'reactivate_subscription'
+    ) {
+      const result =
+        await reactivateCancelledWorkspaceSubscription();
+
+      return billingJson({
+        success:
+          true,
+        subscriptionReactivation:
           result,
       });
     }

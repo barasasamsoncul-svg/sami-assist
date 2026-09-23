@@ -25,9 +25,12 @@ import {
   X,
   ChevronDown,
   UserRound,
-  Laptop,
-  Palette,
   SlidersHorizontal,
+  Activity,
+  CircleAlert,
+  CloudCog,
+  ListChecks,
+  Database,
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -36,6 +39,11 @@ import type {
   AdminSession,
   PlatformAdminRole,
 } from '@/lib/auth/admin-session';
+
+import {
+  hasAdminCapability,
+  type PlatformAdminCapability,
+} from '@/lib/admin/capabilities';
 
 /* ============================================================
    TYPES
@@ -53,7 +61,7 @@ type NavigationChild = {
 
   icon?: React.ElementType;
 
-  roles?: readonly PlatformAdminRole[];
+  capability?: PlatformAdminCapability;
 
   /**
    * A child may be visible before its capability is complete.
@@ -73,7 +81,7 @@ type NavigationItem = {
 
   icon: React.ElementType;
 
-  roles?: readonly PlatformAdminRole[];
+  capability?: PlatformAdminCapability;
 
   children?: readonly NavigationChild[];
 };
@@ -94,9 +102,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/administrators',
     icon: UserCog,
 
-    roles: [
-      'super_admin',
-    ],
+    capability: 'administrators.read',
   },
 
   {
@@ -104,13 +110,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/users',
     icon: Users,
 
-    roles: [
-      'super_admin',
-      'support_admin',
-      'security_admin',
-      'operations_admin',
-      'read_only_admin',
-    ],
+    capability: 'users.read',
   },
 
   {
@@ -118,13 +118,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/businesses',
     icon: Building2,
 
-    roles: [
-      'super_admin',
-      'support_admin',
-      'operations_admin',
-      'billing_admin',
-      'read_only_admin',
-    ],
+    capability: 'tenants.read',
   },
 
   {
@@ -132,11 +126,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/security',
     icon: ShieldCheck,
 
-    roles: [
-      'super_admin',
-      'security_admin',
-      'read_only_admin',
-    ],
+    capability: 'security.read',
   },
 
   {
@@ -144,12 +134,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/subscriptions',
     icon: CreditCard,
 
-    roles: [
-      'super_admin',
-      'billing_admin',
-      'operations_admin',
-      'read_only_admin',
-    ],
+    capability: 'subscriptions.read',
   },
 
   {
@@ -157,11 +142,62 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/apps',
     icon: Boxes,
 
-    roles: [
-      'super_admin',
-      'operations_admin',
-      'developer_admin',
-      'read_only_admin',
+    capability: 'modules.read',
+  },
+
+  {
+    label: 'Operations',
+    icon: Activity,
+
+    children: [
+      {
+        label: 'Platform Health',
+        href: '/admin/operations/health',
+        icon: Activity,
+        capability: 'health.read',
+      },
+
+      {
+        label: 'Backups & Recovery',
+        href: '/admin/operations/recovery',
+        icon: Database,
+        capability: 'tenants.read',
+      },
+
+      {
+        label: 'Incidents & Errors',
+        href: '/admin/operations/incidents',
+        icon: CircleAlert,
+        capability: 'incidents.read',
+      },
+
+      {
+        label: 'Providers',
+        href: '/admin/operations/providers',
+        icon: CloudCog,
+        capability: 'providers.read',
+      },
+
+      {
+        label: 'Services & Costs',
+        href: '/admin/operations/services',
+        icon: CreditCard,
+        capability: 'providers.read',
+      },
+
+      {
+        label: 'Vercel Runtime',
+        href: '/admin/operations/vercel',
+        icon: CloudCog,
+        capability: 'providers.read',
+      },
+
+      {
+        label: 'Jobs & Workers',
+        href: '/admin/operations/jobs',
+        icon: ListChecks,
+        capability: 'jobs.read',
+      },
     ],
   },
 
@@ -170,12 +206,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/notifications',
     icon: Bell,
 
-    roles: [
-      'super_admin',
-      'support_admin',
-      'operations_admin',
-      'read_only_admin',
-    ],
+    capability: 'notifications.read',
   },
 
   {
@@ -183,11 +214,7 @@ const navigation: readonly NavigationItem[] = [
     href: '/admin/audit',
     icon: ScrollText,
 
-    roles: [
-      'super_admin',
-      'security_admin',
-      'read_only_admin',
-    ],
+    capability: 'audit.read',
   },
 
   /* ==========================================================
@@ -213,42 +240,9 @@ const navigation: readonly NavigationItem[] = [
       },
 
       {
-        label: 'Security',
-        href: '/admin/settings/security',
-        icon: ShieldCheck,
-
-        /*
-         * Visible architecture, but the actual Admin Category 4
-         * settings capability is not complete yet.
-         */
-        disabled: true,
-      },
-
-      {
-        label: 'Sessions & Devices',
-        href: '/admin/settings/sessions',
-        icon: Laptop,
-
-        /*
-         * Enabled when Platform Admin Category 3 is implemented.
-         */
-        disabled: true,
-      },
-
-      {
-        label: 'Preferences',
-        href: '/admin/settings/preferences',
-        icon: Palette,
-
-        disabled: true,
-      },
-
-      {
         label: 'Notifications',
         href: '/admin/settings/notifications',
         icon: Bell,
-
-        disabled: true,
       },
 
       {
@@ -262,11 +256,7 @@ const navigation: readonly NavigationItem[] = [
          * This will later receive its own permission enforcement
          * at both page and API boundaries.
          */
-        roles: [
-          'super_admin',
-          'security_admin',
-          'developer_admin',
-        ],
+        capability: 'security.read',
 
         disabled: true,
       },
@@ -278,21 +268,18 @@ const navigation: readonly NavigationItem[] = [
    ACCESS
    ============================================================ */
 
-function canSeeForRole(
+function canSeeCapability(
   role: PlatformAdminRole,
-  roles?: readonly PlatformAdminRole[]
+  capability?: PlatformAdminCapability
 ) {
-  if (
-    role === 'super_admin'
-  ) {
+  if (!capability) {
     return true;
   }
 
-  if (!roles) {
-    return true;
-  }
-
-  return roles.includes(role);
+  return hasAdminCapability(
+    role,
+    capability
+  );
 }
 
 function getVisibleChildren(
@@ -305,9 +292,9 @@ function getVisibleChildren(
 
   return item.children.filter(
     child =>
-      canSeeForRole(
+      canSeeCapability(
         role,
-        child.roles
+        child.capability
       )
   );
 }
@@ -317,18 +304,14 @@ function canSeeItem(
   item: NavigationItem
 ) {
   if (
-    !canSeeForRole(
+    !canSeeCapability(
       role,
-      item.roles
+      item.capability
     )
   ) {
     return false;
   }
 
-  /*
-   * If this is a dropdown-only parent and none of its children
-   * are visible to the current role, hide the parent too.
-   */
   if (
     item.children &&
     !item.href

@@ -22,6 +22,7 @@ import {
 import WorkspaceSidebar from '@/app/components/workspace/WorkspaceSidebar';
 import WorkspaceNotificationCenter from '@/app/components/workspace/WorkspaceNotificationCenter';
 import WorkspaceCompanyIdentity from '@/app/components/workspace/WorkspaceCompanyIdentity';
+import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
 import WorkspaceSearchLauncher from '@/app/components/workspace/WorkspaceSearch';
 import WorkspaceAppSwitcher from '@/app/components/workspace/WorkspaceAppSwitcher';
 
@@ -261,6 +262,12 @@ export default function WorkspaceShell({
                 </Link>
 
                 <WorkspaceSearchLauncher />
+
+                <WorkspaceTenantSwitcher
+                  currentTenant={
+                    tenant
+                  }
+                />
 
                 <WorkspaceCompanyIdentity />
 

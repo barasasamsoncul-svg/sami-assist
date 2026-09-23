@@ -830,13 +830,32 @@ async function assertInstallPlanEntitled(
     );
   }
 
+  const appLimits =
+    [
+      policy.apps
+        .maxInstalledBusinessApps,
+      access.scheduledPolicy
+        ?.apps
+        .maxInstalledBusinessApps ??
+        null,
+    ]
+      .filter(
+        (
+          value,
+        ): value is number =>
+          value !==
+          null,
+      );
+
   const limit =
-    policy.apps
-      .maxInstalledBusinessApps;
+    appLimits.length >
+      0
+      ? Math.min(
+          ...appLimits,
+        )
+      : null;
 
   if (
-    policy.apps
-      .allBusinessApps ||
     limit ===
       null
   ) {
@@ -918,6 +937,8 @@ async function assertInstallPlanEntitled(
       {
         currentPlan:
           policy.key,
+        scheduledPlan:
+          access.scheduledPlanKey,
         maxInstalledBusinessApps:
           limit,
         prospectiveBusinessApps:

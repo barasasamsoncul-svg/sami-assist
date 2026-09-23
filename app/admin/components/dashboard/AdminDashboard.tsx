@@ -12,6 +12,11 @@ import {
 import AdminStatCard from './AdminStatCard';
 import AdminActivityFeed from './AdminActivityFeed';
 import AdminQuickActions from './AdminQuickActions';
+import AdminOperationsOverview from './AdminOperationsOverview';
+
+import type {
+  AdminOperationsDashboard,
+} from '@/lib/admin/dashboard-operations';
 type StatusCount = {
   status: string;
   count: number;
@@ -124,6 +129,7 @@ export type AdminDashboardData = {
 
 type AdminDashboardProps = {
   dashboard: AdminDashboardData;
+  operations: AdminOperationsDashboard;
 };
 
 function numberFormat(value: number) {
@@ -156,6 +162,7 @@ function statusLabel(value: string | null) {
 
 export default function AdminDashboard({
   dashboard,
+  operations,
 }: AdminDashboardProps) {
   
 
@@ -229,6 +236,12 @@ export default function AdminDashboard({
 </section>
 
 <AdminQuickActions />
+
+      <AdminOperationsOverview
+        operations={
+          operations
+        }
+      />
 
       {/* ======================================================
           SECONDARY PLATFORM OVERVIEW

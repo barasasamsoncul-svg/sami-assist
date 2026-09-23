@@ -522,6 +522,156 @@ async function markMigrationFailed(
 }
 
 
+async function repairCompletedMigrationHistory(
+  input: {
+    tenantId: string;
+    databaseId: string;
+    client: PoolClient;
+    currentVersion: string;
+  },
+): Promise<void> {
+  const installed =
+    await input.client.query(
+      `
+        SELECT
+          version,
+          installed_at
+        FROM core_schema_version
+        ORDER BY installed_at, version
+      `,
+    );
+
+  const installedByVersion =
+    new Map<
+      string,
+      Date | string
+    >();
+
+  for (
+    const row
+    of installed.rows
+  ) {
+    if (
+      typeof row.version ===
+        'string' &&
+      row.installed_at
+    ) {
+      installedByVersion.set(
+        row.version.trim(),
+        row.installed_at,
+      );
+    }
+  }
+
+  for (
+    const migration
+    of TENANT_CORE_MIGRATIONS
+  ) {
+    if (
+      compareVersions(
+        migration.toVersion,
+        input.currentVersion,
+      ) >
+      0
+    ) {
+      continue;
+    }
+
+    const installedAt =
+      installedByVersion.get(
+        migration.toVersion,
+      );
+
+    if (
+      !installedAt
+    ) {
+      continue;
+    }
+
+    const {
+      checksum,
+    } =
+      loadMigrationSql(
+        migration,
+      );
+
+    await queryControl(
+      `
+        INSERT INTO tenant_database_migrations (
+          tenant_id,
+          database_id,
+          migration_key,
+          scope,
+          from_version,
+          to_version,
+          checksum,
+          status,
+          started_at,
+          completed_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'core',
+          $4,
+          $5,
+          $6,
+          'completed',
+          $7,
+          $7,
+          $7,
+          NOW()
+        )
+        ON CONFLICT (
+          tenant_id,
+          migration_key
+        )
+        DO UPDATE SET
+          database_id =
+            EXCLUDED.database_id,
+          checksum =
+            COALESCE(
+              tenant_database_migrations.checksum,
+              EXCLUDED.checksum
+            ),
+          status =
+            'completed',
+          started_at =
+            COALESCE(
+              tenant_database_migrations.started_at,
+              EXCLUDED.started_at
+            ),
+          completed_at =
+            COALESCE(
+              tenant_database_migrations.completed_at,
+              EXCLUDED.completed_at
+            ),
+          failed_at =
+            NULL,
+          error_code =
+            NULL,
+          error_message =
+            NULL,
+          updated_at =
+            NOW()
+      `,
+      [
+        input.tenantId,
+        input.databaseId,
+        migration.key,
+        migration.fromVersion,
+        migration.toVersion,
+        checksum,
+        installedAt,
+      ],
+    );
+  }
+}
+
+
 /* ================================================================
    APPLY ONE MIGRATION
    ================================================================ */
@@ -804,6 +954,14 @@ export async function runTenantCoreMigrations(
         ],
       );
     }
+
+    await repairCompletedMigrationHistory({
+      tenantId,
+      databaseId:
+        registry.databaseId,
+      client,
+      currentVersion,
+    });
 
     return {
       tenantId,

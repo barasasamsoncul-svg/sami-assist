@@ -54,6 +54,16 @@ import {
   getAvailableSamiAiTools,
 } from '@/lib/ai/tool-registry';
 
+import {
+  canUploadSamiAiAttachments,
+  getSamiAiAttachmentLimits,
+  linkSamiAiAttachmentsToMessage,
+  listSamiAiMessageAttachments,
+  loadSamiAiAttachmentContextForMessages,
+  resolveSamiAiAttachments,
+  type SamiAiAttachment,
+} from '@/lib/ai/attachments';
+
 import type {
   SamiAiProviderMessage,
   SamiAiRuntimeContext,
@@ -67,6 +77,12 @@ import {
 import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
+
+import {
+  assertAiMonthlyUsageAvailable,
+  getWorkspaceUsageSnapshot,
+  WorkspaceUsageError,
+} from '@/lib/usage/entitlements';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -108,6 +124,7 @@ export type WorkspaceAiErrorCode =
   | 'AI_NOT_ENTITLED'
   | 'AI_NOT_CONFIGURED'
   | 'AI_RATE_LIMITED'
+  | 'AI_ATTACHMENT_INVALID'
   | 'INVALID_CONVERSATION'
   | 'CONVERSATION_NOT_FOUND'
   | 'INVALID_MESSAGE'
@@ -452,6 +469,8 @@ function mapConversation(
 
 function mapMessage(
   row: MessageRow,
+  attachments:
+    SamiAiAttachment[] = [],
 ) {
   return {
     id:
@@ -485,6 +504,7 @@ function mapMessage(
               .feedback,
           )
         : null,
+    attachments,
     createdAt:
       toIso(
         row.created_at,
@@ -1142,7 +1162,7 @@ async function loadProviderHistory(
   const result =
     await pool.query(
       `
-        SELECT role, content
+        SELECT id, role, content
         FROM (
           SELECT
             id,
@@ -1167,19 +1187,57 @@ async function loadProviderHistory(
       ],
     );
 
-  return result.rows.map(
-    row => ({
-      role:
-        row.role ===
-          'assistant'
-          ? 'assistant'
-          : 'user',
-      content:
-        String(
-          row.content ||
-          '',
+  const attachmentContexts =
+    await loadSamiAiAttachmentContextForMessages(
+      context,
+      result.rows
+        .filter(
+          row =>
+            row.role ===
+              'user',
+        )
+        .map(
+          row =>
+            String(
+              row.id,
+            ),
         ),
-    }),
+    );
+
+  return result.rows.map(
+    row => {
+      const attachmentContext =
+        attachmentContexts.get(
+          String(
+            row.id,
+          ),
+        ) ||
+        '';
+
+      const content =
+        [
+          String(
+            row.content ||
+            '',
+          ),
+          attachmentContext,
+        ]
+          .filter(
+            Boolean,
+          )
+          .join(
+            '\\n\\n',
+          );
+
+      return {
+        role:
+          row.role ===
+            'assistant'
+            ? 'assistant' as const
+            : 'user' as const,
+        content,
+      };
+    },
   );
 }
 
@@ -1648,6 +1706,16 @@ export async function getWorkspaceAiStatus() {
       .rows[0] ||
     {};
 
+  const usage =
+    await getWorkspaceUsageSnapshot({
+      tenantId:
+        context.runtime
+          .tenantId,
+      userId:
+        context.runtime
+          .userId,
+    });
+
   return {
     entitled: true,
     configured:
@@ -1666,6 +1734,15 @@ export async function getWorkspaceAiStatus() {
         context.runtime
           .companyName,
     },
+    attachments: {
+      enabled:
+        true,
+      canUpload:
+        canUploadSamiAiAttachments(
+          context.runtime,
+        ),
+      ...getSamiAiAttachmentLimits(),
+    },
     preferences: {
       memoryEnabled:
         context.runtime
@@ -1676,6 +1753,13 @@ export async function getWorkspaceAiStatus() {
       responseStyle:
         context.runtime
           .responseStyle,
+    },
+    usage: {
+      period:
+        usage.period,
+      monthlyQueries:
+        usage.usage
+          .aiQueriesUserMonth,
     },
     performance: {
       requests24h:
@@ -1976,6 +2060,17 @@ export async function getWorkspaceAiConversation(
       ],
     );
 
+  const messageAttachmentMap =
+    await listSamiAiMessageAttachments(
+      context.runtime,
+      messages.rows.map(
+        row =>
+          String(
+            row.id,
+          ),
+      ),
+    );
+
   const pending =
     await pool.query(
       `
@@ -2013,6 +2108,12 @@ export async function getWorkspaceAiConversation(
         row =>
           mapMessage(
             row as MessageRow,
+            messageAttachmentMap.get(
+              String(
+                row.id,
+              ),
+            ) ||
+            [],
           ),
       ),
     pendingActions:
@@ -2496,6 +2597,7 @@ export async function sendWorkspaceAiMessage(
     message?: unknown;
     mode?: unknown;
     targetMessageId?: unknown;
+    attachmentIds?: unknown;
     signal?:
       AbortSignal;
   },
@@ -2521,14 +2623,46 @@ export async function sendWorkspaceAiMessage(
           input.message,
         );
 
+  let attachments:
+    Awaited<
+      ReturnType<
+        typeof resolveSamiAiAttachments
+      >
+    > =
+    [];
+
+  if (
+    mode !==
+      'regenerate'
+  ) {
+    try {
+      attachments =
+        await resolveSamiAiAttachments(
+          context,
+          input.attachmentIds,
+        );
+    } catch (
+      error
+    ) {
+      throw new WorkspaceAiError(
+        'AI_ATTACHMENT_INVALID',
+        error instanceof Error
+          ? error.message
+          : 'The selected attachment could not be used.',
+      );
+    }
+  }
+
   if (
     mode !==
       'regenerate' &&
-    !message
+    !message &&
+    attachments.length ===
+      0
   ) {
     throw new WorkspaceAiError(
       'INVALID_MESSAGE',
-      'Enter a message for SaMi AI.',
+      'Enter a message or attach a file for SaMi AI.',
     );
   }
 
@@ -2547,6 +2681,32 @@ export async function sendWorkspaceAiMessage(
 
   const config =
     requireSamiAiProviderConfig();
+
+  try {
+    await assertAiMonthlyUsageAvailable({
+      tenantId:
+        context.tenantId,
+      userId:
+        context.userId,
+    });
+  } catch (
+    error
+  ) {
+    if (
+      error instanceof
+        WorkspaceUsageError
+    ) {
+      throw new WorkspaceAiError(
+        error.code ===
+          'AI_MONTHLY_LIMIT_REACHED'
+          ? 'AI_RATE_LIMITED'
+          : 'AI_NOT_ENTITLED',
+        error.message,
+      );
+    }
+
+    throw error;
+  }
 
   await enforceRateLimit(
     context,
@@ -2581,7 +2741,10 @@ export async function sendWorkspaceAiMessage(
         )
       : await createConversation(
           context,
-          message,
+          message ||
+          attachments[0]
+            ?.name ||
+          'New conversation',
         );
 
   const conversationId =
@@ -2637,6 +2800,8 @@ export async function sendWorkspaceAiMessage(
           metadata: {
             editedFromMessageId:
               targetMessageId,
+            attachmentCount:
+              attachments.length,
           },
         },
       );
@@ -2668,8 +2833,27 @@ export async function sendWorkspaceAiMessage(
           content:
             message,
           correlationId,
+          metadata: {
+            attachmentCount:
+              attachments.length,
+          },
         },
       );
+  }
+
+  if (
+    mode !==
+      'regenerate' &&
+    attachments.length >
+      0
+  ) {
+    await linkSamiAiAttachmentsToMessage(
+      context,
+      String(
+        userMessage.id,
+      ),
+      attachments,
+    );
   }
 
   const runId =

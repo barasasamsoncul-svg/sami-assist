@@ -2561,6 +2561,13 @@ export type WorkspaceNotificationEmailOptions = {
   title: string;
   message?: string | null;
   actionHref?: string | null;
+
+  /**
+   * Backward-compatible default is workspace.
+   * Platform Administration reuses the same SaMi transport and
+   * branding without creating a second mail delivery stack.
+   */
+  audience?: EmailAudience;
 };
 
 export type SendWorkspaceNotificationEmailResult = {
@@ -2584,6 +2591,11 @@ export async function sendWorkspaceNotificationEmail(
 
   const cleanName =
     normalizeName(name);
+
+  const audience =
+    normalizeAudience(
+      options.audience
+    );
 
   const title =
     (options.title || '')
@@ -2664,7 +2676,9 @@ export async function sendWorkspaceNotificationEmail(
     '',
     message,
     '',
-    `Open SaMi: ${actionUrl}`,
+    `Open ${getAudienceLabel(
+      audience
+    )}: ${actionUrl}`,
     '',
     'SaMi',
     'AI Powered Business Workspace',
@@ -2702,7 +2716,12 @@ export async function sendWorkspaceNotificationEmail(
           </tr>
           <tr>
             <td style="padding:18px 4px 0;font-size:12px;line-height:18px;color:#94a3b8">
-              This is an automated SaMi workspace notification. Security and verification emails are controlled separately.
+              ${escapeHtml(
+                getAudienceAutomatedLabel(
+                  audience,
+                  'notification'
+                )
+              )} Security and verification emails are controlled separately.
             </td>
           </tr>
         </table>
@@ -2735,10 +2754,13 @@ export async function sendWorkspaceNotificationEmail(
 
           headers: {
             'X-SaMi-Email-Type':
-              'workspace-notification',
+              audience ===
+                'platform_admin'
+                ? 'platform-admin-notification'
+                : 'workspace-notification',
 
             'X-SaMi-Audience':
-              'workspace',
+              audience,
 
             'X-Auto-Response-Suppress':
               'All',

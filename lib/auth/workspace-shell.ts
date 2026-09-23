@@ -269,9 +269,21 @@ export function resolveWorkspaceShellAccess(
      ============================================================== */
 
   const workspaceLocked =
-    subscription
-      ?.suspended ===
-    true;
+    subscription !==
+      null &&
+    (
+      subscription.suspended ===
+        true ||
+      (
+        !isSubscriptionEntitledNow(
+          subscription.status,
+        ) &&
+        !(
+          subscription.pastDue ===
+            true
+        )
+      )
+    );
 
   let accessibleModules:
     ModuleContext[];

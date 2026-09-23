@@ -13,6 +13,8 @@ import {
   Loader2,
   Menu,
   Pencil,
+  Paperclip,
+  FileText,
   RefreshCw,
   Send,
   Settings,
@@ -48,6 +50,15 @@ type Conversation = {
   lastMessageAt: string | null;
 };
 
+type AiAttachment = {
+  id: string;
+  name: string;
+  mimeType: string;
+  extension: string | null;
+  sizeBytes: number;
+  readableAsText?: boolean;
+};
+
 type Message = {
   id: string;
   conversationId: string;
@@ -61,6 +72,7 @@ type Message = {
     | 'up'
     | 'down'
     | null;
+  attachments: AiAttachment[];
   createdAt: string | null;
 };
 
@@ -90,6 +102,12 @@ type AiStatus = {
   company: {
     id: string;
     name: string;
+  };
+  attachments: {
+    enabled: boolean;
+    canUpload: boolean;
+    maxFilesPerMessage: number;
+    maxTextBytesPerFile: number;
   };
   preferences: {
     memoryEnabled: boolean;
@@ -151,6 +169,57 @@ function formatNumber(
   return new Intl.NumberFormat().format(
     value,
   );
+}
+
+function formatBytes(
+  value: number,
+) {
+  const bytes =
+    Math.max(
+      0,
+      Number(value) ||
+      0,
+    );
+
+  if (
+    bytes <
+      1024
+  ) {
+    return `${bytes} B`;
+  }
+
+  const units = [
+    'KB',
+    'MB',
+    'GB',
+  ];
+
+  let current =
+    bytes /
+    1024;
+
+  let index =
+    0;
+
+  while (
+    current >=
+      1024 &&
+    index <
+      units.length -
+        1
+  ) {
+    current /=
+      1024;
+    index +=
+      1;
+  }
+
+  return `${current.toFixed(
+    current >=
+      10
+      ? 1
+      : 2,
+  )} ${units[index]}`;
 }
 
 function formatDuration(
@@ -227,6 +296,22 @@ export default function WorkspaceAiClient({
     useState('');
 
   const [
+    pendingAttachments,
+    setPendingAttachments,
+  ] =
+    useState<AiAttachment[]>(
+      [],
+    );
+
+  const [
+    uploadingAttachments,
+    setUploadingAttachments,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
     editingMessageId,
     setEditingMessageId,
   ] =
@@ -249,6 +334,11 @@ export default function WorkspaceAiClient({
 
   const composerRef =
     useRef<HTMLTextAreaElement | null>(
+      null,
+    );
+
+  const fileInputRef =
+    useRef<HTMLInputElement | null>(
       null,
     );
 
@@ -541,6 +631,9 @@ export default function WorkspaceAiClient({
     setMessages([]);
     setPendingActions([]);
     setDraft('');
+    setPendingAttachments(
+      [],
+    );
     setEditingMessageId(
       null,
     );
@@ -559,6 +652,9 @@ export default function WorkspaceAiClient({
       null,
     );
     setDraft('');
+    setPendingAttachments(
+      [],
+    );
     setSidebarMobileOpen(false);
   }
 
@@ -572,6 +668,8 @@ export default function WorkspaceAiClient({
         string;
       targetMessageId?:
         string;
+      attachmentIds?:
+        string[];
       restoreDraft?:
         string;
     },
@@ -620,6 +718,8 @@ export default function WorkspaceAiClient({
                   input.mode,
                 targetMessageId:
                   input.targetMessageId,
+                attachmentIds:
+                  input.attachmentIds,
               }),
           },
         );
@@ -671,6 +771,8 @@ export default function WorkspaceAiClient({
           conversationId,
         );
       }
+
+      return true;
     } catch (
       candidate
     ) {
@@ -695,7 +797,7 @@ export default function WorkspaceAiClient({
           );
         }
 
-        return;
+        return false;
       }
 
       if (
@@ -711,6 +813,8 @@ export default function WorkspaceAiClient({
           ? candidate.message
           : 'SaMi AI could not complete that request.',
       );
+
+      return false;
     } finally {
       if (
         abortControllerRef
@@ -725,13 +829,276 @@ export default function WorkspaceAiClient({
     }
   }
 
+  async function uploadSelectedAttachments(
+    files:
+      FileList | null,
+  ) {
+    if (
+      !files ||
+      files.length ===
+        0 ||
+      uploadingAttachments ||
+      !status?.attachments
+        ?.canUpload
+    ) {
+      return;
+    }
+
+    const maxFiles =
+      status.attachments
+        .maxFilesPerMessage ||
+      5;
+
+    const available =
+      Math.max(
+        0,
+        maxFiles -
+        pendingAttachments
+          .length,
+      );
+
+    const selected =
+      Array.from(
+        files,
+      ).slice(
+        0,
+        available,
+      );
+
+    if (
+      selected.length ===
+        0
+    ) {
+      setError(
+        `You can attach up to ${maxFiles} files to one message.`,
+      );
+      return;
+    }
+
+    setUploadingAttachments(
+      true,
+    );
+    setError(
+      null,
+    );
+
+    try {
+      for (
+        const file
+        of selected
+      ) {
+        const intentResponse =
+          await fetch(
+            '/api/workspace/files/upload-intent',
+            {
+              method:
+                'POST',
+              credentials:
+                'same-origin',
+              cache:
+                'no-store',
+              headers: {
+                'Content-Type':
+                  'application/json',
+                Accept:
+                  'application/json',
+              },
+              body:
+                JSON.stringify({
+                  fileName:
+                    file.name,
+                  mimeType:
+                    file.type ||
+                    'application/octet-stream',
+                  sizeBytes:
+                    file.size,
+                  purpose:
+                    'ai_attachment',
+                }),
+            },
+          );
+
+        const intent =
+          await readJson(
+            intentResponse,
+          );
+
+        if (
+          !intentResponse.ok ||
+          !intent.success ||
+          !intent.file?.id ||
+          !intent.upload?.url
+        ) {
+          throw new Error(
+            intent.error ||
+            'SaMi could not prepare this attachment.',
+          );
+        }
+
+        const uploadResponse =
+          await fetch(
+            intent.upload.url,
+            {
+              method:
+                intent.upload
+                  .method ||
+                'PUT',
+              headers:
+                intent.upload
+                  .headers ||
+                {
+                  'Content-Type':
+                    file.type ||
+                    'application/octet-stream',
+                },
+              body:
+                file,
+            },
+          );
+
+        if (
+          !uploadResponse.ok
+        ) {
+          throw new Error(
+            `Upload failed for ${file.name}.`,
+          );
+        }
+
+        const completeResponse =
+          await fetch(
+            '/api/workspace/files/' +
+              encodeURIComponent(
+                String(
+                  intent.file.id,
+                ),
+              ) +
+              '/complete',
+            {
+              method:
+                'POST',
+              credentials:
+                'same-origin',
+              cache:
+                'no-store',
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            },
+          );
+
+        const completed =
+          await readJson(
+            completeResponse,
+          );
+
+        if (
+          !completeResponse.ok ||
+          !completed.success ||
+          !completed.file?.id
+        ) {
+          throw new Error(
+            completed.error ||
+            `SaMi could not finalize ${file.name}.`,
+          );
+        }
+
+        setPendingAttachments(
+          current => [
+            ...current,
+            {
+              id:
+                String(
+                  completed.file
+                    .id,
+                ),
+              name:
+                String(
+                  completed.file
+                    .name ||
+                  file.name,
+                ),
+              mimeType:
+                String(
+                  completed.file
+                    .mimeType ||
+                  file.type ||
+                  'application/octet-stream',
+                ),
+              extension:
+                typeof completed.file
+                  .extension ===
+                'string'
+                  ? completed.file
+                      .extension
+                  : null,
+              sizeBytes:
+                Number(
+                  completed.file
+                    .sizeBytes ||
+                  file.size,
+                ),
+            },
+          ],
+        );
+      }
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof
+          Error
+          ? candidate.message
+          : 'The attachment could not be uploaded.',
+      );
+    } finally {
+      setUploadingAttachments(
+        false,
+      );
+
+      if (
+        fileInputRef.current
+      ) {
+        fileInputRef.current
+          .value =
+          '';
+      }
+    }
+  }
+
+  function removePendingAttachment(
+    fileId:
+      string,
+  ) {
+    if (
+      sending
+    ) {
+      return;
+    }
+
+    setPendingAttachments(
+      current =>
+        current.filter(
+          file =>
+            file.id !==
+            fileId,
+        ),
+    );
+  }
+
   async function sendMessage() {
     const message =
       draft.trim();
 
     if (
-      !message ||
+      (
+        !message &&
+        pendingAttachments
+          .length ===
+          0
+      ) ||
       sending ||
+      uploadingAttachments ||
       !status?.configured
     ) {
       return;
@@ -740,20 +1107,35 @@ export default function WorkspaceAiClient({
     const targetMessageId =
       editingMessageId;
 
-    setDraft('');
+    const attachmentIds =
+      pendingAttachments.map(
+        attachment =>
+          attachment.id,
+      );
 
-    await runChatRequest({
-      mode:
-        targetMessageId
-          ? 'edit'
-          : 'send',
-      message,
-      targetMessageId:
-        targetMessageId ||
-        undefined,
-      restoreDraft:
+    const sent =
+      await runChatRequest({
+        mode:
+          targetMessageId
+            ? 'edit'
+            : 'send',
         message,
-    });
+        targetMessageId:
+          targetMessageId ||
+          undefined,
+        attachmentIds,
+        restoreDraft:
+          message,
+      });
+
+    if (
+      sent
+    ) {
+      setDraft('');
+      setPendingAttachments(
+        [],
+      );
+    }
   }
 
   async function regenerateMessage(
@@ -793,6 +1175,9 @@ export default function WorkspaceAiClient({
     setDraft(
       message.content,
     );
+    setPendingAttachments(
+      [],
+    );
     setError(null);
 
     requestAnimationFrame(
@@ -823,6 +1208,9 @@ export default function WorkspaceAiClient({
       null,
     );
     setDraft('');
+    setPendingAttachments(
+      [],
+    );
     setError(null);
   }
 
@@ -1704,7 +2092,95 @@ export default function WorkspaceAiClient({
                 </div>
               )}
 
+              {pendingAttachments.length >
+                0 && (
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {pendingAttachments.map(
+                    attachment => (
+                      <div
+                        key={
+                          attachment.id
+                        }
+                        className="inline-flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] shadow-sm dark:border-white/10 dark:bg-[#2A2A2A]"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+
+                        <span className="max-w-[220px] truncate font-semibold text-slate-700 dark:text-slate-200">
+                          {attachment.name}
+                        </span>
+
+                        <span className="shrink-0 text-slate-400">
+                          {formatBytes(
+                            attachment.sizeBytes,
+                          )}
+                        </span>
+
+                        <button
+                          type="button"
+                          aria-label={
+                            `Remove ${attachment.name}`
+                          }
+                          onClick={() =>
+                            removePendingAttachment(
+                              attachment.id,
+                            )
+                          }
+                          disabled={
+                            sending
+                          }
+                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40 dark:hover:bg-white/10 dark:hover:text-white"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ),
+                  )}
+                </div>
+              )}
+
+              <input
+                ref={
+                  fileInputRef
+                }
+                type="file"
+                multiple
+                className="hidden"
+                onChange={
+                  event =>
+                    void uploadSelectedAttachments(
+                      event.target.files,
+                    )
+                }
+              />
+
               <div className="flex items-end gap-2 rounded-[28px] border border-slate-200 bg-[#F4F4F4] p-2.5 shadow-[0_8px_30px_rgba(15,23,42,0.08)] transition focus-within:border-slate-300 dark:border-white/10 dark:bg-[#303030] dark:shadow-none dark:focus-within:border-white/20">
+                <button
+                  type="button"
+                  aria-label="Attach file"
+                  title={
+                    status?.attachments
+                      ?.canUpload
+                      ? 'Attach file'
+                      : 'File attachments require Files manage access'
+                  }
+                  disabled={
+                    sending ||
+                    uploadingAttachments ||
+                    !status?.attachments
+                      ?.canUpload
+                  }
+                  onClick={() =>
+                    fileInputRef.current
+                      ?.click()
+                  }
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-200/70 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-35 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                >
+                  {uploadingAttachments ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Paperclip className="h-4 w-4" />
+                  )}
+                </button>
                 <textarea
                   ref={
                     composerRef
@@ -1738,7 +2214,15 @@ export default function WorkspaceAiClient({
                   }
                   disabled={
                     !sending &&
-                    !draft.trim()
+                    (
+                      (
+                        !draft.trim() &&
+                        pendingAttachments
+                          .length ===
+                          0
+                      ) ||
+                      uploadingAttachments
+                    )
                   }
                   onClick={() =>
                     sending
@@ -1852,6 +2336,34 @@ function MessageBubble({
             ' ',
           )}
         >
+          {!assistant &&
+            message.attachments
+              ?.length >
+              0 && (
+              <div className="mb-2 flex flex-wrap justify-end gap-2">
+                {message.attachments.map(
+                  attachment => (
+                    <div
+                      key={
+                        attachment.id
+                      }
+                      className="inline-flex max-w-full items-center gap-2 rounded-xl border border-slate-200 bg-white/80 px-2.5 py-2 text-[9px] dark:border-white/10 dark:bg-white/[0.04]"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0 text-blue-500" />
+                      <span className="max-w-[190px] truncate font-semibold">
+                        {attachment.name}
+                      </span>
+                      <span className="shrink-0 opacity-50">
+                        {formatBytes(
+                          attachment.sizeBytes,
+                        )}
+                      </span>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+
           {assistant ? (
             <div className="prose prose-sm max-w-none break-words text-inherit prose-headings:text-inherit prose-strong:text-inherit prose-code:text-inherit dark:prose-invert">
               <ReactMarkdown>

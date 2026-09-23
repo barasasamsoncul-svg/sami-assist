@@ -11,6 +11,10 @@ import {
   isAutomationWorkerEnabled,
 } from '@/lib/automation/registry';
 
+import {
+  runTrackedPlatformJob,
+} from '@/lib/observability/platform-jobs';
+
 export const runtime =
   'nodejs';
 
@@ -117,7 +121,26 @@ export async function GET(
 
   try {
     const summary =
-      await runAutomationWorkerTick();
+      await runTrackedPlatformJob(
+        {
+          jobKey:
+            'automation.tick',
+          triggerType:
+            'cron',
+          provider:
+            'internal',
+          source:
+            'automation_worker',
+          category:
+            'automation_worker_failed',
+          route:
+            '/api/internal/automation/tick',
+          operation:
+            'run_automation_worker_tick',
+        },
+        () =>
+          runAutomationWorkerTick(),
+      );
 
     return response({
       success:

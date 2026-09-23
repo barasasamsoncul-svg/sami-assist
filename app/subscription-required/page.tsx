@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
+import WorkspaceTenantSwitcher from '@/app/components/workspace/WorkspaceTenantSwitcher';
 
 import {
   getAccountContextForUser,
@@ -79,11 +80,31 @@ export default async function SubscriptionRequiredPage() {
       ?.name ||
     'this workspace';
 
+  const subscriptionEnded =
+    account.subscription
+      ?.status ===
+    'cancelled';
+
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 dark:bg-[#0b0d12] dark:text-white sm:px-6 sm:py-12">
       <div className="mx-auto max-w-3xl">
-        <div className="mb-8 flex justify-center">
+        <div className="mb-8 flex flex-col items-center justify-center gap-4 sm:flex-row sm:justify-between">
           <SaMiLogo />
+
+          <WorkspaceTenantSwitcher
+            currentTenant={
+              account.tenant
+                ? {
+                    id:
+                      account.tenant.id,
+                    name:
+                      account.tenant.name,
+                    slug:
+                      account.tenant.slug,
+                  }
+                : null
+            }
+          />
         </div>
 
         <section className="overflow-hidden rounded-[28px] border border-amber-200 bg-white shadow-xl shadow-slate-950/5 dark:border-amber-500/20 dark:bg-[#11141a]">
@@ -95,11 +116,15 @@ export default async function SubscriptionRequiredPage() {
 
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.12em] text-amber-700 dark:text-amber-300">
-                  Subscription payment required
+                  {subscriptionEnded
+                    ? 'Paid subscription ended'
+                    : 'Subscription payment required'}
                 </p>
 
                 <h1 className="mt-1 text-2xl font-black tracking-[-0.03em] sm:text-3xl">
-                  {workspaceName} is temporarily locked
+                  {subscriptionEnded
+                    ? `${workspaceName} paid access has ended`
+                    : `${workspaceName} is temporarily locked`}
                 </h1>
               </div>
             </div>
@@ -107,7 +132,9 @@ export default async function SubscriptionRequiredPage() {
 
           <div className="space-y-6 px-6 py-7 sm:px-8 sm:py-8">
             <p className="text-sm leading-7 text-slate-600 dark:text-slate-300">
-              The {planName} subscription is past due. SaMi has paused normal workspace operations until a verified payment restores the subscription.
+              {subscriptionEnded
+                ? `The ${planName} paid subscription has ended. SaMi has paused paid workspace operations, but your workspace data, files, settings and installed-app data remain retained.`
+                : `The ${planName} subscription is past due. SaMi has paused normal workspace operations until a verified payment restores the subscription.`}
             </p>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -120,16 +147,24 @@ export default async function SubscriptionRequiredPage() {
               <InfoCard
                 icon={CreditCard}
                 title="Recovery stays available"
-                text="You can still sign in, manage your personal account and security, open Billing, complete payment and contact support."
+                text={
+                  subscriptionEnded
+                    ? 'You can still sign in, switch to another workspace you belong to, manage your personal account and security, open Billing, reactivate paid access or move to Free when the workspace fits Free plan limits, and contact support.'
+                    : 'You can still sign in, switch to another workspace you belong to, manage your personal account and security, open Billing, complete payment and contact support.'
+                }
               />
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.03]">
               <p className="text-xs font-bold">
-                Automatic restoration
+                {subscriptionEnded
+                  ? 'Data retained for recovery'
+                  : 'Automatic restoration'}
               </p>
               <p className="mt-1 text-xs leading-6 text-slate-500 dark:text-slate-400">
-                After SaMi verifies the successful provider payment, workspace access is restored from the subscription state automatically. No app reinstall or data migration is required.
+                {subscriptionEnded
+                  ? 'Cancelling a subscription does not delete your workspace. Reactivating paid billing restores access from the retained subscription and workspace state; moving to Free is available after Free plan capacity requirements are met.'
+                  : 'After SaMi verifies the successful provider payment, workspace access is restored from the subscription state automatically. No app reinstall or data migration is required.'}
               </p>
             </div>
 

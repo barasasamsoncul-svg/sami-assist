@@ -29,8 +29,21 @@ import {
 } from '@/lib/services/subscription-email';
 
 import {
+  deleteTenantDatabase,
   provisionTenant,
 } from '@/lib/services/tenant-provisioning';
+
+import {
+  clearRegistrationDraftCookieOptions,
+  readRegistrationDraft,
+  REGISTRATION_DRAFT_COOKIE_NAME,
+  type RegistrationDraft,
+} from '@/lib/auth/registration-draft';
+
+import {
+  getSession,
+  setCurrentTenantForSession,
+} from '@/lib/auth/session';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -72,7 +85,9 @@ const MAX_PHONE_LENGTH = 40;
 
 const MAX_EMAIL_LENGTH = 254;
 
-const MAX_PASSWORD_LENGTH = 128;
+const MAX_REGISTRATION_REQUEST_BYTES =
+  32 *
+  1024;
 
 const GOOGLE_SIGNUP_COOKIE =
   'sami_google_signup_state';
@@ -95,6 +110,7 @@ type RegistrationContext = {
   userId: string | null;
   tenantId: string | null;
   subscriptionId: string | null;
+  userCreated: boolean;
 };
 
 type ModuleRow = {
@@ -121,6 +137,49 @@ type GoogleSignupRow = {
   expires_at: Date | string;
 };
 
+type RegistrationRequestRow = {
+  id: string;
+  nonce_hash: string;
+  draft_mode:
+    | 'email'
+    | 'google'
+    | 'existing';
+  status:
+    | 'processing'
+    | 'completed'
+    | 'failed';
+  user_id: string | null;
+  tenant_id: string | null;
+  subscription_id: string | null;
+  started_at: Date | string;
+  completed_at: Date | string | null;
+  failed_at: Date | string | null;
+  error_code: string | null;
+};
+
+type RegistrationRequestClaim =
+  | {
+      state: 'claimed';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'completed';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'processing';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    }
+  | {
+      state: 'recovery_required';
+      nonceHash: string;
+      row: RegistrationRequestRow;
+    };
+
+
 type SubscriptionResponseRow = {
   id: string;
   status: string;
@@ -130,6 +189,12 @@ type SubscriptionResponseRow = {
   current_period_end: Date | string | null;
   plan_key: string;
   plan_name: string;
+  tenant_name: string;
+  owner_email: string;
+  owner_first_name: string | null;
+  owner_last_name: string | null;
+  owner_email_verified: boolean;
+  owner_email_verified_at: Date | string | null;
 };
 
 /* ============================================================
@@ -251,13 +316,83 @@ function isValidEmail(
   );
 }
 
-function isValidPassword(
-  password: string
+function isSameOriginRequest(
+  request: NextRequest
+): boolean {
+  const secFetchSite =
+    request.headers
+      .get(
+        'sec-fetch-site'
+      )
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    secFetchSite ===
+      'cross-site'
+  ) {
+    return false;
+  }
+
+  const origin =
+    request.headers
+      .get(
+        'origin'
+      );
+
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    return (
+      new URL(origin).origin ===
+      request.nextUrl.origin
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isJsonRequest(
+  request: NextRequest
 ): boolean {
   return (
-    password.length >= 8 &&
-    password.length <=
-      MAX_PASSWORD_LENGTH
+    request.headers
+      .get(
+        'content-type'
+      )
+      ?.toLowerCase()
+      .includes(
+        'application/json'
+      ) === true
+  );
+}
+
+function registrationRequestTooLarge(
+  request: NextRequest
+): boolean {
+  const value =
+    request.headers
+      .get(
+        'content-length'
+      );
+
+  if (!value) {
+    return false;
+  }
+
+  const length =
+    Number(
+      value
+    );
+
+  return (
+    Number.isFinite(
+      length
+    ) &&
+    length >
+      MAX_REGISTRATION_REQUEST_BYTES
   );
 }
 
@@ -446,16 +581,559 @@ function hashOpaqueToken(
     .digest('hex');
 }
 
-function isGoogleRegistration(
-  body: RegistrationBody
+function hashRegistrationNonce(
+  draft: RegistrationDraft
+): string {
+  const material =
+    draft.mode ===
+        'google' &&
+      draft.googleStateHash
+      ? `google:${draft.googleStateHash}`
+      : `draft:${draft.nonce}`;
+
+  return crypto
+    .createHash('sha256')
+    .update(
+      `registration:${material}`,
+      'utf8'
+    )
+    .digest('hex');
+}
+
+function registrationRequestHasResources(
+  row: RegistrationRequestRow
 ): boolean {
-  return (
-    body.googleAuth ===
-      true ||
-    body.authProvider ===
-      'google'
+  return Boolean(
+    row.user_id ||
+    row.tenant_id ||
+    row.subscription_id
   );
 }
+
+async function loadRegistrationRequest(
+  nonceHash: string
+): Promise<
+  RegistrationRequestRow | null
+> {
+  const result =
+    await queryControl(
+      `
+        SELECT
+          id,
+          nonce_hash,
+          draft_mode,
+          status,
+          user_id,
+          tenant_id,
+          subscription_id,
+          started_at,
+          completed_at,
+          failed_at,
+          error_code
+        FROM registration_requests
+        WHERE nonce_hash = $1
+        LIMIT 1
+      `,
+      [
+        nonceHash,
+      ]
+    );
+
+  return (
+    result.rows[0] ||
+    null
+  ) as
+    RegistrationRequestRow | null;
+}
+
+async function claimRegistrationRequest(
+  draft: RegistrationDraft
+): Promise<
+  RegistrationRequestClaim
+> {
+  const nonceHash =
+    hashRegistrationNonce(
+      draft
+    );
+
+  const inserted =
+    await queryControl(
+      `
+        INSERT INTO registration_requests (
+          nonce_hash,
+          draft_mode,
+          status,
+          started_at,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          $1,
+          $2,
+          'processing',
+          NOW(),
+          NOW(),
+          NOW()
+        )
+        ON CONFLICT (
+          nonce_hash
+        )
+        DO NOTHING
+        RETURNING
+          id,
+          nonce_hash,
+          draft_mode,
+          status,
+          user_id,
+          tenant_id,
+          subscription_id,
+          started_at,
+          completed_at,
+          failed_at,
+          error_code
+      `,
+      [
+        nonceHash,
+        draft.mode,
+      ]
+    );
+
+  if (
+    inserted.rows.length ===
+      1
+  ) {
+    return {
+      state:
+        'claimed',
+      nonceHash,
+      row:
+        inserted.rows[0] as
+          RegistrationRequestRow,
+    };
+  }
+
+  let existing =
+    await loadRegistrationRequest(
+      nonceHash
+    );
+
+  if (
+    !existing
+  ) {
+    throw new Error(
+      'Registration idempotency state could not be loaded.'
+    );
+  }
+
+  if (
+    existing.draft_mode !==
+      draft.mode
+  ) {
+    return {
+      state:
+        'recovery_required',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  if (
+    existing.status ===
+      'completed'
+  ) {
+    return {
+      state:
+        'completed',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  if (
+    existing.status ===
+      'failed'
+  ) {
+    if (
+      registrationRequestHasResources(
+        existing
+      )
+    ) {
+      return {
+        state:
+          'recovery_required',
+        nonceHash,
+        row:
+          existing,
+      };
+    }
+
+    const retried =
+      await queryControl(
+        `
+          UPDATE registration_requests
+          SET
+            status =
+              'processing',
+            started_at =
+              NOW(),
+            completed_at =
+              NULL,
+            failed_at =
+              NULL,
+            error_code =
+              NULL,
+            updated_at =
+              NOW()
+          WHERE nonce_hash = $1
+            AND status =
+                'failed'
+            AND user_id
+                IS NULL
+            AND tenant_id
+                IS NULL
+            AND subscription_id
+                IS NULL
+          RETURNING
+            id,
+            nonce_hash,
+            draft_mode,
+            status,
+            user_id,
+            tenant_id,
+            subscription_id,
+            started_at,
+            completed_at,
+            failed_at,
+            error_code
+        `,
+        [
+          nonceHash,
+        ]
+      );
+
+    if (
+      retried.rows.length ===
+        1
+    ) {
+      return {
+        state:
+          'claimed',
+        nonceHash,
+        row:
+          retried.rows[0] as
+            RegistrationRequestRow,
+      };
+    }
+
+    existing =
+      await loadRegistrationRequest(
+        nonceHash
+      );
+
+    if (
+      !existing
+    ) {
+      throw new Error(
+        'Registration retry state could not be loaded.'
+      );
+    }
+
+    if (
+      existing.status ===
+        'completed'
+    ) {
+      return {
+        state:
+          'completed',
+        nonceHash,
+        row:
+          existing,
+      };
+    }
+
+    return {
+      state:
+        registrationRequestHasResources(
+          existing
+        )
+          ? 'recovery_required'
+          : 'processing',
+      nonceHash,
+      row:
+        existing,
+    };
+  }
+
+  /*
+   * A processing request is not stolen while it may still be
+   * provisioning resources. Only a stale request that never
+   * recorded any resource ID can be safely reclaimed.
+   */
+  const startedAt =
+    new Date(
+      existing.started_at
+    );
+
+  const stale =
+    !Number.isNaN(
+      startedAt.getTime()
+    ) &&
+    Date.now() -
+      startedAt.getTime() >
+      15 *
+      60 *
+      1000;
+
+  const staleWithoutResources =
+    stale &&
+    !registrationRequestHasResources(
+      existing
+    );
+
+  if (
+    staleWithoutResources
+  ) {
+    const reclaimed =
+      await queryControl(
+        `
+          UPDATE registration_requests
+          SET
+            started_at =
+              NOW(),
+            failed_at =
+              NULL,
+            error_code =
+              NULL,
+            updated_at =
+              NOW()
+          WHERE nonce_hash = $1
+            AND status =
+                'processing'
+            AND user_id
+                IS NULL
+            AND tenant_id
+                IS NULL
+            AND subscription_id
+                IS NULL
+            AND started_at = $2
+          RETURNING
+            id,
+            nonce_hash,
+            draft_mode,
+            status,
+            user_id,
+            tenant_id,
+            subscription_id,
+            started_at,
+            completed_at,
+            failed_at,
+            error_code
+        `,
+        [
+          nonceHash,
+          existing.started_at,
+        ]
+      );
+
+    if (
+      reclaimed.rows.length ===
+        1
+    ) {
+      return {
+        state:
+          'claimed',
+        nonceHash,
+        row:
+          reclaimed.rows[0] as
+            RegistrationRequestRow,
+      };
+    }
+
+    existing =
+      await loadRegistrationRequest(
+        nonceHash
+      );
+
+    if (
+      !existing
+    ) {
+      throw new Error(
+        'Registration processing state could not be loaded.'
+      );
+    }
+  }
+
+  return {
+    state:
+      stale &&
+      registrationRequestHasResources(
+        existing
+      )
+        ? 'recovery_required'
+        : 'processing',
+    nonceHash,
+    row:
+      existing,
+  };
+}
+
+async function updateRegistrationRequestProgress(
+  nonceHash: string,
+  context: RegistrationContext
+) {
+  const result =
+    await queryControl(
+      `
+        UPDATE registration_requests
+        SET
+          user_id =
+            COALESCE(
+              $2::uuid,
+              user_id
+            ),
+          tenant_id =
+            COALESCE(
+              $3::uuid,
+              tenant_id
+            ),
+          subscription_id =
+            COALESCE(
+              $4::uuid,
+              subscription_id
+            ),
+          updated_at =
+            NOW()
+        WHERE nonce_hash = $1
+          AND status =
+              'processing'
+        RETURNING id
+      `,
+      [
+        nonceHash,
+        context.userId,
+        context.tenantId,
+        context.subscriptionId,
+      ]
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new Error(
+      'Registration idempotency progress could not be persisted.'
+    );
+  }
+}
+
+async function completeRegistrationRequest(
+  nonceHash: string,
+  context: RegistrationContext
+) {
+  if (
+    !context.userId ||
+    !context.tenantId ||
+    !context.subscriptionId
+  ) {
+    throw new Error(
+      'Registration cannot complete without user, workspace and subscription IDs.'
+    );
+  }
+
+  const result =
+    await queryControl(
+      `
+        UPDATE registration_requests
+        SET
+          status =
+            'completed',
+          user_id =
+            $2,
+          tenant_id =
+            $3,
+          subscription_id =
+            $4,
+          completed_at =
+            NOW(),
+          failed_at =
+            NULL,
+          error_code =
+            NULL,
+          updated_at =
+            NOW()
+        WHERE nonce_hash = $1
+          AND status =
+              'processing'
+        RETURNING id
+      `,
+      [
+        nonceHash,
+        context.userId,
+        context.tenantId,
+        context.subscriptionId,
+      ]
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new Error(
+      'Registration idempotency state could not be completed.'
+    );
+  }
+}
+
+async function failRegistrationRequest(
+  nonceHash: string,
+  cleanupSucceeded: boolean
+) {
+  await queryControl(
+    `
+      UPDATE registration_requests
+      SET
+        status =
+          'failed',
+        failed_at =
+          NOW(),
+        error_code =
+          $2,
+        user_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE user_id
+          END,
+        tenant_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE tenant_id
+          END,
+        subscription_id =
+          CASE
+            WHEN $3::boolean
+            THEN NULL
+            ELSE subscription_id
+          END,
+        updated_at =
+          NOW()
+      WHERE nonce_hash = $1
+        AND status =
+            'processing'
+    `,
+    [
+      nonceHash,
+      cleanupSucceeded
+        ? 'REGISTRATION_FAILED_CLEAN'
+        : 'REGISTRATION_CLEANUP_REQUIRED',
+      cleanupSucceeded,
+    ]
+  );
+}
+
 
 async function getGoogleSignupState(
   request: NextRequest
@@ -681,7 +1359,38 @@ async function createVerification({
 
 async function cleanupRegistration(
   context: RegistrationContext
-): Promise<void> {
+): Promise<boolean> {
+  let cleanupSucceeded =
+    true;
+
+  /*
+   * Physical tenant storage must be removed BEFORE deleting
+   * Control DB registry/tenant rows. If this fails, stop the
+   * rollback and preserve Control DB references for recovery.
+   *
+   * This applies only to a registration we are abandoning.
+   * A normal provisioning_failed workspace is retained and
+   * never reaches this outer rollback path.
+   */
+  if (
+    context.tenantId
+  ) {
+    try {
+      await deleteTenantDatabase(
+        context.tenantId
+      );
+    } catch (
+      error
+    ) {
+      console.error(
+        '[SaMi] Tenant database rollback failed:',
+        error
+      );
+
+      return false;
+    }
+  }
+
   if (
     context.tenantId
   ) {
@@ -695,7 +1404,12 @@ async function cleanupRegistration(
           context.tenantId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
+      cleanupSucceeded =
+        false;
+
       console.error(
         '[SaMi] Payment cleanup failed:',
         error
@@ -716,7 +1430,12 @@ async function cleanupRegistration(
           context.subscriptionId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
+      cleanupSucceeded =
+        false;
+
       console.error(
         '[SaMi] Subscription cleanup failed:',
         error
@@ -757,7 +1476,12 @@ async function cleanupRegistration(
             context.tenantId,
           ]
         );
-      } catch (error) {
+      } catch (
+        error
+      ) {
+        cleanupSucceeded =
+          false;
+
         console.error(
           '[SaMi] Tenant cleanup failed:',
           error
@@ -767,7 +1491,8 @@ async function cleanupRegistration(
   }
 
   if (
-    context.userId
+    context.userId &&
+    context.userCreated
   ) {
     try {
       await queryControl(
@@ -784,7 +1509,12 @@ async function cleanupRegistration(
           context.userId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
+      cleanupSucceeded =
+        false;
+
       console.error(
         '[SaMi] Verification cleanup failed:',
         error
@@ -801,13 +1531,20 @@ async function cleanupRegistration(
           context.userId,
         ]
       );
-    } catch (error) {
+    } catch (
+      error
+    ) {
+      cleanupSucceeded =
+        false;
+
       console.error(
         '[SaMi] User cleanup failed:',
         error
       );
     }
   }
+
+  return cleanupSucceeded;
 }
 
 /* ============================================================
@@ -832,7 +1569,22 @@ async function getBillableUserCount(
         FROM tenant_users
 
         WHERE tenant_id = $1
-          AND status = 'active'
+          AND LOWER(
+                COALESCE(
+                  status,
+                  ''
+                )
+              ) =
+              'active'
+          AND LOWER(
+                COALESCE(
+                  member_type,
+                  'internal'
+                )
+              ) =
+              'internal'
+          AND deleted_at
+              IS NULL
       `,
       [
         tenantId,
@@ -859,7 +1611,8 @@ async function getBillableUserCount(
    ============================================================ */
 
 async function getSubscriptionForResponse(
-  subscriptionId: string
+  subscriptionId: string,
+  ownerUserId: string
 ): Promise<
   SubscriptionResponseRow | null
 > {
@@ -875,21 +1628,53 @@ async function getSubscriptionForResponse(
           s.current_period_end,
 
           p.key AS plan_key,
-          p.name AS plan_name
+          p.name AS plan_name,
+
+          t.name AS tenant_name,
+
+          u.email AS owner_email,
+          u.first_name AS owner_first_name,
+          u.last_name AS owner_last_name,
+          COALESCE(
+            u.email_verified,
+            FALSE
+          ) AS owner_email_verified,
+          u.email_verified_at AS owner_email_verified_at
 
         FROM subscriptions s
 
         INNER JOIN plans p
           ON p.id = s.plan_id
 
+        INNER JOIN tenants t
+          ON t.id = s.tenant_id
+
+        INNER JOIN tenant_users tu
+          ON tu.tenant_id = s.tenant_id
+         AND tu.user_id = $2
+         AND tu.is_owner = TRUE
+         AND LOWER(
+               COALESCE(
+                 tu.status,
+                 ''
+               )
+             ) = 'active'
+         AND tu.deleted_at IS NULL
+
+        INNER JOIN users u
+          ON u.id = tu.user_id
+         AND u.deleted_at IS NULL
+
         WHERE s.id = $1
           AND s.deleted_at IS NULL
           AND p.deleted_at IS NULL
+          AND t.deleted_at IS NULL
 
         LIMIT 1
       `,
       [
         subscriptionId,
+        ownerUserId,
       ]
     );
 
@@ -898,6 +1683,407 @@ async function getSubscriptionForResponse(
     null
   );
 }
+
+async function buildCompletedRegistrationResponse(
+  input: {
+    request:
+      RegistrationRequestRow;
+    draft:
+      RegistrationDraft;
+    session:
+      Awaited<
+        ReturnType<
+          typeof getSession
+        >
+      >;
+  }
+) {
+  const {
+    request,
+    draft,
+    session,
+  } =
+    input;
+
+  if (
+    !request.user_id ||
+    !request.tenant_id ||
+    !request.subscription_id
+  ) {
+    return null;
+  }
+
+  const [
+    subscription,
+    tenantResult,
+    appResult,
+  ] =
+    await Promise.all([
+      getSubscriptionForResponse(
+        request.subscription_id,
+        request.user_id
+      ),
+
+      queryControl(
+        `
+          SELECT
+            id,
+            name,
+            slug,
+            status
+          FROM tenants
+          WHERE id = $1
+            AND deleted_at
+                IS NULL
+          LIMIT 1
+        `,
+        [
+          request.tenant_id,
+        ]
+      ),
+
+      queryControl(
+        `
+          SELECT
+            m.key
+          FROM tenant_modules tm
+          INNER JOIN modules m
+            ON m.id =
+               tm.module_id
+          WHERE tm.tenant_id = $1
+            AND tm.deleted_at
+                IS NULL
+            AND m.deleted_at
+                IS NULL
+          ORDER BY
+            m.key
+        `,
+        [
+          request.tenant_id,
+        ]
+      ),
+    ]);
+
+  const tenant =
+    tenantResult.rows[0] ||
+    null;
+
+  if (
+    !subscription ||
+    !tenant
+  ) {
+    return null;
+  }
+
+  const authoritativeEmail =
+    normalizeEmail(
+      subscription
+        .owner_email
+    );
+
+  const authoritativeBusinessName =
+    normalizeName(
+      subscription
+        .tenant_name
+    );
+
+  if (
+    !isValidEmail(
+      authoritativeEmail
+    ) ||
+    !authoritativeBusinessName
+  ) {
+    return null;
+  }
+
+  const finalPlan =
+    normalizePlan(
+      subscription
+        .plan_key
+    );
+
+  const isPaidPlan =
+    finalPlan !==
+    'free';
+
+  const billableUsers =
+    await getBillableUserCount(
+      request.tenant_id
+    );
+
+  const perUserMonthlyPrice =
+    getSamiPricePerUserMonthly(
+      finalPlan
+    );
+
+  const monthlyAmount =
+    isPaidPlan
+      ? getSamiMonthlyAmount(
+          finalPlan,
+          billableUsers,
+        )
+      : 0;
+
+  const trialEndsAt =
+    toIsoString(
+      subscription
+        .trial_ends_at
+    );
+
+  const currentPeriodStart =
+    toIsoString(
+      subscription
+        .current_period_start
+    );
+
+  const currentPeriodEnd =
+    toIsoString(
+      subscription
+        .current_period_end
+    );
+
+  const emailVerified =
+    Boolean(
+      subscription
+        .owner_email_verified ||
+      subscription
+        .owner_email_verified_at
+    );
+
+  const provisioningSucceeded =
+    String(
+      tenant.status ||
+      ''
+    )
+      .trim()
+      .toLowerCase() ===
+      'active';
+
+  if (
+    draft.mode ===
+      'existing' &&
+    provisioningSucceeded &&
+    session &&
+    session.user.id ===
+      request.user_id
+  ) {
+    await setCurrentTenantForSession(
+      session.sessionId,
+      session.user.id,
+      request.tenant_id
+    );
+  }
+
+  const response =
+    jsonResponse(
+      {
+        success:
+          true,
+
+        code:
+          'REGISTRATION_ALREADY_COMPLETED',
+
+        idempotentReplay:
+          true,
+
+        requiresPayment:
+          false,
+
+        paymentRequiredNow:
+          false,
+
+        billingSetupRequired:
+          false,
+
+        billingSetupRequiredNow:
+          false,
+
+        billingSetupRequiredAtTrialEnd:
+          isPaidPlan,
+
+        firstMonthFree:
+          isPaidPlan,
+
+        amountDueToday:
+          0,
+
+        user: {
+          id:
+            request.user_id,
+
+          email:
+            authoritativeEmail,
+
+          emailVerified,
+
+          authProvider:
+            draft.mode,
+        },
+
+        tenant: {
+          id:
+            request.tenant_id,
+
+          name:
+            authoritativeBusinessName,
+
+          slug:
+            String(
+              tenant.slug ||
+              ''
+            ),
+
+          status:
+            String(
+              tenant.status ||
+              ''
+            ),
+        },
+
+        subscription: {
+          id:
+            request.subscription_id,
+
+          plan:
+            finalPlan,
+
+          planName:
+            subscription
+              .plan_name,
+
+          status:
+            subscription
+              .status,
+
+          billingCycle:
+            isPaidPlan
+              ? 'monthly'
+              : null,
+
+          firstMonthFree:
+            isPaidPlan,
+
+          trialMonths:
+            isPaidPlan
+              ? PAID_TRIAL_MONTHS
+              : 0,
+
+          startedAt:
+            toIsoString(
+              subscription
+                .started_at
+            ),
+
+          trialEndsAt,
+
+          currentPeriodStart,
+
+          currentPeriodEnd,
+
+          firstBillingAt:
+            isPaidPlan
+              ? trialEndsAt
+              : null,
+
+          amountDueToday:
+            0,
+
+          perUserMonthlyPrice,
+
+          billableUsers,
+
+          monthlyAmount,
+
+          currency:
+            SAMI_BILLING_CURRENCY,
+
+          paymentMethodOnFile:
+            false,
+
+          recurringBillingEnrolled:
+            false,
+        },
+
+        selectedApps:
+          appResult.rows
+            .map(
+              row =>
+                String(
+                  row.key ||
+                  ''
+                )
+                  .trim()
+                  .toLowerCase()
+            )
+            .filter(
+              Boolean
+            ),
+
+        verification: {
+          required:
+            draft.mode ===
+              'email' &&
+            !emailVerified,
+
+          email:
+            authoritativeEmail,
+
+          expiresInMinutes:
+            draft.mode ===
+                'email' &&
+              !emailVerified
+              ? VERIFICATION_EXPIRY_MINUTES
+              : null,
+
+          emailSent:
+            false,
+        },
+
+        next:
+          draft.mode ===
+            'existing'
+            ? (
+                provisioningSucceeded
+                  ? '/dashboard'
+                  : '/workspaces/new?workspace=preparing'
+              )
+            : draft.mode ===
+                'google'
+              ? (
+                  provisioningSucceeded
+                    ? '/login?google=registered'
+                    : '/login?workspace=preparing'
+                )
+              : emailVerified
+                ? '/login?registered=1'
+                : `/verify-email?email=${encodeURIComponent(
+                    authoritativeEmail
+                  )}`,
+
+        message:
+          'This workspace registration was already completed. SaMi returned the existing workspace instead of creating a duplicate.',
+      },
+      200
+    );
+
+  response.cookies.set(
+    REGISTRATION_DRAFT_COOKIE_NAME,
+    '',
+    clearRegistrationDraftCookieOptions()
+  );
+
+  if (
+    draft.mode ===
+      'google'
+  ) {
+    clearGoogleSignupCookie(
+      response
+    );
+  }
+
+  return response;
+}
+
 
 /* ============================================================
    POST /api/auth/register
@@ -911,20 +2097,86 @@ export async function POST(
       userId: null,
       tenantId: null,
       subscriptionId: null,
+      userCreated: false,
     };
+
+  let registrationRequestNonceHash:
+    string | null =
+    null;
+
+  let registrationRequestClaimed =
+    false;
+
+  let registrationDurablyCompleted =
+    false;
 
   try {
     /* ========================================================
-       1. REQUEST
+       1. REQUEST BOUNDARY
        ======================================================== */
+
+    if (
+      !isSameOriginRequest(
+        request
+      )
+    ) {
+      return errorResponse(
+        403,
+        'INVALID_ORIGIN',
+        'This registration request could not be verified.'
+      );
+    }
+
+    if (
+      !isJsonRequest(
+        request
+      )
+    ) {
+      return errorResponse(
+        415,
+        'UNSUPPORTED_MEDIA_TYPE',
+        'Registration requests must use JSON.'
+      );
+    }
+
+    if (
+      registrationRequestTooLarge(
+        request
+      )
+    ) {
+      return errorResponse(
+        413,
+        'REQUEST_TOO_LARGE',
+        'The registration request is too large.'
+      );
+    }
 
     let body:
       RegistrationBody;
 
     try {
+      const rawBody =
+        await request.text();
+
+      if (
+        Buffer.byteLength(
+          rawBody,
+          'utf8'
+        ) >
+        MAX_REGISTRATION_REQUEST_BYTES
+      ) {
+        return errorResponse(
+          413,
+          'REQUEST_TOO_LARGE',
+          'The registration request is too large.'
+        );
+      }
+
       const parsed:
         unknown =
-        await request.json();
+        JSON.parse(
+          rawBody
+        );
 
       if (
         !parsed ||
@@ -950,13 +2202,45 @@ export async function POST(
     }
 
     /* ========================================================
-       2. AUTH PROVIDER
+       2. SERVER-AUTHORITATIVE REGISTRATION DRAFT
+
+       The browser is allowed to submit only onboarding choices
+       such as plan and apps. Account identity, workspace name
+       and password authority come from the encrypted HttpOnly
+       draft created by /api/auth/registration-draft.
        ======================================================== */
 
-    const googleRegistration =
-      isGoogleRegistration(
-        body
+    const draft =
+      readRegistrationDraft(
+        request.cookies.get(
+          REGISTRATION_DRAFT_COOKIE_NAME
+        )?.value
       );
+
+    if (
+      !draft
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_DRAFT_REQUIRED',
+        'Your secure registration session is missing or expired. Start the workspace setup again.',
+        {
+          next:
+            '/register',
+        }
+      );
+    }
+
+    const session =
+      await getSession();
+
+    const googleRegistration =
+      draft.mode ===
+        'google';
+
+    const existingAccountRegistration =
+      draft.mode ===
+        'existing';
 
     let googleSignup:
       GoogleSignupRow | null =
@@ -971,85 +2255,91 @@ export async function POST(
         );
 
       if (
+        !googleSignup ||
         !googleSignup
+          .google_subject ||
+        googleSignup.state_hash !==
+          draft.googleStateHash
       ) {
         return errorResponse(
-          400,
+          409,
           'GOOGLE_SIGNUP_EXPIRED',
-          'Your Google registration has expired. Please start again.'
-        );
-      }
-
-      if (
-        !googleSignup.google_subject
-      ) {
-        return errorResponse(
-          400,
-          'GOOGLE_SIGNUP_INVALID',
-          'Google registration could not be verified.'
+          'Your Google registration can no longer be verified. Please start again.',
+          {
+            next:
+              '/register',
+          }
         );
       }
     }
 
+    if (
+      existingAccountRegistration
+    ) {
+      if (
+        !session ||
+        !draft.userId ||
+        session.user.id !==
+          draft.userId
+      ) {
+        return errorResponse(
+          401,
+          'AUTHENTICATION_REQUIRED',
+          'Sign in with the SaMi account that owns this workspace setup.',
+          {
+            next:
+              '/workspaces/new',
+          }
+        );
+      }
+    } else if (
+      session
+    ) {
+      return errorResponse(
+        409,
+        'AUTHENTICATED_ACCOUNT_MISMATCH',
+        'You are already signed in. Create the workspace under your current SaMi account or sign out before creating a different account.',
+        {
+          next:
+            '/workspaces/new',
+        }
+      );
+    }
+
     /* ========================================================
-       3. ACCOUNT DATA
+       3. AUTHORITATIVE ACCOUNT DATA
        ======================================================== */
 
     let firstName =
       normalizeName(
-        body.firstName
+        googleSignup
+          ?.first_name ??
+        draft.firstName
       );
 
     let lastName =
       normalizeName(
-        body.lastName
+        googleSignup
+          ?.last_name ??
+        draft.lastName
       );
 
     let email =
       normalizeEmail(
-        body.email
+        googleSignup
+          ?.email ??
+        draft.email
       );
 
     const phone =
       normalizePhone(
-        body.phone
+        draft.phone
       );
 
     const businessName =
       normalizeName(
-        body.businessName
+        draft.businessName
       );
-
-    const password =
-      typeof body.password ===
-      'string'
-        ? body.password
-        : '';
-
-    if (
-      googleSignup
-    ) {
-      /*
-       * Google identity values come from the authenticated
-       * server-side OAuth state, never from sessionStorage.
-       */
-      email =
-        normalizeEmail(
-          googleSignup.email
-        );
-
-      firstName =
-        normalizeName(
-          googleSignup.first_name
-        ) ||
-        firstName;
-
-      lastName =
-        normalizeName(
-          googleSignup.last_name
-        ) ||
-        lastName;
-    }
 
     const requestedPlan =
       normalizePlan(
@@ -1073,19 +2363,8 @@ export async function POST(
     ) {
       return errorResponse(
         400,
-        'REQUIRED_FIELDS_MISSING',
-        'First name, last name, email and business name are required.'
-      );
-    }
-
-    if (
-      !googleRegistration &&
-      !password
-    ) {
-      return errorResponse(
-        400,
-        'PASSWORD_REQUIRED',
-        'Password is required.'
+        'REGISTRATION_IDENTITY_INVALID',
+        'The secure registration identity is incomplete. Restart workspace setup.'
       );
     }
 
@@ -1110,20 +2389,7 @@ export async function POST(
       return errorResponse(
         400,
         'INVALID_EMAIL',
-        'Please enter a valid email address.'
-      );
-    }
-
-    if (
-      !googleRegistration &&
-      !isValidPassword(
-        password
-      )
-    ) {
-      return errorResponse(
-        400,
-        'PASSWORD_WEAK',
-        'Password must be between 8 and 128 characters.'
+        'The registration email is invalid.'
       );
     }
 
@@ -1175,7 +2441,12 @@ export async function POST(
     }
 
     /* ========================================================
-       5. EXISTING USER
+       5. ACCOUNT IDENTITY / MULTI-WORKSPACE OWNERSHIP
+
+       One users row represents one SaMi identity. The same
+       verified account may own or join many tenants through
+       tenant_users. We never create a duplicate users row just
+       because the person is creating another workspace.
        ======================================================== */
 
     const existingUser =
@@ -1184,7 +2455,11 @@ export async function POST(
           SELECT
             id,
             email,
+            first_name,
+            last_name,
+            phone,
             status,
+            email_verified,
             email_verified_at,
             deleted_at
 
@@ -1199,14 +2474,72 @@ export async function POST(
         ]
       );
 
-    if (
-      existingUser.rows
-        .length >
-      0
-    ) {
-      const existing =
-        existingUser.rows[0];
+    const existing =
+      existingUser.rows[0] ||
+      null;
 
+    if (
+      existingAccountRegistration
+    ) {
+      if (
+        !existing ||
+        existing.deleted_at ||
+        String(
+          existing.id
+        ) !==
+          draft.userId ||
+        String(
+          existing.id
+        ) !==
+          session?.user.id ||
+        String(
+          existing.status ||
+          ''
+        )
+          .trim()
+          .toLowerCase() !==
+          'active' ||
+        (
+          existing.email_verified !==
+            true &&
+          !existing
+            .email_verified_at
+        )
+      ) {
+        return errorResponse(
+          409,
+          'ACCOUNT_UNAVAILABLE',
+          'The signed-in SaMi account is not available for creating another workspace.'
+        );
+      }
+
+      context.userId =
+        requireDatabaseId(
+          existing.id,
+          'existing user'
+        );
+
+      email =
+        normalizeEmail(
+          existing.email
+        );
+
+      firstName =
+        normalizeName(
+          existing.first_name
+        ) ||
+        session?.user.firstName ||
+        firstName;
+
+      lastName =
+        normalizeName(
+          existing.last_name
+        ) ||
+        session?.user.lastName ||
+        lastName;
+    } else if (
+      existing
+    ) {
       if (
         existing.deleted_at
       ) {
@@ -1220,12 +2553,8 @@ export async function POST(
       if (
         !existing
           .email_verified_at &&
-        (
-          existing.status ===
-            'pending_verification' ||
-          existing.status ===
-            'pending'
-        )
+        existing.email_verified !==
+          true
       ) {
         return errorResponse(
           409,
@@ -1236,8 +2565,12 @@ export async function POST(
 
       return errorResponse(
         409,
-        'EMAIL_ALREADY_REGISTERED',
-        'An account with this email already exists.'
+        'ACCOUNT_SIGN_IN_REQUIRED',
+        'This email already belongs to a SaMi account. Sign in with it to create another workspace or accept workspace invitations.',
+        {
+          next:
+            '/workspaces/new',
+        }
       );
     }
 
@@ -1409,22 +2742,124 @@ export async function POST(
       );
 
     /* ========================================================
-       10. PASSWORD HASH
+       9. CLAIM REGISTRATION DRAFT
+
+       The encrypted draft nonce is single-consumption. A
+       concurrent request must never create a second workspace.
+       A completed retry returns the already-created workspace.
        ======================================================== */
 
-    const passwordSecret =
-      googleRegistration
-        ? crypto
-            .randomBytes(64)
-            .toString(
-              'base64url'
-            )
-        : password;
-
-    const passwordHash =
-      await hashPassword(
-        passwordSecret
+    const registrationClaim =
+      await claimRegistrationRequest(
+        draft
       );
+
+    const activeRegistrationNonceHash =
+      registrationClaim
+        .nonceHash;
+
+    registrationRequestNonceHash =
+      activeRegistrationNonceHash;
+
+    if (
+      registrationClaim.state ===
+        'completed'
+    ) {
+      const completedResponse =
+        await buildCompletedRegistrationResponse({
+          request:
+            registrationClaim.row,
+          draft,
+          session,
+        });
+
+      if (
+        completedResponse
+      ) {
+        return completedResponse;
+      }
+
+      return errorResponse(
+        409,
+        'REGISTRATION_RECOVERY_REQUIRED',
+        'This workspace registration completed previously, but SaMi could not reconstruct its current workspace state. Contact support instead of starting another registration.'
+      );
+    }
+
+    if (
+      registrationClaim.state ===
+        'processing'
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_IN_PROGRESS',
+        'This workspace registration is already being processed. Please wait a moment and try again.',
+        {
+          retryAfterSeconds:
+            3,
+        }
+      );
+    }
+
+    if (
+      registrationClaim.state ===
+        'recovery_required'
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_RECOVERY_REQUIRED',
+        'SaMi found an incomplete registration with retained resources. Automatic retry is blocked to prevent creating a duplicate workspace. Contact support for recovery.'
+      );
+    }
+
+    registrationRequestClaimed =
+      true;
+
+    if (
+      context.userId
+    ) {
+      await updateRegistrationRequestProgress(
+        activeRegistrationNonceHash,
+        context
+      );
+    }
+
+    /* ========================================================
+       10. ACCOUNT CREDENTIAL MATERIAL
+
+       Email/password drafts contain only a server-created
+       password hash. Google receives a random unusable local
+       password. Existing accounts reuse their current identity
+       and credentials unchanged.
+       ======================================================== */
+
+    let passwordHash:
+      string | null =
+      null;
+
+    if (
+      !existingAccountRegistration
+    ) {
+      passwordHash =
+        googleRegistration
+          ? await hashPassword(
+              crypto
+                .randomBytes(64)
+                .toString(
+                  'base64url'
+                )
+            )
+          : draft.passwordHash;
+    }
+
+    if (
+      !existingAccountRegistration &&
+      !passwordHash
+    ) {
+      throw new Error(
+        'REGISTRATION_DRAFT_INVALID'
+      );
+    }
 
     /* ========================================================
        11. WORKSPACE SLUG
@@ -1436,93 +2871,114 @@ export async function POST(
       );
 
     /* ========================================================
-       12. CREATE USER
+       12. CREATE OR REUSE GLOBAL USER IDENTITY
        ======================================================== */
 
     const emailAlreadyVerified =
-      googleRegistration;
-
-    const userStatus =
-      googleRegistration
-        ? 'active'
-        : 'pending_verification';
-
-    const userResult =
-      await queryControl(
-        `
-          INSERT INTO users (
-            email,
-            password_hash,
-            first_name,
-            last_name,
-            full_name,
-            phone,
-            status,
-            email_verified,
-            email_verified_at,
-            created_at,
-            updated_at
-          )
-
-          VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-
-            CASE
-              WHEN $8::boolean
-              THEN NOW()
-              ELSE NULL
-            END,
-
-            NOW(),
-            NOW()
-          )
-
-          RETURNING
-            id,
-            email
-        `,
-        [
-          email,
-
-          passwordHash,
-
-          firstName,
-
-          lastName,
-
-          `${firstName} ${lastName}`,
-
-          phone,
-
-          userStatus,
-
-          emailAlreadyVerified,
-        ]
-      );
+      googleRegistration ||
+      existingAccountRegistration;
 
     if (
-      userResult.rows
-        .length ===
-      0
+      !existingAccountRegistration
+    ) {
+      const userStatus =
+        googleRegistration
+          ? 'active'
+          : 'pending_verification';
+
+      const userResult =
+        await queryControl(
+          `
+            INSERT INTO users (
+              email,
+              password_hash,
+              first_name,
+              last_name,
+              full_name,
+              phone,
+              status,
+              email_verified,
+              email_verified_at,
+              created_at,
+              updated_at
+            )
+
+            VALUES (
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              $7,
+              $8,
+
+              CASE
+                WHEN $8::boolean
+                THEN NOW()
+                ELSE NULL
+              END,
+
+              NOW(),
+              NOW()
+            )
+
+            RETURNING
+              id,
+              email
+          `,
+          [
+            email,
+
+            passwordHash,
+
+            firstName,
+
+            lastName,
+
+            `${firstName} ${lastName}`,
+
+            phone,
+
+            userStatus,
+
+            emailAlreadyVerified,
+          ]
+        );
+
+      if (
+        userResult.rows
+          .length ===
+        0
+      ) {
+        throw new Error(
+          'User was not created by the database.'
+        );
+      }
+
+      context.userId =
+        requireDatabaseId(
+          userResult
+            .rows[0].id,
+          'user'
+        );
+
+      context.userCreated =
+        true;
+    }
+
+    if (
+      !context.userId
     ) {
       throw new Error(
-        'User was not created by the database.'
+        'Registration does not have an authoritative SaMi user.'
       );
     }
 
-    context.userId =
-      requireDatabaseId(
-        userResult
-          .rows[0].id,
-        'user'
-      );
+    await updateRegistrationRequestProgress(
+      activeRegistrationNonceHash,
+      context
+    );
 
     /* ========================================================
        13. CREATE WORKSPACE
@@ -1576,6 +3032,11 @@ export async function POST(
           .rows[0].id,
         'tenant'
       );
+
+    await updateRegistrationRequestProgress(
+      activeRegistrationNonceHash,
+      context
+    );
 
     /* ========================================================
        14. OWNER MEMBERSHIP
@@ -1770,6 +3231,11 @@ export async function POST(
         'subscription'
       );
 
+    await updateRegistrationRequestProgress(
+      activeRegistrationNonceHash,
+      context
+    );
+
     /* ========================================================
        17. RESERVE APPS
        ======================================================== */
@@ -1819,24 +3285,7 @@ export async function POST(
     }
 
     /* ========================================================
-       18. CONSUME GOOGLE SIGNUP STATE
-
-       Core registration now exists.
-
-       Consume the OAuth signup state before starting physical
-       workspace provisioning so the state cannot be replayed.
-       ======================================================== */
-
-    if (
-      googleSignup
-    ) {
-      await consumeGoogleSignupState(
-        googleSignup.state_hash
-      );
-    }
-
-    /* ========================================================
-       19. PROVISION WORKSPACE IMMEDIATELY
+       18. PROVISION WORKSPACE IMMEDIATELY
 
        This applies equally to:
        - Free
@@ -1877,7 +3326,7 @@ export async function POST(
     }
 
     /* ========================================================
-       20. FINAL WORKSPACE / SUBSCRIPTION STATE
+       19. FINAL WORKSPACE / SUBSCRIPTION STATE
        ======================================================== */
 
     if (
@@ -2005,32 +3454,11 @@ export async function POST(
       );
     }
 
-    /* ========================================================
-       21. EMAIL VERIFICATION
-
-       Google identity is already verified.
-
-       Email/password registrations receive their verification
-       code immediately.
-
-       There is no PesaPal gate before verification anymore.
-       ======================================================== */
-
     let verificationEmailSent =
       false;
 
-    if (
-      !googleRegistration
-    ) {
-      verificationEmailSent =
-        await createVerification({
-          email,
-          firstName,
-        });
-    }
-
     /* ========================================================
-       22. BILLABLE USERS / PRICE
+       20. BILLABLE USERS / PRICE
 
        Backend remains authoritative.
 
@@ -2073,12 +3501,13 @@ export async function POST(
         : 0;
 
     /* ========================================================
-       23. AUTHORITATIVE FINAL SUBSCRIPTION
+       21. AUTHORITATIVE FINAL SUBSCRIPTION
        ======================================================== */
 
     const subscription =
       await getSubscriptionForResponse(
-        context.subscriptionId
+        context.subscriptionId,
+        context.userId
       );
 
     if (!subscription) {
@@ -2104,31 +3533,158 @@ export async function POST(
           .current_period_end
       );
 
+    const authoritativeEmail =
+      normalizeEmail(
+        subscription
+          .owner_email
+      );
+
+    const authoritativeFirstName =
+      normalizeName(
+        subscription
+          .owner_first_name
+      ) ||
+      firstName;
+
+    const authoritativeBusinessName =
+      normalizeName(
+        subscription
+          .tenant_name
+      );
+
+    if (
+      !isValidEmail(
+        authoritativeEmail
+      ) ||
+      !authoritativeBusinessName
+    ) {
+      throw new Error(
+        'Authoritative workspace owner identity could not be resolved.'
+      );
+    }
+
     /* ========================================================
-       24. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
+       22. DURABLE REGISTRATION COMPLETION
 
-       This is intentionally separate from email verification.
+       At this point the authoritative user, tenant, membership,
+       subscription, app reservations and final provisioning state
+       all exist. Mark the encrypted draft as consumed BEFORE
+       sending any external email. A lost HTTP response will then
+       replay the same workspace instead of creating another one.
+       ======================================================== */
 
-       EMAIL/PASSWORD:
-       - verification email
-       - subscription/plan confirmation email
+    await completeRegistrationRequest(
+      activeRegistrationNonceHash,
+      context
+    );
 
-       GOOGLE:
-       - Google identity is already verified
-       - subscription/plan confirmation email only
+    registrationRequestClaimed =
+      false;
 
-       IMPORTANT:
-       Email delivery must never roll back an otherwise
-       successful registration.
+    registrationDurablyCompleted =
+      true;
+
+    /* ========================================================
+       23. CONSUME GOOGLE SIGNUP STATE
+
+       Google registration idempotency is keyed by the OAuth
+       signup-state hash, so two browser drafts from the same
+       Google authorization cannot create two workspaces. Once
+       registration is durable, remove the temporary OAuth state.
+       ======================================================== */
+
+    if (
+      googleSignup
+    ) {
+      try {
+        await consumeGoogleSignupState(
+          googleSignup.state_hash
+        );
+      } catch (error) {
+        console.error(
+          '[SaMi] Google signup state cleanup failed after durable registration:',
+          error
+        );
+      }
+    }
+
+    /* ========================================================
+       24. EXISTING ACCOUNT WORKSPACE SWITCH
+
+       Workspace creation must not be rolled back merely because
+       the current browser session could not switch context.
+       The workspace remains accessible through the global
+       workspace switcher.
+       ======================================================== */
+
+    if (
+      existingAccountRegistration &&
+      provisioningSucceeded &&
+      session
+    ) {
+      try {
+        const switched =
+          await setCurrentTenantForSession(
+            session.sessionId,
+            session.user.id,
+            context.tenantId
+          );
+
+        if (
+          !switched
+        ) {
+          console.error(
+            '[SaMi] Workspace created but current session did not switch to the new workspace.'
+          );
+        }
+      } catch (error) {
+        console.error(
+          '[SaMi] Workspace created but session switching failed:',
+          error
+        );
+      }
+    }
+
+    /* ========================================================
+       25. EMAIL VERIFICATION
+
+       External delivery happens only after durable registration.
+       Email/password users receive a verification code; delivery
+       failure never deletes the workspace/account.
+       ======================================================== */
+
+    if (
+      draft.mode ===
+        'email' &&
+      context.userCreated
+    ) {
+      verificationEmailSent =
+        await createVerification({
+          email:
+            authoritativeEmail,
+          firstName:
+            authoritativeFirstName,
+        });
+    }
+
+    /* ========================================================
+       26. SUBSCRIPTION / PLAN CONFIRMATION EMAIL
+
+       The recipient and workspace label come from the exact
+       Control DB owner/workspace join, never browser state.
+       Delivery failure never rolls back registration.
        ======================================================== */
 
     try {
       await sendSubscriptionConfirmationEmail({
-        email,
+        email:
+          authoritativeEmail,
 
-        firstName,
+        firstName:
+          authoritativeFirstName,
 
-        businessName,
+        businessName:
+          authoritativeBusinessName,
 
         plan:
           finalPlan as SaMiRegistrationPlan,
@@ -2160,7 +3716,7 @@ export async function POST(
     }
 
     /* ========================================================
-       25. RESPONSE
+       27. RESPONSE
        ======================================================== */
 
     const response =
@@ -2204,15 +3760,23 @@ export async function POST(
             id:
               context.userId,
 
-            email,
+            email:
+              authoritativeEmail,
 
             emailVerified:
-              googleRegistration,
+              Boolean(
+                subscription
+                  .owner_email_verified ||
+                subscription
+                  .owner_email_verified_at
+              ),
 
             authProvider:
-              googleRegistration
-                ? 'google'
-                : 'email',
+              existingAccountRegistration
+                ? 'existing'
+                : googleRegistration
+                  ? 'google'
+                  : 'email',
           },
 
           tenant: {
@@ -2220,7 +3784,7 @@ export async function POST(
               context.tenantId,
 
             name:
-              businessName,
+              authoritativeBusinessName,
 
             slug,
 
@@ -2302,31 +3866,44 @@ export async function POST(
 
           verification: {
             required:
-              !googleRegistration,
+              draft.mode ===
+                'email' &&
+              context.userCreated,
 
-            email,
+            email:
+              authoritativeEmail,
 
             expiresInMinutes:
-              googleRegistration
-                ? null
-                : VERIFICATION_EXPIRY_MINUTES,
+              draft.mode ===
+                  'email' &&
+                context.userCreated
+                ? VERIFICATION_EXPIRY_MINUTES
+                : null,
 
             emailSent:
-              googleRegistration
-                ? false
-                : verificationEmailSent,
+              draft.mode ===
+                  'email' &&
+                context.userCreated
+                ? verificationEmailSent
+                : false,
           },
 
           next:
-            googleRegistration
+            existingAccountRegistration
               ? (
                   provisioningSucceeded
-                    ? '/login?google=registered'
-                    : '/login?workspace=preparing'
+                    ? '/dashboard'
+                    : '/workspaces/new?workspace=preparing'
                 )
-              : `/verify-email?email=${encodeURIComponent(
-                  email
-                )}`,
+              : googleRegistration
+                ? (
+                    provisioningSucceeded
+                      ? '/login?google=registered'
+                      : '/login?workspace=preparing'
+                  )
+                : `/verify-email?email=${encodeURIComponent(
+                    authoritativeEmail
+                  )}`,
 
           message:
             isPaidPlan
@@ -2344,6 +3921,12 @@ export async function POST(
         201
       );
 
+    response.cookies.set(
+      REGISTRATION_DRAFT_COOKIE_NAME,
+      '',
+      clearRegistrationDraftCookieOptions()
+    );
+
     if (
       googleRegistration
     ) {
@@ -2359,14 +3942,74 @@ export async function POST(
       error
     );
 
-    await cleanupRegistration(
-      context
-    );
+    if (
+      registrationDurablyCompleted
+    ) {
+      return errorResponse(
+        500,
+        'REGISTRATION_RESPONSE_RETRY',
+        'Your workspace was created successfully, but SaMi could not finish this response. Retry the same setup to reopen the existing workspace; a duplicate will not be created.'
+      );
+    }
+
+    const cleanupSucceeded =
+      await cleanupRegistration(
+        context
+      );
+
+    if (
+      registrationRequestNonceHash &&
+      registrationRequestClaimed
+    ) {
+      try {
+        await failRegistrationRequest(
+          registrationRequestNonceHash,
+          cleanupSucceeded
+        );
+      } catch (
+        idempotencyError
+      ) {
+        console.error(
+          '[SaMi] Registration idempotency failure-state update failed:',
+          idempotencyError
+        );
+      }
+    }
+
+    const invalidDraft =
+      error instanceof
+        Error &&
+      error.message ===
+        'REGISTRATION_DRAFT_INVALID';
 
     return errorResponse(
-      500,
-      'REGISTRATION_ERROR',
-      'Registration could not be completed. Please try again.'
+      cleanupSucceeded
+        ? (
+            invalidDraft
+              ? 409
+              : 500
+          )
+        : 409,
+      cleanupSucceeded
+        ? (
+            invalidDraft
+              ? 'REGISTRATION_DRAFT_INVALID'
+              : 'REGISTRATION_ERROR'
+          )
+        : 'REGISTRATION_RECOVERY_REQUIRED',
+      cleanupSucceeded
+        ? (
+            invalidDraft
+              ? 'The secure registration credential is unavailable. Start registration again.'
+              : 'Registration could not be completed. The partial setup was cleaned up safely, so you can try again.'
+          )
+        : 'Registration stopped after a partial setup and SaMi could not prove cleanup was complete. Automatic retry is blocked to prevent a duplicate workspace.',
+      invalidDraft
+        ? {
+            next:
+              '/register',
+          }
+        : {}
     );
   }
 }

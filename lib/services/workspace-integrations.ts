@@ -27,6 +27,10 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getWorkspaceSubscriptionAccessState,
+} from '@/lib/billing/access';
+
+import {
   getTenantPoolByTenantId,
 } from '@/lib/db/tenant';
 
@@ -69,7 +73,8 @@ export type WorkspaceIntegrationErrorCode =
   | 'INTEGRATIONS_MANAGE_REQUIRED'
   | 'INVALID_INTEGRATION'
   | 'INTEGRATION_NOT_FOUND'
-  | 'INTEGRATION_PROVIDER_UNAVAILABLE';
+  | 'INTEGRATION_PROVIDER_UNAVAILABLE'
+  | 'CUSTOM_INTEGRATION_PLAN_REQUIRED';
 
 export class WorkspaceIntegrationError
   extends Error {
@@ -371,6 +376,37 @@ export async function resolveWorkspaceIntegrationContext(
     canManage,
   };
 }
+
+async function requireCustomIntegrationEntitlement(
+  tenantId:
+    string,
+) {
+  const access =
+    await getWorkspaceSubscriptionAccessState(
+      tenantId,
+    );
+
+  if (
+    !access.entitled ||
+    access.policy
+      ?.integrations
+      .customIntegrations !==
+      true ||
+    (
+      access.scheduledPolicy &&
+      access.scheduledPolicy
+        .integrations
+        .customIntegrations !==
+        true
+    )
+  ) {
+    throw new WorkspaceIntegrationError(
+      'CUSTOM_INTEGRATION_PLAN_REQUIRED',
+      'Custom integrations require an active Custom subscription.',
+    );
+  }
+}
+
 
 async function auditIntegration(
   context:
@@ -988,6 +1024,11 @@ export async function createWorkspaceWebhookEndpoint(
       'manage',
     );
 
+  await requireCustomIntegrationEntitlement(
+    context.runtime
+      .tenantId,
+  );
+
   const name =
     cleanText(
       input.name,
@@ -1269,6 +1310,18 @@ export async function manageWorkspaceWebhookEndpoint(
     throw new WorkspaceIntegrationError(
       'INVALID_INTEGRATION',
       'Choose a supported webhook operation.',
+    );
+  }
+
+  if (
+    action ===
+      'resume' ||
+    action ===
+      'rotate_secret'
+  ) {
+    await requireCustomIntegrationEntitlement(
+      context.runtime
+        .tenantId,
     );
   }
 
@@ -1559,6 +1612,11 @@ export async function createWorkspaceExternalApp(
     await resolveWorkspaceIntegrationContext(
       'manage',
     );
+
+  await requireCustomIntegrationEntitlement(
+    context.runtime
+      .tenantId,
+  );
 
   const name =
     cleanText(
@@ -2039,6 +2097,18 @@ export async function manageWorkspaceExternalApp(
     throw new WorkspaceIntegrationError(
       'INVALID_INTEGRATION',
       'Choose a supported external app operation.',
+    );
+  }
+
+  if (
+    operation ===
+      'update' ||
+    operation ===
+      'enable'
+  ) {
+    await requireCustomIntegrationEntitlement(
+      context.runtime
+        .tenantId,
     );
   }
 

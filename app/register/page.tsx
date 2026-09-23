@@ -5,6 +5,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export default async function RegisterPage() {
-  await redirectIfAuthenticated('/dashboard');
+  await redirectIfAuthenticated(
+    '/workspaces/new',
+  );
+
   return <RegisterClient />;
 }

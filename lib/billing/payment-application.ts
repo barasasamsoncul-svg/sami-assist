@@ -202,7 +202,8 @@ export async function applyVerifiedCheckoutPayment(
             id,
             status,
             trial_ends_at,
-            current_period_end
+            current_period_end,
+            cancelled_at
           FROM subscriptions
           WHERE id = $1
             AND deleted_at
@@ -235,6 +236,7 @@ export async function applyVerifiedCheckoutPayment(
         'trialing',
         'active',
         'past_due',
+        'cancelled',
       ].includes(
         String(
           subscription.status,
@@ -272,6 +274,10 @@ export async function applyVerifiedCheckoutPayment(
           providerData:
             input.providerData ||
             {},
+          cancellationPreserved:
+            Boolean(
+              subscription.cancelled_at,
+            ),
         }),
       ],
     );
@@ -308,7 +314,7 @@ export async function applyVerifiedCheckoutPayment(
               ) +
               INTERVAL '1 month',
             cancelled_at =
-              NULL,
+              cancelled_at,
             updated_at =
               NOW()
           WHERE id = $1
@@ -374,17 +380,29 @@ export async function applyVerifiedCheckoutPayment(
         title:
           'Payment received',
         message:
-          `SaMi received ${normalizedCurrency(
-            input.currency,
-          )} ${Number(
-            input.amount,
-          ).toLocaleString(
-            'en-KE',
-            {
-              maximumFractionDigits:
-                2,
-            },
-          )}. Your workspace subscription is active.`,
+          subscription.cancelled_at
+            ? `SaMi received ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. The paid period is active, but your previous cancellation remains in place so future renewal stays stopped.`
+            : `SaMi received ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. Your workspace subscription is active.`,
         priority:
           'high',
         dedupeKey:
@@ -523,6 +541,8 @@ export async function markVerifiedCheckoutFailed(
               NOW()
           WHERE id = $1
             AND deleted_at
+                IS NULL
+            AND cancelled_at
                 IS NULL
             AND (
               status =
@@ -948,7 +968,7 @@ export async function applyVerifiedRecurringInvoice(
             current_period_end =
               $3,
             cancelled_at =
-              NULL,
+              cancelled_at,
             scheduled_plan_id =
               CASE
                 WHEN scheduled_plan_effective_at
@@ -993,7 +1013,8 @@ export async function applyVerifiedRecurringInvoice(
           RETURNING
             status,
             current_period_start,
-            current_period_end
+            current_period_end,
+            cancelled_at
         `,
         [
           profile.subscription_id,
@@ -1067,17 +1088,30 @@ export async function applyVerifiedRecurringInvoice(
         title:
           'Subscription renewed',
         message:
-          `SaMi confirmed the recurring payment of ${normalizedCurrency(
-            input.currency,
-          )} ${Number(
-            input.amount,
-          ).toLocaleString(
-            'en-KE',
-            {
-              maximumFractionDigits:
-                2,
-            },
-          )}. Your subscription remains active.`,
+          subscription.rows[0]
+            .cancelled_at
+            ? `SaMi confirmed the recurring payment of ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. This paid period is active, but your cancellation remains scheduled and future renewal stays stopped.`
+            : `SaMi confirmed the recurring payment of ${normalizedCurrency(
+                input.currency,
+              )} ${Number(
+                input.amount,
+              ).toLocaleString(
+                'en-KE',
+                {
+                  maximumFractionDigits:
+                    2,
+                },
+              )}. Your subscription remains active.`,
         priority:
           'high',
         dedupeKey:

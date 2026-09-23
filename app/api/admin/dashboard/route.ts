@@ -81,7 +81,9 @@ export async function GET() {
        ======================================================== */
 
     const dashboard =
-      await getAdminDashboardData();
+      await getAdminDashboardData(
+        session.role,
+      );
 
     /* ========================================================
        3. RESPONSE

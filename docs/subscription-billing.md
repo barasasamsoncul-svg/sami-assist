@@ -174,14 +174,105 @@ can extend subscription access.
 - Free → paid after a prior paid trial: payment is required; the free month is
   not reset by cycling through Free.
 - Paid trial → another paid plan: immediate, preserving the original trial end.
-- Paid trial → Free: immediate and any recurring trial mandate is cancelled.
+- Paid trial → Free: scheduled for the original trial end. The free month remains
+  available, provider renewal is stopped at the boundary, and the pending
+  downgrade can be cancelled before it takes effect.
 - Active paid → another plan: scheduled for the current paid-period boundary.
 - Active paid → Free: provider cancellation is scheduled at period end.
 - Downgrades are blocked if active users, installed apps/dependencies or active
   companies exceed the target plan's capacity.
 
+While a stricter downgrade is pending, the current plan remains usable until
+the effective boundary, but the future plan's stricter limits apply to **new**
+capacity. For example, a pending move to Free prevents adding a second active
+internal user or business app, and a pending move away from Custom prevents
+creating/reactivating extra companies or creating/re-enabling Custom-only
+integrations.
+
+SaMi re-checks target-plan capacity again at the actual effective boundary. If
+the workspace no longer fits, SaMi keeps the plan change pending, notifies the
+workspace owners, and requires cleanup or cancellation of the plan change. It
+does not delete users, apps, companies, files or business records to force the
+new plan through.
+
 The subscription plan in SaMi remains the entitlement authority even when a
 provider has its own recurring subscription object.
+
+## Cancelling a plan change vs cancelling the subscription
+
+These are deliberately separate lifecycle operations.
+
+### Cancel a pending upgrade or downgrade
+
+If an active paid subscription has a plan change scheduled for the current
+period boundary, a billing manager may cancel that pending change before it
+takes effect.
+
+SaMi then:
+
+- clears the scheduled target plan and effective date
+- keeps the current plan active
+- restores the current provider renewal settings where a recurring provider
+  had already been prepared for the scheduled change
+- records the reversal in audit history
+- sends critical in-app, email and SMS notification to workspace owners
+
+For a scheduled move to Free, restoring the current plan also removes the
+provider's period-end cancellation where the provider supports that operation.
+
+### Cancel the paid subscription
+
+Cancelling the subscription means **stop future paid renewal**. It does not
+mean "downgrade to Free" and it never deletes the workspace.
+
+Cancellation is always allowed even when the workspace is too large for Free.
+This prevents plan-capacity rules from trapping a customer in recurring
+billing.
+
+For a valid paid trial or active paid period:
+
+- renewal is stopped
+- the cancellation request is recorded in `cancelled_at`
+- paid access remains entitled until the applicable trial/paid-period boundary
+- renewal/due-soon reminders and recurring seat/price synchronization stop
+- at the boundary SaMi finalizes the subscription to `cancelled`
+- normal paid workspace work then stops
+- Billing, account/security and recovery access remain available
+- workspace data, files, settings, app data and payment/audit history are
+  retained
+
+If there is no valid remaining paid/trial period, cancellation may take effect
+immediately.
+
+A provider payment that was already in flight when cancellation was requested
+does not silently restore renewal. If the provider later verifies that payment,
+SaMi honors the period that was actually paid for while preserving the existing
+cancellation, so future renewal remains stopped. A failed stale checkout cannot
+turn a cancelled subscription back into past-due dunning.
+
+### Keep the subscription
+
+Before a scheduled cancellation reaches its effective boundary, a billing
+manager may choose **Keep subscription**. SaMi clears the pending cancellation
+and restores provider renewal where the provider supports recurring billing.
+
+After cancellation has already taken effect, it cannot be "undone". Instead,
+the owner may reactivate the paid subscription, which returns it to
+payment-recovery state; verified payment starts a new paid period.
+
+### Move an ended subscription to Free
+
+An ended paid subscription may be explicitly moved to Free without first
+reactivating paid billing, but only after the workspace fits Free's plan
+capacity:
+
+- no more than one active internal user
+- no more than one installed business app, including required dependencies
+- one active company
+
+This explicit capacity-checked transition is different from subscription
+cancellation itself. SaMi never silently deletes users, apps, companies, files
+or business data to force a cancelled workspace into Free.
 
 ## Past-due workspace suspension
 

@@ -38,8 +38,17 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
    CONSTANTS
    ============================================================ */
 
-const ACCOUNT_STORAGE_KEY =
+const LEGACY_ACCOUNT_STORAGE_KEY =
   'sami_account_form';
+
+const APPS_STORAGE_KEY =
+  'sami_selected_apps';
+
+const PLAN_STORAGE_KEY =
+  'sami_selected_plan';
+
+const VERIFICATION_EMAIL_STORAGE_KEY =
+  'sami_verification_email';
 
 const NEXT_ROUTE =
   '/select-apps';
@@ -187,6 +196,11 @@ function GoogleCompleteContent() {
   ] = useState(false);
 
   const [
+    draftResetComplete,
+    setDraftResetComplete,
+  ] = useState(false);
+
+  const [
     ready,
     setReady,
   ] = useState(false);
@@ -222,6 +236,46 @@ function GoogleCompleteContent() {
      ========================================================== */
 
   useEffect(() => {
+    void fetch(
+      '/api/auth/registration-draft',
+      {
+        method:
+          'DELETE',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+      },
+    ).catch(
+      () =>
+        undefined,
+    ).finally(
+      () =>
+        setDraftResetComplete(
+          true
+        ),
+    );
+
+    try {
+      sessionStorage.removeItem(
+        LEGACY_ACCOUNT_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        APPS_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        PLAN_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        VERIFICATION_EMAIL_STORAGE_KEY
+      );
+    } catch {
+      // Google server state remains authoritative.
+    }
+
     const email =
       normalizeEmail(
         safeText(
@@ -390,10 +444,11 @@ function GoogleCompleteContent() {
      CONTINUE
      ========================================================== */
 
-  function handleNext() {
+  async function handleNext() {
     if (
       loading ||
-      !ready
+      !ready ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -418,7 +473,8 @@ function GoogleCompleteContent() {
       )
     ) {
       setOverlay({
-        type: 'error',
+        type:
+          'error',
 
         title:
           'Google account unavailable',
@@ -438,14 +494,17 @@ function GoogleCompleteContent() {
       return;
     }
 
-    if (!businessName) {
+    if (
+      !businessName
+    ) {
       setErrors({
         businessName:
           'Enter your business or workspace name.',
       });
 
       setOverlay({
-        type: 'warning',
+        type:
+          'warning',
 
         title:
           'Business name required',
@@ -457,13 +516,9 @@ function GoogleCompleteContent() {
       return;
     }
 
-    /*
-     * Do not unnecessarily reject legitimate
-     * one-character names here.
-     */
     if (
       businessName.length >
-      120
+        120
     ) {
       setErrors({
         businessName:
@@ -473,61 +528,159 @@ function GoogleCompleteContent() {
       return;
     }
 
-    setLoading(true);
+    setLoading(
+      true
+    );
 
     try {
       /*
-       * Temporary onboarding state only.
-       *
-       * This does NOT authenticate the user.
-       * The registration API/server remains
-       * authoritative for Google identity,
-       * tenant creation, plan, apps and payment.
+       * The HttpOnly Google signup cookie and server-side
+       * google_signup_states row are the identity authority.
+       * Query-string values on this page are display-only.
        */
-      sessionStorage.setItem(
-        ACCOUNT_STORAGE_KEY,
-        JSON.stringify({
-          firstName:
-            form.firstName
-              .trim(),
+      const response =
+        await fetch(
+          '/api/auth/registration-draft',
+          {
+            method:
+              'POST',
 
-          lastName:
-            form.lastName
-              .trim(),
+            credentials:
+              'same-origin',
 
-          email:
-            cleanEmail,
+            cache:
+              'no-store',
 
-          phone,
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
 
-          businessName,
+            body:
+              JSON.stringify({
+                source:
+                  'google',
 
-          avatarUrl:
-            form.avatarUrl,
+                businessName,
 
-          googleAuth:
-            true,
+                phone,
+              }),
+          }
+        );
 
-          authProvider:
-            'google',
-        })
-      );
+      let data:
+        {
+          success?:
+            boolean;
+          code?:
+            string;
+          error?:
+            string;
+          next?:
+            string;
+        } =
+        {};
+
+      try {
+        data =
+          await response.json();
+      } catch {
+        data = {};
+      }
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        if (
+          data.code ===
+            'ACCOUNT_SIGN_IN_REQUIRED'
+        ) {
+          setOverlay({
+            type:
+              'info',
+
+            title:
+              'Use your existing SaMi account',
+
+            message:
+              data.error ||
+              'This Google email already belongs to a SaMi account. Sign in to create another workspace under the same identity.',
+
+            primaryAction: {
+              label:
+                'Sign in',
+
+              href:
+                `/login?email=${encodeURIComponent(
+                  cleanEmail
+                )}&next=${encodeURIComponent(
+                  '/workspaces/new'
+                )}`,
+            },
+
+            secondaryAction: {
+              label:
+                'Restart registration',
+
+              href:
+                '/register',
+            },
+          });
+
+          return;
+        }
+
+        throw new Error(
+          data.error ||
+          'SaMi could not prepare the Google workspace registration securely.'
+        );
+      }
+
+      try {
+        sessionStorage.removeItem(
+          LEGACY_ACCOUNT_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          APPS_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          PLAN_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          VERIFICATION_EMAIL_STORAGE_KEY
+        );
+      } catch {
+        // Server draft remains authoritative.
+      }
 
       router.push(
         NEXT_ROUTE
       );
-    } catch {
-      setLoading(false);
-
+    } catch (
+      error
+    ) {
       setOverlay({
-        type: 'error',
+        type:
+          'error',
 
         title:
           'Could not continue',
 
         message:
-          'SaMi could not save your onboarding information in this browser. Check browser storage settings and try again.',
+          error instanceof Error
+            ? error.message
+            : 'SaMi could not prepare your workspace registration.',
       });
+    } finally {
+      setLoading(
+        false
+      );
     }
   }
 

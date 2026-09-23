@@ -711,12 +711,16 @@ test('Category 22: Custom-only multi-company and Developer API are enforced belo
 test('Category 22: plan changes are capacity-checked and paid-period changes are scheduled at renewal', async () => {
   const [
     service,
+    capacity,
     migration,
     transition,
   ] =
     await Promise.all([
       source(
         'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'lib/billing/capacity.ts',
       ),
       source(
         'lib/schema/control-migrations/001-category-22-subscription-billing-profiles.sql',
@@ -732,12 +736,12 @@ test('Category 22: plan changes are capacity-checked and paid-period changes are
   );
 
   assert.match(
-    service,
+    capacity,
     /Required app dependencies count toward this allowance/,
   );
 
   assert.match(
-    service,
+    capacity,
     /Archive extra companies/,
   );
 
@@ -764,6 +768,22 @@ test('Category 22: plan changes are capacity-checked and paid-period changes are
   assert.match(
     transition,
     /scheduled_plan_effective_at <=[\s\S]*NOW\(\)/s,
+  );
+
+  assert.match(
+    transition,
+    /getWorkspacePlanCapacityAssessment/,
+    'Scheduled plans must be capacity-checked again at the actual effective boundary.',
+  );
+
+  assert.match(
+    transition,
+    /SUBSCRIPTION_PLAN_CHANGE_BLOCKED_AT_BOUNDARY/,
+  );
+
+  assert.match(
+    transition,
+    /billing\.plan_change_blocked/,
   );
 });
 
@@ -1111,6 +1131,28 @@ test('Category 22: billing state changes notify workspace owners through critica
     /billing:plan-immediate/,
     'Immediate trial/free-to-paid plan changes must also notify owners.',
   );
+
+  for (
+    const event
+    of [
+      'billing.plan_change_cancelled',
+      'billing.subscription_cancellation_scheduled',
+      'billing.subscription_cancelled',
+      'billing.subscription_continues',
+      'billing.reactivation_payment_required',
+    ]
+  ) {
+    assert.match(
+      service,
+      new RegExp(
+        event.replace(
+          '.',
+          '\\.',
+        ),
+      ),
+      `Cancellation lifecycle must notify owners for ${event}.`,
+    );
+  }
 });
 
 
@@ -1205,16 +1247,22 @@ test('Category 22: overdue reconciliation runs automatically with an authenticat
       vercel,
     );
 
-  assert.deepEqual(
-    config.crons,
-    [
-      {
-        path:
-          '/api/internal/billing/reconcile',
-        schedule:
+  assert.ok(
+    Array.isArray(
+      config.crons,
+    ),
+    'Vercel cron configuration must remain an array.',
+  );
+
+  assert.ok(
+    config.crons.some(
+      cron =>
+        cron.path ===
+          '/api/internal/billing/reconcile' &&
+        cron.schedule ===
           '0 6 * * *',
-      },
-    ],
+    ),
+    'The authenticated daily billing reconciliation cron must remain configured even when later platform categories add their own workers.',
   );
 });
 
@@ -1234,6 +1282,509 @@ test('Category 22: control migration is additive and never stores provider secre
     migration,
     /secret|api_key|access_token|refresh_token|card_number|cvv/i,
     'Control billing profile must persist references, not provider secrets or card data.',
+  );
+});
+
+test('Category 22: pending plan changes are explicitly reversible', async () => {
+  const [
+    service,
+    route,
+    billingUi,
+    stripe,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'app/api/workspace/billing/route.ts',
+      ),
+      source(
+        'app/settings/components/BillingSettings.tsx',
+      ),
+      source(
+        'lib/billing/providers/stripe.ts',
+      ),
+    ]);
+
+  assert.match(
+    service,
+    /cancelScheduledWorkspacePlanChange/,
+  );
+
+  assert.match(
+    service,
+    /SUBSCRIPTION_PLAN_CHANGE_CANCELLED/,
+  );
+
+  assert.match(
+    service,
+    /undoScheduledPlanProviderChange/,
+    'Cancelling a pending plan change must reverse any provider-side preparation too.',
+  );
+
+  assert.match(
+    route,
+    /cancel_plan_change/,
+  );
+
+  assert.match(
+    billingUi,
+    /Cancel change/,
+  );
+
+  assert.match(
+    stripe,
+    /resumeRecurringSubscription[\s\S]*cancel_at_period_end:[\s\S]*false/s,
+    'A Stripe downgrade-to-Free cancellation must be reversible before period end.',
+  );
+});
+
+test('Category 22: paid subscription cancellation is distinct from downgrade and retains workspace data', async () => {
+  const [
+    service,
+    transition,
+    route,
+    docs,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'lib/billing/plan-transition.ts',
+      ),
+      source(
+        'app/api/workspace/billing/route.ts',
+      ),
+      source(
+        'docs/subscription-billing.md',
+      ),
+    ]);
+
+  const cancelStart =
+    service.indexOf(
+      'export async function cancelWorkspaceSubscription',
+    );
+
+  const resumeStart =
+    service.indexOf(
+      'export async function resumeWorkspaceSubscriptionCancellation',
+      cancelStart,
+    );
+
+  assert.ok(
+    cancelStart >= 0 &&
+    resumeStart >
+      cancelStart,
+  );
+
+  const cancelBlock =
+    service.slice(
+      cancelStart,
+      resumeStart,
+    );
+
+  assert.doesNotMatch(
+    cancelBlock,
+    /assertPlanCapacity/,
+    'Stopping renewal must never be blocked by Free-plan capacity.',
+  );
+
+  assert.match(
+    cancelBlock,
+    /dataRetained:[\s\S]*true/s,
+  );
+
+  assert.match(
+    cancelBlock,
+    /SUBSCRIPTION_CANCELLATION_SCHEDULED/,
+  );
+
+  assert.match(
+    transition,
+    /applyDueSubscriptionCancellations/,
+  );
+
+  assert.match(
+    transition,
+    /status[\s\S]*'cancelled'/s,
+  );
+
+  assert.match(
+    transition,
+    /subscription_billing_profiles[\s\S]*recurring_status[\s\S]*'cancelled'/s,
+    'When cancellation takes effect, the recurring provider profile must be finalized too.',
+  );
+
+  assert.match(
+    route,
+    /cancel_subscription/,
+  );
+
+  assert.doesNotMatch(
+    transition,
+    /DELETE\s+FROM\s+(tenants|files|companies|tenant_modules)/i,
+    'Subscription cancellation must not delete workspace business data.',
+  );
+
+  assert.match(
+    docs,
+    /does not[\s\S]*mean "downgrade to Free"/s,
+  );
+
+  assert.match(
+    docs,
+    /never deletes the workspace/,
+  );
+});
+
+test('Category 22: trial-to-Free downgrade preserves the free month and remains reversible', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-billing.ts',
+    );
+
+  assert.match(
+    service,
+    /During the first paid-plan trial/,
+  );
+
+  assert.match(
+    service,
+    /targetPlan:[\s\S]*'free'[\s\S]*cancellationMode:[\s\S]*'period_end'/s,
+  );
+
+  assert.match(
+    service,
+    /scheduled_plan_effective_at/,
+  );
+
+  assert.match(
+    service,
+    /boundary:[\s\S]*'trial_end'/s,
+  );
+
+  assert.match(
+    service,
+    /You can cancel this pending change in Billing before then/,
+  );
+});
+
+test('Category 22: stale verified payments honor paid service without restoring renewal', async () => {
+  const application =
+    await source(
+      'lib/billing/payment-application.ts',
+    );
+
+  const checkoutStart =
+    application.indexOf(
+      'export async function applyVerifiedCheckoutPayment',
+    );
+
+  const failedStart =
+    application.indexOf(
+      'export async function markVerifiedCheckoutFailed',
+      checkoutStart,
+    );
+
+  const recurringStart =
+    application.indexOf(
+      'export async function applyVerifiedRecurringInvoice',
+      failedStart,
+    );
+
+  assert.ok(
+    checkoutStart >= 0 &&
+    failedStart >
+      checkoutStart &&
+    recurringStart >
+      failedStart,
+  );
+
+  const checkoutBlock =
+    application.slice(
+      checkoutStart,
+      failedStart,
+    );
+
+  const failedBlock =
+    application.slice(
+      failedStart,
+      recurringStart,
+    );
+
+  const recurringBlock =
+    application.slice(
+      recurringStart,
+    );
+
+  assert.match(
+    checkoutBlock,
+    /'cancelled'/,
+    'A provider-verified checkout that was already in flight may still be honored after cancellation.',
+  );
+
+  assert.match(
+    checkoutBlock,
+    /cancellationPreserved/,
+  );
+
+  assert.doesNotMatch(
+    checkoutBlock,
+    /cancelled_at\s*=\s*NULL/i,
+    'A stale verified checkout must not erase the customer cancellation.',
+  );
+
+  assert.match(
+    failedBlock,
+    /cancelled_at[\s\S]*IS NULL/s,
+    'A stale failed checkout must not move a cancelled subscription into dunning.',
+  );
+
+  assert.doesNotMatch(
+    recurringBlock,
+    /cancelled_at\s*=\s*NULL/i,
+    'A final recurring invoice must not restore renewal after cancellation.',
+  );
+
+  assert.match(
+    recurringBlock,
+    /cancellation remains scheduled/,
+  );
+});
+
+test('Category 22: pending cancellation can be kept and ended subscriptions can recover', async () => {
+  const [
+    service,
+    route,
+    billingUi,
+  ] =
+    await Promise.all([
+      source(
+        'lib/services/workspace-billing.ts',
+      ),
+      source(
+        'app/api/workspace/billing/route.ts',
+      ),
+      source(
+        'app/settings/components/BillingSettings.tsx',
+      ),
+    ]);
+
+  assert.match(
+    service,
+    /resumeWorkspaceSubscriptionCancellation/,
+  );
+
+  assert.match(
+    service,
+    /reactivateCancelledWorkspaceSubscription/,
+  );
+
+  assert.match(
+    service,
+    /SUBSCRIPTION_CANCELLATION_REVERSED/,
+  );
+
+  assert.match(
+    service,
+    /SUBSCRIPTION_REACTIVATION_REQUESTED/,
+  );
+
+  assert.match(
+    route,
+    /resume_subscription/,
+  );
+
+  assert.match(
+    route,
+    /reactivate_subscription/,
+  );
+
+  assert.match(
+    billingUi,
+    /Keep subscription/,
+  );
+
+  assert.match(
+    billingUi,
+    /Reactivate/,
+  );
+
+  assert.match(
+    billingUi,
+    /Cancel subscription/,
+  );
+});
+
+test('Category 22: billing worker and all central access guards respect cancellation boundaries', async () => {
+  const [
+    reconcile,
+    shell,
+    access,
+    account,
+    permissions,
+    pageGuard,
+    recoveryPage,
+  ] =
+    await Promise.all([
+      source(
+        'lib/billing/reconcile.ts',
+      ),
+      source(
+        'lib/auth/workspace-shell.ts',
+      ),
+      source(
+        'lib/billing/access.ts',
+      ),
+      source(
+        'lib/auth/account-context.ts',
+      ),
+      source(
+        'lib/auth/permission-context.ts',
+      ),
+      source(
+        'lib/auth/require-page-session.ts',
+      ),
+      source(
+        'app/subscription-required/page.tsx',
+      ),
+    ]);
+
+  assert.match(
+    reconcile,
+    /applyDueSubscriptionCancellations/,
+  );
+
+  assert.match(
+    reconcile,
+    /policy\.paid[\s\S]*!row\.cancelled_at[\s\S]*due_soon/s,
+    'Due-soon renewal notices must stop once cancellation is scheduled.',
+  );
+
+  assert.match(
+    reconcile,
+    /row\.cancelled_at[\s\S]*!policy\.paid/s,
+    'Recurring price and seat synchronization must stop once renewal cancellation is scheduled.',
+  );
+
+  assert.match(
+    shell,
+    /const workspaceLocked[\s\S]*!isSubscriptionEntitledNow/s,
+  );
+
+  assert.match(
+    access,
+    /s\.cancelled_at/,
+  );
+
+  assert.match(
+    account,
+    /s\.cancelled_at/,
+  );
+
+  assert.match(
+    permissions,
+    /subscriptionAccess\.suspended[\s\S]*!subscriptionAccess\.entitled/s,
+    'Cancelled subscriptions must lose business/API permissions even though they are not past-due suspended.',
+  );
+
+  assert.match(
+    pageGuard,
+    /access\.suspended[\s\S]*!access\.entitled/s,
+    'Bookmarked business pages must redirect after paid entitlement ends.',
+  );
+
+  assert.match(
+    recoveryPage,
+    /Paid subscription ended/,
+  );
+
+  assert.match(
+    recoveryPage,
+    /Data retained for recovery/,
+  );
+});
+
+test('Category 22: ended paid subscriptions can explicitly move to Free only through normal capacity checks', async () => {
+  const service =
+    await source(
+      'lib/services/workspace-billing.ts',
+    );
+
+  assert.match(
+    service,
+    /endedCancellationToFree/,
+  );
+
+  assert.match(
+    service,
+    /effectiveStatus ===[\s\S]*'cancelled'[\s\S]*targetPlan ===[\s\S]*'free'/s,
+  );
+
+  const capacityIndex =
+    service.indexOf(
+      'const capacity =',
+      service.indexOf(
+        'export async function changeWorkspaceSubscriptionPlan',
+      ),
+    );
+
+  const freeTransitionIndex =
+    service.indexOf(
+      'SUBSCRIPTION_MOVED_TO_FREE_AFTER_CANCELLATION',
+    );
+
+  assert.ok(
+    capacityIndex >= 0 &&
+    freeTransitionIndex >
+      capacityIndex,
+    'Free transition after cancellation must pass the same user/app/company capacity checks as any other downgrade.',
+  );
+
+  assert.match(
+    service,
+    /Workspace moved to Free/,
+  );
+});
+
+test('Category 22: Stripe environment documentation matches provider configuration', async () => {
+  const [
+    stripe,
+    env,
+    docs,
+  ] =
+    await Promise.all([
+      source(
+        'lib/billing/providers/stripe.ts',
+      ),
+      source(
+        'docs/platform-env.example',
+      ),
+      source(
+        'docs/subscription-billing.md',
+      ),
+    ]);
+
+  assert.match(
+    stripe,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY/,
+  );
+
+  assert.match(
+    stripe,
+    /STRIPE_PUBLISHABLE_KEY/,
+  );
+
+  assert.match(
+    env,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=/,
+  );
+
+  assert.match(
+    docs,
+    /NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=/,
   );
 });
 

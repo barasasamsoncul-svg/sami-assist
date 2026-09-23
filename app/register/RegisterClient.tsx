@@ -88,8 +88,20 @@ type CheckEmailResponse = {
    CONSTANTS
    ============================================================ */
 
-const REGISTRATION_STORAGE_KEY =
+const LEGACY_REGISTRATION_STORAGE_KEY =
   'sami_account_form';
+
+const WORKSPACE_CREATE_CONTINUATION_KEY =
+  'sami_workspace_create_draft';
+
+const APPS_STORAGE_KEY =
+  'sami_selected_apps';
+
+const PLAN_STORAGE_KEY =
+  'sami_selected_plan';
+
+const VERIFICATION_EMAIL_STORAGE_KEY =
+  'sami_verification_email';
 
 const GOOGLE_INTENT_STORAGE_KEY =
   'sami_google_intent';
@@ -431,6 +443,12 @@ function RegisterContent() {
   const [checking, setChecking] =
     useState(false);
 
+  const [
+    draftResetComplete,
+    setDraftResetComplete,
+  ] =
+    useState(false);
+
   const [googleLoading, setGoogleLoading] =
     useState(false);
 
@@ -454,67 +472,58 @@ function RegisterContent() {
     );
 
   /* ==========================================================
-     RESTORE REGISTRATION
+     LEGACY BROWSER-DRAFT CLEANUP
+
+     Older SaMi builds stored the complete account form,
+     including the password, in sessionStorage. Sensitive
+     identity state is now server-authoritative, so remove that
+     legacy browser copy immediately.
      ========================================================== */
 
   useEffect(() => {
+    /*
+     * /register starts a NEW account/workspace onboarding
+     * attempt. Invalidate any previous secure draft so a stale
+     * identity can never flow into this registration.
+     */
+    void fetch(
+      '/api/auth/registration-draft',
+      {
+        method:
+          'DELETE',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+      },
+    ).catch(
+      () =>
+        undefined,
+    ).finally(
+      () =>
+        setDraftResetComplete(
+          true
+        ),
+    );
+
     try {
-      const stored =
-        sessionStorage.getItem(
-          REGISTRATION_STORAGE_KEY
-        );
+      sessionStorage.removeItem(
+        LEGACY_REGISTRATION_STORAGE_KEY
+      );
 
-      if (!stored) {
-        return;
-      }
+      sessionStorage.removeItem(
+        APPS_STORAGE_KEY
+      );
 
-      const parsed =
-        JSON.parse(stored) as Partial<
-          FormState
-        >;
+      sessionStorage.removeItem(
+        PLAN_STORAGE_KEY
+      );
 
-      setForm((current) => ({
-        ...current,
-
-        firstName:
-          typeof parsed.firstName ===
-          'string'
-            ? parsed.firstName
-            : current.firstName,
-
-        lastName:
-          typeof parsed.lastName ===
-          'string'
-            ? parsed.lastName
-            : current.lastName,
-
-        email:
-          typeof parsed.email ===
-          'string'
-            ? parsed.email
-            : current.email,
-
-        phone:
-          typeof parsed.phone ===
-          'string'
-            ? parsed.phone
-            : current.phone,
-
-        businessName:
-          typeof parsed.businessName ===
-          'string'
-            ? parsed.businessName
-            : current.businessName,
-
-        password:
-          typeof parsed.password ===
-          'string'
-            ? parsed.password
-            : current.password,
-      }));
+      sessionStorage.removeItem(
+        VERIFICATION_EMAIL_STORAGE_KEY
+      );
     } catch {
-      // Invalid stored registration data should
-      // never prevent account creation.
+      // Registration remains available when browser storage is unavailable.
     }
   }, []);
 
@@ -764,7 +773,8 @@ function RegisterContent() {
 
     if (
       checking ||
-      googleLoading
+      googleLoading ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -793,135 +803,250 @@ function RegisterContent() {
     try {
       const response =
         await fetch(
-          `/api/auth/check-email?email=${encodeURIComponent(
-            email
-          )}`,
+          '/api/auth/registration-draft',
           {
-            method: 'GET',
+            method:
+              'POST',
+
             headers: {
+              'Content-Type':
+                'application/json',
               Accept:
                 'application/json',
             },
-            cache: 'no-store',
+
+            cache:
+              'no-store',
+
             credentials:
               'same-origin',
+
+            body:
+              JSON.stringify({
+                source:
+                  'email',
+
+                firstName:
+                  form.firstName
+                    .trim(),
+
+                lastName:
+                  form.lastName
+                    .trim(),
+
+                email,
+
+                phone:
+                  normalizePhone(
+                    form.phone
+                  ),
+
+                businessName:
+                  form.businessName
+                    .trim(),
+
+                password:
+                  form.password,
+              }),
           }
         );
 
-      let data: CheckEmailResponse;
+      let data:
+        CheckEmailResponse & {
+          next?:
+            string;
+        };
 
       try {
         data =
-          (await response.json()) as CheckEmailResponse;
+          (await response.json()) as
+            CheckEmailResponse & {
+              next?:
+                string;
+            };
       } catch {
         data = {
-          success: false,
+          success:
+            false,
+
           error:
-            'SaMi could not process the email verification response.',
+            'SaMi could not process the secure registration response.',
         };
       }
 
-      if (!response.ok) {
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        if (
+          data.code ===
+            'ACCOUNT_SIGN_IN_REQUIRED'
+        ) {
+          try {
+            /*
+             * Safe continuation only.
+             *
+             * No password, account token or authorization state
+             * is stored in the browser.
+             */
+            sessionStorage.setItem(
+              WORKSPACE_CREATE_CONTINUATION_KEY,
+              JSON.stringify({
+                email,
+                businessName:
+                  form.businessName
+                    .trim(),
+              })
+            );
+          } catch {
+            // Sign-in still works without browser continuation state.
+          }
+
+          setOverlay({
+            type:
+              'info',
+
+            title:
+              'Use your existing SaMi account',
+
+            message:
+              data.error ||
+              data.message ||
+              'This email already belongs to a SaMi account. Sign in once, then create the new workspace under that same account.',
+
+            primaryAction: {
+              label:
+                'Sign in & create workspace',
+
+              href:
+                `/login?email=${encodeURIComponent(
+                  email
+                )}&next=${encodeURIComponent(
+                  '/workspaces/new'
+                )}`,
+            },
+
+            secondaryAction: {
+              label:
+                'Use another email',
+
+              onClick: () => {
+                setOverlay(
+                  null
+                );
+
+                setForm(
+                  current => ({
+                    ...current,
+                    email:
+                      '',
+                    password:
+                      '',
+                  })
+                );
+              },
+            },
+          });
+
+          return;
+        }
+
+        if (
+          data.code ===
+            'EMAIL_VERIFICATION_REQUIRED'
+        ) {
+          setOverlay({
+            type:
+              'warning',
+
+            title:
+              'Verify your existing account',
+
+            message:
+              data.error ||
+              'This SaMi account still needs email verification before it can create or join another workspace.',
+
+            primaryAction: {
+              label:
+                'Verify email',
+
+              href:
+                `/verify-email?email=${encodeURIComponent(
+                  email
+                )}`,
+            },
+
+            secondaryAction: {
+              label:
+                'Sign in',
+
+              href:
+                `/login?email=${encodeURIComponent(
+                  email
+                )}`,
+            },
+          });
+
+          return;
+        }
+
         throw new Error(
           data.error ||
-            data.message ||
-            'SaMi could not verify this email address.'
+          data.message ||
+          'SaMi could not prepare this registration securely.'
         );
       }
 
-      if (data.exists) {
-        setOverlay({
-          type: 'warning',
-          title:
-            'Account already exists',
-          message:
-            'This email is already registered with SaMi. Sign in instead.',
-          primaryAction: {
-            label: 'Sign in',
-            href: `/login?email=${encodeURIComponent(
-              email
-            )}`,
-          },
-          secondaryAction: {
-            label:
-              'Use another email',
-            onClick: () => {
-              setOverlay(null);
+      /*
+       * The encrypted HttpOnly registration draft now owns
+       * identity and credential state. Remove any legacy account
+       * form and start app selection with fresh non-sensitive
+       * onboarding choices.
+       */
+      try {
+        sessionStorage.removeItem(
+          LEGACY_REGISTRATION_STORAGE_KEY
+        );
 
-              setForm(
-                (current) => ({
-                  ...current,
-                  email: '',
-                })
-              );
+        sessionStorage.removeItem(
+          WORKSPACE_CREATE_CONTINUATION_KEY
+        );
 
-              setTouched(
-                (current) => ({
-                  ...current,
-                  email: false,
-                })
-              );
+        sessionStorage.removeItem(
+          APPS_STORAGE_KEY
+        );
 
-              setErrors(
-                (current) => ({
-                  ...current,
-                  email: undefined,
-                })
-              );
-            },
-          },
-        });
+        sessionStorage.removeItem(
+          PLAN_STORAGE_KEY
+        );
 
-        return;
+        sessionStorage.removeItem(
+          VERIFICATION_EMAIL_STORAGE_KEY
+        );
+      } catch {
+        // The server draft remains authoritative.
       }
 
-      const registrationData = {
-        firstName:
-          form.firstName.trim(),
-
-        lastName:
-          form.lastName.trim(),
-
-        email,
-
-        phone:
-          normalizePhone(
-            form.phone
-          ),
-
-        businessName:
-          form.businessName.trim(),
-
-        password:
-          form.password,
-
-        authProvider:
-          'email',
-
-        googleAuth:
-          false,
-      };
-
-      sessionStorage.setItem(
-        REGISTRATION_STORAGE_KEY,
-        JSON.stringify(
-          registrationData
-        )
+      router.push(
+        '/select-apps'
       );
-
-      router.push('/select-apps');
     } catch (error) {
       setOverlay({
-        type: 'error',
+        type:
+          'error',
+
         title:
           'Could not continue',
+
         message:
           error instanceof Error
             ? error.message
-            : 'SaMi could not verify your email right now. Please try again.',
+            : 'SaMi could not prepare your secure registration. Please try again.',
       });
     } finally {
-      setChecking(false);
+      setChecking(
+        false
+      );
     }
   }
 
@@ -932,7 +1057,8 @@ function RegisterContent() {
   function handleGoogle() {
     if (
       checking ||
-      googleLoading
+      googleLoading ||
+      !draftResetComplete
     ) {
       return;
     }
@@ -1176,7 +1302,8 @@ function RegisterContent() {
                   onClick={handleGoogle}
                   disabled={
                     checking ||
-                    googleLoading
+                    googleLoading ||
+                    !draftResetComplete
                   }
                   aria-busy={
                     googleLoading

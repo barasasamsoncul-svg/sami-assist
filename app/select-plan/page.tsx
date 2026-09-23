@@ -40,9 +40,6 @@ import { SAMI_APPS } from '@/lib/sami-apps';
    CONSTANTS
    ============================================================ */
 
-const ACCOUNT_STORAGE_KEY =
-  'sami_account_form';
-
 const APPS_STORAGE_KEY =
   'sami_selected_apps';
 
@@ -125,13 +122,23 @@ type RegisterResponse = {
 
   error?: string;
 
-  email?: string;
-
   requiresPayment?: boolean;
 
-  verificationRequired?: boolean;
-
   next?: string;
+
+  user?: {
+    email?: string;
+  };
+
+  verification?: {
+    required?: boolean;
+    email?: string;
+    emailSent?: boolean;
+  };
+
+  checkout?: {
+    redirectUrl?: string;
+  } | null;
 
   pesapalOrder?: {
     redirectUrl?: string;
@@ -183,7 +190,7 @@ const PLANS: PlanDefinition[] = [
 
     name: 'Standard',
 
-    price: 'KES 2,000',
+    price: 'KES 2,500',
 
     billingLabel:
       'per user / month',
@@ -216,7 +223,7 @@ const PLANS: PlanDefinition[] = [
 
     name: 'Custom',
 
-    price: 'KES 3,340',
+    price: 'KES 4,500',
 
     billingLabel:
       'per user / month',
@@ -302,46 +309,6 @@ function readSelectedApps(): string[] {
     ];
   } catch {
     return [];
-  }
-}
-
-function readAccountForm():
-  | Record<string, unknown>
-  | null {
-  if (
-    typeof window === 'undefined'
-  ) {
-    return null;
-  }
-
-  try {
-    const raw =
-      sessionStorage.getItem(
-        ACCOUNT_STORAGE_KEY
-      );
-
-    if (!raw) {
-      return null;
-    }
-
-    const parsed: unknown =
-      JSON.parse(raw);
-
-    if (
-      !parsed ||
-      typeof parsed !==
-        'object' ||
-      Array.isArray(parsed)
-    ) {
-      return null;
-    }
-
-    return parsed as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return null;
   }
 }
 
@@ -448,11 +415,96 @@ export default function SelectPlanPage() {
     null
   );
 
+  const [
+    draftReady,
+    setDraftReady,
+  ] = useState(false);
+
   /* ==========================================================
      RESTORE ONBOARDING
      ========================================================== */
 
   useEffect(() => {
+    let active =
+      true;
+
+    async function validateDraft() {
+      try {
+        const response =
+          await fetch(
+            '/api/auth/registration-draft',
+            {
+              method:
+                'GET',
+              credentials:
+                'same-origin',
+              cache:
+                'no-store',
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            },
+          );
+
+        let data:
+          {
+            success?:
+              boolean;
+            next?:
+              string;
+          } =
+          {};
+
+        try {
+          data =
+            await response.json();
+        } catch {
+          data =
+            {};
+        }
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            active
+          ) {
+            router.replace(
+              data.next ||
+              '/register',
+            );
+          }
+
+          return;
+        }
+
+        if (
+          active
+        ) {
+          setDraftReady(
+            true,
+          );
+        }
+      } catch {
+        if (
+          active
+        ) {
+          setOverlay({
+            type:
+              'error',
+            title:
+              'Workspace setup unavailable',
+            message:
+              'SaMi could not verify your secure workspace setup. Check your connection and try again.',
+          });
+        }
+      }
+    }
+
+    void validateDraft();
+
     const apps =
       readSelectedApps();
 
@@ -466,34 +518,41 @@ export default function SelectPlanPage() {
      * Multiple apps therefore default
      * to Standard.
      */
-    if (apps.length > 1) {
+    if (
+      apps.length >
+        1
+    ) {
       if (
-        savedPlan === 'custom'
+        savedPlan ===
+          'custom'
       ) {
         setSelectedPlan(
           'custom'
         );
+      } else {
+        setSelectedPlan(
+          'standard'
+        );
 
-        return;
+        savePlan(
+          'standard'
+        );
       }
-
-      setSelectedPlan(
-        'standard'
-      );
-
-      savePlan(
-        'standard'
-      );
-
-      return;
-    }
-
-    if (savedPlan) {
+    } else if (
+      savedPlan
+    ) {
       setSelectedPlan(
         savedPlan
       );
     }
-  }, []);
+
+    return () => {
+      active =
+        false;
+    };
+  }, [
+    router,
+  ]);
 
   /* ==========================================================
      DERIVED
@@ -625,98 +684,17 @@ export default function SelectPlanPage() {
 
   const handleCreateAccount =
     useCallback(async () => {
-      if (loading) {
+      if (
+        loading ||
+        !draftReady
+      ) {
         return;
       }
 
       setOverlay(null);
 
-      const account =
-        readAccountForm();
-
       const apps =
         readSelectedApps();
-
-      /* ------------------------------------------------------
-         Missing account
-         ------------------------------------------------------ */
-
-      if (!account) {
-        setOverlay({
-          type: 'error',
-
-          title:
-            'Registration information missing',
-
-          message:
-            'Your account information is no longer available. Return to registration and continue again.',
-
-          primaryAction: {
-            label:
-              'Return to registration',
-
-            href: '/register',
-          },
-        });
-
-        return;
-      }
-
-      /* ------------------------------------------------------
-         Normalize registration fields
-         ------------------------------------------------------ */
-
-      const firstName =
-        typeof account.firstName ===
-          'string'
-          ? account.firstName.trim()
-          : '';
-
-      const lastName =
-        typeof account.lastName ===
-          'string'
-          ? account.lastName.trim()
-          : '';
-
-      const email =
-        typeof account.email ===
-          'string'
-          ? account.email
-              .trim()
-              .toLowerCase()
-          : '';
-
-      const businessName =
-        typeof account.businessName ===
-          'string'
-          ? account.businessName.trim()
-          : '';
-
-      if (
-        !firstName ||
-        !lastName ||
-        !email ||
-        !businessName
-      ) {
-        setOverlay({
-          type: 'error',
-
-          title:
-            'Account details incomplete',
-
-          message:
-            'Some required account information is missing. Return to Step 1 and review your details.',
-
-          primaryAction: {
-            label:
-              'Review account',
-
-            href: '/register',
-          },
-        });
-
-        return;
-      }
 
       /* ------------------------------------------------------
          Apps
@@ -783,16 +761,6 @@ export default function SelectPlanPage() {
          * - payment required
          */
         const payload = {
-          ...account,
-
-          firstName,
-
-          lastName,
-
-          email,
-
-          businessName,
-
           plan:
             finalPlan,
 
@@ -848,36 +816,62 @@ export default function SelectPlanPage() {
 
           if (
             code ===
-              'EMAIL_ALREADY_EXISTS' ||
+              'REGISTRATION_DRAFT_REQUIRED' ||
             code ===
-              'ACCOUNT_EXISTS'
+              'REGISTRATION_DRAFT_INVALID' ||
+            code ===
+              'GOOGLE_SIGNUP_EXPIRED'
           ) {
             setOverlay({
-              type: 'warning',
+              type:
+                'warning',
 
               title:
-                'Account already exists',
+                'Workspace setup expired',
 
               message:
                 data?.message ||
                 data?.error ||
-                'A SaMi account already exists for this email.',
+                'Your secure workspace setup expired. Start again to protect your account identity.',
+
+              primaryAction: {
+                label:
+                  'Start again',
+
+                href:
+                  '/register',
+              },
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'AUTHENTICATION_REQUIRED' ||
+            code ===
+              'ACCOUNT_SIGN_IN_REQUIRED'
+          ) {
+            setOverlay({
+              type:
+                'info',
+
+              title:
+                'Sign in to continue',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'Sign in with the SaMi account that owns this workspace setup.',
 
               primaryAction: {
                 label:
                   'Sign in',
 
                 href:
-                  `/login?email=${encodeURIComponent(
-                    email
+                  `/login?next=${encodeURIComponent(
+                    '/workspaces/new'
                   )}`,
-              },
-
-              secondaryAction: {
-                label:
-                  'Change email',
-
-                href: '/register',
               },
             });
 
@@ -898,6 +892,77 @@ export default function SelectPlanPage() {
                 data?.message ||
                 data?.error ||
                 'This SaMi plan is not currently available.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'REGISTRATION_IN_PROGRESS'
+          ) {
+            setOverlay({
+              type:
+                'info',
+
+              title:
+                'Workspace creation is already running',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi is already processing this workspace setup. Wait a few seconds, then press Create workspace again. The same setup cannot create a duplicate workspace.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'REGISTRATION_RECOVERY_REQUIRED'
+          ) {
+            setOverlay({
+              type:
+                'error',
+
+              title:
+                'Workspace setup needs recovery',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi stopped automatic retry because part of this workspace setup may already exist. This protects you from duplicate workspaces.',
+            });
+
+            return;
+          }
+
+          if (
+            code ===
+              'REGISTRATION_RESPONSE_RETRY'
+          ) {
+            setOverlay({
+              type:
+                'info',
+
+              title:
+                'Workspace created — reopen safely',
+
+              message:
+                data?.message ||
+                data?.error ||
+                'SaMi already created this workspace. Retry the same setup to reopen it; the idempotency guard prevents a duplicate workspace.',
+
+              primaryAction: {
+                label:
+                  'Try again safely',
+
+                onClick: () => {
+                  setOverlay(
+                    null
+                  );
+                },
+              },
             });
 
             return;
@@ -947,6 +1012,8 @@ export default function SelectPlanPage() {
           data?.requiresPayment
         ) {
           const redirectUrl =
+            data.checkout
+              ?.redirectUrl ||
             data.pesapalOrder
               ?.redirectUrl;
 
@@ -958,17 +1025,28 @@ export default function SelectPlanPage() {
                 'Payment could not start',
 
               message:
-                'SaMi reached the payment step but did not receive a secure PesaPal payment link.',
+                'SaMi reached the payment step but did not receive a secure billing-provider payment link.',
             });
 
             return;
           }
 
+          const paymentEmail =
+            data.verification
+              ?.email ||
+            data.user
+              ?.email ||
+            '';
+
           try {
-            sessionStorage.setItem(
-              VERIFICATION_EMAIL_STORAGE_KEY,
-              email
-            );
+            if (
+              paymentEmail
+            ) {
+              sessionStorage.setItem(
+                VERIFICATION_EMAIL_STORAGE_KEY,
+                paymentEmail
+              );
+            }
           } catch {
             // Server state remains authoritative.
           }
@@ -981,11 +1059,11 @@ export default function SelectPlanPage() {
 
             message:
               data.message ||
-              `Your ${currentPlan.name} subscription is billed per user. Continue to PesaPal to complete setup.`,
+              `Your ${currentPlan.name} subscription is billed per user. Continue to the secure billing provider to complete setup.`,
 
             primaryAction: {
               label:
-                'Continue to PesaPal',
+                'Continue to payment',
 
               onClick: () => {
                 window.location.assign(
@@ -1011,16 +1089,32 @@ export default function SelectPlanPage() {
            ---------------------------------------------------- */
 
         if (data?.success) {
-          try {
-            sessionStorage.setItem(
-              VERIFICATION_EMAIL_STORAGE_KEY,
-              data.email ||
-                email
-            );
+          const responseEmail =
+            data.verification
+              ?.email ||
+            data.user
+              ?.email ||
+            '';
 
-            sessionStorage.removeItem(
-              ACCOUNT_STORAGE_KEY
-            );
+          const verificationRequired =
+            data.verification
+              ?.required ===
+            true;
+
+          try {
+            if (
+              verificationRequired &&
+              responseEmail
+            ) {
+              sessionStorage.setItem(
+                VERIFICATION_EMAIL_STORAGE_KEY,
+                responseEmail
+              );
+            } else {
+              sessionStorage.removeItem(
+                VERIFICATION_EMAIL_STORAGE_KEY
+              );
+            }
 
             sessionStorage.removeItem(
               APPS_STORAGE_KEY
@@ -1029,13 +1123,16 @@ export default function SelectPlanPage() {
             sessionStorage.removeItem(
               PLAN_STORAGE_KEY
             );
+
+            sessionStorage.removeItem(
+              'sami_account_form'
+            );
           } catch {
-            // Verification can still continue.
+            // Server state remains authoritative.
           }
 
           if (
-            data.verificationRequired !==
-            false
+            verificationRequired
           ) {
             setOverlay({
               type: 'success',
@@ -1045,7 +1142,7 @@ export default function SelectPlanPage() {
 
               message:
                 data.message ||
-                `Your SaMi workspace has been created. Check ${email} to verify your email address.`,
+                `Your SaMi workspace has been created. Check ${responseEmail || 'your email'} to verify your email address.`,
 
               primaryAction: {
                 label:
@@ -1119,6 +1216,7 @@ export default function SelectPlanPage() {
       }
     }, [
       loading,
+      draftReady,
       effectivePlan,
       currentPlan.name,
       router,
@@ -1127,6 +1225,22 @@ export default function SelectPlanPage() {
   /* ==========================================================
      RENDER
      ========================================================== */
+
+  if (
+    !draftReady &&
+    !overlay
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] text-slate-950 dark:bg-[#070a10] dark:text-white">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+          <p className="mt-3 text-xs font-bold text-slate-500 dark:text-slate-400">
+            Verifying workspace setup…
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <>

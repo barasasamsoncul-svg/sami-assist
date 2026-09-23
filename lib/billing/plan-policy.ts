@@ -440,6 +440,8 @@ export function getEffectiveSubscriptionStatus(
       Date | string | null;
     currentPeriodEnd?:
       Date | string | null;
+    cancelledAt?:
+      Date | string | null;
     now?:
       Date;
   },
@@ -467,6 +469,30 @@ export function getEffectiveSubscriptionStatus(
   const now =
     input.now ||
     new Date();
+
+  const cancellationBoundary =
+    (
+      normalized ===
+        'trial' ||
+      normalized ===
+        'trialing'
+    )
+      ? input.trialEndsAt
+      : normalized ===
+          'active'
+        ? input.currentPeriodEnd
+        : null;
+
+  if (
+    input.cancelledAt &&
+    cancellationBoundary &&
+    dateReached(
+      cancellationBoundary,
+      now,
+    )
+  ) {
+    return 'cancelled';
+  }
 
   if (
     (
