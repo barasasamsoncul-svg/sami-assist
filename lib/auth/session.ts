@@ -3,6 +3,11 @@ import {
 } from '@/lib/db/control';
 
 import {
+  getRuntimePlatformSettings,
+  type PlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   touchMembershipActivity,
 } from '@/lib/services/membership';
 
@@ -119,12 +124,6 @@ export const SESSION_COOKIE_NAME =
     : 'sami_session';
 
 
-const REMEMBERED_SESSION_DAYS =
-  30;
-
-
-const NORMAL_SESSION_DAYS =
-  1;
 
 
 const ACTIVITY_REFRESH_MINUTES =
@@ -135,10 +134,6 @@ const SESSION_TOKEN_BYTES =
   64;
 
 
-const ALLOW_MULTIPLE_ACTIVE_SESSIONS =
-  process.env
-    .SAMI_ALLOW_MULTIPLE_ACTIVE_SESSIONS ===
-  'true';
 
 
 /* ============================================================
@@ -560,35 +555,27 @@ export function getSessionRequestMetadata(
    EXPIRATION
    ============================================================ */
 
-function getSessionLifetimeDays(
-  rememberMe:
-    boolean,
-): number {
-  return rememberMe
-    ? REMEMBERED_SESSION_DAYS
-    : NORMAL_SESSION_DAYS;
-}
-
-
 function calculateSessionExpiration(
   rememberMe:
     boolean,
+  settings:
+    PlatformSettings,
 ): Date {
-  const days =
-    getSessionLifetimeDays(
-      rememberMe,
-    );
-
-
-  return new Date(
-    Date.now() +
-      (
-        days *
+  const durationMs =
+    rememberMe
+      ? settings.security.rememberMeDays *
         24 *
         60 *
         60 *
         1000
-      ),
+      : settings.security.normalSessionHours *
+        60 *
+        60 *
+        1000;
+
+  return new Date(
+    Date.now() +
+      durationMs,
   );
 }
 
@@ -914,11 +901,15 @@ export async function createSession(
     options.rememberMe ===
     true;
 
+  const platformSettings =
+    await getRuntimePlatformSettings();
 
   const revokeExistingSessions =
     options
       .revokeExistingSessions ??
-    !ALLOW_MULTIPLE_ACTIVE_SESSIONS;
+    !platformSettings
+      .security
+      .allowMultipleActiveSessions;
 
 
   const currentTenantId =
@@ -941,6 +932,7 @@ export async function createSession(
   const expiresAt =
     calculateSessionExpiration(
       rememberMe,
+      platformSettings,
     );
 
 
