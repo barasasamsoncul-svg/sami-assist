@@ -41,6 +41,15 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 const LEGACY_ACCOUNT_STORAGE_KEY =
   'sami_account_form';
 
+const APPS_STORAGE_KEY =
+  'sami_selected_apps';
+
+const PLAN_STORAGE_KEY =
+  'sami_selected_plan';
+
+const VERIFICATION_EMAIL_STORAGE_KEY =
+  'sami_verification_email';
+
 const NEXT_ROUTE =
   '/select-apps';
 
@@ -222,6 +231,41 @@ function GoogleCompleteContent() {
      ========================================================== */
 
   useEffect(() => {
+    void fetch(
+      '/api/auth/registration-draft',
+      {
+        method:
+          'DELETE',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+      },
+    ).catch(
+      () =>
+        undefined,
+    );
+
+    try {
+      sessionStorage.removeItem(
+        LEGACY_ACCOUNT_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        APPS_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        PLAN_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        VERIFICATION_EMAIL_STORAGE_KEY
+      );
+    } catch {
+      // Google server state remains authoritative.
+    }
+
     const email =
       normalizeEmail(
         safeText(
@@ -587,6 +631,18 @@ function GoogleCompleteContent() {
       try {
         sessionStorage.removeItem(
           LEGACY_ACCOUNT_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          APPS_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          PLAN_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          VERIFICATION_EMAIL_STORAGE_KEY
         );
       } catch {
         // Server draft remains authoritative.
