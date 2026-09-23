@@ -4,6 +4,12 @@ import AdminResourcePage, {
   type AdminTableColumn,
 } from '@/app/admin/components/AdminResourcePage';
 
+import WorkspaceControlActions from '@/app/admin/components/WorkspaceControlActions';
+
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
 import {
   listAdminTenants,
 } from '@/lib/admin/oversight';
@@ -34,9 +40,16 @@ export default async function AdminBusinessesPage({
   searchParams:
     Promise<SearchParams>;
 }) {
-  await requireAdminCapability(
-    'tenants.read',
-  );
+  const session =
+    await requireAdminCapability(
+      'tenants.read',
+    );
+
+  const canManage =
+    hasAdminCapability(
+      session.role,
+      'tenants.manage',
+    );
 
   const params =
     await searchParams;
@@ -78,11 +91,39 @@ export default async function AdminBusinessesPage({
           'Status',
         render:
           row => (
-            <AdminStatusPill
-              value={
-                row.status
-              }
-            />
+            <div className="min-w-[140px] space-y-1.5">
+              <AdminStatusPill
+                value={
+                  row.status
+                }
+              />
+
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="text-[9px] font-black uppercase tracking-wide text-zinc-400">
+                  DB
+                </span>
+
+                <AdminStatusPill
+                  value={
+                    row.database
+                      .lifecycleStatus
+                  }
+                />
+
+                <AdminStatusPill
+                  value={
+                    row.database
+                      .healthStatus
+                  }
+                />
+              </div>
+
+              {row.database.failureCode && (
+                <p className="font-mono text-[9px] text-red-600 dark:text-red-400">
+                  {row.database.failureCode}
+                </p>
+              )}
+            </div>
           ),
       },
       {
@@ -142,6 +183,22 @@ export default async function AdminBusinessesPage({
       },
       {
         key:
+          'health-check',
+        label:
+          'DB checked',
+        render:
+          row => (
+            <AdminDate
+              value={
+                row.database
+                  .lastHealthCheckAt
+              }
+            />
+          ),
+      },
+
+      {
+        key:
           'created',
         label:
           'Created',
@@ -154,6 +211,32 @@ export default async function AdminBusinessesPage({
             />
           ),
       },
+
+      ...(canManage
+        ? [
+            {
+              key:
+                'actions',
+              label:
+                'Operations',
+              render:
+                (row: Row) => (
+                  <WorkspaceControlActions
+                    tenantId={
+                      row.id
+                    }
+                    workspaceStatus={
+                      row.status
+                    }
+                    databaseHealthStatus={
+                      row.database
+                        .healthStatus
+                    }
+                  />
+                ),
+            } satisfies AdminTableColumn<Row>,
+          ]
+        : []),
     ];
 
   return (
