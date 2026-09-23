@@ -194,6 +194,7 @@ test('Invoicing server authority uses trusted workspace/company context and neve
   const [
     context,
     commands,
+    delivery,
     route,
   ] =
     await Promise.all([
@@ -202,6 +203,9 @@ test('Invoicing server authority uses trusted workspace/company context and neve
       ),
       source(
         'lib/apps/invoicing/commands.ts',
+      ),
+      source(
+        'lib/apps/invoicing/delivery.ts',
       ),
       source(
         'app/api/apps/invoicing/route.ts',
@@ -254,8 +258,13 @@ test('Invoicing server authority uses trusted workspace/company context and neve
   );
 
   assert.match(
-    commands,
+    delivery,
     /public_token_hash/,
+  );
+
+  assert.match(
+    delivery,
+    /markViewed:\s*false/,
   );
 
   assert.doesNotMatch(
