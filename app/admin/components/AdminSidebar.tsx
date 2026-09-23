@@ -173,6 +173,13 @@ const navigation: readonly NavigationItem[] = [
       },
 
       {
+        label: 'Services & Costs',
+        href: '/admin/operations/services',
+        icon: CreditCard,
+        capability: 'providers.read',
+      },
+
+      {
         label: 'Vercel Runtime',
         href: '/admin/operations/vercel',
         icon: CloudCog,
