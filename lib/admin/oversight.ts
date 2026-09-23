@@ -435,6 +435,16 @@ export async function listAdminUsers(
                          ''
                        )
                          ILIKE $1
+                    OR COALESCE(
+                         member_user.first_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.last_name,
+                         ''
+                       )
+                         ILIKE $1
                   )
               )
             )
@@ -770,6 +780,16 @@ export async function listAdminUsers(
                       ILIKE $1
                     OR COALESCE(
                          member_user.full_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.first_name,
+                         ''
+                       )
+                         ILIKE $1
+                    OR COALESCE(
+                         member_user.last_name,
                          ''
                        )
                          ILIKE $1
