@@ -64,22 +64,70 @@ export async function getControlMigrationStatus() {
           ),
       );
 
-  const result =
-    await queryControl(
-      `
-        SELECT
-          migration_key,
-          checksum,
-          applied_at
-        FROM control_schema_migrations
-        ORDER BY
-          migration_key ASC
-      `,
-    );
+  let appliedRows:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    > =
+    [];
+
+  try {
+    const result =
+      await queryControl(
+        `
+          SELECT
+            migration_key,
+            checksum,
+            applied_at
+          FROM control_schema_migrations
+          ORDER BY
+            migration_key ASC
+        `,
+      );
+
+    appliedRows =
+      result.rows;
+  } catch (
+    error
+  ) {
+    const code =
+      error &&
+      typeof error ===
+        'object' &&
+      'code' in
+        error
+        ? String(
+            (
+              error as {
+                code?:
+                  unknown;
+              }
+            ).code ||
+            '',
+          )
+        : '';
+
+    if (
+      code !==
+        '42P01'
+    ) {
+      throw error;
+    }
+
+    /*
+     * A brand-new Control DB may not have the migration ledger yet.
+     * Platform Health must still render and show every discovered
+     * migration as pending instead of crashing.
+     */
+    appliedRows =
+      [];
+  }
 
   const applied =
     new Map(
-      result.rows.map(
+      appliedRows.map(
         row => [
           String(
             row.migration_key,
