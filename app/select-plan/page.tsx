@@ -415,11 +415,96 @@ export default function SelectPlanPage() {
     null
   );
 
+  const [
+    draftReady,
+    setDraftReady,
+  ] = useState(false);
+
   /* ==========================================================
      RESTORE ONBOARDING
      ========================================================== */
 
   useEffect(() => {
+    let active =
+      true;
+
+    async function validateDraft() {
+      try {
+        const response =
+          await fetch(
+            '/api/auth/registration-draft',
+            {
+              method:
+                'GET',
+              credentials:
+                'same-origin',
+              cache:
+                'no-store',
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            },
+          );
+
+        let data:
+          {
+            success?:
+              boolean;
+            next?:
+              string;
+          } =
+          {};
+
+        try {
+          data =
+            await response.json();
+        } catch {
+          data =
+            {};
+        }
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            active
+          ) {
+            router.replace(
+              data.next ||
+              '/register',
+            );
+          }
+
+          return;
+        }
+
+        if (
+          active
+        ) {
+          setDraftReady(
+            true,
+          );
+        }
+      } catch {
+        if (
+          active
+        ) {
+          setOverlay({
+            type:
+              'error',
+            title:
+              'Workspace setup unavailable',
+            message:
+              'SaMi could not verify your secure workspace setup. Check your connection and try again.',
+          });
+        }
+      }
+    }
+
+    void validateDraft();
+
     const apps =
       readSelectedApps();
 
@@ -460,7 +545,14 @@ export default function SelectPlanPage() {
         savedPlan
       );
     }
-  }, []);
+
+    return () => {
+      active =
+        false;
+    };
+  }, [
+    router,
+  ]);
 
   /* ==========================================================
      DERIVED
@@ -592,7 +684,10 @@ export default function SelectPlanPage() {
 
   const handleCreateAccount =
     useCallback(async () => {
-      if (loading) {
+      if (
+        loading ||
+        !draftReady
+      ) {
         return;
       }
 
@@ -1050,6 +1145,7 @@ export default function SelectPlanPage() {
       }
     }, [
       loading,
+      draftReady,
       effectivePlan,
       currentPlan.name,
       router,
@@ -1058,6 +1154,22 @@ export default function SelectPlanPage() {
   /* ==========================================================
      RENDER
      ========================================================== */
+
+  if (
+    !draftReady &&
+    !overlay
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] text-slate-950 dark:bg-[#070a10] dark:text-white">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+          <p className="mt-3 text-xs font-bold text-slate-500 dark:text-slate-400">
+            Verifying workspace setup…
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <>
