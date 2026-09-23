@@ -1241,8 +1241,10 @@ async function processRemindersForTenant(
               )
               .sort(
                 (
-                  left,
-                  right,
+                  left:
+                    number,
+                  right:
+                    number,
                 ) =>
                   right -
                   left,
