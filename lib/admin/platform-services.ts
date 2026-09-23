@@ -421,11 +421,40 @@ function evaluateServiceStatus(
   patch:
     SyncPatch,
 ) {
+  const derivedStatuses =
+    new Set<ServiceStatus>([
+      'renewal_due',
+      'quota_warning',
+      'upgrade_recommended',
+      'expired',
+    ]);
+
   let status:
     ServiceStatus =
     patch.status ||
-    row.status ||
-    'unknown';
+    (
+      derivedStatuses.has(
+        row.status,
+      )
+        ? 'active'
+        : row.status ||
+          'unknown'
+    );
+
+  if (
+    status ===
+      'unknown' &&
+    (
+      row.plan_name ||
+      row.renewal_at ||
+      row.expires_at ||
+      row.amount !==
+        null
+    )
+  ) {
+    status =
+      'active';
+  }
 
   const now =
     Date.now();
@@ -1443,6 +1472,19 @@ async function syncCloudflareR2(
       ?.trim() ||
     '';
 
+  const endpoint =
+    process.env
+      .R2_ENDPOINT
+      ?.trim() ||
+    '';
+
+  const endpointAccountId =
+    endpoint.match(
+      /^https?:\\/\\/([a-z0-9]+)\\.r2\\.cloudflarestorage\\.com/i,
+    )
+      ?.[1] ||
+    '';
+
   const accountId =
     process.env
       .R2_ACCOUNT_ID
@@ -1450,7 +1492,7 @@ async function syncCloudflareR2(
     process.env
       .CLOUDFLARE_ACCOUNT_ID
       ?.trim() ||
-    '';
+    endpointAccountId;
 
   if (
     !token ||
