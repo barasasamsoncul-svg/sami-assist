@@ -1,6 +1,11 @@
 import 'server-only';
 
 import {
+  HeadBucketCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
+
+import {
   getSamiAiProviderStatus,
   requireSamiAiProviderConfig,
 } from '@/lib/ai/config';
@@ -787,6 +792,324 @@ export async function checkNeonProvider():
 }
 
 
+function storageConfig() {
+  const r2Endpoint =
+    process.env
+      .R2_ENDPOINT
+      ?.trim() ||
+    '';
+
+  const backupEndpoint =
+    process.env
+      .SAMI_BACKUP_S3_ENDPOINT
+      ?.trim() ||
+    r2Endpoint;
+
+  const provider =
+    process.env
+      .SAMI_STORAGE_PROVIDER
+      ?.trim()
+      .toLowerCase() ||
+    (
+      r2Endpoint
+        ? 'r2'
+        : 's3'
+    );
+
+  const usingR2 =
+    provider ===
+      'r2' ||
+    backupEndpoint.includes(
+      'r2.cloudflarestorage.com',
+    );
+
+  const bucket =
+    process.env
+      .SAMI_BACKUP_S3_BUCKET
+      ?.trim() ||
+    process.env
+      .SAMI_STORAGE_BUCKET
+      ?.trim() ||
+    '';
+
+  const accessKeyId =
+    process.env
+      .R2_ACCESS_KEY_ID
+      ?.trim() ||
+    '';
+
+  const secretAccessKey =
+    process.env
+      .R2_SECRET_ACCESS_KEY
+      ?.trim() ||
+    '';
+
+  const region =
+    process.env
+      .SAMI_BACKUP_S3_REGION
+      ?.trim() ||
+    (
+      usingR2
+        ? 'auto'
+        : 'us-east-1'
+    );
+
+  return {
+    provider,
+    usingR2,
+    bucket,
+    endpoint:
+      backupEndpoint ||
+      undefined,
+    region,
+    accessKeyId,
+    secretAccessKey,
+    dedicatedBackupBucket:
+      Boolean(
+        process.env
+          .SAMI_BACKUP_S3_BUCKET
+          ?.trim(),
+      ),
+  };
+}
+
+
+export async function checkObjectStorageProvider():
+  Promise<PlatformProviderSnapshot> {
+  const config =
+    storageConfig();
+
+  if (
+    !config.bucket
+  ) {
+    return safePersist({
+      key:
+        'storage',
+      name:
+        'Object Storage & Backups',
+      status:
+        'not_configured',
+      message:
+        'Object storage is not configured for SaMi files or tenant backups.',
+      latencyMs:
+        null,
+      checkedAt:
+        nowIso(),
+      metadata: {
+        provider:
+          config.provider,
+        bucketConfigured:
+          false,
+        endpointConfigured:
+          Boolean(
+            config.endpoint,
+          ),
+        credentialsConfigured:
+          Boolean(
+            config.accessKeyId &&
+            config.secretAccessKey,
+          ),
+      },
+    });
+  }
+
+  if (
+    config.usingR2 &&
+    (
+      !config.endpoint ||
+      !config.accessKeyId ||
+      !config.secretAccessKey
+    )
+  ) {
+    return safePersist({
+      key:
+        'storage',
+      name:
+        'Object Storage & Backups',
+      status:
+        'degraded',
+      message:
+        'The R2 backup bucket is named, but live storage credentials are incomplete.',
+      latencyMs:
+        null,
+      checkedAt:
+        nowIso(),
+      metadata: {
+        provider:
+          config.provider,
+        bucketConfigured:
+          true,
+        dedicatedBackupBucket:
+          config.dedicatedBackupBucket,
+        endpointConfigured:
+          Boolean(
+            config.endpoint,
+          ),
+        credentialsConfigured:
+          Boolean(
+            config.accessKeyId &&
+            config.secretAccessKey,
+          ),
+      },
+    });
+  }
+
+  const started =
+    Date.now();
+
+  const timeout =
+    timeoutSignal(
+      5_000,
+    );
+
+  try {
+    const client =
+      new S3Client({
+        region:
+          config.region,
+        endpoint:
+          config.endpoint,
+        forcePathStyle:
+          process.env
+            .SAMI_BACKUP_S3_FORCE_PATH_STYLE
+            ?.trim()
+            .toLowerCase() ===
+          'true',
+        credentials:
+          config.accessKeyId &&
+          config.secretAccessKey
+            ? {
+                accessKeyId:
+                  config.accessKeyId,
+                secretAccessKey:
+                  config.secretAccessKey,
+              }
+            : undefined,
+      });
+
+    const response =
+      await client.send(
+        new HeadBucketCommand({
+          Bucket:
+            config.bucket,
+        }),
+        {
+          abortSignal:
+            timeout.signal,
+        },
+      );
+
+    return safePersist({
+      key:
+        'storage',
+      name:
+        'Object Storage & Backups',
+      status:
+        'healthy',
+      message:
+        'Private object storage and the tenant backup bucket are reachable.',
+      latencyMs:
+        Date.now() -
+        started,
+      checkedAt:
+        nowIso(),
+      metadata: {
+        provider:
+          config.provider,
+        bucketConfigured:
+          true,
+        dedicatedBackupBucket:
+          config.dedicatedBackupBucket,
+        endpointConfigured:
+          Boolean(
+            config.endpoint,
+          ),
+        credentialsConfigured:
+          Boolean(
+            config.accessKeyId &&
+            config.secretAccessKey,
+          ),
+        statusCode:
+          response
+            .$metadata
+            .httpStatusCode ||
+          200,
+      },
+    });
+  } catch (
+    error
+  ) {
+    const statusCode =
+      error &&
+      typeof error ===
+        'object' &&
+      '$metadata' in
+        error
+        ? Number(
+            (
+              error as {
+                $metadata?: {
+                  httpStatusCode?:
+                    number;
+                };
+              }
+            ).$metadata
+              ?.httpStatusCode ||
+            0,
+          ) ||
+          null
+        : null;
+
+    return safePersist({
+      key:
+        'storage',
+      name:
+        'Object Storage & Backups',
+      status:
+        statusCode &&
+        statusCode < 500
+          ? 'degraded'
+          : 'unavailable',
+      message:
+        error instanceof
+          Error &&
+        error.name ===
+          'AbortError'
+          ? 'Object storage health check timed out.'
+          : statusCode ===
+              403
+            ? 'Object storage rejected the configured credentials.'
+            : 'Object storage or the backup bucket could not be reached.',
+      latencyMs:
+        Date.now() -
+        started,
+      checkedAt:
+        nowIso(),
+      metadata: {
+        provider:
+          config.provider,
+        bucketConfigured:
+          true,
+        dedicatedBackupBucket:
+          config.dedicatedBackupBucket,
+        endpointConfigured:
+          Boolean(
+            config.endpoint,
+          ),
+        credentialsConfigured:
+          Boolean(
+            config.accessKeyId &&
+            config.secretAccessKey,
+          ),
+        statusCode,
+      },
+    });
+  } finally {
+    timeout.clear();
+  }
+}
+
+
 export async function checkBillingProviders():
   Promise<PlatformProviderSnapshot> {
   try {
@@ -961,6 +1284,7 @@ export async function getPlatformProviderHealth() {
     await Promise.all([
       checkControlDatabaseProvider(),
       checkNeonProvider(),
+      checkObjectStorageProvider(),
       checkVercelProvider(),
       checkAiProvider(),
       checkBillingProviders(),
