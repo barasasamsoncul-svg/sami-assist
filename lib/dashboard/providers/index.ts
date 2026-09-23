@@ -123,5 +123,6 @@ export function getDashboardProviders(
     ),
     provider =>
       provider.moduleKey,
+    'dashboard',
   );
 }
