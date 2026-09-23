@@ -278,6 +278,8 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
   const [
     page,
     client,
+    composer,
+    detail,
     publicPage,
   ] =
     await Promise.all([
@@ -286,6 +288,12 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
       ),
       source(
         'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
+      ),
+      source(
+        'app/apps/invoicing/InvoiceComposer.tsx',
+      ),
+      source(
+        'app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx',
       ),
       source(
         'app/i/[tenantId]/[token]/page.tsx',
@@ -318,22 +326,22 @@ test('Invoicing workspace exposes operational Odoo/Zoho-class surfaces rather th
   }
 
   assert.match(
-    client,
+    composer,
     /create_invoice/,
   );
 
   assert.match(
-    client,
+    detail,
     /record_payment/,
   );
 
   assert.match(
-    client,
+    detail,
     /issue_credit_note/,
   );
 
   assert.match(
-    client,
+    detail,
     /send_invoice/,
   );
 
