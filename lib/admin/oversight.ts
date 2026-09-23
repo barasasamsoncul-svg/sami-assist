@@ -1667,6 +1667,55 @@ export async function getAdminSecurityOverview() {
 }
 
 
+async function optionalControlQuery(
+  sql:
+    string,
+  fallbackRow:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  try {
+    return await queryControl(
+      sql,
+    );
+  } catch (
+    error
+  ) {
+    const code =
+      error &&
+      typeof error ===
+        'object' &&
+      'code' in
+        error
+        ? String(
+            (
+              error as {
+                code?:
+                  unknown;
+              }
+            ).code ||
+            '',
+          )
+        : '';
+
+    if (
+      code !==
+        '42P01'
+    ) {
+      throw error;
+    }
+
+    return {
+      rows: [
+        fallbackRow,
+      ],
+    };
+  }
+}
+
+
 export async function getAdminPlatformHealth() {
   const started =
     Date.now();
@@ -1782,7 +1831,7 @@ export async function getAdminPlatformHealth() {
         `,
       ),
 
-      queryControl(
+      optionalControlQuery(
         `
           SELECT
             COUNT(*) FILTER (
@@ -1815,9 +1864,19 @@ export async function getAdminPlatformHealth() {
               AS errors
           FROM platform_incidents
         `,
+        {
+          open:
+            0,
+          acknowledged:
+            0,
+          critical:
+            0,
+          errors:
+            0,
+        },
       ),
 
-      queryControl(
+      optionalControlQuery(
         `
           SELECT
             COUNT(*)::int
@@ -1829,6 +1888,10 @@ export async function getAdminPlatformHealth() {
                 NOW() -
                 INTERVAL '24 hours'
         `,
+        {
+          count:
+            0,
+        },
       ),
     ]);
 
