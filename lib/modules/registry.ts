@@ -170,6 +170,10 @@ export function filterAccessibleModuleExtensions<
         T,
     ) =>
       string | null | undefined,
+  requiredExtension?:
+    keyof SamiModuleManifest[
+      'extensions'
+    ],
 ): T[] {
   const allowed =
     new Set(
@@ -207,7 +211,14 @@ export function filterAccessibleModuleExtensions<
 
       return Boolean(
         manifest &&
-        manifest.installable,
+        manifest.installable &&
+        (
+          !requiredExtension ||
+          manifest.extensions[
+            requiredExtension
+          ] ===
+            true
+        ),
       );
     },
   );
