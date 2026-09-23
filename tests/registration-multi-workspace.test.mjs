@@ -350,6 +350,145 @@ test('Registration: Google registration is bound to server OAuth state and exist
 });
 
 
+test('Registration: draft endpoint is rate-limited, same-origin and bounded', async () => {
+  const route =
+    await source(
+      'app/api/auth/registration-draft/route.ts',
+    );
+
+  assert.match(
+    route,
+    /checkRateLimit/,
+  );
+
+  assert.match(
+    route,
+    /registration_draft_public/,
+  );
+
+  assert.match(
+    route,
+    /registration_draft_email/,
+  );
+
+  assert.match(
+    route,
+    /sec-fetch-site/,
+  );
+
+  assert.match(
+    route,
+    /INVALID_ORIGIN/,
+  );
+
+  assert.match(
+    route,
+    /MAX_REQUEST_BYTES/,
+  );
+
+  assert.match(
+    route,
+    /UNSUPPORTED_MEDIA_TYPE/,
+  );
+});
+
+
+test('Registration: Apps and Plan pages verify the secure draft before continuing', async () => {
+  const [
+    route,
+    apps,
+    plan,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/auth/registration-draft/route.ts',
+      ),
+      source(
+        'app/select-apps/page.tsx',
+      ),
+      source(
+        'app/select-plan/page.tsx',
+      ),
+    ]);
+
+  assert.match(
+    route,
+    /export async function GET/,
+  );
+
+  assert.match(
+    route,
+    /REGISTRATION_DRAFT_REQUIRED/,
+  );
+
+  assert.match(
+    apps,
+    /\/api\/auth\/registration-draft/,
+  );
+
+  assert.match(
+    apps,
+    /draftReady/,
+  );
+
+  assert.match(
+    plan,
+    /\/api\/auth\/registration-draft/,
+  );
+
+  assert.match(
+    plan,
+    /draftReady/,
+  );
+});
+
+
+test('Registration: workspace settings exposes switch and create controls for multi-workspace identities', async () => {
+  const [
+    api,
+    settings,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/workspace/route.ts',
+      ),
+      source(
+        'app/settings/components/WorkspaceSettings.tsx',
+      ),
+    ]);
+
+  assert.match(
+    api,
+    /listAccessibleWorkspaces/,
+  );
+
+  assert.match(
+    api,
+    /switch_workspace/,
+  );
+
+  assert.match(
+    settings,
+    /Your workspaces/,
+  );
+
+  assert.match(
+    settings,
+    /href="\/workspaces\/new"/,
+  );
+
+  assert.match(
+    settings,
+    /switchToWorkspace/,
+  );
+
+  assert.match(
+    settings,
+    /'switch_workspace'/,
+  );
+});
+
+
 test('Registration: existing public email path explains multi-workspace sign-in instead of generic duplicate-user failure', async () => {
   const [
     draftRoute,
