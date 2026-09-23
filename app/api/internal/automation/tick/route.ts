@@ -8,6 +8,10 @@ import {
 } from '@/lib/automation/worker';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   isAutomationWorkerEnabled,
 } from '@/lib/automation/registry';
 
@@ -88,7 +92,13 @@ export async function GET(
   request:
     NextRequest,
 ) {
+  const platformSettings =
+    await getRuntimePlatformSettings();
+
   if (
+    !platformSettings
+      .features
+      .automationEnabled ||
     !isAutomationWorkerEnabled() ||
     !configuredSecret()
   ) {
