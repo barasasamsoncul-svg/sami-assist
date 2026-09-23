@@ -173,6 +173,13 @@ const navigation: readonly NavigationItem[] = [
       },
 
       {
+        label: 'Vercel Runtime',
+        href: '/admin/operations/vercel',
+        icon: CloudCog,
+        capability: 'providers.read',
+      },
+
+      {
         label: 'Jobs & Workers',
         href: '/admin/operations/jobs',
         icon: ListChecks,
