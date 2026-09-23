@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -473,6 +473,60 @@ test('Category 24 new error and infrastructure alerts are deduplicated before op
 
   assert.match(alerts, /ON CONFLICT[\s\S]*DO NOTHING/);
   assert.match(alerts, /platform_admin_alert_deliveries/);
+});
+
+
+test('Category 24 migration readiness matches every numbered control migration', async () => {
+  const manifest = await source('lib/schema/control-migrations/manifest.ts');
+  const oversight = await source('lib/admin/oversight.ts');
+  const status = await source('lib/admin/control-migration-status.ts');
+
+  const files = (
+    await readdir(
+      path.join(
+        root,
+        'lib',
+        'schema',
+        'control-migrations',
+      ),
+    )
+  )
+    .filter((file) => /^\d+.*\.sql$/i.test(file))
+    .sort((left, right) =>
+      left.localeCompare(right, 'en', { numeric: true })
+    );
+
+  for (const file of files) {
+    assert.ok(
+      manifest.includes("'" + file + "'"),
+      'Migration manifest is missing ' + file,
+    );
+  }
+
+  const manifestKeys = [
+    ...manifest.matchAll(/'(\d+[^']+\.sql)'/g),
+  ].map((match) => match[1]);
+
+  assert.deepEqual(
+    manifestKeys,
+    files,
+    'Migration manifest must match the migration directory exactly.',
+  );
+
+  assert.match(oversight, /getControlMigrationStatus/);
+  assert.doesNotMatch(
+    oversight,
+    /SELECT[\s\S]{0,100}version[\s\S]{0,100}FROM control_schema_migrations/,
+    'Platform Health must use migration_key, not nonexistent version/name columns.',
+  );
+
+  assert.match(status, /migration_key/);
+  assert.match(status, /42P01/);
+  assert.doesNotMatch(
+    status,
+    /node:fs|readdir/,
+    'Runtime migration readiness must not depend on reading SQL files from a serverless filesystem.',
+  );
 });
 
 
