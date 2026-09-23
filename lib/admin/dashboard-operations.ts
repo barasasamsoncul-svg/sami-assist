@@ -4,10 +4,31 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  hasAdminCapability,
+} from '@/lib/admin/capabilities';
+
+import type {
+  PlatformAdminRole,
+} from '@/lib/auth/admin-session';
+
 
 export type AdminOperationsDashboard = {
   available:
     boolean;
+
+  visibility: {
+    incidents:
+      boolean;
+    jobs:
+      boolean;
+    tenantDatabases:
+      boolean;
+    services:
+      boolean;
+    providerChecks:
+      boolean;
+  };
 
   incidents: {
     open:
@@ -165,6 +186,19 @@ const EMPTY:
     available:
       false,
 
+    visibility: {
+      incidents:
+        false,
+      jobs:
+        false,
+      tenantDatabases:
+        false,
+      services:
+        false,
+      providerChecks:
+        false,
+    },
+
     incidents: {
       open:
         0,
@@ -206,9 +240,56 @@ const EMPTY:
   };
 
 
-export async function getAdminOperationsDashboard():
-  Promise<AdminOperationsDashboard> {
+export async function getAdminOperationsDashboard(
+  role:
+    PlatformAdminRole,
+): Promise<AdminOperationsDashboard> {
+  const visibility = {
+    incidents:
+      hasAdminCapability(
+        role,
+        'incidents.read',
+      ),
+
+    jobs:
+      hasAdminCapability(
+        role,
+        'jobs.read',
+      ),
+
+    tenantDatabases:
+      hasAdminCapability(
+        role,
+        'tenants.read',
+      ) &&
+      hasAdminCapability(
+        role,
+        'health.read',
+      ),
+
+    services:
+      hasAdminCapability(
+        role,
+        'providers.read',
+      ),
+
+    providerChecks:
+      hasAdminCapability(
+        role,
+        'providers.read',
+      ),
+  };
+
   try {
+    const emptyResult = {
+      rows:
+        [] as
+          Record<
+            string,
+            unknown
+          >[],
+    };
+
     const [
       incidents,
       jobs,
@@ -217,170 +298,190 @@ export async function getAdminOperationsDashboard():
       providerChecks,
     ] =
       await Promise.all([
-        queryControl(
-          `
-            SELECT
-              COUNT(*) FILTER (
-                WHERE status =
-                      'open'
-              )::int
-                AS open,
+        visibility.incidents
+          ? queryControl(
+              `
+                SELECT
+                  COUNT(*) FILTER (
+                    WHERE status =
+                          'open'
+                  )::int
+                    AS open,
 
-              COUNT(*) FILTER (
-                WHERE status =
+                  COUNT(*) FILTER (
+                    WHERE status =
+                          'acknowledged'
+                  )::int
+                    AS acknowledged,
+
+                  COUNT(*) FILTER (
+                    WHERE status IN (
+                      'open',
                       'acknowledged'
-              )::int
-                AS acknowledged,
+                    )
+                    AND severity =
+                        'critical'
+                  )::int
+                    AS critical,
 
-              COUNT(*) FILTER (
-                WHERE status IN (
-                  'open',
-                  'acknowledged'
-                )
-                AND severity =
-                    'critical'
-              )::int
-                AS critical,
+                  COUNT(*) FILTER (
+                    WHERE status IN (
+                      'open',
+                      'acknowledged'
+                    )
+                    AND severity =
+                        'error'
+                  )::int
+                    AS errors
 
-              COUNT(*) FILTER (
-                WHERE status IN (
-                  'open',
-                  'acknowledged'
-                )
-                AND severity =
-                    'error'
-              )::int
-                AS errors
-
-            FROM platform_incidents
-          `,
-        ),
-
-        queryControl(
-          `
-            SELECT
-              COUNT(*) FILTER (
-                WHERE status =
-                      'failed'
-                  AND created_at >=
-                      NOW() -
-                      INTERVAL '24 hours'
-              )::int
-                AS failed_last_24_hours,
-
-              COUNT(*) FILTER (
-                WHERE status =
-                      'running'
-              )::int
-                AS running
-
-            FROM platform_job_runs
-          `,
-        ),
-
-        queryControl(
-          `
-            SELECT
-              COUNT(*)::int
-                AS total,
-
-              COUNT(*) FILTER (
-                WHERE health_status =
-                      'healthy'
-              )::int
-                AS healthy,
-
-              COUNT(*) FILTER (
-                WHERE health_status =
-                      'degraded'
-              )::int
-                AS degraded,
-
-              COUNT(*) FILTER (
-                WHERE health_status =
-                      'unreachable'
-              )::int
-                AS unreachable,
-
-              COUNT(*) FILTER (
-                WHERE health_status =
-                      'maintenance'
-              )::int
-                AS maintenance,
-
-              COUNT(*) FILTER (
-                WHERE health_status IS NULL
-                   OR health_status =
-                      'unknown'
-              )::int
-                AS unknown
-
-            FROM tenant_databases
-          `,
-        ),
-
-        queryControl(
-          `
-            SELECT
-              service_key,
-              service_name,
-              provider,
-              category,
-              status,
-              renewal_at,
-              expires_at,
-              quota_used,
-              quota_limit,
-              quota_unit,
-              last_synced_at
-
-            FROM platform_service_subscriptions
-
-            WHERE deleted_at
-                  IS NULL
-
-            ORDER BY
-              CASE status
-                WHEN 'expired'
-                THEN 0
-                WHEN 'suspended'
-                THEN 1
-                WHEN 'payment_required'
-                THEN 2
-                WHEN 'upgrade_recommended'
-                THEN 3
-                WHEN 'quota_warning'
-                THEN 4
-                WHEN 'renewal_due'
-                THEN 5
-                WHEN 'not_configured'
-                THEN 6
-                ELSE 7
-              END,
-              service_name ASC
-          `,
-        ),
-
-        queryControl(
-          `
-            SELECT DISTINCT ON (
-              provider,
-              component
+                FROM platform_incidents
+              `,
             )
-              provider,
-              component,
-              status,
-              latency_ms,
-              checked_at
+          : Promise.resolve(
+              emptyResult,
+            ),
 
-            FROM platform_provider_checks
+        visibility.jobs
+          ? queryControl(
+              `
+                SELECT
+                  COUNT(*) FILTER (
+                    WHERE status =
+                          'failed'
+                      AND created_at >=
+                          NOW() -
+                          INTERVAL '24 hours'
+                  )::int
+                    AS failed_last_24_hours,
 
-            ORDER BY
-              provider,
-              component,
-              checked_at DESC
-          `,
-        ),
+                  COUNT(*) FILTER (
+                    WHERE status =
+                          'running'
+                  )::int
+                    AS running
+
+                FROM platform_job_runs
+              `,
+            )
+          : Promise.resolve(
+              emptyResult,
+            ),
+
+        visibility.tenantDatabases
+          ? queryControl(
+              `
+                SELECT
+                  COUNT(*)::int
+                    AS total,
+
+                  COUNT(*) FILTER (
+                    WHERE health_status =
+                          'healthy'
+                  )::int
+                    AS healthy,
+
+                  COUNT(*) FILTER (
+                    WHERE health_status =
+                          'degraded'
+                  )::int
+                    AS degraded,
+
+                  COUNT(*) FILTER (
+                    WHERE health_status =
+                          'unreachable'
+                  )::int
+                    AS unreachable,
+
+                  COUNT(*) FILTER (
+                    WHERE health_status =
+                          'maintenance'
+                  )::int
+                    AS maintenance,
+
+                  COUNT(*) FILTER (
+                    WHERE health_status IS NULL
+                       OR health_status =
+                          'unknown'
+                  )::int
+                    AS unknown
+
+                FROM tenant_databases
+              `,
+            )
+          : Promise.resolve(
+              emptyResult,
+            ),
+
+        visibility.services
+          ? queryControl(
+              `
+                SELECT
+                  service_key,
+                  service_name,
+                  provider,
+                  category,
+                  status,
+                  renewal_at,
+                  expires_at,
+                  quota_used,
+                  quota_limit,
+                  quota_unit,
+                  last_synced_at
+
+                FROM platform_service_subscriptions
+
+                WHERE deleted_at
+                      IS NULL
+
+                ORDER BY
+                  CASE status
+                    WHEN 'expired'
+                    THEN 0
+                    WHEN 'suspended'
+                    THEN 1
+                    WHEN 'payment_required'
+                    THEN 2
+                    WHEN 'upgrade_recommended'
+                    THEN 3
+                    WHEN 'quota_warning'
+                    THEN 4
+                    WHEN 'renewal_due'
+                    THEN 5
+                    WHEN 'not_configured'
+                    THEN 6
+                    ELSE 7
+                  END,
+                  service_name ASC
+              `,
+            )
+          : Promise.resolve(
+              emptyResult,
+            ),
+
+        visibility.providerChecks
+          ? queryControl(
+              `
+                SELECT DISTINCT ON (
+                  provider,
+                  component
+                )
+                  provider,
+                  component,
+                  status,
+                  latency_ms,
+                  checked_at
+
+                FROM platform_provider_checks
+
+                ORDER BY
+                  provider,
+                  component,
+                  checked_at DESC
+              `,
+            )
+          : Promise.resolve(
+              emptyResult,
+            ),
       ]);
 
     const incidentRow =
@@ -398,6 +499,8 @@ export async function getAdminOperationsDashboard():
     return {
       available:
         true,
+
+      visibility,
 
       incidents: {
         open:
@@ -554,6 +657,8 @@ export async function getAdminOperationsDashboard():
 
     return {
       ...EMPTY,
+      visibility,
     };
   }
 }
+
