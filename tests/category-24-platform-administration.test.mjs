@@ -280,7 +280,7 @@ test('Category 24 captures unhandled Next.js server and browser errors globally'
   assert.match(server, /NEXT_RUNTIME/);
   assert.match(server, /capturePlatformIncident/);
   assert.match(server, /unhandled_server_request_error/);
-  assert.match(server, /Global telemetry must never replace or mask the original application failure/);
+  assert.match(server, /Global telemetry must never[\\s\\S]*replace or mask the original[\\s\\S]*application failure/);
 
   assert.match(client, /window\.addEventListener[\s\S]*['"]error['"]/);
   assert.match(client, /unhandledrejection/);
