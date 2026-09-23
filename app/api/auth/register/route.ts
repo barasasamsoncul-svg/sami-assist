@@ -784,10 +784,7 @@ async function claimRegistrationRequest(
       existing.started_at
     );
 
-  const staleWithoutResources =
-    !registrationRequestHasResources(
-      existing
-    ) &&
+  const stale =
     !Number.isNaN(
       startedAt.getTime()
     ) &&
@@ -796,6 +793,12 @@ async function claimRegistrationRequest(
       15 *
       60 *
       1000;
+
+  const staleWithoutResources =
+    stale &&
+    !registrationRequestHasResources(
+      existing
+    );
 
   if (
     staleWithoutResources
@@ -872,11 +875,10 @@ async function claimRegistrationRequest(
 
   return {
     state:
+      stale &&
       registrationRequestHasResources(
         existing
-      ) &&
-      existing.status !==
-        'completed'
+      )
         ? 'recovery_required'
         : 'processing',
     nonceHash,
