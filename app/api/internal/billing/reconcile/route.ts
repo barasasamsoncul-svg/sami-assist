@@ -9,6 +9,10 @@ import {
   reconcileWorkspaceBilling,
 } from '@/lib/billing/reconcile';
 
+import {
+  runTrackedPlatformJob,
+} from '@/lib/observability/platform-jobs';
+
 export const runtime =
   'nodejs';
 
@@ -137,7 +141,33 @@ async function runReconciliation(
 
   try {
     const report =
-      await reconcileWorkspaceBilling();
+      await runTrackedPlatformJob(
+        {
+          jobKey:
+            'billing.reconcile',
+          triggerType:
+            request.method ===
+              'GET'
+              ? 'cron'
+              : 'internal',
+          provider:
+            process.env
+              .SAMI_BILLING_PROVIDER
+              ?.trim()
+              .toLowerCase() ||
+            'billing',
+          source:
+            'billing_worker',
+          category:
+            'billing_reconciliation_failed',
+          route:
+            '/api/internal/billing/reconcile',
+          operation:
+            'reconcile_workspace_billing',
+        },
+        () =>
+          reconcileWorkspaceBilling(),
+      );
 
     return NextResponse.json(
       {
