@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import {
   AlertTriangle,
   ArrowLeft,
@@ -10,6 +12,7 @@ import {
   ChevronRight,
   Crown,
   Loader2,
+  Plus,
   Save,
   ShieldCheck,
   SlidersHorizontal,
@@ -56,6 +59,20 @@ type WorkspaceRecord = {
     deletionScheduledFor: string | null;
     deletionCancelledAt: string | null;
   };
+};
+
+
+type WorkspaceListItem = {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  accessLevel:
+    | 'owner'
+    | 'admin'
+    | 'member';
+  isOwner: boolean;
+  isAdmin: boolean;
 };
 
 
@@ -122,6 +139,10 @@ type WorkspaceResponse = {
   error?: string;
 
   workspace?: WorkspaceRecord;
+
+  currentWorkspaceId?: string;
+
+  workspaces?: WorkspaceListItem[];
 
   access?: WorkspaceAccess;
 
@@ -375,6 +396,15 @@ export default function WorkspaceSettings() {
     useState<
       WorkspaceRecord | null
     >(null);
+
+
+  const [
+    accessibleWorkspaces,
+    setAccessibleWorkspaces,
+  ] =
+    useState<
+      WorkspaceListItem[]
+    >([]);
 
 
   const [
@@ -658,6 +688,15 @@ export default function WorkspaceSettings() {
 
           setWorkspace(
             data.workspace,
+          );
+
+
+          setAccessibleWorkspaces(
+            Array.isArray(
+              data.workspaces,
+            )
+              ? data.workspaces
+              : [],
           );
 
 
@@ -1268,6 +1307,54 @@ export default function WorkspaceSettings() {
     } finally {
       setActionLoading(
         null,
+      );
+    }
+  }
+
+
+  async function switchToWorkspace(
+    tenantId:
+      string,
+  ) {
+    if (
+      !workspace ||
+      tenantId ===
+        workspace.id ||
+      actionLoading
+    ) {
+      return;
+    }
+
+    try {
+      const data =
+        await runWorkspaceAction(
+          'switch_workspace',
+          {
+            tenantId,
+          },
+        );
+
+      if (
+        !data
+      ) {
+        return;
+      }
+
+      router.replace(
+        '/dashboard',
+      );
+
+      router.refresh();
+    } catch (
+      error
+    ) {
+      showMessage(
+        'error',
+        'Workspace switch failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not switch to that workspace.',
       );
     }
   }
@@ -1915,6 +2002,101 @@ export default function WorkspaceSettings() {
                   <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
                 )}
               </div>
+            </div>
+          </section>
+
+
+          <section className="rounded-[26px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-[#0d121b]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-black">
+                  Your workspaces
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  One SaMi account can own or join multiple isolated business workspaces.
+                </p>
+              </div>
+
+              <Link
+                href="/workspaces/new"
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 text-[11px] font-black text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create workspace
+              </Link>
+            </div>
+
+            <div className="mt-4 divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+              {accessibleWorkspaces.map(
+                item => {
+                  const current =
+                    item.id ===
+                    workspace.id;
+
+                  return (
+                    <button
+                      key={
+                        item.id
+                      }
+                      type="button"
+                      disabled={
+                        current ||
+                        actionLoading !==
+                          null
+                      }
+                      onClick={() =>
+                        void switchToWorkspace(
+                          item.id,
+                        )
+                      }
+                      className="flex w-full items-center gap-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50 disabled:cursor-default disabled:opacity-70 dark:bg-[#0d121b] dark:hover:bg-slate-900"
+                    >
+                      <span className={[
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl',
+                        current
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300',
+                      ].join(
+                        ' ',
+                      )}>
+                        <Building2 className="h-4 w-4" />
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-xs font-black">
+                          {item.name}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[10px] font-semibold text-slate-400">
+                          {item.slug}
+                          {' · '}
+                          {formatStatus(
+                            item.accessLevel,
+                          )}
+                        </span>
+                      </span>
+
+                      {current ? (
+                        <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-wide text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                          Current
+                        </span>
+                      ) : actionLoading ===
+                          'switch_workspace' ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                      ) : (
+                        <ArrowRightLeft className="h-4 w-4 text-slate-400" />
+                      )}
+                    </button>
+                  );
+                },
+              )}
+
+              {accessibleWorkspaces.length ===
+                0 && (
+                <div className="px-4 py-5 text-center text-xs text-slate-500 dark:text-slate-400">
+                  No other active workspaces are available.
+                </div>
+              )}
             </div>
           </section>
 
