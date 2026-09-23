@@ -268,7 +268,8 @@ test('Category 11: one account theme runtime governs every route and settings su
   ]);
 
   assert.match(layout, /SaMiThemeProvider/);
-  assert.match(layout, /SAMI_THEME_BOOTSTRAP_SCRIPT/);
+  assert.match(layout, /sami-theme-bootstrap\\.js/);
+  assert.doesNotMatch(layout, /dangerouslySetInnerHTML/);
   assert.match(layout, /suppressHydrationWarning/);
 
   assert.match(provider, /\/api\/account\/preferences/);
