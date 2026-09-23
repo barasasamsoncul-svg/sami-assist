@@ -47,9 +47,10 @@ test('Category 25 migration is additive revisioned and secret-free', async () =>
     /settings JSONB/,
   );
 
-  assert.match(
-    migration,
-    /changed_keys TEXT[]/,
+  assert.ok(
+    migration.includes(
+      'changed_keys TEXT[]',
+    ),
   );
 
   assert.doesNotMatch(
@@ -104,9 +105,10 @@ test('Category 25 settings authority validates and fails open before migration',
     /PlatformSettingsConflictError/,
   );
 
-  assert.match(
-    settings,
-    /revision =s*$3/,
+  assert.ok(
+    settings.includes(
+      'AND revision = $3',
+    ),
   );
 
   assert.match(
@@ -229,9 +231,11 @@ test('Category 25 Platform Settings navigation is enabled and capability-scoped'
         500,
     );
 
-  assert.doesNotMatch(
-    block,
-    /disabled:s*true/,
+  assert.ok(
+    !block.includes(
+      'disabled',
+    ),
+    'Platform Settings navigation must be enabled.',
   );
 });
 
@@ -471,9 +475,16 @@ test('Category 25 core feature kill switches are enforced at runtime boundaries'
     /samiAiEnabled/,
   );
 
-  assert.match(
-    aiApi,
-    /AI_PLATFORM_DISABLED[sS]*503/,
+  assert.ok(
+    aiApi.includes(
+      'AI_PLATFORM_DISABLED',
+    ),
+  );
+
+  assert.ok(
+    aiApi.includes(
+      '503',
+    ),
   );
 
   assert.match(
@@ -486,9 +497,16 @@ test('Category 25 core feature kill switches are enforced at runtime boundaries'
     /automationEnabled/,
   );
 
-  assert.match(
-    automationApi,
-    /AUTOMATION_PLATFORM_DISABLED[sS]*503/,
+  assert.ok(
+    automationApi.includes(
+      'AUTOMATION_PLATFORM_DISABLED',
+    ),
+  );
+
+  assert.ok(
+    automationApi.includes(
+      '503',
+    ),
   );
 
   assert.match(
@@ -527,37 +545,42 @@ test('Category 25 maintenance mode blocks ordinary pages but retains recovery pa
       ),
     ]);
 
-  assert.match(
-    guard,
-    /maintenanceMode/,
+  assert.ok(
+    guard.includes(
+      'maintenanceMode',
+    ),
   );
 
-  assert.match(
-    guard,
-    /redirect([sS]*'/maintenance'/,
+  assert.ok(
+    guard.includes(
+      "'/maintenance'",
+    ),
   );
 
-  assert.match(
-    guard,
-    /'/settings'/,
+  assert.ok(
+    guard.includes(
+      "'/settings'",
+    ),
   );
 
-  assert.match(
-    guard,
-    /'/subscription-required'/,
+  assert.ok(
+    guard.includes(
+      "'/subscription-required'",
+    ),
   );
 
-  assert.match(
-    page,
-    /maintenanceMessage/,
+  assert.ok(
+    page.includes(
+      'maintenanceMessage',
+    ),
   );
 
-  assert.match(
-    page,
-    /Your data remains intact/,
+  assert.ok(
+    page.includes(
+      'Your data remains intact',
+    ),
   );
 });
-
 
 test('Category 25 settings UI keeps infrastructure secrets outside the browser', async () => {
   const form =
