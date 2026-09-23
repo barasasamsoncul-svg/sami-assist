@@ -6,6 +6,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  notifyPlatformAdminsOfIncident,
+} from '@/lib/admin/platform-alerts';
+
 
 export type PlatformIncidentSeverity =
   | 'info'
@@ -887,11 +891,47 @@ export async function recordPlatformIncident(
     ],
   );
 
+  const incidentId =
+    String(
+      incidentRow.id,
+    );
+
+  const occurrenceCount =
+    Number(
+      incidentRow.occurrence_count ||
+      1,
+    );
+
+  /*
+   * Notify once per incident. The delivery ledger also enforces
+   * per-admin/per-channel deduplication, so repeated occurrences
+   * remain visible in Platform Admin without creating alert spam.
+   */
+  if (
+    occurrenceCount ===
+      1 &&
+    (
+      severity ===
+        'error' ||
+      severity ===
+        'critical'
+    )
+  ) {
+    await notifyPlatformAdminsOfIncident({
+      incidentId,
+      severity,
+      title,
+      message:
+        details.message ||
+        `${category.replace(
+          /_/g,
+          ' ',
+        )} was detected in SaMi.`,
+    });
+  }
+
   return {
-    incidentId:
-      String(
-        incidentRow.id,
-      ),
+    incidentId,
     fingerprint:
       String(
         incidentRow.fingerprint,
@@ -901,11 +941,7 @@ export async function recordPlatformIncident(
       String(
         incidentRow.status,
       ),
-    occurrenceCount:
-      Number(
-        incidentRow.occurrence_count ||
-        1,
-      ),
+    occurrenceCount,
   };
 }
 
