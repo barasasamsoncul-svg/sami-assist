@@ -2430,7 +2430,7 @@ export async function getWorkspaceExternalAppLauncherEntries() {
           ),
       );
 
-  let allowedRuleApps =
+  const allowedRuleApps =
     new Set<string>();
 
   if (
