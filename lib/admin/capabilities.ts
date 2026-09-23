@@ -19,6 +19,10 @@ export type PlatformAdminCapability =
   | 'notifications.read'
   | 'audit.read'
   | 'health.read'
+  | 'incidents.read'
+  | 'incidents.manage'
+  | 'providers.read'
+  | 'jobs.read'
   | 'support.read';
 
 
@@ -39,6 +43,10 @@ const ALL_CAPABILITIES:
     'notifications.read',
     'audit.read',
     'health.read',
+    'incidents.read',
+    'incidents.manage',
+    'providers.read',
+    'jobs.read',
     'support.read',
   ];
 
@@ -60,6 +68,10 @@ const ROLE_CAPABILITIES:
       'security.read',
       'audit.read',
       'health.read',
+      'incidents.read',
+      'incidents.manage',
+      'providers.read',
+      'jobs.read',
     ],
 
     support_admin: [
@@ -67,6 +79,8 @@ const ROLE_CAPABILITIES:
       'users.read',
       'tenants.read',
       'notifications.read',
+      'incidents.read',
+      'providers.read',
       'support.read',
     ],
 
@@ -75,6 +89,9 @@ const ROLE_CAPABILITIES:
       'tenants.read',
       'subscriptions.read',
       'subscriptions.manage',
+      'incidents.read',
+      'providers.read',
+      'jobs.read',
     ],
 
     operations_admin: [
@@ -85,6 +102,10 @@ const ROLE_CAPABILITIES:
       'subscriptions.read',
       'modules.read',
       'health.read',
+      'incidents.read',
+      'incidents.manage',
+      'providers.read',
+      'jobs.read',
       'notifications.read',
       'support.read',
     ],
@@ -94,6 +115,9 @@ const ROLE_CAPABILITIES:
       'modules.read',
       'modules.manage',
       'health.read',
+      'incidents.read',
+      'providers.read',
+      'jobs.read',
     ],
 
     read_only_admin: [
@@ -106,6 +130,9 @@ const ROLE_CAPABILITIES:
       'notifications.read',
       'audit.read',
       'health.read',
+      'incidents.read',
+      'providers.read',
+      'jobs.read',
       'support.read',
     ],
   };
