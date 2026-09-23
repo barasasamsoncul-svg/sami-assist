@@ -12,6 +12,10 @@ import {
 } from '@/lib/db/tenant';
 
 import {
+  getRuntimePlatformSettings,
+} from '@/lib/admin/platform-settings';
+
+import {
   queryControl,
 } from '@/lib/db/control';
 
@@ -31,6 +35,7 @@ const TOKEN_RE =
   /^sami_live_([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})_([A-Za-z0-9_-]{16,64})_([A-Za-z0-9_-]{32,128})$/i;
 
 export type DeveloperApiErrorCode =
+  | 'API_PLATFORM_DISABLED'
   | 'API_AUTH_REQUIRED'
   | 'API_KEY_INVALID'
   | 'API_KEY_INACTIVE'
@@ -244,6 +249,22 @@ export async function authenticateDeveloperRequest(
 ): Promise<DeveloperApiContext> {
   const requestId =
     crypto.randomUUID();
+
+  const platformSettings =
+    await getRuntimePlatformSettings();
+
+  if (
+    !platformSettings
+      .features
+      .developerApiEnabled
+  ) {
+    throw new DeveloperApiError(
+      'API_PLATFORM_DISABLED',
+      503,
+      'The SaMi Developer API is temporarily disabled by Platform Administration.',
+      requestId,
+    );
+  }
 
   const scope =
     getDeveloperScope(
