@@ -4,6 +4,10 @@ import {
   queryControl,
 } from '@/lib/db/control';
 
+import {
+  getControlMigrationStatus,
+} from '@/lib/admin/control-migration-status';
+
 
 const DEFAULT_PAGE_SIZE =
   25;
@@ -1672,7 +1676,7 @@ export async function getAdminPlatformHealth() {
     tenantCount,
     activeSubscriptions,
     registrationRequests,
-    migrations,
+    migrationStatus,
     tenantDatabaseHealth,
     incidents,
     failedJobs,
@@ -1741,18 +1745,7 @@ export async function getAdminPlatformHealth() {
         `,
       ),
 
-      queryControl(
-        `
-          SELECT
-            version,
-            name,
-            applied_at
-          FROM control_schema_migrations
-          ORDER BY
-            version DESC
-          LIMIT 1
-        `,
-      ),
+      getControlMigrationStatus(),
 
       queryControl(
         `
@@ -1846,10 +1839,6 @@ export async function getAdminPlatformHealth() {
   const registration =
     registrationRequests.rows[0] ||
     {};
-
-  const latestMigration =
-    migrations.rows[0] ||
-    null;
 
   const databases =
     tenantDatabaseHealth.rows[0] ||
@@ -1972,25 +1961,37 @@ export async function getAdminPlatformHealth() {
     },
 
     schema: {
-      latestVersion:
-        latestMigration
-          ?.version
-          ? String(
-              latestMigration.version,
-            )
-          : null,
-      latestName:
-        latestMigration
-          ?.name
-          ? String(
-              latestMigration.name,
-            )
-          : null,
-      appliedAt:
-        toIso(
-          latestMigration
-            ?.applied_at,
-        ),
+      expectedCount:
+        migrationStatus
+          .expectedCount,
+      appliedCount:
+        migrationStatus
+          .appliedCount,
+      pendingCount:
+        migrationStatus
+          .pendingCount,
+      latestExpected:
+        migrationStatus
+          .latestExpected
+          ?.migrationKey ||
+        null,
+      latestApplied:
+        migrationStatus
+          .latestApplied
+          ?.migrationKey ||
+        null,
+      latestAppliedAt:
+        migrationStatus
+          .latestApplied
+          ?.appliedAt ||
+        null,
+      pending:
+        migrationStatus
+          .pending,
+      ready:
+        migrationStatus
+          .pendingCount ===
+        0,
     },
   };
 }
