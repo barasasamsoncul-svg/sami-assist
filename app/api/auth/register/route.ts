@@ -84,6 +84,10 @@ const MAX_PHONE_LENGTH = 40;
 
 const MAX_EMAIL_LENGTH = 254;
 
+const MAX_REGISTRATION_REQUEST_BYTES =
+  32 *
+  1024;
+
 const GOOGLE_SIGNUP_COOKIE =
   'sami_google_signup_state';
 
@@ -361,6 +365,33 @@ function isJsonRequest(
       .includes(
         'application/json'
       ) === true
+  );
+}
+
+function registrationRequestTooLarge(
+  request: NextRequest
+): boolean {
+  const value =
+    request.headers
+      .get(
+        'content-length'
+      );
+
+  if (!value) {
+    return false;
+  }
+
+  const length =
+    Number(
+      value
+    );
+
+  return (
+    Number.isFinite(
+      length
+    ) &&
+    length >
+      MAX_REGISTRATION_REQUEST_BYTES
   );
 }
 
@@ -2046,6 +2077,18 @@ export async function POST(
         415,
         'UNSUPPORTED_MEDIA_TYPE',
         'Registration requests must use JSON.'
+      );
+    }
+
+    if (
+      registrationRequestTooLarge(
+        request
+      )
+    ) {
+      return errorResponse(
+        413,
+        'REQUEST_TOO_LARGE',
+        'The registration request is too large.'
       );
     }
 
