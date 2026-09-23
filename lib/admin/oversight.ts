@@ -1135,7 +1135,10 @@ export async function listAdminModules(
             )
               ? row.dependencies
                   .map(
-                    value =>
+                    (
+                      value:
+                        unknown,
+                    ) =>
                       String(
                         value,
                       ),

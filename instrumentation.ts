@@ -183,8 +183,6 @@ export const onRequestError:
           revalidateReason:
             context.revalidateReason ||
             null,
-          renderType:
-            context.renderType,
           userAgent:
             cleanHeader(
               request.headers[

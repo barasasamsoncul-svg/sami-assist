@@ -108,11 +108,16 @@ export async function getControlMigrationStatus() {
                 '',
               ),
             appliedAt:
-              row.applied_at
-                ? new Date(
-                    row.applied_at,
-                  ).toISOString()
-                : null,
+              row.applied_at instanceof Date
+                ? row.applied_at.toISOString()
+                : typeof row.applied_at ===
+                    'string' ||
+                  typeof row.applied_at ===
+                    'number'
+                  ? new Date(
+                      row.applied_at,
+                    ).toISOString()
+                  : null,
           },
         ],
       ),
