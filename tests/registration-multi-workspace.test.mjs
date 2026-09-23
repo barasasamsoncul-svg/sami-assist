@@ -1133,6 +1133,115 @@ test('Registration: failed provisioning rollback removes physical tenant storage
 });
 
 
+test('Registration: new onboarding entrypoints invalidate stale drafts before submission', async () => {
+  const [
+    registerClient,
+    googleComplete,
+    newWorkspace,
+  ] =
+    await Promise.all([
+      source(
+        'app/register/RegisterClient.tsx',
+      ),
+      source(
+        'app/google-complete/page.tsx',
+      ),
+      source(
+        'app/workspaces/new/NewWorkspaceClient.tsx',
+      ),
+    ]);
+
+  for (
+    const [
+      label,
+      sourceText,
+    ]
+    of [
+      [
+        'email registration',
+        registerClient,
+      ],
+      [
+        'Google registration',
+        googleComplete,
+      ],
+      [
+        'existing-account workspace creation',
+        newWorkspace,
+      ],
+    ]
+  ) {
+    assert.match(
+      sourceText,
+      /method:[\s\S]*'DELETE'[\s\S]*\/api\/auth\/registration-draft/s,
+      `${label} must invalidate an older secure registration draft.`,
+    );
+
+    assert.match(
+      sourceText,
+      /draftResetComplete/,
+      `${label} must gate submission until draft invalidation completes.`,
+    );
+  }
+
+  assert.match(
+    registerClient,
+    /sami_selected_apps/,
+  );
+
+  assert.match(
+    registerClient,
+    /sami_selected_plan/,
+  );
+
+  assert.match(
+    googleComplete,
+    /sami_selected_apps/,
+  );
+
+  assert.match(
+    googleComplete,
+    /sami_selected_plan/,
+  );
+});
+
+
+test('Registration: plan draft validation cleanup remains registered for every auto-selected plan', async () => {
+  const plan =
+    await source(
+      'app/select-plan/page.tsx',
+    );
+
+  const effectStart =
+    plan.indexOf(
+      'useEffect(() => {',
+    );
+
+  const derivedStart =
+    plan.indexOf(
+      '/* ==========================================================\n     DERIVED',
+      effectStart,
+    );
+
+  const effect =
+    plan.slice(
+      effectStart,
+      derivedStart,
+    );
+
+  assert.match(
+    effect,
+    /return \(\) => \{[\s\S]*active =[\s\S]*false/s,
+  );
+
+  assert.doesNotMatch(
+    effect,
+    /setSelectedPlan\([\s\S]*'custom'[\s\S]*\);[\s\S]*return;/s,
+    'Auto-selecting Custom must not bypass the effect cleanup function.',
+  );
+});
+
+
 test('Registration: billing seat count includes active internal members only', async () => {
   const registerRoute =
     await source(
