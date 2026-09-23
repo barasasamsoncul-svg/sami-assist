@@ -47,6 +47,10 @@ import {
 } from '@/lib/auth/permission-catalog';
 
 import {
+  synchronizeModulePermissions,
+} from '@/lib/auth/module-permissions';
+
+import {
   getWorkspaceSubscriptionAccessStateWithClient,
 } from '@/lib/billing/access';
 
@@ -79,6 +83,7 @@ export type WorkspaceAppLifecycleCode =
   | 'APP_MIGRATION_MISSING'
   | 'APP_MIGRATION_UNSAFE'
   | 'APP_MIGRATION_FAILED'
+  | 'APP_PERMISSION_SYNC_FAILED'
   | 'APP_DOWNGRADE_UNSUPPORTED';
 
 
@@ -407,6 +412,51 @@ async function getModule(
         ]),
       ],
   };
+}
+
+
+async function synchronizeRuntimeModulePermissions(
+  moduleKey:
+    string,
+) {
+  const manifest =
+    getSamiModuleManifest(
+      moduleKey,
+    );
+
+  if (
+    !manifest
+  ) {
+    throw new WorkspaceAppLifecycleError(
+      'APP_PERMISSION_SYNC_FAILED',
+      `SaMi could not resolve the permission contract for module "${moduleKey}".`,
+    );
+  }
+
+  try {
+    await synchronizeModulePermissions({
+      moduleKey:
+        manifest.key,
+      permissions:
+        manifest.security
+          .permissions,
+    });
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi] Module permission synchronization failed:',
+      {
+        moduleKey,
+        error,
+      },
+    );
+
+    throw new WorkspaceAppLifecycleError(
+      'APP_PERMISSION_SYNC_FAILED',
+      `${manifest.name} permissions could not be synchronized safely.`,
+    );
+  }
 }
 
 
@@ -1446,6 +1496,10 @@ async function activateWorkspaceApp(
           }
         }
 
+        await synchronizeRuntimeModulePermissions(
+          module.key,
+        );
+
         continue;
       }
 
@@ -1656,6 +1710,10 @@ async function activateWorkspaceApp(
             module.version,
           ],
         );
+
+        await synchronizeRuntimeModulePermissions(
+          module.key,
+        );
       } catch (
         error
       ) {
@@ -1691,6 +1749,13 @@ async function activateWorkspaceApp(
             error,
           },
         );
+
+        if (
+          error instanceof
+            WorkspaceAppLifecycleError
+        ) {
+          throw error;
+        }
 
         throw new WorkspaceAppLifecycleError(
           'APP_SCHEMA_FAILED',
