@@ -4,8 +4,8 @@ import {
 } from 'next/server';
 
 import {
-  requireAdminRole,
-} from '@/lib/auth/admin-session';
+  requireAdminCapability,
+} from '@/lib/admin/require-capability';
 
 import {
   changePlatformAdminRole,
@@ -587,9 +587,9 @@ export async function PATCH(
        ======================================================== */
 
     const session =
-      await requireAdminRole([
-        'super_admin',
-      ]);
+      await requireAdminCapability(
+        'administrators.manage',
+      );
 
     actorAdminId =
       session.adminId;
@@ -994,7 +994,7 @@ export async function PATCH(
             'ADMIN_FORBIDDEN',
 
           error:
-            'Only a Super Administrator can manage Platform Administrator lifecycle state.',
+            'Your administrator role cannot manage Platform Administrator lifecycle state.',
         },
         403
       );
