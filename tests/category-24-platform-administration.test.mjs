@@ -554,6 +554,58 @@ test('Category 24 administrator APIs use the canonical capability authority', as
 });
 
 
+test('Category 24 notification operations show delivery outcomes without destination leakage', async () => {
+  const oversight = await source('lib/admin/notification-oversight.ts');
+  const page = await source('app/admin/(protected)/notifications/page.tsx');
+
+  assert.match(oversight, /platform_admin_alert_deliveries/);
+  assert.match(oversight, /attempt_count/);
+  assert.match(oversight, /error_code/);
+  assert.match(oversight, /provider_message_id/);
+  assert.match(oversight, /42P01/);
+
+  assert.doesNotMatch(
+    oversight,
+    /SELECT[\s\S]{0,200}destination_fingerprint/,
+    'Notification oversight must not read or expose destination fingerprints.',
+  );
+
+  assert.match(page, /Platform alert deliveries/);
+  assert.match(page, /Notification & billing audit activity/);
+  assert.match(page, /Alert settings/);
+
+  assert.doesNotMatch(
+    page,
+    /smsPhoneE164|destination_fingerprint|message_body|body_text/,
+    'Platform notification operations must not render delivery destinations or message bodies.',
+  );
+});
+
+
+test('Category 24 Settings navigation avoids duplicate dead account pages', async () => {
+  const sidebar = await source('app/admin/components/AdminSidebar.tsx');
+
+  assert.ok(sidebar.includes("href: '/admin/settings/account'"));
+  assert.ok(sidebar.includes("href: '/admin/settings/notifications'"));
+
+  for (const deadHref of [
+    "/admin/settings/security",
+    "/admin/settings/sessions",
+    "/admin/settings/preferences",
+  ]) {
+    assert.ok(
+      !sidebar.includes("href: '" + deadHref + "'"),
+      'Duplicate dead Settings route remains: ' + deadHref,
+    );
+  }
+
+  assert.ok(
+    sidebar.includes("href: '/admin/settings/platform'"),
+    'Category 25 Platform Settings placeholder should remain explicit.',
+  );
+});
+
+
 test('Category 24 internal platform operations remain outside the workspace shell', async () => {
   const shell = await source('app/components/workspace/WorkspaceShell.tsx');
 
