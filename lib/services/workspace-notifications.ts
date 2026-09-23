@@ -17,6 +17,10 @@ import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
 
+import {
+  assertRegisteredSamiModuleExtension,
+} from '@/lib/modules/registry';
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -1241,6 +1245,11 @@ export async function createWorkspaceNotification(
       input.sourceModel,
       150,
     ) || null;
+
+  assertRegisteredSamiModuleExtension(
+    sourceModule,
+    'notifications',
+  );
 
   const sourceRecordId =
     input.sourceRecordId
