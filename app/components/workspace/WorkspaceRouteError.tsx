@@ -23,6 +23,53 @@ export default function WorkspaceRouteError({
         '[SaMi] Workspace route error:',
         error,
       );
+
+      try {
+        void fetch(
+          '/api/telemetry/error',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify({
+                route:
+                  typeof window !==
+                    'undefined'
+                    ? window.location
+                        .pathname
+                    : null,
+                digest:
+                  error.digest ||
+                  null,
+                name:
+                  error.name ||
+                  'Error',
+                message:
+                  error.message ||
+                  'Workspace route error',
+                stack:
+                  error.stack ||
+                  null,
+              }),
+          },
+        ).catch(
+          () => {
+            // Telemetry must never interfere with workspace recovery.
+          },
+        );
+      } catch {
+        // Telemetry must remain best-effort.
+      }
     },
     [
       error,
