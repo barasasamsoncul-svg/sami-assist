@@ -1254,7 +1254,9 @@ async function createVerification({
 
 async function cleanupRegistration(
   context: RegistrationContext
-): Promise<void> {
+): Promise<boolean> {
+  let cleanupSucceeded =
+    true;
   if (
     context.tenantId
   ) {
@@ -1269,6 +1271,8 @@ async function cleanupRegistration(
         ]
       );
     } catch (error) {
+      cleanupSucceeded =
+        false;
       console.error(
         '[SaMi] Payment cleanup failed:',
         error
@@ -1290,6 +1294,8 @@ async function cleanupRegistration(
         ]
       );
     } catch (error) {
+      cleanupSucceeded =
+        false;
       console.error(
         '[SaMi] Subscription cleanup failed:',
         error
@@ -1331,6 +1337,8 @@ async function cleanupRegistration(
           ]
         );
       } catch (error) {
+      cleanupSucceeded =
+        false;
         console.error(
           '[SaMi] Tenant cleanup failed:',
           error
@@ -1359,6 +1367,8 @@ async function cleanupRegistration(
         ]
       );
     } catch (error) {
+      cleanupSucceeded =
+        false;
       console.error(
         '[SaMi] Verification cleanup failed:',
         error
@@ -1376,12 +1386,16 @@ async function cleanupRegistration(
         ]
       );
     } catch (error) {
+      cleanupSucceeded =
+        false;
       console.error(
         '[SaMi] User cleanup failed:',
         error
       );
     }
   }
+
+  return cleanupSucceeded;
 }
 
 /* ============================================================
