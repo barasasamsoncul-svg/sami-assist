@@ -113,6 +113,14 @@ export default function PlatformAlertPreferencesForm({
     );
 
   const [
+    testing,
+    setTesting,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
     message,
     setMessage,
   ] =
@@ -241,6 +249,94 @@ export default function PlatformAlertPreferencesForm({
       });
     } finally {
       setSaving(
+        false,
+      );
+    }
+  }
+
+
+  async function sendTestAlert() {
+    if (
+      testing
+    ) {
+      return;
+    }
+
+    setTesting(
+      true,
+    );
+
+    setMessage(
+      null,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/admin/account/alert-preferences/test',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+      const data =
+        await response
+          .json()
+          .catch(
+            () => ({
+              success:
+                false,
+            }),
+          ) as {
+            success?:
+              boolean;
+            error?:
+              string;
+            message?:
+              string;
+          };
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+          data.message ||
+          'SaMi could not send the test alert.',
+        );
+      }
+
+      setMessage({
+        type:
+          'success',
+        text:
+          data.message ||
+          'Test alert sent.',
+      });
+    } catch (
+      error
+    ) {
+      setMessage({
+        type:
+          'error',
+        text:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not send the test alert.',
+      });
+    } finally {
+      setTesting(
         false,
       );
     }
@@ -617,11 +713,31 @@ export default function PlatformAlertPreferencesForm({
           </select>
         </label>
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <button
             type="button"
             disabled={
+              testing ||
               saving
+            }
+            onClick={() =>
+              void sendTestAlert()
+            }
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-zinc-200 px-5 text-xs font-black text-zinc-700 transition hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          >
+            {testing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Bell className="h-4 w-4" />
+            )}
+            Send test alert
+          </button>
+
+          <button
+            type="button"
+            disabled={
+              saving ||
+              testing
             }
             onClick={() =>
               void save()
