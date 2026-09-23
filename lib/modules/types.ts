@@ -107,6 +107,23 @@ export type SamiModuleResource = {
   fields?: SamiModuleField[];
 };
 
+export type SamiModulePermissionDefinition = {
+  key: string;
+  name: string;
+  description?: string | null;
+  resource: string;
+  action: string;
+  scope?:
+    | 'workspace'
+    | 'company'
+    | 'module'
+    | 'record';
+  defaultSystemRoles?: (
+    | 'admin'
+    | 'member'
+  )[];
+};
+
 export type SamiModuleRecordPolicy = {
   key: string;
   name: string;
@@ -172,7 +189,7 @@ export type SamiModuleManifest = {
   resources: SamiModuleResource[];
 
   security: {
-    permissions: string[];
+    permissions: SamiModulePermissionDefinition[];
     recordPolicies: SamiModuleRecordPolicy[];
     fieldPolicies: SamiModuleFieldPolicy[];
   };
