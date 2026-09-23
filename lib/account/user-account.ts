@@ -683,7 +683,7 @@ function mapPreferencesRow(
 ): UserPreferences {
   if (!row) {
     return {
-      ...DEFAULT_PREFERENCES,
+      ...defaults,
     };
   }
 
@@ -1176,7 +1176,8 @@ export async function updateUserPreferences(
 
   return mapPreferencesRow(
     result.rows[0] as
-      UserPreferencesRow
+      UserPreferencesRow,
+    defaults,
   );
 }
 
