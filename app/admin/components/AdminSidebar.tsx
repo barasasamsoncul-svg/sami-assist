@@ -28,6 +28,10 @@ import {
   Laptop,
   Palette,
   SlidersHorizontal,
+  Activity,
+  CircleAlert,
+  CloudCog,
+  ListChecks,
 } from 'lucide-react';
 
 import SaMiLogo from '@/app/components/SaMiLogo';
@@ -140,6 +144,41 @@ const navigation: readonly NavigationItem[] = [
     icon: Boxes,
 
     capability: 'modules.read',
+  },
+
+  {
+    label: 'Operations',
+    icon: Activity,
+
+    children: [
+      {
+        label: 'Platform Health',
+        href: '/admin/operations/health',
+        icon: Activity,
+        capability: 'health.read',
+      },
+
+      {
+        label: 'Incidents & Errors',
+        href: '/admin/operations/incidents',
+        icon: CircleAlert,
+        capability: 'incidents.read',
+      },
+
+      {
+        label: 'Providers',
+        href: '/admin/operations/providers',
+        icon: CloudCog,
+        capability: 'providers.read',
+      },
+
+      {
+        label: 'Jobs & Workers',
+        href: '/admin/operations/jobs',
+        icon: ListChecks,
+        capability: 'jobs.read',
+      },
+    ],
   },
 
   {
