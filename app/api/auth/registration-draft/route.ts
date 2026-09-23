@@ -52,6 +52,10 @@ const MAX_PASSWORD_LENGTH =
 const MAX_PHONE_LENGTH =
   40;
 
+const MAX_REQUEST_BYTES =
+  16 *
+  1024;
+
 
 function normalizeEmail(
   value:
@@ -127,6 +131,109 @@ function validEmail(
       value,
     )
   );
+}
+
+
+function requireSameOrigin(
+  request:
+    NextRequest,
+) {
+  const secFetchSite =
+    request.headers
+      .get(
+        'sec-fetch-site',
+      )
+      ?.trim()
+      .toLowerCase();
+
+  if (
+    secFetchSite ===
+      'cross-site'
+  ) {
+    throw new Error(
+      'REGISTRATION_ORIGIN_REJECTED',
+    );
+  }
+
+  const origin =
+    request.headers
+      .get(
+        'origin',
+      );
+
+  if (
+    !origin
+  ) {
+    return;
+  }
+
+  let actual:
+    string;
+
+  try {
+    actual =
+      new URL(
+        origin,
+      ).origin;
+  } catch {
+    throw new Error(
+      'REGISTRATION_ORIGIN_REJECTED',
+    );
+  }
+
+  if (
+    actual !==
+      request.nextUrl
+        .origin
+  ) {
+    throw new Error(
+      'REGISTRATION_ORIGIN_REJECTED',
+    );
+  }
+}
+
+
+function requireJsonRequest(
+  request:
+    NextRequest,
+) {
+  const contentType =
+    request.headers
+      .get(
+        'content-type',
+      )
+      ?.toLowerCase() ||
+    '';
+
+  if (
+    !contentType.includes(
+      'application/json',
+    )
+  ) {
+    throw new Error(
+      'REGISTRATION_JSON_REQUIRED',
+    );
+  }
+
+  const contentLength =
+    Number(
+      request.headers
+        .get(
+          'content-length',
+        ),
+    );
+
+  if (
+    Number.isFinite(
+      contentLength,
+    ) &&
+    contentLength >
+      MAX_REQUEST_BYTES
+  ) {
+    throw new Error(
+      'REGISTRATION_REQUEST_TOO_LARGE',
+    );
+  }
 }
 
 
@@ -512,6 +619,14 @@ export async function POST(
     NextRequest,
 ) {
   try {
+    requireSameOrigin(
+      request,
+    );
+
+    requireJsonRequest(
+      request,
+    );
+
     let body:
       Record<
         string,
@@ -1161,6 +1276,44 @@ export async function POST(
   } catch (
     errorValue
   ) {
+    if (
+      errorValue instanceof
+        Error
+    ) {
+      if (
+        errorValue.message ===
+          'REGISTRATION_ORIGIN_REJECTED'
+      ) {
+        return error(
+          403,
+          'INVALID_ORIGIN',
+          'This registration request could not be verified.',
+        );
+      }
+
+      if (
+        errorValue.message ===
+          'REGISTRATION_JSON_REQUIRED'
+      ) {
+        return error(
+          415,
+          'UNSUPPORTED_MEDIA_TYPE',
+          'Registration requests must use JSON.',
+        );
+      }
+
+      if (
+        errorValue.message ===
+          'REGISTRATION_REQUEST_TOO_LARGE'
+      ) {
+        return error(
+          413,
+          'REQUEST_TOO_LARGE',
+          'The registration request is too large.',
+        );
+      }
+    }
+
     console.error(
       '[SaMi Registration] Draft creation failed:',
       errorValue,
