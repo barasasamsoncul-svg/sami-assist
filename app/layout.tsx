@@ -2,10 +2,6 @@ import type { Metadata } from 'next';
 
 import SaMiThemeProvider from '@/app/components/SaMiThemeProvider';
 
-import {
-  SAMI_THEME_BOOTSTRAP_SCRIPT,
-} from '@/lib/theme/runtime';
-
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -24,12 +20,13 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        {/*
+         * External, same-origin bootstrap keeps first paint theme
+         * deterministic without requiring unsafe-inline in CSP.
+         */}
         <script
           id="sami-theme-bootstrap"
-          dangerouslySetInnerHTML={{
-            __html:
-              SAMI_THEME_BOOTSTRAP_SCRIPT,
-          }}
+          src="/sami-theme-bootstrap.js"
         />
       </head>
 
