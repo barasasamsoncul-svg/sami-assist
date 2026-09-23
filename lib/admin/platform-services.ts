@@ -1484,7 +1484,7 @@ async function syncCloudflareR2(
 
   const endpointAccountId =
     endpoint.match(
-      /^https?:\\/\\/([a-z0-9]+)\\.r2\\.cloudflarestorage\\.com/i,
+      /^https?:\/\/([a-z0-9]+)\.r2\.cloudflarestorage\.com/i,
     )
       ?.[1] ||
     '';
