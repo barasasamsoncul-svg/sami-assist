@@ -1,9 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+import {
+  NextRequest,
+  NextResponse,
+} from 'next/server';
 
-const AUTH_COOKIE_NAMES = [
+import {
+  buildContentSecurityPolicy,
+  createRequestNonce,
+  isSameOriginBrowserRequest,
+  requestRequiresSameOrigin,
+  securityResponseHeaders,
+} from '@/lib/security/http-security';
+
+const WORKSPACE_SESSION_COOKIE_NAMES = [
   '__Host-sami_session',
   'sami_session',
-];
+] as const;
 
 const PROTECTED_PATHS = [
   '/dashboard',
@@ -12,79 +23,231 @@ const PROTECTED_PATHS = [
   '/billing',
   '/apps',
   '/workspace',
-  '/invoices',
-  '/customers',
-  '/products',
-  '/inventory',
-  '/pos',
-  '/crm',
-  '/reports',
-  '/analytics',
-  '/team',
+  '/company',
   '/organization',
-];
+  '/team',
+  '/ai',
+  '/automation',
+  '/integrations',
+  '/developer',
+  '/activity',
+  '/notifications',
+  '/usage',
+  '/subscription-required',
+] as const;
 
-function hasSessionCookie(request: NextRequest): boolean {
-  return AUTH_COOKIE_NAMES.some((cookieName) => {
-    const value =
-      request.cookies.get(cookieName)?.value;
+function hasWorkspaceSessionCookie(
+  request: NextRequest,
+): boolean {
+  return WORKSPACE_SESSION_COOKIE_NAMES.some(
+    cookieName => {
+      const value =
+        request.cookies.get(
+          cookieName,
+        )?.value;
 
-    return (
-      typeof value === 'string' &&
-      value.length > 0
-    );
-  });
+      return (
+        typeof value ===
+          'string' &&
+        value.length >
+          0
+      );
+    },
+  );
 }
 
-function isProtectedPath(pathname: string): boolean {
-  return PROTECTED_PATHS.some((path) => {
-    return (
-      pathname === path ||
-      pathname.startsWith(`${path}/`)
-    );
-  });
+function isProtectedPath(
+  pathname: string,
+): boolean {
+  return PROTECTED_PATHS.some(
+    path =>
+      pathname ===
+        path ||
+      pathname.startsWith(
+        `${path}/`,
+      ),
+  );
 }
 
 function buildLoginRedirectUrl(
-  request: NextRequest
+  request: NextRequest,
 ): URL {
-  const loginUrl = new URL(
-    '/login',
-    request.url
-  );
+  const loginUrl =
+    new URL(
+      '/login',
+      request.url,
+    );
 
   const nextPath =
-    request.nextUrl.pathname +
-    request.nextUrl.search;
+    request.nextUrl
+      .pathname +
+    request.nextUrl
+      .search;
 
   loginUrl.searchParams.set(
     'next',
-    nextPath
+    nextPath,
   );
 
   return loginUrl;
 }
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  const sessionCookieExists =
-    hasSessionCookie(request);
-
-  if (
-    isProtectedPath(pathname) &&
-    !sessionCookieExists
+function applySecurityHeaders(
+  response: NextResponse,
+  contentSecurityPolicy: string,
+  requestId: string,
+) {
+  for (
+    const [
+      name,
+      value,
+    ]
+    of Object.entries(
+      securityResponseHeaders(
+        contentSecurityPolicy,
+        requestId,
+      ),
+    )
   ) {
-    return NextResponse.redirect(
-      buildLoginRedirectUrl(request)
+    response.headers.set(
+      name,
+      value,
     );
   }
 
-  return NextResponse.next();
+  if (
+    process.env.NODE_ENV ===
+    'production'
+  ) {
+    response.headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains',
+    );
+  }
+
+  return response;
+}
+
+export function proxy(
+  request: NextRequest,
+) {
+  const requestId =
+    crypto.randomUUID();
+
+  const nonce =
+    createRequestNonce();
+
+  const contentSecurityPolicy =
+    buildContentSecurityPolicy(
+      nonce,
+    );
+
+  /*
+   * All browser mutations authenticated by a SaMi session cookie
+   * inherit the same-origin boundary automatically. External
+   * webhooks, OAuth callbacks, billing callbacks and Developer API
+   * clients do not carry SaMi browser session cookies and therefore
+   * continue to use their own signature/token authentication.
+   */
+  if (
+    requestRequiresSameOrigin(
+      request,
+    ) &&
+    !isSameOriginBrowserRequest(
+      request,
+    )
+  ) {
+    const response =
+      NextResponse.json(
+        {
+          success:
+            false,
+          code:
+            'CROSS_ORIGIN_REQUEST_BLOCKED',
+          error:
+            'This request could not be verified as same-origin.',
+        },
+        {
+          status:
+            403,
+          headers: {
+            'Cache-Control':
+              'no-store',
+          },
+        },
+      );
+
+    return applySecurityHeaders(
+      response,
+      contentSecurityPolicy,
+      requestId,
+    );
+  }
+
+  if (
+    isProtectedPath(
+      request.nextUrl
+        .pathname,
+    ) &&
+    !hasWorkspaceSessionCookie(
+      request,
+    )
+  ) {
+    const response =
+      NextResponse.redirect(
+        buildLoginRedirectUrl(
+          request,
+        ),
+      );
+
+    return applySecurityHeaders(
+      response,
+      contentSecurityPolicy,
+      requestId,
+    );
+  }
+
+  const requestHeaders =
+    new Headers(
+      request.headers,
+    );
+
+  requestHeaders.set(
+    'x-nonce',
+    nonce,
+  );
+
+  requestHeaders.set(
+    'x-sami-request-id',
+    requestId,
+  );
+
+  /*
+   * Next.js reads the request CSP to discover the nonce and applies
+   * it to framework/runtime scripts during dynamic rendering.
+   */
+  requestHeaders.set(
+    'Content-Security-Policy',
+    contentSecurityPolicy,
+  );
+
+  const response =
+    NextResponse.next({
+      request: {
+        headers:
+          requestHeaders,
+      },
+    });
+
+  return applySecurityHeaders(
+    response,
+    contentSecurityPolicy,
+    requestId,
+  );
 }
 
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)',
+    '/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\..*).*)',
   ],
 };
