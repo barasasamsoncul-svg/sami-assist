@@ -185,7 +185,8 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /apiEndpoints:\s*true/,
+    /apiEndpoints:\s*false/,
+    'Authenticated workspace routes must not silently expose a public developer API.',
   );
 });
 
