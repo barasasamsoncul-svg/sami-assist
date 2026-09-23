@@ -406,7 +406,12 @@ test('Category 24 tenant backup and recovery operations are guarded audited and 
   const sidebar = await source('app/admin/components/AdminSidebar.tsx');
 
   assert.match(overview, /tenant_database_recovery_points/);
-  assert.match(overview, /provider_reference/);
+  assert.match(overview, /source_database_name/);
+  assert.doesNotMatch(
+    overview,
+    /provider_reference/,
+    'Recovery overview must not read provider backup object references.',
+  );
   assert.doesNotMatch(
     manager,
     /providerReference|provider_reference/,
