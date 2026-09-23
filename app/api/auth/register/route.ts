@@ -1951,6 +1951,13 @@ export async function POST(
       userCreated: false,
     };
 
+  let registrationRequestNonceHash:
+    string | null =
+    null;
+
+  let registrationRequestClaimed =
+    false;
+
   try {
     /* ========================================================
        1. REQUEST
@@ -2528,6 +2535,86 @@ export async function POST(
       );
 
     /* ========================================================
+       9. CLAIM REGISTRATION DRAFT
+
+       The encrypted draft nonce is single-consumption. A
+       concurrent request must never create a second workspace.
+       A completed retry returns the already-created workspace.
+       ======================================================== */
+
+    const registrationClaim =
+      await claimRegistrationRequest(
+        draft
+      );
+
+    registrationRequestNonceHash =
+      registrationClaim
+        .nonceHash;
+
+    if (
+      registrationClaim.state ===
+        'completed'
+    ) {
+      const completedResponse =
+        await buildCompletedRegistrationResponse({
+          request:
+            registrationClaim.row,
+          draft,
+          session,
+        });
+
+      if (
+        completedResponse
+      ) {
+        return completedResponse;
+      }
+
+      return errorResponse(
+        409,
+        'REGISTRATION_RECOVERY_REQUIRED',
+        'This workspace registration completed previously, but SaMi could not reconstruct its current workspace state. Contact support instead of starting another registration.'
+      );
+    }
+
+    if (
+      registrationClaim.state ===
+        'processing'
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_IN_PROGRESS',
+        'This workspace registration is already being processed. Please wait a moment and try again.',
+        {
+          retryAfterSeconds:
+            3,
+        }
+      );
+    }
+
+    if (
+      registrationClaim.state ===
+        'recovery_required'
+    ) {
+      return errorResponse(
+        409,
+        'REGISTRATION_RECOVERY_REQUIRED',
+        'SaMi found an incomplete registration with retained resources. Automatic retry is blocked to prevent creating a duplicate workspace. Contact support for recovery.'
+      );
+    }
+
+    registrationRequestClaimed =
+      true;
+
+    if (
+      context.userId
+    ) {
+      await updateRegistrationRequestProgress(
+        registrationRequestNonceHash,
+        context
+      );
+    }
+
+    /* ========================================================
        10. ACCOUNT CREDENTIAL MATERIAL
 
        Email/password drafts contain only a server-created
@@ -2680,6 +2767,11 @@ export async function POST(
       );
     }
 
+    await updateRegistrationRequestProgress(
+      registrationRequestNonceHash,
+      context
+    );
+
     /* ========================================================
        13. CREATE WORKSPACE
 
@@ -2732,6 +2824,11 @@ export async function POST(
           .rows[0].id,
         'tenant'
       );
+
+    await updateRegistrationRequestProgress(
+      registrationRequestNonceHash,
+      context
+    );
 
     /* ========================================================
        14. OWNER MEMBERSHIP
@@ -2925,6 +3022,11 @@ export async function POST(
           .rows[0].id,
         'subscription'
       );
+
+    await updateRegistrationRequestProgress(
+      registrationRequestNonceHash,
+      context
+    );
 
     /* ========================================================
        17. RESERVE APPS
@@ -3380,6 +3482,14 @@ export async function POST(
       }
     }
 
+    await completeRegistrationRequest(
+      registrationRequestNonceHash,
+      context
+    );
+
+    registrationRequestClaimed =
+      false;
+
     /* ========================================================
        26. RESPONSE
        ======================================================== */
@@ -3607,14 +3717,40 @@ export async function POST(
       error
     );
 
-    await cleanupRegistration(
-      context
-    );
+    const cleanupSucceeded =
+      await cleanupRegistration(
+        context
+      );
+
+    if (
+      registrationRequestNonceHash &&
+      registrationRequestClaimed
+    ) {
+      try {
+        await failRegistrationRequest(
+          registrationRequestNonceHash,
+          cleanupSucceeded
+        );
+      } catch (
+        idempotencyError
+      ) {
+        console.error(
+          '[SaMi] Registration idempotency failure-state update failed:',
+          idempotencyError
+        );
+      }
+    }
 
     return errorResponse(
-      500,
-      'REGISTRATION_ERROR',
-      'Registration could not be completed. Please try again.'
+      cleanupSucceeded
+        ? 500
+        : 409,
+      cleanupSucceeded
+        ? 'REGISTRATION_ERROR'
+        : 'REGISTRATION_RECOVERY_REQUIRED',
+      cleanupSucceeded
+        ? 'Registration could not be completed. The partial setup was cleaned up safely, so you can try again.'
+        : 'Registration stopped after a partial setup and SaMi could not prove cleanup was complete. Automatic retry is blocked to prevent a duplicate workspace.'
     );
   }
 }
