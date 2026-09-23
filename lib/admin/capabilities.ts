@@ -22,6 +22,7 @@ export type PlatformAdminCapability =
   | 'incidents.read'
   | 'incidents.manage'
   | 'providers.read'
+  | 'providers.manage'
   | 'jobs.read'
   | 'support.read';
 
@@ -46,6 +47,7 @@ const ALL_CAPABILITIES:
     'incidents.read',
     'incidents.manage',
     'providers.read',
+    'providers.manage',
     'jobs.read',
     'support.read',
   ];
@@ -91,6 +93,7 @@ const ROLE_CAPABILITIES:
       'subscriptions.manage',
       'incidents.read',
       'providers.read',
+      'providers.manage',
       'jobs.read',
     ],
 
@@ -105,6 +108,7 @@ const ROLE_CAPABILITIES:
       'incidents.read',
       'incidents.manage',
       'providers.read',
+      'providers.manage',
       'jobs.read',
       'notifications.read',
       'support.read',
