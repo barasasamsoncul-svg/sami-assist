@@ -705,6 +705,62 @@ test('Registration: global workspace switcher is available to every authenticate
 });
 
 
+test('Registration: Control DB migration runner applies registration idempotency safely', async () => {
+  const [
+    script,
+    pkgSource,
+  ] =
+    await Promise.all([
+      source(
+        'scripts/migrate-control.ts',
+      ),
+      source(
+        'package.json',
+      ),
+    ]);
+
+  const pkg =
+    JSON.parse(
+      pkgSource,
+    );
+
+  assert.equal(
+    pkg.scripts[
+      'migrate:control'
+    ],
+    'node --conditions=react-server --import tsx scripts/migrate-control.ts',
+  );
+
+  assert.match(
+    script,
+    /pg_advisory_lock/,
+    'Control migrations must serialize concurrent runners.',
+  );
+
+  assert.match(
+    script,
+    /control_schema_migrations/,
+  );
+
+  assert.match(
+    script,
+    /checksum/,
+  );
+
+  assert.match(
+    script,
+    /different checksum/,
+    'An already-applied migration must never be silently edited.',
+  );
+
+  assert.match(
+    script,
+    /BEGIN[\s\S]*COMMIT[\s\S]*ROLLBACK/s,
+    'Each migration must be atomic.',
+  );
+});
+
+
 test('Registration: billing seat count includes active internal members only', async () => {
   const registerRoute =
     await source(
