@@ -94,6 +94,15 @@ const LEGACY_REGISTRATION_STORAGE_KEY =
 const WORKSPACE_CREATE_CONTINUATION_KEY =
   'sami_workspace_create_draft';
 
+const APPS_STORAGE_KEY =
+  'sami_selected_apps';
+
+const PLAN_STORAGE_KEY =
+  'sami_selected_plan';
+
+const VERIFICATION_EMAIL_STORAGE_KEY =
+  'sami_verification_email';
+
 const GOOGLE_INTENT_STORAGE_KEY =
   'sami_google_intent';
 
@@ -466,9 +475,41 @@ function RegisterContent() {
      ========================================================== */
 
   useEffect(() => {
+    /*
+     * /register starts a NEW account/workspace onboarding
+     * attempt. Invalidate any previous secure draft so a stale
+     * identity can never flow into this registration.
+     */
+    void fetch(
+      '/api/auth/registration-draft',
+      {
+        method:
+          'DELETE',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+      },
+    ).catch(
+      () =>
+        undefined,
+    );
+
     try {
       sessionStorage.removeItem(
         LEGACY_REGISTRATION_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        APPS_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        PLAN_STORAGE_KEY
+      );
+
+      sessionStorage.removeItem(
+        VERIFICATION_EMAIL_STORAGE_KEY
       );
     } catch {
       // Registration remains available when browser storage is unavailable.
@@ -957,6 +998,18 @@ function RegisterContent() {
 
         sessionStorage.removeItem(
           WORKSPACE_CREATE_CONTINUATION_KEY
+        );
+
+        sessionStorage.removeItem(
+          APPS_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          PLAN_STORAGE_KEY
+        );
+
+        sessionStorage.removeItem(
+          VERIFICATION_EMAIL_STORAGE_KEY
         );
       } catch {
         // The server draft remains authoritative.
