@@ -471,6 +471,11 @@ export default function SelectAppsPage() {
     setNavigating,
   ] = useState(false);
 
+  const [
+    draftReady,
+    setDraftReady,
+  ] = useState(false);
+
   const [overlay, setOverlay] =
     useState<OverlayState | null>(
       null
@@ -481,6 +486,86 @@ export default function SelectAppsPage() {
      ========================================================== */
 
   useEffect(() => {
+    let active =
+      true;
+
+    async function validateDraft() {
+      try {
+        const response =
+          await fetch(
+            '/api/auth/registration-draft',
+            {
+              method:
+                'GET',
+              credentials:
+                'same-origin',
+              cache:
+                'no-store',
+              headers: {
+                Accept:
+                  'application/json',
+              },
+            },
+          );
+
+        let data:
+          {
+            success?:
+              boolean;
+            next?:
+              string;
+          } =
+          {};
+
+        try {
+          data =
+            await response.json();
+        } catch {
+          data =
+            {};
+        }
+
+        if (
+          !response.ok ||
+          !data.success
+        ) {
+          if (
+            active
+          ) {
+            router.replace(
+              data.next ||
+              '/register',
+            );
+          }
+
+          return;
+        }
+
+        if (
+          active
+        ) {
+          setDraftReady(
+            true,
+          );
+        }
+      } catch {
+        if (
+          active
+        ) {
+          setOverlay({
+            type:
+              'error',
+            title:
+              'Workspace setup unavailable',
+            message:
+              'SaMi could not verify your secure workspace setup. Check your connection and try again.',
+          });
+        }
+      }
+    }
+
+    void validateDraft();
+
     const restored =
       readSelectedApps();
 
@@ -491,7 +576,14 @@ export default function SelectAppsPage() {
      * app keys are normalized.
      */
     saveSelectedApps(restored);
-  }, []);
+
+    return () => {
+      active =
+        false;
+    };
+  }, [
+    router,
+  ]);
 
   /* ==========================================================
      DERIVED DATA
@@ -700,7 +792,10 @@ export default function SelectAppsPage() {
   }
 
   function handleNext() {
-    if (navigating) {
+    if (
+      navigating ||
+      !draftReady
+    ) {
       return;
     }
 
@@ -746,6 +841,22 @@ export default function SelectAppsPage() {
   /* ==========================================================
      RENDER
      ========================================================== */
+
+  if (
+    !draftReady &&
+    !overlay
+  ) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8fb] text-slate-950 dark:bg-[#070a10] dark:text-white">
+        <div className="text-center">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin text-blue-600" />
+          <p className="mt-3 text-xs font-bold text-slate-500 dark:text-slate-400">
+            Verifying workspace setup…
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <>
