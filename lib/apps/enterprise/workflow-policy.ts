@@ -553,6 +553,161 @@ const DOMAIN_GRAPH:
         'cancelled',
       ],
     },
+    'timesheets:time_entries': {
+      draft: [
+        'submitted',
+        'cancelled',
+      ],
+      submitted: [
+        'approved',
+        'rejected',
+      ],
+      rejected: [
+        'draft',
+      ],
+    },
+    'appraisals:appraisal_cycles': {
+      draft: [
+        'active',
+        'cancelled',
+      ],
+      active: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'appraisals:appraisals': {
+      draft: [
+        'submitted',
+        'cancelled',
+      ],
+      submitted: [
+        'in_review',
+        'completed',
+        'rejected',
+      ],
+      in_review: [
+        'completed',
+        'rejected',
+      ],
+      rejected: [
+        'draft',
+      ],
+    },
+    'learning:learning_enrollments': {
+      active: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'onboarding:employee_onboardings': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'onboarding:employee_onboarding_tasks': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'safety:safety_incidents': {
+      active: [
+        'in_progress',
+        'resolved',
+        'closed',
+      ],
+      in_progress: [
+        'resolved',
+        'closed',
+      ],
+      resolved: [
+        'closed',
+        'active',
+      ],
+    },
+    'safety:safety_actions': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'safety:safety_checks': {
+      active: [
+        'scheduled',
+        'completed',
+        'cancelled',
+      ],
+      scheduled: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'rentals:rental_contracts': {
+      active: [
+        'returned',
+        'closed',
+        'cancelled',
+      ],
+      returned: [
+        'closed',
+      ],
+    },
+    'rentals:rental_items': {
+      available: [
+        'rented',
+        'maintenance',
+        'unavailable',
+      ],
+      rented: [
+        'available',
+        'maintenance',
+      ],
+      maintenance: [
+        'available',
+        'unavailable',
+      ],
+      unavailable: [
+        'available',
+        'maintenance',
+      ],
+    },
+    'fleet:vehicles': {
+      active: [
+        'maintenance',
+        'inactive',
+      ],
+      maintenance: [
+        'active',
+        'inactive',
+      ],
+      inactive: [
+        'active',
+        'maintenance',
+      ],
+    },
+    'fleet:vehicle_assignments': {
+      active: [
+        'completed',
+        'cancelled',
+      ],
+    },
   };
 
 
