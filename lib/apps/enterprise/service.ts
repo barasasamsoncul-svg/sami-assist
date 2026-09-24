@@ -1126,7 +1126,7 @@ async function tableMetadata(
           !COMPUTED_COLUMNS.has(
             row.column_name,
           ) &&
-          !/(^|_)(status|state)$/.test(
+          !/(^|_)(status|state|stage)$/.test(
             row.column_name,
           ),
         relation:
@@ -1381,7 +1381,7 @@ async function workflowFieldsForTable(
   const statusFields =
     fields.filter(
       field =>
-        /(^|_)(status|state)$/.test(
+        /(^|_)(status|state|stage)$/.test(
           field.key,
         ),
     );
@@ -3438,7 +3438,7 @@ export async function transitionEnterpriseModuleRecord(
     !names.has(
       field,
     ) ||
-    !/(^|_)(status|state)$/.test(
+    !/(^|_)(status|state|stage)$/.test(
       field,
     )
   ) {
