@@ -13,6 +13,7 @@ import {
 } from '@/lib/auth/workspace-shell';
 
 import {
+  getSession,
   listActiveSessions,
 } from '@/lib/auth/session';
 
@@ -66,6 +67,7 @@ export async function buildAccountDataExport(
     account,
     memberships,
     activeSessions,
+    currentSession,
   ] =
     await Promise.all([
       getUserAccountWithPreferences(
@@ -83,6 +85,8 @@ export async function buildAccountDataExport(
       listActiveSessions(
         input.userId,
       ),
+
+      getSession(),
     ]);
 
   let currentWorkspace:
@@ -143,6 +147,17 @@ export async function buildAccountDataExport(
                   ...shell
                     .accessibleModuleKeys,
                 ],
+              companyId:
+                currentSession &&
+                currentSession
+                  .user.id ===
+                  input.userId &&
+                currentSession
+                  .currentTenantId ===
+                  permissions.tenantId
+                  ? currentSession
+                      .currentCompanyId
+                  : null,
             };
 
           const handlers =

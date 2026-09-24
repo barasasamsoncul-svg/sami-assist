@@ -94,3 +94,26 @@ Saving a workflow creates a new immutable version.
 `active_version` is the version production execution uses.
 
 Saving a new draft never changes the active version until the user explicitly activates it.
+
+
+## Business app automation
+
+The shared enterprise app runtime registers code-owned business events for every app handled by the enterprise engine:
+
+- `<app>.record.created`
+- `<app>.record.updated`
+- `<app>.record.deleted`
+- `<app>.workflow.transitioned`
+
+It also registers approved write actions:
+
+- `<app>.record.create`
+- `<app>.record.update`
+
+Business-app write actions always require approval. They execute with the workflow runner's live company, installed-app boundary and current permissions. The caller cannot supply a tenant or company authority.
+
+Automation writes use the same domain hooks as interactive app writes. Computed totals, status/state fields, secrets and system fields cannot be written directly; inventory, payroll, purchasing, CPQ, e-commerce and POS side effects remain transactional.
+
+User-originated business mutations dispatch events only after the business transaction commits. Dispatch is best-effort and cannot turn a successful business save into a failed response. Automation-generated record actions do not recursively emit the same business event, preventing accidental workflow loops.
+
+Dedicated apps such as Invoicing and Sales keep their dedicated business services. They are not raw-mutated through the generic enterprise Automation action handlers.

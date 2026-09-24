@@ -6,6 +6,7 @@ export const CONTROL_MIGRATION_KEYS = [
   '005-category-24-platform-service-subscriptions.sql',
   '006-category-24-platform-admin-alert-preferences.sql',
   '007-category-25-platform-settings.sql',
+  '008-user-tutorial-preferences.sql',
 ] as const;
 
 

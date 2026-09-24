@@ -45,6 +45,7 @@ export type UserDisplayPreferences = {
   dateFormat: UserDateFormat;
   timeFormat: UserTimeFormat;
   firstDayOfWeek: number;
+  tutorialsEnabled?: boolean;
 };
 
 export type DateInput =
@@ -85,6 +86,9 @@ export const DEFAULT_USER_DISPLAY_PREFERENCES:
 
   firstDayOfWeek:
     1,
+
+  tutorialsEnabled:
+    true,
 };
 
 /* ============================================================
@@ -312,6 +316,12 @@ export function normalizeUserDisplayPreferences(
       normalizeFirstDayOfWeek(
         source.firstDayOfWeek
       ),
+
+    tutorialsEnabled:
+      typeof source.tutorialsEnabled ===
+        'boolean'
+        ? source.tutorialsEnabled
+        : DEFAULT_USER_DISPLAY_PREFERENCES.tutorialsEnabled,
   };
 }
 

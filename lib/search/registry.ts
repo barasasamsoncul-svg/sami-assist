@@ -9,6 +9,14 @@ import {
 } from '@/lib/apps/invoicing/search';
 
 import {
+  ENTERPRISE_MODULE_SEARCH_PROVIDERS,
+} from '@/lib/apps/enterprise/search';
+
+import {
+  SALES_SEARCH_PROVIDER,
+} from '@/lib/apps/sales/search';
+
+import {
   filterAccessibleModuleExtensions,
 } from '@/lib/modules/registry';
 
@@ -23,6 +31,8 @@ export const WORKSPACE_SEARCH_PROVIDERS:
   WorkspaceSearchProvider[] =
   [
     INVOICING_SEARCH_PROVIDER,
+    SALES_SEARCH_PROVIDER,
+    ...ENTERPRISE_MODULE_SEARCH_PROVIDERS,
   ];
 
 export function getWorkspaceSearchProviders(

@@ -7,6 +7,10 @@ import {
   ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
 } from '@/lib/modules/additional-first-party';
 
+import {
+  withEnterpriseModuleDefaults,
+} from '@/lib/modules/enterprise-contract';
+
 /*
  * Canonical first-party module manifests.
  *
@@ -19,7 +23,7 @@ import {
  * resources, views, actions, permissions, policies and extension hooks as
  * their business implementation is built.
  */
-export const FIRST_PARTY_SAMI_MODULES:
+const BASE_FIRST_PARTY_SAMI_MODULES:
   SamiModuleManifest[] = [
   defineSamiModule({
     key: "accounting",
@@ -436,8 +440,8 @@ export const FIRST_PARTY_SAMI_MODULES:
       automationActions: false,
       aiTools: true,
       integrationProviders: false,
-      apiEndpoints: false,
-      dataExport: false,
+      apiEndpoints: true,
+      dataExport: true,
       dataErasure: false,
     },
   }),
@@ -785,8 +789,8 @@ export const FIRST_PARTY_SAMI_MODULES:
   defineSamiModule({
     key: "sales",
     name: "Sales",
-    version: '1.0.0',
-    description: "Manage quotations, sales orders and customers.",
+    version: '2.0.0',
+    description: "Run quotations, approvals, sales orders, fulfillment and invoice handoff.",
     category: "sales",
     icon: "shopping-cart",
     route: "apps/sales",
@@ -795,7 +799,17 @@ export const FIRST_PARTY_SAMI_MODULES:
     autoInstall: false,
     recommended: true,
     depends: [],
-    optionalDepends: [],
+    optionalDepends: [
+      'invoicing',
+      'crm',
+      'inventory',
+      'payments',
+      'customer_portal',
+      'sign',
+      'shipping',
+      'warehouse',
+      'cpq',
+    ],
     schemaPath: "lib/apps/sales/schema.sql",
     migrationNamespace: "sales",
     navigation: [
@@ -808,6 +822,42 @@ export const FIRST_PARTY_SAMI_MODULES:
         actionKey: "sales.open",
         order: 10,
       },
+      {
+        key: "sales.quotes",
+        label: "Quotations",
+        href: "/apps/sales",
+        iconKey: "file-text",
+        parentKey: "sales.root",
+        actionKey: "sales.quotes.open",
+        order: 20,
+      },
+      {
+        key: "sales.orders",
+        label: "Sales Orders",
+        href: "/apps/sales",
+        iconKey: "shopping-cart",
+        parentKey: "sales.root",
+        actionKey: "sales.orders.open",
+        order: 30,
+      },
+      {
+        key: "sales.reports",
+        label: "Reports",
+        href: "/apps/sales",
+        iconKey: "bar-chart",
+        parentKey: "sales.root",
+        actionKey: "sales.reports.open",
+        order: 40,
+      },
+      {
+        key: "sales.settings",
+        label: "Settings",
+        href: "/apps/sales",
+        iconKey: "settings",
+        parentKey: "sales.root",
+        actionKey: "sales.settings.open",
+        order: 50,
+      },
     ],
     actions: [
       {
@@ -815,37 +865,201 @@ export const FIRST_PARTY_SAMI_MODULES:
         name: "Open Sales",
         type: 'route',
         href: "/apps/sales",
-        viewKeys: ["sales.workspace"],
+        viewKeys: ["sales.dashboard"],
+        target: 'current',
+      },
+      {
+        key: "sales.quotes.open",
+        name: "Open quotations",
+        type: 'route',
+        href: "/apps/sales",
+        viewKeys: ["sales.quote.list"],
+        target: 'current',
+      },
+      {
+        key: "sales.quote.create",
+        name: "Create quotation",
+        type: 'wizard',
+        resourceKey: "quote",
+        href: "/apps/sales",
+        viewKeys: ["sales.quote.form"],
+        target: 'current',
+      },
+      {
+        key: "sales.orders.open",
+        name: "Open sales orders",
+        type: 'route',
+        href: "/apps/sales",
+        viewKeys: ["sales.order.list"],
+        target: 'current',
+      },
+      {
+        key: "sales.reports.open",
+        name: "Open Sales reports",
+        type: 'report',
+        href: "/apps/sales",
+        viewKeys: ["sales.report.dashboard"],
+        target: 'current',
+      },
+      {
+        key: "sales.settings.open",
+        name: "Open Sales settings",
+        type: 'route',
+        href: "/apps/sales",
+        viewKeys: ["sales.settings.form"],
         target: 'current',
       },
     ],
     views: [
       {
-        key: "sales.workspace",
-        name: "Sales workspace",
-        type: 'workspace',
+        key: "sales.dashboard",
+        name: "Sales dashboard",
+        type: 'dashboard',
         route: "/apps/sales",
         priority: 10,
       },
+      {
+        key: "sales.quote.list",
+        name: "Quotations",
+        type: 'list',
+        resourceKey: "quote",
+        route: "/apps/sales",
+        priority: 20,
+      },
+      {
+        key: "sales.quote.form",
+        name: "Quotation",
+        type: 'form',
+        resourceKey: "quote",
+        route: "/apps/sales",
+        priority: 30,
+      },
+      {
+        key: "sales.order.list",
+        name: "Sales orders",
+        type: 'list',
+        resourceKey: "order",
+        route: "/apps/sales",
+        priority: 40,
+      },
+      {
+        key: "sales.order.form",
+        name: "Sales order",
+        type: 'form',
+        resourceKey: "order",
+        route: "/apps/sales",
+        priority: 50,
+      },
+      {
+        key: "sales.report.dashboard",
+        name: "Sales reports",
+        type: 'dashboard',
+        route: "/apps/sales",
+        priority: 60,
+      },
+      {
+        key: "sales.settings.form",
+        name: "Sales settings",
+        type: 'form',
+        resourceKey: "settings",
+        route: "/apps/sales",
+        priority: 70,
+      },
     ],
-    resources: [],
+    resources: [
+      {
+        key: "quote",
+        label: "Quotation",
+        table: "sales_quotes",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: {
+          read: ["sales.quote.view"],
+          create: ["sales.quote.create"],
+          write: ["sales.quote.edit"],
+        },
+      },
+      {
+        key: "order",
+        label: "Sales order",
+        table: "sales_orders_v2",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: {
+          read: ["sales.order.view"],
+          write: ["sales.order.manage"],
+        },
+      },
+      {
+        key: "quote_template",
+        label: "Quotation template",
+        table: "sales_quote_templates",
+        companyScoped: true,
+        ownerField: "created_by",
+        permissions: {
+          read: ["sales.quote.view"],
+          create: ["sales.settings.manage"],
+          write: ["sales.settings.manage"],
+        },
+      },
+      {
+        key: "settings",
+        label: "Sales settings",
+        table: "sales_settings",
+        companyScoped: true,
+        ownerField: "updated_by",
+        permissions: {
+          read: ["sales.quote.view"],
+          write: ["sales.settings.manage"],
+        },
+      },
+    ],
     security: {
-      permissions: [],
-      recordPolicies: [],
+      permissions: [
+        { key: "sales.quote.view", name: "View quotations", resource: "quote", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.quote.create", name: "Create quotations", resource: "quote", action: "create", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.quote.edit", name: "Edit draft quotations", resource: "quote", action: "edit", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.quote.send", name: "Send quotations", resource: "quote", action: "send", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.quote.approve", name: "Record customer quote responses", resource: "quote", action: "approve", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "sales.quote.approve_internal", name: "Approve quotations internally", resource: "quote", action: "approve_internal", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "sales.quote.convert", name: "Convert accepted quotations", resource: "quote", action: "convert", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.quote.cancel", name: "Cancel quotations", resource: "quote", action: "cancel", scope: "company", defaultSystemRoles: ["admin"] },
+        { key: "sales.order.view", name: "View sales orders", resource: "order", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.order.manage", name: "Manage fulfillment and invoicing", resource: "order", action: "manage", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.report.view", name: "View Sales reports", resource: "report", action: "view", scope: "company", defaultSystemRoles: ["admin","member"] },
+        { key: "sales.settings.manage", name: "Manage Sales settings", resource: "settings", action: "manage", scope: "company", defaultSystemRoles: ["admin"] },
+      ],
+      recordPolicies: [
+        { key: "sales.quote.company", name: "Quotations in current company", resourceKey: "quote", operations: ["read","create","write"], scope: "company" },
+        { key: "sales.order.company", name: "Sales orders in current company", resourceKey: "order", operations: ["read","write"], scope: "company" },
+        { key: "sales.template.company", name: "Quotation templates in current company", resourceKey: "quote_template", operations: ["read","create","write"], scope: "company" },
+        { key: "sales.settings.company", name: "Sales settings in current company", resourceKey: "settings", operations: ["read","write"], scope: "company" },
+      ],
       fieldPolicies: [],
     },
-    settings: [],
+    settings: [
+      "default_currency",
+      "default_validity_days",
+      "quote_approval",
+      "invoicing_policy",
+      "partial_invoicing",
+      "online_acceptance",
+      "online_rejection",
+      "lock_confirmed_orders",
+      "quotation_templates",
+      "document_branding",
+    ],
     extensions: {
-      dashboard: false,
-      search: false,
+      dashboard: true,
+      search: true,
       notifications: false,
-      activity: false,
+      activity: true,
       automationTriggers: false,
       automationActions: false,
-      aiTools: false,
+      aiTools: true,
       integrationProviders: false,
-      apiEndpoints: false,
-      dataExport: false,
+      apiEndpoints: true,
+      dataExport: true,
       dataErasure: false,
     },
   }),
@@ -2756,3 +2970,9 @@ export const FIRST_PARTY_SAMI_MODULES:
 
   ...ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
 ];
+
+export const FIRST_PARTY_SAMI_MODULES:
+  SamiModuleManifest[] =
+  BASE_FIRST_PARTY_SAMI_MODULES.map(
+    withEnterpriseModuleDefaults,
+  );

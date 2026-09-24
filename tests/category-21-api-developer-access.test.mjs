@@ -503,6 +503,7 @@ test('Category 21: API scope catalog is code-owned and begins read-only', async 
     const key
     of [
       'context.read',
+      'apps.read',
       'files.read',
       'audit.read',
       'integrations.read',
@@ -552,12 +553,15 @@ test('Category 21: first live API v1 endpoint requires context.read and emits re
   );
 });
 
-test('Category 21: module APIs are code-owned, opt-in and fail closed when no app boundary is selected', async () => {
+test('Category 21: module APIs are code-owned, app-allowlisted and company-scoped', async () => {
   const [
     registry,
     types,
     firstParty,
     additionalFirstParty,
+    enterpriseContract,
+    route,
+    reader,
   ] =
     await Promise.all([
       source(
@@ -571,6 +575,15 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
       ),
       source(
         'lib/modules/additional-first-party.ts',
+      ),
+      source(
+        'lib/modules/enterprise-contract.ts',
+      ),
+      source(
+        'app/api/v1/apps/[appKey]/records/route.ts',
+      ),
+      source(
+        'lib/apps/enterprise/developer.ts',
       ),
     ]);
 
@@ -586,7 +599,12 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
 
   assert.match(
     registry,
-    /extensions[\s\S]*apiEndpoints/s,
+    /getSamiModuleManifests/,
+  );
+
+  assert.match(
+    registry,
+    /scope:[\s\S]*['"]apps\.read['"]/s,
   );
 
   assert.match(
@@ -594,30 +612,109 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
     /credentialBoundary\.length ===\s*0/s,
   );
 
-  const apiClosedCount =
-    (
-      firstParty.match(
-        /apiEndpoints: false/g,
-      ) ||
-      []
-    ).length +
-    (
-      additionalFirstParty.match(
-        /apiEndpoints:\s*false/g,
-      ) ||
-      []
-    ).length;
-
-  assert.equal(
-    apiClosedCount,
-    37,
-    'The original manifests plus the shared additional-module extension contract must fail closed for public API exposure.',
+  assert.match(
+    enterpriseContract,
+    /apiEndpoints:[\s\S]*true/,
+    'Operationalized enterprise apps opt into the one shared developer read contract.',
   );
 
   assert.doesNotMatch(
     additionalFirstParty,
     /apiEndpoints:\s*true/,
-    'None of the 44 additional app foundations may expose a public developer API before implementation.',
+    'Raw additional-module foundations stay fail-closed; the enterprise contract enables API access only when the shared runtime wraps them.',
+  );
+
+  for (
+    const key
+    of [
+      'invoicing',
+      'sales',
+    ]
+  ) {
+    const moduleStart =
+      firstParty.indexOf(
+        'key: "' +
+        key +
+        '"',
+      );
+
+    const moduleEnd =
+      firstParty.indexOf(
+        'defineSamiModule({',
+        moduleStart +
+          20,
+      );
+
+    const block =
+      firstParty.slice(
+        moduleStart,
+        moduleEnd >
+          moduleStart
+          ? moduleEnd
+          : firstParty.length,
+      );
+
+    assert.match(
+      block,
+      /apiEndpoints:\s*true/,
+      key +
+      ' must explicitly opt into the shared read-only developer record endpoint.',
+    );
+  }
+
+  assert.match(
+    route,
+    /authenticateDeveloperRequest\([\s\S]*['"]apps\.read['"]/s,
+  );
+
+  assert.match(
+    route,
+    /getAccessibleModuleDeveloperEndpoints/,
+  );
+
+  assert.match(
+    route,
+    /context\.allowedAppKeys/,
+  );
+
+  assert.match(
+    route,
+    /listDeveloperAppRecords/,
+  );
+
+  assert.match(
+    reader,
+    /company_id = \$1/,
+  );
+
+  assert.match(
+    reader,
+    /deleted_at IS NULL/,
+  );
+
+  assert.match(
+    reader,
+    /context\.allowedAppKeys/,
+  );
+
+  assert.match(
+    reader,
+    /SENSITIVE_COLUMN/,
+  );
+
+  assert.match(
+    reader,
+    /HIDDEN_COLUMN/,
+  );
+
+  assert.match(
+    reader,
+    /1,\s*100/,
+  );
+
+  assert.match(
+    reader,
+    /assertInstalled/,
   );
 });
 

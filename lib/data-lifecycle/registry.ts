@@ -6,6 +6,10 @@ import {
   getSamiModuleManifests,
 } from '@/lib/modules/registry';
 
+import {
+  SUITE_DATA_LIFECYCLE_HANDLERS,
+} from '@/lib/data-lifecycle/suite-export';
+
 export type SamiDataLifecycleContext = {
   userId: string;
   tenantId: string;
@@ -13,6 +17,7 @@ export type SamiDataLifecycleContext = {
   isOwner: boolean;
   permissionKeys: string[];
   accessibleModuleKeys: string[];
+  companyId: string | null;
 };
 
 export type SamiModuleDataExportResult = {
@@ -62,7 +67,7 @@ export type SamiModuleDataLifecycleHandler = {
  */
 export const APP_DATA_LIFECYCLE_HANDLERS:
   readonly SamiModuleDataLifecycleHandler[] =
-  [];
+  SUITE_DATA_LIFECYCLE_HANDLERS;
 
 function normalizeModuleKey(
   value: string | null | undefined,

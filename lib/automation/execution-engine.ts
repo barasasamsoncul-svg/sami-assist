@@ -1117,6 +1117,12 @@ export async function startAutomationRun(
       SamiAutomationTriggerType;
     triggerKey:
       string;
+    sourceModule?:
+      string | null;
+    sourceRecordType?:
+      string | null;
+    sourceRecordId?:
+      string | null;
     payload?:
       unknown;
     idempotencyKey:
@@ -1172,6 +1178,9 @@ export async function startAutomationRun(
             company_id,
             source_type,
             trigger_key,
+            source_module,
+            source_record_type,
+            source_record_id,
             idempotency_key,
             payload,
             status,
@@ -1184,7 +1193,10 @@ export async function startAutomationRun(
             $3,
             $4,
             $5,
-            $6::jsonb,
+            $6,
+            $7,
+            $8,
+            $9::jsonb,
             'pending',
             NOW(),
             NOW()
@@ -1202,6 +1214,12 @@ export async function startAutomationRun(
             .companyId,
           input.sourceType,
           input.triggerKey,
+          input.sourceModule ||
+            null,
+          input.sourceRecordType ||
+            null,
+          input.sourceRecordId ||
+            null,
           input.idempotencyKey,
           JSON.stringify(
             payload,

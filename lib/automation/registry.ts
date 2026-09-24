@@ -23,6 +23,12 @@ import {
   sendSlackIntegrationMessage,
 } from '@/lib/integrations/runtime';
 
+import {
+  ENTERPRISE_AUTOMATION_ACTIONS,
+  ENTERPRISE_AUTOMATION_ACTION_HANDLERS,
+  ENTERPRISE_AUTOMATION_TRIGGERS,
+} from '@/lib/apps/enterprise/automation';
+
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
     {
@@ -134,7 +140,7 @@ export const CORE_AUTOMATION_TRIGGERS:
  */
 export const APP_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] =
-  [];
+  ENTERPRISE_AUTOMATION_TRIGGERS;
 
 export const CORE_AUTOMATION_ACTIONS:
   SamiAutomationActionDefinition[] = [
@@ -228,7 +234,7 @@ export const CORE_AUTOMATION_ACTIONS:
 
 export const APP_AUTOMATION_ACTIONS:
   SamiAutomationActionDefinition[] =
-  [];
+  ENTERPRISE_AUTOMATION_ACTIONS;
 
 const CORE_AUTOMATION_ACTION_HANDLERS =
   new Map<
@@ -360,10 +366,7 @@ const CORE_AUTOMATION_ACTION_HANDLERS =
   ]);
 
 export const APP_AUTOMATION_ACTION_HANDLERS =
-  new Map<
-    string,
-    SamiAutomationActionHandler
-  >();
+  ENTERPRISE_AUTOMATION_ACTION_HANDLERS;
 
 export function isAutomationWorkerEnabled() {
   return (

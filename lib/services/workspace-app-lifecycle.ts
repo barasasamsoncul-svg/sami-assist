@@ -28,6 +28,10 @@ import {
 } from '@/lib/modules/registry';
 
 import {
+  appendEnterpriseSchemaHardening,
+} from '@/lib/apps/enterprise/hardening';
+
+import {
   runSamiModuleMigrations,
   SamiModuleMigrationError,
 } from '@/lib/modules/migrations';
@@ -685,7 +689,10 @@ async function prepareInstallSchema(
       schema,
     )
   ) {
-    return schema;
+    return appendEnterpriseSchemaHardening(
+      appKey,
+      schema,
+    );
   }
 
   /*

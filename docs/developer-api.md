@@ -32,19 +32,21 @@ Creating a key does not let the manager grant scopes they do not currently hold.
 Current registered scopes:
 
 - `context.read`
+- `apps.read` — bounded read-only access to explicitly selected installed app records
 - `files.read` (reserved for a registered endpoint)
 - `audit.read` (reserved for a registered endpoint)
 - `integrations.read` (reserved for a registered endpoint)
 
-The first live public endpoint is:
+Live public endpoints are:
 
-`GET /api/v1/context`
+- `GET /api/v1/context` — requires `context.read`.
+- `GET /api/v1/apps/<appKey>/records` — requires `apps.read`.
 
-It requires `context.read`.
+The app-record endpoint is read-only. The API credential must explicitly include the requested app in its allowed-app boundary, the app must still be installed and active, and its manifest must opt in to developer API exposure. Requests are forced to the credential's company and return only code-owned tables/resources. Secret/system fields are filtered and pages are bounded to at most 100 records.
 
-Future module-specific endpoints must remain code-owned and must intersect the credential's selected app boundary with the installed module runtime before touching module data.
+For the 78 shared enterprise apps, readable tables come from the code-owned enterprise catalog. Dedicated apps such as Invoicing and Sales expose only tables declared by their manifest resources. Writes continue through their business services and are not exposed by this generic endpoint.
 
-Installation alone never exposes business data. A module must explicitly opt in to developer API exposure through its code-owned manifest contract, and the requested endpoint must also be registered in SaMi's developer endpoint registry.
+Installation alone never exposes business data. A module must explicitly opt in through its code-owned manifest contract and the endpoint must be registered in SaMi's developer endpoint registry.
 
 ## Rate limiting
 
@@ -89,3 +91,14 @@ Successful responses include:
 - `X-RateLimit-Remaining`
 
 Unauthorized requests use the standard Bearer authentication challenge.
+
+
+## Business app read example
+
+```http
+GET /api/v1/apps/crm/records?table=leads&limit=50&offset=0
+Authorization: Bearer <API_KEY>
+Accept: application/json
+```
+
+The credential must include both the `apps.read` scope and the `crm` allowed-app key. The response never accepts tenant or company IDs from the caller.
