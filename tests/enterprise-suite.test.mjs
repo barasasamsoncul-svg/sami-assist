@@ -1198,9 +1198,12 @@ test('enterprise relationships use searchable company-scoped selectors instead o
     /companyScoped/,
   );
 
-  assert.match(
-    relations,
-    /company_id = \
+  assert.ok(
+    relations.includes(
+      "'company_id = $' +",
+    ),
+    'Relation choices must be scoped to the current company when the referenced table has company_id.',
+  );
 
   assert.match(
     relations,
