@@ -12,6 +12,7 @@ import {
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
 import EnterpriseModuleWorkspaceClient from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceClient';
+import styles from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css';
 
 import {
   getSaMiAppVisual,
@@ -261,14 +262,20 @@ export default async function AppEntryPage({
       }
       contentClassName="max-w-[1600px]"
     >
-      <EnterpriseModuleWorkspaceClient
-        initialData={
-          data
+      <div
+        className={
+          styles.enterpriseWorkspace
         }
-        userId={
-          session.user.id
-        }
-      />
+      >
+        <EnterpriseModuleWorkspaceClient
+          initialData={
+            data
+          }
+          userId={
+            session.user.id
+          }
+        />
+      </div>
     </WorkspaceShell>
   );
 }
