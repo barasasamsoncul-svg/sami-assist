@@ -1749,6 +1749,115 @@ export async function getEnterpriseModuleWorkspace(
         ),
     );
 
+  const profile =
+    getEnterpriseDomainProfile(
+      context.moduleKey,
+    );
+
+  if (
+    !profile
+  ) {
+    throw new EnterpriseModuleError(
+      'MODULE_NOT_SUPPORTED',
+      'SaMi could not resolve the operating profile for this app.',
+    );
+  }
+
+  const workflowMetric =
+    (
+      states:
+        string[],
+    ) => {
+      const accepted =
+        new Set(
+          states.map(
+            state =>
+              state.toLowerCase(),
+          ),
+        );
+
+      return tables.reduce(
+        (
+          total,
+          table,
+        ) => {
+          const workflow =
+            table.workflows[0];
+
+          if (
+            !workflow
+          ) {
+            return total;
+          }
+
+          return total +
+            Object.entries(
+              workflow.counts,
+            )
+              .filter(
+                ([
+                  state,
+                ]) =>
+                  accepted.has(
+                    state,
+                  ),
+              )
+              .reduce(
+                (
+                  subtotal,
+                  [
+                    _state,
+                    count,
+                  ],
+                ) =>
+                  subtotal +
+                  count,
+                0,
+              );
+        },
+        0,
+      );
+    };
+
+  const workflowTrackedRecords =
+    tables.reduce(
+      (
+        total,
+        table,
+      ) => {
+        const workflow =
+          table.workflows[0];
+
+        return total +
+          (
+            workflow
+              ? Object.values(
+                  workflow.counts,
+                )
+                  .reduce(
+                    (
+                      subtotal,
+                      count,
+                    ) =>
+                      subtotal +
+                      count,
+                    0,
+                  )
+              : 0
+          );
+      },
+      0,
+    );
+
+  const primaryRecords =
+    tables.find(
+      table =>
+        table.key ===
+          profile.primaryTable,
+    )
+      ?.count ||
+    0;
+
   const capabilities = {
     canView:
       true,
@@ -1810,7 +1919,20 @@ export async function getEnterpriseModuleWorkspace(
           .name,
     },
     capabilities,
+    profile,
     metrics: {
+      primaryRecords,
+      attentionRecords:
+        workflowMetric(
+          profile
+            .attentionStates,
+        ),
+      successRecords:
+        workflowMetric(
+          profile
+            .successStates,
+        ),
+      workflowTrackedRecords,
       totalRecords:
         tables.reduce(
           (
