@@ -2061,6 +2061,22 @@ async function assertTable(
 }
 
 
+export async function requireEnterpriseModuleTableContext(
+  moduleKey:
+    string,
+  tableInput:
+    unknown,
+  operation:
+    EnterpriseModuleOperation,
+) {
+  return assertTable(
+    moduleKey,
+    tableInput,
+    operation,
+  );
+}
+
+
 function writableValues(
   input:
     unknown,
@@ -4153,4 +4169,648 @@ export async function searchEnterpriseModuleRecords(
   }
 
   return results;
+}
+
+
+
+const ENTERPRISE_BULK_LIMIT =
+  50;
+
+
+function bulkItems(
+  value:
+    unknown,
+) {
+  if (
+    !Array.isArray(
+      value,
+    ) ||
+    value.length ===
+      0
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Add at least one record to the bulk action.',
+    );
+  }
+
+  if (
+    value.length >
+      ENTERPRISE_BULK_LIMIT
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Bulk actions are limited to ' +
+      ENTERPRISE_BULK_LIMIT +
+      ' records at a time.',
+    );
+  }
+
+  return value;
+}
+
+
+export async function bulkCreateEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    rows?: unknown;
+  },
+) {
+  const rows =
+    bulkItems(
+      input.rows,
+    );
+
+  const results:
+    Array<
+      {
+        index: number;
+        success: boolean;
+        record?: Record<string, unknown>;
+        error?: string;
+      }
+    > =
+    [];
+
+  for (
+    let index =
+      0;
+    index <
+      rows.length;
+    index +=
+      1
+  ) {
+    const row =
+      rows[index];
+
+    if (
+      !row ||
+      typeof row !==
+        'object' ||
+      Array.isArray(
+        row,
+      )
+    ) {
+      results.push({
+        index,
+        success:
+          false,
+        error:
+          'Row must be a record object.',
+      });
+      continue;
+    }
+
+    const candidate =
+      row as
+        Record<
+          string,
+          unknown
+        >;
+
+    try {
+      const record =
+        await createEnterpriseModuleRecord(
+          moduleKey,
+          {
+            table:
+              input.table,
+            values:
+              candidate.values,
+            idempotencyKey:
+              candidate.idempotencyKey,
+          },
+        );
+
+      results.push({
+        index,
+        success:
+          true,
+        record:
+          record as
+            Record<
+              string,
+              unknown
+            >,
+      });
+    } catch (
+      error
+    ) {
+      results.push({
+        index,
+        success:
+          false,
+        error:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not create this imported row.',
+      });
+    }
+  }
+
+  return {
+    total:
+      results.length,
+    succeeded:
+      results.filter(
+        item =>
+          item.success,
+      ).length,
+    failed:
+      results.filter(
+        item =>
+          !item.success,
+      ).length,
+    results,
+  };
+}
+
+
+export async function bulkDeleteEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    recordIds?: unknown;
+  },
+) {
+  const recordIds =
+    bulkItems(
+      input.recordIds,
+    );
+
+  const results:
+    Array<
+      {
+        recordId: string;
+        success: boolean;
+        error?: string;
+      }
+    > =
+    [];
+
+  for (
+    const raw
+    of recordIds
+  ) {
+    const recordId =
+      String(
+        raw ||
+        '',
+      )
+        .trim();
+
+    if (
+      !recordId
+    ) {
+      continue;
+    }
+
+    try {
+      await deleteEnterpriseModuleRecord(
+        moduleKey,
+        {
+          table:
+            input.table,
+          recordId,
+        },
+      );
+
+      results.push({
+        recordId,
+        success:
+          true,
+      });
+    } catch (
+      error
+    ) {
+      results.push({
+        recordId,
+        success:
+          false,
+        error:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not delete this record.',
+      });
+    }
+  }
+
+  return {
+    total:
+      results.length,
+    succeeded:
+      results.filter(
+        item =>
+          item.success,
+      ).length,
+    failed:
+      results.filter(
+        item =>
+          !item.success,
+      ).length,
+    results,
+  };
+}
+
+
+export async function bulkTransitionEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    recordIds?: unknown;
+    statusField?: unknown;
+    nextStatus?: unknown;
+  },
+) {
+  const recordIds =
+    bulkItems(
+      input.recordIds,
+    );
+
+  const results:
+    Array<
+      {
+        recordId: string;
+        success: boolean;
+        error?: string;
+      }
+    > =
+    [];
+
+  for (
+    const raw
+    of recordIds
+  ) {
+    const recordId =
+      String(
+        raw ||
+        '',
+      )
+        .trim();
+
+    if (
+      !recordId
+    ) {
+      continue;
+    }
+
+    try {
+      await transitionEnterpriseModuleRecord(
+        moduleKey,
+        {
+          table:
+            input.table,
+          recordId,
+          statusField:
+            input.statusField,
+          nextStatus:
+            input.nextStatus,
+        },
+      );
+
+      results.push({
+        recordId,
+        success:
+          true,
+      });
+    } catch (
+      error
+    ) {
+      results.push({
+        recordId,
+        success:
+          false,
+        error:
+          error instanceof
+            Error
+            ? error.message
+            : 'SaMi could not transition this record.',
+      });
+    }
+  }
+
+  return {
+    total:
+      results.length,
+    succeeded:
+      results.filter(
+        item =>
+          item.success,
+      ).length,
+    failed:
+      results.filter(
+        item =>
+          !item.success,
+      ).length,
+    results,
+  };
+}
+
+
+
+export async function queryEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    search?: unknown;
+    offset?: unknown;
+    limit?: unknown;
+    sortField?: unknown;
+    sortOrder?: unknown;
+    filters?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const fieldNames =
+    new Set(
+      context.fields.map(
+        field =>
+          field.key,
+      ),
+    );
+
+  const limit =
+    Math.min(
+      Math.max(
+        Number(
+          input.limit ||
+          50,
+        ) ||
+        50,
+        1,
+      ),
+      100,
+    );
+
+  const offset =
+    Math.min(
+      Math.max(
+        Number(
+          input.offset ||
+          0,
+        ) ||
+        0,
+        0,
+      ),
+      100000,
+    );
+
+  const search =
+    typeof input.search ===
+      'string'
+      ? input.search
+          .trim()
+          .slice(
+            0,
+            200,
+          )
+      : '';
+
+  const requestedSort =
+    normalizeKey(
+      input.sortField,
+    );
+
+  const sortField =
+    requestedSort &&
+    fieldNames.has(
+      requestedSort,
+    )
+      ? requestedSort
+      : fieldNames.has(
+          'updated_at',
+        )
+        ? 'updated_at'
+        : fieldNames.has(
+            'created_at',
+          )
+          ? 'created_at'
+          : fieldNames.has(
+              'id',
+            )
+            ? 'id'
+            : null;
+
+  const sortOrder =
+    String(
+      input.sortOrder ||
+      '',
+    )
+      .trim()
+      .toLowerCase() ===
+      'asc'
+      ? 'ASC'
+      : 'DESC';
+
+  const conditions:
+    string[] = [
+      'company_id = $1',
+      'deleted_at IS NULL',
+    ];
+
+  const params:
+    unknown[] = [
+      context.companyId,
+    ];
+
+  const searchable =
+    context.fields
+      .filter(
+        field =>
+          !SYSTEM_COLUMNS.has(
+            field.key,
+          ) &&
+          field.key !==
+            'metadata',
+      )
+      .slice(
+        0,
+        8,
+      );
+
+  if (
+    search &&
+    searchable.length >
+      0
+  ) {
+    params.push(
+      '%' +
+      search +
+      '%',
+    );
+
+    const placeholder =
+      '$' +
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            'COALESCE(' +
+            quoteIdentifier(
+              field.key,
+            ) +
+            "::text, '') ILIKE " +
+            placeholder,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+  }
+
+  if (
+    input.filters &&
+    typeof input.filters ===
+      'object' &&
+    !Array.isArray(
+      input.filters,
+    )
+  ) {
+    for (
+      const [
+        rawKey,
+        rawValue,
+      ]
+      of Object.entries(
+        input.filters as
+          Record<
+            string,
+            unknown
+          >,
+      )
+    ) {
+      const key =
+        normalizeKey(
+          rawKey,
+        );
+
+      if (
+        !fieldNames.has(
+          key,
+        ) ||
+        SYSTEM_COLUMNS.has(
+          key,
+        ) ||
+        rawValue ===
+          null ||
+        rawValue ===
+          undefined ||
+        rawValue ===
+          ''
+      ) {
+        continue;
+      }
+
+      params.push(
+        String(
+          rawValue,
+        ),
+      );
+
+      conditions.push(
+        quoteIdentifier(
+          key,
+        ) +
+        '::text = $' +
+        params.length,
+      );
+    }
+  }
+
+  const where =
+    ' WHERE ' +
+    conditions.join(
+      ' AND ',
+    );
+
+  const countResult =
+    await context.pool.query(
+      'SELECT COUNT(*)::int AS count FROM ' +
+      quoteIdentifier(
+        context.table,
+      ) +
+      where,
+      params,
+    );
+
+  const queryParams =
+    [
+      ...params,
+      limit,
+      offset,
+    ];
+
+  const rowsResult =
+    await context.pool.query(
+      'SELECT * FROM ' +
+      quoteIdentifier(
+        context.table,
+      ) +
+      where +
+      (
+        sortField
+          ? (
+              ' ORDER BY ' +
+              quoteIdentifier(
+                sortField,
+              ) +
+              ' ' +
+              sortOrder +
+              ' NULLS LAST'
+            )
+          : ''
+      ) +
+      ' LIMIT $' +
+      (
+        params.length +
+        1
+      ) +
+      ' OFFSET $' +
+      (
+        params.length +
+        2
+      ),
+      queryParams,
+    );
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  return {
+    table:
+      context.table,
+    search,
+    offset,
+    limit,
+    total,
+    hasMore:
+      offset +
+      rowsResult.rows.length <
+      total,
+    records:
+      rowsResult.rows.map(
+        rowOutput,
+      ),
+  };
 }

@@ -4,11 +4,30 @@ import {
 } from 'next/server';
 
 import {
+  addEnterpriseRecordNote,
+  deleteEnterpriseCustomField,
+  deleteEnterpriseRecordNote,
+  deleteEnterpriseSavedView,
+  getEnterpriseRecordCompletion,
+  getEnterpriseTableCompletion,
+  linkEnterpriseRecordFile,
+  saveEnterpriseCustomField,
+  saveEnterpriseRecordTask,
+  saveEnterpriseSavedView,
+  unlinkEnterpriseRecordFile,
+  updateEnterpriseRecordExtras,
+} from '@/lib/apps/enterprise/completion';
+
+import {
   EnterpriseModuleError,
+  bulkCreateEnterpriseModuleRecords,
+  bulkDeleteEnterpriseModuleRecords,
+  bulkTransitionEnterpriseModuleRecords,
   createEnterpriseModuleRecord,
   deleteEnterpriseModuleRecord,
   getEnterpriseModuleRelationOptions,
   getEnterpriseModuleWorkspace,
+  queryEnterpriseModuleRecords,
   transitionEnterpriseModuleRecord,
   updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
@@ -180,6 +199,169 @@ export async function GET(
         .get(
           'mode',
         ) ===
+        'table_records'
+    ) {
+      let filters: Record<string, unknown> = {};
+
+      const rawFilters =
+        request.nextUrl
+          .searchParams
+          .get(
+            'filters',
+          );
+
+      if (
+        rawFilters
+      ) {
+        try {
+          const parsed =
+            JSON.parse(
+              rawFilters,
+            );
+
+          if (
+            parsed &&
+            typeof parsed ===
+              'object' &&
+            !Array.isArray(
+              parsed,
+            )
+          ) {
+            filters =
+              parsed as
+                Record<
+                  string,
+                  unknown
+                >;
+          }
+        } catch {
+          return respond(
+            {
+              success:
+                false,
+              code:
+                'INVALID_FILTERS',
+              error:
+                'Register filters are invalid.',
+            },
+            400,
+          );
+        }
+      }
+
+      return respond({
+        success:
+          true,
+        page:
+          await queryEnterpriseModuleRecords(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+              search:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'search',
+                  ),
+              offset:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'offset',
+                  ),
+              limit:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'limit',
+                  ),
+              sortField:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'sortField',
+                  ),
+              sortOrder:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'sortOrder',
+                  ),
+              filters,
+            },
+          ),
+      });
+    }
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'table_completion'
+    ) {
+      return respond({
+        success:
+          true,
+        completion:
+          await getEnterpriseTableCompletion(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+            },
+          ),
+      });
+    }
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'record_completion'
+    ) {
+      return respond({
+        success:
+          true,
+        completion:
+          await getEnterpriseRecordCompletion(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+              recordId:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'recordId',
+                  ),
+            },
+          ),
+      });
+    }
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
         'relation'
     ) {
       return respond({
@@ -339,11 +521,29 @@ export async function POST(
 
     const result =
       action ===
-        'create'
-        ? await createEnterpriseModuleRecord(
+        'bulk_create'
+        ? await bulkCreateEnterpriseModuleRecords(
             appKey,
             payload,
           )
+        : action ===
+            'bulk_delete'
+          ? await bulkDeleteEnterpriseModuleRecords(
+              appKey,
+              payload,
+            )
+          : action ===
+              'bulk_transition'
+            ? await bulkTransitionEnterpriseModuleRecords(
+                appKey,
+                payload,
+              )
+            : action ===
+                'create'
+              ? await createEnterpriseModuleRecord(
+                  appKey,
+                  payload,
+                )
         : action ===
             'update'
           ? await updateEnterpriseModuleRecord(
@@ -362,7 +562,67 @@ export async function POST(
                   appKey,
                   payload,
                 )
-              : null;
+              : action ===
+                  'add_note'
+                ? await addEnterpriseRecordNote(
+                    appKey,
+                    payload,
+                  )
+                : action ===
+                    'delete_note'
+                  ? await deleteEnterpriseRecordNote(
+                      appKey,
+                      payload,
+                    )
+                  : action ===
+                      'save_task'
+                    ? await saveEnterpriseRecordTask(
+                        appKey,
+                        payload,
+                      )
+                    : action ===
+                        'save_view'
+                      ? await saveEnterpriseSavedView(
+                          appKey,
+                          payload,
+                        )
+                      : action ===
+                          'delete_view'
+                        ? await deleteEnterpriseSavedView(
+                            appKey,
+                            payload,
+                          )
+                        : action ===
+                            'save_custom_field'
+                          ? await saveEnterpriseCustomField(
+                              appKey,
+                              payload,
+                            )
+                          : action ===
+                              'delete_custom_field'
+                            ? await deleteEnterpriseCustomField(
+                                appKey,
+                                payload,
+                              )
+                            : action ===
+                                'update_extras'
+                              ? await updateEnterpriseRecordExtras(
+                                  appKey,
+                                  payload,
+                                )
+                              : action ===
+                                  'link_file'
+                                ? await linkEnterpriseRecordFile(
+                                    appKey,
+                                    payload,
+                                  )
+                                : action ===
+                                    'unlink_file'
+                                  ? await unlinkEnterpriseRecordFile(
+                                      appKey,
+                                      payload,
+                                    )
+                                  : null;
 
     if (
       !result

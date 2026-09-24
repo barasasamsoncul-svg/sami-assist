@@ -15,6 +15,7 @@ import {
   CircleCheckBig,
   Database,
   Download,
+  Eye,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -24,6 +25,7 @@ import {
   Table2,
   Trash2,
   TriangleAlert,
+  Upload,
   Workflow,
   X,
 } from 'lucide-react';
@@ -31,6 +33,9 @@ import {
 import {
   useRouter,
 } from 'next/navigation';
+
+import EnterpriseRecordWorkspacePanel from './EnterpriseRecordWorkspacePanel';
+import EnterpriseRegisterControls from './EnterpriseRegisterControls';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 
@@ -52,6 +57,12 @@ import type {
 import {
   getEnterpriseWorkflowTransitions,
 } from '@/lib/apps/enterprise/workflow-policy';
+
+
+type RegisterLayout =
+  | 'list'
+  | 'kanban'
+  | 'calendar';
 
 
 type ViewKey =
@@ -225,6 +236,143 @@ function csvValue(
       ) +
     '"'
   );
+}
+
+
+function parseCsv(
+  source:
+    string,
+) {
+  const rows:
+    string[][] =
+    [];
+
+  let row:
+    string[] =
+    [];
+
+  let value =
+    '';
+
+  let quoted =
+    false;
+
+  for (
+    let index =
+      0;
+    index <
+      source.length;
+    index +=
+      1
+  ) {
+    const character =
+      source[
+        index
+      ];
+
+    if (
+      character ===
+        '"'
+    ) {
+      if (
+        quoted &&
+        source[
+          index +
+          1
+        ] ===
+          '"'
+      ) {
+        value +=
+          '"';
+        index +=
+          1;
+      } else {
+        quoted =
+          !quoted;
+      }
+
+      continue;
+    }
+
+    if (
+      character ===
+        ',' &&
+      !quoted
+    ) {
+      row.push(
+        value,
+      );
+      value =
+        '';
+      continue;
+    }
+
+    if (
+      (
+        character ===
+          '\n' ||
+        character ===
+          '\r'
+      ) &&
+      !quoted
+    ) {
+      if (
+        character ===
+          '\r' &&
+        source[
+          index +
+          1
+        ] ===
+          '\n'
+      ) {
+        index +=
+          1;
+      }
+
+      row.push(
+        value,
+      );
+
+      if (
+        row.some(
+          cell =>
+            cell.trim() !==
+              '',
+        )
+      ) {
+        rows.push(
+          row,
+        );
+      }
+
+      row =
+        [];
+      value =
+        '';
+      continue;
+    }
+
+    value +=
+      character;
+  }
+
+  row.push(
+    value,
+  );
+
+  if (
+    row.some(
+      cell =>
+        cell.trim() !==
+          '',
+    )
+  ) {
+    rows.push(
+      row,
+    );
+  }
+
+  return rows;
 }
 
 
@@ -411,6 +559,22 @@ export default function EnterpriseModuleWorkspaceClient({
       idempotencyKey:
         string |
         null;
+    } | null>(
+      null,
+    );
+
+  const [
+    recordWorkspace,
+    setRecordWorkspace,
+  ] =
+    useState<{
+      tableKey:
+        string;
+      record:
+        Record<
+          string,
+          unknown
+        >;
     } | null>(
       null,
     );
@@ -752,6 +916,377 @@ export default function EnterpriseModuleWorkspaceClient({
 
       return false;
     }
+  }
+
+
+  async function importRecords(
+    table:
+      EnterpriseTable,
+    file:
+      File,
+  ) {
+    try {
+      if (
+        file.size >
+          2 *
+          1024 *
+          1024
+      ) {
+        throw new Error(
+          'CSV imports must be 2 MB or smaller.',
+        );
+      }
+
+      const rows =
+        parseCsv(
+          await file.text(),
+        );
+
+      if (
+        rows.length <
+          2
+      ) {
+        throw new Error(
+          'The CSV needs a header row and at least one data row.',
+        );
+      }
+
+      const header =
+        rows[0]
+          .map(
+            value =>
+              value
+                .trim()
+                .toLowerCase()
+                .replace(
+                  /[^a-z0-9]+/g,
+                  '_',
+                )
+                .replace(
+                  /^_+|_+$/g,
+                  '',
+                ),
+          );
+
+      const writable =
+        new Map(
+          table.fields
+            .filter(
+              field =>
+                field.writable,
+            )
+            .flatMap(
+              field => [
+                [
+                  field.key,
+                  field.key,
+                ],
+                [
+                  field.label
+                    .trim()
+                    .toLowerCase()
+                    .replace(
+                      /[^a-z0-9]+/g,
+                      '_',
+                    )
+                    .replace(
+                      /^_+|_+$/g,
+                      '',
+                    ),
+                  field.key,
+                ],
+              ] as
+                [
+                  string,
+                  string
+                ][],
+            ),
+        );
+
+      const mappedHeader =
+        header.map(
+          key =>
+            writable.get(
+              key,
+            ) ||
+            null,
+        );
+
+      if (
+        !mappedHeader.some(
+          Boolean,
+        )
+      ) {
+        throw new Error(
+          'None of the CSV headers match editable fields in this register.',
+        );
+      }
+
+      const dataRows =
+        rows
+          .slice(
+            1,
+            51,
+          )
+          .map(
+            cells => {
+              const values:
+                Record<
+                  string,
+                  unknown
+                > = {};
+
+              for (
+                let index =
+                  0;
+                index <
+                  mappedHeader.length;
+                index +=
+                  1
+              ) {
+                const field =
+                  mappedHeader[
+                    index
+                  ];
+
+                if (
+                  field
+                ) {
+                  values[
+                    field
+                  ] =
+                    cells[
+                      index
+                    ] ??
+                    '';
+                }
+              }
+
+              return {
+                idempotencyKey:
+                  globalThis.crypto
+                    .randomUUID(),
+                values,
+              };
+            },
+          );
+
+      const result =
+        await request({
+          action:
+            'bulk_create',
+          table:
+            table.key,
+          rows:
+            dataRows,
+        });
+
+      const succeeded =
+        Number(
+          result.succeeded ||
+          0,
+        );
+
+      const failed =
+        Number(
+          result.failed ||
+          0,
+        );
+
+      if (
+        succeeded >
+          0
+      ) {
+        showSuccess(
+          'Import completed',
+          succeeded +
+          ' record' +
+          (
+            succeeded ===
+              1
+              ? ''
+              : 's'
+          ) +
+          ' imported.' +
+          (
+            failed >
+              0
+              ? ' ' +
+                failed +
+                ' row' +
+                (
+                  failed ===
+                    1
+                    ? ''
+                    : 's'
+                ) +
+                ' failed validation.'
+              : ''
+          ),
+        );
+      } else {
+        showError(
+          'Import failed',
+          'No CSV rows passed the module validation rules.',
+        );
+      }
+    } catch (
+      error
+    ) {
+      showError(
+        'CSV import failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not import this CSV.',
+      );
+    }
+  }
+
+
+  function bulkDeleteRecords(
+    table:
+      EnterpriseTable,
+    recordIds:
+      string[],
+  ) {
+    if (
+      recordIds.length ===
+        0
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Delete selected records?',
+      message:
+        'SaMi will apply safe-delete rules to ' +
+        recordIds.length +
+        ' selected record' +
+        (
+          recordIds.length ===
+            1
+            ? ''
+            : 's'
+        ) +
+        '. Records blocked by domain rules will remain unchanged.',
+      confirmLabel:
+        'Delete selected',
+      onConfirm:
+        () => {
+          void (
+            async () => {
+              try {
+                const result =
+                  await request({
+                    action:
+                      'bulk_delete',
+                    table:
+                      table.key,
+                    recordIds,
+                  });
+
+                showSuccess(
+                  'Bulk delete completed',
+                  String(
+                    result.succeeded ||
+                    0,
+                  ) +
+                  ' removed · ' +
+                  String(
+                    result.failed ||
+                    0,
+                  ) +
+                  ' blocked.',
+                );
+              } catch (
+                error
+              ) {
+                showError(
+                  'Bulk delete failed',
+                  error instanceof
+                    Error
+                    ? error.message
+                    : 'SaMi could not delete the selected records.',
+                );
+              }
+            }
+          )();
+        },
+    });
+  }
+
+
+  function bulkTransitionRecords(
+    table:
+      EnterpriseTable,
+    recordIds:
+      string[],
+    statusField:
+      string,
+    nextStatus:
+      string,
+  ) {
+    if (
+      recordIds.length ===
+        0 ||
+      !nextStatus
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Change selected workflow states?',
+      message:
+        'SaMi will validate the transition independently for every selected record.',
+      confirmLabel:
+        'Apply workflow',
+      onConfirm:
+        () => {
+          void (
+            async () => {
+              try {
+                const result =
+                  await request({
+                    action:
+                      'bulk_transition',
+                    table:
+                      table.key,
+                    recordIds,
+                    statusField,
+                    nextStatus,
+                  });
+
+                showSuccess(
+                  'Bulk workflow completed',
+                  String(
+                    result.succeeded ||
+                    0,
+                  ) +
+                  ' changed · ' +
+                  String(
+                    result.failed ||
+                    0,
+                  ) +
+                  ' blocked.',
+                );
+              } catch (
+                error
+              ) {
+                showError(
+                  'Bulk workflow failed',
+                  error instanceof
+                    Error
+                    ? error.message
+                    : 'SaMi could not update the selected workflows.',
+                );
+              }
+            }
+          )();
+        },
+    });
   }
 
   async function deleteRecord(
@@ -1252,6 +1787,26 @@ export default function EnterpriseModuleWorkspaceClient({
               onTransition={
                 transitionRecord
               }
+              onOpenRecord={
+                (
+                  table,
+                  record,
+                ) =>
+                  setRecordWorkspace({
+                    tableKey:
+                      table.key,
+                    record,
+                  })
+              }
+              onImport={
+                importRecords
+              }
+              onBulkDelete={
+                bulkDeleteRecords
+              }
+              onBulkTransition={
+                bulkTransitionRecords
+              }
               onExport={
                 table =>
                   exportTable(
@@ -1292,6 +1847,51 @@ export default function EnterpriseModuleWorkspaceClient({
           )
         }
       </div>
+
+      {
+        recordWorkspace &&
+        (
+          <EnterpriseRecordWorkspacePanel
+            moduleKey={
+              initialData
+                .module
+                .key
+            }
+            table={
+              initialData.tables
+                .find(
+                  table =>
+                    table.key ===
+                    recordWorkspace
+                      .tableKey,
+                )!
+            }
+            record={
+              recordWorkspace
+                .record
+            }
+            userId={
+              userId
+            }
+            canEdit={
+              initialData
+                .capabilities
+                .canEdit
+            }
+            canManageSettings={
+              initialData
+                .capabilities
+                .canManageSettings
+            }
+            onClose={
+              () =>
+                setRecordWorkspace(
+                  null,
+                )
+            }
+          />
+        )
+      }
 
       {
         editor &&
@@ -1716,6 +2316,10 @@ function Records({
   onEdit,
   onDelete,
   onTransition,
+  onOpenRecord,
+  onImport,
+  onBulkDelete,
+  onBulkTransition,
   onExport,
 }: {
   moduleKey:
@@ -1782,6 +2386,45 @@ function Records({
         >,
     ) =>
       void;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+  onImport:
+    (
+      table:
+        EnterpriseTable,
+      file:
+        File,
+    ) =>
+      Promise<void>;
+  onBulkDelete:
+    (
+      table:
+        EnterpriseTable,
+      recordIds:
+        string[],
+    ) =>
+      void;
+  onBulkTransition:
+    (
+      table:
+        EnterpriseTable,
+      recordIds:
+        string[],
+      statusField:
+        string,
+      nextStatus:
+        string,
+    ) =>
+      void;
   onTransition:
     (
       table:
@@ -1804,6 +2447,47 @@ function Records({
     ) =>
       void;
 }) {
+  const [
+    registerLayout,
+    setRegisterLayout,
+  ] =
+    useState<RegisterLayout>(
+      'list',
+    );
+
+  const [
+    selectedRecordIds,
+    setSelectedRecordIds,
+  ] =
+    useState<
+      Set<
+        string
+      >
+    >(
+      new Set(),
+    );
+
+  const importInput =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
+
+  useEffect(
+    () => {
+      setRegisterLayout(
+        'list',
+      );
+      setSelectedRecordIds(
+        new Set(),
+      );
+    },
+    [
+      selected
+        ?.key,
+    ],
+  );
+
+
   if (
     !selected
   ) {
@@ -1857,7 +2541,195 @@ function Records({
       </div>
 
       <div className="sami-surface rounded-[22px] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <EnterpriseRegisterControls
+          moduleKey={
+            moduleKey
+          }
+          table={
+            selected
+          }
+          search={
+            search
+          }
+          setSearch={
+            setSearch
+          }
+          layout={
+            registerLayout
+          }
+          setLayout={
+            setRegisterLayout
+          }
+        />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--sami-border)] pt-3">
+          <input
+            ref={
+              importInput
+            }
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={
+              event => {
+                const file =
+                  event
+                    .target
+                    .files?.[0];
+
+                if (
+                  file
+                ) {
+                  void onImport(
+                    selected,
+                    file,
+                  );
+                }
+
+                event
+                  .currentTarget
+                  .value =
+                  '';
+              }
+            }
+          />
+
+          {
+            canCreate &&
+            selected
+              .supportsCreate &&
+            (
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  () =>
+                    importInput
+                      .current
+                      ?.click()
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-2.5 text-[10px] font-black"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import CSV
+              </button>
+            )
+          }
+
+          {
+            selectedRecordIds
+              .size >
+              0 &&
+            (
+              <>
+                <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                  {
+                    selectedRecordIds
+                      .size
+                  }
+                  {' selected'}
+                </span>
+
+                {
+                  canEdit &&
+                  selected
+                    .workflows[0] &&
+                  (
+                    <select
+                      value=""
+                      disabled={
+                        busy
+                      }
+                      onChange={
+                        event => {
+                          const next =
+                            event.target
+                              .value;
+
+                          if (
+                            next
+                          ) {
+                            onBulkTransition(
+                              selected,
+                              [
+                                ...selectedRecordIds,
+                              ],
+                              selected
+                                .workflows[0]
+                                .field,
+                              next,
+                            );
+                          }
+                        }
+                      }
+                      className="h-9 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-[10px] font-black"
+                    >
+                      <option value="">
+                        Bulk workflow
+                      </option>
+                      {
+                        selected
+                          .workflows[0]
+                          .databaseAllowedValues
+                          .map(
+                            state => (
+                              <option
+                                key={
+                                  state
+                                }
+                                value={
+                                  state
+                                }
+                              >
+                                {
+                                  state
+                                    .replaceAll(
+                                      '_',
+                                      ' ',
+                                    )
+                                }
+                              </option>
+                            ),
+                          )
+                      }
+                    </select>
+                  )
+                }
+
+                {
+                  canDelete &&
+                  selected
+                    .supportsDelete &&
+                  (
+                    <button
+                      type="button"
+                      disabled={
+                        busy
+                      }
+                      onClick={
+                        () =>
+                          onBulkDelete(
+                            selected,
+                            [
+                              ...selectedRecordIds,
+                            ],
+                          )
+                      }
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-500/25 px-2.5 text-[10px] font-black text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete selected
+                    </button>
+                  )
+                }
+              </>
+            )
+          }
+        </div>
+
+        <div className="mt-3 flex flex-col gap-3 border-t border-[var(--sami-border)] pt-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-black">
               {
@@ -1938,11 +2810,119 @@ function Records({
         </div>
       </div>
 
+      {
+        registerLayout ===
+          'kanban'
+          ? (
+              <KanbanRegister
+                table={
+                  selected
+                }
+                records={
+                  records
+                }
+                onOpenRecord={
+                  onOpenRecord
+                }
+              />
+            )
+          : registerLayout ===
+              'calendar'
+            ? (
+                <CalendarRegister
+                  table={
+                    selected
+                  }
+                  records={
+                    records
+                  }
+                  onOpenRecord={
+                    onOpenRecord
+                  }
+                />
+              )
+            : (
       <div className="sami-surface overflow-hidden rounded-[24px]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
               <tr>
+                {
+                  selected
+                    .recordKey &&
+                  (
+                    <th className="w-10 px-3 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all visible records"
+                        checked={
+                          records.length >
+                            0 &&
+                          records.every(
+                            record =>
+                              selectedRecordIds
+                                .has(
+                                  String(
+                                    record[
+                                      selected
+                                        .recordKey!
+                                    ] ||
+                                    '',
+                                  ),
+                                ),
+                          )
+                        }
+                        onChange={
+                          event => {
+                            const next =
+                              new Set(
+                                selectedRecordIds,
+                              );
+
+                            for (
+                              const record
+                              of records
+                            ) {
+                              const id =
+                                String(
+                                  record[
+                                    selected
+                                      .recordKey!
+                                  ] ||
+                                  '',
+                                );
+
+                              if (
+                                !id
+                              ) {
+                                continue;
+                              }
+
+                              if (
+                                event
+                                  .target
+                                  .checked
+                              ) {
+                                next.add(
+                                  id,
+                                );
+                              } else {
+                                next.delete(
+                                  id,
+                                );
+                              }
+                            }
+
+                            setSelectedRecordIds(
+                              next,
+                            );
+                          }
+                        }
+                      />
+                    </th>
+                  )
+                }
+
                 {
                   selected
                     .displayFields
@@ -1971,6 +2951,10 @@ function Records({
                 }
 
                 {
+                  Boolean(
+                    selected
+                      .recordKey,
+                  ) ||
                   (
                     canEdit &&
                     (
@@ -2008,7 +2992,13 @@ function Records({
                             selected
                               .displayFields
                               .length +
-                            1
+                            1 +
+                            (
+                              selected
+                                .recordKey
+                                ? 1
+                                : 0
+                            )
                           }
                           className="px-4 py-10 text-center text-sm text-slate-500"
                         >
@@ -2037,6 +3027,66 @@ function Records({
                         >
                           {
                             selected
+                              .recordKey &&
+                            (
+                              <td className="w-10 px-3 py-3 align-top">
+                                <input
+                                  type="checkbox"
+                                  aria-label="Select record"
+                                  checked={
+                                    selectedRecordIds
+                                      .has(
+                                        String(
+                                          record[
+                                            selected
+                                              .recordKey
+                                          ] ||
+                                          '',
+                                        ),
+                                      )
+                                  }
+                                  onChange={
+                                    event => {
+                                      const id =
+                                        String(
+                                          record[
+                                            selected
+                                              .recordKey!
+                                          ] ||
+                                          '',
+                                        );
+
+                                      const next =
+                                        new Set(
+                                          selectedRecordIds,
+                                        );
+
+                                      if (
+                                        event
+                                          .target
+                                          .checked
+                                      ) {
+                                        next.add(
+                                          id,
+                                        );
+                                      } else {
+                                        next.delete(
+                                          id,
+                                        );
+                                      }
+
+                                      setSelectedRecordIds(
+                                        next,
+                                      );
+                                    }
+                                  }
+                                />
+                              </td>
+                            )
+                          }
+
+                          {
+                            selected
                               .displayFields
                               .map(
                                 field => (
@@ -2061,6 +3111,10 @@ function Records({
                           }
 
                           {
+                            Boolean(
+                              selected
+                                .recordKey,
+                            ) ||
                             (
                               canEdit &&
                               selected
@@ -2074,6 +3128,27 @@ function Records({
                               ? (
                                   <td className="px-4 py-3">
                                     <div className="flex flex-wrap justify-end gap-1">
+                                      {
+                                        selected
+                                          .recordKey &&
+                                        (
+                                          <button
+                                            type="button"
+                                            aria-label="Open record workspace"
+                                            onClick={
+                                              () =>
+                                                onOpenRecord(
+                                                  selected,
+                                                  record,
+                                                )
+                                            }
+                                            className="rounded-lg p-2 hover:bg-blue-500/10 hover:text-blue-700"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                          </button>
+                                        )
+                                      }
+
                                       {
                                         canEdit &&
                                         selected
@@ -2157,7 +3232,467 @@ function Records({
           </table>
         </div>
       </div>
+            )
+      }
     </section>
+  );
+}
+
+
+function KanbanRegister({
+  table,
+  records,
+  onOpenRecord,
+}: {
+  table:
+    EnterpriseTable;
+  records:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+}) {
+  const workflow =
+    table.workflows[0];
+
+  if (
+    !workflow
+  ) {
+    return (
+      <div className="sami-surface rounded-[24px] p-8 text-center text-sm text-slate-500">
+        This register does not expose a workflow field for Kanban.
+      </div>
+    );
+  }
+
+  const grouped =
+    new Map<
+      string,
+      Array<
+        Record<
+          string,
+          unknown
+        >
+      >
+    >();
+
+  for (
+    const record
+    of records
+  ) {
+    const key =
+      String(
+        record[
+          workflow.field
+        ] ||
+        'unassigned',
+      )
+        .trim()
+        .toLowerCase();
+
+    const group =
+      grouped.get(
+        key,
+      ) ||
+      [];
+
+    group.push(
+      record,
+    );
+    grouped.set(
+      key,
+      group,
+    );
+  }
+
+  const states =
+    [
+      ...new Set([
+        ...workflow
+          .databaseAllowedValues,
+        ...grouped.keys(),
+      ]),
+    ];
+
+  return (
+    <div className="sami-surface overflow-x-auto rounded-[24px] p-4">
+      <div className="flex min-w-max gap-3">
+        {
+          states.map(
+            state => {
+              const items =
+                grouped.get(
+                  state,
+                ) ||
+                [];
+
+              return (
+                <div
+                  key={
+                    state
+                  }
+                  className="w-72 shrink-0 rounded-2xl bg-slate-500/[0.04] p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-black capitalize">
+                      {
+                        state
+                          .replaceAll(
+                            '_',
+                            ' ',
+                          )
+                      }
+                    </p>
+                    <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                      {
+                        items.length
+                      }
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {
+                      items.length ===
+                        0
+                        ? (
+                            <div className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-center text-[10px] text-slate-400">
+                              No records
+                            </div>
+                          )
+                        : items.map(
+                            (
+                              record,
+                              index,
+                            ) => (
+                              <button
+                                key={
+                                  table.recordKey
+                                    ? String(
+                                        record[
+                                          table
+                                            .recordKey
+                                        ] ||
+                                        index,
+                                      )
+                                    : index
+                                }
+                                type="button"
+                                onClick={
+                                  () =>
+                                    onOpenRecord(
+                                      table,
+                                      record,
+                                    )
+                                }
+                                className="block w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 text-left hover:border-blue-500/30"
+                              >
+                                {
+                                  table
+                                    .displayFields
+                                    .filter(
+                                      field =>
+                                        field !==
+                                        workflow.field,
+                                    )
+                                    .slice(
+                                      0,
+                                      3,
+                                    )
+                                    .map(
+                                      field => (
+                                        <div
+                                          key={
+                                            field
+                                          }
+                                          className="mb-2 last:mb-0"
+                                        >
+                                          <p className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
+                                            {
+                                              table.fields
+                                                .find(
+                                                  item =>
+                                                    item.key ===
+                                                    field,
+                                                )
+                                                ?.label ||
+                                              field
+                                            }
+                                          </p>
+                                          <p className="mt-0.5 line-clamp-2 text-[11px] font-bold">
+                                            {
+                                              displayValue(
+                                                record[
+                                                  field
+                                                ],
+                                              )
+                                            }
+                                          </p>
+                                        </div>
+                                      ),
+                                    )
+                                }
+                              </button>
+                            ),
+                          )
+                    }
+                  </div>
+                </div>
+              );
+            },
+          )
+        }
+      </div>
+    </div>
+  );
+}
+
+
+function CalendarRegister({
+  table,
+  records,
+  onOpenRecord,
+}: {
+  table:
+    EnterpriseTable;
+  records:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+}) {
+  const dateField =
+    table.fields.find(
+      field =>
+        field.inputType ===
+          'date' ||
+        field.inputType ===
+          'datetime',
+    );
+
+  if (
+    !dateField
+  ) {
+    return (
+      <div className="sami-surface rounded-[24px] p-8 text-center text-sm text-slate-500">
+        This register does not expose a calendar date.
+      </div>
+    );
+  }
+
+  const grouped =
+    new Map<
+      string,
+      Array<
+        Record<
+          string,
+          unknown
+        >
+      >
+    >();
+
+  for (
+    const record
+    of records
+  ) {
+    const raw =
+      record[
+        dateField.key
+      ];
+
+    if (
+      !raw
+    ) {
+      continue;
+    }
+
+    const date =
+      new Date(
+        String(
+          raw,
+        ),
+      );
+
+    const key =
+      Number.isNaN(
+        date.getTime(),
+      )
+        ? String(
+            raw,
+          )
+        : date
+            .toISOString()
+            .slice(
+              0,
+              10,
+            );
+
+    const group =
+      grouped.get(
+        key,
+      ) ||
+      [];
+
+    group.push(
+      record,
+    );
+    grouped.set(
+      key,
+      group,
+    );
+  }
+
+  const dates =
+    [
+      ...grouped.keys(),
+    ].sort();
+
+  return (
+    <div className="sami-surface rounded-[24px] p-4">
+      <div className="mb-4">
+        <p className="text-xs font-black">
+          Calendar by {
+            dateField.label
+          }
+        </p>
+        <p className="mt-1 text-[10px] text-slate-400">
+          Open any item to work with its notes, activities, files and custom fields.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {
+          dates.length ===
+            0
+            ? (
+                <div className="rounded-xl border border-dashed border-[var(--sami-border)] p-8 text-center text-xs text-slate-500">
+                  No dated records match this view.
+                </div>
+              )
+            : dates.map(
+                date => (
+                  <div
+                    key={
+                      date
+                    }
+                    className="grid gap-2 rounded-2xl border border-[var(--sami-border)] p-3 sm:grid-cols-[140px_1fr]"
+                  >
+                    <div>
+                      <p className="text-xs font-black">
+                        {
+                          date
+                        }
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {
+                          grouped.get(
+                            date,
+                          )!
+                            .length
+                        }
+                        {' items'}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {
+                        grouped.get(
+                          date,
+                        )!
+                          .map(
+                            (
+                              record,
+                              index,
+                            ) => (
+                              <button
+                                key={
+                                  table.recordKey
+                                    ? String(
+                                        record[
+                                          table
+                                            .recordKey
+                                        ] ||
+                                        index,
+                                      )
+                                    : index
+                                }
+                                type="button"
+                                onClick={
+                                  () =>
+                                    onOpenRecord(
+                                      table,
+                                      record,
+                                    )
+                                }
+                                className="rounded-xl bg-slate-500/[0.04] p-3 text-left hover:bg-blue-500/[0.06]"
+                              >
+                                {
+                                  table
+                                    .displayFields
+                                    .filter(
+                                      field =>
+                                        field !==
+                                        dateField.key,
+                                    )
+                                    .slice(
+                                      0,
+                                      2,
+                                    )
+                                    .map(
+                                      field => (
+                                        <p
+                                          key={
+                                            field
+                                          }
+                                          className="line-clamp-2 text-[11px] font-bold"
+                                        >
+                                          {
+                                            displayValue(
+                                              record[
+                                                field
+                                              ],
+                                            )
+                                          }
+                                        </p>
+                                      ),
+                                    )
+                                }
+                              </button>
+                            ),
+                          )
+                      }
+                    </div>
+                  </div>
+                ),
+              )
+        }
+      </div>
+    </div>
   );
 }
 

@@ -160,6 +160,69 @@ test('module migrations: operator can upgrade one tenant or all tenants after de
 });
 
 
+test('module migrations: shared enterprise apps have a continuous 1.0 to 2.1 additive migration chain', async () => {
+  const [
+    hardening,
+    migrations,
+    contract,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/modules/migrations.ts',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+  ]);
+
+  assert.match(
+    hardening,
+    /fromVersion:\s*'1\.0\.0'[\s\S]*toVersion:\s*'2\.0\.0'/s,
+  );
+
+  assert.match(
+    hardening,
+    /fromVersion:\s*'2\.0\.0'[\s\S]*toVersion:\s*'2\.1\.0'/s,
+  );
+
+  assert.match(
+    migrations,
+    /\.\.\.ENTERPRISE_SUITE_MIGRATIONS[\s\S]*\.\.\.ENTERPRISE_SUITE_COMPLETION_MIGRATIONS/s,
+  );
+
+  assert.match(
+    contract,
+    /'2\.1\.0'/,
+  );
+
+  for (
+    const table
+    of [
+      'sami_enterprise_record_notes',
+      'sami_enterprise_record_tasks',
+      'sami_enterprise_saved_views',
+      'sami_enterprise_custom_fields',
+      'sami_enterprise_record_extras',
+    ]
+  ) {
+    assert.ok(
+      hardening.includes(
+        table,
+      ),
+      table,
+    );
+  }
+
+  assert.doesNotMatch(
+    hardening,
+    /DROP\s+(TABLE|COLUMN)|TRUNCATE\s+/i,
+    'Enterprise completion migrations must remain additive.',
+  );
+});
+
+
 test('module permissions: manifest definitions synchronize automatically on install and upgrade', async () => {
   const [
     types,

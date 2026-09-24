@@ -593,7 +593,7 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
 
   assert.match(
     contract,
-    /manifest\.version ===[\s\S]*'1\.0\.0'[\s\S]*'2\.0\.0'/s,
+    /manifest\.version ===[\s\S]*'1\.0\.0'[\s\S]*manifest\.version ===[\s\S]*'2\.0\.0'[\s\S]*'2\.1\.0'/s,
   );
 
   assert.match(
@@ -604,6 +604,272 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
   assert.match(
     migrations,
     /ENTERPRISE_SUITE_MIGRATIONS/,
+  );
+
+  assert.match(
+    migrations,
+    /ENTERPRISE_SUITE_COMPLETION_MIGRATIONS/,
+  );
+});
+
+
+test('enterprise 2.1 completion gives every shared app collaboration, customization, saved views and bulk operations', async () => {
+  const [
+    hardening,
+    completion,
+    api,
+    service,
+    client,
+    panel,
+    controls,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/apps/enterprise/completion.ts',
+    ),
+    source(
+      'app/api/apps/[appKey]/records/route.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseRecordWorkspacePanel.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseRegisterControls.tsx',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'sami_enterprise_record_notes',
+      'sami_enterprise_record_tasks',
+      'sami_enterprise_saved_views',
+      'sami_enterprise_custom_fields',
+      'sami_enterprise_record_extras',
+      "fromVersion:\n        '2.0.0'",
+      "toVersion:\n        '2.1.0'",
+    ]
+  ) {
+    assert.ok(
+      hardening.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'getEnterpriseRecordCompletion',
+      'getEnterpriseTableCompletion',
+      'addEnterpriseRecordNote',
+      'saveEnterpriseRecordTask',
+      'saveEnterpriseSavedView',
+      'saveEnterpriseCustomField',
+      'updateEnterpriseRecordExtras',
+      'linkEnterpriseRecordFile',
+      'unlinkEnterpriseRecordFile',
+      'recordWorkspaceAuditEvent',
+      'listWorkspaceRecordFilesForAuthorizedCaller',
+    ]
+  ) {
+    assert.ok(
+      completion.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    completion,
+    /requireEnterpriseModuleTableContext/,
+  );
+
+  assert.match(
+    completion,
+    /company_id = \$2|company_id = \$1/,
+    'Completion storage must retain a current-company SQL boundary.',
+  );
+
+  for (
+    const action
+    of [
+      'record_completion',
+      'table_completion',
+      'add_note',
+      'save_task',
+      'save_view',
+      'save_custom_field',
+      'update_extras',
+      'link_file',
+      'unlink_file',
+      'bulk_create',
+      'bulk_delete',
+      'bulk_transition',
+    ]
+  ) {
+    assert.ok(
+      api.includes(
+        action,
+      ),
+      action,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'ENTERPRISE_BULK_LIMIT',
+      'bulkCreateEnterpriseModuleRecords',
+      'bulkDeleteEnterpriseModuleRecords',
+      'bulkTransitionEnterpriseModuleRecords',
+    ]
+  ) {
+    assert.ok(
+      service.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    service,
+    /ENTERPRISE_BULK_LIMIT\s*=\s*\n?\s*50/,
+  );
+
+  for (
+    const marker
+    of [
+      'Import CSV',
+      'Delete selected',
+      'Bulk workflow',
+      'KanbanRegister',
+      'CalendarRegister',
+      'EnterpriseRecordWorkspacePanel',
+      'Select all visible records',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'Record workspace',
+      'Notes',
+      'Activities',
+      'Files',
+      'Fields & tags',
+      'Timeline',
+      'Watch record',
+      'Attach file',
+      'Save fields & tags',
+    ]
+  ) {
+    assert.ok(
+      panel.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'Saved views',
+      'Save view',
+      'Kanban',
+      'Calendar',
+      'table_completion',
+    ]
+  ) {
+    assert.ok(
+      controls.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
+
+test('enterprise completion reuses private workspace storage and never invents an attachment bucket', async () => {
+  const [
+    completion,
+    panel,
+    links,
+    storage,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/completion.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseRecordWorkspacePanel.tsx',
+    ),
+    source(
+      'lib/services/workspace-file-links.ts',
+    ),
+    source(
+      'lib/storage/object-storage.ts',
+    ),
+  ]);
+
+  assert.match(
+    completion,
+    /linkWorkspaceFileForAuthorizedCaller/,
+  );
+
+  assert.match(
+    completion,
+    /unlinkWorkspaceFileForAuthorizedCaller/,
+  );
+
+  assert.match(
+    completion,
+    /listWorkspaceRecordFilesForAuthorizedCaller/,
+  );
+
+  assert.match(
+    panel,
+    /\/api\/workspace\/files\/upload-intent/,
+  );
+
+  assert.match(
+    panel,
+    /\/complete/,
+  );
+
+  assert.match(
+    links,
+    /file_links/,
+  );
+
+  assert.match(
+    storage,
+    /createPrivateUploadUrl/,
+  );
+
+  assert.doesNotMatch(
+    completion,
+    /S3Client|PutObjectCommand|R2_ACCESS_KEY_ID|SAMI_STORAGE_BUCKET/,
+    'Business modules must not bypass the Category 14 storage service.',
   );
 });
 
