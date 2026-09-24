@@ -37,6 +37,36 @@ function capabilities(
         permission,
       );
 
+  const canViewCustomers =
+    allowed(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_VIEW,
+    ) ||
+    allowed(
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  const canViewCatalog =
+    allowed(
+      INVOICING_PERMISSIONS
+        .CATALOG_VIEW,
+    ) ||
+    allowed(
+      INVOICING_PERMISSIONS
+        .CATALOG_MANAGE,
+    );
+
+  const canViewPayments =
+    allowed(
+      INVOICING_PERMISSIONS
+        .PAYMENT_VIEW,
+    ) ||
+    allowed(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
   return {
     canView:
       allowed(
@@ -47,12 +77,14 @@ function capabilities(
       allowed(
         INVOICING_PERMISSIONS
           .INVOICE_CREATE,
-      ),
+      ) &&
+      canViewCustomers,
     canEdit:
       allowed(
         INVOICING_PERMISSIONS
           .INVOICE_EDIT,
-      ),
+      ) &&
+      canViewCustomers,
     canConfirm:
       allowed(
         INVOICING_PERMISSIONS
@@ -68,6 +100,7 @@ function capabilities(
         INVOICING_PERMISSIONS
           .INVOICE_SEND,
       ),
+    canViewPayments,
     canRecordPayment:
       allowed(
         INVOICING_PERMISSIONS
@@ -78,11 +111,13 @@ function capabilities(
         INVOICING_PERMISSIONS
           .CREDIT_NOTE_MANAGE,
       ),
+    canViewCustomers,
     canManageCustomers:
       allowed(
         INVOICING_PERMISSIONS
           .CUSTOMER_MANAGE,
       ),
+    canViewCatalog,
     canManageCatalog:
       allowed(
         INVOICING_PERMISSIONS
@@ -120,6 +155,14 @@ export async function getInvoicingWorkspaceData():
     context.companyId,
     context.userId,
   );
+
+  const access =
+    capabilities(
+      context.permissions
+        .isOwner,
+      context.permissions
+        .permissionSet,
+    );
 
   const [
     metrics,
@@ -713,12 +756,7 @@ export async function getInvoicingWorkspaceData():
     },
 
     capabilities:
-      capabilities(
-        context.permissions
-          .isOwner,
-        context.permissions
-          .permissionSet,
-      ),
+      access,
 
     metrics: {
       invoiceCount:
@@ -765,7 +803,8 @@ export async function getInvoicingWorkspaceData():
     },
 
     aging:
-      aging.rows.map(
+      access.canViewReports
+        ? aging.rows.map(
         row => ({
           bucket:
             String(
@@ -781,10 +820,12 @@ export async function getInvoicingWorkspaceData():
               0,
             ),
         }),
-      ),
+      )
+        : [],
 
     statusCounts:
-      statuses.rows.map(
+      access.canViewReports
+        ? statuses.rows.map(
         row => ({
           status:
             String(
@@ -800,10 +841,12 @@ export async function getInvoicingWorkspaceData():
               row.amount,
             ),
         }),
-      ),
+      )
+        : [],
 
     monthly:
-      monthly.rows
+      access.canViewReports
+        ? monthly.rows
         .map(
           row => ({
             month:
@@ -821,7 +864,8 @@ export async function getInvoicingWorkspaceData():
               ),
           }),
         )
-        .reverse(),
+        .reverse()
+        : [],
 
     invoices:
       invoices.rows.map(
@@ -895,7 +939,8 @@ export async function getInvoicingWorkspaceData():
       ),
 
     customers:
-      customers.rows.map(
+      access.canViewCustomers
+        ? customers.rows.map(
         row => ({
           id:
             String(
@@ -1050,10 +1095,12 @@ export async function getInvoicingWorkspaceData():
               row.outstanding_total,
             ),
         }),
-      ),
+      )
+        : [],
 
     payments:
-      payments.rows.map(
+      access.canViewPayments
+        ? payments.rows.map(
         row => ({
           id:
             String(
@@ -1111,10 +1158,12 @@ export async function getInvoicingWorkspaceData():
                   )
               : [],
         }),
-      ),
+      )
+        : [],
 
     recurring:
-      recurring.rows.map(
+      access.canManageRecurring
+        ? recurring.rows.map(
         row => ({
           id:
             String(
@@ -1203,7 +1252,8 @@ export async function getInvoicingWorkspaceData():
               row.currency,
             ),
         }),
-      ),
+      )
+        : [],
 
     templates:
       templates.rows.map(
@@ -1354,7 +1404,8 @@ export async function getInvoicingWorkspaceData():
       ),
 
     catalogItems:
-      catalogItems.rows.map(
+      access.canViewCatalog
+        ? catalogItems.rows.map(
         row => ({
           id:
             String(
@@ -1410,7 +1461,8 @@ export async function getInvoicingWorkspaceData():
             row.is_active !==
             false,
         }),
-      ),
+      )
+        : [],
 
     settings: {
       defaultCurrency:
@@ -1528,6 +1580,7 @@ export async function getInvoicingWorkspaceData():
             )
           : null,
       bankDetails:
+        access.canManageSettings &&
         setting.bank_details
           ? String(
               setting.bank_details,

@@ -36,6 +36,103 @@ import {
 } from '@/lib/apps/invoicing/context';
 
 
+function assertInvoiceCompositionAccess(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireInvoicingContext
+      >
+    >,
+  lines:
+    unknown,
+) {
+  const customerAccess =
+    context.permissions
+      .isOwner ||
+    permissionContextHas(
+      context.permissions,
+      INVOICING_PERMISSIONS
+        .CUSTOMER_VIEW,
+    ) ||
+    permissionContextHas(
+      context.permissions,
+      INVOICING_PERMISSIONS
+        .CUSTOMER_MANAGE,
+    );
+
+  if (
+    !customerAccess
+  ) {
+    throw new InvoicingError(
+      'INVOICING_PERMISSION_REQUIRED',
+      'Customer access is required to create or edit an invoice.',
+      {
+        permission:
+          INVOICING_PERMISSIONS
+            .CUSTOMER_VIEW,
+      },
+    );
+  }
+
+  const usesCatalog =
+    Array.isArray(
+      lines,
+    ) &&
+    lines.some(
+      line =>
+        Boolean(
+          line &&
+          typeof line ===
+            'object' &&
+          !Array.isArray(
+            line,
+          ) &&
+          (
+            line as
+              Record<
+                string,
+                unknown
+              >
+          ).catalogItemId,
+        ),
+    );
+
+  if (
+    !usesCatalog
+  ) {
+    return;
+  }
+
+  const catalogAccess =
+    context.permissions
+      .isOwner ||
+    permissionContextHas(
+      context.permissions,
+      INVOICING_PERMISSIONS
+        .CATALOG_VIEW,
+    ) ||
+    permissionContextHas(
+      context.permissions,
+      INVOICING_PERMISSIONS
+        .CATALOG_MANAGE,
+    );
+
+  if (
+    !catalogAccess
+  ) {
+    throw new InvoicingError(
+      'INVOICING_PERMISSION_REQUIRED',
+      'Catalog access is required to use saved products or services on an invoice.',
+      {
+        permission:
+          INVOICING_PERMISSIONS
+            .CATALOG_VIEW,
+      },
+    );
+  }
+}
+
+
 function normalizedName(
   value:
     unknown,
@@ -2236,6 +2333,11 @@ export async function createInvoice(
         .INVOICE_CREATE,
     );
 
+  assertInvoiceCompositionAccess(
+    context,
+    input.lines,
+  );
+
   await ensureCompanyDefaults(
     context.pool,
     context.companyId,
@@ -2979,6 +3081,11 @@ export async function updateInvoiceDraft(
       INVOICING_PERMISSIONS
         .INVOICE_EDIT,
     );
+
+  assertInvoiceCompositionAccess(
+    context,
+    input.lines,
+  );
 
   const invoiceId =
     requireUuid(

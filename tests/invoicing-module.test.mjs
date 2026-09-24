@@ -1413,3 +1413,94 @@ test('Invoice attachment PDF carries the complete billing and settlement snapsho
     /label="Credits"/,
   );
 });
+
+
+test('Invoicing keeps customer, catalog, payment, recurring, report and settings data behind their own permissions', async () => {
+  const [
+    types,
+    queries,
+    commands,
+    workspace,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/types.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+  ]);
+
+  for (const capability of [
+    'canViewCustomers',
+    'canViewCatalog',
+    'canViewPayments',
+  ]) {
+    assert.match(
+      types,
+      new RegExp(capability + ': boolean'),
+    );
+
+    assert.match(
+      queries,
+      new RegExp(capability),
+    );
+  }
+
+  assert.match(
+    queries,
+    /customers:\s*access\.canViewCustomers[\s\S]*\? customers\.rows\.map/s,
+  );
+
+  assert.match(
+    queries,
+    /payments:\s*access\.canViewPayments[\s\S]*\? payments\.rows\.map/s,
+  );
+
+  assert.match(
+    queries,
+    /catalogItems:\s*access\.canViewCatalog[\s\S]*\? catalogItems\.rows\.map/s,
+  );
+
+  assert.match(
+    queries,
+    /recurring:\s*access\.canManageRecurring[\s\S]*\? recurring\.rows\.map/s,
+  );
+
+  assert.match(
+    queries,
+    /aging:\s*access\.canViewReports[\s\S]*\? aging\.rows\.map/s,
+  );
+
+  assert.match(
+    queries,
+    /bankDetails:\s*access\.canManageSettings/s,
+  );
+
+  assert.match(
+    commands,
+    /assertInvoiceCompositionAccess/,
+  );
+
+  assert.match(
+    commands,
+    /Customer access is required to create or edit an invoice\./,
+  );
+
+  assert.match(
+    commands,
+    /Catalog access is required to use saved products or services on an invoice\./,
+  );
+
+  assert.match(
+    workspace,
+    /const visibleNav =/,
+  );
+
+  assert.match(
+    workspace,
+    /visibleNav\.map/,
+  );
+
+  assert.match(
+    workspace,
+    /const tutorialSteps =/,
+  );
+});

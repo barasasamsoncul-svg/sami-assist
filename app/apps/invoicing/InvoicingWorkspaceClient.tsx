@@ -734,6 +734,93 @@ export default function InvoicingWorkspaceClient({
     requestBusy;
 
 
+  const visibleNav =
+    useMemo(
+      () =>
+        NAV.filter(
+          item => {
+            if (
+              item.key ===
+                'customers'
+            ) {
+              return initialData
+                .capabilities
+                .canViewCustomers;
+            }
+
+            if (
+              item.key ===
+                'items'
+            ) {
+              return initialData
+                .capabilities
+                .canViewCatalog;
+            }
+
+            if (
+              item.key ===
+                'payments'
+            ) {
+              return initialData
+                .capabilities
+                .canViewPayments;
+            }
+
+            if (
+              item.key ===
+                'recurring'
+            ) {
+              return initialData
+                .capabilities
+                .canManageRecurring;
+            }
+
+            if (
+              item.key ===
+                'reports'
+            ) {
+              return initialData
+                .capabilities
+                .canViewReports;
+            }
+
+            if (
+              item.key ===
+                'settings'
+            ) {
+              return initialData
+                .capabilities
+                .canManageSettings;
+            }
+
+            return true;
+          },
+        ),
+      [
+        initialData
+          .capabilities,
+      ],
+    );
+
+  const tutorialSteps =
+    useMemo(
+      () =>
+        INVOICING_TUTORIAL_STEPS
+          .filter(
+            step =>
+              !step.section ||
+              visibleNav.some(
+                item =>
+                  item.key ===
+                  step.section,
+              ),
+          ),
+      [
+        visibleNav,
+      ],
+    );
+
+
   const handleTutorialStep =
     useCallback(
       (
@@ -747,7 +834,7 @@ export default function InvoicingWorkspaceClient({
 
         if (
           section &&
-          NAV.some(
+          visibleNav.some(
             item =>
               item.key ===
               section,
@@ -758,7 +845,9 @@ export default function InvoicingWorkspaceClient({
           );
         }
       },
-      [],
+      [
+        visibleNav,
+      ],
     );
 
 
@@ -968,7 +1057,7 @@ export default function InvoicingWorkspaceClient({
         moduleKey="invoicing"
         title="Invoicing tutorial"
         steps={
-          INVOICING_TUTORIAL_STEPS
+          tutorialSteps
         }
         onStepChange={
           handleTutorialStep
@@ -1066,7 +1155,7 @@ export default function InvoicingWorkspaceClient({
         <div className="overflow-x-auto px-3 py-2">
           <div className="flex min-w-max gap-1">
             {
-              NAV.map(
+              visibleNav.map(
                 item => {
                   const Icon =
                     item.icon;
@@ -1169,6 +1258,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'customers' &&
+        initialData
+          .capabilities
+          .canViewCustomers &&
         (
           <Customers
             data={
@@ -1187,6 +1279,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'items' &&
+        initialData
+          .capabilities
+          .canViewCatalog &&
         (
           <Items
             data={
@@ -1205,6 +1300,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'payments' &&
+        initialData
+          .capabilities
+          .canViewPayments &&
         (
           <Payments
             data={
@@ -1223,6 +1321,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'recurring' &&
+        initialData
+          .capabilities
+          .canManageRecurring &&
         (
           <Recurring
             data={
@@ -1241,6 +1342,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'reports' &&
+        initialData
+          .capabilities
+          .canViewReports &&
         (
           <Reports
             data={
@@ -1253,6 +1357,9 @@ export default function InvoicingWorkspaceClient({
       {
         view ===
           'settings' &&
+        initialData
+          .capabilities
+          .canManageSettings &&
         (
           <Settings
             data={
