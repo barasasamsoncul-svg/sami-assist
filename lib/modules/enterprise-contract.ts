@@ -167,8 +167,10 @@ export function withEnterpriseModuleDefaults(
     ...manifest,
     version:
       manifest.version ===
-        '1.0.0'
-        ? '2.0.0'
+        '1.0.0' ||
+      manifest.version ===
+        '2.0.0'
+        ? '2.1.0'
         : manifest.version,
 
     actions: [
