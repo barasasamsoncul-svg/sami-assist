@@ -118,3 +118,45 @@ test('developer API remains versioned, credential-scoped and app-bounded', async
     'An API credential with no allowed apps must continue to mean NONE, never ALL.',
   );
 });
+
+test('shared enterprise workspaces keep a contextual desktop rail and focused work canvas', async () => {
+  const [
+    page,
+    layout,
+  ] = await Promise.all([
+    source(
+      'app/apps/[appKey]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css',
+    ),
+  ]);
+
+  assert.match(
+    page,
+    /EnterpriseModuleWorkspaceShell\.module\.css/,
+  );
+
+  assert.match(
+    page,
+    /styles\.enterpriseWorkspace/,
+  );
+
+  assert.match(
+    layout,
+    /grid-template-columns:\s*minmax\(210px, 248px\)\s+minmax\(0, 1fr\)/,
+    'Desktop enterprise workspaces must retain a dedicated contextual rail and one flexible work canvas.',
+  );
+
+  assert.match(
+    layout,
+    /position:\s*sticky/,
+    'The contextual module rail must remain persistent on desktop.',
+  );
+
+  assert.match(
+    layout,
+    /@media \(min-width: 1024px\)/,
+    'The two-pane treatment must remain desktop-specific so mobile keeps its compact flow.',
+  );
+});
