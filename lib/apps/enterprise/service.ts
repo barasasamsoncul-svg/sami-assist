@@ -4511,3 +4511,306 @@ export async function bulkTransitionEnterpriseModuleRecords(
     results,
   };
 }
+
+
+
+export async function queryEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    search?: unknown;
+    offset?: unknown;
+    limit?: unknown;
+    sortField?: unknown;
+    sortOrder?: unknown;
+    filters?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const fieldNames =
+    new Set(
+      context.fields.map(
+        field =>
+          field.key,
+      ),
+    );
+
+  const limit =
+    Math.min(
+      Math.max(
+        Number(
+          input.limit ||
+          50,
+        ) ||
+        50,
+        1,
+      ),
+      100,
+    );
+
+  const offset =
+    Math.min(
+      Math.max(
+        Number(
+          input.offset ||
+          0,
+        ) ||
+        0,
+        0,
+      ),
+      100000,
+    );
+
+  const search =
+    typeof input.search ===
+      'string'
+      ? input.search
+          .trim()
+          .slice(
+            0,
+            200,
+          )
+      : '';
+
+  const requestedSort =
+    normalizeKey(
+      input.sortField,
+    );
+
+  const sortField =
+    requestedSort &&
+    fieldNames.has(
+      requestedSort,
+    )
+      ? requestedSort
+      : fieldNames.has(
+          'updated_at',
+        )
+        ? 'updated_at'
+        : fieldNames.has(
+            'created_at',
+          )
+          ? 'created_at'
+          : fieldNames.has(
+              'id',
+            )
+            ? 'id'
+            : null;
+
+  const sortOrder =
+    String(
+      input.sortOrder ||
+      '',
+    )
+      .trim()
+      .toLowerCase() ===
+      'asc'
+      ? 'ASC'
+      : 'DESC';
+
+  const conditions:
+    string[] = [
+      'company_id = $1',
+      'deleted_at IS NULL',
+    ];
+
+  const params:
+    unknown[] = [
+      context.companyId,
+    ];
+
+  const searchable =
+    context.fields
+      .filter(
+        field =>
+          !SYSTEM_COLUMNS.has(
+            field.key,
+          ) &&
+          field.key !==
+            'metadata',
+      )
+      .slice(
+        0,
+        8,
+      );
+
+  if (
+    search &&
+    searchable.length >
+      0
+  ) {
+    params.push(
+      '%' +
+      search +
+      '%',
+    );
+
+    const placeholder =
+      '$' +
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            'COALESCE(' +
+            quoteIdentifier(
+              field.key,
+            ) +
+            "::text, '') ILIKE " +
+            placeholder,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+  }
+
+  if (
+    input.filters &&
+    typeof input.filters ===
+      'object' &&
+    !Array.isArray(
+      input.filters,
+    )
+  ) {
+    for (
+      const [
+        rawKey,
+        rawValue,
+      ]
+      of Object.entries(
+        input.filters as
+          Record<
+            string,
+            unknown
+          >,
+      )
+    ) {
+      const key =
+        normalizeKey(
+          rawKey,
+        );
+
+      if (
+        !fieldNames.has(
+          key,
+        ) ||
+        SYSTEM_COLUMNS.has(
+          key,
+        ) ||
+        rawValue ===
+          null ||
+        rawValue ===
+          undefined ||
+        rawValue ===
+          ''
+      ) {
+        continue;
+      }
+
+      params.push(
+        String(
+          rawValue,
+        ),
+      );
+
+      conditions.push(
+        quoteIdentifier(
+          key,
+        ) +
+        '::text = $' +
+        params.length,
+      );
+    }
+  }
+
+  const where =
+    ' WHERE ' +
+    conditions.join(
+      ' AND ',
+    );
+
+  const countResult =
+    await context.pool.query(
+      'SELECT COUNT(*)::int AS count FROM ' +
+      quoteIdentifier(
+        context.table,
+      ) +
+      where,
+      params,
+    );
+
+  const queryParams =
+    [
+      ...params,
+      limit,
+      offset,
+    ];
+
+  const rowsResult =
+    await context.pool.query(
+      'SELECT * FROM ' +
+      quoteIdentifier(
+        context.table,
+      ) +
+      where +
+      (
+        sortField
+          ? (
+              ' ORDER BY ' +
+              quoteIdentifier(
+                sortField,
+              ) +
+              ' ' +
+              sortOrder +
+              ' NULLS LAST'
+            )
+          : ''
+      ) +
+      ' LIMIT $' +
+      (
+        params.length +
+        1
+      ) +
+      ' OFFSET $' +
+      (
+        params.length +
+        2
+      ),
+      queryParams,
+    );
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  return {
+    table:
+      context.table,
+    search,
+    offset,
+    limit,
+    total,
+    hasMore:
+      offset +
+      rowsResult.rows.length <
+      total,
+    records:
+      rowsResult.rows.map(
+        rowOutput,
+      ),
+  };
+}
