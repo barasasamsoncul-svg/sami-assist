@@ -1166,6 +1166,31 @@ async function tableMetadata(
         table,
       );
 
+    const unsafeRelation =
+      [
+        ...relations.values(),
+      ].find(
+        relation =>
+          !relation.companyScoped ||
+          !relation.softDelete,
+      );
+
+    if (
+      unsafeRelation
+    ) {
+      throw new EnterpriseModuleError(
+        'TABLE_NOT_READY',
+        'A related business table has not completed SaMi enterprise boundary hardening.',
+        {
+          table,
+          relationField:
+            unsafeRelation.field,
+          relationTable:
+            unsafeRelation.targetTable,
+        },
+      );
+    }
+
     byTable.set(
       table,
       fields.map(
