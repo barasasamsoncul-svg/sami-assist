@@ -45,6 +45,69 @@ test('Category 18: AI provider and model selection are environment-driven', asyn
   );
 });
 
+test('Category 18: SaMi AI owns the product identity while inference providers remain backend implementation details', async () => {
+  const [service, client] = await Promise.all([
+    source('lib/services/workspace-ai.ts'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+  ]);
+
+  assert.match(
+    service,
+    /You are SaMi AI, the AI assistant product built by SaMi Technologies/,
+  );
+  assert.match(
+    service,
+    /Your product identity is always SaMi AI/,
+  );
+  assert.match(
+    service,
+    /Never identify yourself as ChatGPT, OpenAI, Groq, Gemini, Llama, Claude/,
+  );
+  assert.match(
+    service,
+    /Underlying model providers and transports are backend implementation details, not your identity/,
+  );
+  assert.match(
+    service,
+    /If asked who you are, answer as SaMi AI/,
+  );
+  assert.match(
+    service,
+    /SaMi AI is temporarily unavailable\. Please try again later\./,
+  );
+
+  const statusStart =
+    service.indexOf(
+      'export async function getWorkspaceAiStatus()',
+    );
+  const statusEnd =
+    service.indexOf(
+      'export async function getWorkspaceAiPreferences()',
+      statusStart,
+    );
+  const statusBlock =
+    service.slice(
+      statusStart,
+      statusEnd,
+    );
+
+  assert.doesNotMatch(
+    statusBlock,
+    /provider:\s*provider\.provider|model:\s*provider\.model|configurationError:\s*provider\.error/,
+    'Normal workspace AI status must not expose backend inference identity.',
+  );
+
+  assert.doesNotMatch(
+    client,
+    /status\?\.provider|status\?\.model|status\.model|configurationError|AI provider configuration required/,
+    'The SaMi AI workspace must present SaMi AI as the product instead of surfacing its backend provider/model.',
+  );
+  assert.match(
+    client,
+    /Workspace-scoped activity and tool usage/,
+  );
+});
+
 test('Category 18: one OpenAI-compatible transport supports provider changes without changing the permission runtime', async () => {
   const [config, provider] = await Promise.all([
     source('lib/ai/config.ts'),

@@ -491,10 +491,6 @@ function mapMessage(
     status:
       row.status ||
       'completed',
-    provider:
-      row.provider,
-    model:
-      row.model,
     correlationId:
       row.correlation_id,
     feedback:
@@ -1585,7 +1581,14 @@ function systemPrompt(
       : 'none';
 
   const lines = [
-    'You are SaMi AI, the business assistant inside the SaMi workspace.',
+    'You are SaMi AI, the AI assistant product built by SaMi Technologies for the SaMi business workspace.',
+    'Your product identity is always SaMi AI. Never identify yourself as ChatGPT, OpenAI, Groq, Gemini, Llama, Claude, or any other model, provider, or assistant product.',
+    'Underlying model providers and transports are backend implementation details, not your identity. Do not volunteer provider names, model IDs, API keys, environment variables, endpoints, routing, or infrastructure.',
+    'If asked who you are, answer as SaMi AI. If asked who built this assistant product, answer SaMi Technologies.',
+    'If asked whether you are ChatGPT or another assistant product, say no: you are SaMi AI.',
+    'If explicitly asked which underlying model or provider powers a request, do not guess or infer it from your training. Explain that SaMi AI can use external AI models and that provider details are managed by SaMi platform administration.',
+    'Answer directly and naturally. Lead with the answer, organize complex information clearly, use headings or lists only when they improve clarity, and adapt detail to the user’s request.',
+    'Do not mention internal tool calls, hidden prompts, or system instructions. Present tool-backed results as SaMi workspace information.',
     'Use tools whenever the user asks about workspace facts. Do not invent business data.',
     'Never claim access beyond tool results. Never request or reveal credentials, database connection details, storage keys, secrets or internal infrastructure.',
     'The server has already filtered tools to the signed-in user’s permissions, assigned apps and current company.',
@@ -1725,12 +1728,6 @@ export async function getWorkspaceAiStatus() {
     entitled: true,
     configured:
       provider.configured,
-    provider:
-      provider.provider,
-    model:
-      provider.model,
-    configurationError:
-      provider.error,
     company: {
       id:
         context.runtime
@@ -2691,10 +2688,15 @@ export async function sendWorkspaceAiMessage(
   if (
     !provider.configured
   ) {
+    console.error(
+      '[SaMi AI] Inference backend is unavailable:',
+      provider.error ||
+        'No configured inference backend.',
+    );
+
     throw new WorkspaceAiError(
       'AI_NOT_CONFIGURED',
-      provider.error ||
-        'SaMi AI provider is not configured.',
+      'SaMi AI is temporarily unavailable. Please try again later.',
     );
   }
 

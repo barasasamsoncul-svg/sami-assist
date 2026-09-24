@@ -65,8 +65,6 @@ type Message = {
   role: string;
   content: string;
   status: string;
-  provider: string | null;
-  model: string | null;
   correlationId: string | null;
   feedback:
     | 'up'
@@ -96,9 +94,6 @@ type AiPerformance = {
 type AiStatus = {
   entitled: boolean;
   configured: boolean;
-  provider: string | null;
-  model: string | null;
-  configurationError: string | null;
   company: {
     id: string;
     name: string;
@@ -1816,18 +1811,6 @@ export default function WorkspaceAiClient({
             </p>
           </div>
 
-          {status?.configured &&
-            status.model && (
-            <p
-              title={
-                status.model
-              }
-              className="ml-3 hidden max-w-[180px] truncate text-[10px] font-medium text-slate-400 md:block"
-            >
-              {status.model}
-            </p>
-          )}
-
           {selectedConversationId && (
             <div className="ml-2 flex items-center gap-1">
               <button
@@ -1881,11 +1864,8 @@ export default function WorkspaceAiClient({
             icon={
               TriangleAlert
             }
-            title="AI provider configuration required"
-            description={
-              status?.configurationError ||
-              'Configure one active AI model in the environment. SaMi detects its provider automatically.'
-            }
+            title="SaMi AI is temporarily unavailable"
+            description="SaMi AI cannot start right now. Please try again shortly or contact SaMi support if the problem continues."
           />
         </div>
       ) : (
@@ -2574,10 +2554,7 @@ function PerformancePanel({
               SaMi AI performance
             </p>
             <p className="mt-0.5 truncate text-[10px] text-slate-400">
-              {status?.provider || 'Provider unavailable'}
-              {status?.model
-                ? ` · ${status.model}`
-                : ''}
+              Workspace-scoped activity and tool usage
             </p>
           </div>
 
