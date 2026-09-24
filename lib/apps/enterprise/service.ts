@@ -40,7 +40,9 @@ import {
 } from '@/lib/apps/enterprise/domain-profiles';
 
 import {
+  listWorkspaceActivity,
   recordWorkspaceAuditEvent,
+  type WorkspaceActivityItem,
 } from '@/lib/services/workspace-activity';
 
 import {
@@ -166,6 +168,7 @@ export type EnterpriseWorkspaceData = {
     canManageSettings: boolean;
   };
   profile: EnterpriseDomainProfile;
+  activity: WorkspaceActivityItem[];
   metrics: {
     totalRecords: number;
     tables: number;
@@ -2047,6 +2050,16 @@ export async function getEnterpriseModuleWorkspace(
       ),
   };
 
+  const activityResult =
+    await listWorkspaceActivity({
+      view:
+        'activity',
+      module:
+        context.moduleKey,
+      limit:
+        24,
+    });
+
   return {
     module: {
       key:
@@ -2074,6 +2087,8 @@ export async function getEnterpriseModuleWorkspace(
     },
     capabilities,
     profile,
+    activity:
+      activityResult.items,
     metrics: {
       primaryRecords,
       attentionRecords:
