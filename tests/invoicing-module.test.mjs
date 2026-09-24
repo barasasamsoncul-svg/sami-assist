@@ -1088,3 +1088,65 @@ test('Invoicing financial corrections are auditable and company settings are enf
   assert.match(detail, /allowPartialPayments/);
   assert.match(composer, /!data\.settings\.requireApproval/);
 });
+
+
+test('Workspace tutorials are reusable across modules and Invoicing ships complete guided flows', async () => {
+  const [
+    tutorial,
+    shell,
+    page,
+    workspace,
+    detailPage,
+    detail,
+  ] = await Promise.all([
+    source('app/components/workspace/WorkspaceTutorial.tsx'),
+    source('app/components/workspace/WorkspaceShell.tsx'),
+    source('app/apps/invoicing/page.tsx'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/page.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+  ]);
+
+  assert.match(tutorial, /WorkspaceTutorialToggle/);
+  assert.match(tutorial, /startWorkspaceTutorial/);
+  assert.match(tutorial, /sami:tutorial-preference/);
+  assert.match(tutorial, /sami:tutorial-start/);
+  assert.match(tutorial, /userId/);
+  assert.match(tutorial, /localStorage/);
+  assert.match(tutorial, /Tutorials On/);
+  assert.match(tutorial, /Tutorials Off/);
+
+  assert.match(shell, /WorkspaceTutorialToggle/);
+  assert.match(shell, /userId=\{/);
+
+  assert.match(page, /userId=\{/);
+  assert.match(workspace, /INVOICING_TUTORIAL_STEPS/);
+  assert.match(workspace, /moduleKey="invoicing"/);
+  assert.match(workspace, /Receivables command center/);
+  assert.match(workspace, /Items & pricing/);
+  assert.match(workspace, /Recurring billing/);
+  assert.match(workspace, /startWorkspaceTutorial/);
+
+  for (const section of [
+    'dashboard',
+    'invoices',
+    'customers',
+    'items',
+    'payments',
+    'recurring',
+    'reports',
+    'settings',
+  ]) {
+    assert.match(
+      workspace,
+      new RegExp("section:\\s*'" + section + "'"),
+    );
+  }
+
+  assert.match(detailPage, /userId=\{/);
+  assert.match(detail, /INVOICE_DETAIL_TUTORIAL_STEPS/);
+  assert.match(detail, /moduleKey="invoicing-invoice-detail"/);
+  assert.match(detail, /Record and reverse payments safely/);
+  assert.match(detail, /Use credit notes for commercial reductions/);
+  assert.match(detail, /Use the audit trail/);
+});

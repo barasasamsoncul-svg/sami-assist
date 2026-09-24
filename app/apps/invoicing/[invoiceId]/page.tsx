@@ -174,6 +174,9 @@ export default async function InvoiceDetailPage({
         invoice={
           invoice
         }
+        userId={
+          session.user.id
+        }
       />
     </WorkspaceShell>
   );

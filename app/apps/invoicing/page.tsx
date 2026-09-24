@@ -145,6 +145,9 @@ export default async function InvoicingPage() {
         initialData={
           data
         }
+        userId={
+          session.user.id
+        }
       />
     </WorkspaceShell>
   );

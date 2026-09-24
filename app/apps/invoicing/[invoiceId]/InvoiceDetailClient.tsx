@@ -13,6 +13,7 @@ import {
 import {
   ArrowLeft,
   BadgeCheck,
+  BookOpenCheck,
   BellRing,
   CopyPlus,
   CreditCard,
@@ -29,6 +30,11 @@ import SaMiOverlay from '@/app/components/SaMiOverlay';
 import {
   useSaMiOverlay,
 } from '@/app/components/useSaMiOverlay';
+
+import WorkspaceTutorial, {
+  startWorkspaceTutorial,
+  type WorkspaceTutorialStep,
+} from '@/app/components/workspace/WorkspaceTutorial';
 
 import type {
   InvoicingInvoiceDetail,
@@ -66,6 +72,67 @@ function formatMoney(
     );
   }
 }
+
+
+const INVOICE_DETAIL_TUTORIAL_STEPS:
+  WorkspaceTutorialStep[] = [
+    {
+      id:
+        'document',
+      title:
+        'Understand the invoice lifecycle',
+      description:
+        'The header shows the invoice number and current state. Drafts can be edited and confirmed; open invoices can be delivered, reminded, paid, credited or corrected according to permissions.',
+    },
+    {
+      id:
+        'customer',
+      title:
+        'Review the customer snapshot',
+      description:
+        'The invoice stores its own billing snapshot so later customer edits do not silently rewrite an already-issued commercial document.',
+    },
+    {
+      id:
+        'financials',
+      title:
+        'Read the financial summary',
+      description:
+        'Subtotal, discounts, tax, shipping, payments, credits and balance due are kept separate so the receivable can be reconciled accurately.',
+    },
+    {
+      id:
+        'payments',
+      title:
+        'Record and reverse payments safely',
+      description:
+        'Post receipts against the remaining balance. If a receipt was entered incorrectly, reverse the posted payment with a reason instead of deleting accounting history.',
+    },
+    {
+      id:
+        'credits',
+      title:
+        'Use credit notes for commercial reductions',
+      description:
+        'Issue a credit note when the customer should owe less. Incorrect issued credits can be cancelled with a reason and SaMi recalculates the invoice settlement state.',
+    },
+    {
+      id:
+        'delivery',
+      title:
+        'Deliver and remind customers',
+      description:
+        'Send the invoice through configured email, WhatsApp or SMS channels, and use reminders for unpaid open balances. Delivery results remain visible in the audit trail.',
+    },
+    {
+      id:
+        'history',
+      title:
+        'Use the audit trail',
+      description:
+        'Status history, payment corrections, credit actions and delivery history provide the evidence needed to understand how the invoice reached its current state.',
+    },
+  ];
 
 
 function statusClass(
@@ -141,11 +208,14 @@ function StatusPill({
 export default function InvoiceDetailClient({
   data,
   invoice,
+  userId,
 }: {
   data:
     InvoicingWorkspaceData;
   invoice:
     InvoicingInvoiceDetail;
+  userId:
+    string;
 }) {
   const router =
     useRouter();
@@ -362,6 +432,17 @@ export default function InvoiceDetailClient({
         }
       />
 
+      <WorkspaceTutorial
+        userId={
+          userId
+        }
+        moduleKey="invoicing-invoice-detail"
+        title="Invoice tutorial"
+        steps={
+          INVOICE_DETAIL_TUTORIAL_STEPS
+        }
+      />
+
       <div className="space-y-4">
       <section className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -412,6 +493,21 @@ export default function InvoiceDetailClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={
+                () =>
+                  startWorkspaceTutorial(
+                    userId,
+                    'invoicing-invoice-detail',
+                  )
+              }
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black"
+            >
+              <BookOpenCheck className="h-4 w-4 text-blue-600" />
+              Tutorial
+            </button>
+
             {
               data.capabilities
                 .canCreate &&

@@ -15,6 +15,10 @@ import {
 } from 'lucide-react';
 
 import {
+  WorkspaceTutorialToggle,
+} from '@/app/components/workspace/WorkspaceTutorial';
+
+import {
   useState,
   type ReactNode,
 } from 'react';
@@ -245,6 +249,12 @@ export default function WorkspaceShell({
               <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
                 <WorkspaceAppSwitcher
                   modules={modules}
+                />
+
+                <WorkspaceTutorialToggle
+                  userId={
+                    user.id
+                  }
                 />
 
                 <Link

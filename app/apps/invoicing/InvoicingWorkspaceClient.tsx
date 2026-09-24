@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -20,11 +21,17 @@ import {
   useSaMiOverlay,
 } from '@/app/components/useSaMiOverlay';
 
+import WorkspaceTutorial, {
+  startWorkspaceTutorial,
+  type WorkspaceTutorialStep,
+} from '@/app/components/workspace/WorkspaceTutorial';
+
 import {
   AlertTriangle,
   BadgeCheck,
   BarChart3,
   CalendarClock,
+  BookOpenCheck,
   ChevronDown,
   CircleDollarSign,
   CreditCard,
@@ -129,6 +136,156 @@ const NAV:
         'Settings',
       icon:
         Settings2,
+    },
+  ];
+
+
+const VIEW_COPY:
+  Record<
+    ViewKey,
+    {
+      title: string;
+      description: string;
+    }
+  > = {
+    dashboard: {
+      title:
+        'Overview',
+      description:
+        'See receivables, collections, overdue balances and the health of customer billing.',
+    },
+    invoices: {
+      title:
+        'Invoices',
+      description:
+        'Create professional invoices, edit drafts, confirm, send, remind, duplicate and manage their lifecycle.',
+    },
+    customers: {
+      title:
+        'Customers',
+      description:
+        'Maintain billing identities, contacts, tax details, payment terms and customer status safely.',
+    },
+    items: {
+      title:
+        'Items & pricing',
+      description:
+        'Maintain products and services, prices, units and default taxes used on invoices.',
+    },
+    payments: {
+      title:
+        'Payments',
+      description:
+        'Review posted and reversed payments and their invoice allocations without changing invoice totals.',
+    },
+    recurring: {
+      title:
+        'Recurring billing',
+      description:
+        'Automate repeat invoices, schedules and delivery channels using a source invoice as the commercial template.',
+    },
+    reports: {
+      title:
+        'Reports',
+      description:
+        'Review invoice status, aging and monthly billing, then export the invoice register when needed.',
+    },
+    settings: {
+      title:
+        'Invoicing settings',
+      description:
+        'Control templates, numbering defaults, taxes, payment terms, reminders and document behavior.',
+    },
+  };
+
+
+const INVOICING_TUTORIAL_STEPS:
+  WorkspaceTutorialStep[] = [
+    {
+      id:
+        'overview',
+      section:
+        'dashboard',
+      title:
+        'Start with the receivables overview',
+      description:
+        'The overview summarizes invoiced value, collections, outstanding balances and overdue receivables for the current company.',
+      tip:
+        'SaMi keeps these figures company-scoped so users only see billing data they are allowed to access.',
+    },
+    {
+      id:
+        'invoices',
+      section:
+        'invoices',
+      title:
+        'Create and manage invoices',
+      description:
+        'Choose a customer, add products or custom lines, taxes, discounts, dates and terms. Save a draft first or confirm when the document is ready.',
+      tip:
+        'Drafts remain editable. Confirmed documents move through sending, payment, credit, cancellation and audit workflows.',
+    },
+    {
+      id:
+        'customers',
+      section:
+        'customers',
+      title:
+        'Keep customer billing records clean',
+      description:
+        'Create and edit billing customers, payment terms, tax identifiers, addresses and contact information. SaMi blocks accidental duplicate customer creation.',
+    },
+    {
+      id:
+        'items',
+      section:
+        'items',
+      title:
+        'Maintain products and services',
+      description:
+        'Items provide reusable descriptions, units, prices and taxes for faster invoice creation. Inactive items remain preserved for historical documents.',
+    },
+    {
+      id:
+        'payments',
+      section:
+        'payments',
+      title:
+        'Track payments and corrections',
+      description:
+        'The payment register shows customer receipts and invoice allocations. If a payment was posted incorrectly, open its invoice and reverse it with a reason instead of deleting financial history.',
+    },
+    {
+      id:
+        'recurring',
+      section:
+        'recurring',
+      title:
+        'Automate recurring billing',
+      description:
+        'Create schedules from an existing invoice, choose the interval and delivery channels, and pause, resume or cancel the schedule when circumstances change.',
+    },
+    {
+      id:
+        'reports',
+      section:
+        'reports',
+      title:
+        'Use aging and invoice reports',
+      description:
+        'Reports separate current and overdue receivables, show monthly billing activity and provide an exportable invoice register for reconciliation.',
+    },
+    {
+      id:
+        'settings',
+      section:
+        'settings',
+      title:
+        'Finish with company invoicing settings',
+      description:
+        'Configure appearance templates, taxes, payment terms, reminder behavior, payment instructions and invoice defaults for the current company.',
+      tip:
+        'Use the Tutorials control in the workspace top bar to turn guided help on or off at any time.',
     },
   ];
 
@@ -518,9 +675,12 @@ function MetricCard({
 
 export default function InvoicingWorkspaceClient({
   initialData,
+  userId,
 }: {
   initialData:
     InvoicingWorkspaceData;
+  userId:
+    string;
 }) {
   const router =
     useRouter();
@@ -573,6 +733,33 @@ export default function InvoicingWorkspaceClient({
     pending ||
     requestBusy;
 
+
+  const handleTutorialStep =
+    useCallback(
+      (
+        step:
+          WorkspaceTutorialStep,
+      ) => {
+        const section =
+          step.section as
+            | ViewKey
+            | undefined;
+
+        if (
+          section &&
+          NAV.some(
+            item =>
+              item.key ===
+              section,
+          )
+        ) {
+          setView(
+            section,
+          );
+        }
+      },
+      [],
+    );
 
 
   const filteredInvoices =
@@ -774,6 +961,20 @@ export default function InvoicingWorkspaceClient({
         }
       />
 
+      <WorkspaceTutorial
+        userId={
+          userId
+        }
+        moduleKey="invoicing"
+        title="Invoicing tutorial"
+        steps={
+          INVOICING_TUTORIAL_STEPS
+        }
+        onStepChange={
+          handleTutorialStep
+        }
+      />
+
       <div className="space-y-4">
       <section className="sami-surface overflow-hidden rounded-[26px]">
         <div className="flex flex-col gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
@@ -796,6 +997,21 @@ export default function InvoicingWorkspaceClient({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={
+                () =>
+                  startWorkspaceTutorial(
+                    userId,
+                    'invoicing',
+                  )
+              }
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-black"
+            >
+              <BookOpenCheck className="h-4 w-4 text-blue-600" />
+              Tutorial
+            </button>
+
             {
               initialData
                 .capabilities
@@ -890,6 +1106,24 @@ export default function InvoicingWorkspaceClient({
               )
             }
           </div>
+        </div>
+
+        <div className="border-t border-[var(--sami-border)] bg-[var(--sami-surface-soft)] px-4 py-3 sm:px-5">
+          <p className="text-xs font-black text-slate-900 dark:text-white">
+            {
+              VIEW_COPY[
+                view
+              ].title
+            }
+          </p>
+
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+            {
+              VIEW_COPY[
+                view
+              ].description
+            }
+          </p>
         </div>
       </section>
 
