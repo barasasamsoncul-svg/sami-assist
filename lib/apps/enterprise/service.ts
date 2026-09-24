@@ -112,6 +112,16 @@ export type EnterpriseWorkflowField = {
   counts: Record<string, number>;
 };
 
+export type EnterpriseNumericMetric = {
+  field: string;
+  label: string;
+  sum: number;
+  average: number;
+  minimum: number;
+  maximum: number;
+};
+
+
 export type EnterpriseTable = {
   key: string;
   label: string;
@@ -124,6 +134,7 @@ export type EnterpriseTable = {
   fields: EnterpriseField[];
   displayFields: string[];
   workflows: EnterpriseWorkflowField[];
+  numericMetrics: EnterpriseNumericMetric[];
   count: number;
   records: Array<
     Record<
@@ -1641,6 +1652,148 @@ async function readTable(
       params,
     );
 
+  const numericFields =
+    fields
+      .filter(
+        field =>
+          field.inputType ===
+            'number' &&
+          !SYSTEM_COLUMNS.has(
+            field.key,
+          ) &&
+          ![
+            'sequence',
+            'position',
+            'row_number',
+            'column_number',
+            'version_number',
+            'signing_order',
+            'step_order',
+          ].includes(
+            field.key,
+          ),
+      )
+      .slice(
+        0,
+        5,
+      );
+
+  const numericMetrics:
+    EnterpriseNumericMetric[] =
+      [];
+
+  if (
+    numericFields.length >
+      0
+  ) {
+    const aggregates =
+      numericFields
+        .flatMap(
+          (
+            field,
+            index,
+          ) => {
+            const identifier =
+              quoteIdentifier(
+                field.key,
+              );
+
+            return [
+              'COALESCE(SUM(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'sum_' +
+                index,
+              ),
+              'COALESCE(AVG(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'avg_' +
+                index,
+              ),
+              'COALESCE(MIN(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'min_' +
+                index,
+              ),
+              'COALESCE(MAX(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'max_' +
+                index,
+              ),
+            ];
+          },
+        );
+
+    const aggregateResult =
+      await pool.query(
+        'SELECT ' +
+        aggregates.join(
+          ', ',
+        ) +
+        ' FROM ' +
+        quotedTable +
+        where,
+        params,
+      );
+
+    const row =
+      aggregateResult.rows[0] ||
+      {};
+
+    numericFields.forEach(
+      (
+        field,
+        index,
+      ) => {
+        numericMetrics.push({
+          field:
+            field.key,
+          label:
+            field.label,
+          sum:
+            Number(
+              row[
+                'sum_' +
+                index
+              ] ||
+              0,
+            ),
+          average:
+            Number(
+              row[
+                'avg_' +
+                index
+              ] ||
+              0,
+            ),
+          minimum:
+            Number(
+              row[
+                'min_' +
+                index
+              ] ||
+              0,
+            ),
+          maximum:
+            Number(
+              row[
+                'max_' +
+                index
+              ] ||
+              0,
+            ),
+        });
+      },
+    );
+  }
+
   const displayFields =
     fields
       .map(
@@ -1674,6 +1827,7 @@ async function readTable(
     fields,
     displayFields,
     workflows,
+    numericMetrics,
     count:
       Number(
         countResult.rows[0]
