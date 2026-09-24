@@ -1,0 +1,83 @@
+.enterpriseWorkspace {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .enterpriseWorkspace > :global(.space-y-4) {
+    display: grid;
+    grid-template-columns: minmax(210px, 248px) minmax(0, 1fr);
+    align-items: start;
+    gap: 18px;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child {
+    position: sticky;
+    top: 78px;
+    grid-column: 1;
+    max-height: calc(100vh - 96px);
+    overflow: auto;
+    border-radius: 20px;
+    box-shadow: none;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child {
+    display: block;
+    padding: 16px 14px 12px;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :first-child {
+    min-width: 0;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :first-child p:last-child {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :last-child {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :first-child > :last-child button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding-inline: 8px;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :last-child {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: visible;
+    padding: 8px;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :first-child > :last-child button {
+    width: 100%;
+    justify-content: flex-start;
+    border-radius: 10px;
+    padding-inline: 11px;
+    box-shadow: none;
+  }
+
+  .enterpriseWorkspace > :global(.space-y-4) > :not(:first-child) {
+    grid-column: 2;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .enterpriseWorkspace > :global(.space-y-4) {
+    grid-template-columns: minmax(224px, 260px) minmax(0, 1fr);
+    gap: 22px;
+  }
+}
