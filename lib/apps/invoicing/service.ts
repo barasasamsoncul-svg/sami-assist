@@ -28,8 +28,10 @@ export {
   issueInvoiceCreditNote,
   recordInvoicePayment,
   saveInvoicingTemplate,
+  sendInvoiceReminder,
   sendInvoiceToCustomer,
   setRecurringInvoiceTemplateStatus,
+  updateRecurringInvoiceTemplate,
   updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/commands';

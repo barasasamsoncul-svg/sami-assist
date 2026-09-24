@@ -24,6 +24,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   CreditCard,
+  Download,
   LayoutDashboard,
   Package,
   Plus,
@@ -157,6 +158,123 @@ function formatMoney(
         .toLocaleString()
     );
   }
+}
+
+
+function csvCell(
+  value:
+    unknown,
+) {
+  const text =
+    String(
+      value ??
+      '',
+    );
+
+  return (
+    '"' +
+    text.replaceAll(
+      '"',
+      '""',
+    ) +
+    '"'
+  );
+}
+
+
+function exportInvoiceRegister(
+  invoices:
+    InvoicingInvoiceSummary[],
+) {
+  const rows = [
+    [
+      'Invoice',
+      'Customer',
+      'Status',
+      'Invoice date',
+      'Due date',
+      'Currency',
+      'Total',
+      'Paid',
+      'Credits',
+      'Balance',
+    ],
+    ...invoices.map(
+      invoice => [
+        invoice.invoiceNumber,
+        invoice.customerName,
+        invoice.status,
+        invoice.invoiceDate,
+        invoice.dueDate,
+        invoice.currency,
+        invoice.totalAmount,
+        invoice.paidAmount,
+        invoice.creditedAmount,
+        invoice.balanceDue,
+      ],
+    ),
+  ];
+
+  const csv =
+    rows
+      .map(
+        row =>
+          row
+            .map(
+              csvCell,
+            )
+            .join(
+              ',',
+            ),
+      )
+      .join(
+        '\n',
+      );
+
+  const blob =
+    new Blob(
+      [
+        csv,
+      ],
+      {
+        type:
+          'text/csv;charset=utf-8',
+      },
+    );
+
+  const url =
+    URL.createObjectURL(
+      blob,
+    );
+
+  const link =
+    document.createElement(
+      'a',
+    );
+
+  link.href =
+    url;
+  link.download =
+    'invoices-' +
+    new Date()
+      .toISOString()
+      .slice(
+        0,
+        10,
+      ) +
+    '.csv';
+
+  document.body
+    .appendChild(
+      link,
+    );
+
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(
+    url,
+  );
 }
 
 
@@ -1297,8 +1415,27 @@ function Invoices({
             </p>
           </div>
 
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <button
+              type="button"
+              disabled={
+                invoices.length ===
+                  0
+              }
+              onClick={
+                () =>
+                  exportInvoiceRegister(
+                    invoices,
+                  )
+              }
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-40"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
+
+            <div className="relative w-full sm:w-72">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
             <input
               value={
@@ -1314,7 +1451,8 @@ function Invoices({
               }
               placeholder="Search invoice or customer"
               className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm"
-            />
+              />
+            </div>
           </div>
         </div>
 
@@ -3921,118 +4059,303 @@ function Recurring({
             data.recurring
               .map(
                 item => (
-                  <div
+                  <details
                     key={
                       item.id
                     }
-                    className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center"
+                    className="group"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-black">
-                        {
-                          item.name
-                        }
-                      </p>
+                    <summary className="cursor-pointer list-none py-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-black">
+                            {
+                              item.name
+                            }
+                          </p>
 
-                      <p className="mt-1 text-xs text-slate-500">
-                        {
-                          item.customerName
-                        } · {
-                          item.sourceInvoiceNumber ||
-                          'invoice template'
-                        } · every {
-                          item.intervalCount
-                        } {
-                          item.intervalUnit
-                        }
-                      </p>
-                    </div>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {
+                              item.customerName
+                            } · {
+                              item.sourceInvoiceNumber ||
+                              'invoice template'
+                            } · every {
+                              item.intervalCount
+                            } {
+                              item.intervalUnit
+                            }
+                          </p>
+                        </div>
 
-                    <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-                      <div className="sm:text-right">
-                        <StatusPill
-                          value={
-                            item.status
-                          }
-                        />
+                        <div className="flex shrink-0 items-center gap-3 sm:justify-end">
+                          <div className="sm:text-right">
+                            <StatusPill
+                              value={
+                                item.status
+                              }
+                            />
 
-                        <p className="mt-1 text-[11px] text-slate-500">
-                          Next {
-                            item.nextRunAt
-                          }
-                        </p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              Next {
+                                item.nextRunAt
+                              }
+                            </p>
+                          </div>
+
+                          <ChevronDown className="h-4 w-4 text-slate-400 transition group-open:rotate-180" />
+                        </div>
                       </div>
+                    </summary>
 
-                      {
-                        data.capabilities
-                          .canManageRecurring &&
-                        item.status !==
-                          'cancelled' &&
-                        (
-                          <div className="flex gap-2">
+                    {
+                      data.capabilities
+                        .canManageRecurring &&
+                      item.status !==
+                        'cancelled' &&
+                      item.status !==
+                        'completed' &&
+                      (
+                        <form
+                          className="mb-3 rounded-2xl border border-[var(--sami-border)] bg-slate-50/40 p-3 dark:bg-white/[0.02]"
+                          onSubmit={
+                            async event => {
+                              event.preventDefault();
+
+                              const form =
+                                new FormData(
+                                  event.currentTarget,
+                                );
+
+                              await run(
+                                {
+                                  action:
+                                    'update_recurring',
+                                  recurringId:
+                                    item.id,
+                                  name:
+                                    form.get(
+                                      'name',
+                                    ),
+                                  intervalUnit:
+                                    form.get(
+                                      'intervalUnit',
+                                    ),
+                                  intervalCount:
+                                    form.get(
+                                      'intervalCount',
+                                    ),
+                                  nextRunAt:
+                                    form.get(
+                                      'nextRunAt',
+                                    ),
+                                  autoSend:
+                                    form.get(
+                                      'autoSend',
+                                    ) ===
+                                    'on',
+                                  deliveryChannels: [
+                                    form.get(
+                                      'deliveryEmail',
+                                    ) ===
+                                      'on'
+                                      ? 'email'
+                                      : null,
+                                    form.get(
+                                      'deliveryWhatsApp',
+                                    ) ===
+                                      'on'
+                                      ? 'whatsapp'
+                                      : null,
+                                    form.get(
+                                      'deliverySms',
+                                    ) ===
+                                      'on'
+                                      ? 'sms'
+                                      : null,
+                                  ].filter(
+                                    Boolean,
+                                  ),
+                                },
+                                'Recurring schedule updated.',
+                              );
+                            }
+                          }
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <Field
+                              label="Schedule name"
+                              name="name"
+                              required
+                              defaultValue={
+                                item.name
+                              }
+                            />
+
+                            <Field
+                              label="Every"
+                              name="intervalCount"
+                              type="number"
+                              min="1"
+                              max="120"
+                              required
+                              defaultValue={
+                                String(
+                                  item.intervalCount,
+                                )
+                              }
+                            />
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Period
+                              </span>
+                              <select
+                                name="intervalUnit"
+                                defaultValue={
+                                  item.intervalUnit
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="day">Day</option>
+                                <option value="week">Week</option>
+                                <option value="month">Month</option>
+                                <option value="quarter">Quarter</option>
+                                <option value="year">Year</option>
+                              </select>
+                            </label>
+
+                            <Field
+                              label="Next run"
+                              name="nextRunAt"
+                              type="date"
+                              required
+                              defaultValue={
+                                item.nextRunAt
+                                  .slice(
+                                    0,
+                                    10,
+                                  )
+                              }
+                            />
+                          </div>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                            <Toggle
+                              name="autoSend"
+                              label="Auto-send"
+                              defaultChecked={
+                                item.autoSend
+                              }
+                            />
+                            <Toggle
+                              name="deliveryEmail"
+                              label="Email"
+                              defaultChecked={
+                                item.deliveryChannels
+                                  .includes(
+                                    'email',
+                                  )
+                              }
+                            />
+                            <Toggle
+                              name="deliveryWhatsApp"
+                              label="WhatsApp"
+                              defaultChecked={
+                                item.deliveryChannels
+                                  .includes(
+                                    'whatsapp',
+                                  )
+                              }
+                            />
+                            <Toggle
+                              name="deliverySms"
+                              label="SMS"
+                              defaultChecked={
+                                item.deliveryChannels
+                                  .includes(
+                                    'sms',
+                                  )
+                              }
+                            />
+                          </div>
+
+                          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                disabled={
+                                  pending
+                                }
+                                onClick={
+                                  () =>
+                                    run(
+                                      {
+                                        action:
+                                          'set_recurring_status',
+                                        recurringId:
+                                          item.id,
+                                        status:
+                                          item.status ===
+                                            'active'
+                                            ? 'paused'
+                                            : 'active',
+                                      },
+                                      item.status ===
+                                        'active'
+                                        ? 'Recurring schedule paused.'
+                                        : 'Recurring schedule resumed.',
+                                    )
+                                }
+                                className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-50"
+                              >
+                                {
+                                  item.status ===
+                                    'active'
+                                    ? 'Pause'
+                                    : 'Resume'
+                                }
+                              </button>
+
+                              <button
+                                type="button"
+                                disabled={
+                                  pending
+                                }
+                                onClick={
+                                  () =>
+                                    run(
+                                      {
+                                        action:
+                                          'set_recurring_status',
+                                        recurringId:
+                                          item.id,
+                                        status:
+                                          'cancelled',
+                                      },
+                                      'Recurring schedule cancelled.',
+                                    )
+                                }
+                                className="h-9 rounded-xl border border-red-500/30 px-3 text-[10px] font-black text-red-600 disabled:opacity-50"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+
                             <button
-                              type="button"
+                              type="submit"
                               disabled={
                                 pending
                               }
-                              onClick={
-                                () =>
-                                  run(
-                                    {
-                                      action:
-                                        'set_recurring_status',
-                                      recurringId:
-                                        item.id,
-                                      status:
-                                        item.status ===
-                                          'active'
-                                          ? 'paused'
-                                          : 'active',
-                                    },
-                                    item.status ===
-                                      'active'
-                                      ? 'Recurring schedule paused.'
-                                      : 'Recurring schedule resumed.',
-                                  )
-                              }
-                              className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[9px] font-black disabled:opacity-50"
+                              className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
                             >
-                              {
-                                item.status ===
-                                  'active'
-                                  ? 'Pause'
-                                  : 'Resume'
-                              }
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={
-                                pending
-                              }
-                              onClick={
-                                () =>
-                                  run(
-                                    {
-                                      action:
-                                        'set_recurring_status',
-                                      recurringId:
-                                        item.id,
-                                      status:
-                                        'cancelled',
-                                    },
-                                    'Recurring schedule cancelled.',
-                                  )
-                              }
-                              className="h-8 rounded-lg border border-red-500/30 px-2.5 text-[9px] font-black text-red-600 disabled:opacity-50"
-                            >
-                              Cancel
+                              Save schedule
                             </button>
                           </div>
-                        )
-                      }
-                    </div>
-                  </div>
+                        </form>
+                      )
+                    }
+                  </details>
                 ),
               )
           }

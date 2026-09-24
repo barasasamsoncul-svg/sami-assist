@@ -507,6 +507,7 @@ export async function getInvoicingWorkspaceData():
             r.interval_count,
             r.next_run_at,
             r.auto_send,
+            r.invoice_payload,
             r.currency
           FROM
             invoicing_recurring_templates r
@@ -1149,6 +1150,44 @@ export async function getInvoicingWorkspaceData():
           autoSend:
             row.auto_send ===
             true,
+          deliveryChannels:
+            (
+              Array.isArray(
+                row.invoice_payload
+                  ?.deliveryChannels,
+              )
+                ? row.invoice_payload
+                    .deliveryChannels
+                : [
+                    'email',
+                  ]
+            )
+              .map(
+                (
+                  channel:
+                    unknown,
+                ) =>
+                  String(
+                    channel,
+                  )
+                    .trim()
+                    .toLowerCase(),
+              )
+              .filter(
+                (
+                  channel:
+                    string,
+                ): channel is
+                  | 'email'
+                  | 'whatsapp'
+                  | 'sms' =>
+                    channel ===
+                      'email' ||
+                    channel ===
+                      'whatsapp' ||
+                    channel ===
+                      'sms',
+              ),
           currency:
             String(
               row.currency,

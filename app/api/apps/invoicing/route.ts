@@ -20,13 +20,16 @@ import {
   updateInvoicingPaymentTerm,
   updateInvoicingTaxRate,
   createRecurringInvoiceTemplate,
+  duplicateInvoice,
   getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
   recordInvoicePayment,
   saveInvoicingTemplate,
+  sendInvoiceReminder,
   sendInvoiceToCustomer,
   setRecurringInvoiceTemplateStatus,
+  updateRecurringInvoiceTemplate,
   updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/service';
@@ -420,6 +423,13 @@ export async function POST(
           );
         break;
 
+      case 'duplicate_invoice':
+        result =
+          await duplicateInvoice(
+            payload,
+          );
+        break;
+
       case 'update_invoice':
         result =
           await updateInvoiceDraft(
@@ -455,9 +465,23 @@ export async function POST(
           );
         break;
 
+      case 'send_reminder':
+        result =
+          await sendInvoiceReminder(
+            payload,
+          );
+        break;
+
       case 'create_recurring':
         result =
           await createRecurringInvoiceTemplate(
+            payload,
+          );
+        break;
+
+      case 'update_recurring':
+        result =
+          await updateRecurringInvoiceTemplate(
             payload,
           );
         break;

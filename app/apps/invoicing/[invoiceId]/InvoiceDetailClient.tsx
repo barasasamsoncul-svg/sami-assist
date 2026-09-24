@@ -13,6 +13,8 @@ import {
 import {
   ArrowLeft,
   BadgeCheck,
+  BellRing,
+  CopyPlus,
   CreditCard,
   FileText,
   History,
@@ -400,6 +402,90 @@ export default function InvoiceDetailClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
+            {
+              data.capabilities
+                .canCreate &&
+              (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    () =>
+                      run(
+                        {
+                          action:
+                            'duplicate_invoice',
+                          invoiceId:
+                            invoice.id,
+                        },
+                        'Duplicate invoice created as a new draft.',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60"
+                >
+                  <CopyPlus className="h-4 w-4" />
+                  Duplicate
+                </button>
+              )
+            }
+
+            {
+              data.capabilities
+                .canSend &&
+              invoice.balanceDue >
+                0 &&
+              ![
+                'draft',
+                'paid',
+                'cancelled',
+                'void',
+                'written_off',
+              ].includes(
+                invoice.status,
+              ) &&
+              (
+                invoice.customer
+                  .email ||
+                invoice.customer
+                  .phone
+              ) &&
+              (
+                <button
+                  type="button"
+                  disabled={
+                    busy
+                  }
+                  onClick={
+                    () =>
+                      run(
+                        {
+                          action:
+                            'send_reminder',
+                          invoiceId:
+                            invoice.id,
+                          channels:
+                            invoice.customer
+                              .email
+                              ? [
+                                  'email',
+                                ]
+                              : [
+                                  'whatsapp',
+                                ],
+                        },
+                        'Payment reminder sent.',
+                      )
+                  }
+                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-black text-amber-700 disabled:opacity-60 dark:text-amber-300"
+                >
+                  <BellRing className="h-4 w-4" />
+                  Send reminder
+                </button>
+              )
+            }
+
             {
               invoice.status ===
                 'draft' &&

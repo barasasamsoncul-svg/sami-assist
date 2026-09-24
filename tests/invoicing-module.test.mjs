@@ -853,6 +853,52 @@ test('Invoicing master data behaves like a product: duplicate-safe creates, edit
   assert.match(types, /isActive: boolean/);
 });
 
+test('Invoicing completes standalone operator workflows for duplication, reminders, recurring edits and register export', async () => {
+  const [
+    commands,
+    service,
+    route,
+    workspace,
+    detail,
+    queries,
+    types,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+  ]);
+
+  assert.match(commands, /export async function duplicateInvoice/);
+  assert.match(commands, /export async function sendInvoiceReminder/);
+  assert.match(commands, /purpose:\s*'reminder'/);
+  assert.match(commands, /export async function updateRecurringInvoiceTemplate/);
+
+  assert.match(service, /duplicateInvoice/);
+  assert.match(service, /sendInvoiceReminder/);
+  assert.match(service, /updateRecurringInvoiceTemplate/);
+
+  assert.match(route, /case 'duplicate_invoice'/);
+  assert.match(route, /case 'send_reminder'/);
+  assert.match(route, /case 'update_recurring'/);
+
+  assert.match(workspace, /exportInvoiceRegister/);
+  assert.match(workspace, /Export CSV/);
+  assert.match(workspace, /update_recurring/);
+  assert.match(workspace, /deliveryChannels/);
+
+  assert.match(detail, /duplicate_invoice/);
+  assert.match(detail, /send_reminder/);
+  assert.match(detail, /Duplicate/);
+  assert.match(detail, /Send reminder/);
+
+  assert.match(queries, /r\.invoice_payload/);
+  assert.match(types, /deliveryChannels:/);
+});
+
 test('Invoicing v2.2 runs recurring generation and payment reminders through one auditable worker', async () => {
   const [
     schema,

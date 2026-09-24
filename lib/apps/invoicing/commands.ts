@@ -2764,6 +2764,187 @@ export async function createInvoice(
 }
 
 
+export async function duplicateInvoice(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_CREATE,
+    );
+
+  const invoiceId =
+    requireUuid(
+      input.invoiceId,
+      'Invoice',
+    );
+
+  const source =
+    await context.pool.query(
+      `
+        SELECT
+          i.customer_id,
+          i.currency,
+          i.reference,
+          i.purchase_order_number,
+          i.shipping_total,
+          i.rounding_adjustment,
+          i.notes,
+          i.terms,
+          i.template_id,
+          c.status
+            AS customer_status
+        FROM invoicing_invoices i
+        INNER JOIN invoicing_customers c
+          ON c.id =
+             i.customer_id
+        WHERE i.id = $1
+          AND i.company_id = $2
+          AND i.deleted_at IS NULL
+          AND c.deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        invoiceId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    source.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVOICE_NOT_FOUND',
+      'Invoice was not found.',
+    );
+  }
+
+  if (
+    source.rows[0]
+      .customer_status !==
+      'active'
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Activate the customer before duplicating this invoice.',
+    );
+  }
+
+  const lines =
+    await context.pool.query(
+      `
+        SELECT
+          catalog_item_id,
+          description,
+          sku_snapshot,
+          unit,
+          quantity,
+          unit_price,
+          discount_type,
+          discount_value,
+          tax_rate_id,
+          tax_rate
+        FROM invoicing_invoice_items
+        WHERE invoice_id = $1
+          AND company_id = $2
+        ORDER BY sort_order, id
+      `,
+      [
+        invoiceId,
+        context.companyId,
+      ],
+    );
+
+  if (
+    lines.rows.length ===
+      0
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'The source invoice has no line items to duplicate.',
+    );
+  }
+
+  return createInvoice({
+    customerId:
+      source.rows[0]
+        .customer_id,
+    currency:
+      source.rows[0]
+        .currency,
+    templateId:
+      source.rows[0]
+        .template_id,
+    reference:
+      source.rows[0]
+        .reference,
+    purchaseOrderNumber:
+      source.rows[0]
+        .purchase_order_number,
+    shippingTotal:
+      source.rows[0]
+        .shipping_total,
+    roundingAdjustment:
+      source.rows[0]
+        .rounding_adjustment,
+    notes:
+      source.rows[0]
+        .notes,
+    terms:
+      source.rows[0]
+        .terms,
+    confirm:
+      false,
+    lines:
+      lines.rows.map(
+        line => ({
+          catalogItemId:
+            line.catalog_item_id ||
+            undefined,
+          description:
+            String(
+              line.description,
+            ),
+          sku:
+            line.sku_snapshot ||
+            undefined,
+          unit:
+            String(
+              line.unit ||
+              'unit',
+            ),
+          quantity:
+            money(
+              line.quantity,
+            ),
+          unitPrice:
+            money(
+              line.unit_price,
+            ),
+          discountType:
+            line.discount_type ===
+              'fixed'
+              ? 'fixed'
+              : 'percent',
+          discountValue:
+            money(
+              line.discount_value,
+            ),
+          taxRateId:
+            line.tax_rate_id ||
+            undefined,
+          taxRate:
+            money(
+              line.tax_rate,
+            ),
+        }),
+      ),
+  });
+}
+
+
 export async function updateInvoiceDraft(
   input:
     CreateInvoiceInput &
@@ -4321,6 +4502,48 @@ export async function sendInvoiceToCustomer(
 }
 
 
+export async function sendInvoiceReminder(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .INVOICE_SEND,
+    );
+
+  const invoiceId =
+    requireUuid(
+      input.invoiceId,
+      'Invoice',
+    );
+
+  const channels =
+    normalizeInvoiceDeliveryChannels(
+      input.channels,
+    );
+
+  return deliverInvoice({
+    pool:
+      context.pool,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    companyName:
+      context.company
+        .currentCompany
+        .name,
+    userId:
+      context.userId,
+    invoiceId,
+    channels,
+    purpose:
+      'reminder',
+  });
+}
+
+
 export async function createRecurringInvoiceTemplate(
   input:
     Record<string, unknown>,
@@ -4749,6 +4972,248 @@ export async function createRecurringInvoiceTemplate(
 
     return {
       id,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+export async function updateRecurringInvoiceTemplate(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .RECURRING_MANAGE,
+    );
+
+  const recurringId =
+    requireUuid(
+      input.recurringId,
+      'Recurring schedule',
+    );
+
+  const name =
+    cleanText(
+      input.name,
+      255,
+    );
+
+  if (!name) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Recurring invoice name is required.',
+    );
+  }
+
+  const rawInterval =
+    cleanText(
+      input.intervalUnit,
+      20,
+    );
+
+  if (
+    ![
+      'day',
+      'week',
+      'month',
+      'quarter',
+      'year',
+    ].includes(
+      rawInterval,
+    )
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'Choose a valid recurring interval.',
+    );
+  }
+
+  const intervalCount =
+    Math.floor(
+      numberInput(
+        input.intervalCount,
+        'Recurring interval',
+        {
+          min:
+            1,
+          max:
+            120,
+        },
+      ),
+    );
+
+  const deliveryChannels =
+    normalizeInvoiceDeliveryChannels(
+      input.deliveryChannels,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    await lockMasterIdentity(
+      client,
+      [
+        'invoicing-recurring',
+        context.companyId,
+        normalizedName(
+          name,
+        ),
+      ].join(
+        ':',
+      ),
+    );
+
+    const duplicate =
+      await client.query(
+        `
+          SELECT id
+          FROM invoicing_recurring_templates
+          WHERE company_id = $1
+            AND id <> $2
+            AND deleted_at IS NULL
+            AND LOWER(
+              REGEXP_REPLACE(
+                BTRIM(name),
+                '\\s+',
+                ' ',
+                'g'
+              )
+            ) = $3
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+          recurringId,
+          normalizedName(
+            name,
+          ),
+        ],
+      );
+
+    if (
+      duplicate.rows.length >
+        0
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Another recurring schedule already uses this name.',
+      );
+    }
+
+    const result =
+      await client.query(
+        `
+          UPDATE invoicing_recurring_templates
+          SET
+            name = $3,
+            interval_unit = $4,
+            interval_count = $5,
+            next_run_at = $6,
+            auto_send = $7,
+            invoice_payload =
+              jsonb_set(
+                COALESCE(
+                  invoice_payload,
+                  '{}'::jsonb
+                ),
+                '{deliveryChannels}',
+                $8::jsonb,
+                TRUE
+              ),
+            updated_by = $9,
+            updated_at = NOW()
+          WHERE id = $1
+            AND company_id = $2
+            AND status NOT IN (
+              'cancelled',
+              'completed'
+            )
+            AND deleted_at IS NULL
+          RETURNING id, status
+        `,
+        [
+          recurringId,
+          context.companyId,
+          name,
+          rawInterval,
+          intervalCount,
+          isoDate(
+            input.nextRunAt,
+            new Date(),
+          ),
+          input.autoSend ===
+            true,
+          JSON.stringify(
+            deliveryChannels.length >
+              0
+              ? deliveryChannels
+              : [
+                  'email',
+                ],
+          ),
+          context.userId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Recurring schedule was not found or can no longer be edited.',
+      );
+    }
+
+    await recordMasterDataActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        model:
+          'invoicing.recurring_template',
+        recordId:
+          recurringId,
+        type:
+          'recurring.updated',
+        content:
+          'Recurring invoice schedule ' +
+          name +
+          ' updated.',
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      id:
+        recurringId,
+      status:
+        String(
+          result.rows[0].status,
+        ),
     };
   } catch (
     error

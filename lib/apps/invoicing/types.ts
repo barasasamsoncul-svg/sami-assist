@@ -116,6 +116,11 @@ export type InvoicingRecurringSummary = {
   intervalCount: number;
   nextRunAt: string;
   autoSend: boolean;
+  deliveryChannels: Array<
+    'email' |
+    'whatsapp' |
+    'sms'
+  >;
   currency: string;
 };
 
