@@ -27,6 +27,7 @@ import {
   deleteEnterpriseModuleRecord,
   getEnterpriseModuleRelationOptions,
   getEnterpriseModuleWorkspace,
+  queryEnterpriseModuleRecords,
   transitionEnterpriseModuleRecord,
   updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
@@ -191,6 +192,111 @@ export async function GET(
       appKey,
     } =
       await params;
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'table_records'
+    ) {
+      let filters: Record<string, unknown> = {};
+
+      const rawFilters =
+        request.nextUrl
+          .searchParams
+          .get(
+            'filters',
+          );
+
+      if (
+        rawFilters
+      ) {
+        try {
+          const parsed =
+            JSON.parse(
+              rawFilters,
+            );
+
+          if (
+            parsed &&
+            typeof parsed ===
+              'object' &&
+            !Array.isArray(
+              parsed,
+            )
+          ) {
+            filters =
+              parsed as
+                Record<
+                  string,
+                  unknown
+                >;
+          }
+        } catch {
+          return respond(
+            {
+              success:
+                false,
+              code:
+                'INVALID_FILTERS',
+              error:
+                'Register filters are invalid.',
+            },
+            400,
+          );
+        }
+      }
+
+      return respond({
+        success:
+          true,
+        page:
+          await queryEnterpriseModuleRecords(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+              search:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'search',
+                  ),
+              offset:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'offset',
+                  ),
+              limit:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'limit',
+                  ),
+              sortField:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'sortField',
+                  ),
+              sortOrder:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'sortOrder',
+                  ),
+              filters,
+            },
+          ),
+      });
+    }
 
     if (
       request.nextUrl
