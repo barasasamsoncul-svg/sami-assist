@@ -696,6 +696,410 @@ async function applyStockMovement(
 }
 
 
+function assertPositive(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  if (
+    numberValue(
+      value,
+    ) <=
+      0
+  ) {
+    throw new Error(
+      label +
+      ' must be greater than zero.',
+    );
+  }
+}
+
+
+function assertNonNegative(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  if (
+    numberValue(
+      value,
+    ) <
+      0
+  ) {
+    throw new Error(
+      label +
+      ' cannot be negative.',
+    );
+  }
+}
+
+
+function validateDomainRow(
+  moduleKey:
+    string,
+  table:
+    string,
+  row:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  if (
+    moduleKey ===
+      'expenses' &&
+    table ===
+      'expenses'
+  ) {
+    assertPositive(
+      row.amount,
+      'Expense amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'business_payments'
+  ) {
+    assertPositive(
+      row.amount,
+      'Payment amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'payment_allocations'
+  ) {
+    assertPositive(
+      row.amount,
+      'Allocated amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_employees'
+  ) {
+    assertNonNegative(
+      row.basic_salary,
+      'Basic salary',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_run_lines'
+  ) {
+    assertNonNegative(
+      row.gross_amount,
+      'Gross pay',
+    );
+
+    assertNonNegative(
+      row.deductions,
+      'Payroll deductions',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_order_items'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Purchase quantity',
+    );
+
+    assertNonNegative(
+      row.unit_cost,
+      'Unit cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    (
+      table ===
+        'boms' ||
+      table ===
+        'bom_items'
+    )
+  ) {
+    assertPositive(
+      row.quantity,
+      'Manufacturing quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    table ===
+      'manufacturing_orders'
+  ) {
+    assertPositive(
+      row.planned_quantity,
+      'Planned quantity',
+    );
+
+    assertNonNegative(
+      row.produced_quantity,
+      'Produced quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'time_off' &&
+    table ===
+      'leave_requests'
+  ) {
+    assertPositive(
+      row.days,
+      'Leave days',
+    );
+
+    const start =
+      Date.parse(
+        String(
+          row.start_date ||
+          '',
+        ),
+      );
+
+    const end =
+      Date.parse(
+        String(
+          row.end_date ||
+          '',
+        ),
+      );
+
+    if (
+      Number.isFinite(
+        start,
+      ) &&
+      Number.isFinite(
+        end,
+      ) &&
+      end <
+        start
+    ) {
+      throw new Error(
+        'Leave end date cannot be before the start date.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'projects' &&
+    row.start_date &&
+    row.due_date
+  ) {
+    const start =
+      Date.parse(
+        String(
+          row.start_date,
+        ),
+      );
+
+    const due =
+      Date.parse(
+        String(
+          row.due_date,
+        ),
+      );
+
+    if (
+      Number.isFinite(
+        start,
+      ) &&
+      Number.isFinite(
+        due,
+      ) &&
+      due <
+        start
+    ) {
+      throw new Error(
+        'Project due date cannot be before the start date.',
+      );
+    }
+  }
+}
+
+
+async function validateDomainLifecycleMutation(
+  client:
+    PoolClient,
+  moduleKey:
+    string,
+  table:
+    string,
+  companyId:
+    string,
+  operation:
+    MutationOperation,
+  row:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'journals' &&
+    operation !==
+      'create' &&
+    String(
+      row.status ||
+      '',
+    )
+      .toLowerCase() ===
+      'posted'
+  ) {
+    throw new Error(
+      'Posted journals are immutable. Reverse the journal instead of editing or deleting it.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'journal_lines' &&
+    row.journal_id
+  ) {
+    const parent =
+      await client.query(
+        `
+          SELECT status
+          FROM journals
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          row.journal_id,
+          companyId,
+        ],
+      );
+
+    if (
+      String(
+        parent.rows[0]
+          ?.status ||
+        '',
+      )
+        .toLowerCase() ===
+        'posted'
+    ) {
+      throw new Error(
+        'Lines on a posted journal are immutable. Reverse the journal instead.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_orders' &&
+    operation !==
+      'create' &&
+    ![
+      '',
+      'draft',
+    ].includes(
+      String(
+        row.status ||
+        '',
+      )
+        .toLowerCase(),
+    )
+  ) {
+    throw new Error(
+      'Confirmed purchase orders cannot be edited or deleted directly. Use the purchase workflow.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_order_items' &&
+    row.purchase_order_id
+  ) {
+    const parent =
+      await client.query(
+        `
+          SELECT status
+          FROM purchase_orders
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          row.purchase_order_id,
+          companyId,
+        ],
+      );
+
+    const parentStatus =
+      String(
+        parent.rows[0]
+          ?.status ||
+        '',
+      )
+        .toLowerCase();
+
+    if (
+      parentStatus &&
+      parentStatus !==
+        'draft'
+    ) {
+      throw new Error(
+        'Purchase-order lines cannot change after the order leaves draft.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'payment_reconciliations' &&
+    operation ===
+      'update' &&
+    row.reconciled_at
+  ) {
+    throw new Error(
+      'Completed reconciliation history is immutable. Create a compensating reconciliation instead.',
+    );
+  }
+}
+
+
 async function synchronizeDerivedLineValues(
   client:
     PoolClient,
@@ -857,10 +1261,25 @@ export async function applyEnterpriseDomainSideEffects(
   } =
     input;
 
+  await validateDomainLifecycleMutation(
+    client,
+    moduleKey,
+    table,
+    companyId,
+    operation,
+    row,
+  );
+
   if (
     operation !==
       'delete'
   ) {
+    validateDomainRow(
+      moduleKey,
+      table,
+      row,
+    );
+
     await synchronizeDerivedLineValues(
       client,
       moduleKey,
