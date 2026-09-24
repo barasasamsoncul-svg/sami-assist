@@ -1365,6 +1365,51 @@ async function workflowFieldsForTable(
 }
 
 
+function assertEnterpriseTableBoundaryReady(
+  table:
+    string,
+  fields:
+    EnterpriseField[],
+) {
+  const names =
+    new Set(
+      fields.map(
+        field =>
+          field.key,
+      ),
+    );
+
+  const missing =
+    [
+      'company_id',
+      'deleted_at',
+    ].filter(
+      column =>
+        !names.has(
+          column,
+        ),
+    );
+
+  if (
+    missing.length >
+      0
+  ) {
+    throw new EnterpriseModuleError(
+      'TABLE_NOT_READY',
+      label(
+        table,
+      ) +
+      ' has not completed SaMi enterprise boundary hardening.',
+      {
+        table,
+        missingBoundaryColumns:
+          missing,
+      },
+    );
+  }
+}
+
+
 async function readTable(
   pool:
     Pool,
@@ -1382,6 +1427,11 @@ async function readTable(
           field.key,
       ),
     );
+
+  assertEnterpriseTableBoundaryReady(
+    table,
+    fields,
+  );
 
   const companyScoped =
     names.has(
@@ -1780,6 +1830,11 @@ async function assertTable(
       'This app record type is not ready in the current workspace.',
     );
   }
+
+  assertEnterpriseTableBoundaryReady(
+    table,
+    fields,
+  );
 
   return {
     ...context,
@@ -3668,6 +3723,18 @@ export async function searchEnterpriseModuleRecords(
         table,
       ) ||
       [];
+
+    if (
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    assertEnterpriseTableBoundaryReady(
+      table,
+      fields,
+    );
 
     const names =
       new Set(
