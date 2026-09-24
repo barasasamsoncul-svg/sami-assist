@@ -334,6 +334,10 @@ const DOMAIN_GRAPH:
       ],
     },
     'recruitment:applicants': {
+      applied: [
+        'screening',
+        'rejected',
+      ],
       new: [
         'screening',
         'rejected',
@@ -349,6 +353,46 @@ const DOMAIN_GRAPH:
       offer: [
         'hired',
         'rejected',
+      ],
+    },
+    'recruitment:interviews': {
+      scheduled: [
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
+    },
+    'projects:projects': {
+      active: [
+        'on_hold',
+        'completed',
+        'cancelled',
+      ],
+      on_hold: [
+        'active',
+        'cancelled',
+      ],
+    },
+    'projects:project_milestones': {
+      pending: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'quality:quality_checks': {
+      pending: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
       ],
     },
     'maintenance:maintenance_requests': {
