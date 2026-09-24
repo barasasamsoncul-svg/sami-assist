@@ -8,10 +8,11 @@ import {
  * Additional first-party SaMi module foundations.
  *
  * These 44 modules extend the original 36 to one canonical 80-app catalog.
- * They intentionally match the same platform/framework maturity as the
- * original module foundations: installable schema + dependency contract +
- * generic workspace route. Their full business pages, permissions, services,
- * workflows, reports and AI extensions are implemented later app-by-app.
+ * Their raw manifests remain minimal and fail-closed here. The shared
+ * enterprise contract upgrades them as one suite at runtime with company
+ * permissions, operational workspace views, reports, Search, SaMi AI,
+ * developer reads, audit and migration hardening. Domain-specific rules are
+ * layered centrally instead of completing these apps one-by-one.
  */
 
 const NO_EXTENSIONS = {

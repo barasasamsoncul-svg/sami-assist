@@ -33,6 +33,18 @@ export const SAMI_DEVELOPER_SCOPES:
     },
     {
       key:
+        'apps.read',
+      name:
+        'Business app records',
+      description:
+        'Read bounded, company-scoped records from explicitly allowed installed SaMi apps.',
+      operation:
+        'read',
+      requiredPermissions:
+        [],
+    },
+    {
+      key:
         'files.read',
       name:
         'Files metadata',
