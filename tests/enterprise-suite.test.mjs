@@ -847,3 +847,190 @@ test('enterprise domain side effects execute inside the same transaction as reco
     /'ROLLBACK'/,
   );
 });
+
+
+test('enterprise suite registers company-scoped business automation triggers and approved write actions', async () => {
+  const [
+    contract,
+    registry,
+    automation,
+  ] = await Promise.all([
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+    source(
+      'lib/automation/registry.ts',
+    ),
+    source(
+      'lib/apps/enterprise/automation.ts',
+    ),
+  ]);
+
+  assert.match(
+    contract,
+    /automationTriggers:[\s\S]*true/,
+  );
+
+  assert.match(
+    contract,
+    /automationActions:[\s\S]*true/,
+  );
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_TRIGGERS/,
+  );
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_ACTIONS/,
+  );
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
+  );
+
+  for (
+    const suffix
+    of [
+      '.record.created',
+      '.record.updated',
+      '.record.deleted',
+      '.workflow.transitioned',
+      '.record.create',
+      '.record.update',
+    ]
+  ) {
+    assert.ok(
+      automation.includes(
+        suffix,
+      ),
+      suffix,
+    );
+  }
+
+  assert.match(
+    automation,
+    /approvalPolicy:[\s\S]*'always'/,
+  );
+
+  assert.match(
+    automation,
+    /context\.companyId|runtime\.companyId/,
+  );
+
+  assert.match(
+    automation,
+    /assertEnterpriseDomainMutationAllowed/,
+  );
+
+  assert.match(
+    automation,
+    /normalizeEnterpriseDomainValues/,
+  );
+
+  assert.match(
+    automation,
+    /applyEnterpriseDomainSideEffects/,
+  );
+
+  assert.match(
+    automation,
+    /COMPUTED_COLUMNS/,
+  );
+
+  assert.match(
+    automation,
+    /\(\^\|_\)\(status\|state\)\$/,
+  );
+});
+
+
+test('enterprise business events enter Automation only after successful business writes and never make saves look failed', async () => {
+  const [
+    service,
+    events,
+    engine,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/automation/business-events.ts',
+    ),
+    source(
+      'lib/automation/execution-engine.ts',
+    ),
+  ]);
+
+  assert.match(
+    service,
+    /dispatchBusinessAutomationEventSafely/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.created/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.updated/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.deleted/,
+  );
+
+  assert.match(
+    service,
+    /\.workflow\.transitioned/,
+  );
+
+  assert.match(
+    service,
+    /await client\.query\([\s\S]*'COMMIT'[\s\S]*emitEnterpriseAutomationEvent/s,
+  );
+
+  assert.match(
+    events,
+    /w\.status =[\s\S]*'active'/s,
+  );
+
+  assert.match(
+    events,
+    /v\.trigger_key/,
+  );
+
+  assert.match(
+    events,
+    /v\.trigger_module/,
+  );
+
+  assert.match(
+    events,
+    /LIMIT 100/,
+  );
+
+  assert.match(
+    events,
+    /dispatchBusinessAutomationEventSafely/,
+  );
+
+  assert.match(
+    engine,
+    /source_module/,
+  );
+
+  assert.match(
+    engine,
+    /source_record_type/,
+  );
+
+  assert.match(
+    engine,
+    /source_record_id/,
+  );
+});

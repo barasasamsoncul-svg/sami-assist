@@ -931,3 +931,132 @@ test('Category 19: full-suite gate includes Automation regression coverage', asy
     /test:category19/,
   );
 });
+
+
+test('Category 19: enterprise apps contribute code-owned triggers and approved write handlers', async () => {
+  const [
+    registry,
+    enterprise,
+    contract,
+    service,
+    events,
+    engine,
+  ] =
+    await Promise.all([
+      source(
+        'lib/automation/registry.ts',
+      ),
+      source(
+        'lib/apps/enterprise/automation.ts',
+      ),
+      source(
+        'lib/modules/enterprise-contract.ts',
+      ),
+      source(
+        'lib/apps/enterprise/service.ts',
+      ),
+      source(
+        'lib/automation/business-events.ts',
+      ),
+      source(
+        'lib/automation/execution-engine.ts',
+      ),
+    ]);
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_TRIGGERS/,
+  );
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_ACTIONS/,
+  );
+
+  assert.match(
+    registry,
+    /ENTERPRISE_AUTOMATION_ACTION_HANDLERS/,
+  );
+
+  assert.match(
+    contract,
+    /automationTriggers:[\s\S]*true/,
+  );
+
+  assert.match(
+    contract,
+    /automationActions:[\s\S]*true/,
+  );
+
+  for (
+    const event
+    of [
+      '.record.created',
+      '.record.updated',
+      '.record.deleted',
+      '.workflow.transitioned',
+    ]
+  ) {
+    assert.ok(
+      enterprise.includes(
+        event,
+      ),
+      event,
+    );
+  }
+
+  assert.match(
+    enterprise,
+    /approvalPolicy:[\s\S]*'always'/,
+  );
+
+  assert.match(
+    enterprise,
+    /assertEnterpriseDomainMutationAllowed/,
+  );
+
+  assert.match(
+    enterprise,
+    /applyEnterpriseDomainSideEffects/,
+  );
+
+  assert.match(
+    enterprise,
+    /runtime\.companyId/,
+  );
+
+  assert.match(
+    service,
+    /dispatchBusinessAutomationEventSafely/,
+  );
+
+  assert.match(
+    events,
+    /v\.trigger_key/,
+  );
+
+  assert.match(
+    events,
+    /v\.trigger_module/,
+  );
+
+  assert.match(
+    events,
+    /LIMIT 100/,
+  );
+
+  assert.match(
+    engine,
+    /source_module/,
+  );
+
+  assert.match(
+    engine,
+    /source_record_type/,
+  );
+
+  assert.match(
+    engine,
+    /source_record_id/,
+  );
+});

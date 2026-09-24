@@ -48,6 +48,10 @@ export function withEnterpriseModuleDefaults(
           true,
         activity:
           true,
+        automationTriggers:
+          true,
+        automationActions:
+          true,
         apiEndpoints:
           true,
         dataExport:

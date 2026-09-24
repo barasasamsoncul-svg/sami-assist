@@ -39,6 +39,10 @@ import {
 } from '@/lib/services/workspace-activity';
 
 import {
+  dispatchBusinessAutomationEventSafely,
+} from '@/lib/automation/business-events';
+
+import {
   getEnterpriseWorkflowTransitions,
 } from '@/lib/apps/enterprise/workflow-policy';
 
@@ -661,6 +665,116 @@ async function runDomainSideEffects(
         : 'SaMi could not apply the module business rule.',
     );
   }
+}
+
+
+function enterpriseAutomationRuntime(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireContext
+      >
+    >,
+) {
+  return {
+    userId:
+      context.userId,
+    sessionId:
+      context.permissions
+        .sessionId,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    accessibleModuleKeys: [
+      ...new Set([
+        context.moduleKey,
+        ...context.permissions
+          .permissions
+          .map(
+            permission =>
+              permission.moduleKey
+                ?.trim()
+                .toLowerCase() ||
+              '',
+          )
+          .filter(
+            Boolean,
+          ),
+      ]),
+    ],
+    permissionSet:
+      context.permissions
+        .permissionSet,
+    isOwner:
+      context.permissions
+        .isOwner,
+  };
+}
+
+
+async function emitEnterpriseAutomationEvent(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireContext
+      >
+    >,
+  input: {
+    triggerKey:
+      string;
+    table:
+      string;
+    record:
+      Record<
+        string,
+        unknown
+      >;
+    idempotencySeed:
+      string;
+    payload?:
+      Record<
+        string,
+        unknown
+      >;
+  },
+) {
+  const recordId =
+    typeof input.record.id ===
+      'string'
+      ? input.record.id
+      : null;
+
+  await dispatchBusinessAutomationEventSafely({
+    runtime:
+      enterpriseAutomationRuntime(
+        context,
+      ),
+    moduleKey:
+      context.moduleKey,
+    triggerKey:
+      input.triggerKey,
+    recordType:
+      input.table,
+    recordId,
+    payload: {
+      moduleKey:
+        context.moduleKey,
+      table:
+        input.table,
+      recordId,
+      record:
+        rowOutput(
+          input.record,
+        ),
+      ...(
+        input.payload ||
+        {}
+      ),
+    },
+    idempotencySeed:
+      input.idempotencySeed,
+  });
 }
 
 
@@ -1911,6 +2025,25 @@ export async function createEnterpriseModuleRecord(
     },
   });
 
+  await emitEnterpriseAutomationEvent(
+    context,
+    {
+      triggerKey:
+        context.moduleKey +
+        '.record.created',
+      table:
+        context.table,
+      record:
+        createdRow,
+      idempotencySeed:
+        String(
+          createdRow.created_at ||
+          createdRow.id ||
+          Date.now(),
+        ),
+    },
+  );
+
   return created;
 }
 
@@ -2251,6 +2384,34 @@ export async function updateEnterpriseModuleRecord(
       ),
   });
 
+  await emitEnterpriseAutomationEvent(
+    context,
+    {
+      triggerKey:
+        context.moduleKey +
+        '.record.updated',
+      table:
+        context.table,
+      record:
+        updatedRow,
+      idempotencySeed:
+        String(
+          updatedRow.updated_at ||
+          updatedRow.id ||
+          Date.now(),
+        ),
+      payload: {
+        changedFields:
+          entries.map(
+            ([
+              key,
+            ]) =>
+              key,
+          ),
+      },
+    },
+  );
+
   return updated;
 }
 
@@ -2488,6 +2649,25 @@ export async function deleteEnterpriseModuleRecord(
         true,
     },
   });
+
+  await emitEnterpriseAutomationEvent(
+    context,
+    {
+      triggerKey:
+        context.moduleKey +
+        '.record.deleted',
+      table:
+        context.table,
+      record:
+        deletedRow,
+      idempotencySeed:
+        String(
+          deletedRow.deleted_at ||
+          deletedRow.updated_at ||
+          deletedId,
+        ),
+    },
+  );
 
   return {
     deleted:
@@ -3051,6 +3231,35 @@ export async function transitionEnterpriseModuleRecord(
         },
       },
     });
+
+    await emitEnterpriseAutomationEvent(
+      context,
+      {
+        triggerKey:
+          context.moduleKey +
+          '.workflow.transitioned',
+        table:
+          context.table,
+        record:
+          changed.rows[0],
+        idempotencySeed:
+          String(
+            changed.rows[0]
+              ?.updated_at ||
+            recordId +
+              ':' +
+              nextStatus,
+          ),
+        payload: {
+          statusField:
+            field,
+          previousStatus:
+            currentStatus,
+          currentStatus:
+            nextStatus,
+        },
+      },
+    );
 
     return {
       record:
