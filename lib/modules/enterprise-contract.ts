@@ -169,6 +169,110 @@ export function withEnterpriseModuleDefaults(
         ? '2.0.0'
         : manifest.version,
 
+    actions: [
+      ...manifest.actions,
+      ...tables
+        .filter(
+          table =>
+            !table.endsWith(
+              '_settings',
+            ),
+        )
+        .flatMap(
+          table => {
+            const resourceKey =
+              resourceKeyForTable(
+                table,
+              );
+
+            return [
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.open',
+                name:
+                  'Open ' +
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'route' as const,
+                resourceKey,
+                href:
+                  '/apps/' +
+                  key,
+                viewKeys: [
+                  key +
+                  '.' +
+                  table +
+                  '.list',
+                ],
+                target:
+                  'current' as const,
+              },
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.create',
+                name:
+                  'Create ' +
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'record' as const,
+                resourceKey,
+                href:
+                  '/apps/' +
+                  key,
+                viewKeys: [
+                  key +
+                  '.' +
+                  table +
+                  '.form',
+                ],
+                target:
+                  'dialog' as const,
+              },
+            ];
+          },
+        ),
+      {
+        key:
+          key +
+          '.report.open',
+        name:
+          'Open ' +
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' reports'
+          ),
+        type:
+          'report',
+        resourceKey:
+          'report',
+        href:
+          '/apps/' +
+          key,
+        viewKeys: [
+          key +
+          '.report',
+        ],
+        target:
+          'current',
+      },
+    ],
+
     views: [
       ...manifest.views,
       {
