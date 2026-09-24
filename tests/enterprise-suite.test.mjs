@@ -398,7 +398,13 @@ test('generic app workspace is operational instead of an installed-app placehold
 
   assert.match(
     client,
-    /New record/,
+    /singularLabel/,
+  );
+
+  assert.match(
+    client,
+    /New \{/,
+    'Generic app create actions should use the business register noun instead of a database-shaped "New record" label.',
   );
 
   assert.match(
@@ -1016,7 +1022,7 @@ test('enterprise domain hooks keep inventory and commercial aggregates consisten
 
   assert.match(
     service,
-    /!\/\(\^\|_\)\(status\|state\)\$\//,
+    /!\/\(\^\|_\)\(status\|state\|stage\)\$\//,
   );
 
   assert.match(
@@ -1205,7 +1211,7 @@ test('enterprise suite registers company-scoped business automation triggers and
 
   assert.match(
     automation,
-    /\(\^\|_\)\(status\|state\)\$/,
+    /\(\^\|_\)\(status\|state\|stage\)\$/,
   );
 });
 
