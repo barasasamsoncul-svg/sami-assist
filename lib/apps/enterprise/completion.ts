@@ -1230,14 +1230,14 @@ export async function saveEnterpriseRecordTask(
           `
             UPDATE sami_enterprise_record_tasks
             SET
-              title = $7,
-              details = $8,
-              assigned_user_id = $9,
-              due_at = $10,
-              priority = $11,
-              status = $12,
-              completed_at = $13,
-              updated_by = $14,
+              title = $6,
+              details = $7,
+              assigned_user_id = $8,
+              due_at = $9,
+              priority = $10,
+              status = $11,
+              completed_at = $12,
+              updated_by = $13,
               updated_at = NOW()
             WHERE id = $1
               AND company_id = $2
@@ -1253,7 +1253,6 @@ export async function saveEnterpriseRecordTask(
             context.moduleKey,
             context.table,
             context.recordKey,
-            null,
             title,
             details,
             assignedUserId,
@@ -1532,7 +1531,7 @@ export async function saveEnterpriseSavedView(
               user_id,
               module_key,
               table_key,
-              lower(name)
+              name
             )
             WHERE deleted_at IS NULL
             DO UPDATE
