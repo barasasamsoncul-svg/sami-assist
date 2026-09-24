@@ -410,9 +410,54 @@ const DOMAIN_GRAPH:
         'scheduled',
         'cancelled',
       ],
+      active: [
+        'scheduled',
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
       scheduled: [
         'in_progress',
         'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'work_orders:work_order_tasks': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'field_services:service_orders': {
+      open: [
+        'scheduled',
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      scheduled: [
+        'in_progress',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'field_services:service_visits': {
+      scheduled: [
+        'in_progress',
+        'completed',
+        'cancelled',
+        'no_show',
       ],
       in_progress: [
         'completed',
@@ -460,6 +505,12 @@ const DOMAIN_GRAPH:
         'confirmed',
         'cancelled',
       ],
+      active: [
+        'confirmed',
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
       pending: [
         'confirmed',
         'cancelled',
@@ -479,10 +530,27 @@ const DOMAIN_GRAPH:
         'confirmed',
         'cancelled',
       ],
+      scheduled: [
+        'confirmed',
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
       confirmed: [
         'completed',
         'cancelled',
         'no_show',
+      ],
+    },
+    'subscriptions:subscriptions': {
+      active: [
+        'paused',
+        'cancelled',
+        'expired',
+      ],
+      paused: [
+        'active',
+        'cancelled',
       ],
     },
   };
