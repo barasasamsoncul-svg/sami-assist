@@ -35,6 +35,11 @@ import {
 } from '@/lib/apps/enterprise/catalog';
 
 import {
+  getEnterpriseDomainProfile,
+  type EnterpriseDomainProfile,
+} from '@/lib/apps/enterprise/domain-profiles';
+
+import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
 
@@ -104,6 +109,7 @@ export type EnterpriseWorkflowField = {
   field: string;
   label: string;
   databaseAllowedValues: string[];
+  counts: Record<string, number>;
 };
 
 export type EnterpriseTable = {
@@ -148,10 +154,15 @@ export type EnterpriseWorkspaceData = {
     canReport: boolean;
     canManageSettings: boolean;
   };
+  profile: EnterpriseDomainProfile;
   metrics: {
     totalRecords: number;
     tables: number;
     activeTables: number;
+    primaryRecords: number;
+    attentionRecords: number;
+    successRecords: number;
+    workflowTrackedRecords: number;
   };
   tables: EnterpriseTable[];
 };
@@ -1360,6 +1371,10 @@ async function workflowFieldsForTable(
     string,
   fields:
     EnterpriseField[],
+  where:
+    string,
+  params:
+    unknown[],
 ): Promise<
   EnterpriseWorkflowField[]
 > {
@@ -1373,18 +1388,71 @@ async function workflowFieldsForTable(
 
   return Promise.all(
     statusFields.map(
-      async field => ({
-        field:
-          field.key,
-        label:
-          field.label,
-        databaseAllowedValues:
-          await getDatabaseWorkflowValues(
-            pool,
-            table,
+      async field => {
+        const [
+          databaseAllowedValues,
+          countsResult,
+        ] =
+          await Promise.all([
+            getDatabaseWorkflowValues(
+              pool,
+              table,
+              field.key,
+            ),
+            pool.query(
+              'SELECT COALESCE(' +
+              quoteIdentifier(
+                field.key,
+              ) +
+              "::text, '') AS value, COUNT(*)::int AS count FROM " +
+              quoteIdentifier(
+                table,
+              ) +
+              where +
+              ' GROUP BY ' +
+              quoteIdentifier(
+                field.key,
+              ),
+              params,
+            ),
+          ]);
+
+        const counts =
+          Object.fromEntries(
+            countsResult.rows
+              .map(
+                row => [
+                  String(
+                    row.value ||
+                    '',
+                  )
+                    .trim()
+                    .toLowerCase(),
+                  Number(
+                    row.count ||
+                    0,
+                  ),
+                ],
+              )
+              .filter(
+                ([
+                  value,
+                ]) =>
+                  Boolean(
+                    value,
+                  ),
+              ),
+          );
+
+        return {
+          field:
             field.key,
-          ),
-      }),
+          label:
+            field.label,
+          databaseAllowedValues,
+          counts,
+        };
+      },
     ),
   );
 }
@@ -1569,6 +1637,8 @@ async function readTable(
       pool,
       table,
       fields,
+      where,
+      params,
     );
 
   const displayFields =
