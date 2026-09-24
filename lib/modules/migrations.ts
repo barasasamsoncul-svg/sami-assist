@@ -22,6 +22,7 @@ import {
 } from '@/lib/apps/invoicing/migrations/2.1.0-to-2.2.0';
 
 import {
+  ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
   ENTERPRISE_SUITE_MIGRATIONS,
 } from '@/lib/apps/enterprise/hardening';
 
@@ -109,6 +110,7 @@ export const APP_MODULE_MIGRATIONS:
     INVOICING_2_1_0_TO_2_2_0,
     SALES_1_0_0_TO_2_0_0,
     ...ENTERPRISE_SUITE_MIGRATIONS,
+    ...ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
   ];
 
 const VERSION_PATTERN =
