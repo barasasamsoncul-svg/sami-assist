@@ -17,6 +17,7 @@ import {
   Columns3,
   Database,
   Download,
+  History,
   LayoutDashboard,
   List,
   Pencil,
@@ -61,6 +62,7 @@ type ViewKey =
   | 'overview'
   | 'records'
   | 'reports'
+  | 'activity'
   | 'settings';
 
 
@@ -1141,6 +1143,16 @@ export default function EnterpriseModuleWorkspaceClient({
       },
       {
         key:
+          'activity',
+        label:
+          'Activity',
+        icon:
+          History,
+        visible:
+          true,
+      },
+      {
+        key:
           'settings',
         label:
           'Settings',
@@ -1506,6 +1518,18 @@ export default function EnterpriseModuleWorkspaceClient({
                       : 'records',
                   );
                 }
+              }
+            />
+          )
+        }
+
+        {
+          view ===
+            'activity' &&
+          (
+            <ModuleActivity
+              data={
+                initialData
               }
             />
           )
@@ -3108,6 +3132,97 @@ function WorkflowActions({
         )
       }
     </select>
+  );
+}
+
+
+function ModuleActivity({
+  data,
+}: {
+  data:
+    EnterpriseWorkspaceData;
+}) {
+  return (
+    <section className="sami-surface rounded-[24px] p-4 sm:p-5">
+      <div>
+        <h2 className="text-sm font-black">
+          My activity in {
+            data.module
+              .name
+          }
+        </h2>
+        <p className="mt-1 text-xs text-slate-500">
+          Recent actions are scoped to you, the current company and this app. Platform diagnostics remain internal to SaMi administration.
+        </p>
+      </div>
+
+      <div className="mt-4 space-y-2">
+        {
+          data.activity
+            .length ===
+            0
+            ? (
+                <div className="rounded-2xl border border-dashed border-[var(--sami-border)] p-8 text-center text-sm text-slate-500">
+                  No recent activity is available for this app yet.
+                </div>
+              )
+            : data.activity.map(
+                item => (
+                  <div
+                    key={
+                      item.id
+                    }
+                    className="rounded-2xl border border-[var(--sami-border)] p-3"
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-black">
+                          {
+                            item.label
+                          }
+                        </p>
+
+                        {
+                          item.summary &&
+                          (
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              {
+                                item.summary
+                              }
+                            </p>
+                          )
+                        }
+
+                        <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                          {
+                            item.entity
+                              .type ||
+                            'business record'
+                          }
+                          {
+                            item.result
+                              ? ' · ' +
+                                item.result
+                              : ''
+                          }
+                        </p>
+                      </div>
+
+                      <time className="shrink-0 text-[10px] font-semibold text-slate-400">
+                        {
+                          new Date(
+                            item.createdAt,
+                          )
+                            .toLocaleString()
+                        }
+                      </time>
+                    </div>
+                  </div>
+                ),
+              )
+        }
+      </div>
+    </section>
   );
 }
 
