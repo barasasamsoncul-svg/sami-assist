@@ -4060,7 +4060,186 @@ export async function queryEnterpriseModuleTable(
     );
 
     conditions.push(
-      'company_id = 
+      'company_id = $' +
+      params.length,
+    );
+  }
+
+  if (
+    fieldNames.has(
+      'deleted_at',
+    )
+  ) {
+    conditions.push(
+      'deleted_at IS NULL',
+    );
+  }
+
+  if (
+    query
+  ) {
+    const searchable =
+      context.fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          12,
+        );
+
+    if (
+      searchable.length >
+        0
+    ) {
+      params.push(
+        '%' +
+        query +
+        '%',
+      );
+
+      const searchParam =
+        params.length;
+
+      conditions.push(
+        '(' +
+        searchable
+          .map(
+            field =>
+              quoteIdentifier(
+                field.key,
+              ) +
+              '::text ILIKE $' +
+              searchParam,
+          )
+          .join(
+            ' OR ',
+          ) +
+        ')',
+      );
+    }
+  }
+
+  const where =
+    conditions.length >
+      0
+      ? (
+          ' WHERE ' +
+          conditions.join(
+            ' AND ',
+          )
+        )
+      : '';
+
+  const orderColumn =
+    fieldNames.has(
+      'updated_at',
+    )
+      ? 'updated_at'
+      : fieldNames.has(
+          'created_at',
+        )
+        ? 'created_at'
+        : fieldNames.has(
+            'id',
+          )
+          ? 'id'
+          : null;
+
+  const quotedTable =
+    quoteIdentifier(
+      context.table,
+    );
+
+  const countResult =
+    await context.pool.query(
+      'SELECT COUNT(*)::int AS count FROM ' +
+      quotedTable +
+      where,
+      params,
+    );
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  const dataParams =
+    [
+      ...params,
+      pageSize,
+      (
+        page -
+        1
+      ) *
+      pageSize,
+    ];
+
+  const limitParam =
+    params.length +
+    1;
+
+  const offsetParam =
+    params.length +
+    2;
+
+  const data =
+    await context.pool.query(
+      'SELECT * FROM ' +
+      quotedTable +
+      where +
+      (
+        orderColumn
+          ? (
+              ' ORDER BY ' +
+              quoteIdentifier(
+                orderColumn,
+              ) +
+              ' DESC NULLS LAST'
+            )
+          : ''
+      ) +
+      ' LIMIT $' +
+      limitParam +
+      ' OFFSET $' +
+      offsetParam,
+      dataParams,
+    );
+
+  return {
+    table:
+      context.table,
+    query,
+    page,
+    pageSize,
+    total,
+    hasMore:
+      page *
+      pageSize <
+      total,
+    records:
+      data.rows.map(
+        rowOutput,
+      ),
+  };
+}
+
+
+export async function getEnterpriseModuleRelationOptions(
   moduleKey:
     string,
   input: {
