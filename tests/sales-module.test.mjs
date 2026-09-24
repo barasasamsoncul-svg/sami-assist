@@ -114,9 +114,38 @@ test('Sales context is tenant/company scoped and permission controlled', async (
     /getTenantPoolByTenantId/,
   );
 
+  const authorityStart =
+    context.indexOf(
+      'export async function requireSalesContext',
+    );
+
+  const authorityEnd =
+    context.indexOf(
+      'export async function ensureSalesDefaults',
+      authorityStart,
+    );
+
+  const authority =
+    context.slice(
+      authorityStart,
+      authorityEnd,
+    );
+
   assert.doesNotMatch(
-    context,
+    authority,
     /input\.tenantId|input\.companyId/,
+    'Sales request authority must come from trusted session/workspace/company context.',
+  );
+
+  const route =
+    await source(
+      'app/api/apps/sales/route.ts',
+    );
+
+  assert.doesNotMatch(
+    route,
+    /payload\.tenantId|payload\.companyId|body\.tenantId|body\.companyId/,
+    'The Sales browser API must never accept tenant/company authority from JSON input.',
   );
 
   for (
