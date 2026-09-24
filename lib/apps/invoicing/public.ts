@@ -356,8 +356,8 @@ export async function getPublicInvoice(
     taxCalculation:
       invoice.tax_calculation ===
         'inclusive'
-        ? 'inclusive'
-        : 'exclusive',
+        ? 'inclusive' as const
+        : 'exclusive' as const,
     subtotal:
       money(
         invoice.subtotal,
