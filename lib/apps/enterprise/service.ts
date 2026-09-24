@@ -3799,6 +3799,1696 @@ export async function transitionEnterpriseModuleRecord(
 }
 
 
+export async function queryEnterpriseModuleTable(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    query?: unknown;
+    page?: unknown;
+    pageSize?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const fieldNames =
+    new Set(
+      context.fields.map(
+        field =>
+          field.key,
+      ),
+    );
+
+  const page =
+    Math.max(
+      1,
+      Math.min(
+        10000,
+        Number.isFinite(
+          Number(
+            input.page,
+          ),
+        )
+          ? Math.floor(
+              Number(
+                input.page,
+              ),
+            )
+          : 1,
+      ),
+    );
+
+  const pageSize =
+    Math.max(
+      10,
+      Math.min(
+        100,
+        Number.isFinite(
+          Number(
+            input.pageSize,
+          ),
+        )
+          ? Math.floor(
+              Number(
+                input.pageSize,
+              ),
+            )
+          : 50,
+      ),
+    );
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+          .trim()
+          .slice(
+            0,
+            120,
+          )
+      : '';
+
+  const conditions:
+    string[] =
+      [];
+
+  const params:
+    unknown[] =
+      [];
+
+  if (
+    fieldNames.has(
+      'company_id',
+    )
+  ) {
+    params.push(
+      context.companyId,
+    );
+
+    conditions.push(
+      'company_id = 
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    field?: unknown;
+    query?: unknown;
+    selected?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const field =
+    normalizeKey(
+      input.field,
+    );
+
+  if (
+    !field
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a related field.',
+    );
+  }
+
+  const definitions =
+    await getEnterpriseRelationDefinitions(
+      context.pool,
+      context.table,
+    );
+
+  const definition =
+    definitions.get(
+      field,
+    );
+
+  if (
+    !definition
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'This field does not expose a selectable business relationship.',
+    );
+  }
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+      : '';
+
+  const selected =
+    typeof input.selected ===
+      'string'
+      ? input.selected
+      : null;
+
+  return {
+    field,
+    label:
+      definition.label,
+    options:
+      await listEnterpriseRelationOptions(
+        context.pool,
+        definition,
+        context.companyId,
+        query,
+        selected,
+        30,
+      ),
+  };
+}
+
+
+export async function searchEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  query:
+    string,
+  limit =
+    12,
+) {
+  const context =
+    await requireContext(
+      moduleKey,
+      'view',
+    );
+
+  const term =
+    query
+      .trim()
+      .slice(
+        0,
+        120,
+      );
+
+  if (
+    !term
+  ) {
+    return [];
+  }
+
+  const tables =
+    enterpriseModuleTables(
+      context.moduleKey,
+    )
+      .slice(
+        0,
+        6,
+      );
+
+  const metadata =
+    await tableMetadata(
+      context.pool,
+      tables,
+    );
+
+  const results:
+    Array<{
+      table: string;
+      id: string;
+      title: string;
+      subtitle: string | null;
+    }> =
+      [];
+
+  for (
+    const table
+    of tables
+  ) {
+    const fields =
+      metadata.get(
+        table,
+      ) ||
+      [];
+
+    if (
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    assertEnterpriseTableBoundaryReady(
+      table,
+      fields,
+    );
+
+    const names =
+      new Set(
+        fields.map(
+          field =>
+            field.key,
+        ),
+      );
+
+    if (
+      !names.has(
+        'id',
+      )
+    ) {
+      continue;
+    }
+
+    const searchable =
+      fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          6,
+        );
+
+    if (
+      searchable.length ===
+        0
+    ) {
+      continue;
+    }
+
+    const params:
+      unknown[] =
+        [];
+
+    const conditions:
+      string[] =
+        [];
+
+    if (
+      names.has(
+        'company_id',
+      )
+    ) {
+      params.push(
+        context.companyId,
+      );
+
+      conditions.push(
+        'company_id = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'deleted_at',
+      )
+    ) {
+      conditions.push(
+        'deleted_at IS NULL',
+      );
+    }
+
+    params.push(
+      '%' +
+      term +
+      '%',
+    );
+
+    const searchIndex =
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            quoteIdentifier(
+              field.key,
+            ) +
+            '::text ILIKE $' +
+            searchIndex,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+
+    params.push(
+      Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(
+            limit,
+          ),
+        ),
+      ),
+    );
+
+    const titleField =
+      searchable.find(
+        field =>
+          /(^|_)(name|title|subject|number|code)$/.test(
+            field.key,
+          ),
+      ) ||
+      searchable[0];
+
+    const subtitleField =
+      searchable.find(
+        field =>
+          field.key !==
+            titleField.key,
+      );
+
+    const data =
+      await context.pool.query(
+        'SELECT id, ' +
+        quoteIdentifier(
+          titleField.key,
+        ) +
+        ' AS title' +
+        (
+          subtitleField
+            ? (
+                ', ' +
+                quoteIdentifier(
+                  subtitleField.key,
+                ) +
+                ' AS subtitle'
+              )
+            : (
+                ', NULL::text AS subtitle'
+              )
+        ) +
+        ' FROM ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' LIMIT $' +
+        params.length,
+        params,
+      );
+
+    for (
+      const row
+      of data.rows
+    ) {
+      results.push({
+        table,
+        id:
+          String(
+            row.id,
+          ),
+        title:
+          String(
+            row.title ||
+            label(
+              table,
+            ),
+          ),
+        subtitle:
+          row.subtitle
+            ? String(
+                row.subtitle,
+              )
+            : null,
+      });
+
+      if (
+        results.length >=
+          limit
+      ) {
+        return results;
+      }
+    }
+  }
+
+  return results;
+}
+ +
+      params.length,
+    );
+  }
+
+  if (
+    fieldNames.has(
+      'deleted_at',
+    )
+  ) {
+    conditions.push(
+      'deleted_at IS NULL',
+    );
+  }
+
+  if (
+    query
+  ) {
+    const searchable =
+      context.fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          12,
+        );
+
+    if (
+      searchable.length >
+        0
+    ) {
+      params.push(
+        '%' +
+        query +
+        '%',
+      );
+
+      const searchParam =
+        params.length;
+
+      conditions.push(
+        '(' +
+        searchable
+          .map(
+            field =>
+              quoteIdentifier(
+                field.key,
+              ) +
+              '::text ILIKE 
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    field?: unknown;
+    query?: unknown;
+    selected?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const field =
+    normalizeKey(
+      input.field,
+    );
+
+  if (
+    !field
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a related field.',
+    );
+  }
+
+  const definitions =
+    await getEnterpriseRelationDefinitions(
+      context.pool,
+      context.table,
+    );
+
+  const definition =
+    definitions.get(
+      field,
+    );
+
+  if (
+    !definition
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'This field does not expose a selectable business relationship.',
+    );
+  }
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+      : '';
+
+  const selected =
+    typeof input.selected ===
+      'string'
+      ? input.selected
+      : null;
+
+  return {
+    field,
+    label:
+      definition.label,
+    options:
+      await listEnterpriseRelationOptions(
+        context.pool,
+        definition,
+        context.companyId,
+        query,
+        selected,
+        30,
+      ),
+  };
+}
+
+
+export async function searchEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  query:
+    string,
+  limit =
+    12,
+) {
+  const context =
+    await requireContext(
+      moduleKey,
+      'view',
+    );
+
+  const term =
+    query
+      .trim()
+      .slice(
+        0,
+        120,
+      );
+
+  if (
+    !term
+  ) {
+    return [];
+  }
+
+  const tables =
+    enterpriseModuleTables(
+      context.moduleKey,
+    )
+      .slice(
+        0,
+        6,
+      );
+
+  const metadata =
+    await tableMetadata(
+      context.pool,
+      tables,
+    );
+
+  const results:
+    Array<{
+      table: string;
+      id: string;
+      title: string;
+      subtitle: string | null;
+    }> =
+      [];
+
+  for (
+    const table
+    of tables
+  ) {
+    const fields =
+      metadata.get(
+        table,
+      ) ||
+      [];
+
+    if (
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    assertEnterpriseTableBoundaryReady(
+      table,
+      fields,
+    );
+
+    const names =
+      new Set(
+        fields.map(
+          field =>
+            field.key,
+        ),
+      );
+
+    if (
+      !names.has(
+        'id',
+      )
+    ) {
+      continue;
+    }
+
+    const searchable =
+      fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          6,
+        );
+
+    if (
+      searchable.length ===
+        0
+    ) {
+      continue;
+    }
+
+    const params:
+      unknown[] =
+        [];
+
+    const conditions:
+      string[] =
+        [];
+
+    if (
+      names.has(
+        'company_id',
+      )
+    ) {
+      params.push(
+        context.companyId,
+      );
+
+      conditions.push(
+        'company_id = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'deleted_at',
+      )
+    ) {
+      conditions.push(
+        'deleted_at IS NULL',
+      );
+    }
+
+    params.push(
+      '%' +
+      term +
+      '%',
+    );
+
+    const searchIndex =
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            quoteIdentifier(
+              field.key,
+            ) +
+            '::text ILIKE $' +
+            searchIndex,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+
+    params.push(
+      Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(
+            limit,
+          ),
+        ),
+      ),
+    );
+
+    const titleField =
+      searchable.find(
+        field =>
+          /(^|_)(name|title|subject|number|code)$/.test(
+            field.key,
+          ),
+      ) ||
+      searchable[0];
+
+    const subtitleField =
+      searchable.find(
+        field =>
+          field.key !==
+            titleField.key,
+      );
+
+    const data =
+      await context.pool.query(
+        'SELECT id, ' +
+        quoteIdentifier(
+          titleField.key,
+        ) +
+        ' AS title' +
+        (
+          subtitleField
+            ? (
+                ', ' +
+                quoteIdentifier(
+                  subtitleField.key,
+                ) +
+                ' AS subtitle'
+              )
+            : (
+                ', NULL::text AS subtitle'
+              )
+        ) +
+        ' FROM ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' LIMIT $' +
+        params.length,
+        params,
+      );
+
+    for (
+      const row
+      of data.rows
+    ) {
+      results.push({
+        table,
+        id:
+          String(
+            row.id,
+          ),
+        title:
+          String(
+            row.title ||
+            label(
+              table,
+            ),
+          ),
+        subtitle:
+          row.subtitle
+            ? String(
+                row.subtitle,
+              )
+            : null,
+      });
+
+      if (
+        results.length >=
+          limit
+      ) {
+        return results;
+      }
+    }
+  }
+
+  return results;
+}
+ +
+              searchParam,
+          )
+          .join(
+            ' OR ',
+          ) +
+        ')',
+      );
+    }
+  }
+
+  const where =
+    conditions.length >
+      0
+      ? (
+          ' WHERE ' +
+          conditions.join(
+            ' AND ',
+          )
+        )
+      : '';
+
+  const orderColumn =
+    fieldNames.has(
+      'updated_at',
+    )
+      ? 'updated_at'
+      : fieldNames.has(
+          'created_at',
+        )
+        ? 'created_at'
+        : fieldNames.has(
+            'id',
+          )
+          ? 'id'
+          : null;
+
+  const quotedTable =
+    quoteIdentifier(
+      context.table,
+    );
+
+  const countResult =
+    await context.pool.query(
+      'SELECT COUNT(*)::int AS count FROM ' +
+      quotedTable +
+      where,
+      params,
+    );
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  params.push(
+    pageSize,
+  );
+
+  const limitParam =
+    params.length;
+
+  params.push(
+    (
+      page -
+      1
+    ) *
+    pageSize,
+  );
+
+  const offsetParam =
+    params.length;
+
+  const data =
+    await context.pool.query(
+      'SELECT * FROM ' +
+      quotedTable +
+      where +
+      (
+        orderColumn
+          ? (
+              ' ORDER BY ' +
+              quoteIdentifier(
+                orderColumn,
+              ) +
+              ' DESC NULLS LAST'
+            )
+          : ''
+      ) +
+      ' LIMIT 
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    field?: unknown;
+    query?: unknown;
+    selected?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const field =
+    normalizeKey(
+      input.field,
+    );
+
+  if (
+    !field
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a related field.',
+    );
+  }
+
+  const definitions =
+    await getEnterpriseRelationDefinitions(
+      context.pool,
+      context.table,
+    );
+
+  const definition =
+    definitions.get(
+      field,
+    );
+
+  if (
+    !definition
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'This field does not expose a selectable business relationship.',
+    );
+  }
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+      : '';
+
+  const selected =
+    typeof input.selected ===
+      'string'
+      ? input.selected
+      : null;
+
+  return {
+    field,
+    label:
+      definition.label,
+    options:
+      await listEnterpriseRelationOptions(
+        context.pool,
+        definition,
+        context.companyId,
+        query,
+        selected,
+        30,
+      ),
+  };
+}
+
+
+export async function searchEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  query:
+    string,
+  limit =
+    12,
+) {
+  const context =
+    await requireContext(
+      moduleKey,
+      'view',
+    );
+
+  const term =
+    query
+      .trim()
+      .slice(
+        0,
+        120,
+      );
+
+  if (
+    !term
+  ) {
+    return [];
+  }
+
+  const tables =
+    enterpriseModuleTables(
+      context.moduleKey,
+    )
+      .slice(
+        0,
+        6,
+      );
+
+  const metadata =
+    await tableMetadata(
+      context.pool,
+      tables,
+    );
+
+  const results:
+    Array<{
+      table: string;
+      id: string;
+      title: string;
+      subtitle: string | null;
+    }> =
+      [];
+
+  for (
+    const table
+    of tables
+  ) {
+    const fields =
+      metadata.get(
+        table,
+      ) ||
+      [];
+
+    if (
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    assertEnterpriseTableBoundaryReady(
+      table,
+      fields,
+    );
+
+    const names =
+      new Set(
+        fields.map(
+          field =>
+            field.key,
+        ),
+      );
+
+    if (
+      !names.has(
+        'id',
+      )
+    ) {
+      continue;
+    }
+
+    const searchable =
+      fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          6,
+        );
+
+    if (
+      searchable.length ===
+        0
+    ) {
+      continue;
+    }
+
+    const params:
+      unknown[] =
+        [];
+
+    const conditions:
+      string[] =
+        [];
+
+    if (
+      names.has(
+        'company_id',
+      )
+    ) {
+      params.push(
+        context.companyId,
+      );
+
+      conditions.push(
+        'company_id = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'deleted_at',
+      )
+    ) {
+      conditions.push(
+        'deleted_at IS NULL',
+      );
+    }
+
+    params.push(
+      '%' +
+      term +
+      '%',
+    );
+
+    const searchIndex =
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            quoteIdentifier(
+              field.key,
+            ) +
+            '::text ILIKE $' +
+            searchIndex,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+
+    params.push(
+      Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(
+            limit,
+          ),
+        ),
+      ),
+    );
+
+    const titleField =
+      searchable.find(
+        field =>
+          /(^|_)(name|title|subject|number|code)$/.test(
+            field.key,
+          ),
+      ) ||
+      searchable[0];
+
+    const subtitleField =
+      searchable.find(
+        field =>
+          field.key !==
+            titleField.key,
+      );
+
+    const data =
+      await context.pool.query(
+        'SELECT id, ' +
+        quoteIdentifier(
+          titleField.key,
+        ) +
+        ' AS title' +
+        (
+          subtitleField
+            ? (
+                ', ' +
+                quoteIdentifier(
+                  subtitleField.key,
+                ) +
+                ' AS subtitle'
+              )
+            : (
+                ', NULL::text AS subtitle'
+              )
+        ) +
+        ' FROM ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' LIMIT $' +
+        params.length,
+        params,
+      );
+
+    for (
+      const row
+      of data.rows
+    ) {
+      results.push({
+        table,
+        id:
+          String(
+            row.id,
+          ),
+        title:
+          String(
+            row.title ||
+            label(
+              table,
+            ),
+          ),
+        subtitle:
+          row.subtitle
+            ? String(
+                row.subtitle,
+              )
+            : null,
+      });
+
+      if (
+        results.length >=
+          limit
+      ) {
+        return results;
+      }
+    }
+  }
+
+  return results;
+}
+ +
+      limitParam +
+      ' OFFSET 
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    field?: unknown;
+    query?: unknown;
+    selected?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const field =
+    normalizeKey(
+      input.field,
+    );
+
+  if (
+    !field
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a related field.',
+    );
+  }
+
+  const definitions =
+    await getEnterpriseRelationDefinitions(
+      context.pool,
+      context.table,
+    );
+
+  const definition =
+    definitions.get(
+      field,
+    );
+
+  if (
+    !definition
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'This field does not expose a selectable business relationship.',
+    );
+  }
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+      : '';
+
+  const selected =
+    typeof input.selected ===
+      'string'
+      ? input.selected
+      : null;
+
+  return {
+    field,
+    label:
+      definition.label,
+    options:
+      await listEnterpriseRelationOptions(
+        context.pool,
+        definition,
+        context.companyId,
+        query,
+        selected,
+        30,
+      ),
+  };
+}
+
+
+export async function searchEnterpriseModuleRecords(
+  moduleKey:
+    string,
+  query:
+    string,
+  limit =
+    12,
+) {
+  const context =
+    await requireContext(
+      moduleKey,
+      'view',
+    );
+
+  const term =
+    query
+      .trim()
+      .slice(
+        0,
+        120,
+      );
+
+  if (
+    !term
+  ) {
+    return [];
+  }
+
+  const tables =
+    enterpriseModuleTables(
+      context.moduleKey,
+    )
+      .slice(
+        0,
+        6,
+      );
+
+  const metadata =
+    await tableMetadata(
+      context.pool,
+      tables,
+    );
+
+  const results:
+    Array<{
+      table: string;
+      id: string;
+      title: string;
+      subtitle: string | null;
+    }> =
+      [];
+
+  for (
+    const table
+    of tables
+  ) {
+    const fields =
+      metadata.get(
+        table,
+      ) ||
+      [];
+
+    if (
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    assertEnterpriseTableBoundaryReady(
+      table,
+      fields,
+    );
+
+    const names =
+      new Set(
+        fields.map(
+          field =>
+            field.key,
+        ),
+      );
+
+    if (
+      !names.has(
+        'id',
+      )
+    ) {
+      continue;
+    }
+
+    const searchable =
+      fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          6,
+        );
+
+    if (
+      searchable.length ===
+        0
+    ) {
+      continue;
+    }
+
+    const params:
+      unknown[] =
+        [];
+
+    const conditions:
+      string[] =
+        [];
+
+    if (
+      names.has(
+        'company_id',
+      )
+    ) {
+      params.push(
+        context.companyId,
+      );
+
+      conditions.push(
+        'company_id = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'deleted_at',
+      )
+    ) {
+      conditions.push(
+        'deleted_at IS NULL',
+      );
+    }
+
+    params.push(
+      '%' +
+      term +
+      '%',
+    );
+
+    const searchIndex =
+      params.length;
+
+    conditions.push(
+      '(' +
+      searchable
+        .map(
+          field =>
+            quoteIdentifier(
+              field.key,
+            ) +
+            '::text ILIKE $' +
+            searchIndex,
+        )
+        .join(
+          ' OR ',
+        ) +
+      ')',
+    );
+
+    params.push(
+      Math.max(
+        1,
+        Math.min(
+          8,
+          Math.floor(
+            limit,
+          ),
+        ),
+      ),
+    );
+
+    const titleField =
+      searchable.find(
+        field =>
+          /(^|_)(name|title|subject|number|code)$/.test(
+            field.key,
+          ),
+      ) ||
+      searchable[0];
+
+    const subtitleField =
+      searchable.find(
+        field =>
+          field.key !==
+            titleField.key,
+      );
+
+    const data =
+      await context.pool.query(
+        'SELECT id, ' +
+        quoteIdentifier(
+          titleField.key,
+        ) +
+        ' AS title' +
+        (
+          subtitleField
+            ? (
+                ', ' +
+                quoteIdentifier(
+                  subtitleField.key,
+                ) +
+                ' AS subtitle'
+              )
+            : (
+                ', NULL::text AS subtitle'
+              )
+        ) +
+        ' FROM ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' LIMIT $' +
+        params.length,
+        params,
+      );
+
+    for (
+      const row
+      of data.rows
+    ) {
+      results.push({
+        table,
+        id:
+          String(
+            row.id,
+          ),
+        title:
+          String(
+            row.title ||
+            label(
+              table,
+            ),
+          ),
+        subtitle:
+          row.subtitle
+            ? String(
+                row.subtitle,
+              )
+            : null,
+      });
+
+      if (
+        results.length >=
+          limit
+      ) {
+        return results;
+      }
+    }
+  }
+
+  return results;
+}
+ +
+      offsetParam,
+      params,
+    );
+
+  return {
+    table:
+      context.table,
+    query,
+    page,
+    pageSize,
+    total,
+    hasMore:
+      page *
+      pageSize <
+      total,
+    records:
+      data.rows.map(
+        rowOutput,
+      ),
+  };
+}
+
+
 export async function getEnterpriseModuleRelationOptions(
   moduleKey:
     string,
