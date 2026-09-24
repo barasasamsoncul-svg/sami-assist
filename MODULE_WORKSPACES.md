@@ -23,3 +23,23 @@ npm run build
 ```
 
 Do not include or commit `.env.local` in source-control or distribution archives.
+
+
+## Locked reference module
+
+**Invoicing v2.2.0 is locked as SaMi's first reference-quality business module.**
+
+Locked baseline:
+- Baseline commit: `d42a1253c2cd694d7878ca040ce0113ee279aa7f`
+- Baseline branch: `baseline/invoicing-v2.2.0`
+- Status: `locked`
+- Reference standard: `true`
+
+The lock does not make Invoicing unmaintainable. It means its protected module trees cannot change casually. Any deliberate Invoicing core change must:
+1. preserve the module boundary and existing business workflows;
+2. update the lock baseline intentionally;
+3. pass `npm run test:invoicing`;
+4. pass the complete `npm run test:ci` production gate; and
+5. deploy successfully before the new baseline is accepted.
+
+Future SaMi modules should reuse Invoicing's production standard: permission-scoped data, audited financial/business actions, responsive workspace UI, SaMi overlays, guided tutorials, Search/AI boundaries, regression coverage and production verification.

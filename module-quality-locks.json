@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "locks": {
+    "invoicing": {
+      "status": "locked",
+      "moduleVersion": "2.2.0",
+      "referenceStandard": true,
+      "baselineCommit": "d42a1253c2cd694d7878ca040ce0113ee279aa7f",
+      "baselineBranch": "baseline/invoicing-v2.2.0",
+      "lockedAt": "2026-09-24",
+      "policy": "Changes to protected trees require an intentional lock-baseline update after full invoicing and production regression verification.",
+      "protectedTrees": {
+        "lib/apps/invoicing": "a239106c89e726bfea2e52065cd1095634dcaeea",
+        "app/apps/invoicing": "dd4f76e0f209284406c514259f454557d3b7e4aa",
+        "app/api/apps/invoicing": "5e32397bc589025fc657b7366616f5b483ddb09f",
+        "app/api/internal/invoicing": "b2b22efc33d3b038495ccdd343845257789334a1",
+        "app/i/[tenantId]/[token]": "885f2fea649181b8f816593462acfe1ec714e789"
+      }
+    }
+  }
+}
