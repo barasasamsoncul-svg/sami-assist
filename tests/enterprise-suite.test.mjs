@@ -910,23 +910,23 @@ test('enterprise domain side effects execute inside the same transaction as reco
       'lib/apps/enterprise/service.ts',
     );
 
-  for (
-    const operation
-    of [
-      'create',
-      'update',
-      'delete',
-    ]
-  ) {
-    assert.ok(
-      service.includes(
-        "operation:\n          '" +
-        operation +
-        "'",
-      ),
-      operation,
-    );
-  }
+  assert.match(
+    service,
+    /operation:\s*'create'/,
+    'create',
+  );
+
+  assert.match(
+    service,
+    /operation:\s*'update'/,
+    'update',
+  );
+
+  assert.match(
+    service,
+    /operation:\s*'delete'/,
+    'delete',
+  );
 
   assert.match(
     service,
