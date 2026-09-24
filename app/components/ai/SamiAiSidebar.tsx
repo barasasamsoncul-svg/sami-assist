@@ -57,7 +57,7 @@ type SamiAiSidebarProps = {
   onDelete: (
     conversationId: string,
   ) => Promise<void>;
-  onPerformance: () => void;
+  onUsage: () => void;
 };
 
 function conversationTime(
@@ -98,7 +98,7 @@ export default function SamiAiSidebar({
   onRename,
   onTogglePin,
   onDelete,
-  onPerformance,
+  onUsage,
 }: SamiAiSidebarProps) {
   const [
     query,
@@ -833,10 +833,10 @@ export default function SamiAiSidebar({
         >
           <button
             type="button"
-            title="AI performance"
-            aria-label="AI performance"
+            title="Usage & capabilities"
+            aria-label="Usage & capabilities"
             onClick={
-              onPerformance
+              onUsage
             }
             className={[
               'flex h-10 items-center rounded-xl text-slate-600 transition hover:bg-slate-200/70 dark:text-slate-300 dark:hover:bg-white/[0.07]',
@@ -850,7 +850,7 @@ export default function SamiAiSidebar({
             <Gauge className="h-4 w-4 shrink-0" />
             {!compact && (
               <span className="text-xs font-semibold">
-                AI performance
+                Usage & capabilities
               </span>
             )}
           </button>

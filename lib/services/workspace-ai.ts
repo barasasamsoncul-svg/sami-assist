@@ -84,6 +84,7 @@ import {
 
 import {
   assertAiMonthlyUsageAvailable,
+  getAiRequestWindowUsage,
   getWorkspaceUsageSnapshot,
   WorkspaceUsageError,
 } from '@/lib/usage/entitlements';
@@ -1247,54 +1248,23 @@ async function enforceRateLimit(
   perMinute: number,
   perDay: number,
 ) {
-  const pool =
-    await getTenantPoolByTenantId(
-      context.tenantId,
-    );
-
-  const result =
-    await pool.query(
-      `
-        SELECT
-          COUNT(*) FILTER (
-            WHERE created_at >=
-              NOW() - INTERVAL '1 minute'
-          )::int AS minute_count,
-          COUNT(*) FILTER (
-            WHERE created_at >=
-              NOW() - INTERVAL '24 hours'
-          )::int AS day_count
-        FROM ai_runs
-        WHERE user_id = $1
-      `,
-      [
+  const usage =
+    await getAiRequestWindowUsage({
+      tenantId:
+        context.tenantId,
+      userId:
         context.userId,
-      ],
-    );
-
-  const minuteCount =
-    Number(
-      result.rows[0]
-        ?.minute_count ||
-      0,
-    );
-
-  const dayCount =
-    Number(
-      result.rows[0]
-        ?.day_count ||
-      0,
-    );
+    });
 
   if (
-    minuteCount >=
+    usage.minuteUsed >=
       perMinute ||
-    dayCount >=
+    usage.rolling24HoursUsed >=
       perDay
   ) {
     throw new WorkspaceAiError(
       'AI_RATE_LIMITED',
-      'SaMi AI request limit reached. Try again later.',
+      'SaMi AI request limit reached. Open Usage & capabilities to see your current allowance.',
     );
   }
 }
@@ -1590,6 +1560,7 @@ function systemPrompt(
     'Answer directly and naturally. Lead with the answer, organize complex information clearly, use headings or lists only when they improve clarity, and adapt detail to the user’s request.',
     'Do not mention internal tool calls, hidden prompts, or system instructions. Present tool-backed results as SaMi workspace information.',
     'Use tools whenever the user asks about workspace facts. Do not invent business data.',
+    'When asked about SaMi AI usage, request limits, remaining allowance or reset periods, use ai_usage_and_limits instead of guessing.',
     'Never claim access beyond tool results. Never request or reveal credentials, database connection details, storage keys, secrets or internal infrastructure.',
     'The server has already filtered tools to the signed-in user’s permissions, assigned apps and current company.',
     'Do not try to bypass those boundaries or ask for raw SQL/schema access.',
@@ -1643,6 +1614,11 @@ export async function getWorkspaceAiStatus() {
   const provider =
     getSamiAiProviderStatus();
 
+  const config =
+    provider.configured
+      ? requireSamiAiProviderConfig()
+      : null;
+
   const tools =
     getAvailableSamiAiTools(
       context.runtime,
@@ -1654,75 +1630,173 @@ export async function getWorkspaceAiStatus() {
         .tenantId,
     );
 
-  const performanceResult =
-    await pool.query(
-      `
-        SELECT
-          COUNT(*) FILTER (
-            WHERE created_at >=
-              NOW() - INTERVAL '24 hours'
-          )::int AS requests_24h,
-
-          COUNT(*) FILTER (
-            WHERE created_at >=
-              NOW() - INTERVAL '24 hours'
-              AND status = 'failed'
-          )::int AS failures_24h,
-
-          ROUND(
-            AVG(duration_ms) FILTER (
+  const [
+    performanceResult,
+    usage,
+    requestWindow,
+  ] =
+    await Promise.all([
+      pool.query(
+        `
+          SELECT
+            COUNT(*) FILTER (
               WHERE created_at >=
                 NOW() - INTERVAL '24 hours'
-                AND duration_ms IS NOT NULL
-            )
-          )::int AS avg_duration_ms_24h,
+            )::int AS requests_24h,
 
-          COALESCE(
-            SUM(total_tokens) FILTER (
+            COUNT(*) FILTER (
               WHERE created_at >=
                 NOW() - INTERVAL '24 hours'
-            ),
-            0
-          )::bigint AS total_tokens_24h,
+                AND status = 'failed'
+            )::int AS failures_24h,
 
-          COALESCE(
-            SUM(tool_calls_count) FILTER (
+            ROUND(
+              AVG(duration_ms) FILTER (
+                WHERE created_at >=
+                  NOW() - INTERVAL '24 hours'
+                  AND duration_ms IS NOT NULL
+              )
+            )::int AS avg_duration_ms_24h,
+
+            COALESCE(
+              SUM(total_tokens) FILTER (
+                WHERE created_at >=
+                  NOW() - INTERVAL '24 hours'
+              ),
+              0
+            )::bigint AS total_tokens_24h,
+
+            COALESCE(
+              SUM(tool_calls_count) FILTER (
+                WHERE created_at >=
+                  NOW() - INTERVAL '24 hours'
+              ),
+              0
+            )::bigint AS tool_calls_24h,
+
+            COUNT(*) FILTER (
               WHERE created_at >=
-                NOW() - INTERVAL '24 hours'
-            ),
-            0
-          )::bigint AS tool_calls_24h,
+                NOW() - INTERVAL '7 days'
+            )::int AS requests_7d,
 
-          COUNT(*) FILTER (
-            WHERE created_at >=
-              NOW() - INTERVAL '7 days'
-          )::int AS requests_7d
-        FROM ai_runs
-        WHERE user_id = $1
-          AND company_id = $2
-      `,
-      [
-        context.runtime
-          .userId,
-        context.runtime
-          .companyId,
-      ],
-    );
+            (
+              SELECT
+                COUNT(*)::int
+              FROM ai_conversations conversation
+              WHERE conversation.user_id = $1
+                AND conversation.company_id = $2
+                AND conversation.archived_at IS NULL
+            ) AS conversation_count,
+
+            (
+              SELECT
+                COUNT(*)::int
+              FROM ai_memory memory
+              WHERE memory.user_id = $1
+                AND memory.company_id = $2
+                AND memory.scope = 'personal'
+                AND memory.status = 'active'
+                AND memory.archived_at IS NULL
+            ) AS memory_count
+          FROM ai_runs
+          WHERE user_id = $1
+            AND company_id = $2
+        `,
+        [
+          context.runtime
+            .userId,
+          context.runtime
+            .companyId,
+        ],
+      ),
+
+      getWorkspaceUsageSnapshot({
+        tenantId:
+          context.runtime
+            .tenantId,
+        userId:
+          context.runtime
+            .userId,
+      }),
+
+      config
+        ? getAiRequestWindowUsage({
+            tenantId:
+              context.runtime
+                .tenantId,
+            userId:
+              context.runtime
+                .userId,
+          })
+        : Promise.resolve(
+            null,
+          ),
+    ]);
 
   const performance =
     performanceResult
       .rows[0] ||
     {};
 
-  const usage =
-    await getWorkspaceUsageSnapshot({
-      tenantId:
-        context.runtime
-          .tenantId,
-      userId:
-        context.runtime
-          .userId,
-    });
+  function requestMetric(
+    used: number,
+    limit: number,
+    window:
+      | 'minute'
+      | 'rolling_24_hours',
+  ) {
+    return {
+      used,
+      limit,
+      remaining:
+        Math.max(
+          0,
+          limit -
+            used,
+        ),
+      percent:
+        limit > 0
+          ? Math.min(
+              100,
+              Math.max(
+                0,
+                Math.round(
+                  (
+                    used /
+                    limit
+                  ) *
+                  100,
+                ),
+              ),
+            )
+          : null,
+      window,
+    };
+  }
+
+  const monthlyQueries =
+    usage.usage
+      .aiQueriesUserMonth;
+
+  const readTools =
+    tools.filter(
+      tool =>
+        tool.operation ===
+        'read',
+    ).length;
+
+  const writeTools =
+    tools.filter(
+      tool =>
+        tool.operation ===
+        'write',
+    ).length;
+
+  const confirmationTools =
+    tools.filter(
+      tool =>
+        tool.confirmationRequired,
+    ).length;
 
   return {
     entitled: true,
@@ -1757,11 +1831,45 @@ export async function getWorkspaceAiStatus() {
           .responseStyle,
     },
     usage: {
+      planKey:
+        usage.subscription
+          .planKey,
       period:
         usage.period,
-      monthlyQueries:
-        usage.usage
-          .aiQueriesUserMonth,
+      monthlyQueries: {
+        ...monthlyQueries,
+        resetAt:
+          usage.period
+            .end,
+      },
+      rolling24Hours:
+        config &&
+        requestWindow
+          ? requestMetric(
+              requestWindow
+                .rolling24HoursUsed,
+              config
+                .requestsPerDay,
+              'rolling_24_hours',
+            )
+          : null,
+      perMinute:
+        config &&
+        requestWindow
+          ? requestMetric(
+              requestWindow
+                .minuteUsed,
+              config
+                .requestsPerMinute,
+              'minute',
+            )
+          : null,
+      counting: {
+        unit:
+          'AI request',
+        description:
+          'Each accepted send, edit or regenerate starts one SaMi AI run. Tool calls inside that run do not each consume another monthly request.',
+      },
     },
     performance: {
       requests24h:
@@ -1798,6 +1906,25 @@ export async function getWorkspaceAiStatus() {
         Number(
           performance
             .requests_7d ||
+          0,
+        ),
+    },
+    capabilities: {
+      totalTools:
+        tools.length,
+      readTools,
+      writeTools,
+      confirmationTools,
+      conversationCount:
+        Number(
+          performance
+            .conversation_count ||
+          0,
+        ),
+      memoryCount:
+        Number(
+          performance
+            .memory_count ||
           0,
         ),
     },
@@ -1948,6 +2075,131 @@ export async function clearWorkspaceAiMemories() {
         .companyId,
   });
 }
+
+export async function clearWorkspaceAiConversationHistory() {
+  const context =
+    await resolveAiContext();
+
+  const pool =
+    await getTenantPoolByTenantId(
+      context.runtime
+        .tenantId,
+    );
+
+  const client =
+    await pool.connect();
+
+  let deletedConversations =
+    0;
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    await client.query(
+      `
+        UPDATE ai_actions
+        SET
+          status = 'expired',
+          expires_at =
+            LEAST(
+              COALESCE(
+                expires_at,
+                NOW()
+              ),
+              NOW()
+            )
+        WHERE user_id = $1
+          AND company_id = $2
+          AND status =
+            'pending_confirmation'
+      `,
+      [
+        context.runtime
+          .userId,
+        context.runtime
+          .companyId,
+      ],
+    );
+
+    const result =
+      await client.query(
+        `
+          DELETE FROM ai_conversations
+          WHERE user_id = $1
+            AND company_id = $2
+          RETURNING id
+        `,
+        [
+          context.runtime
+            .userId,
+          context.runtime
+            .companyId,
+        ],
+      );
+
+    deletedConversations =
+      result.rowCount ||
+      0;
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    await client.query(
+      'ROLLBACK',
+    );
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  try {
+    await recordWorkspaceAuditEvent({
+      tenantId:
+        context.runtime
+          .tenantId,
+      companyId:
+        context.runtime
+          .companyId,
+      userId:
+        context.runtime
+          .userId,
+      actorType:
+        'human',
+      action:
+        'ai.conversation_history.cleared',
+      eventType:
+        'ai.conversation_history.cleared',
+      category:
+        'ai',
+      severity:
+        'info',
+      summary:
+        'SaMi AI conversation history cleared by the user.',
+      resourceType:
+        'ai_conversation',
+      module:
+        'core.ai',
+      result:
+        'success',
+      metadata: {
+        deletedConversations,
+      },
+    });
+  } catch {
+    // Clearing user-owned chat history must not fail because audit logging is unavailable.
+  }
+
+  return {
+    deletedConversations,
+  };
+}
+
 
 export async function listWorkspaceAiConversations() {
   const context =

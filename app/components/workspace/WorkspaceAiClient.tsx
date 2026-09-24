@@ -1,7 +1,5 @@
 'use client';
 
-import Link from 'next/link';
-
 import {
   Archive,
   Bot,
@@ -17,7 +15,6 @@ import {
   FileText,
   RefreshCw,
   Send,
-  Settings,
   ShieldCheck,
   Sparkles,
   Square,
@@ -39,6 +36,11 @@ import {
 import ReactMarkdown from 'react-markdown';
 
 import SamiAiSidebar from '@/app/components/ai/SamiAiSidebar';
+import SamiAiUsagePanel from '@/app/components/ai/SamiAiUsagePanel';
+
+import type {
+  SamiAiWorkspaceStatus,
+} from '@/app/components/ai/SamiAiStatus';
 
 type Conversation = {
   id: string;
@@ -82,43 +84,6 @@ type PendingAction = {
   expiresAt: string | null;
 };
 
-type AiPerformance = {
-  requests24h: number;
-  failures24h: number;
-  averageResponseMs24h: number;
-  totalTokens24h: number;
-  toolCalls24h: number;
-  requests7d: number;
-};
-
-type AiStatus = {
-  entitled: boolean;
-  configured: boolean;
-  company: {
-    id: string;
-    name: string;
-  };
-  attachments: {
-    enabled: boolean;
-    canUpload: boolean;
-    maxFilesPerMessage: number;
-    maxTextBytesPerFile: number;
-  };
-  preferences: {
-    memoryEnabled: boolean;
-    useAccountPreferences: boolean;
-    responseStyle: string;
-  };
-  performance: AiPerformance;
-  availableTools: Array<{
-    key: string;
-    name: string;
-    operation: string;
-    riskLevel: string;
-    confirmationRequired: boolean;
-  }>;
-};
-
 async function readJson(
   response: Response,
 ) {
@@ -155,14 +120,6 @@ function timeLabel(
       hour: '2-digit',
       minute: '2-digit',
     },
-  );
-}
-
-function formatNumber(
-  value: number,
-) {
-  return new Intl.NumberFormat().format(
-    value,
   );
 }
 
@@ -217,28 +174,6 @@ function formatBytes(
   )} ${units[index]}`;
 }
 
-function formatDuration(
-  value: number,
-) {
-  if (
-    !value ||
-    value < 1
-  ) {
-    return '—';
-  }
-
-  if (
-    value < 1000
-  ) {
-    return `${value} ms`;
-  }
-
-  return `${(
-    value /
-    1000
-  ).toFixed(1)} s`;
-}
-
 export default function WorkspaceAiClient({
   entitled,
 }: {
@@ -248,7 +183,7 @@ export default function WorkspaceAiClient({
     status,
     setStatus,
   ] =
-    useState<AiStatus | null>(
+    useState<SamiAiWorkspaceStatus | null>(
       null,
     );
 
@@ -378,8 +313,8 @@ export default function WorkspaceAiClient({
     useState(false);
 
   const [
-    performanceOpen,
-    setPerformanceOpen,
+    usagePanelOpen,
+    setUsagePanelOpen,
   ] =
     useState(false);
 
@@ -1781,8 +1716,8 @@ export default function WorkspaceAiClient({
               conversationId,
             )
         }
-        onPerformance={() =>
-          setPerformanceOpen(
+        onUsage={() =>
+          setUsagePanelOpen(
             true,
           )
         }
@@ -1810,6 +1745,27 @@ export default function WorkspaceAiClient({
                 'SaMi AI'}
             </p>
           </div>
+
+          {status?.usage && (
+            <button
+              type="button"
+              onClick={() =>
+                setUsagePanelOpen(
+                  true,
+                )
+              }
+              title="SaMi AI usage and limits"
+              className="ml-2 hidden h-8 items-center gap-1.5 rounded-full border border-slate-200 px-2.5 text-[10px] font-semibold text-slate-500 transition hover:bg-slate-50 sm:inline-flex dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+            >
+              <Gauge className="h-3.5 w-3.5" />
+              {status.usage
+                .monthlyQueries
+                .remaining !==
+              null
+                ? `${status.usage.monthlyQueries.remaining} left`
+                : `${status.usage.monthlyQueries.used} this month`}
+            </button>
+          )}
 
           {selectedConversationId && (
             <div className="ml-2 flex items-center gap-1">
@@ -2236,13 +2192,13 @@ export default function WorkspaceAiClient({
         </section>
       )}
 
-      {performanceOpen && (
-        <PerformancePanel
+      {usagePanelOpen && (
+        <SamiAiUsagePanel
           status={
             status
           }
           onClose={() =>
-            setPerformanceOpen(
+            setUsagePanelOpen(
               false,
             )
           }
@@ -2517,232 +2473,6 @@ function MessageAction({
         {label}
       </span>
     </button>
-  );
-}
-
-function PerformancePanel({
-  status,
-  onClose,
-}: {
-  status:
-    AiStatus | null;
-  onClose:
-    () => void;
-}) {
-  const performance =
-    status?.performance;
-
-  return (
-    <div className="fixed inset-0 z-[160] flex items-center justify-center p-3 sm:p-6">
-      <button
-        type="button"
-        aria-label="Close AI performance"
-        onClick={
-          onClose
-        }
-        className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px]"
-      />
-
-      <section className="relative z-10 w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#0F131B]">
-        <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-4 sm:px-5 dark:border-white/10">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-300">
-            <Gauge className="h-4 w-4" />
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-black">
-              SaMi AI performance
-            </p>
-            <p className="mt-0.5 truncate text-[10px] text-slate-400">
-              Workspace-scoped activity and tool usage
-            </p>
-          </div>
-
-          <button
-            type="button"
-            aria-label="Close performance"
-            onClick={
-              onClose
-            }
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 dark:hover:bg-white/10"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="max-h-[75dvh] overflow-y-auto p-4 sm:p-5">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <PerformanceStat
-              label="Requests · 24h"
-              value={
-                formatNumber(
-                  performance
-                    ?.requests24h ||
-                  0,
-                )
-              }
-            />
-
-            <PerformanceStat
-              label="Average response"
-              value={
-                formatDuration(
-                  performance
-                    ?.averageResponseMs24h ||
-                  0,
-                )
-              }
-            />
-
-            <PerformanceStat
-              label="Tokens · 24h"
-              value={
-                formatNumber(
-                  performance
-                    ?.totalTokens24h ||
-                  0,
-                )
-              }
-            />
-
-            <PerformanceStat
-              label="Tool calls · 24h"
-              value={
-                formatNumber(
-                  performance
-                    ?.toolCalls24h ||
-                  0,
-                )
-              }
-            />
-
-            <PerformanceStat
-              label="Failures · 24h"
-              value={
-                formatNumber(
-                  performance
-                    ?.failures24h ||
-                  0,
-                )
-              }
-            />
-
-            <PerformanceStat
-              label="Requests · 7d"
-              value={
-                formatNumber(
-                  performance
-                    ?.requests7d ||
-                  0,
-                )
-              }
-            />
-          </div>
-
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <InfoCard
-              title="Memory"
-              value={
-                status
-                  ?.preferences
-                  ?.memoryEnabled
-                  ? 'Enabled'
-                  : 'Disabled'
-              }
-              description="Persistent personal memory for the current company."
-            />
-
-            <InfoCard
-              title="Response style"
-              value={
-                status
-                  ?.preferences
-                  ?.responseStyle ||
-                'balanced'
-              }
-              description="Default answer depth configured in SaMi AI settings."
-            />
-
-            <InfoCard
-              title="Available tools"
-              value={
-                String(
-                  status
-                    ?.availableTools
-                    .length ||
-                  0,
-                )
-              }
-              description="Tools already filtered by your apps, company and permissions."
-            />
-
-            <InfoCard
-              title="Current company"
-              value={
-                status
-                  ?.company
-                  .name ||
-                'Unavailable'
-              }
-              description="All AI business context is scoped to this company."
-            />
-          </div>
-
-          <div className="mt-4 flex justify-end">
-            <Link
-              href="/settings?tab=ai"
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-slate-950 px-4 text-xs font-bold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-            >
-              <Settings className="h-4 w-4" />
-              AI settings
-            </Link>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function PerformanceStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-black tracking-tight">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function InfoCard({
-  title,
-  value,
-  description,
-}: {
-  title: string;
-  value: string;
-  description: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
-      <p className="text-[10px] font-bold text-slate-400">
-        {title}
-      </p>
-      <p className="mt-1 truncate text-sm font-black capitalize">
-        {value}
-      </p>
-      <p className="mt-1 text-[10px] leading-5 text-slate-500 dark:text-slate-400">
-        {description}
-      </p>
-    </div>
   );
 }
 

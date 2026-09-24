@@ -502,6 +502,63 @@ test('Category 18: AI migration remains additive in the current tenant-core chai
   );
 });
 
+test('Category 18: SaMi AI surfaces enforced usage, capabilities and user data controls as one product', async () => {
+  const [
+    service,
+    tools,
+    client,
+    sidebar,
+    settings,
+    conversationsRoute,
+    usageSummary,
+  ] = await Promise.all([
+    source('lib/services/workspace-ai.ts'),
+    source('lib/ai/core-tools.ts'),
+    source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiSidebar.tsx'),
+    source('app/settings/components/AiSettings.tsx'),
+    source('app/api/workspace/ai/conversations/route.ts'),
+    source('app/components/ai/SamiAiUsageSummary.tsx'),
+  ]);
+
+  assert.match(service, /monthlyQueries/);
+  assert.match(service, /rolling24Hours/);
+  assert.match(service, /perMinute/);
+  assert.match(service, /conversationCount/);
+  assert.match(service, /memoryCount/);
+  assert.match(service, /clearWorkspaceAiConversationHistory/);
+
+  assert.match(tools, /ai_usage_and_limits/);
+  assert.match(tools, /getWorkspaceUsageSnapshot/);
+  assert.match(tools, /getAiRequestWindowUsage/);
+  assert.doesNotMatch(
+    tools,
+    /provider:\s*config\.provider|model:\s*config\.model/,
+    'The user-facing usage tool must not expose backend provider identity.',
+  );
+
+  assert.match(client, /SamiAiUsagePanel/);
+  assert.match(client, /monthlyQueries/);
+  assert.match(client, /left/);
+  assert.match(sidebar, /Usage & capabilities/);
+
+  assert.match(settings, /SamiAiUsageSummary/);
+  assert.match(settings, /Data controls/);
+  assert.match(settings, /Clear chat history/);
+  assert.match(settings, /permanently removes your SaMi AI conversations/);
+
+  assert.match(conversationsRoute, /export async function DELETE/);
+  assert.match(conversationsRoute, /rejectAiCrossOrigin/);
+  assert.match(conversationsRoute, /clearWorkspaceAiConversationHistory/);
+
+  assert.match(usageSummary, /Monthly AI requests/);
+  assert.match(usageSummary, /Rolling 24 hours/);
+  assert.match(usageSummary, /Per minute/);
+  assert.match(usageSummary, /How limits work/);
+  assert.match(usageSummary, /What your SaMi AI can use/);
+  assert.match(usageSummary, /provider token counts are operational telemetry/);
+});
+
 test('Category 18: the real SaMi AI workspace is wired into shell, search, dashboard and settings', async () => {
   const [
     page,

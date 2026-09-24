@@ -33,6 +33,15 @@ import {
   rememberSamiAiPersonalContext,
 } from '@/lib/ai/memory';
 
+import {
+  requireSamiAiProviderConfig,
+} from '@/lib/ai/config';
+
+import {
+  getAiRequestWindowUsage,
+  getWorkspaceUsageSnapshot,
+} from '@/lib/usage/entitlements';
+
 import type {
   SamiAiRuntimeContext,
   SamiAiToolDefinition,
@@ -75,6 +84,38 @@ function integerInput(
     Math.floor(value),
     max,
   );
+}
+
+function requestLimitSummary(
+  used: number,
+  limit: number,
+) {
+  return {
+    used,
+    limit,
+    remaining:
+      Math.max(
+        0,
+        limit -
+          used,
+      ),
+    percent:
+      limit > 0
+        ? Math.min(
+            100,
+            Math.max(
+              0,
+              Math.round(
+                (
+                  used /
+                  limit
+                ) *
+                100,
+              ),
+            ),
+          )
+        : null,
+  };
 }
 
 export const CORE_SAMI_AI_TOOLS:
@@ -333,6 +374,78 @@ export const CORE_SAMI_AI_TOOLS:
             state.companies,
           capabilities:
             state.capabilities,
+        };
+      },
+    },
+
+    {
+      key: 'ai_usage_and_limits',
+      name: 'SaMi AI usage and limits',
+      description:
+        'Read the signed-in user’s own SaMi AI monthly allowance, rolling 24-hour request protection, per-minute request protection and reset period. Use this whenever the user asks how much SaMi AI they have used or have left.',
+      moduleKey: null,
+      operation: 'read',
+      riskLevel: 'low',
+      confirmationRequired: false,
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {},
+      },
+      execute: async (
+        context,
+      ) => {
+        const [
+          usage,
+          windows,
+        ] =
+          await Promise.all([
+            getWorkspaceUsageSnapshot({
+              tenantId:
+                context.tenantId,
+              userId:
+                context.userId,
+            }),
+            getAiRequestWindowUsage({
+              tenantId:
+                context.tenantId,
+              userId:
+                context.userId,
+            }),
+          ]);
+
+        const config =
+          requireSamiAiProviderConfig();
+
+        return {
+          plan:
+            usage.subscription
+              .planKey,
+          period:
+            usage.period,
+          monthlyQueries: {
+            ...usage.usage
+              .aiQueriesUserMonth,
+            resetAt:
+              usage.period
+                .end,
+          },
+          rolling24Hours:
+            requestLimitSummary(
+              windows
+                .rolling24HoursUsed,
+              config
+                .requestsPerDay,
+            ),
+          perMinute:
+            requestLimitSummary(
+              windows
+                .minuteUsed,
+              config
+                .requestsPerMinute,
+            ),
+          counting:
+            'Each accepted send, edit or regenerate starts one SaMi AI run. Tool calls inside that run do not each consume another monthly request.',
         };
       },
     },

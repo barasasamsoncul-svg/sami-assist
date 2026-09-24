@@ -19,6 +19,12 @@ import {
   type ReactNode,
 } from 'react';
 
+import SamiAiUsageSummary from '@/app/components/ai/SamiAiUsageSummary';
+
+import type {
+  SamiAiWorkspaceStatus,
+} from '@/app/components/ai/SamiAiStatus';
+
 type AiPreferences = {
   memoryEnabled: boolean;
   useAccountPreferences: boolean;
@@ -90,6 +96,14 @@ export default function AiSettings() {
     );
 
   const [
+    status,
+    setStatus,
+  ] =
+    useState<SamiAiWorkspaceStatus | null>(
+      null,
+    );
+
+  const [
     memories,
     setMemories,
   ] =
@@ -138,6 +152,22 @@ export default function AiSettings() {
     );
 
   const [
+    confirmClearHistory,
+    setConfirmClearHistory,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
+    clearingHistory,
+    setClearingHistory,
+  ] =
+    useState(
+      false,
+    );
+
+  const [
     error,
     setError,
   ] =
@@ -168,6 +198,7 @@ export default function AiSettings() {
           const [
             preferencesResponse,
             memoriesResponse,
+            statusResponse,
           ] =
             await Promise.all([
               fetch(
@@ -188,11 +219,21 @@ export default function AiSettings() {
                     'no-store',
                 },
               ),
+              fetch(
+                '/api/workspace/ai/status',
+                {
+                  credentials:
+                    'same-origin',
+                  cache:
+                    'no-store',
+                },
+              ),
             ]);
 
           const [
             preferencesData,
             memoriesData,
+            statusData,
           ] =
             await Promise.all([
               readJson(
@@ -200,6 +241,9 @@ export default function AiSettings() {
               ),
               readJson(
                 memoriesResponse,
+              ),
+              readJson(
+                statusResponse,
               ),
             ]);
 
@@ -222,6 +266,20 @@ export default function AiSettings() {
                 'SaMi AI memories could not be loaded.',
             );
           }
+
+          if (
+            !statusResponse.ok ||
+            !statusData.success
+          ) {
+            throw new Error(
+              statusData.error ||
+                'SaMi AI usage and capabilities could not be loaded.',
+            );
+          }
+
+          setStatus(
+            statusData.status,
+          );
 
           setPreferences(
             preferencesData.preferences,
@@ -512,6 +570,103 @@ export default function AiSettings() {
     }
   }
 
+  async function clearChatHistory() {
+    if (
+      !confirmClearHistory
+    ) {
+      setConfirmClearHistory(
+        true,
+      );
+      return;
+    }
+
+    setClearingHistory(
+      true,
+    );
+    setError(
+      null,
+    );
+    setSuccess(
+      null,
+    );
+
+    try {
+      const response =
+        await fetch(
+          '/api/workspace/ai/conversations',
+          {
+            method:
+              'DELETE',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              Accept:
+                'application/json',
+            },
+          },
+        );
+
+      const data =
+        await readJson(
+          response,
+        );
+
+      if (
+        !response.ok ||
+        !data.success
+      ) {
+        throw new Error(
+          data.error ||
+            'SaMi AI chat history could not be cleared.',
+        );
+      }
+
+      setConfirmClearHistory(
+        false,
+      );
+
+      setStatus(
+        current =>
+          current
+            ? {
+                ...current,
+                capabilities: {
+                  ...current
+                    .capabilities,
+                  conversationCount:
+                    0,
+                },
+              }
+            : current,
+      );
+
+      const count =
+        Number(
+          data.deletedConversations ||
+          0,
+        );
+
+      setSuccess(
+        `${count} SaMi AI conversation${count === 1 ? '' : 's'} cleared.`,
+      );
+    } catch (
+      candidate
+    ) {
+      setError(
+        candidate instanceof Error
+          ? candidate.message
+          : 'SaMi AI chat history could not be cleared.',
+      );
+    } finally {
+      setClearingHistory(
+        false,
+      );
+    }
+  }
+
+
   if (
     loading
   ) {
@@ -555,6 +710,14 @@ export default function AiSettings() {
           </Link>
         </div>
       </div>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 p-4 sm:p-5 dark:border-white/10">
+        <SamiAiUsageSummary
+          status={
+            status
+          }
+        />
+      </section>
 
       {(error ||
         success) && (
@@ -688,6 +851,65 @@ export default function AiSettings() {
           </div>
         </SettingCard>
       </div>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 p-4 sm:p-5 dark:border-white/10">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold">
+              Data controls
+            </h3>
+            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+              Control your SaMi AI conversation history and durable personal memory for this company. Clearing chats does not remove business audit records for confirmed actions.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={
+              clearingHistory
+            }
+            onClick={() =>
+              void clearChatHistory()
+            }
+            className={[
+              'inline-flex h-9 items-center gap-2 rounded-xl px-3 text-[10px] font-bold transition disabled:opacity-60',
+              confirmClearHistory
+                ? 'bg-rose-600 text-white hover:bg-rose-700'
+                : 'border border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/10',
+            ].join(
+              ' ',
+            )}
+          >
+            {clearingHistory ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Trash2 className="h-3.5 w-3.5" />
+            )}
+            {confirmClearHistory
+              ? 'Confirm clear chats'
+              : 'Clear chat history'}
+          </button>
+        </div>
+
+        {confirmClearHistory && (
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[10px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+            <span>
+              This permanently removes your SaMi AI conversations and messages for the current company. Pending AI actions are expired first.
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setConfirmClearHistory(
+                  false,
+                )
+              }
+              className="shrink-0 font-bold underline"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </section>
 
       <section className="mt-5 min-w-0 rounded-2xl border border-slate-200 p-3.5 sm:p-5 dark:border-white/10">
         <div className="flex flex-wrap items-start justify-between gap-3">

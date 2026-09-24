@@ -461,6 +461,54 @@ async function readTenantUsage(
 }
 
 
+export async function getAiRequestWindowUsage(
+  input: {
+    tenantId: string;
+    userId: string;
+  },
+) {
+  const pool =
+    await getTenantPoolByTenantId(
+      input.tenantId,
+    );
+
+  const result =
+    await pool.query(
+      `
+        SELECT
+          COUNT(*) FILTER (
+            WHERE created_at >=
+              NOW() - INTERVAL '1 minute'
+          )::int AS minute_count,
+          COUNT(*) FILTER (
+            WHERE created_at >=
+              NOW() - INTERVAL '24 hours'
+          )::int AS rolling_24h_count
+        FROM ai_runs
+        WHERE user_id = $1
+      `,
+      [
+        input.userId,
+      ],
+    );
+
+  return {
+    minuteUsed:
+      Number(
+        result.rows[0]
+          ?.minute_count ||
+        0,
+      ),
+    rolling24HoursUsed:
+      Number(
+        result.rows[0]
+          ?.rolling_24h_count ||
+        0,
+      ),
+  };
+}
+
+
 export async function assertInternalSeatAvailableWithClient(
   client:
     Pick<

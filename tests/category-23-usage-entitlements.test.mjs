@@ -129,6 +129,58 @@ test('Category 23: monthly AI allowance is enforced before a provider run is cre
   );
 });
 
+test('Category 23: SaMi AI short-window limits use the same durable run records as enforcement and user visibility', async () => {
+  const [
+    usage,
+    ai,
+  ] = await Promise.all([
+    source(
+      'lib/usage/entitlements.ts',
+    ),
+    source(
+      'lib/services/workspace-ai.ts',
+    ),
+  ]);
+
+  assert.match(
+    usage,
+    /export async function getAiRequestWindowUsage/,
+  );
+  assert.match(
+    usage,
+    /INTERVAL '1 minute'/,
+  );
+  assert.match(
+    usage,
+    /INTERVAL '24 hours'/,
+  );
+  assert.match(
+    usage,
+    /FROM ai_runs/,
+  );
+
+  assert.match(
+    ai,
+    /getAiRequestWindowUsage/,
+  );
+  assert.match(
+    ai,
+    /requestsPerMinute/,
+  );
+  assert.match(
+    ai,
+    /requestsPerDay/,
+  );
+  assert.match(
+    ai,
+    /monthlyQueries/,
+  );
+  assert.match(
+    ai,
+    /resetAt/,
+  );
+});
+
 test('Category 23: storage allowance is checked before issuing an upload intent', async () => {
   const files =
     await source(
