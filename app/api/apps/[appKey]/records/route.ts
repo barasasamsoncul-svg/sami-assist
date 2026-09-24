@@ -9,6 +9,7 @@ import {
   deleteEnterpriseRecordNote,
   deleteEnterpriseSavedView,
   getEnterpriseRecordCompletion,
+  getEnterpriseTableCompletion,
   linkEnterpriseRecordFile,
   saveEnterpriseCustomField,
   saveEnterpriseRecordTask,
@@ -187,6 +188,32 @@ export async function GET(
       appKey,
     } =
       await params;
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'table_completion'
+    ) {
+      return respond({
+        success:
+          true,
+        completion:
+          await getEnterpriseTableCompletion(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+            },
+          ),
+      });
+    }
 
     if (
       request.nextUrl
