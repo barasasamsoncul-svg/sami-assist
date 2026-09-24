@@ -40,6 +40,11 @@ import {
 } from '@/lib/apps/enterprise/domain-profiles';
 
 import {
+  filterEnterpriseFieldsForAccess,
+} from '@/lib/apps/enterprise/field-security';
+
+
+import {
   listWorkspaceActivity,
   recordWorkspaceAuditEvent,
   type WorkspaceActivityItem,
@@ -1248,7 +1253,19 @@ async function tableMetadata(
 function rowOutput(
   row:
     Record<string, unknown>,
+  fields?:
+    EnterpriseField[],
 ) {
+  const allowedFields =
+    fields
+      ? new Set(
+          fields.map(
+            field =>
+              field.key,
+          ),
+        )
+      : null;
+
   return Object.fromEntries(
     Object.entries(
       row,
@@ -1257,6 +1274,12 @@ function rowOutput(
         ([
           key,
         ]) =>
+          (
+            !allowedFields ||
+            allowedFields.has(
+              key,
+            )
+          ) &&
           !SENSITIVE_COLUMN.test(
             key,
           ) &&
@@ -1839,7 +1862,11 @@ async function readTable(
       ),
     records:
       dataResult.rows.map(
-        rowOutput,
+        row =>
+          rowOutput(
+            row,
+            fields,
+          ),
       ),
   };
 }
@@ -1870,18 +1897,26 @@ export async function getEnterpriseModuleWorkspace(
     await Promise.all(
       allowedTables.map(
         async table => {
-          const fields =
+          const rawFields =
             metadata.get(
               table,
             );
 
           if (
-            !fields ||
-            fields.length ===
+            !rawFields ||
+            rawFields.length ===
               0
           ) {
             return null;
           }
+
+          const fields =
+            filterEnterpriseFieldsForAccess(
+              context.moduleKey,
+              table,
+              rawFields,
+              context.permissions,
+            );
 
           return readTable(
             context.pool,
@@ -2201,14 +2236,14 @@ async function assertTable(
       ],
     );
 
-  const fields =
+  const rawFields =
     metadata.get(
       table,
     );
 
   if (
-    !fields ||
-    fields.length ===
+    !rawFields ||
+    rawFields.length ===
       0
   ) {
     throw new EnterpriseModuleError(
@@ -2219,8 +2254,16 @@ async function assertTable(
 
   assertEnterpriseTableBoundaryReady(
     table,
-    fields,
+    rawFields,
   );
+
+  const fields =
+    filterEnterpriseFieldsForAccess(
+      context.moduleKey,
+      table,
+      rawFields,
+      context.permissions,
+    );
 
   return {
     ...context,
@@ -2585,6 +2628,7 @@ export async function createEnterpriseModuleRecord(
       const response =
         rowOutput(
           createdRow,
+          context.fields,
         );
 
       try {
@@ -2646,6 +2690,7 @@ export async function createEnterpriseModuleRecord(
       ? createdRow
       : rowOutput(
           createdRow,
+          context.fields,
         );
 
   if (
@@ -3853,6 +3898,7 @@ export async function transitionEnterpriseModuleRecord(
     const output =
       rowOutput(
         changed.rows[0],
+        context.fields,
       );
 
     await recordEnterpriseAudit({
@@ -4233,7 +4279,11 @@ export async function queryEnterpriseModuleTable(
       total,
     records:
       data.rows.map(
-        rowOutput,
+        row =>
+          rowOutput(
+            row,
+            context.fields,
+          ),
       ),
   };
 }
@@ -4375,14 +4425,14 @@ export async function searchEnterpriseModuleRecords(
     const table
     of tables
   ) {
-    const fields =
+    const rawFields =
       metadata.get(
         table,
       ) ||
       [];
 
     if (
-      fields.length ===
+      rawFields.length ===
         0
     ) {
       continue;
@@ -4390,8 +4440,16 @@ export async function searchEnterpriseModuleRecords(
 
     assertEnterpriseTableBoundaryReady(
       table,
-      fields,
+      rawFields,
     );
+
+    const fields =
+      filterEnterpriseFieldsForAccess(
+        context.moduleKey,
+        table,
+        rawFields,
+        context.permissions,
+      );
 
     const names =
       new Set(
