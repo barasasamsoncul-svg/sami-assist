@@ -12,6 +12,10 @@ import {
   ENTERPRISE_SUITE_AI_TOOLS,
 } from '@/lib/apps/enterprise/ai-tools';
 
+import {
+  SALES_AI_TOOLS,
+} from '@/lib/apps/sales/ai-tools';
+
 import type {
   SamiAiRuntimeContext,
   SamiAiToolDefinition,
@@ -144,6 +148,7 @@ export function getAvailableSamiAiTools(
   return [
     ...CORE_SAMI_AI_TOOLS,
     ...ENTERPRISE_SUITE_AI_TOOLS,
+    ...SALES_AI_TOOLS,
     ...appTools,
   ].filter(
     tool =>

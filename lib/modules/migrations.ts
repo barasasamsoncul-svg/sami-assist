@@ -25,6 +25,10 @@ import {
   ENTERPRISE_SUITE_MIGRATIONS,
 } from '@/lib/apps/enterprise/hardening';
 
+import {
+  SALES_1_0_0_TO_2_0_0,
+} from '@/lib/apps/sales/migrations/1.0.0-to-2.0.0';
+
 export type SamiModuleMigrationContext = {
   moduleKey: string;
   namespace: string;
@@ -103,6 +107,7 @@ export const APP_MODULE_MIGRATIONS:
     INVOICING_1_0_0_TO_2_0_0,
     INVOICING_2_0_0_TO_2_1_0,
     INVOICING_2_1_0_TO_2_2_0,
+    SALES_1_0_0_TO_2_0_0,
     ...ENTERPRISE_SUITE_MIGRATIONS,
   ];
 
