@@ -1013,6 +1013,7 @@ function validateDomainRow(
         'Project due date cannot be before the start date.',
       );
     }
+  }
 
   if (
     moduleKey ===
@@ -1662,8 +1663,6 @@ function validateDomainRow(
       row.completed_at,
       'Safety check',
     );
-  }
-
   }
 }
 
