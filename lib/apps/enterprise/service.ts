@@ -746,7 +746,9 @@ async function tableMetadata(
       row.is_identity ===
         'YES' ||
       (
-        row.is_generated &&
+        Boolean(
+          row.is_generated,
+        ) &&
         row.is_generated !==
           'NEVER'
       );
