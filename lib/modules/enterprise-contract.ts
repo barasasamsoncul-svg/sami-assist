@@ -54,6 +54,8 @@ export function withEnterpriseModuleDefaults(
           true,
         search:
           true,
+        notifications:
+          true,
         activity:
           true,
         automationTriggers:
@@ -533,6 +535,8 @@ export function withEnterpriseModuleDefaults(
       dashboard:
         true,
       search:
+        true,
+      notifications:
         true,
       activity:
         true,
