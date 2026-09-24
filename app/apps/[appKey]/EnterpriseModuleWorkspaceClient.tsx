@@ -15,6 +15,7 @@ import {
   CircleCheckBig,
   Database,
   Download,
+  Eye,
   LayoutDashboard,
   Pencil,
   Plus,
@@ -31,6 +32,8 @@ import {
 import {
   useRouter,
 } from 'next/navigation';
+
+import EnterpriseRecordWorkspacePanel from './EnterpriseRecordWorkspacePanel';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 
@@ -411,6 +414,22 @@ export default function EnterpriseModuleWorkspaceClient({
       idempotencyKey:
         string |
         null;
+    } | null>(
+      null,
+    );
+
+  const [
+    recordWorkspace,
+    setRecordWorkspace,
+  ] =
+    useState<{
+      tableKey:
+        string;
+      record:
+        Record<
+          string,
+          unknown
+        >;
     } | null>(
       null,
     );
@@ -1252,6 +1271,17 @@ export default function EnterpriseModuleWorkspaceClient({
               onTransition={
                 transitionRecord
               }
+              onOpenRecord={
+                (
+                  table,
+                  record,
+                ) =>
+                  setRecordWorkspace({
+                    tableKey:
+                      table.key,
+                    record,
+                  })
+              }
               onExport={
                 table =>
                   exportTable(
@@ -1292,6 +1322,51 @@ export default function EnterpriseModuleWorkspaceClient({
           )
         }
       </div>
+
+      {
+        recordWorkspace &&
+        (
+          <EnterpriseRecordWorkspacePanel
+            moduleKey={
+              initialData
+                .module
+                .key
+            }
+            table={
+              initialData.tables
+                .find(
+                  table =>
+                    table.key ===
+                    recordWorkspace
+                      .tableKey,
+                )!
+            }
+            record={
+              recordWorkspace
+                .record
+            }
+            userId={
+              userId
+            }
+            canEdit={
+              initialData
+                .capabilities
+                .canEdit
+            }
+            canManageSettings={
+              initialData
+                .capabilities
+                .canManageSettings
+            }
+            onClose={
+              () =>
+                setRecordWorkspace(
+                  null,
+                )
+            }
+          />
+        )
+      }
 
       {
         editor &&
@@ -1716,6 +1791,7 @@ function Records({
   onEdit,
   onDelete,
   onTransition,
+  onOpenRecord,
   onExport,
 }: {
   moduleKey:
@@ -1772,6 +1848,17 @@ function Records({
     ) =>
       void;
   onDelete:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+  onOpenRecord:
     (
       table:
         EnterpriseTable,
@@ -1971,6 +2058,10 @@ function Records({
                 }
 
                 {
+                  Boolean(
+                    selected
+                      .recordKey,
+                  ) ||
                   (
                     canEdit &&
                     (
@@ -2061,6 +2152,10 @@ function Records({
                           }
 
                           {
+                            Boolean(
+                              selected
+                                .recordKey,
+                            ) ||
                             (
                               canEdit &&
                               selected
@@ -2074,6 +2169,27 @@ function Records({
                               ? (
                                   <td className="px-4 py-3">
                                     <div className="flex flex-wrap justify-end gap-1">
+                                      {
+                                        selected
+                                          .recordKey &&
+                                        (
+                                          <button
+                                            type="button"
+                                            aria-label="Open record workspace"
+                                            onClick={
+                                              () =>
+                                                onOpenRecord(
+                                                  selected,
+                                                  record,
+                                                )
+                                            }
+                                            className="rounded-lg p-2 hover:bg-blue-500/10 hover:text-blue-700"
+                                          >
+                                            <Eye className="h-4 w-4" />
+                                          </button>
+                                        )
+                                      }
+
                                       {
                                         canEdit &&
                                         selected
