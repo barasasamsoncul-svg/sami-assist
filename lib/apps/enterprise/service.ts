@@ -35,6 +35,11 @@ import {
 } from '@/lib/apps/enterprise/catalog';
 
 import {
+  getEnterpriseDomainProfile,
+  type EnterpriseDomainProfile,
+} from '@/lib/apps/enterprise/domain-profiles';
+
+import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
 
@@ -104,6 +109,7 @@ export type EnterpriseWorkflowField = {
   field: string;
   label: string;
   databaseAllowedValues: string[];
+  counts: Record<string, number>;
 };
 
 export type EnterpriseTable = {
@@ -148,10 +154,15 @@ export type EnterpriseWorkspaceData = {
     canReport: boolean;
     canManageSettings: boolean;
   };
+  profile: EnterpriseDomainProfile;
   metrics: {
     totalRecords: number;
     tables: number;
     activeTables: number;
+    primaryRecords: number;
+    attentionRecords: number;
+    successRecords: number;
+    workflowTrackedRecords: number;
   };
   tables: EnterpriseTable[];
 };
@@ -1115,7 +1126,7 @@ async function tableMetadata(
           !COMPUTED_COLUMNS.has(
             row.column_name,
           ) &&
-          !/(^|_)(status|state)$/.test(
+          !/(^|_)(status|state|stage)$/.test(
             row.column_name,
           ),
         relation:
@@ -1360,31 +1371,88 @@ async function workflowFieldsForTable(
     string,
   fields:
     EnterpriseField[],
+  where:
+    string,
+  params:
+    unknown[],
 ): Promise<
   EnterpriseWorkflowField[]
 > {
   const statusFields =
     fields.filter(
       field =>
-        /(^|_)(status|state)$/.test(
+        /(^|_)(status|state|stage)$/.test(
           field.key,
         ),
     );
 
   return Promise.all(
     statusFields.map(
-      async field => ({
-        field:
-          field.key,
-        label:
-          field.label,
-        databaseAllowedValues:
-          await getDatabaseWorkflowValues(
-            pool,
-            table,
+      async field => {
+        const [
+          databaseAllowedValues,
+          countsResult,
+        ] =
+          await Promise.all([
+            getDatabaseWorkflowValues(
+              pool,
+              table,
+              field.key,
+            ),
+            pool.query(
+              'SELECT COALESCE(' +
+              quoteIdentifier(
+                field.key,
+              ) +
+              "::text, '') AS value, COUNT(*)::int AS count FROM " +
+              quoteIdentifier(
+                table,
+              ) +
+              where +
+              ' GROUP BY ' +
+              quoteIdentifier(
+                field.key,
+              ),
+              params,
+            ),
+          ]);
+
+        const counts =
+          Object.fromEntries(
+            countsResult.rows
+              .map(
+                row => [
+                  String(
+                    row.value ||
+                    '',
+                  )
+                    .trim()
+                    .toLowerCase(),
+                  Number(
+                    row.count ||
+                    0,
+                  ),
+                ],
+              )
+              .filter(
+                ([
+                  value,
+                ]) =>
+                  Boolean(
+                    value,
+                  ),
+              ),
+          );
+
+        return {
+          field:
             field.key,
-          ),
-      }),
+          label:
+            field.label,
+          databaseAllowedValues,
+          counts,
+        };
+      },
     ),
   );
 }
@@ -1569,6 +1637,8 @@ async function readTable(
       pool,
       table,
       fields,
+      where,
+      params,
     );
 
   const displayFields =
@@ -1679,6 +1749,115 @@ export async function getEnterpriseModuleWorkspace(
         ),
     );
 
+  const profile =
+    getEnterpriseDomainProfile(
+      context.moduleKey,
+    );
+
+  if (
+    !profile
+  ) {
+    throw new EnterpriseModuleError(
+      'MODULE_NOT_SUPPORTED',
+      'SaMi could not resolve the operating profile for this app.',
+    );
+  }
+
+  const workflowMetric =
+    (
+      states:
+        string[],
+    ) => {
+      const accepted =
+        new Set(
+          states.map(
+            state =>
+              state.toLowerCase(),
+          ),
+        );
+
+      return tables.reduce(
+        (
+          total,
+          table,
+        ) => {
+          const workflow =
+            table.workflows[0];
+
+          if (
+            !workflow
+          ) {
+            return total;
+          }
+
+          return total +
+            Object.entries(
+              workflow.counts,
+            )
+              .filter(
+                ([
+                  state,
+                ]) =>
+                  accepted.has(
+                    state,
+                  ),
+              )
+              .reduce(
+                (
+                  subtotal,
+                  [
+                    _state,
+                    count,
+                  ],
+                ) =>
+                  subtotal +
+                  count,
+                0,
+              );
+        },
+        0,
+      );
+    };
+
+  const workflowTrackedRecords =
+    tables.reduce(
+      (
+        total,
+        table,
+      ) => {
+        const workflow =
+          table.workflows[0];
+
+        return total +
+          (
+            workflow
+              ? Object.values(
+                  workflow.counts,
+                )
+                  .reduce(
+                    (
+                      subtotal,
+                      count,
+                    ) =>
+                      subtotal +
+                      count,
+                    0,
+                  )
+              : 0
+          );
+      },
+      0,
+    );
+
+  const primaryRecords =
+    tables.find(
+      table =>
+        table.key ===
+          profile.primaryTable,
+    )
+      ?.count ||
+    0;
+
   const capabilities = {
     canView:
       true,
@@ -1740,7 +1919,20 @@ export async function getEnterpriseModuleWorkspace(
           .name,
     },
     capabilities,
+    profile,
     metrics: {
+      primaryRecords,
+      attentionRecords:
+        workflowMetric(
+          profile
+            .attentionStates,
+        ),
+      successRecords:
+        workflowMetric(
+          profile
+            .successStates,
+        ),
+      workflowTrackedRecords,
       totalRecords:
         tables.reduce(
           (
@@ -3246,7 +3438,7 @@ export async function transitionEnterpriseModuleRecord(
     !names.has(
       field,
     ) ||
-    !/(^|_)(status|state)$/.test(
+    !/(^|_)(status|state|stage)$/.test(
       field,
     )
   ) {

@@ -9,8 +9,10 @@ import {
 } from 'react';
 
 import {
+  Activity,
   BarChart3,
   BookOpenCheck,
+  CircleCheckBig,
   Database,
   Download,
   LayoutDashboard,
@@ -21,6 +23,8 @@ import {
   Settings2,
   Table2,
   Trash2,
+  TriangleAlert,
+  Workflow,
   X,
 } from 'lucide-react';
 
@@ -156,6 +160,40 @@ function displayValue(
       ) +
       '...'
     : source;
+}
+
+
+function singularLabel(
+  value:
+    string,
+) {
+  if (
+    value.endsWith(
+      'ies',
+    )
+  ) {
+    return value.slice(
+      0,
+      -3,
+    ) +
+    'y';
+  }
+
+  if (
+    value.endsWith(
+      's',
+    ) &&
+    !value.endsWith(
+      'ss',
+    )
+  ) {
+    return value.slice(
+      0,
+      -1,
+    );
+  }
+
+  return value;
 }
 
 
@@ -887,7 +925,9 @@ export default function EnterpriseModuleWorkspaceClient({
         key:
           'records',
         label:
-          'Records',
+          initialData
+            .profile
+            .navigationLabel,
         icon:
           Table2,
         visible:
@@ -1307,59 +1347,298 @@ function Overview({
     ) =>
       void;
 }) {
+  const primaryTable =
+    data.tables.find(
+      table =>
+        table.key ===
+          data.profile
+            .primaryTable,
+    ) ||
+    data.tables.find(
+      table =>
+        !table.settingTable,
+    ) ||
+    null;
+
+  const quickStarts =
+    data.profile
+      .quickStartTables
+      .map(
+        tableKey =>
+          data.tables.find(
+            table =>
+              table.key ===
+              tableKey,
+          ),
+      )
+      .filter(
+        (
+          table,
+        ): table is
+          EnterpriseTable =>
+          Boolean(
+            table,
+          ),
+      );
+
   return (
     <section className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
-          label="Records"
+          label={
+            data.profile
+              .primaryLabel
+          }
+          value={
+            String(
+              data.metrics
+                .primaryRecords,
+            )
+          }
+          note="primary operating register"
+          icon={
+            Activity
+          }
+        />
+
+        <Metric
+          label="Needs attention"
+          value={
+            String(
+              data.metrics
+                .attentionRecords,
+            )
+          }
+          note="open or exception workflow states"
+          icon={
+            TriangleAlert
+          }
+        />
+
+        <Metric
+          label="Completed"
+          value={
+            String(
+              data.metrics
+                .successRecords,
+            )
+          }
+          note="successful workflow states"
+          icon={
+            CircleCheckBig
+          }
+        />
+
+        <Metric
+          label="All records"
           value={
             String(
               data.metrics
                 .totalRecords,
             )
           }
-          note="current accessible app data"
+          note={
+            data.metrics
+              .workflowTrackedRecords >
+            0
+              ? (
+                  data.metrics
+                    .workflowTrackedRecords +
+                  ' workflow-tracked'
+                )
+              : 'current company data'
+          }
           icon={
             Database
           }
         />
+      </div>
 
-        <Metric
-          label="Record groups"
-          value={
-            String(
-              data.metrics
-                .tables,
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="sami-surface rounded-[24px] p-4 sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
+                {
+                  data.profile
+                    .domain
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    )
+                }
+                {' · Operating focus'}
+              </p>
+
+              <h2 className="mt-2 text-base font-black tracking-[-0.02em]">
+                {
+                  data.profile
+                    .focus
+                }
+              </h2>
+
+              <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {
+                  data.profile
+                    .operatingModel
+                }
+              </p>
+            </div>
+
+            {
+              primaryTable &&
+              (
+                <button
+                  type="button"
+                  onClick={
+                    () =>
+                      onOpenTable(
+                        primaryTable,
+                      )
+                  }
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white"
+                >
+                  <Workflow className="h-4 w-4" />
+                  Open {
+                    singularLabel(
+                      primaryTable
+                        .label,
+                    )
+                  }
+                </button>
+              )
+            }
+          </div>
+
+          {
+            quickStarts.length >
+              0 &&
+            (
+              <div className="mt-5 border-t border-[var(--sami-border)] pt-4">
+                <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                  Quick start
+                </p>
+
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {
+                    quickStarts.map(
+                      table => (
+                        <button
+                          key={
+                            table.key
+                          }
+                          type="button"
+                          onClick={
+                            () =>
+                              onOpenTable(
+                                table,
+                              )
+                          }
+                          className="rounded-2xl border border-[var(--sami-border)] p-3 text-left transition hover:bg-slate-500/[0.03]"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-black">
+                              {
+                                table.label
+                              }
+                            </span>
+                            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                              {
+                                table.count
+                              }
+                            </span>
+                          </div>
+
+                          <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                            {
+                              table.workflows
+                                .length >
+                                0
+                                ? 'Workflow-enabled register'
+                                : table.settingTable
+                                  ? 'Configuration register'
+                                  : 'Operational register'
+                            }
+                          </p>
+                        </button>
+                      ),
+                    )
+                  }
+                </div>
+              </div>
             )
           }
-          note="code-owned schema groups"
-          icon={
-            Table2
-          }
-        />
+        </div>
 
-        <Metric
-          label="Active groups"
-          value={
-            String(
-              data.metrics
-                .activeTables,
-            )
-          }
-          note="groups containing records"
-          icon={
-            BarChart3
-          }
-        />
+        <div className="sami-soft-surface rounded-[24px] p-4 sm:p-5">
+          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+            Operating health
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-bold text-slate-500">
+                Active registers
+              </span>
+              <span className="text-sm font-black">
+                {
+                  data.metrics
+                    .activeTables
+                }
+                {' / '}
+                {
+                  data.metrics
+                    .tables
+                }
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-bold text-slate-500">
+                Workflow tracked
+              </span>
+              <span className="text-sm font-black">
+                {
+                  data.metrics
+                    .workflowTrackedRecords
+                }
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-bold text-slate-500">
+                Attention queue
+              </span>
+              <span className="text-sm font-black">
+                {
+                  data.metrics
+                    .attentionRecords
+                }
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-xs font-bold text-slate-500">
+                Successful states
+              </span>
+              <span className="text-sm font-black">
+                {
+                  data.metrics
+                    .successRecords
+                }
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="sami-surface rounded-[24px] p-4">
         <div>
           <h2 className="text-sm font-black">
-            Business record map
+            Operational registers
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Each group belongs to this installed app. Company-scoped groups are automatically restricted to the current company.
+            These are the code-owned business registers for this app. Company boundaries, permissions, workflows and safe-delete rules are enforced server-side.
           </p>
         </div>
 
@@ -1396,7 +1675,11 @@ function Overview({
                         {
                           table.settingTable
                             ? ' · Settings'
-                            : ''
+                            : table.workflows
+                                .length >
+                                0
+                              ? ' · Workflow'
+                              : ''
                         }
                       </p>
                     </div>
@@ -1416,7 +1699,6 @@ function Overview({
     </section>
   );
 }
-
 
 function Records({
   moduleKey,
@@ -1644,7 +1926,11 @@ function Records({
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-60"
                 >
                   <Plus className="h-4 w-4" />
-                  New record
+                  New {
+                    singularLabel(
+                      selected.label,
+                    )
+                  }
                 </button>
               )
             }
@@ -2026,72 +2312,62 @@ function Reports({
       ),
     );
 
+  const workflowTables =
+    data.tables.filter(
+      table =>
+        table.workflows
+          .length >
+        0,
+    );
+
   return (
-    <section className="grid gap-4 xl:grid-cols-[1fr_360px]">
-      <div className="sami-surface rounded-[24px] p-4">
-        <h2 className="text-sm font-black">
-          Record coverage
-        </h2>
-        <p className="mt-1 text-xs text-slate-500">
-          A current-company operational summary across this app&apos;s code-owned record groups.
-        </p>
-
-        <div className="mt-4 space-y-3">
-          {
-            data.tables.map(
-              table => (
-                <button
-                  key={
-                    table.key
-                  }
-                  type="button"
-                  onClick={
-                    () =>
-                      onOpen(
-                        table,
-                      )
-                  }
-                  className="block w-full text-left"
-                >
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-bold">
-                      {
-                        table.label
-                      }
-                    </span>
-                    <span className="font-black">
-                      {
-                        table.count
-                      }
-                    </span>
-                  </div>
-
-                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-500/10">
-                    <div
-                      className="h-full rounded-full bg-blue-600"
-                      style={{
-                        width:
-                          Math.max(
-                            table.count >
-                              0
-                              ? 4
-                              : 0,
-                            table.count /
-                            max *
-                            100,
-                          ) +
-                          '%',
-                      }}
-                    />
-                  </div>
-                </button>
-              ),
+    <section className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric
+          label={
+            data.profile
+              .primaryLabel
+          }
+          value={
+            String(
+              data.metrics
+                .primaryRecords,
             )
           }
-        </div>
-      </div>
+          note="primary operating register"
+          icon={
+            Activity
+          }
+        />
 
-      <div className="space-y-4">
+        <Metric
+          label="Needs attention"
+          value={
+            String(
+              data.metrics
+                .attentionRecords,
+            )
+          }
+          note="open or exception states"
+          icon={
+            TriangleAlert
+          }
+        />
+
+        <Metric
+          label="Successful"
+          value={
+            String(
+              data.metrics
+                .successRecords,
+            )
+          }
+          note="completed or healthy states"
+          icon={
+            CircleCheckBig
+          }
+        />
+
         <Metric
           label="Total records"
           value={
@@ -2100,47 +2376,250 @@ function Reports({
                 .totalRecords,
             )
           }
-          note="across accessible record groups"
+          note="across accessible registers"
           icon={
             Database
           }
         />
+      </div>
 
-        <Metric
-          label="Active groups"
-          value={
-            String(
-              data.metrics
-                .activeTables,
-            )
-          }
-          note={
-            'of ' +
-            data.metrics
-              .tables +
-            ' available'
-          }
-          icon={
-            BarChart3
-          }
-        />
+      <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
+        <div className="sami-surface rounded-[24px] p-4">
+          <h2 className="text-sm font-black">
+            {
+              data.profile
+                .reportsLabel
+            }
+          </h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Current-company coverage across this app&apos;s operational registers.
+          </p>
 
-        <div className="sami-soft-surface rounded-[22px] p-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
-            Security scope
-          </p>
-          <p className="mt-2 text-sm font-black">
-            Current company
-          </p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">
-            Tables with a company boundary are filtered server-side. Client values never select the workspace or company database scope.
-          </p>
+          <div className="mt-4 space-y-3">
+            {
+              data.tables.map(
+                table => (
+                  <button
+                    key={
+                      table.key
+                    }
+                    type="button"
+                    onClick={
+                      () =>
+                        onOpen(
+                          table,
+                        )
+                    }
+                    className="block w-full text-left"
+                  >
+                    <div className="flex items-center justify-between gap-3 text-xs">
+                      <span className="font-bold">
+                        {
+                          table.label
+                        }
+                      </span>
+                      <span className="font-black">
+                        {
+                          table.count
+                        }
+                      </span>
+                    </div>
+
+                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-500/10">
+                      <div
+                        className="h-full rounded-full bg-blue-600"
+                        style={{
+                          width:
+                            Math.max(
+                              table.count >
+                                0
+                                ? 4
+                                : 0,
+                              table.count /
+                              max *
+                              100,
+                            ) +
+                            '%',
+                        }}
+                      />
+                    </div>
+                  </button>
+                ),
+              )
+            }
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="sami-soft-surface rounded-[22px] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+              Operating model
+            </p>
+            <p className="mt-2 text-sm font-black">
+              {
+                data.profile
+                  .focus
+              }
+            </p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {
+                data.profile
+                  .operatingModel
+              }
+            </p>
+          </div>
+
+          <div className="sami-soft-surface rounded-[22px] p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+              Security scope
+            </p>
+            <p className="mt-2 text-sm font-black">
+              Current company
+            </p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Company-scoped registers and workflow counts are filtered server-side. Browser values never choose the tenant database or company boundary.
+            </p>
+          </div>
         </div>
       </div>
+
+      {
+        workflowTables.length >
+          0 &&
+        (
+          <div className="sami-surface rounded-[24px] p-4">
+            <h2 className="text-sm font-black">
+              Workflow distribution
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Live state counts from the current company, grouped by each register&apos;s primary workflow field.
+            </p>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {
+                workflowTables.map(
+                  table => {
+                    const workflow =
+                      table.workflows[0];
+
+                    if (
+                      !workflow
+                    ) {
+                      return null;
+                    }
+
+                    const entries =
+                      Object.entries(
+                        workflow.counts,
+                      )
+                        .sort(
+                          (
+                            left,
+                            right,
+                          ) =>
+                            right[1] -
+                            left[1],
+                        );
+
+                    return (
+                      <button
+                        key={
+                          table.key
+                        }
+                        type="button"
+                        onClick={
+                          () =>
+                            onOpen(
+                              table,
+                            )
+                        }
+                        className="rounded-2xl border border-[var(--sami-border)] p-4 text-left"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xs font-black">
+                              {
+                                table.label
+                              }
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              {
+                                workflow.label
+                              }
+                            </p>
+                          </div>
+
+                          <span className="text-xs font-black">
+                            {
+                              entries.reduce(
+                                (
+                                  total,
+                                  [
+                                    _state,
+                                    count,
+                                  ],
+                                ) =>
+                                  total +
+                                  count,
+                                0,
+                              )
+                            }
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {
+                            entries.length ===
+                              0
+                              ? (
+                                  <span className="text-[11px] text-slate-400">
+                                    No workflow states yet
+                                  </span>
+                                )
+                              : entries
+                                  .slice(
+                                    0,
+                                    8,
+                                  )
+                                  .map(
+                                    ([
+                                      state,
+                                      count,
+                                    ]) => (
+                                      <span
+                                        key={
+                                          state
+                                        }
+                                        className="rounded-full bg-slate-500/10 px-2.5 py-1 text-[10px] font-black"
+                                      >
+                                        {
+                                          state
+                                            .replaceAll(
+                                              '_',
+                                              ' ',
+                                            )
+                                        }
+                                        {' · '}
+                                        {
+                                          count
+                                        }
+                                      </span>
+                                    ),
+                                  )
+                          }
+                        </div>
+                      </button>
+                    );
+                  },
+                )
+              }
+            </div>
+          </div>
+        )
+      }
     </section>
   );
 }
-
 
 function RecordEditor({
   moduleKey,
@@ -2209,8 +2688,14 @@ function RecordEditor({
             <h2 className="mt-1 text-lg font-black">
               {
                 record
-                  ? 'Edit record'
-                  : 'New record'
+                  ? 'Edit ' +
+                    singularLabel(
+                      table.label,
+                    )
+                  : 'New ' +
+                    singularLabel(
+                      table.label,
+                    )
               }
             </h2>
           </div>
@@ -2344,7 +2829,10 @@ function RecordEditor({
                   {
                     record
                       ? 'Save changes'
-                      : 'Create record'
+                      : 'Create ' +
+                        singularLabel(
+                          table.label,
+                        )
                   }
                 </button>
               )

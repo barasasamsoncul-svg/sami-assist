@@ -696,6 +696,1132 @@ async function applyStockMovement(
 }
 
 
+function assertPositive(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  if (
+    numberValue(
+      value,
+    ) <=
+      0
+  ) {
+    throw new Error(
+      label +
+      ' must be greater than zero.',
+    );
+  }
+}
+
+
+function assertNonNegative(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  if (
+    numberValue(
+      value,
+    ) <
+      0
+  ) {
+    throw new Error(
+      label +
+      ' cannot be negative.',
+    );
+  }
+}
+
+
+function assertDateOrder(
+  startValue:
+    unknown,
+  endValue:
+    unknown,
+  label:
+    string,
+) {
+  if (
+    !startValue ||
+    !endValue
+  ) {
+    return;
+  }
+
+  const start =
+    Date.parse(
+      String(
+        startValue,
+      ),
+    );
+
+  const end =
+    Date.parse(
+      String(
+        endValue,
+      ),
+    );
+
+  if (
+    Number.isFinite(
+      start,
+    ) &&
+    Number.isFinite(
+      end,
+    ) &&
+    end <
+      start
+  ) {
+    throw new Error(
+      label +
+      ' end cannot be before its start.',
+    );
+  }
+}
+
+
+function assertPercentage(
+  value:
+    unknown,
+  label:
+    string,
+) {
+  const numeric =
+    numberValue(
+      value,
+    );
+
+  if (
+    numeric <
+      0 ||
+    numeric >
+      100
+  ) {
+    throw new Error(
+      label +
+      ' must be between 0 and 100.',
+    );
+  }
+}
+
+
+function validateDomainRow(
+  moduleKey:
+    string,
+  table:
+    string,
+  row:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  if (
+    moduleKey ===
+      'expenses' &&
+    table ===
+      'expenses'
+  ) {
+    assertPositive(
+      row.amount,
+      'Expense amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'business_payments'
+  ) {
+    assertPositive(
+      row.amount,
+      'Payment amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'payment_allocations'
+  ) {
+    assertPositive(
+      row.amount,
+      'Allocated amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_employees'
+  ) {
+    assertNonNegative(
+      row.basic_salary,
+      'Basic salary',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_run_lines'
+  ) {
+    assertNonNegative(
+      row.gross_amount,
+      'Gross pay',
+    );
+
+    assertNonNegative(
+      row.deductions,
+      'Payroll deductions',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_order_items'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Purchase quantity',
+    );
+
+    assertNonNegative(
+      row.unit_cost,
+      'Unit cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    (
+      table ===
+        'boms' ||
+      table ===
+        'bom_items'
+    )
+  ) {
+    assertPositive(
+      row.quantity,
+      'Manufacturing quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    table ===
+      'manufacturing_orders'
+  ) {
+    assertPositive(
+      row.planned_quantity,
+      'Planned quantity',
+    );
+
+    assertNonNegative(
+      row.produced_quantity,
+      'Produced quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'time_off' &&
+    table ===
+      'leave_requests'
+  ) {
+    assertPositive(
+      row.days,
+      'Leave days',
+    );
+
+    const start =
+      Date.parse(
+        String(
+          row.start_date ||
+          '',
+        ),
+      );
+
+    const end =
+      Date.parse(
+        String(
+          row.end_date ||
+          '',
+        ),
+      );
+
+    if (
+      Number.isFinite(
+        start,
+      ) &&
+      Number.isFinite(
+        end,
+      ) &&
+      end <
+        start
+    ) {
+      throw new Error(
+        'Leave end date cannot be before the start date.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'projects' &&
+    row.start_date &&
+    row.due_date
+  ) {
+    const start =
+      Date.parse(
+        String(
+          row.start_date,
+        ),
+      );
+
+    const due =
+      Date.parse(
+        String(
+          row.due_date,
+        ),
+      );
+
+    if (
+      Number.isFinite(
+        start,
+      ) &&
+      Number.isFinite(
+        due,
+      ) &&
+      due <
+        start
+    ) {
+      throw new Error(
+        'Project due date cannot be before the start date.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'billing' &&
+    table ===
+      'billing_accounts'
+  ) {
+    assertNonNegative(
+      row.credit_limit,
+      'Credit limit',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'billing' &&
+    (
+      table ===
+        'billing_schedules' ||
+      table ===
+        'billing_charges'
+    )
+  ) {
+    assertNonNegative(
+      row.amount,
+      table ===
+        'billing_schedules'
+        ? 'Scheduled amount'
+        : 'Charge amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'subscriptions' &&
+    table ===
+      'subscription_plans'
+  ) {
+    assertNonNegative(
+      row.price,
+      'Subscription price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'subscriptions' &&
+    table ===
+      'subscription_payments'
+  ) {
+    assertPositive(
+      row.amount,
+      'Subscription payment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'subscriptions' &&
+    table ===
+      'subscriptions'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.end_date,
+      'Subscription',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'tax' &&
+    table ===
+      'tax_filings'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Tax filing period',
+    );
+
+    assertNonNegative(
+      row.taxable_amount,
+      'Taxable amount',
+    );
+
+    assertNonNegative(
+      row.tax_amount,
+      'Tax amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'tax' &&
+    table ===
+      'tax_payments'
+  ) {
+    assertPositive(
+      row.amount,
+      'Tax payment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'budgeting' &&
+    table ===
+      'budget_lines'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Budget period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'cash_flow' &&
+    table ===
+      'cash_flow_forecasts'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Cash-flow forecast period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'cash_flow' &&
+    table ===
+      'cash_flow_items'
+  ) {
+    assertPositive(
+      row.amount,
+      'Cash-flow item amount',
+    );
+
+    assertPercentage(
+      row.probability,
+      'Cash-flow probability',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fixed_assets' &&
+    table ===
+      'fixed_assets'
+  ) {
+    assertNonNegative(
+      row.acquisition_cost,
+      'Acquisition cost',
+    );
+
+    assertNonNegative(
+      row.salvage_value,
+      'Salvage value',
+    );
+
+    if (
+      numberValue(
+        row.salvage_value,
+      ) >
+      numberValue(
+        row.acquisition_cost,
+      )
+    ) {
+      throw new Error(
+        'Salvage value cannot exceed acquisition cost.',
+      );
+    }
+
+    if (
+      row.useful_life_months !==
+        null &&
+      row.useful_life_months !==
+        undefined
+    ) {
+      assertPositive(
+        row.useful_life_months,
+        'Useful life',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'fixed_assets' &&
+    table ===
+      'asset_depreciation_entries'
+  ) {
+    assertNonNegative(
+      row.depreciation_amount,
+      'Depreciation amount',
+    );
+
+    assertNonNegative(
+      row.accumulated_depreciation,
+      'Accumulated depreciation',
+    );
+
+    assertNonNegative(
+      row.book_value,
+      'Book value',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fixed_assets' &&
+    table ===
+      'asset_disposals'
+  ) {
+    assertNonNegative(
+      row.proceeds,
+      'Disposal proceeds',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'appointments' &&
+    table ===
+      'appointment_services'
+  ) {
+    assertPositive(
+      row.duration_minutes,
+      'Service duration',
+    );
+
+    assertNonNegative(
+      row.price,
+      'Service price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'appointments' &&
+    table ===
+      'appointments'
+  ) {
+    assertDateOrder(
+      row.start_at,
+      row.end_at,
+      'Appointment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'bookings' &&
+    table ===
+      'booking_resources'
+  ) {
+    assertPositive(
+      row.capacity,
+      'Booking capacity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'bookings' &&
+    table ===
+      'bookings'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Booking',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'bookings' &&
+    table ===
+      'booking_availability_rules' &&
+    row.weekday !==
+      null &&
+    row.weekday !==
+      undefined
+  ) {
+    const weekday =
+      numberValue(
+        row.weekday,
+      );
+
+    if (
+      weekday <
+        0 ||
+      weekday >
+        6
+    ) {
+      throw new Error(
+        'Booking weekday must be between 0 and 6.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'field_services' &&
+    table ===
+      'service_orders'
+  ) {
+    assertDateOrder(
+      row.scheduled_start,
+      row.scheduled_end,
+      'Service schedule',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'field_services' &&
+    table ===
+      'service_visits'
+  ) {
+    assertDateOrder(
+      row.started_at,
+      row.completed_at,
+      'Service visit',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'field_services' &&
+    table ===
+      'service_materials'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Service material quantity',
+    );
+
+    assertNonNegative(
+      row.unit_cost,
+      'Service material unit cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'work_orders' &&
+    table ===
+      'work_orders'
+  ) {
+    assertDateOrder(
+      row.scheduled_at,
+      row.due_at,
+      'Work order schedule',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'work_orders' &&
+    table ===
+      'work_order_materials'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Work-order material quantity',
+    );
+
+    assertNonNegative(
+      row.unit_cost,
+      'Work-order material unit cost',
+    );
+  }
+
+
+  if (
+    moduleKey ===
+      'attendance' &&
+    table ===
+      'attendance_policies'
+  ) {
+    assertNonNegative(
+      row.grace_minutes,
+      'Attendance grace minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'attendance' &&
+    table ===
+      'attendance_entries'
+  ) {
+    assertNonNegative(
+      row.worked_minutes,
+      'Worked minutes',
+    );
+
+    assertNonNegative(
+      row.late_minutes,
+      'Late minutes',
+    );
+
+    assertDateOrder(
+      row.clock_in,
+      row.clock_out,
+      'Attendance entry',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_templates'
+  ) {
+    assertNonNegative(
+      row.break_minutes,
+      'Shift break minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_schedules'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Shift schedule period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_assignments'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Shift assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'timesheets' &&
+    table ===
+      'time_entries'
+  ) {
+    assertNonNegative(
+      row.hours,
+      'Timesheet hours',
+    );
+
+    assertDateOrder(
+      row.start_time,
+      row.end_time,
+      'Time entry',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'appraisals' &&
+    table ===
+      'appraisal_cycles'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.end_date,
+      'Appraisal cycle',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'benefits' &&
+    table ===
+      'benefit_plans'
+  ) {
+    assertNonNegative(
+      row.employer_cost,
+      'Employer benefit cost',
+    );
+
+    assertNonNegative(
+      row.employee_cost,
+      'Employee benefit cost',
+    );
+
+    assertDateOrder(
+      row.effective_from,
+      row.effective_to,
+      'Benefit plan',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'benefits' &&
+    table ===
+      'benefit_enrollments'
+  ) {
+    assertDateOrder(
+      row.enrolled_at,
+      row.ended_at,
+      'Benefit enrollment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'learning' &&
+    table ===
+      'learning_courses' &&
+    row.estimated_minutes !==
+      null &&
+    row.estimated_minutes !==
+      undefined
+  ) {
+    assertPositive(
+      row.estimated_minutes,
+      'Estimated learning minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'learning' &&
+    table ===
+      'learning_enrollments'
+  ) {
+    assertPercentage(
+      row.progress_percent,
+      'Learning progress',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'onboarding' &&
+    table ===
+      'employee_onboardings'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.target_completion_date,
+      'Employee onboarding',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'rentals' &&
+    table ===
+      'rental_items'
+  ) {
+    assertNonNegative(
+      row.rental_rate,
+      'Rental rate',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'rentals' &&
+    table ===
+      'rental_contracts'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.expected_return_date,
+      'Rental contract',
+    );
+
+    assertDateOrder(
+      row.start_date,
+      row.actual_return_date,
+      'Rental return',
+    );
+
+    assertNonNegative(
+      row.total_amount,
+      'Rental total',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'vehicles'
+  ) {
+    assertNonNegative(
+      row.mileage,
+      'Vehicle mileage',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'vehicle_assignments'
+  ) {
+    assertDateOrder(
+      row.assigned_from,
+      row.assigned_to,
+      'Vehicle assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'fleet_services'
+  ) {
+    assertNonNegative(
+      row.mileage,
+      'Service mileage',
+    );
+
+    assertNonNegative(
+      row.cost,
+      'Fleet service cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'safety' &&
+    table ===
+      'safety_checks'
+  ) {
+    assertDateOrder(
+      row.scheduled_at,
+      row.completed_at,
+      'Safety check',
+    );
+  }
+}
+
+
+async function validateDomainLifecycleMutation(
+  client:
+    PoolClient,
+  moduleKey:
+    string,
+  table:
+    string,
+  companyId:
+    string,
+  operation:
+    MutationOperation,
+  row:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'journals' &&
+    operation !==
+      'create' &&
+    String(
+      row.status ||
+      '',
+    )
+      .toLowerCase() ===
+      'posted'
+  ) {
+    throw new Error(
+      'Posted journals are immutable. Reverse the journal instead of editing or deleting it.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'journal_lines' &&
+    row.journal_id
+  ) {
+    const parent =
+      await client.query(
+        `
+          SELECT status
+          FROM journals
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          row.journal_id,
+          companyId,
+        ],
+      );
+
+    if (
+      String(
+        parent.rows[0]
+          ?.status ||
+        '',
+      )
+        .toLowerCase() ===
+        'posted'
+    ) {
+      throw new Error(
+        'Lines on a posted journal are immutable. Reverse the journal instead.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_orders' &&
+    operation !==
+      'create' &&
+    ![
+      '',
+      'draft',
+    ].includes(
+      String(
+        row.status ||
+        '',
+      )
+        .toLowerCase(),
+    )
+  ) {
+    throw new Error(
+      'Confirmed purchase orders cannot be edited or deleted directly. Use the purchase workflow.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_order_items' &&
+    row.purchase_order_id
+  ) {
+    const parent =
+      await client.query(
+        `
+          SELECT status
+          FROM purchase_orders
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          LIMIT 1
+        `,
+        [
+          row.purchase_order_id,
+          companyId,
+        ],
+      );
+
+    const parentStatus =
+      String(
+        parent.rows[0]
+          ?.status ||
+        '',
+      )
+        .toLowerCase();
+
+    if (
+      parentStatus &&
+      parentStatus !==
+        'draft'
+    ) {
+      throw new Error(
+        'Purchase-order lines cannot change after the order leaves draft.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'payment_reconciliations' &&
+    operation ===
+      'update' &&
+    row.reconciled_at
+  ) {
+    throw new Error(
+      'Completed reconciliation history is immutable. Create a compensating reconciliation instead.',
+    );
+  }
+}
+
+
 async function synchronizeDerivedLineValues(
   client:
     PoolClient,
@@ -857,10 +1983,25 @@ export async function applyEnterpriseDomainSideEffects(
   } =
     input;
 
+  await validateDomainLifecycleMutation(
+    client,
+    moduleKey,
+    table,
+    companyId,
+    operation,
+    row,
+  );
+
   if (
     operation !==
       'delete'
   ) {
+    validateDomainRow(
+      moduleKey,
+      table,
+      row,
+    );
+
     await synchronizeDerivedLineValues(
       client,
       moduleKey,

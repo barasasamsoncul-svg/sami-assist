@@ -334,6 +334,10 @@ const DOMAIN_GRAPH:
       ],
     },
     'recruitment:applicants': {
+      applied: [
+        'screening',
+        'rejected',
+      ],
       new: [
         'screening',
         'rejected',
@@ -351,6 +355,46 @@ const DOMAIN_GRAPH:
         'rejected',
       ],
     },
+    'recruitment:interviews': {
+      scheduled: [
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
+    },
+    'projects:projects': {
+      active: [
+        'on_hold',
+        'completed',
+        'cancelled',
+      ],
+      on_hold: [
+        'active',
+        'cancelled',
+      ],
+    },
+    'projects:project_milestones': {
+      pending: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'quality:quality_checks': {
+      pending: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
     'maintenance:maintenance_requests': {
       open: [
         'in_progress',
@@ -366,9 +410,54 @@ const DOMAIN_GRAPH:
         'scheduled',
         'cancelled',
       ],
+      active: [
+        'scheduled',
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
       scheduled: [
         'in_progress',
         'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'work_orders:work_order_tasks': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'field_services:service_orders': {
+      open: [
+        'scheduled',
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      scheduled: [
+        'in_progress',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'field_services:service_visits': {
+      scheduled: [
+        'in_progress',
+        'completed',
+        'cancelled',
+        'no_show',
       ],
       in_progress: [
         'completed',
@@ -416,6 +505,12 @@ const DOMAIN_GRAPH:
         'confirmed',
         'cancelled',
       ],
+      active: [
+        'confirmed',
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
       pending: [
         'confirmed',
         'cancelled',
@@ -435,10 +530,182 @@ const DOMAIN_GRAPH:
         'confirmed',
         'cancelled',
       ],
+      scheduled: [
+        'confirmed',
+        'completed',
+        'cancelled',
+        'no_show',
+      ],
       confirmed: [
         'completed',
         'cancelled',
         'no_show',
+      ],
+    },
+    'subscriptions:subscriptions': {
+      active: [
+        'paused',
+        'cancelled',
+        'expired',
+      ],
+      paused: [
+        'active',
+        'cancelled',
+      ],
+    },
+    'timesheets:time_entries': {
+      draft: [
+        'submitted',
+        'cancelled',
+      ],
+      submitted: [
+        'approved',
+        'rejected',
+      ],
+      rejected: [
+        'draft',
+      ],
+    },
+    'appraisals:appraisal_cycles': {
+      draft: [
+        'active',
+        'cancelled',
+      ],
+      active: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'appraisals:appraisals': {
+      draft: [
+        'submitted',
+        'cancelled',
+      ],
+      submitted: [
+        'in_review',
+        'completed',
+        'rejected',
+      ],
+      in_review: [
+        'completed',
+        'rejected',
+      ],
+      rejected: [
+        'draft',
+      ],
+    },
+    'learning:learning_enrollments': {
+      active: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'onboarding:employee_onboardings': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'onboarding:employee_onboarding_tasks': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'safety:safety_incidents': {
+      active: [
+        'in_progress',
+        'resolved',
+        'closed',
+      ],
+      in_progress: [
+        'resolved',
+        'closed',
+      ],
+      resolved: [
+        'closed',
+        'active',
+      ],
+    },
+    'safety:safety_actions': {
+      active: [
+        'in_progress',
+        'completed',
+        'cancelled',
+      ],
+      in_progress: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'safety:safety_checks': {
+      active: [
+        'scheduled',
+        'completed',
+        'cancelled',
+      ],
+      scheduled: [
+        'completed',
+        'cancelled',
+      ],
+    },
+    'rentals:rental_contracts': {
+      active: [
+        'returned',
+        'closed',
+        'cancelled',
+      ],
+      returned: [
+        'closed',
+      ],
+    },
+    'rentals:rental_items': {
+      available: [
+        'rented',
+        'maintenance',
+        'unavailable',
+      ],
+      rented: [
+        'available',
+        'maintenance',
+      ],
+      maintenance: [
+        'available',
+        'unavailable',
+      ],
+      unavailable: [
+        'available',
+        'maintenance',
+      ],
+    },
+    'fleet:vehicles': {
+      active: [
+        'maintenance',
+        'inactive',
+      ],
+      maintenance: [
+        'active',
+        'inactive',
+      ],
+      inactive: [
+        'active',
+        'maintenance',
+      ],
+    },
+    'fleet:vehicle_assignments': {
+      active: [
+        'completed',
+        'cancelled',
       ],
     },
   };

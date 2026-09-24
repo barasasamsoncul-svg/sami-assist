@@ -302,7 +302,7 @@ function writableValues(
       SENSITIVE_COLUMN.test(
         key,
       ) ||
-      /(^|_)(status|state)$/.test(
+      /(^|_)(status|state|stage)$/.test(
         key,
       ) ||
       column.is_identity ===
