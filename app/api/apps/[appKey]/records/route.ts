@@ -20,6 +20,9 @@ import {
 
 import {
   EnterpriseModuleError,
+  bulkCreateEnterpriseModuleRecords,
+  bulkDeleteEnterpriseModuleRecords,
+  bulkTransitionEnterpriseModuleRecords,
   createEnterpriseModuleRecord,
   deleteEnterpriseModuleRecord,
   getEnterpriseModuleRelationOptions,
@@ -412,11 +415,29 @@ export async function POST(
 
     const result =
       action ===
-        'create'
-        ? await createEnterpriseModuleRecord(
+        'bulk_create'
+        ? await bulkCreateEnterpriseModuleRecords(
             appKey,
             payload,
           )
+        : action ===
+            'bulk_delete'
+          ? await bulkDeleteEnterpriseModuleRecords(
+              appKey,
+              payload,
+            )
+          : action ===
+              'bulk_transition'
+            ? await bulkTransitionEnterpriseModuleRecords(
+                appKey,
+                payload,
+              )
+            : action ===
+                'create'
+              ? await createEnterpriseModuleRecord(
+                  appKey,
+                  payload,
+                )
         : action ===
             'update'
           ? await updateEnterpriseModuleRecord(
