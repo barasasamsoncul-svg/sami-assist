@@ -2,6 +2,14 @@ import type {
   SamiModuleManifest,
 } from '@/lib/modules/types';
 
+import {
+  enterpriseModuleTables,
+} from '@/lib/apps/enterprise/catalog';
+
+import {
+  getEnterpriseDomainProfile,
+} from '@/lib/apps/enterprise/domain-profiles';
+
 
 const GENERIC_ACTIONS =
   [
@@ -62,6 +70,29 @@ export function withEnterpriseModuleDefaults(
 
   const key =
     manifest.key;
+
+  const tables =
+    enterpriseModuleTables(
+      key,
+    );
+
+  const profile =
+    getEnterpriseDomainProfile(
+      key,
+    );
+
+  const resourceKeyForTable =
+    (
+      table:
+        string,
+    ) =>
+      table.endsWith(
+        '_settings',
+      )
+        ? 'settings.' +
+          table
+        : 'record.' +
+          table;
 
   const permissions =
     GENERIC_ACTIONS.map(
@@ -143,27 +174,99 @@ export function withEnterpriseModuleDefaults(
       {
         key:
           key +
-          '.records',
+          '.dashboard',
         name:
           manifest.name +
-          ' records',
+          ' dashboard',
         type:
-          'list',
+          'dashboard',
         resourceKey:
-          'record',
+          'dashboard',
         route:
           '/apps/' +
           key,
         priority:
-          20,
+          10,
       },
+      ...tables
+        .filter(
+          table =>
+            !table.endsWith(
+              '_settings',
+            ),
+        )
+        .flatMap(
+          (
+            table,
+            index,
+          ) => {
+            const resourceKey =
+              resourceKeyForTable(
+                table,
+              );
+
+            return [
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.list',
+                name:
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'list' as const,
+                resourceKey,
+                route:
+                  '/apps/' +
+                  key,
+                priority:
+                  20 +
+                  index *
+                    10,
+              },
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.form',
+                name:
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ) +
+                  ' form',
+                type:
+                  'form' as const,
+                resourceKey,
+                route:
+                  '/apps/' +
+                  key,
+                priority:
+                  21 +
+                  index *
+                    10,
+              },
+            ];
+          },
+        ),
       {
         key:
           key +
           '.report',
         name:
-          manifest.name +
-          ' report',
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' reporting'
+          ),
         type:
           'dashboard',
         resourceKey:
@@ -172,46 +275,77 @@ export function withEnterpriseModuleDefaults(
           '/apps/' +
           key,
         priority:
-          30,
+          900,
       },
     ],
 
     resources: [
-      {
-        key:
-          'record',
-        label:
-          manifest.name +
-          ' record',
-        table:
-          null,
-        companyScoped:
-          true,
-        permissions: {
-          read: [
-            key +
-            '.record.view',
-          ],
-          create: [
-            key +
-            '.record.create',
-          ],
-          write: [
-            key +
-            '.record.edit',
-          ],
-          delete: [
-            key +
-            '.record.delete',
-          ],
+      ...tables.map(
+        table => {
+          const settings =
+            table.endsWith(
+              '_settings',
+            );
+
+          const resourceKey =
+            resourceKeyForTable(
+              table,
+            );
+
+          return {
+            key:
+              resourceKey,
+            label:
+              table
+                .replaceAll(
+                  '_',
+                  ' ',
+                ),
+            table,
+            companyScoped:
+              true,
+            permissions: settings
+              ? {
+                  read: [
+                    key +
+                    '.record.view',
+                  ],
+                  write: [
+                    key +
+                    '.record.settings',
+                  ],
+                }
+              : {
+                  read: [
+                    key +
+                    '.record.view',
+                  ],
+                  create: [
+                    key +
+                    '.record.create',
+                  ],
+                  write: [
+                    key +
+                    '.record.edit',
+                  ],
+                  delete: [
+                    key +
+                    '.record.delete',
+                  ],
+                },
+          };
         },
-      },
+      ),
       {
         key:
           'report',
         label:
-          manifest.name +
-          ' report',
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' report'
+          ),
         table:
           null,
         companyScoped:
@@ -220,27 +354,6 @@ export function withEnterpriseModuleDefaults(
           read: [
             key +
             '.record.report',
-          ],
-        },
-      },
-      {
-        key:
-          'settings',
-        label:
-          manifest.name +
-          ' settings',
-        table:
-          null,
-        companyScoped:
-          true,
-        permissions: {
-          read: [
-            key +
-            '.record.view',
-          ],
-          write: [
-            key +
-            '.record.settings',
           ],
         },
       },
