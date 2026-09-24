@@ -3306,6 +3306,99 @@ function Reports({
       </div>
 
       {
+        data.tables.some(
+          table =>
+            table.numericMetrics
+              .length >
+            0,
+        ) &&
+        (
+          <div className="sami-surface rounded-[24px] p-4">
+            <h2 className="text-sm font-black">
+              Numeric performance
+            </h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Company-scoped sums, averages and observed ranges across numeric business fields.
+            </p>
+
+            <div className="mt-4 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+              {
+                data.tables.flatMap(
+                  table =>
+                    table.numericMetrics.map(
+                      metric => (
+                        <div
+                          key={
+                            table.key +
+                            ':' +
+                            metric.field
+                          }
+                          className="rounded-2xl border border-[var(--sami-border)] p-4"
+                        >
+                          <p className="text-[10px] font-black uppercase tracking-[0.08em] text-slate-400">
+                            {
+                              table.label
+                            }
+                          </p>
+                          <p className="mt-1 text-xs font-black">
+                            {
+                              metric.label
+                            }
+                          </p>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                            <div className="rounded-xl bg-slate-500/[0.05] p-2">
+                              <p className="text-[9px] font-black uppercase text-slate-400">
+                                Sum
+                              </p>
+                              <p className="mt-1 font-black">
+                                {
+                                  metric.sum.toLocaleString()
+                                }
+                              </p>
+                            </div>
+                            <div className="rounded-xl bg-slate-500/[0.05] p-2">
+                              <p className="text-[9px] font-black uppercase text-slate-400">
+                                Average
+                              </p>
+                              <p className="mt-1 font-black">
+                                {
+                                  metric.average.toLocaleString()
+                                }
+                              </p>
+                            </div>
+                            <div className="rounded-xl bg-slate-500/[0.05] p-2">
+                              <p className="text-[9px] font-black uppercase text-slate-400">
+                                Minimum
+                              </p>
+                              <p className="mt-1 font-black">
+                                {
+                                  metric.minimum.toLocaleString()
+                                }
+                              </p>
+                            </div>
+                            <div className="rounded-xl bg-slate-500/[0.05] p-2">
+                              <p className="text-[9px] font-black uppercase text-slate-400">
+                                Maximum
+                              </p>
+                              <p className="mt-1 font-black">
+                                {
+                                  metric.maximum.toLocaleString()
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ),
+                    ),
+                )
+              }
+            </div>
+          </div>
+        )
+      }
+
+      {
         workflowTables.length >
           0 &&
         (
