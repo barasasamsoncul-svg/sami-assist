@@ -2096,7 +2096,7 @@ export async function normalizeInvoicingLines(
             discountValue,
           );
 
-    let taxRateId =
+    const taxRateId =
       optionalUuid(
         raw.taxRateId ||
         catalog
