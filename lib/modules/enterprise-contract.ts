@@ -128,6 +128,11 @@ export function withEnterpriseModuleDefaults(
 
   return {
     ...manifest,
+    version:
+      manifest.version ===
+        '1.0.0'
+        ? '2.0.0'
+        : manifest.version,
 
     views: [
       ...manifest.views,

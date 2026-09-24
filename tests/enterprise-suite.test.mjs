@@ -532,3 +532,71 @@ test('enterprise engine preserves dedicated Invoicing and Sales ownership bounda
     /^  sales:/m,
   );
 });
+
+
+test('enterprise v2 hardening adds company and audit boundaries to legacy app schemas and upgrade paths', async () => {
+  const [
+    hardening,
+    contract,
+    lifecycle,
+    migrations,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+    source(
+      'lib/services/workspace-app-lifecycle.ts',
+    ),
+    source(
+      'lib/modules/migrations.ts',
+    ),
+  ]);
+
+  assert.match(
+    hardening,
+    /ADD COLUMN IF NOT EXISTS company_id UUID/,
+  );
+
+  assert.match(
+    hardening,
+    /ADD COLUMN IF NOT EXISTS created_by UUID/,
+  );
+
+  assert.match(
+    hardening,
+    /ADD COLUMN IF NOT EXISTS updated_by UUID/,
+  );
+
+  assert.match(
+    hardening,
+    /ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ/,
+  );
+
+  assert.match(
+    hardening,
+    /company_count = 1/,
+  );
+
+  assert.match(
+    hardening,
+    /WHERE company_id IS NULL/,
+  );
+
+  assert.match(
+    contract,
+    /manifest\.version ===[\s\S]*'1\.0\.0'[\s\S]*'2\.0\.0'/s,
+  );
+
+  assert.match(
+    lifecycle,
+    /appendEnterpriseSchemaHardening/,
+  );
+
+  assert.match(
+    migrations,
+    /ENTERPRISE_SUITE_MIGRATIONS/,
+  );
+});
