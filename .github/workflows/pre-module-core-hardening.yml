@@ -3,6 +3,7 @@ name: Pre-Module Core Hardening
 on:
   push:
     branches:
+      - main
       - feat/pre-module-core-hardening
   pull_request:
     branches:
