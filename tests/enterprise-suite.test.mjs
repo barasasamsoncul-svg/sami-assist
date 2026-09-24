@@ -459,7 +459,8 @@ test('enterprise manifests expose every owned register as a first-class resource
 
   assert.match(
     contract,
-    /table:\s*table/,
+    /\n\s*table,\n\s*companyScoped:/,
+    'Every generated resource must bind to its concrete schema table.',
   );
 
   assert.match(
