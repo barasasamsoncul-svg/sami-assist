@@ -731,3 +731,119 @@ test('enterprise record mutations are audited without turning audit failure into
     'CRUD should use the non-fatal enterprise audit wrapper so a logging fault does not make a successful write look failed.',
   );
 });
+
+
+test('enterprise domain hooks keep inventory and commercial aggregates consistent', async () => {
+  const [
+    service,
+    hooks,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/apps/enterprise/domain-hooks.ts',
+    ),
+  ]);
+
+  assert.match(
+    service,
+    /COMPUTED_COLUMNS/,
+  );
+
+  assert.match(
+    service,
+    /!\/\(\^\|_\)\(status\|state\)\$\//,
+  );
+
+  assert.match(
+    service,
+    /applyDomainValueRules/,
+  );
+
+  assert.match(
+    service,
+    /runDomainSideEffects/,
+  );
+
+  assert.match(
+    hooks,
+    /stock_movements/,
+  );
+
+  assert.match(
+    hooks,
+    /Insufficient stock for this movement/,
+  );
+
+  assert.match(
+    hooks,
+    /purchase_order_items/,
+  );
+
+  assert.match(
+    hooks,
+    /cpq_quote_lines/,
+  );
+
+  assert.match(
+    hooks,
+    /storefront_order_lines/,
+  );
+
+  assert.match(
+    hooks,
+    /shop_order_items/,
+  );
+
+  assert.match(
+    hooks,
+    /restaurant_order_items/,
+  );
+
+  assert.match(
+    hooks,
+    /payroll_run_lines/,
+  );
+
+  assert.match(
+    hooks,
+    /Posted stock movements are immutable/,
+  );
+});
+
+
+test('enterprise domain side effects execute inside the same transaction as record writes', async () => {
+  const service =
+    await source(
+      'lib/apps/enterprise/service.ts',
+    );
+
+  for (
+    const operation
+    of [
+      'create',
+      'update',
+      'delete',
+    ]
+  ) {
+    assert.ok(
+      service.includes(
+        "operation:\n          '" +
+        operation +
+        "'",
+      ),
+      operation,
+    );
+  }
+
+  assert.match(
+    service,
+    /await client\.query\([\s\S]*'BEGIN'[\s\S]*runDomainSideEffects[\s\S]*'COMMIT'/s,
+  );
+
+  assert.match(
+    service,
+    /'ROLLBACK'/,
+  );
+});

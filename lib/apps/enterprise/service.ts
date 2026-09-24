@@ -40,8 +40,13 @@ import {
 
 import {
   getEnterpriseWorkflowTransitions,
-  type EnterpriseWorkflowTransition,
 } from '@/lib/apps/enterprise/workflow-policy';
+
+import {
+  applyEnterpriseDomainSideEffects,
+  assertEnterpriseDomainMutationAllowed,
+  normalizeEnterpriseDomainValues,
+} from '@/lib/apps/enterprise/domain-hooks';
 
 
 export type EnterpriseModuleOperation =
@@ -203,6 +208,21 @@ const DISPLAY_SKIP =
   new Set([
     ...SYSTEM_COLUMNS,
     'metadata',
+  ]);
+
+const COMPUTED_COLUMNS =
+  new Set([
+    'line_total',
+    'subtotal',
+    'tax_amount',
+    'tax_total',
+    'discount_total',
+    'total_amount',
+    'total_gross',
+    'total_deductions',
+    'total_net',
+    'net_amount',
+    'balance',
   ]);
 
 
@@ -556,6 +576,94 @@ async function recordEnterpriseAudit(
 }
 
 
+function applyDomainValueRules(
+  moduleKey:
+    string,
+  table:
+    string,
+  values:
+    Map<
+      string,
+      unknown
+    >,
+) {
+  try {
+    normalizeEnterpriseDomainValues(
+      moduleKey,
+      table,
+      values,
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      error instanceof
+        Error
+        ? error.message
+        : 'This business record violates a module rule.',
+    );
+  }
+}
+
+
+function assertDomainMutation(
+  moduleKey:
+    string,
+  table:
+    string,
+  operation:
+    'create' |
+    'update' |
+    'delete',
+) {
+  try {
+    assertEnterpriseDomainMutationAllowed(
+      moduleKey,
+      table,
+      operation,
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      error instanceof
+        Error
+        ? error.message
+        : 'This business record cannot be changed directly.',
+    );
+  }
+}
+
+
+async function runDomainSideEffects(
+  client:
+    import('pg').PoolClient,
+  input:
+    Parameters<
+      typeof applyEnterpriseDomainSideEffects
+    >[1],
+) {
+  try {
+    await applyEnterpriseDomainSideEffects(
+      client,
+      input,
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      error instanceof
+        Error
+        ? error.message
+        : 'SaMi could not apply the module business rule.',
+    );
+  }
+}
+
+
 async function requireContext(
   moduleKeyInput:
     string,
@@ -838,7 +946,13 @@ async function tableMetadata(
           !system,
         writable:
           !generated &&
-          !system,
+          !system &&
+          !COMPUTED_COLUMNS.has(
+            row.column_name,
+          ) &&
+          !/(^|_)(status|state)$/.test(
+            row.column_name,
+          ),
         inputType:
           inputType(
             row.data_type,
@@ -1552,11 +1666,23 @@ export async function createEnterpriseModuleRecord(
       'create',
     );
 
+  assertDomainMutation(
+    context.moduleKey,
+    context.table,
+    'create',
+  );
+
   const values =
     writableValues(
       input.values,
       context.fields,
     );
+
+  applyDomainValueRules(
+    context.moduleKey,
+    context.table,
+    values,
+  );
 
   const fieldNames =
     new Set(
@@ -1668,22 +1794,72 @@ export async function createEnterpriseModuleRecord(
       ) +
     ') RETURNING *';
 
-  const result =
-    await context.pool.query(
-      sql,
-      entries.map(
-        ([
-          _key,
-          value,
-        ]) =>
-          value,
-      ),
+  const client =
+    await context.pool.connect();
+
+  let createdRow:
+    Record<
+      string,
+      unknown
+    > = {};
+
+  try {
+    await client.query(
+      'BEGIN',
     );
+
+    const result =
+      await client.query(
+        sql,
+        entries.map(
+          ([
+            _key,
+            value,
+          ]) =>
+            value,
+        ),
+      );
+
+    createdRow =
+      result.rows[0] ||
+      {};
+
+    await runDomainSideEffects(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table:
+          context.table,
+        companyId:
+          context.companyId,
+        operation:
+          'create',
+        row:
+          createdRow,
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
 
   const created =
     rowOutput(
-      result.rows[0] ||
-      {},
+      createdRow,
     );
 
   await recordEnterpriseAudit({
@@ -1708,18 +1884,22 @@ export async function createEnterpriseModuleRecord(
     resourceType:
       context.table,
     resourceId:
-      typeof result.rows[0]
-        ?.id ===
+      typeof createdRow
+        .id ===
         'string'
-        ? result.rows[0].id
+        ? String(
+            createdRow.id,
+          )
         : null,
     entityType:
       context.table,
     entityId:
-      typeof result.rows[0]
-        ?.id ===
+      typeof createdRow
+        .id ===
         'string'
-        ? result.rows[0].id
+        ? String(
+            createdRow.id,
+          )
         : null,
     module:
       context.moduleKey,
@@ -1750,6 +1930,12 @@ export async function updateEnterpriseModuleRecord(
       input.table,
       'edit',
     );
+
+  assertDomainMutation(
+    context.moduleKey,
+    context.table,
+    'update',
+  );
 
   const fieldNames =
     new Set(
@@ -1806,6 +1992,12 @@ export async function updateEnterpriseModuleRecord(
       input.values,
       context.fields,
     );
+
+  applyDomainValueRules(
+    context.moduleKey,
+    context.table,
+    values,
+  );
 
   if (
     fieldNames.has(
@@ -1916,8 +2108,22 @@ export async function updateEnterpriseModuleRecord(
     );
   }
 
-  const result =
-    await context.pool.query(
+  const client =
+    await context.pool.connect();
+
+  let updatedRow:
+    Record<
+      string,
+      unknown
+    > = {};
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
       'UPDATE ' +
       quoteIdentifier(
         context.table,
@@ -1934,19 +2140,55 @@ export async function updateEnterpriseModuleRecord(
       params,
     );
 
-  if (
-    result.rows.length !==
-      1
-  ) {
-    throw new EnterpriseModuleError(
-      'RECORD_NOT_FOUND',
-      'The record was not found in the current company.',
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new EnterpriseModuleError(
+        'RECORD_NOT_FOUND',
+        'The record was not found in the current company.',
+      );
+    }
+
+    updatedRow =
+      result.rows[0];
+
+    await runDomainSideEffects(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table:
+          context.table,
+        companyId:
+          context.companyId,
+        operation:
+          'update',
+        row:
+          updatedRow,
+      },
     );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
   }
 
   const updated =
     rowOutput(
-      result.rows[0],
+      updatedRow,
     );
 
   await recordEnterpriseAudit({
@@ -1972,16 +2214,16 @@ export async function updateEnterpriseModuleRecord(
       context.table,
     resourceId:
       String(
-        result.rows[0]
-          ?.id ||
+        updatedRow
+          .id ||
         recordId,
       ),
     entityType:
       context.table,
     entityId:
       String(
-        result.rows[0]
-          ?.id ||
+        updatedRow
+          .id ||
         recordId,
       ),
     module:
@@ -2027,6 +2269,12 @@ export async function deleteEnterpriseModuleRecord(
       input.table,
       'delete',
     );
+
+  assertDomainMutation(
+    context.moduleKey,
+    context.table,
+    'delete',
+  );
 
   const names =
     new Set(
@@ -2119,8 +2367,22 @@ export async function deleteEnterpriseModuleRecord(
     );
   }
 
-  const result =
-    await context.pool.query(
+  const client =
+    await context.pool.connect();
+
+  let deletedRow:
+    Record<
+      string,
+      unknown
+    > = {};
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
       'UPDATE ' +
       quoteIdentifier(
         context.table,
@@ -2133,23 +2395,59 @@ export async function deleteEnterpriseModuleRecord(
       conditions.join(
         ' AND ',
       ) +
-      ' RETURNING id',
+      ' RETURNING *',
       params,
     );
 
-  if (
-    result.rows.length !==
-      1
-  ) {
-    throw new EnterpriseModuleError(
-      'RECORD_NOT_FOUND',
-      'The record was not found in the current company.',
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new EnterpriseModuleError(
+        'RECORD_NOT_FOUND',
+        'The record was not found in the current company.',
+      );
+    }
+
+    deletedRow =
+      result.rows[0];
+
+    await runDomainSideEffects(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table:
+          context.table,
+        companyId:
+          context.companyId,
+        operation:
+          'delete',
+        row:
+          deletedRow,
+      },
     );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
   }
 
   const deletedId =
     String(
-      result.rows[0].id,
+      deletedRow.id,
     );
 
   await recordEnterpriseAudit({
