@@ -4,6 +4,20 @@ import {
 } from 'next/server';
 
 import {
+  addEnterpriseRecordNote,
+  deleteEnterpriseCustomField,
+  deleteEnterpriseRecordNote,
+  deleteEnterpriseSavedView,
+  getEnterpriseRecordCompletion,
+  linkEnterpriseRecordFile,
+  saveEnterpriseCustomField,
+  saveEnterpriseRecordTask,
+  saveEnterpriseSavedView,
+  unlinkEnterpriseRecordFile,
+  updateEnterpriseRecordExtras,
+} from '@/lib/apps/enterprise/completion';
+
+import {
   EnterpriseModuleError,
   createEnterpriseModuleRecord,
   deleteEnterpriseModuleRecord,
@@ -173,6 +187,38 @@ export async function GET(
       appKey,
     } =
       await params;
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'record_completion'
+    ) {
+      return respond({
+        success:
+          true,
+        completion:
+          await getEnterpriseRecordCompletion(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+              recordId:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'recordId',
+                  ),
+            },
+          ),
+      });
+    }
 
     if (
       request.nextUrl
@@ -362,7 +408,67 @@ export async function POST(
                   appKey,
                   payload,
                 )
-              : null;
+              : action ===
+                  'add_note'
+                ? await addEnterpriseRecordNote(
+                    appKey,
+                    payload,
+                  )
+                : action ===
+                    'delete_note'
+                  ? await deleteEnterpriseRecordNote(
+                      appKey,
+                      payload,
+                    )
+                  : action ===
+                      'save_task'
+                    ? await saveEnterpriseRecordTask(
+                        appKey,
+                        payload,
+                      )
+                    : action ===
+                        'save_view'
+                      ? await saveEnterpriseSavedView(
+                          appKey,
+                          payload,
+                        )
+                      : action ===
+                          'delete_view'
+                        ? await deleteEnterpriseSavedView(
+                            appKey,
+                            payload,
+                          )
+                        : action ===
+                            'save_custom_field'
+                          ? await saveEnterpriseCustomField(
+                              appKey,
+                              payload,
+                            )
+                          : action ===
+                              'delete_custom_field'
+                            ? await deleteEnterpriseCustomField(
+                                appKey,
+                                payload,
+                              )
+                            : action ===
+                                'update_extras'
+                              ? await updateEnterpriseRecordExtras(
+                                  appKey,
+                                  payload,
+                                )
+                              : action ===
+                                  'link_file'
+                                ? await linkEnterpriseRecordFile(
+                                    appKey,
+                                    payload,
+                                  )
+                                : action ===
+                                    'unlink_file'
+                                  ? await unlinkEnterpriseRecordFile(
+                                      appKey,
+                                      payload,
+                                    )
+                                  : null;
 
     if (
       !result
