@@ -7,6 +7,10 @@ import {
   ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
 } from '@/lib/modules/additional-first-party';
 
+import {
+  withEnterpriseModuleDefaults,
+} from '@/lib/modules/enterprise-contract';
+
 /*
  * Canonical first-party module manifests.
  *
@@ -19,7 +23,7 @@ import {
  * resources, views, actions, permissions, policies and extension hooks as
  * their business implementation is built.
  */
-export const FIRST_PARTY_SAMI_MODULES:
+const BASE_FIRST_PARTY_SAMI_MODULES:
   SamiModuleManifest[] = [
   defineSamiModule({
     key: "accounting",
@@ -2756,3 +2760,9 @@ export const FIRST_PARTY_SAMI_MODULES:
 
   ...ADDITIONAL_FIRST_PARTY_SAMI_MODULES,
 ];
+
+export const FIRST_PARTY_SAMI_MODULES:
+  SamiModuleManifest[] =
+  BASE_FIRST_PARTY_SAMI_MODULES.map(
+    withEnterpriseModuleDefaults,
+  );

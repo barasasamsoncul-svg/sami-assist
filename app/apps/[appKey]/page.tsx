@@ -2,7 +2,6 @@ import Link from 'next/link';
 
 import {
   ArrowLeft,
-  ArrowRight,
 } from 'lucide-react';
 
 import {
@@ -12,6 +11,7 @@ import {
 
 import WorkspaceShell from '@/app/components/workspace/WorkspaceShell';
 import SamiAppIconTile from '@/app/components/apps/SamiAppIconTile';
+import EnterpriseModuleWorkspaceClient from '@/app/apps/[appKey]/EnterpriseModuleWorkspaceClient';
 
 import {
   getSaMiAppVisual,
@@ -41,11 +41,21 @@ import {
   resolveWorkspaceShellAccess,
 } from '@/lib/auth/workspace-shell';
 
+import {
+  getWorkspaceNotificationSummary,
+} from '@/lib/services/workspace-notifications';
+
+import {
+  getEnterpriseModuleWorkspace,
+} from '@/lib/apps/enterprise/service';
+
+
 export const runtime =
   'nodejs';
 
 export const dynamic =
   'force-dynamic';
+
 
 export default async function AppEntryPage({
   params,
@@ -63,7 +73,8 @@ export default async function AppEntryPage({
 
   const session =
     await requirePageSession(
-      `/apps/${appKey}`,
+      '/apps/' +
+      appKey,
     );
 
   const [
@@ -75,7 +86,6 @@ export default async function AppEntryPage({
         session.user.id,
         session.currentTenantId,
       ),
-
       getPermissionContext(),
     ]);
 
@@ -83,10 +93,8 @@ export default async function AppEntryPage({
     resolveWorkspaceShellAccess({
       modules:
         account.modules,
-
       subscription:
         account.subscription,
-
       permissions,
     });
 
@@ -126,10 +134,46 @@ export default async function AppEntryPage({
         string,
     ) =>
       permissions
+        .isOwner ||
+      permissions
         .permissionSet
         .has(
           permission,
         );
+
+  const [
+    data,
+    notifications,
+  ] =
+    await Promise.all([
+      getEnterpriseModuleWorkspace(
+        canonicalKey,
+      )
+        .catch(
+          error => {
+            console.error(
+              '[SaMi] Enterprise workspace load failed:',
+              {
+                moduleKey:
+                  canonicalKey,
+                error,
+              },
+            );
+
+            return null;
+          },
+        ),
+      getWorkspaceNotificationSummary()
+        .catch(
+          () => null,
+        ),
+    ]);
+
+  if (
+    !data
+  ) {
+    notFound();
+  }
 
   const visual =
     getSaMiAppVisual(
@@ -157,19 +201,22 @@ export default async function AppEntryPage({
       sidebarCapabilities={{
         aiEnabled:
           shell.aiAvailable,
-
         filesEnabled:
           can(
             SAMI_PERMISSIONS
               .FILES_VIEW,
           ),
-
         notificationsEnabled:
           can(
             SAMI_PERMISSIONS
               .NOTIFICATIONS_VIEW,
           ),
       }}
+      unreadNotifications={
+        notifications
+          ?.unreadCount ||
+        0
+      }
       title={
         app.name
       }
@@ -177,166 +224,51 @@ export default async function AppEntryPage({
         app.description
       }
       contextLabel={
-        app.categoryLabel
+        data.company.name
       }
       actions={
-        <Link
-          href="/apps"
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-semibold text-slate-600 shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px hover:bg-[var(--sami-surface-soft)] dark:text-slate-300"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">
-            All Apps
-          </span>
-        </Link>
-      }
-      contentClassName="max-w-[1400px]"
-    >
-      <section className="sami-surface overflow-hidden rounded-[28px]">
-        <div className="relative overflow-hidden border-b border-[var(--sami-border)] p-5 sm:p-7">
-          <div
-            aria-hidden="true"
-            className={[
-              'absolute -right-20 -top-20 h-56 w-56 rounded-full opacity-[0.10] blur-3xl',
-              visual.dot,
-            ].join(
-              ' ',
-            )}
+        <div className="flex items-center gap-2">
+          <SamiAppIconTile
+            appKey={
+              app.registryKey
+            }
+            category={
+              app.category
+            }
+            iconKey={
+              app.iconKey
+            }
+            size="sm"
           />
 
-          <div className="relative flex items-start gap-4">
-            <SamiAppIconTile
-              appKey={
-                app.registryKey
-              }
-              category={
-                app.category
-              }
-              iconKey={
-                app.iconKey
-              }
-              size="xl"
-            />
-
-            <div className="min-w-0 flex-1">
-              <p
-                className={[
-                  'text-[10px] font-bold uppercase tracking-[0.14em]',
-                  visual.text,
-                ].join(
-                  ' ',
-                )}
-              >
-                {app.categoryLabel}
-              </p>
-
-              <h1 className="mt-1 text-2xl font-black tracking-[-0.03em] sm:text-3xl">
-                {app.name}
-              </h1>
-
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500 dark:text-slate-400">
-                {app.description}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div
+          <Link
+            href="/apps"
             className={[
-              'rounded-[22px] border p-5',
-              visual.soft,
+              'inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-xs font-semibold shadow-[var(--sami-shadow-sm)] transition hover:-translate-y-px',
               visual.border,
+              visual.soft,
+              visual.text,
             ].join(
               ' ',
             )}
           >
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-              App workspace
-            </p>
-
-            <p className="mt-2 text-sm font-bold">
-              App installed
-            </p>
-
-            <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500 dark:text-slate-400">
-              {app.name} is available in your workspace and follows your current company access and permissions. Additional features for this app will appear here as they become available.
-            </p>
-
-            <div className="mt-5 grid gap-2 sm:grid-cols-3">
-              <AppFact
-                label="Company"
-                value="Current"
-              />
-              <AppFact
-                label="Access"
-                value="Applied"
-              />
-              <AppFact
-                label="SaMi AI"
-                value="Available"
-              />
-            </div>
-          </div>
-
-          <div className="sami-soft-surface rounded-[22px] p-5">
-            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
-              Access
-            </p>
-
-            <div className="mt-3 flex items-center gap-2">
-              <span
-                className={[
-                  'h-2 w-2 rounded-full',
-                  visual.dot,
-                ].join(
-                  ' ',
-                )}
-              />
-              <p className="text-sm font-bold">
-                Available to you
-              </p>
-            </div>
-
-            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-              This app is available to you based on your workspace access and current company.
-            </p>
-
-            <Link
-              href="/apps"
-              className={[
-                'mt-5 inline-flex items-center gap-2 text-xs font-semibold',
-                visual.text,
-              ].join(
-                ' ',
-              )}
-            >
-              Browse other apps
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+            <ArrowLeft className="h-4 w-4" />
+            <span className="hidden sm:inline">
+              All Apps
+            </span>
+          </Link>
         </div>
-      </section>
+      }
+      contentClassName="max-w-[1600px]"
+    >
+      <EnterpriseModuleWorkspaceClient
+        initialData={
+          data
+        }
+        userId={
+          session.user.id
+        }
+      />
     </WorkspaceShell>
-  );
-}
-
-
-function AppFact({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="rounded-xl border border-black/5 bg-white/70 px-3 py-2.5 dark:border-white/10 dark:bg-black/10">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-        {label}
-      </p>
-      <p className="mt-1 text-[11px] font-bold text-slate-700 dark:text-slate-200">
-        {value}
-      </p>
-    </div>
   );
 }

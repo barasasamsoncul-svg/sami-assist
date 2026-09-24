@@ -8,6 +8,10 @@ import {
   INVOICING_AI_TOOLS,
 } from '@/lib/apps/invoicing/ai-tools';
 
+import {
+  ENTERPRISE_SUITE_AI_TOOLS,
+} from '@/lib/apps/enterprise/ai-tools';
+
 import type {
   SamiAiRuntimeContext,
   SamiAiToolDefinition,
@@ -139,6 +143,7 @@ export function getAvailableSamiAiTools(
 
   return [
     ...CORE_SAMI_AI_TOOLS,
+    ...ENTERPRISE_SUITE_AI_TOOLS,
     ...appTools,
   ].filter(
     tool =>
