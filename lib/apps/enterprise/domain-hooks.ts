@@ -1391,6 +1391,279 @@ function validateDomainRow(
     );
   }
 
+
+  if (
+    moduleKey ===
+      'attendance' &&
+    table ===
+      'attendance_policies'
+  ) {
+    assertNonNegative(
+      row.grace_minutes,
+      'Attendance grace minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'attendance' &&
+    table ===
+      'attendance_entries'
+  ) {
+    assertNonNegative(
+      row.worked_minutes,
+      'Worked minutes',
+    );
+
+    assertNonNegative(
+      row.late_minutes,
+      'Late minutes',
+    );
+
+    assertDateOrder(
+      row.clock_in,
+      row.clock_out,
+      'Attendance entry',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_templates'
+  ) {
+    assertNonNegative(
+      row.break_minutes,
+      'Shift break minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_schedules'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Shift schedule period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shifts' &&
+    table ===
+      'shift_assignments'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Shift assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'timesheets' &&
+    table ===
+      'time_entries'
+  ) {
+    assertNonNegative(
+      row.hours,
+      'Timesheet hours',
+    );
+
+    assertDateOrder(
+      row.start_time,
+      row.end_time,
+      'Time entry',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'appraisals' &&
+    table ===
+      'appraisal_cycles'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.end_date,
+      'Appraisal cycle',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'benefits' &&
+    table ===
+      'benefit_plans'
+  ) {
+    assertNonNegative(
+      row.employer_cost,
+      'Employer benefit cost',
+    );
+
+    assertNonNegative(
+      row.employee_cost,
+      'Employee benefit cost',
+    );
+
+    assertDateOrder(
+      row.effective_from,
+      row.effective_to,
+      'Benefit plan',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'benefits' &&
+    table ===
+      'benefit_enrollments'
+  ) {
+    assertDateOrder(
+      row.enrolled_at,
+      row.ended_at,
+      'Benefit enrollment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'learning' &&
+    table ===
+      'learning_courses' &&
+    row.estimated_minutes !==
+      null &&
+    row.estimated_minutes !==
+      undefined
+  ) {
+    assertPositive(
+      row.estimated_minutes,
+      'Estimated learning minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'learning' &&
+    table ===
+      'learning_enrollments'
+  ) {
+    assertPercentage(
+      row.progress_percent,
+      'Learning progress',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'onboarding' &&
+    table ===
+      'employee_onboardings'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.target_completion_date,
+      'Employee onboarding',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'rentals' &&
+    table ===
+      'rental_items'
+  ) {
+    assertNonNegative(
+      row.rental_rate,
+      'Rental rate',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'rentals' &&
+    table ===
+      'rental_contracts'
+  ) {
+    assertDateOrder(
+      row.start_date,
+      row.expected_return_date,
+      'Rental contract',
+    );
+
+    assertDateOrder(
+      row.start_date,
+      row.actual_return_date,
+      'Rental return',
+    );
+
+    assertNonNegative(
+      row.total_amount,
+      'Rental total',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'vehicles'
+  ) {
+    assertNonNegative(
+      row.mileage,
+      'Vehicle mileage',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'vehicle_assignments'
+  ) {
+    assertDateOrder(
+      row.assigned_from,
+      row.assigned_to,
+      'Vehicle assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'fleet' &&
+    table ===
+      'fleet_services'
+  ) {
+    assertNonNegative(
+      row.mileage,
+      'Service mileage',
+    );
+
+    assertNonNegative(
+      row.cost,
+      'Fleet service cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'safety' &&
+    table ===
+      'safety_checks'
+  ) {
+    assertDateOrder(
+      row.scheduled_at,
+      row.completed_at,
+      'Safety check',
+    );
+  }
+
   }
 }
 
