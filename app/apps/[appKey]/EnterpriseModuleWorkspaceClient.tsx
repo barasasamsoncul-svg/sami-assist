@@ -17,6 +17,7 @@ import {
   Columns3,
   Database,
   Download,
+  Eye,
   History,
   LayoutDashboard,
   List,
@@ -37,6 +38,10 @@ import {
 } from 'next/navigation';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
+
+import EnterpriseRecordWorkspacePanel from '@/app/apps/[appKey]/EnterpriseRecordWorkspacePanel';
+import EnterpriseRegisterControls from '@/app/apps/[appKey]/EnterpriseRegisterControls';
+
 
 import {
   useSaMiOverlay,
@@ -448,6 +453,23 @@ export default function EnterpriseModuleWorkspaceClient({
     } | null>(
       null,
     );
+
+  const [
+    recordWorkspace,
+    setRecordWorkspace,
+  ] =
+    useState<{
+      tableKey:
+        string;
+      record:
+        Record<
+          string,
+          unknown
+        >;
+    } | null>(
+      null,
+    );
+
 
   const [
     requestBusy,
@@ -1450,6 +1472,17 @@ export default function EnterpriseModuleWorkspaceClient({
                         .randomUUID(),
                   })
               }
+              onOpenRecord={
+                (
+                  table,
+                  record,
+                ) =>
+                  setRecordWorkspace({
+                    tableKey:
+                      table.key,
+                    record,
+                  })
+              }
               onEdit={
                 (
                   table,
@@ -1535,6 +1568,52 @@ export default function EnterpriseModuleWorkspaceClient({
           )
         }
       </div>
+
+      {
+        recordWorkspace &&
+        (
+          <EnterpriseRecordWorkspacePanel
+            moduleKey={
+              initialData
+                .module
+                .key
+            }
+            table={
+              initialData.tables
+                .find(
+                  table =>
+                    table.key ===
+                    recordWorkspace
+                      .tableKey,
+                ) ||
+              initialData.tables[0]
+            }
+            record={
+              recordWorkspace
+                .record
+            }
+            userId={
+              userId
+            }
+            canEdit={
+              initialData
+                .capabilities
+                .canEdit
+            }
+            canManageSettings={
+              initialData
+                .capabilities
+                .canManageSettings
+            }
+            onClose={
+              () =>
+                setRecordWorkspace(
+                  null,
+                )
+            }
+          />
+        )
+      }
 
       {
         editor &&
@@ -1958,6 +2037,7 @@ function Records({
   canDelete,
   onSelect,
   onCreate,
+  onOpenRecord,
   onEdit,
   onDelete,
   onTransition,
@@ -2009,6 +2089,17 @@ function Records({
     (
       table:
         EnterpriseTable,
+    ) =>
+      void;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
     ) =>
       void;
   onEdit:
@@ -2309,6 +2400,30 @@ function Records({
           }
         </div>
       </div>
+
+      <EnterpriseRegisterControls
+        moduleKey={
+          moduleKey
+        }
+        table={
+          selected
+        }
+        search={
+          search
+        }
+        setSearch={
+          setSearch
+        }
+        layout={
+          recordView
+        }
+        setLayout={
+          value =>
+            setRecordView(
+              value,
+            )
+        }
+      />
 
       <div className="sami-surface rounded-[22px] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2670,6 +2785,27 @@ function Records({
                                                     }
               
                                                     {
+                                                      selected
+                                                        .recordKey &&
+                                                      (
+                                                        <button
+                                                          type="button"
+                                                          aria-label="Open record workspace"
+                                                          onClick={
+                                                            () =>
+                                                              onOpenRecord(
+                                                                selected,
+                                                                record,
+                                                              )
+                                                          }
+                                                          className="rounded-lg p-2 hover:bg-slate-500/10"
+                                                        >
+                                                          <Eye className="h-4 w-4" />
+                                                        </button>
+                                                      )
+                                                    }
+
+                                                    {
                                                       canEdit &&
                                                       selected
                                                         .supportsEdit &&
@@ -2788,10 +2924,9 @@ function Records({
                                           }
                                           type="button"
                                           onClick={
-                                            canEdit &&
-                                            selected.supportsEdit
+                                            selected.recordKey
                                               ? () =>
-                                                  onEdit(
+                                                  onOpenRecord(
                                                     selected,
                                                     record,
                                                   )
@@ -2924,10 +3059,9 @@ function Records({
                                         }
                                         type="button"
                                         onClick={
-                                          canEdit &&
-                                          selected.supportsEdit
+                                          selected.recordKey
                                             ? () =>
-                                                onEdit(
+                                                onOpenRecord(
                                                   selected,
                                                   record,
                                                 )
