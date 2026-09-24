@@ -34,6 +34,7 @@ import {
 } from 'next/navigation';
 
 import EnterpriseRecordWorkspacePanel from './EnterpriseRecordWorkspacePanel';
+import EnterpriseRegisterControls from './EnterpriseRegisterControls';
 
 import SaMiOverlay from '@/app/components/SaMiOverlay';
 
@@ -55,6 +56,12 @@ import type {
 import {
   getEnterpriseWorkflowTransitions,
 } from '@/lib/apps/enterprise/workflow-policy';
+
+
+type RegisterLayout =
+  | 'list'
+  | 'kanban'
+  | 'calendar';
 
 
 type ViewKey =
@@ -1891,6 +1898,27 @@ function Records({
     ) =>
       void;
 }) {
+  const [
+    registerLayout,
+    setRegisterLayout,
+  ] =
+    useState<RegisterLayout>(
+      'list',
+    );
+
+  useEffect(
+    () => {
+      setRegisterLayout(
+        'list',
+      );
+    },
+    [
+      selected
+        ?.key,
+    ],
+  );
+
+
   if (
     !selected
   ) {
@@ -1944,7 +1972,28 @@ function Records({
       </div>
 
       <div className="sami-surface rounded-[22px] p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <EnterpriseRegisterControls
+          moduleKey={
+            moduleKey
+          }
+          table={
+            selected
+          }
+          search={
+            search
+          }
+          setSearch={
+            setSearch
+          }
+          layout={
+            registerLayout
+          }
+          setLayout={
+            setRegisterLayout
+          }
+        />
+
+        <div className="mt-3 flex flex-col gap-3 border-t border-[var(--sami-border)] pt-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-sm font-black">
               {
@@ -2025,6 +2074,38 @@ function Records({
         </div>
       </div>
 
+      {
+        registerLayout ===
+          'kanban'
+          ? (
+              <KanbanRegister
+                table={
+                  selected
+                }
+                records={
+                  records
+                }
+                onOpenRecord={
+                  onOpenRecord
+                }
+              />
+            )
+          : registerLayout ===
+              'calendar'
+            ? (
+                <CalendarRegister
+                  table={
+                    selected
+                  }
+                  records={
+                    records
+                  }
+                  onOpenRecord={
+                    onOpenRecord
+                  }
+                />
+              )
+            : (
       <div className="sami-surface overflow-hidden rounded-[24px]">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
@@ -2273,7 +2354,467 @@ function Records({
           </table>
         </div>
       </div>
+            )
+      }
     </section>
+  );
+}
+
+
+function KanbanRegister({
+  table,
+  records,
+  onOpenRecord,
+}: {
+  table:
+    EnterpriseTable;
+  records:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+}) {
+  const workflow =
+    table.workflows[0];
+
+  if (
+    !workflow
+  ) {
+    return (
+      <div className="sami-surface rounded-[24px] p-8 text-center text-sm text-slate-500">
+        This register does not expose a workflow field for Kanban.
+      </div>
+    );
+  }
+
+  const grouped =
+    new Map<
+      string,
+      Array<
+        Record<
+          string,
+          unknown
+        >
+      >
+    >();
+
+  for (
+    const record
+    of records
+  ) {
+    const key =
+      String(
+        record[
+          workflow.field
+        ] ||
+        'unassigned',
+      )
+        .trim()
+        .toLowerCase();
+
+    const group =
+      grouped.get(
+        key,
+      ) ||
+      [];
+
+    group.push(
+      record,
+    );
+    grouped.set(
+      key,
+      group,
+    );
+  }
+
+  const states =
+    [
+      ...new Set([
+        ...workflow
+          .databaseAllowedValues,
+        ...grouped.keys(),
+      ]),
+    ];
+
+  return (
+    <div className="sami-surface overflow-x-auto rounded-[24px] p-4">
+      <div className="flex min-w-max gap-3">
+        {
+          states.map(
+            state => {
+              const items =
+                grouped.get(
+                  state,
+                ) ||
+                [];
+
+              return (
+                <div
+                  key={
+                    state
+                  }
+                  className="w-72 shrink-0 rounded-2xl bg-slate-500/[0.04] p-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-black capitalize">
+                      {
+                        state
+                          .replaceAll(
+                            '_',
+                            ' ',
+                          )
+                      }
+                    </p>
+                    <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                      {
+                        items.length
+                      }
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {
+                      items.length ===
+                        0
+                        ? (
+                            <div className="rounded-xl border border-dashed border-[var(--sami-border)] p-4 text-center text-[10px] text-slate-400">
+                              No records
+                            </div>
+                          )
+                        : items.map(
+                            (
+                              record,
+                              index,
+                            ) => (
+                              <button
+                                key={
+                                  table.recordKey
+                                    ? String(
+                                        record[
+                                          table
+                                            .recordKey
+                                        ] ||
+                                        index,
+                                      )
+                                    : index
+                                }
+                                type="button"
+                                onClick={
+                                  () =>
+                                    onOpenRecord(
+                                      table,
+                                      record,
+                                    )
+                                }
+                                className="block w-full rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] p-3 text-left hover:border-blue-500/30"
+                              >
+                                {
+                                  table
+                                    .displayFields
+                                    .filter(
+                                      field =>
+                                        field !==
+                                        workflow.field,
+                                    )
+                                    .slice(
+                                      0,
+                                      3,
+                                    )
+                                    .map(
+                                      field => (
+                                        <div
+                                          key={
+                                            field
+                                          }
+                                          className="mb-2 last:mb-0"
+                                        >
+                                          <p className="text-[9px] font-black uppercase tracking-[0.06em] text-slate-400">
+                                            {
+                                              table.fields
+                                                .find(
+                                                  item =>
+                                                    item.key ===
+                                                    field,
+                                                )
+                                                ?.label ||
+                                              field
+                                            }
+                                          </p>
+                                          <p className="mt-0.5 line-clamp-2 text-[11px] font-bold">
+                                            {
+                                              displayValue(
+                                                record[
+                                                  field
+                                                ],
+                                              )
+                                            }
+                                          </p>
+                                        </div>
+                                      ),
+                                    )
+                                }
+                              </button>
+                            ),
+                          )
+                    }
+                  </div>
+                </div>
+              );
+            },
+          )
+        }
+      </div>
+    </div>
+  );
+}
+
+
+function CalendarRegister({
+  table,
+  records,
+  onOpenRecord,
+}: {
+  table:
+    EnterpriseTable;
+  records:
+    Array<
+      Record<
+        string,
+        unknown
+      >
+    >;
+  onOpenRecord:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+    ) =>
+      void;
+}) {
+  const dateField =
+    table.fields.find(
+      field =>
+        field.inputType ===
+          'date' ||
+        field.inputType ===
+          'datetime',
+    );
+
+  if (
+    !dateField
+  ) {
+    return (
+      <div className="sami-surface rounded-[24px] p-8 text-center text-sm text-slate-500">
+        This register does not expose a calendar date.
+      </div>
+    );
+  }
+
+  const grouped =
+    new Map<
+      string,
+      Array<
+        Record<
+          string,
+          unknown
+        >
+      >
+    >();
+
+  for (
+    const record
+    of records
+  ) {
+    const raw =
+      record[
+        dateField.key
+      ];
+
+    if (
+      !raw
+    ) {
+      continue;
+    }
+
+    const date =
+      new Date(
+        String(
+          raw,
+        ),
+      );
+
+    const key =
+      Number.isNaN(
+        date.getTime(),
+      )
+        ? String(
+            raw,
+          )
+        : date
+            .toISOString()
+            .slice(
+              0,
+              10,
+            );
+
+    const group =
+      grouped.get(
+        key,
+      ) ||
+      [];
+
+    group.push(
+      record,
+    );
+    grouped.set(
+      key,
+      group,
+    );
+  }
+
+  const dates =
+    [
+      ...grouped.keys(),
+    ].sort();
+
+  return (
+    <div className="sami-surface rounded-[24px] p-4">
+      <div className="mb-4">
+        <p className="text-xs font-black">
+          Calendar by {
+            dateField.label
+          }
+        </p>
+        <p className="mt-1 text-[10px] text-slate-400">
+          Open any item to work with its notes, activities, files and custom fields.
+        </p>
+      </div>
+
+      <div className="space-y-3">
+        {
+          dates.length ===
+            0
+            ? (
+                <div className="rounded-xl border border-dashed border-[var(--sami-border)] p-8 text-center text-xs text-slate-500">
+                  No dated records match this view.
+                </div>
+              )
+            : dates.map(
+                date => (
+                  <div
+                    key={
+                      date
+                    }
+                    className="grid gap-2 rounded-2xl border border-[var(--sami-border)] p-3 sm:grid-cols-[140px_1fr]"
+                  >
+                    <div>
+                      <p className="text-xs font-black">
+                        {
+                          date
+                        }
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-400">
+                        {
+                          grouped.get(
+                            date,
+                          )!
+                            .length
+                        }
+                        {' items'}
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                      {
+                        grouped.get(
+                          date,
+                        )!
+                          .map(
+                            (
+                              record,
+                              index,
+                            ) => (
+                              <button
+                                key={
+                                  table.recordKey
+                                    ? String(
+                                        record[
+                                          table
+                                            .recordKey
+                                        ] ||
+                                        index,
+                                      )
+                                    : index
+                                }
+                                type="button"
+                                onClick={
+                                  () =>
+                                    onOpenRecord(
+                                      table,
+                                      record,
+                                    )
+                                }
+                                className="rounded-xl bg-slate-500/[0.04] p-3 text-left hover:bg-blue-500/[0.06]"
+                              >
+                                {
+                                  table
+                                    .displayFields
+                                    .filter(
+                                      field =>
+                                        field !==
+                                        dateField.key,
+                                    )
+                                    .slice(
+                                      0,
+                                      2,
+                                    )
+                                    .map(
+                                      field => (
+                                        <p
+                                          key={
+                                            field
+                                          }
+                                          className="line-clamp-2 text-[11px] font-bold"
+                                        >
+                                          {
+                                            displayValue(
+                                              record[
+                                                field
+                                              ],
+                                            )
+                                          }
+                                        </p>
+                                      ),
+                                    )
+                                }
+                              </button>
+                            ),
+                          )
+                      }
+                    </div>
+                  </div>
+                ),
+              )
+        }
+      </div>
+    </div>
   );
 }
 
