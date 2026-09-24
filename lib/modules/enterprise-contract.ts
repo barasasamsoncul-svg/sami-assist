@@ -181,7 +181,7 @@ export function withEnterpriseModuleDefaults(
         type:
           'dashboard',
         resourceKey:
-          'dashboard',
+          'report',
         route:
           '/apps/' +
           key,
