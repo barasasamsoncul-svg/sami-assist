@@ -363,24 +363,47 @@ export function withEnterpriseModuleDefaults(
       permissions,
 
       recordPolicies: [
-        {
-          key:
-            key +
-            '.record.company',
-          name:
-            manifest.name +
-            ' records in current company',
-          resourceKey:
-            'record',
-          operations: [
-            'read',
-            'create',
-            'write',
-            'delete',
-          ],
-          scope:
-            'company',
-        },
+        ...tables.map(
+          table => {
+            const settings =
+              table.endsWith(
+                '_settings',
+              );
+
+            return {
+              key:
+                key +
+                '.' +
+                table +
+                '.company',
+              name:
+                table
+                  .replaceAll(
+                    '_',
+                    ' ',
+                  ) +
+                ' in current company',
+              resourceKey:
+                resourceKeyForTable(
+                  table,
+                ),
+              operations:
+                settings
+                  ? [
+                      'read' as const,
+                      'write' as const,
+                    ]
+                  : [
+                      'read' as const,
+                      'create' as const,
+                      'write' as const,
+                      'delete' as const,
+                    ],
+              scope:
+                'company' as const,
+            };
+          },
+        ),
         {
           key:
             key +
@@ -392,22 +415,6 @@ export function withEnterpriseModuleDefaults(
             'report',
           operations: [
             'read',
-          ],
-          scope:
-            'company',
-        },
-        {
-          key:
-            key +
-            '.settings.company',
-          name:
-            manifest.name +
-            ' settings in current company',
-          resourceKey:
-            'settings',
-          operations: [
-            'read',
-            'write',
           ],
           scope:
             'company',
