@@ -109,11 +109,11 @@ function handleError(
             error.code ===
               'MODULE_NOT_SUPPORTED' ||
             error.code ===
-              'TABLE_NOT_READY' ||
-            error.code ===
               'RECORD_NOT_FOUND'
             ? 404
             : error.code ===
+                'TABLE_NOT_READY' ||
+              error.code ===
                 'DELETE_NOT_SUPPORTED' ||
               error.code ===
                 'WORKFLOW_NOT_SUPPORTED' ||
