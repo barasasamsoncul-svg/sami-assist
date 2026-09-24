@@ -831,6 +831,15 @@ test('enterprise lifecycle stages and core business invariants are governed tran
       'Payroll deductions',
       'Leave end date cannot be before the start date',
       'Project due date cannot be before the start date',
+      'Cash-flow probability',
+      'Salvage value cannot exceed acquisition cost',
+      'Booking weekday must be between 0 and 6',
+      'Service material quantity',
+      'Work-order material quantity',
+      'Timesheet hours',
+      'Learning progress',
+      'Fleet service cost',
+      'Rental total',
     ]
   ) {
     assert.ok(
@@ -902,6 +911,13 @@ test('enterprise suite uses one audited workflow engine across business modules'
       'recruitment:applicants',
       'shipping:shipments',
       'ecommerce:storefront_orders',
+      'field_services:service_orders',
+      'timesheets:time_entries',
+      'appraisals:appraisals',
+      'safety:safety_incidents',
+      'rentals:rental_contracts',
+      'fleet:vehicles',
+      'subscriptions:subscriptions',
     ]
   ) {
     assert.ok(
