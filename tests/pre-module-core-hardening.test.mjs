@@ -215,12 +215,14 @@ test('pre-module hardening: uncaught server and browser errors enter Category 24
   );
 });
 
-test('pre-module hardening: every module explicitly declares data lifecycle capabilities and defaults fail closed', async () => {
+test('pre-module hardening: module data lifecycle capabilities require code-owned handlers', async () => {
   const [
     types,
     firstParty,
     additional,
     validation,
+    registry,
+    suiteExport,
   ] =
     await Promise.all([
       source(
@@ -235,6 +237,12 @@ test('pre-module hardening: every module explicitly declares data lifecycle capa
       source(
         'lib/modules/validation.ts',
       ),
+      source(
+        'lib/data-lifecycle/registry.ts',
+      ),
+      source(
+        'lib/data-lifecycle/suite-export.ts',
+      ),
     ]);
 
   assert.match(
@@ -247,35 +255,85 @@ test('pre-module hardening: every module explicitly declares data lifecycle capa
     /dataErasure:\s*boolean/,
   );
 
-  assert.equal(
-    (
-      firstParty.match(
-        /dataExport:\s*false/g,
-      ) ||
-      []
-    ).length,
-    36,
-    'all original first-party modules must fail closed for data export until implemented',
-  );
+  for (
+    const key
+    of [
+      'invoicing',
+      'sales',
+    ]
+  ) {
+    const start =
+      firstParty.indexOf(
+        'key: "' +
+        key +
+        '"',
+      );
 
-  assert.equal(
-    (
-      firstParty.match(
-        /dataErasure:\s*false/g,
-      ) ||
-      []
-    ).length,
-    36,
-  );
+    const end =
+      firstParty.indexOf(
+        'defineSamiModule({',
+        start +
+          20,
+      );
+
+    const block =
+      firstParty.slice(
+        start,
+        end >
+          start
+          ? end
+          : firstParty.length,
+      );
+
+    assert.match(
+      block,
+      /dataExport:\s*true/,
+      key +
+      ' must opt in only because its code-owned export handler is registered.',
+    );
+
+    assert.match(
+      block,
+      /dataErasure:\s*false/,
+      key +
+      ' erasure remains fail-closed until a dedicated erasure plan exists.',
+    );
+  }
 
   assert.match(
     additional,
     /dataExport:\s*false/,
+    'Raw additional module manifests remain fail-closed before the enterprise runtime wraps them.',
   );
 
   assert.match(
     additional,
     /dataErasure:\s*false/,
+  );
+
+  assert.match(
+    registry,
+    /SUITE_DATA_LIFECYCLE_HANDLERS/,
+  );
+
+  assert.match(
+    suiteExport,
+    /ENTERPRISE_MODULE_TABLES/,
+  );
+
+  assert.match(
+    suiteExport,
+    /DEDICATED_EXPORT_TABLES/,
+  );
+
+  assert.match(
+    suiteExport,
+    /company_id = \$1/,
+  );
+
+  assert.match(
+    suiteExport,
+    /MAX_ROWS_PER_TABLE/,
   );
 
   assert.match(

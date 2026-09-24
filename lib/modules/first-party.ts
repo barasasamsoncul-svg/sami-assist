@@ -441,7 +441,7 @@ const BASE_FIRST_PARTY_SAMI_MODULES:
       aiTools: true,
       integrationProviders: false,
       apiEndpoints: true,
-      dataExport: false,
+      dataExport: true,
       dataErasure: false,
     },
   }),
