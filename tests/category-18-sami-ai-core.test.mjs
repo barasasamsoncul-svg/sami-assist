@@ -360,15 +360,28 @@ test('Category 18: memory text is treated as untrusted context and cannot overri
 });
 
 test('Category 18: AI usage limits and provider accounting are durable in tenant storage', async () => {
-  const [service, core] = await Promise.all([
+  const [
+    service,
+    entitlements,
+    core,
+  ] = await Promise.all([
     source('lib/services/workspace-ai.ts'),
+    source('lib/usage/entitlements.ts'),
     source('lib/schema/tenant-core.sql'),
   ]);
 
   assert.match(service, /enforceRateLimit/);
-  assert.match(service, /FROM ai_runs/);
-  assert.match(service, /INTERVAL '1 minute'/);
-  assert.match(service, /INTERVAL '24 hours'/);
+  assert.match(service, /getAiRequestWindowUsage/);
+  assert.match(service, /usage\.minuteUsed/);
+  assert.match(service, /usage\.rolling24HoursUsed/);
+
+  assert.match(
+    entitlements,
+    /export async function getAiRequestWindowUsage/,
+  );
+  assert.match(entitlements, /FROM ai_runs/);
+  assert.match(entitlements, /INTERVAL '1 minute'/);
+  assert.match(entitlements, /INTERVAL '24 hours'/);
 
   assert.match(
     core,
