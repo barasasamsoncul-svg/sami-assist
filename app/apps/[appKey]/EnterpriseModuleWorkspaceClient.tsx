@@ -12,10 +12,13 @@ import {
   Activity,
   BarChart3,
   BookOpenCheck,
+  CalendarDays,
   CircleCheckBig,
+  Columns3,
   Database,
   Download,
   LayoutDashboard,
+  List,
   Pencil,
   Plus,
   RefreshCw,
@@ -1804,6 +1807,197 @@ function Records({
     ) =>
       void;
 }) {
+  const [
+    recordView,
+    setRecordView,
+  ] =
+    useState<
+      'list' |
+      'kanban' |
+      'calendar'
+    >(
+      'list',
+    );
+
+  useEffect(
+    () => {
+      setRecordView(
+        'list',
+      );
+    },
+    [
+      selected?.key,
+    ],
+  );
+
+  const workflow =
+    selected
+      ?.workflows[0] ||
+    null;
+
+  const dateField =
+    selected
+      ?.fields
+      .find(
+        field =>
+          (
+            field.inputType ===
+              'date' ||
+            field.inputType ===
+              'datetime'
+          ) &&
+          ![
+            'created_at',
+            'updated_at',
+          ].includes(
+            field.key,
+          ),
+      )
+      ?.key ||
+    null;
+
+  const kanbanGroups =
+    workflow
+      ? Object.entries(
+          records.reduce<
+            Record<
+              string,
+              Array<
+                Record<
+                  string,
+                  unknown
+                >
+              >
+            >
+          >(
+            (
+              groups,
+              record,
+            ) => {
+              const state =
+                String(
+                  record[
+                    workflow.field
+                  ] ||
+                  'Unspecified',
+                )
+                  .trim() ||
+                'Unspecified';
+
+              groups[
+                state
+              ] =
+                groups[
+                  state
+                ] ||
+                [];
+
+              groups[
+                state
+              ].push(
+                record,
+              );
+
+              return groups;
+            },
+            {},
+          ),
+        )
+          .sort(
+            (
+              left,
+              right,
+            ) =>
+              left[0]
+                .localeCompare(
+                  right[0],
+                ),
+          )
+      : [];
+
+  const calendarGroups =
+    dateField
+      ? Object.entries(
+          records.reduce<
+            Record<
+              string,
+              Array<
+                Record<
+                  string,
+                  unknown
+                >
+              >
+            >
+          >(
+            (
+              groups,
+              record,
+            ) => {
+              const raw =
+                record[
+                  dateField
+                ];
+
+              const timestamp =
+                raw
+                  ? Date.parse(
+                      String(
+                        raw,
+                      ),
+                    )
+                  : Number.NaN;
+
+              const day =
+                Number.isFinite(
+                  timestamp,
+                )
+                  ? new Date(
+                      timestamp,
+                    )
+                      .toISOString()
+                      .slice(
+                        0,
+                        10,
+                      )
+                  : 'Unscheduled';
+
+              groups[
+                day
+              ] =
+                groups[
+                  day
+                ] ||
+                [];
+
+              groups[
+                day
+              ].push(
+                record,
+              );
+
+              return groups;
+            },
+            {},
+          ),
+        )
+          .sort(
+            (
+              left,
+              right,
+            ) =>
+              left[0] ===
+                'Unscheduled'
+                ? 1
+                : right[0] ===
+                    'Unscheduled'
+                  ? -1
+                  : left[0]
+                      .localeCompare(
+                        right[0],
+                      ),
+          )
+      : [];
+
   if (
     !selected
   ) {
@@ -1873,7 +2067,88 @@ function Records({
             </p>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <div className="inline-flex h-10 items-center rounded-xl border border-[var(--sami-border)] p-1">
+              <button
+                type="button"
+                aria-label="List view"
+                onClick={
+                  () =>
+                    setRecordView(
+                      'list',
+                    )
+                }
+                className={[
+                  'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
+                  recordView ===
+                    'list'
+                    ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                    : '',
+                ].join(
+                  ' ',
+                )}
+              >
+                <List className="h-3.5 w-3.5" />
+                List
+              </button>
+
+              {
+                workflow &&
+                (
+                  <button
+                    type="button"
+                    aria-label="Kanban view"
+                    onClick={
+                      () =>
+                        setRecordView(
+                          'kanban',
+                        )
+                    }
+                    className={[
+                      'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
+                      recordView ===
+                        'kanban'
+                        ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                        : '',
+                    ].join(
+                      ' ',
+                    )}
+                  >
+                    <Columns3 className="h-3.5 w-3.5" />
+                    Kanban
+                  </button>
+                )
+              }
+
+              {
+                dateField &&
+                (
+                  <button
+                    type="button"
+                    aria-label="Calendar view"
+                    onClick={
+                      () =>
+                        setRecordView(
+                          'calendar',
+                        )
+                    }
+                    className={[
+                      'inline-flex h-8 items-center gap-1 rounded-lg px-2 text-[10px] font-black',
+                      recordView ===
+                        'calendar'
+                        ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
+                        : '',
+                    ].join(
+                      ' ',
+                    )}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Calendar
+                  </button>
+                )
+              }
+            </div>
+
             <label className="relative block">
               <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
               <input
@@ -1938,225 +2213,476 @@ function Records({
         </div>
       </div>
 
-      <div className="sami-surface overflow-hidden rounded-[24px]">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
-            <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
-              <tr>
-                {
-                  selected
-                    .displayFields
-                    .map(
-                      field => (
-                        <th
-                          key={
-                            field
-                          }
-                          className="px-4 py-3"
-                        >
-                          {
-                            selected
-                              .fields
-                              .find(
-                                item =>
-                                  item.key ===
-                                  field,
-                              )
-                              ?.label ||
-                            field
-                          }
-                        </th>
-                      ),
-                    )
-                }
-
-                {
-                  (
-                    canEdit &&
-                    (
-                      selected
-                        .supportsEdit ||
-                      selected
-                        .workflows
-                        .length >
-                        0
-                    )
-                  ) ||
-                  (
-                    canDelete &&
-                    selected
-                      .supportsDelete
-                  )
-                    ? (
-                        <th className="px-4 py-3 text-right">
-                          Actions
-                        </th>
-                      )
-                    : null
-                }
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-[var(--sami-border)]">
-              {
-                records.length ===
-                  0
-                  ? (
-                      <tr>
-                        <td
-                          colSpan={
-                            selected
-                              .displayFields
-                              .length +
-                            1
-                          }
-                          className="px-4 py-10 text-center text-sm text-slate-500"
-                        >
-                          No records match this view.
-                        </td>
-                      </tr>
-                    )
-                  : records.map(
-                      (
-                        record,
-                        index,
-                      ) => (
-                        <tr
-                          key={
-                            selected.recordKey
-                              ? String(
-                                  record[
+      {
+        recordView ===
+          'list'
+          ? (
+                    <div className="sami-surface overflow-hidden rounded-[24px]">
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[820px] text-left text-sm">
+                          <thead className="border-b border-[var(--sami-border)] bg-slate-500/[0.04] text-[10px] font-black uppercase tracking-[0.09em] text-slate-400">
+                            <tr>
+                              {
+                                selected
+                                  .displayFields
+                                  .map(
+                                    field => (
+                                      <th
+                                        key={
+                                          field
+                                        }
+                                        className="px-4 py-3"
+                                      >
+                                        {
+                                          selected
+                                            .fields
+                                            .find(
+                                              item =>
+                                                item.key ===
+                                                field,
+                                            )
+                                            ?.label ||
+                                          field
+                                        }
+                                      </th>
+                                    ),
+                                  )
+                              }
+              
+                              {
+                                (
+                                  canEdit &&
+                                  (
                                     selected
-                                      .recordKey
-                                  ] ??
-                                  index,
+                                      .supportsEdit ||
+                                    selected
+                                      .workflows
+                                      .length >
+                                      0
+                                  )
+                                ) ||
+                                (
+                                  canDelete &&
+                                  selected
+                                    .supportsDelete
                                 )
-                              : index
-                          }
-                          className="hover:bg-slate-500/[0.03]"
-                        >
-                          {
-                            selected
-                              .displayFields
-                              .map(
-                                field => (
-                                  <td
-                                    key={
-                                      field
+                                  ? (
+                                      <th className="px-4 py-3 text-right">
+                                        Actions
+                                      </th>
+                                    )
+                                  : null
+                              }
+                            </tr>
+                          </thead>
+              
+                          <tbody className="divide-y divide-[var(--sami-border)]">
+                            {
+                              records.length ===
+                                0
+                                ? (
+                                    <tr>
+                                      <td
+                                        colSpan={
+                                          selected
+                                            .displayFields
+                                            .length +
+                                          1
+                                        }
+                                        className="px-4 py-10 text-center text-sm text-slate-500"
+                                      >
+                                        No records match this view.
+                                      </td>
+                                    </tr>
+                                  )
+                                : records.map(
+                                    (
+                                      record,
+                                      index,
+                                    ) => (
+                                      <tr
+                                        key={
+                                          selected.recordKey
+                                            ? String(
+                                                record[
+                                                  selected
+                                                    .recordKey
+                                                ] ??
+                                                index,
+                                              )
+                                            : index
+                                        }
+                                        className="hover:bg-slate-500/[0.03]"
+                                      >
+                                        {
+                                          selected
+                                            .displayFields
+                                            .map(
+                                              field => (
+                                                <td
+                                                  key={
+                                                    field
+                                                  }
+                                                  className="max-w-[300px] px-4 py-3 align-top"
+                                                >
+                                                  <span className="line-clamp-3 text-xs">
+                                                    {
+                                                      displayValue(
+                                                        record[
+                                                          field
+                                                        ],
+                                                      )
+                                                    }
+                                                  </span>
+                                                </td>
+                                              ),
+                                            )
+                                        }
+              
+                                        {
+                                          (
+                                            canEdit &&
+                                            selected
+                                              .supportsEdit
+                                          ) ||
+                                          (
+                                            canDelete &&
+                                            selected
+                                              .supportsDelete
+                                          )
+                                            ? (
+                                                <td className="px-4 py-3">
+                                                  <div className="flex flex-wrap justify-end gap-1">
+                                                    {
+                                                      canEdit &&
+                                                      selected
+                                                        .workflows
+                                                        .length >
+                                                        0 &&
+                                                      (
+                                                        <WorkflowActions
+                                                          moduleKey={
+                                                            moduleKey
+                                                          }
+                                                          table={
+                                                            selected
+                                                          }
+                                                          record={
+                                                            record
+                                                          }
+                                                          disabled={
+                                                            busy
+                                                          }
+                                                          onTransition={
+                                                            onTransition
+                                                          }
+                                                        />
+                                                      )
+                                                    }
+              
+                                                    {
+                                                      canEdit &&
+                                                      selected
+                                                        .supportsEdit &&
+                                                      (
+                                                        <button
+                                                          type="button"
+                                                          aria-label="Edit record"
+                                                          onClick={
+                                                            () =>
+                                                              onEdit(
+                                                                selected,
+                                                                record,
+                                                              )
+                                                          }
+                                                          className="rounded-lg p-2 hover:bg-blue-500/10 hover:text-blue-700"
+                                                        >
+                                                          <Pencil className="h-4 w-4" />
+                                                        </button>
+                                                      )
+                                                    }
+              
+                                                    {
+                                                      canDelete &&
+                                                      selected
+                                                        .supportsDelete &&
+                                                      (
+                                                        <button
+                                                          type="button"
+                                                          aria-label="Delete record"
+                                                          onClick={
+                                                            () =>
+                                                              onDelete(
+                                                                selected,
+                                                                record,
+                                                              )
+                                                          }
+                                                          className="rounded-lg p-2 text-red-600 hover:bg-red-500/10"
+                                                        >
+                                                          <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                      )
+                                                    }
+                                                  </div>
+                                                </td>
+                                              )
+                                            : null
+                                        }
+                                      </tr>
+                                    ),
+                                  )
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+            )
+          : recordView ===
+              'kanban' &&
+            workflow
+            ? (
+                <div className="overflow-x-auto pb-2">
+                  <div className="grid min-w-max auto-cols-[300px] grid-flow-col gap-3">
+                    {
+                      kanbanGroups.length ===
+                        0
+                        ? (
+                            <div className="sami-surface w-[300px] rounded-[22px] p-6 text-sm text-slate-500">
+                              No workflow records match this view.
+                            </div>
+                          )
+                        : kanbanGroups.map(
+                            ([
+                              state,
+                              group,
+                            ]) => (
+                              <div
+                                key={
+                                  state
+                                }
+                                className="sami-surface w-[300px] rounded-[22px] p-3"
+                              >
+                                <div className="flex items-center justify-between gap-2 border-b border-[var(--sami-border)] pb-3">
+                                  <span className="text-xs font-black capitalize">
+                                    {
+                                      state
+                                        .replaceAll(
+                                          '_',
+                                          ' ',
+                                        )
                                     }
-                                    className="max-w-[300px] px-4 py-3 align-top"
-                                  >
-                                    <span className="line-clamp-3 text-xs">
-                                      {
-                                        displayValue(
-                                          record[
-                                            field
-                                          ],
-                                        )
-                                      }
-                                    </span>
-                                  </td>
-                                ),
-                              )
-                          }
+                                  </span>
+                                  <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-black">
+                                    {
+                                      group.length
+                                    }
+                                  </span>
+                                </div>
 
-                          {
-                            (
-                              canEdit &&
-                              selected
-                                .supportsEdit
-                            ) ||
-                            (
-                              canDelete &&
-                              selected
-                                .supportsDelete
-                            )
-                              ? (
-                                  <td className="px-4 py-3">
-                                    <div className="flex flex-wrap justify-end gap-1">
-                                      {
-                                        canEdit &&
-                                        selected
-                                          .workflows
-                                          .length >
-                                          0 &&
-                                        (
-                                          <WorkflowActions
-                                            moduleKey={
-                                              moduleKey
-                                            }
-                                            table={
-                                              selected
-                                            }
-                                            record={
-                                              record
-                                            }
-                                            disabled={
-                                              busy
-                                            }
-                                            onTransition={
-                                              onTransition
-                                            }
-                                          />
-                                        )
-                                      }
+                                <div className="mt-3 space-y-2">
+                                  {
+                                    group.map(
+                                      (
+                                        record,
+                                        index,
+                                      ) => (
+                                        <button
+                                          key={
+                                            selected.recordKey
+                                              ? String(
+                                                  record[
+                                                    selected.recordKey
+                                                  ] ??
+                                                  index,
+                                                )
+                                              : index
+                                          }
+                                          type="button"
+                                          onClick={
+                                            canEdit &&
+                                            selected.supportsEdit
+                                              ? () =>
+                                                  onEdit(
+                                                    selected,
+                                                    record,
+                                                  )
+                                              : undefined
+                                          }
+                                          className="block w-full rounded-2xl border border-[var(--sami-border)] p-3 text-left hover:bg-slate-500/[0.03]"
+                                        >
+                                          {
+                                            selected.displayFields
+                                              .slice(
+                                                0,
+                                                4,
+                                              )
+                                              .map(
+                                                field => (
+                                                  <div
+                                                    key={
+                                                      field
+                                                    }
+                                                    className="mb-1 last:mb-0"
+                                                  >
+                                                    <p className="text-[9px] font-black uppercase tracking-[0.08em] text-slate-400">
+                                                      {
+                                                        selected.fields.find(
+                                                          item =>
+                                                            item.key ===
+                                                            field,
+                                                        )
+                                                          ?.label ||
+                                                        field
+                                                      }
+                                                    </p>
+                                                    <p className="mt-0.5 line-clamp-2 text-xs font-semibold">
+                                                      {
+                                                        displayValue(
+                                                          record[
+                                                            field
+                                                          ],
+                                                        )
+                                                      }
+                                                    </p>
+                                                  </div>
+                                                ),
+                                              )
+                                          }
+                                        </button>
+                                      ),
+                                    )
+                                  }
+                                </div>
+                              </div>
+                            ),
+                          )
+                    }
+                  </div>
+                </div>
+              )
+            : (
+                <div className="space-y-3">
+                  {
+                    calendarGroups.length ===
+                      0
+                      ? (
+                          <div className="sami-surface rounded-[22px] p-8 text-center text-sm text-slate-500">
+                            No scheduled records match this view.
+                          </div>
+                        )
+                      : calendarGroups.map(
+                          ([
+                            day,
+                            group,
+                          ]) => (
+                            <div
+                              key={
+                                day
+                              }
+                              className="sami-surface rounded-[22px] p-4"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2">
+                                  <CalendarDays className="h-4 w-4 text-blue-600" />
+                                  <h3 className="text-xs font-black">
+                                    {
+                                      day ===
+                                        'Unscheduled'
+                                        ? day
+                                        : new Date(
+                                            day +
+                                            'T00:00:00',
+                                          )
+                                            .toLocaleDateString(
+                                              undefined,
+                                              {
+                                                year:
+                                                  'numeric',
+                                                month:
+                                                  'long',
+                                                day:
+                                                  'numeric',
+                                              },
+                                            )
+                                    }
+                                  </h3>
+                                </div>
 
-                                      {
-                                        canEdit &&
-                                        selected
-                                          .supportsEdit &&
-                                        (
-                                          <button
-                                            type="button"
-                                            aria-label="Edit record"
-                                            onClick={
-                                              () =>
+                                <span className="rounded-full bg-slate-500/10 px-2 py-0.5 text-[10px] font-black">
+                                  {
+                                    group.length
+                                  }
+                                </span>
+                              </div>
+
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                                {
+                                  group.map(
+                                    (
+                                      record,
+                                      index,
+                                    ) => (
+                                      <button
+                                        key={
+                                          selected.recordKey
+                                            ? String(
+                                                record[
+                                                  selected.recordKey
+                                                ] ??
+                                                index,
+                                              )
+                                            : index
+                                        }
+                                        type="button"
+                                        onClick={
+                                          canEdit &&
+                                          selected.supportsEdit
+                                            ? () =>
                                                 onEdit(
                                                   selected,
                                                   record,
                                                 )
-                                            }
-                                            className="rounded-lg p-2 hover:bg-blue-500/10 hover:text-blue-700"
-                                          >
-                                            <Pencil className="h-4 w-4" />
-                                          </button>
-                                        )
-                                      }
-
-                                      {
-                                        canDelete &&
-                                        selected
-                                          .supportsDelete &&
-                                        (
-                                          <button
-                                            type="button"
-                                            aria-label="Delete record"
-                                            onClick={
-                                              () =>
-                                                onDelete(
-                                                  selected,
-                                                  record,
-                                                )
-                                            }
-                                            className="rounded-lg p-2 text-red-600 hover:bg-red-500/10"
-                                          >
-                                            <Trash2 className="h-4 w-4" />
-                                          </button>
-                                        )
-                                      }
-                                    </div>
-                                  </td>
-                                )
-                              : null
-                          }
-                        </tr>
-                      ),
-                    )
-              }
-            </tbody>
-          </table>
-        </div>
-      </div>
+                                            : undefined
+                                        }
+                                        className="rounded-2xl border border-[var(--sami-border)] p-3 text-left hover:bg-slate-500/[0.03]"
+                                      >
+                                        {
+                                          selected.displayFields
+                                            .slice(
+                                              0,
+                                              3,
+                                            )
+                                            .map(
+                                              field => (
+                                                <p
+                                                  key={
+                                                    field
+                                                  }
+                                                  className="line-clamp-2 text-xs font-semibold"
+                                                >
+                                                  {
+                                                    displayValue(
+                                                      record[
+                                                        field
+                                                      ],
+                                                    )
+                                                  }
+                                                </p>
+                                              ),
+                                            )
+                                        }
+                                      </button>
+                                    ),
+                                  )
+                                }
+                              </div>
+                            </div>
+                          ),
+                        )
+                  }
+                </div>
+              )
+      }
     </section>
   );
 }
