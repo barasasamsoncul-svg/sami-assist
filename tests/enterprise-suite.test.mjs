@@ -602,6 +602,97 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
 });
 
 
+test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
+  const service =
+    await source(
+      'lib/apps/enterprise/service.ts',
+    );
+
+  assert.match(
+    service,
+    /function assertEnterpriseTableBoundaryReady/,
+  );
+
+  assert.match(
+    service,
+    /missingBoundaryColumns/,
+  );
+
+  assert.match(
+    service,
+    /'company_id'[\s\S]*'deleted_at'/s,
+  );
+
+  const readTableStart =
+    service.indexOf(
+      'async function readTable',
+    );
+
+  const workspaceStart =
+    service.indexOf(
+      'export async function getEnterpriseModuleWorkspace',
+      readTableStart,
+    );
+
+  const readTable =
+    service.slice(
+      readTableStart,
+      workspaceStart,
+    );
+
+  assert.match(
+    readTable,
+    /assertEnterpriseTableBoundaryReady\([\s\S]*table[\s\S]*fields/s,
+    'Workspace reads must stop before querying an unhardened business table.',
+  );
+
+  const assertTableStart =
+    service.indexOf(
+      'async function assertTable',
+    );
+
+  const writableStart =
+    service.indexOf(
+      'function writableValues',
+      assertTableStart,
+    );
+
+  const assertTable =
+    service.slice(
+      assertTableStart,
+      writableStart,
+    );
+
+  assert.match(
+    assertTable,
+    /assertEnterpriseTableBoundaryReady\([\s\S]*table[\s\S]*fields/s,
+    'CRUD must reject stale schemas before accepting a business mutation.',
+  );
+
+  const searchStart =
+    service.indexOf(
+      'export async function searchEnterpriseModuleRecords',
+    );
+
+  const search =
+    service.slice(
+      searchStart,
+    );
+
+  assert.match(
+    search,
+    /assertEnterpriseTableBoundaryReady\([\s\S]*table[\s\S]*fields/s,
+    'Global Search and SaMi AI search bridges must not read an unhardened table.',
+  );
+
+  assert.match(
+    service,
+    /!relation\.companyScoped[\s\S]*!relation\.softDelete/s,
+    'Cross-app relation targets must have the same company and soft-delete boundary before selectors or validation can use them.',
+  );
+});
+
+
 test('enterprise suite uses one audited workflow engine across business modules', async () => {
   const [
     service,
