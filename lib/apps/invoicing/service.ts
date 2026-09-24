@@ -25,6 +25,7 @@ export {
   updateInvoicingPaymentTerm,
   updateInvoicingTaxRate,
   createRecurringInvoiceTemplate,
+  duplicateInvoice,
   issueInvoiceCreditNote,
   recordInvoicePayment,
   saveInvoicingTemplate,

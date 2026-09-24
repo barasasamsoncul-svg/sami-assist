@@ -25,6 +25,10 @@ import {
 } from 'lucide-react';
 
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 
 import type {
   InvoicingInvoiceDetail,
@@ -125,27 +129,14 @@ export default function InvoiceDetailClient({
       false,
     );
 
-  const [
-    notice,
-    setNotice,
-  ] =
-    useState<
-      string |
-      null
-    >(
-      null,
-    );
-
-  const [
-    error,
-    setError,
-  ] =
-    useState<
-      string |
-      null
-    >(
-      null,
-    );
+  const {
+    overlay,
+    closeOverlay,
+    showSuccess,
+    showError,
+    showWarning,
+  } =
+    useSaMiOverlay();
 
   const [
     pending,
@@ -183,7 +174,8 @@ export default function InvoiceDetailClient({
       requestInFlight
         .current
     ) {
-      setError(
+      showWarning(
+        'Action already in progress',
         'Another invoice action is still being saved. Please wait for it to finish.',
       );
 
@@ -196,14 +188,6 @@ export default function InvoiceDetailClient({
 
     setRequestBusy(
       true,
-    );
-
-    setNotice(
-      null,
-    );
-
-    setError(
-      null,
     );
 
     try {
@@ -253,7 +237,8 @@ export default function InvoiceDetailClient({
         );
       }
 
-      setNotice(
+      showSuccess(
+        'Action completed',
         message,
       );
 
@@ -271,7 +256,8 @@ export default function InvoiceDetailClient({
     } catch (
       caught
     ) {
-      setError(
+      showError(
+        'Invoice action failed',
         caught instanceof
           Error
           ? caught.message
@@ -296,8 +282,16 @@ export default function InvoiceDetailClient({
       'draft'
   ) {
     return (
-      <div className="space-y-4">
-        <button
+      <>
+        <SaMiOverlay
+          {...overlay}
+          onClose={
+            closeOverlay
+          }
+        />
+
+        <div className="space-y-4">
+          <button
           type="button"
           onClick={
             () =>
@@ -325,34 +319,21 @@ export default function InvoiceDetailClient({
             run
           }
         />
-      </div>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="space-y-4">
-      {
-        notice &&
-        (
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-            {
-              notice
-            }
-          </div>
-        )
-      }
+    <>
+      <SaMiOverlay
+        {...overlay}
+        onClose={
+          closeOverlay
+        }
+      />
 
-      {
-        error &&
-        (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
-            {
-              error
-            }
-          </div>
-        )
-      }
-
+      <div className="space-y-4">
       <section className="sami-surface rounded-[24px] p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
@@ -1483,7 +1464,8 @@ export default function InvoiceDetailClient({
           }
         </aside>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -15,6 +15,10 @@ import {
 
 import InvoiceComposer from '@/app/apps/invoicing/InvoiceComposer';
 import InvoiceAppearanceSettings from '@/app/apps/invoicing/InvoiceAppearanceSettings';
+import SaMiOverlay from '@/app/components/SaMiOverlay';
+import {
+  useSaMiOverlay,
+} from '@/app/components/useSaMiOverlay';
 
 import {
   AlertTriangle,
@@ -536,27 +540,14 @@ export default function InvoicingWorkspaceClient({
       '',
     );
 
-  const [
-    notice,
-    setNotice,
-  ] =
-    useState<
-      string |
-      null
-    >(
-      null,
-    );
-
-  const [
-    error,
-    setError,
-  ] =
-    useState<
-      string |
-      null
-    >(
-      null,
-    );
+  const {
+    overlay,
+    closeOverlay,
+    showSuccess,
+    showError,
+    showWarning,
+  } =
+    useSaMiOverlay();
 
   const [
     pending,
@@ -635,8 +626,6 @@ export default function InvoicingWorkspaceClient({
         string,
         unknown
       >,
-    successMessage:
-      string,
   ) {
     if (
       requestInFlight
@@ -653,14 +642,6 @@ export default function InvoicingWorkspaceClient({
 
     setRequestBusy(
       true,
-    );
-
-    setNotice(
-      null,
-    );
-
-    setError(
-      null,
     );
 
     try {
@@ -715,10 +696,6 @@ export default function InvoicingWorkspaceClient({
         );
       }
 
-      setNotice(
-        successMessage,
-      );
-
       startTransition(
         () => {
           router.refresh();
@@ -750,6 +727,10 @@ export default function InvoicingWorkspaceClient({
     try {
       await request(
         payload,
+      );
+
+      showSuccess(
+        'Action completed',
         successMessage,
       );
 
@@ -757,19 +738,42 @@ export default function InvoicingWorkspaceClient({
     } catch (
       caught
     ) {
-      setError(
+      const message =
         caught instanceof
           Error
           ? caught.message
-          : 'SaMi could not complete the action.',
-      );
+          : 'SaMi could not complete the action.';
+
+      if (
+        message.includes(
+          'still being saved',
+        )
+      ) {
+        showWarning(
+          'Action already in progress',
+          message,
+        );
+      } else {
+        showError(
+          'Invoicing action failed',
+          message,
+        );
+      }
 
       return false;
     }
   }
 
   return (
-    <div className="space-y-4">
+    <>
+      <SaMiOverlay
+        {...overlay}
+        onClose={
+          closeOverlay
+        }
+      />
+
+      <div className="space-y-4">
       <section className="sami-surface overflow-hidden rounded-[26px]">
         <div className="flex flex-col gap-4 border-b border-[var(--sami-border)] p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
@@ -887,28 +891,6 @@ export default function InvoicingWorkspaceClient({
           </div>
         </div>
       </section>
-
-      {
-        notice &&
-        (
-          <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-            {
-              notice
-            }
-          </div>
-        )
-      }
-
-      {
-        error &&
-        (
-          <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300">
-            {
-              error
-            }
-          </div>
-        )
-      }
 
       {
         view ===
@@ -1044,7 +1026,8 @@ export default function InvoicingWorkspaceClient({
           />
         )
       }
-    </div>
+      </div>
+    </>
   );
 }
 

@@ -899,6 +899,34 @@ test('Invoicing completes standalone operator workflows for duplication, reminde
   assert.match(types, /deliveryChannels:/);
 });
 
+test('Invoicing uses the shared SaMi overlay for success, warnings and errors instead of inline status banners', async () => {
+  const [
+    workspace,
+    detail,
+    service,
+  ] = await Promise.all([
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('lib/apps/invoicing/service.ts'),
+  ]);
+
+  for (const client of [workspace, detail]) {
+    assert.match(client, /SaMiOverlay/);
+    assert.match(client, /useSaMiOverlay/);
+    assert.match(client, /showSuccess/);
+    assert.match(client, /showWarning/);
+    assert.match(client, /showError/);
+    assert.doesNotMatch(client, /notice\s*&&/);
+    assert.doesNotMatch(client, /error\s*&&/);
+  }
+
+  assert.match(
+    service,
+    /duplicateInvoice/,
+    'The service barrel must export duplicateInvoice for the API route.',
+  );
+});
+
 test('Invoicing v2.2 runs recurring generation and payment reminders through one auditable worker', async () => {
   const [
     schema,
