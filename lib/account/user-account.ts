@@ -49,6 +49,7 @@ export type UserPreferences = {
   dateFormat: UserDateFormat;
   timeFormat: UserTimeFormat;
   firstDayOfWeek: number;
+  tutorialsEnabled: boolean;
 };
 
 export type UserAccountWithPreferences = {
@@ -69,6 +70,7 @@ export type UpdateUserPreferencesInput = {
   dateFormat?: UserDateFormat;
   timeFormat?: UserTimeFormat;
   firstDayOfWeek?: number;
+  tutorialsEnabled?: boolean;
 };
 
 export type UserAccountValidationCode =
@@ -80,7 +82,8 @@ export type UserAccountValidationCode =
   | 'INVALID_TIMEZONE'
   | 'INVALID_DATE_FORMAT'
   | 'INVALID_TIME_FORMAT'
-  | 'INVALID_FIRST_DAY_OF_WEEK';
+  | 'INVALID_FIRST_DAY_OF_WEEK'
+  | 'INVALID_TUTORIAL_PREFERENCE';
 
 type UserRow = {
   id: string;
@@ -113,6 +116,7 @@ type UserPreferencesRow = {
   date_format: string | null;
   time_format: string | null;
   first_day_of_week: number | null;
+  tutorials_enabled: boolean | null;
 };
 
 /* ============================================================
@@ -173,6 +177,9 @@ const DEFAULT_PREFERENCES:
 
     firstDayOfWeek:
       1,
+
+    tutorialsEnabled:
+      true,
   };
 
 /* ============================================================
@@ -585,6 +592,25 @@ function validatePreferencePatch(
       input.firstDayOfWeek;
   }
 
+  if (
+    input.tutorialsEnabled !==
+    undefined
+  ) {
+    if (
+      typeof input.tutorialsEnabled !==
+        'boolean'
+    ) {
+      throw new UserAccountValidationError(
+        'INVALID_TUTORIAL_PREFERENCE',
+        'tutorialsEnabled',
+        'Choose whether workspace tutorials should be on or off.'
+      );
+    }
+
+    patch.tutorialsEnabled =
+      input.tutorialsEnabled;
+  }
+
   return patch;
 }
 
@@ -750,6 +776,12 @@ function mapPreferencesRow(
         6
         ? firstDay
         : defaults.firstDayOfWeek,
+
+    tutorialsEnabled:
+      typeof row.tutorials_enabled ===
+        'boolean'
+        ? row.tutorials_enabled
+        : defaults.tutorialsEnabled,
   };
 }
 
@@ -912,7 +944,8 @@ export async function getUserPreferences(
           p.timezone,
           p.date_format,
           p.time_format,
-          p.first_day_of_week
+          p.first_day_of_week,
+          p.tutorials_enabled
 
         FROM users u
 
@@ -956,6 +989,8 @@ export async function getUserPreferences(
         platformSettings.defaults.timeFormat,
       firstDayOfWeek:
         platformSettings.defaults.firstDayOfWeek,
+      tutorialsEnabled:
+        true,
     },
   );
 }
@@ -1012,13 +1047,18 @@ export async function updateUserPreferences(
     patch.firstDayOfWeek !==
     undefined;
 
+  const hasTutorials =
+    patch.tutorialsEnabled !==
+    undefined;
+
   if (
     !hasTheme &&
     !hasLocale &&
     !hasTimezone &&
     !hasDateFormat &&
     !hasTimeFormat &&
-    !hasFirstDay
+    !hasFirstDay &&
+    !hasTutorials
   ) {
     return getUserPreferences(
       id
@@ -1041,6 +1081,8 @@ export async function updateUserPreferences(
       platformSettings.defaults.timeFormat,
     firstDayOfWeek:
       platformSettings.defaults.firstDayOfWeek,
+    tutorialsEnabled:
+      true,
   };
 
   /*
@@ -1062,6 +1104,7 @@ export async function updateUserPreferences(
           date_format,
           time_format,
           first_day_of_week,
+          tutorials_enabled,
           created_at,
           updated_at
         )
@@ -1074,6 +1117,7 @@ export async function updateUserPreferences(
           $8,
           $10,
           $12,
+          $14,
           NOW(),
           NOW()
 
@@ -1127,6 +1171,13 @@ export async function updateUserPreferences(
               ELSE user_preferences.first_day_of_week
             END,
 
+          tutorials_enabled =
+            CASE
+              WHEN $15::boolean
+                THEN EXCLUDED.tutorials_enabled
+              ELSE user_preferences.tutorials_enabled
+            END,
+
           updated_at =
             NOW()
 
@@ -1136,7 +1187,8 @@ export async function updateUserPreferences(
           timezone,
           date_format,
           time_format,
-          first_day_of_week
+          first_day_of_week,
+          tutorials_enabled
       `,
       [
         id,
@@ -1164,6 +1216,10 @@ export async function updateUserPreferences(
         patch.firstDayOfWeek ??
           defaults.firstDayOfWeek,
         hasFirstDay,
+
+        patch.tutorialsEnabled ??
+          defaults.tutorialsEnabled,
+        hasTutorials,
       ]
     );
 

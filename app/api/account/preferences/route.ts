@@ -28,6 +28,7 @@ type PreferencesRequestBody = {
   dateFormat?: unknown;
   timeFormat?: unknown;
   firstDayOfWeek?: unknown;
+  tutorialsEnabled?: unknown;
 };
 
 /* ============================================================
@@ -298,7 +299,8 @@ export async function PATCH(
       body.timezone !== undefined ||
       body.dateFormat !== undefined ||
       body.timeFormat !== undefined ||
-      body.firstDayOfWeek !== undefined;
+      body.firstDayOfWeek !== undefined ||
+      body.tutorialsEnabled !== undefined;
 
     if (
       !hasSupportedField
@@ -479,6 +481,26 @@ export async function PATCH(
       );
     }
 
+    if (
+      body.tutorialsEnabled !==
+        undefined &&
+      typeof body.tutorialsEnabled !==
+        'boolean'
+    ) {
+      return json(
+        {
+          success: false,
+          code:
+            'INVALID_TUTORIAL_PREFERENCE',
+          error:
+            'Choose whether workspace tutorials should be on or off.',
+          field:
+            'tutorialsEnabled',
+        },
+        400
+      );
+    }
+
     /* ========================================================
        UPDATE
        ======================================================== */
@@ -520,6 +542,11 @@ export async function PATCH(
           firstDayOfWeek:
             body.firstDayOfWeek as
               | number
+              | undefined,
+
+          tutorialsEnabled:
+            body.tutorialsEnabled as
+              | boolean
               | undefined,
         }
       );

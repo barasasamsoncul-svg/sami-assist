@@ -42,6 +42,13 @@ const START_EVENT =
   'sami:tutorial-start';
 
 
+const durablePreferenceCache =
+  new Map<
+    string,
+    Promise<boolean>
+  >();
+
+
 function enabledKey(
   userId: string,
 ) {
@@ -97,6 +104,217 @@ function readEnabled(
   }
 
   return true;
+}
+
+
+function storeEnabled(
+  userId:
+    string,
+  enabled:
+    boolean,
+) {
+  try {
+    window.localStorage
+      .setItem(
+        enabledKey(
+          userId,
+        ),
+        String(
+          enabled,
+        ),
+      );
+  } catch {
+    // Browser storage is only a local cache for the durable account preference.
+  }
+}
+
+
+export function syncWorkspaceTutorialPreference(
+  userId:
+    string,
+  enabled:
+    boolean,
+) {
+  storeEnabled(
+    userId,
+    enabled,
+  );
+
+  durablePreferenceCache.set(
+    userId,
+    Promise.resolve(
+      enabled,
+    ),
+  );
+
+  window.dispatchEvent(
+    new CustomEvent<TutorialPreferenceDetail>(
+      PREFERENCE_EVENT,
+      {
+        detail: {
+          userId,
+          enabled,
+        },
+      },
+    ),
+  );
+}
+
+
+async function readDurableEnabled(
+  userId:
+    string,
+) {
+  const cached =
+    durablePreferenceCache.get(
+      userId,
+    );
+
+  if (
+    cached
+  ) {
+    return cached;
+  }
+
+  const promise =
+    (
+      async () => {
+        try {
+          const response =
+            await fetch(
+              '/api/account/preferences',
+              {
+                method:
+                  'GET',
+                credentials:
+                  'same-origin',
+                cache:
+                  'no-store',
+                headers: {
+                  Accept:
+                    'application/json',
+                },
+              },
+            );
+
+          const body =
+            await response
+              .json()
+              .catch(
+                () => ({}),
+              ) as {
+                success?:
+                  boolean;
+                preferences?: {
+                  tutorialsEnabled?:
+                    boolean;
+                };
+              };
+
+          if (
+            response.ok &&
+            body.success ===
+              true &&
+            typeof body.preferences
+              ?.tutorialsEnabled ===
+              'boolean'
+          ) {
+            storeEnabled(
+              userId,
+              body.preferences
+                .tutorialsEnabled,
+            );
+
+            return body.preferences
+              .tutorialsEnabled;
+          }
+        } catch {
+          // The workspace remains usable with the local cached preference.
+        }
+
+        return readEnabled(
+          userId,
+        );
+      }
+    )();
+
+  durablePreferenceCache.set(
+    userId,
+    promise,
+  );
+
+  return promise;
+}
+
+
+async function saveDurableEnabled(
+  userId:
+    string,
+  enabled:
+    boolean,
+) {
+  const response =
+    await fetch(
+      '/api/account/preferences',
+      {
+        method:
+          'PATCH',
+        credentials:
+          'same-origin',
+        cache:
+          'no-store',
+        headers: {
+          'Content-Type':
+            'application/json',
+          Accept:
+            'application/json',
+        },
+        body:
+          JSON.stringify({
+            tutorialsEnabled:
+              enabled,
+          }),
+      },
+    );
+
+  const body =
+    await response
+      .json()
+      .catch(
+        () => ({}),
+      ) as {
+        success?:
+          boolean;
+        error?:
+          string;
+        preferences?: {
+          tutorialsEnabled?:
+            boolean;
+        };
+      };
+
+  if (
+    !response.ok ||
+    body.success !==
+      true ||
+    typeof body.preferences
+      ?.tutorialsEnabled !==
+      'boolean'
+  ) {
+    throw new Error(
+      body.error ||
+      'SaMi could not save your tutorial preference.',
+    );
+  }
+
+  syncWorkspaceTutorialPreference(
+    userId,
+    body.preferences
+      .tutorialsEnabled,
+  );
+
+  return body.preferences
+    .tutorialsEnabled;
 }
 
 
@@ -171,12 +389,44 @@ export function WorkspaceTutorialToggle({
       true,
     );
 
+  const [
+    saving,
+    setSaving,
+  ] =
+    useState(
+      false,
+    );
+
   useEffect(
     () => {
+      let active =
+        true;
+
       setEnabled(
         readEnabled(
           userId,
         ),
+      );
+
+      void readDurableEnabled(
+        userId,
+      ).then(
+        value => {
+          if (
+            !active
+          ) {
+            return;
+          }
+
+          setEnabled(
+            value,
+          );
+
+          syncWorkspaceTutorialPreference(
+            userId,
+            value,
+          );
+        },
       );
 
       const onPreference =
@@ -206,6 +456,9 @@ export function WorkspaceTutorialToggle({
       );
 
       return () => {
+        active =
+          false;
+
         window.removeEventListener(
           PREFERENCE_EVENT,
           onPreference,
@@ -217,40 +470,63 @@ export function WorkspaceTutorialToggle({
     ],
   );
 
-  function toggle() {
+  async function toggle() {
+    if (
+      saving
+    ) {
+      return;
+    }
+
+    const previous =
+      enabled;
+
     const next =
-      !enabled;
+      !previous;
 
     setEnabled(
       next,
     );
 
-    try {
-      window.localStorage
-        .setItem(
-          enabledKey(
-            userId,
-          ),
-          String(
-            next,
-          ),
-        );
-    } catch {
-      // The control still works for the current session.
-    }
-
-    window.dispatchEvent(
-      new CustomEvent<TutorialPreferenceDetail>(
-        PREFERENCE_EVENT,
-        {
-          detail: {
-            userId,
-            enabled:
-              next,
-          },
-        },
-      ),
+    syncWorkspaceTutorialPreference(
+      userId,
+      next,
     );
+
+    setSaving(
+      true,
+    );
+
+    try {
+      const saved =
+        await saveDurableEnabled(
+          userId,
+          next,
+        );
+
+      setEnabled(
+        saved,
+      );
+    } catch (
+      error
+    ) {
+      setEnabled(
+        previous,
+      );
+
+      syncWorkspaceTutorialPreference(
+        userId,
+        previous,
+      );
+
+      console.error(
+        '[SaMi Tutorials] Preference update failed:',
+        error,
+      );
+    } finally {
+      setSaving(
+        false,
+      );
+    }
   }
 
   return (
@@ -269,8 +545,12 @@ export function WorkspaceTutorialToggle({
           ? 'Tutorials are on'
           : 'Tutorials are off'
       }
+      disabled={
+        saving
+      }
       onClick={
-        toggle
+        () =>
+          void toggle()
       }
       className={[
         'inline-flex h-10 items-center gap-2 rounded-xl border px-2.5 text-[10px] font-black shadow-[var(--sami-shadow-sm)] transition sm:px-3',
@@ -379,33 +659,54 @@ export default function WorkspaceTutorial({
 
   useEffect(
     () => {
-      const currentEnabled =
-        readEnabled(
-          userId,
-        );
+      let active =
+        true;
 
       setEnabled(
-        currentEnabled,
+        readEnabled(
+          userId,
+        ),
       );
 
-      if (
-        currentEnabled &&
-        steps.length >
-          0 &&
-        !hasSeen(
-          userId,
-          moduleKey,
-        )
-      ) {
-        markSeen(
-          userId,
-          moduleKey,
-        );
+      void readDurableEnabled(
+        userId,
+      ).then(
+        currentEnabled => {
+          if (
+            !active
+          ) {
+            return;
+          }
 
-        openAt(
-          0,
-        );
-      }
+          setEnabled(
+            currentEnabled,
+          );
+
+          syncWorkspaceTutorialPreference(
+            userId,
+            currentEnabled,
+          );
+
+          if (
+            currentEnabled &&
+            steps.length >
+              0 &&
+            !hasSeen(
+              userId,
+              moduleKey,
+            )
+          ) {
+            markSeen(
+              userId,
+              moduleKey,
+            );
+
+            openAt(
+              0,
+            );
+          }
+        },
+      );
 
       const onPreference =
         (
@@ -477,6 +778,9 @@ export default function WorkspaceTutorial({
       );
 
       return () => {
+        active =
+          false;
+
         window.removeEventListener(
           PREFERENCE_EVENT,
           onPreference,

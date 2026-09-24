@@ -1034,3 +1034,120 @@ test('enterprise business events enter Automation only after successful business
     /source_record_id/,
   );
 });
+
+
+test('tutorial preference is durable across the full workspace suite', async () => {
+  const [
+    migrationManifest,
+    migration,
+    account,
+    preferencesApi,
+    tutorial,
+    shell,
+    genericWorkspace,
+    invoicingWorkspace,
+    salesWorkspace,
+    settings,
+  ] = await Promise.all([
+    source(
+      'lib/schema/control-migrations/manifest.ts',
+    ),
+    source(
+      'lib/schema/control-migrations/008-user-tutorial-preferences.sql',
+    ),
+    source(
+      'lib/account/user-account.ts',
+    ),
+    source(
+      'app/api/account/preferences/route.ts',
+    ),
+    source(
+      'app/components/workspace/WorkspaceTutorial.tsx',
+    ),
+    source(
+      'app/components/workspace/WorkspaceShell.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'app/apps/invoicing/InvoicingWorkspaceClient.tsx',
+    ),
+    source(
+      'app/apps/sales/SalesWorkspaceClient.tsx',
+    ),
+    source(
+      'app/settings/components/MyAccountSettings.tsx',
+    ),
+  ]);
+
+  assert.match(
+    migrationManifest,
+    /008-user-tutorial-preferences\.sql/,
+  );
+
+  assert.match(
+    migration,
+    /ADD COLUMN IF NOT EXISTS tutorials_enabled BOOLEAN NOT NULL DEFAULT TRUE/,
+  );
+
+  assert.match(
+    account,
+    /tutorialsEnabled:\s*boolean/,
+  );
+
+  assert.match(
+    account,
+    /p\.tutorials_enabled/,
+  );
+
+  assert.match(
+    account,
+    /tutorials_enabled =/,
+  );
+
+  assert.match(
+    preferencesApi,
+    /tutorialsEnabled/,
+  );
+
+  assert.match(
+    tutorial,
+    /\/api\/account\/preferences/,
+  );
+
+  assert.match(
+    tutorial,
+    /method:\s*'PATCH'/,
+  );
+
+  assert.match(
+    tutorial,
+    /syncWorkspaceTutorialPreference/,
+  );
+
+  assert.match(
+    shell,
+    /WorkspaceTutorialToggle/,
+  );
+
+  assert.match(
+    genericWorkspace,
+    /WorkspaceTutorial/,
+  );
+
+  assert.match(
+    invoicingWorkspace,
+    /moduleKey="invoicing"/,
+  );
+
+  assert.match(
+    salesWorkspace,
+    /moduleKey="sales"/,
+  );
+
+  assert.match(
+    settings,
+    /Workspace tutorials/,
+  );
+});
