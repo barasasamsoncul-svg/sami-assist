@@ -182,7 +182,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_sami_enterprise_saved_view_name
     user_id,
     module_key,
     table_key,
-    lower(name)
+    name
   )
   WHERE deleted_at IS NULL;
 
