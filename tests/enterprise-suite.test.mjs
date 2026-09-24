@@ -693,6 +693,162 @@ test('enterprise runtime fails closed until every business table has completed b
 });
 
 
+test('enterprise domain profiles give every shared app an operating model and live workflow KPIs', async () => {
+  const [
+    catalog,
+    profiles,
+    service,
+    client,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/catalog.ts',
+    ),
+    source(
+      'lib/apps/enterprise/domain-profiles.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+  ]);
+
+  const keys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    keys.length,
+    78,
+  );
+
+  for (
+    const key
+    of keys
+  ) {
+    assert.match(
+      profiles,
+      new RegExp(
+        '"' +
+        key +
+        '"\\s*:',
+      ),
+      key,
+    );
+  }
+
+  assert.match(
+    profiles,
+    /satisfies[\s\S]*Record<[\s\S]*EnterpriseModuleKey/s,
+  );
+
+  assert.match(
+    service,
+    /getEnterpriseDomainProfile/,
+  );
+
+  assert.match(
+    service,
+    /workflowTrackedRecords/,
+  );
+
+  assert.match(
+    service,
+    /GROUP BY[\s\S]*field\.key/s,
+  );
+
+  for (
+    const marker
+    of [
+      'Needs attention',
+      'Operating focus',
+      'Operating health',
+      'Workflow distribution',
+      'primary operating register',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
+
+test('enterprise lifecycle stages and core business invariants are governed transactionally', async () => {
+  const [
+    service,
+    automation,
+    policy,
+    hooks,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/apps/enterprise/automation.ts',
+    ),
+    source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    ),
+    source(
+      'lib/apps/enterprise/domain-hooks.ts',
+    ),
+  ]);
+
+  assert.match(
+    service,
+    /\(status\|state\|stage\)/,
+  );
+
+  assert.match(
+    automation,
+    /\(status\|state\|stage\)/,
+  );
+
+  assert.match(
+    policy,
+    /'recruitment:applicants'[\s\S]*applied:[\s\S]*screening/s,
+  );
+
+  for (
+    const marker
+    of [
+      'Posted journals are immutable',
+      'Lines on a posted journal are immutable',
+      'Purchase-order lines cannot change after the order leaves draft',
+      'Expense amount',
+      'Payment amount',
+      'Payroll deductions',
+      'Leave end date cannot be before the start date',
+      'Project due date cannot be before the start date',
+    ]
+  ) {
+    assert.ok(
+      hooks.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    hooks,
+    /validateDomainLifecycleMutation\([\s\S]*validateDomainRow\(/s,
+    'Domain validation must execute inside the same transaction as the business mutation.',
+  );
+});
+
+
 test('enterprise suite uses one audited workflow engine across business modules', async () => {
   const [
     service,
