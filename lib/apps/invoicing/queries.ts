@@ -1613,6 +1613,24 @@ export async function getInvoicingInvoiceDetail(
       'Invoice',
     );
 
+  const canViewPayments =
+    hasInvoicingPermission(
+      context.permissions
+        .isOwner,
+      context.permissions
+        .permissionSet,
+      INVOICING_PERMISSIONS
+        .PAYMENT_VIEW,
+    ) ||
+    hasInvoicingPermission(
+      context.permissions
+        .isOwner,
+      context.permissions
+        .permissionSet,
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
   const [
     invoiceResult,
     linesResult,
@@ -1781,35 +1799,39 @@ export async function getInvoicingInvoiceDetail(
         ],
       ),
 
-      context.pool.query(
-        `
-          SELECT
-            p.id,
-            p.payment_number,
-            p.status,
-            p.payment_date,
-            a.amount,
-            p.method,
-            p.reference
-          FROM invoicing_payment_allocations a
-          INNER JOIN invoicing_payments p
-            ON p.id =
-               a.payment_id
-          WHERE a.invoice_id =
-                $1
-            AND a.company_id =
-                $2
-            AND p.deleted_at
-                IS NULL
-          ORDER BY
-            p.payment_date DESC,
-            p.created_at DESC
-        `,
-        [
-          invoiceId,
-          context.companyId,
-        ],
-      ),
+      canViewPayments
+        ? context.pool.query(
+            `
+              SELECT
+                p.id,
+                p.payment_number,
+                p.status,
+                p.payment_date,
+                a.amount,
+                p.method,
+                p.reference
+              FROM invoicing_payment_allocations a
+              INNER JOIN invoicing_payments p
+                ON p.id =
+                   a.payment_id
+              WHERE a.invoice_id =
+                    $1
+                AND a.company_id =
+                    $2
+                AND p.deleted_at
+                    IS NULL
+              ORDER BY
+                p.payment_date DESC,
+                p.created_at DESC
+            `,
+            [
+              invoiceId,
+              context.companyId,
+            ],
+          )
+        : Promise.resolve({
+            rows: [],
+          }),
 
       context.pool.query(
         `
@@ -2267,6 +2289,9 @@ export async function searchInvoicingRecords(
     string,
   limit =
     12,
+  options: {
+    includeCustomers?: boolean;
+  } = {},
 ) {
   const normalized =
     query
@@ -2394,7 +2419,17 @@ export async function searchInvoicingRecords(
       ],
     );
 
-  return result.rows.map(
+  return result.rows
+    .filter(
+      row =>
+        options.includeCustomers ===
+          true ||
+        String(
+          row.kind,
+        ) ===
+          'invoice',
+    )
+    .map(
     row => ({
       kind:
         String(

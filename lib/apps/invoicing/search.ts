@@ -26,12 +26,26 @@ export const INVOICING_SEARCH_PROVIDER:
         return [];
       }
 
+      const includeCustomers =
+        context.isOwner ||
+        context.permissionSet.has(
+          INVOICING_PERMISSIONS
+            .CUSTOMER_VIEW,
+        ) ||
+        context.permissionSet.has(
+          INVOICING_PERMISSIONS
+            .CUSTOMER_MANAGE,
+        );
+
       const records =
         await searchInvoicingRecords(
           context.tenantId,
           context.companyId,
           query,
           15,
+          {
+            includeCustomers,
+          },
         );
 
       return records.map(

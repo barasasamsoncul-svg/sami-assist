@@ -1504,3 +1504,56 @@ test('Invoicing keeps customer, catalog, payment, recurring, report and settings
     /const tutorialSteps =/,
   );
 });
+
+
+test('Invoicing payment history and customer search respect dedicated read permissions across UI, Search and SaMi AI', async () => {
+  const [
+    queries,
+    search,
+    aiTools,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/search.ts'),
+    source('lib/apps/invoicing/ai-tools.ts'),
+  ]);
+
+  assert.match(
+    queries,
+    /const canViewPayments =[\s\S]*PAYMENT_VIEW[\s\S]*PAYMENT_RECORD/s,
+  );
+
+  assert.match(
+    queries,
+    /canViewPayments[\s\S]*\? context\.pool\.query[\s\S]*invoicing_payment_allocations[\s\S]*: Promise\.resolve\(\{[\s\S]*rows: \[\]/s,
+  );
+
+  assert.match(
+    queries,
+    /includeCustomers\?: boolean;/,
+  );
+
+  assert.match(
+    queries,
+    /options\.includeCustomers ===[\s\S]*true[\s\S]*row\.kind[\s\S]*'invoice'/s,
+  );
+
+  assert.match(
+    search,
+    /CUSTOMER_VIEW/,
+  );
+
+  assert.match(
+    search,
+    /includeCustomers/,
+  );
+
+  assert.match(
+    aiTools,
+    /name: 'Search invoices and customers'[\s\S]*CUSTOMER_VIEW/s,
+  );
+
+  assert.match(
+    aiTools,
+    /name: 'Create invoice draft'[\s\S]*INVOICE_CREATE[\s\S]*CUSTOMER_VIEW/s,
+  );
+});

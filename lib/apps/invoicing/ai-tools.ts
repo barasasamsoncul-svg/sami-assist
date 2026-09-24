@@ -68,6 +68,8 @@ export const INVOICING_AI_TOOLS:
       requiredAllPermissions: [
         INVOICING_PERMISSIONS
           .INVOICE_VIEW,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_VIEW,
       ],
       inputSchema: {
         type: 'object',
@@ -103,6 +105,10 @@ export const INVOICING_AI_TOOLS:
               context.companyId,
               query,
               20,
+              {
+                includeCustomers:
+                  true,
+              },
             ),
         };
       },
@@ -119,6 +125,8 @@ export const INVOICING_AI_TOOLS:
       requiredAllPermissions: [
         INVOICING_PERMISSIONS
           .INVOICE_CREATE,
+        INVOICING_PERMISSIONS
+          .CUSTOMER_VIEW,
       ],
       inputSchema: {
         type: 'object',
