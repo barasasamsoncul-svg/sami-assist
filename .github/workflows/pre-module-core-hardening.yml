@@ -35,5 +35,8 @@ jobs:
       - name: Run environment-independent platform regression suite
         run: npm run test:ci
 
+      - name: Enforce shared enterprise capability contract
+        run: node --test tests/enterprise-capability-contract.test.mjs
+
       - name: TypeScript
         run: npx tsc --noEmit
