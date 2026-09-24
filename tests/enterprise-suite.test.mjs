@@ -429,6 +429,209 @@ test('generic app workspace is operational instead of an installed-app placehold
 });
 
 
+test('enterprise manifests expose every owned register as a first-class resource', async () => {
+  const [
+    contract,
+    catalog,
+  ] = await Promise.all([
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+    source(
+      'lib/apps/enterprise/catalog.ts',
+    ),
+  ]);
+
+  assert.match(
+    contract,
+    /enterpriseModuleTables/,
+  );
+
+  assert.match(
+    contract,
+    /resourceKeyForTable/,
+  );
+
+  assert.match(
+    contract,
+    /\.\.\.tables\.map/,
+  );
+
+  assert.match(
+    contract,
+    /\n\s*table,\n\s*companyScoped:/,
+    'Every generated resource must bind to its concrete schema table.',
+  );
+
+  assert.match(
+    contract,
+    /\.list'/,
+  );
+
+  assert.match(
+    contract,
+    /\.form'/,
+  );
+
+  const moduleKeys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    moduleKeys.length,
+    78,
+  );
+});
+
+
+test('enterprise completion layer provides scalable views reporting and personal activity', async () => {
+  const [
+    service,
+    api,
+    client,
+    contract,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/api/apps/[appKey]/records/route.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'queryEnterpriseModuleTable',
+      'pageSize',
+      'hasMore',
+      'numericMetrics',
+      'listWorkspaceActivity',
+    ]
+  ) {
+    assert.ok(
+      service.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    api,
+    /action ===[\s\S]*'list'[\s\S]*queryEnterpriseModuleTable/s,
+  );
+
+  for (
+    const marker
+    of [
+      'Kanban',
+      'Calendar',
+      'Search all',
+      'Load more records',
+      'Numeric performance',
+      'ModuleActivity',
+      'My activity in',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    contract,
+    /\.\.\.tables\.map/,
+  );
+
+  assert.match(
+    contract,
+    /recordPolicies:[\s\S]*resourceKeyForTable/s,
+  );
+
+  assert.doesNotMatch(
+    contract,
+    /resourceKey:\s*'record'/,
+    'Enterprise policies must not point back to the obsolete generic record resource.',
+  );
+});
+
+
+test('enterprise sensitive business fields require module-administration access', async () => {
+  const [
+    security,
+    service,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/field-security.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'employees:employees',
+      'salary',
+      'payroll:payroll_employees',
+      'basic_salary',
+      'marketplace:marketplace_sellers',
+      'payout_account',
+      '.record.settings',
+    ]
+  ) {
+    assert.ok(
+      security.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    security,
+    /context\.isOwner[\s\S]*permissionSet\.has/s,
+  );
+
+  assert.match(
+    service,
+    /filterEnterpriseFieldsForAccess/,
+  );
+
+  assert.match(
+    service,
+    /rowOutput\([\s\S]*fields\?/s,
+  );
+
+  assert.match(
+    service,
+    /rowOutput\([\s\S]*context\.fields/s,
+  );
+
+  assert.match(
+    service,
+    /filterEnterpriseFieldsForAccess\([\s\S]*context\.permissions/s,
+  );
+});
+
+
 test('enterprise search providers cover the code-owned module catalog', async () => {
   const [
     enterpriseSearch,
@@ -960,6 +1163,48 @@ test('enterprise suite uses one audited workflow engine across business modules'
     client,
     /Change workflow state\?/,
   );
+});
+
+
+test('remaining enterprise lifecycles use explicit domain state machines', async () => {
+  const policy =
+    await source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    );
+
+  for (
+    const key
+    of [
+      'ads:ad_campaigns',
+      'calendar:calendar_events',
+      'checkout:checkout_sessions',
+      'commissions:commission_entries',
+      'demand_planning:demand_forecasts',
+      'events:events',
+      'facilities:facility_requests',
+      'gift_cards:gift_cards',
+      'inspections:inspections',
+      'marketing_automation:automation_workflows',
+      'marketplace:marketplace_orders',
+      'meetings:meetings',
+      'plm:engineering_changes',
+      'pos_restaurant:restaurant_orders',
+      'pos_shop:shop_orders',
+      'seo:seo_issues',
+      'sign:signature_requests',
+      'surveys:surveys',
+      'warehouse:warehouse_operations',
+    ]
+  ) {
+    assert.ok(
+      policy.includes(
+        "'" +
+        key +
+        "'",
+      ),
+      key,
+    );
+  }
 });
 
 

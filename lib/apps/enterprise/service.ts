@@ -40,7 +40,13 @@ import {
 } from '@/lib/apps/enterprise/domain-profiles';
 
 import {
+  filterEnterpriseFieldsForAccess,
+} from '@/lib/apps/enterprise/field-security';
+
+import {
+  listWorkspaceActivity,
   recordWorkspaceAuditEvent,
+  type WorkspaceActivityItem,
 } from '@/lib/services/workspace-activity';
 
 import {
@@ -112,6 +118,15 @@ export type EnterpriseWorkflowField = {
   counts: Record<string, number>;
 };
 
+export type EnterpriseNumericMetric = {
+  field: string;
+  label: string;
+  sum: number;
+  average: number;
+  minimum: number;
+  maximum: number;
+};
+
 export type EnterpriseTable = {
   key: string;
   label: string;
@@ -124,6 +139,7 @@ export type EnterpriseTable = {
   fields: EnterpriseField[];
   displayFields: string[];
   workflows: EnterpriseWorkflowField[];
+  numericMetrics: EnterpriseNumericMetric[];
   count: number;
   records: Array<
     Record<
@@ -155,6 +171,7 @@ export type EnterpriseWorkspaceData = {
     canManageSettings: boolean;
   };
   profile: EnterpriseDomainProfile;
+  activity: WorkspaceActivityItem[];
   metrics: {
     totalRecords: number;
     tables: number;
@@ -1234,7 +1251,19 @@ async function tableMetadata(
 function rowOutput(
   row:
     Record<string, unknown>,
+  fields?:
+    EnterpriseField[],
 ) {
+  const allowedFields =
+    fields
+      ? new Set(
+          fields.map(
+            field =>
+              field.key,
+          ),
+        )
+      : null;
+
   return Object.fromEntries(
     Object.entries(
       row,
@@ -1243,6 +1272,12 @@ function rowOutput(
         ([
           key,
         ]) =>
+          (
+            !allowedFields ||
+            allowedFields.has(
+              key,
+            )
+          ) &&
           !SENSITIVE_COLUMN.test(
             key,
           ) &&
@@ -1641,6 +1676,148 @@ async function readTable(
       params,
     );
 
+  const numericFields =
+    fields
+      .filter(
+        field =>
+          field.inputType ===
+            'number' &&
+          !SYSTEM_COLUMNS.has(
+            field.key,
+          ) &&
+          ![
+            'sequence',
+            'position',
+            'row_number',
+            'column_number',
+            'version_number',
+            'signing_order',
+            'step_order',
+          ].includes(
+            field.key,
+          ),
+      )
+      .slice(
+        0,
+        5,
+      );
+
+  const numericMetrics:
+    EnterpriseNumericMetric[] =
+      [];
+
+  if (
+    numericFields.length >
+      0
+  ) {
+    const aggregates =
+      numericFields
+        .flatMap(
+          (
+            field,
+            index,
+          ) => {
+            const identifier =
+              quoteIdentifier(
+                field.key,
+              );
+
+            return [
+              'COALESCE(SUM(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'sum_' +
+                index,
+              ),
+              'COALESCE(AVG(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'avg_' +
+                index,
+              ),
+              'COALESCE(MIN(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'min_' +
+                index,
+              ),
+              'COALESCE(MAX(' +
+              identifier +
+              '), 0)::float8 AS ' +
+              quoteIdentifier(
+                'max_' +
+                index,
+              ),
+            ];
+          },
+        );
+
+    const aggregateResult =
+      await pool.query(
+        'SELECT ' +
+        aggregates.join(
+          ', ',
+        ) +
+        ' FROM ' +
+        quotedTable +
+        where,
+        params,
+      );
+
+    const row =
+      aggregateResult.rows[0] ||
+      {};
+
+    numericFields.forEach(
+      (
+        field,
+        index,
+      ) => {
+        numericMetrics.push({
+          field:
+            field.key,
+          label:
+            field.label,
+          sum:
+            Number(
+              row[
+                'sum_' +
+                index
+              ] ||
+              0,
+            ),
+          average:
+            Number(
+              row[
+                'avg_' +
+                index
+              ] ||
+              0,
+            ),
+          minimum:
+            Number(
+              row[
+                'min_' +
+                index
+              ] ||
+              0,
+            ),
+          maximum:
+            Number(
+              row[
+                'max_' +
+                index
+              ] ||
+              0,
+            ),
+        });
+      },
+    );
+  }
+
   const displayFields =
     fields
       .map(
@@ -1674,6 +1851,7 @@ async function readTable(
     fields,
     displayFields,
     workflows,
+    numericMetrics,
     count:
       Number(
         countResult.rows[0]
@@ -1682,7 +1860,11 @@ async function readTable(
       ),
     records:
       dataResult.rows.map(
-        rowOutput,
+        row =>
+          rowOutput(
+            row,
+            fields,
+          ),
       ),
   };
 }
@@ -1713,18 +1895,26 @@ export async function getEnterpriseModuleWorkspace(
     await Promise.all(
       allowedTables.map(
         async table => {
-          const fields =
+          const rawFields =
             metadata.get(
               table,
             );
 
           if (
-            !fields ||
-            fields.length ===
+            !rawFields ||
+            rawFields.length ===
               0
           ) {
             return null;
           }
+
+          const fields =
+            filterEnterpriseFieldsForAccess(
+              context.moduleKey,
+              table,
+              rawFields,
+              context.permissions,
+            );
 
           return readTable(
             context.pool,
@@ -1893,6 +2083,16 @@ export async function getEnterpriseModuleWorkspace(
       ),
   };
 
+  const activityResult =
+    await listWorkspaceActivity({
+      view:
+        'activity',
+      module:
+        context.moduleKey,
+      limit:
+        24,
+    });
+
   return {
     module: {
       key:
@@ -1920,6 +2120,8 @@ export async function getEnterpriseModuleWorkspace(
     },
     capabilities,
     profile,
+    activity:
+      activityResult.items,
     metrics: {
       primaryRecords,
       attentionRecords:
@@ -2032,14 +2234,14 @@ async function assertTable(
       ],
     );
 
-  const fields =
+  const rawFields =
     metadata.get(
       table,
     );
 
   if (
-    !fields ||
-    fields.length ===
+    !rawFields ||
+    rawFields.length ===
       0
   ) {
     throw new EnterpriseModuleError(
@@ -2050,8 +2252,16 @@ async function assertTable(
 
   assertEnterpriseTableBoundaryReady(
     table,
-    fields,
+    rawFields,
   );
+
+  const fields =
+    filterEnterpriseFieldsForAccess(
+      context.moduleKey,
+      table,
+      rawFields,
+      context.permissions,
+    );
 
   return {
     ...context,
@@ -2416,6 +2626,7 @@ export async function createEnterpriseModuleRecord(
       const response =
         rowOutput(
           createdRow,
+          context.fields,
         );
 
       try {
@@ -2477,6 +2688,7 @@ export async function createEnterpriseModuleRecord(
       ? createdRow
       : rowOutput(
           createdRow,
+          context.fields,
         );
 
   if (
@@ -2838,6 +3050,7 @@ export async function updateEnterpriseModuleRecord(
   const updated =
     rowOutput(
       updatedRow,
+      context.fields,
     );
 
   await recordEnterpriseAudit({
@@ -3684,6 +3897,7 @@ export async function transitionEnterpriseModuleRecord(
     const output =
       rowOutput(
         changed.rows[0],
+        context.fields,
       );
 
     await recordEnterpriseAudit({
@@ -3796,6 +4010,281 @@ export async function transitionEnterpriseModuleRecord(
   } finally {
     client.release();
   }
+}
+
+
+export async function queryEnterpriseModuleTable(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    query?: unknown;
+    page?: unknown;
+    pageSize?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const fieldNames =
+    new Set(
+      context.fields.map(
+        field =>
+          field.key,
+      ),
+    );
+
+  const page =
+    Math.max(
+      1,
+      Math.min(
+        10000,
+        Number.isFinite(
+          Number(
+            input.page,
+          ),
+        )
+          ? Math.floor(
+              Number(
+                input.page,
+              ),
+            )
+          : 1,
+      ),
+    );
+
+  const pageSize =
+    Math.max(
+      10,
+      Math.min(
+        100,
+        Number.isFinite(
+          Number(
+            input.pageSize,
+          ),
+        )
+          ? Math.floor(
+              Number(
+                input.pageSize,
+              ),
+            )
+          : 50,
+      ),
+    );
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+          .trim()
+          .slice(
+            0,
+            120,
+          )
+      : '';
+
+  const conditions:
+    string[] =
+      [];
+
+  const params:
+    unknown[] =
+      [];
+
+  if (
+    fieldNames.has(
+      'company_id',
+    )
+  ) {
+    params.push(
+      context.companyId,
+    );
+
+    conditions.push(
+      'company_id = $' +
+      params.length,
+    );
+  }
+
+  if (
+    fieldNames.has(
+      'deleted_at',
+    )
+  ) {
+    conditions.push(
+      'deleted_at IS NULL',
+    );
+  }
+
+  if (
+    query
+  ) {
+    const searchable =
+      context.fields
+        .filter(
+          field =>
+            !DISPLAY_SKIP.has(
+              field.key,
+            ) &&
+            !SENSITIVE_COLUMN.test(
+              field.key,
+            ) &&
+            (
+              field.inputType ===
+                'text' ||
+              field.inputType ===
+                'textarea'
+            ),
+        )
+        .slice(
+          0,
+          12,
+        );
+
+    if (
+      searchable.length >
+        0
+    ) {
+      params.push(
+        '%' +
+        query +
+        '%',
+      );
+
+      const searchParam =
+        params.length;
+
+      conditions.push(
+        '(' +
+        searchable
+          .map(
+            field =>
+              quoteIdentifier(
+                field.key,
+              ) +
+              '::text ILIKE $' +
+              searchParam,
+          )
+          .join(
+            ' OR ',
+          ) +
+        ')',
+      );
+    }
+  }
+
+  const where =
+    conditions.length >
+      0
+      ? (
+          ' WHERE ' +
+          conditions.join(
+            ' AND ',
+          )
+        )
+      : '';
+
+  const orderColumn =
+    fieldNames.has(
+      'updated_at',
+    )
+      ? 'updated_at'
+      : fieldNames.has(
+          'created_at',
+        )
+        ? 'created_at'
+        : fieldNames.has(
+            'id',
+          )
+          ? 'id'
+          : null;
+
+  const quotedTable =
+    quoteIdentifier(
+      context.table,
+    );
+
+  const countResult =
+    await context.pool.query(
+      'SELECT COUNT(*)::int AS count FROM ' +
+      quotedTable +
+      where,
+      params,
+    );
+
+  const total =
+    Number(
+      countResult.rows[0]
+        ?.count ||
+      0,
+    );
+
+  const dataParams =
+    [
+      ...params,
+      pageSize,
+      (
+        page -
+        1
+      ) *
+      pageSize,
+    ];
+
+  const limitParam =
+    params.length +
+    1;
+
+  const offsetParam =
+    params.length +
+    2;
+
+  const data =
+    await context.pool.query(
+      'SELECT * FROM ' +
+      quotedTable +
+      where +
+      (
+        orderColumn
+          ? (
+              ' ORDER BY ' +
+              quoteIdentifier(
+                orderColumn,
+              ) +
+              ' DESC NULLS LAST'
+            )
+          : ''
+      ) +
+      ' LIMIT $' +
+      limitParam +
+      ' OFFSET $' +
+      offsetParam,
+      dataParams,
+    );
+
+  return {
+    table:
+      context.table,
+    query,
+    page,
+    pageSize,
+    total,
+    hasMore:
+      page *
+      pageSize <
+      total,
+    records:
+      data.rows.map(
+        row =>
+          rowOutput(
+            row,
+            context.fields,
+          ),
+      ),
+  };
 }
 
 
@@ -3935,14 +4424,14 @@ export async function searchEnterpriseModuleRecords(
     const table
     of tables
   ) {
-    const fields =
+    const rawFields =
       metadata.get(
         table,
       ) ||
       [];
 
     if (
-      fields.length ===
+      rawFields.length ===
         0
     ) {
       continue;
@@ -3950,8 +4439,16 @@ export async function searchEnterpriseModuleRecords(
 
     assertEnterpriseTableBoundaryReady(
       table,
-      fields,
+      rawFields,
     );
+
+    const fields =
+      filterEnterpriseFieldsForAccess(
+        context.moduleKey,
+        table,
+        rawFields,
+        context.permissions,
+      );
 
     const names =
       new Set(

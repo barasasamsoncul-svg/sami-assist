@@ -2,6 +2,14 @@ import type {
   SamiModuleManifest,
 } from '@/lib/modules/types';
 
+import {
+  enterpriseModuleTables,
+} from '@/lib/apps/enterprise/catalog';
+
+import {
+  getEnterpriseDomainProfile,
+} from '@/lib/apps/enterprise/domain-profiles';
+
 
 const GENERIC_ACTIONS =
   [
@@ -62,6 +70,29 @@ export function withEnterpriseModuleDefaults(
 
   const key =
     manifest.key;
+
+  const tables =
+    enterpriseModuleTables(
+      key,
+    );
+
+  const profile =
+    getEnterpriseDomainProfile(
+      key,
+    );
+
+  const resourceKeyForTable =
+    (
+      table:
+        string,
+    ) =>
+      table.endsWith(
+        '_settings',
+      )
+        ? 'settings.' +
+          table
+        : 'record.' +
+          table;
 
   const permissions =
     GENERIC_ACTIONS.map(
@@ -138,32 +169,119 @@ export function withEnterpriseModuleDefaults(
         ? '2.0.0'
         : manifest.version,
 
+    actions: [
+      ...manifest.actions,
+      ...tables
+        .filter(
+          table =>
+            !table.endsWith(
+              '_settings',
+            ),
+        )
+        .flatMap(
+          table => {
+            const resourceKey =
+              resourceKeyForTable(
+                table,
+              );
+
+            return [
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.open',
+                name:
+                  'Open ' +
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'route' as const,
+                resourceKey,
+                href:
+                  '/apps/' +
+                  key,
+                viewKeys: [
+                  key +
+                  '.' +
+                  table +
+                  '.list',
+                ],
+                target:
+                  'current' as const,
+              },
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.create',
+                name:
+                  'Create ' +
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'record' as const,
+                resourceKey,
+                href:
+                  '/apps/' +
+                  key,
+                viewKeys: [
+                  key +
+                  '.' +
+                  table +
+                  '.form',
+                ],
+                target:
+                  'dialog' as const,
+              },
+            ];
+          },
+        ),
+      {
+        key:
+          key +
+          '.report.open',
+        name:
+          'Open ' +
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' reports'
+          ),
+        type:
+          'report',
+        resourceKey:
+          'report',
+        href:
+          '/apps/' +
+          key,
+        viewKeys: [
+          key +
+          '.report',
+        ],
+        target:
+          'current',
+      },
+    ],
+
     views: [
       ...manifest.views,
       {
         key:
           key +
-          '.records',
+          '.dashboard',
         name:
           manifest.name +
-          ' records',
-        type:
-          'list',
-        resourceKey:
-          'record',
-        route:
-          '/apps/' +
-          key,
-        priority:
-          20,
-      },
-      {
-        key:
-          key +
-          '.report',
-        name:
-          manifest.name +
-          ' report',
+          ' dashboard',
         type:
           'dashboard',
         resourceKey:
@@ -172,46 +290,166 @@ export function withEnterpriseModuleDefaults(
           '/apps/' +
           key,
         priority:
-          30,
+          10,
+      },
+      ...tables
+        .filter(
+          table =>
+            !table.endsWith(
+              '_settings',
+            ),
+        )
+        .flatMap(
+          (
+            table,
+            index,
+          ) => {
+            const resourceKey =
+              resourceKeyForTable(
+                table,
+              );
+
+            return [
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.list',
+                name:
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ),
+                type:
+                  'list' as const,
+                resourceKey,
+                route:
+                  '/apps/' +
+                  key,
+                priority:
+                  20 +
+                  index *
+                    10,
+              },
+              {
+                key:
+                  key +
+                  '.' +
+                  table +
+                  '.form',
+                name:
+                  table
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ) +
+                  ' form',
+                type:
+                  'form' as const,
+                resourceKey,
+                route:
+                  '/apps/' +
+                  key,
+                priority:
+                  21 +
+                  index *
+                    10,
+              },
+            ];
+          },
+        ),
+      {
+        key:
+          key +
+          '.report',
+        name:
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' reporting'
+          ),
+        type:
+          'dashboard',
+        resourceKey:
+          'report',
+        route:
+          '/apps/' +
+          key,
+        priority:
+          900,
       },
     ],
 
     resources: [
-      {
-        key:
-          'record',
-        label:
-          manifest.name +
-          ' record',
-        table:
-          null,
-        companyScoped:
-          true,
-        permissions: {
-          read: [
-            key +
-            '.record.view',
-          ],
-          create: [
-            key +
-            '.record.create',
-          ],
-          write: [
-            key +
-            '.record.edit',
-          ],
-          delete: [
-            key +
-            '.record.delete',
-          ],
+      ...tables.map(
+        table => {
+          const settings =
+            table.endsWith(
+              '_settings',
+            );
+
+          const resourceKey =
+            resourceKeyForTable(
+              table,
+            );
+
+          return {
+            key:
+              resourceKey,
+            label:
+              table
+                .replaceAll(
+                  '_',
+                  ' ',
+                ),
+            table,
+            companyScoped:
+              true,
+            permissions: settings
+              ? {
+                  read: [
+                    key +
+                    '.record.view',
+                  ],
+                  write: [
+                    key +
+                    '.record.settings',
+                  ],
+                }
+              : {
+                  read: [
+                    key +
+                    '.record.view',
+                  ],
+                  create: [
+                    key +
+                    '.record.create',
+                  ],
+                  write: [
+                    key +
+                    '.record.edit',
+                  ],
+                  delete: [
+                    key +
+                    '.record.delete',
+                  ],
+                },
+          };
         },
-      },
+      ),
       {
         key:
           'report',
         label:
-          manifest.name +
-          ' report',
+          (
+            profile
+              ?.reportsLabel ||
+            manifest.name +
+              ' report'
+          ),
         table:
           null,
         companyScoped:
@@ -223,51 +461,53 @@ export function withEnterpriseModuleDefaults(
           ],
         },
       },
-      {
-        key:
-          'settings',
-        label:
-          manifest.name +
-          ' settings',
-        table:
-          null,
-        companyScoped:
-          true,
-        permissions: {
-          read: [
-            key +
-            '.record.view',
-          ],
-          write: [
-            key +
-            '.record.settings',
-          ],
-        },
-      },
     ],
 
     security: {
       permissions,
 
       recordPolicies: [
-        {
-          key:
-            key +
-            '.record.company',
-          name:
-            manifest.name +
-            ' records in current company',
-          resourceKey:
-            'record',
-          operations: [
-            'read',
-            'create',
-            'write',
-            'delete',
-          ],
-          scope:
-            'company',
-        },
+        ...tables.map(
+          table => {
+            const settings =
+              table.endsWith(
+                '_settings',
+              );
+
+            return {
+              key:
+                key +
+                '.' +
+                table +
+                '.company',
+              name:
+                table
+                  .replaceAll(
+                    '_',
+                    ' ',
+                  ) +
+                ' in current company',
+              resourceKey:
+                resourceKeyForTable(
+                  table,
+                ),
+              operations:
+                settings
+                  ? [
+                      'read' as const,
+                      'write' as const,
+                    ]
+                  : [
+                      'read' as const,
+                      'create' as const,
+                      'write' as const,
+                      'delete' as const,
+                    ],
+              scope:
+                'company' as const,
+            };
+          },
+        ),
         {
           key:
             key +
@@ -279,22 +519,6 @@ export function withEnterpriseModuleDefaults(
             'report',
           operations: [
             'read',
-          ],
-          scope:
-            'company',
-        },
-        {
-          key:
-            key +
-            '.settings.company',
-          name:
-            manifest.name +
-            ' settings in current company',
-          resourceKey:
-            'settings',
-          operations: [
-            'read',
-            'write',
           ],
           scope:
             'company',
