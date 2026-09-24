@@ -324,10 +324,20 @@ export async function getPublicInvoice(
         invoice.total_amount,
       ),
     balanceDue:
-      money(
-        balance.rows[0]
-          ?.balance_due,
-      ),
+      [
+        'cancelled',
+        'void',
+        'written_off',
+      ].includes(
+        String(
+          invoice.status,
+        ),
+      )
+        ? 0
+        : money(
+            balance.rows[0]
+              ?.balance_due,
+          ),
     notes:
       invoice.notes
         ? String(

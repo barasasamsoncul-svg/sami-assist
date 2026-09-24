@@ -3857,6 +3857,23 @@ export async function changeInvoiceStatus(
       : INVOICING_PERMISSIONS
           .INVOICE_CANCEL;
 
+  const reason =
+    nullableText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    next !==
+      'confirmed' &&
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A reason is required to cancel, void or write off an invoice.',
+    );
+  }
+
   const context =
     await requireInvoicingContext(
       permission,
@@ -3989,10 +4006,7 @@ export async function changeInvoiceStatus(
         context.companyId,
         oldStatus,
         next,
-        nullableText(
-          input.reason,
-          2000,
-        ),
+        reason,
         context.userId,
       ],
     );

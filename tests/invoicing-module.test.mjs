@@ -1235,3 +1235,72 @@ test('Invoicing rejects stale master-data references and preserves a draft invoi
     'Editing a draft must start with the invoice template that was originally saved.',
   );
 });
+
+
+test('Invoicing exposes audited invoice closure actions and terminal invoices do not show collectible balances', async () => {
+  const [
+    commands,
+    queries,
+    publicInvoice,
+    types,
+    detail,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/public.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+  ]);
+
+  assert.match(
+    types,
+    /canCancel: boolean;/,
+  );
+
+  assert.match(
+    queries,
+    /INVOICE_CANCEL/,
+  );
+
+  assert.match(
+    commands,
+    /A reason is required to cancel, void or write off an invoice\./,
+  );
+
+  assert.match(
+    detail,
+    /Close invoice/,
+  );
+
+  assert.match(
+    detail,
+    /Cancel invoice/,
+  );
+
+  assert.match(
+    detail,
+    /Void invoice/,
+  );
+
+  assert.match(
+    detail,
+    /Write off remaining balance/,
+  );
+
+  assert.match(
+    detail,
+    /action:\s*'change_status'/,
+  );
+
+  assert.match(
+    queries,
+    /'cancelled',[\s\S]*'void',[\s\S]*'written_off',[\s\S]*\? 0/,
+    'Internal invoice detail must report zero collectible balance for terminal invoice states.',
+  );
+
+  assert.match(
+    publicInvoice,
+    /'cancelled',[\s\S]*'void',[\s\S]*'written_off',[\s\S]*\? 0/,
+    'Customer-facing invoice view must report zero collectible balance for terminal invoice states.',
+  );
+});

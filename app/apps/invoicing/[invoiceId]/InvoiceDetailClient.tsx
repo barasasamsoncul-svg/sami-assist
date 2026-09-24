@@ -1283,6 +1283,152 @@ export default function InvoiceDetailClient({
 
           {
             data.capabilities
+              .canCancel &&
+            [
+              'draft',
+              'confirmed',
+              'sent',
+              'viewed',
+              'overdue',
+              'partially_paid',
+            ].includes(
+              invoice.status,
+            ) &&
+            (
+              <form
+                className="sami-surface rounded-[24px] border border-red-500/15 p-4"
+                onSubmit={
+                  async event => {
+                    event.preventDefault();
+
+                    const element =
+                      event.currentTarget;
+
+                    const form =
+                      new FormData(
+                        element,
+                      );
+
+                    const status =
+                      String(
+                        form.get(
+                          'status',
+                        ) ||
+                        '',
+                      );
+
+                    const reason =
+                      String(
+                        form.get(
+                          'reason',
+                        ) ||
+                        '',
+                      ).trim();
+
+                    const saved =
+                      await run(
+                        {
+                          action:
+                            'change_status',
+                          invoiceId:
+                            invoice.id,
+                          status,
+                          reason,
+                        },
+                        status ===
+                          'written_off'
+                          ? 'Invoice balance written off.'
+                          : status ===
+                              'void'
+                            ? 'Invoice voided.'
+                            : 'Invoice cancelled.',
+                      );
+
+                    if (
+                      saved
+                    ) {
+                      element.reset();
+                    }
+                  }
+                }
+              >
+                <p className="text-sm font-black text-red-700 dark:text-red-300">
+                  Close invoice
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Use this only when the invoice should no longer remain collectible. SaMi keeps the document and audit history instead of deleting it.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <select
+                    name="status"
+                    required
+                    defaultValue=""
+                    className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                  >
+                    <option
+                      value=""
+                      disabled
+                    >
+                      Choose closure action
+                    </option>
+
+                    {
+                      invoice.status !==
+                        'partially_paid' &&
+                      (
+                        <>
+                          <option value="cancelled">
+                            Cancel invoice
+                          </option>
+                          <option value="void">
+                            Void invoice
+                          </option>
+                        </>
+                      )
+                    }
+
+                    {
+                      invoice.status !==
+                        'draft' &&
+                      (
+                        <option value="written_off">
+                          Write off remaining balance
+                        </option>
+                      )
+                    }
+                  </select>
+
+                  <textarea
+                    name="reason"
+                    required
+                    maxLength={
+                      2000
+                    }
+                    rows={
+                      3
+                    }
+                    placeholder="Reason for closing this invoice"
+                    className="w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 py-2.5 text-sm"
+                  />
+
+                  <button
+                    type="submit"
+                    disabled={
+                      busy
+                    }
+                    className="h-11 w-full rounded-xl border border-red-500/30 bg-red-500/10 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                  >
+                    Apply closure
+                  </button>
+                </div>
+              </form>
+            )
+          }
+
+          {
+            data.capabilities
               .canRecordPayment &&
             invoice.balanceDue >
               0 &&

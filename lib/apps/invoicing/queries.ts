@@ -58,6 +58,11 @@ function capabilities(
         INVOICING_PERMISSIONS
           .INVOICE_CONFIRM,
       ),
+    canCancel:
+      allowed(
+        INVOICING_PERMISSIONS
+          .INVOICE_CANCEL,
+      ),
     canSend:
       allowed(
         INVOICING_PERMISSIONS
@@ -1909,9 +1914,19 @@ export async function getInvoicingInvoiceDetail(
         row.credited_amount,
       ),
     balanceDue:
-      money(
-        row.balance_due,
-      ),
+      [
+        'cancelled',
+        'void',
+        'written_off',
+      ].includes(
+        String(
+          row.status,
+        ),
+      )
+        ? 0
+        : money(
+            row.balance_due,
+          ),
     taxCalculation:
       row.tax_calculation ===
         'inclusive'

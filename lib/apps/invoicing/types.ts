@@ -218,6 +218,7 @@ export type InvoicingWorkspaceData = {
     canCreate: boolean;
     canEdit: boolean;
     canConfirm: boolean;
+    canCancel: boolean;
     canSend: boolean;
     canRecordPayment: boolean;
     canCredit: boolean;
