@@ -9,6 +9,7 @@ import {
   deleteEnterpriseModuleRecord,
   getEnterpriseModuleRelationOptions,
   getEnterpriseModuleWorkspace,
+  queryEnterpriseModuleTable,
   transitionEnterpriseModuleRecord,
   updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
@@ -362,7 +363,13 @@ export async function POST(
                   appKey,
                   payload,
                 )
-              : null;
+              : action ===
+                  'list'
+                ? await queryEnterpriseModuleTable(
+                    appKey,
+                    payload,
+                  )
+                : null;
 
     if (
       !result
