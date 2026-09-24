@@ -952,10 +952,11 @@ test('enterprise 2.1 completion gives every shared app collaboration, customizat
       'Import CSV',
       'Delete selected',
       'Bulk workflow',
-      'KanbanRegister',
-      'CalendarRegister',
+      'EnterpriseRegisterControls',
       'EnterpriseRecordWorkspacePanel',
       'Select all visible records',
+      'Kanban',
+      'Calendar',
     ]
   ) {
     assert.ok(
