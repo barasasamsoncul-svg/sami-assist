@@ -1304,3 +1304,23 @@ test('Invoicing exposes audited invoice closure actions and terminal invoices do
     'Customer-facing invoice view must report zero collectible balance for terminal invoice states.',
   );
 });
+
+
+test('Invoicing financial correction SQL keeps actor IDs typed as UUID while storing readable audit metadata', async () => {
+  const commands =
+    await source(
+      'lib/apps/invoicing/commands.ts',
+    );
+
+  assert.match(
+    commands,
+    /'reversedBy',[\s\S]*\(\$3::uuid\)::text[\s\S]*updated_by = \$3::uuid/,
+    'Payment reversal must not infer the actor parameter as text before assigning it to updated_by UUID.',
+  );
+
+  assert.match(
+    commands,
+    /'cancelledBy',[\s\S]*\(\$3::uuid\)::text[\s\S]*updated_by = \$3::uuid/,
+    'Credit-note cancellation must not infer the actor parameter as text before assigning it to updated_by UUID.',
+  );
+});

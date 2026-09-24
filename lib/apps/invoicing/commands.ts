@@ -4655,11 +4655,11 @@ export async function reverseInvoicePayment(
               'reversedAt',
               NOW(),
               'reversedBy',
-              $3::text,
+              ($3::uuid)::text,
               'reversalReason',
               $4::text
             ),
-          updated_by = $3,
+          updated_by = $3::uuid,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
@@ -5226,11 +5226,11 @@ export async function cancelInvoiceCreditNote(
               'cancelledAt',
               NOW(),
               'cancelledBy',
-              $3::text,
+              ($3::uuid)::text,
               'cancellationReason',
               $4::text
             ),
-          updated_by = $3,
+          updated_by = $3::uuid,
           updated_at = NOW()
         WHERE id = $1
           AND company_id = $2
