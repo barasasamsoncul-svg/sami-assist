@@ -46,9 +46,14 @@ test('Category 18: AI provider and model selection are environment-driven', asyn
 });
 
 test('Category 18: SaMi AI owns the product identity while inference providers remain backend implementation details', async () => {
-  const [service, client] = await Promise.all([
+  const [
+    service,
+    client,
+    usagePanel,
+  ] = await Promise.all([
     source('lib/services/workspace-ai.ts'),
     source('app/components/workspace/WorkspaceAiClient.tsx'),
+    source('app/components/ai/SamiAiUsagePanel.tsx'),
   ]);
 
   assert.match(
@@ -104,7 +109,18 @@ test('Category 18: SaMi AI owns the product identity while inference providers r
   );
   assert.match(
     client,
-    /Workspace-scoped activity and tool usage/,
+    /SamiAiUsagePanel/,
+    'The AI workspace must expose the SaMi-owned usage and capability surface.',
+  );
+
+  assert.match(
+    usagePanel,
+    /SaMi AI usage & capabilities/,
+  );
+
+  assert.match(
+    usagePanel,
+    /business tools and current workspace scope/,
   );
 });
 
