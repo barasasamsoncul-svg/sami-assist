@@ -314,6 +314,10 @@ export function withEnterpriseModuleDefaults(
         true,
       aiTools:
         true,
+      automationTriggers:
+        true,
+      automationActions:
+        true,
       apiEndpoints:
         true,
       dataExport:
