@@ -614,6 +614,91 @@ function normalizeCustomValue(
 }
 
 
+export async function getEnterpriseTableCompletion(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+  },
+) {
+  const context =
+    await requireEnterpriseModuleTableContext(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const [
+    savedViews,
+    customFields,
+  ] =
+    await Promise.all([
+      context.pool.query(
+        `
+          SELECT
+            id,
+            name,
+            layout,
+            search_text,
+            filters,
+            sort,
+            columns,
+            is_default,
+            updated_at
+          FROM sami_enterprise_saved_views
+          WHERE company_id = $1
+            AND user_id = $2
+            AND module_key = $3
+            AND table_key = $4
+            AND deleted_at IS NULL
+          ORDER BY is_default DESC, updated_at DESC, id DESC
+          LIMIT $5
+        `,
+        [
+          context.companyId,
+          context.userId,
+          context.moduleKey,
+          context.table,
+          MAX_SAVED_VIEWS,
+        ],
+      ),
+      context.pool.query(
+        `
+          SELECT
+            id,
+            field_key,
+            label,
+            field_type,
+            options,
+            required,
+            active
+          FROM sami_enterprise_custom_fields
+          WHERE company_id = $1
+            AND module_key = $2
+            AND table_key = $3
+            AND deleted_at IS NULL
+            AND active = TRUE
+          ORDER BY label, id
+        `,
+        [
+          context.companyId,
+          context.moduleKey,
+          context.table,
+        ],
+      ),
+    ]);
+
+  return {
+    table:
+      context.table,
+    savedViews:
+      savedViews.rows,
+    customFields:
+      customFields.rows,
+  };
+}
+
+
 export async function getEnterpriseRecordCompletion(
   moduleKey:
     string,
