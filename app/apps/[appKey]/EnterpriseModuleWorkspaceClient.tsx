@@ -29,6 +29,7 @@ import {
   Table2,
   Trash2,
   TriangleAlert,
+  Upload,
   Workflow,
   X,
 } from 'lucide-react';
@@ -235,6 +236,143 @@ function csvValue(
       ) +
     '"'
   );
+}
+
+
+function parseCsv(
+  source:
+    string,
+) {
+  const rows:
+    string[][] =
+    [];
+
+  let row:
+    string[] =
+    [];
+
+  let value =
+    '';
+
+  let quoted =
+    false;
+
+  for (
+    let index =
+      0;
+    index <
+      source.length;
+    index +=
+      1
+  ) {
+    const character =
+      source[
+        index
+      ];
+
+    if (
+      character ===
+        '"'
+    ) {
+      if (
+        quoted &&
+        source[
+          index +
+          1
+        ] ===
+          '"'
+      ) {
+        value +=
+          '"';
+        index +=
+          1;
+      } else {
+        quoted =
+          !quoted;
+      }
+
+      continue;
+    }
+
+    if (
+      character ===
+        ',' &&
+      !quoted
+    ) {
+      row.push(
+        value,
+      );
+      value =
+        '';
+      continue;
+    }
+
+    if (
+      (
+        character ===
+          '\n' ||
+        character ===
+          '\r'
+      ) &&
+      !quoted
+    ) {
+      if (
+        character ===
+          '\r' &&
+        source[
+          index +
+          1
+        ] ===
+          '\n'
+      ) {
+        index +=
+          1;
+      }
+
+      row.push(
+        value,
+      );
+
+      if (
+        row.some(
+          cell =>
+            cell.trim() !==
+              '',
+        )
+      ) {
+        rows.push(
+          row,
+        );
+      }
+
+      row =
+        [];
+      value =
+        '';
+      continue;
+    }
+
+    value +=
+      character;
+  }
+
+  row.push(
+    value,
+  );
+
+  if (
+    row.some(
+      cell =>
+        cell.trim() !==
+          '',
+    )
+  ) {
+    rows.push(
+      row,
+    );
+  }
+
+  return rows;
 }
 
 
@@ -941,6 +1079,376 @@ export default function EnterpriseModuleWorkspaceClient({
     }
   }
 
+  async function importRecords(
+    table:
+      EnterpriseTable,
+    file:
+      File,
+  ) {
+    try {
+      if (
+        file.size >
+          2 *
+          1024 *
+          1024
+      ) {
+        throw new Error(
+          'CSV imports must be 2 MB or smaller.',
+        );
+      }
+
+      const rows =
+        parseCsv(
+          await file.text(),
+        );
+
+      if (
+        rows.length <
+          2
+      ) {
+        throw new Error(
+          'The CSV needs a header row and at least one data row.',
+        );
+      }
+
+      const header =
+        rows[0]
+          .map(
+            value =>
+              value
+                .trim()
+                .toLowerCase()
+                .replace(
+                  /[^a-z0-9]+/g,
+                  '_',
+                )
+                .replace(
+                  /^_+|_+$/g,
+                  '',
+                ),
+          );
+
+      const writable =
+        new Map(
+          table.fields
+            .filter(
+              field =>
+                field.writable,
+            )
+            .flatMap(
+              field => [
+                [
+                  field.key,
+                  field.key,
+                ],
+                [
+                  field.label
+                    .trim()
+                    .toLowerCase()
+                    .replace(
+                      /[^a-z0-9]+/g,
+                      '_',
+                    )
+                    .replace(
+                      /^_+|_+$/g,
+                      '',
+                    ),
+                  field.key,
+                ],
+              ] as
+                [
+                  string,
+                  string
+                ][],
+            ),
+        );
+
+      const mappedHeader =
+        header.map(
+          key =>
+            writable.get(
+              key,
+            ) ||
+            null,
+        );
+
+      if (
+        !mappedHeader.some(
+          Boolean,
+        )
+      ) {
+        throw new Error(
+          'None of the CSV headers match editable fields in this register.',
+        );
+      }
+
+      const dataRows =
+        rows
+          .slice(
+            1,
+            51,
+          )
+          .map(
+            cells => {
+              const values:
+                Record<
+                  string,
+                  unknown
+                > = {};
+
+              for (
+                let index =
+                  0;
+                index <
+                  mappedHeader.length;
+                index +=
+                  1
+              ) {
+                const field =
+                  mappedHeader[
+                    index
+                  ];
+
+                if (
+                  field
+                ) {
+                  values[
+                    field
+                  ] =
+                    cells[
+                      index
+                    ] ??
+                    '';
+                }
+              }
+
+              return {
+                idempotencyKey:
+                  globalThis.crypto
+                    .randomUUID(),
+                values,
+              };
+            },
+          );
+
+      const result =
+        await request({
+          action:
+            'bulk_create',
+          table:
+            table.key,
+          rows:
+            dataRows,
+        });
+
+      const succeeded =
+        Number(
+          result.succeeded ||
+          0,
+        );
+
+      const failed =
+        Number(
+          result.failed ||
+          0,
+        );
+
+      if (
+        succeeded >
+          0
+      ) {
+        showSuccess(
+          'Import completed',
+          succeeded +
+          ' record' +
+          (
+            succeeded ===
+              1
+              ? ''
+              : 's'
+          ) +
+          ' imported.' +
+          (
+            failed >
+              0
+              ? ' ' +
+                failed +
+                ' row' +
+                (
+                  failed ===
+                    1
+                    ? ''
+                    : 's'
+                ) +
+                ' failed validation.'
+              : ''
+          ),
+        );
+      } else {
+        showError(
+          'Import failed',
+          'No CSV rows passed the module validation rules.',
+        );
+      }
+    } catch (
+      error
+    ) {
+      showError(
+        'CSV import failed',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not import this CSV.',
+      );
+    }
+  }
+
+
+  function bulkDeleteRecords(
+    table:
+      EnterpriseTable,
+    recordIds:
+      string[],
+  ) {
+    if (
+      recordIds.length ===
+        0
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Delete selected records?',
+      message:
+        'SaMi will apply safe-delete rules to ' +
+        recordIds.length +
+        ' selected record' +
+        (
+          recordIds.length ===
+            1
+            ? ''
+            : 's'
+        ) +
+        '. Records blocked by domain rules will remain unchanged.',
+      confirmLabel:
+        'Delete selected',
+      onConfirm:
+        () => {
+          void (
+            async () => {
+              try {
+                const result =
+                  await request({
+                    action:
+                      'bulk_delete',
+                    table:
+                      table.key,
+                    recordIds,
+                  });
+
+                showSuccess(
+                  'Bulk delete completed',
+                  String(
+                    result.succeeded ||
+                    0,
+                  ) +
+                  ' removed · ' +
+                  String(
+                    result.failed ||
+                    0,
+                  ) +
+                  ' blocked.',
+                );
+              } catch (
+                error
+              ) {
+                showError(
+                  'Bulk delete failed',
+                  error instanceof
+                    Error
+                    ? error.message
+                    : 'SaMi could not delete the selected records.',
+                );
+              }
+            }
+          )();
+        },
+    });
+  }
+
+
+  function bulkTransitionRecords(
+    table:
+      EnterpriseTable,
+    recordIds:
+      string[],
+    statusField:
+      string,
+    nextStatus:
+      string,
+  ) {
+    if (
+      recordIds.length ===
+        0 ||
+      !nextStatus
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Change selected workflow states?',
+      message:
+        'SaMi will validate the transition independently for every selected record.',
+      confirmLabel:
+        'Apply workflow',
+      onConfirm:
+        () => {
+          void (
+            async () => {
+              try {
+                const result =
+                  await request({
+                    action:
+                      'bulk_transition',
+                    table:
+                      table.key,
+                    recordIds,
+                    statusField,
+                    nextStatus,
+                  });
+
+                showSuccess(
+                  'Bulk workflow completed',
+                  String(
+                    result.succeeded ||
+                    0,
+                  ) +
+                  ' changed · ' +
+                  String(
+                    result.failed ||
+                    0,
+                  ) +
+                  ' blocked.',
+                );
+              } catch (
+                error
+              ) {
+                showError(
+                  'Bulk workflow failed',
+                  error instanceof
+                    Error
+                    ? error.message
+                    : 'SaMi could not update the selected workflows.',
+                );
+              }
+            }
+          )();
+        },
+    });
+  }
+
   async function deleteRecord(
     table:
       EnterpriseTable,
@@ -1496,6 +2004,15 @@ export default function EnterpriseModuleWorkspaceClient({
                       null,
                   })
               }
+              onImport={
+                importRecords
+              }
+              onBulkDelete={
+                bulkDeleteRecords
+              }
+              onBulkTransition={
+                bulkTransitionRecords
+              }
               onDelete={
                 deleteRecord
               }
@@ -2038,6 +2555,9 @@ function Records({
   onSelect,
   onCreate,
   onOpenRecord,
+  onImport,
+  onBulkDelete,
+  onBulkTransition,
   onEdit,
   onDelete,
   onTransition,
@@ -2102,6 +2622,34 @@ function Records({
         >,
     ) =>
       void;
+  onImport:
+    (
+      table:
+        EnterpriseTable,
+      file:
+        File,
+    ) =>
+      Promise<void>;
+  onBulkDelete:
+    (
+      table:
+        EnterpriseTable,
+      recordIds:
+        string[],
+    ) =>
+      void;
+  onBulkTransition:
+    (
+      table:
+        EnterpriseTable,
+      recordIds:
+        string[],
+      statusField:
+        string,
+      nextStatus:
+        string,
+    ) =>
+      void;
   onEdit:
     (
       table:
@@ -2159,6 +2707,24 @@ function Records({
       void;
 }) {
   const [
+    selectedRecordIds,
+    setSelectedRecordIds,
+  ] =
+    useState<
+      Set<
+        string
+      >
+    >(
+      new Set(),
+    );
+
+  const importInput =
+    useRef<HTMLInputElement | null>(
+      null,
+    );
+
+
+  const [
     recordView,
     setRecordView,
   ] =
@@ -2174,6 +2740,9 @@ function Records({
     () => {
       setRecordView(
         'list',
+      );
+      setSelectedRecordIds(
+        new Set(),
       );
     },
     [
@@ -2424,6 +2993,237 @@ function Records({
             )
         }
       />
+
+      <div className="sami-surface rounded-[22px] p-3">
+        <input
+          ref={
+            importInput
+          }
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={
+            event => {
+              const file =
+                event.target
+                  .files?.[0];
+
+              if (
+                file
+              ) {
+                void onImport(
+                  selected,
+                  file,
+                );
+              }
+
+              event.currentTarget.value =
+                '';
+            }
+          }
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          {
+            canCreate &&
+            selected.supportsCreate &&
+            (
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  () =>
+                    importInput
+                      .current
+                      ?.click()
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-2.5 text-[10px] font-black disabled:opacity-60"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Import CSV
+              </button>
+            )
+          }
+
+          {
+            selected.recordKey &&
+            records.length >
+              0 &&
+            (
+              <label className="inline-flex h-9 items-center gap-2 rounded-xl border border-[var(--sami-border)] px-2.5 text-[10px] font-black">
+                <input
+                  type="checkbox"
+                  aria-label="Select all visible records"
+                  checked={
+                    records.every(
+                      record =>
+                        selectedRecordIds.has(
+                          String(
+                            record[
+                              selected.recordKey!
+                            ] ||
+                            '',
+                          ),
+                        ),
+                    )
+                  }
+                  onChange={
+                    event => {
+                      const next =
+                        new Set(
+                          selectedRecordIds,
+                        );
+
+                      for (
+                        const record
+                        of records
+                      ) {
+                        const id =
+                          String(
+                            record[
+                              selected.recordKey!
+                            ] ||
+                            '',
+                          );
+
+                        if (
+                          !id
+                        ) {
+                          continue;
+                        }
+
+                        if (
+                          event.target
+                            .checked
+                        ) {
+                          next.add(
+                            id,
+                          );
+                        } else {
+                          next.delete(
+                            id,
+                          );
+                        }
+                      }
+
+                      setSelectedRecordIds(
+                        next,
+                      );
+                    }
+                  }
+                />
+                Select visible
+              </label>
+            )
+          }
+
+          {
+            selectedRecordIds.size >
+              0 &&
+            (
+              <span className="rounded-full bg-blue-500/10 px-2.5 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                {
+                  selectedRecordIds.size
+                }
+                {' selected'}
+              </span>
+            )
+          }
+
+          {
+            selectedRecordIds.size >
+              0 &&
+            canEdit &&
+            selected.workflows[0] &&
+            (
+              <select
+                value=""
+                disabled={
+                  busy
+                }
+                onChange={
+                  event => {
+                    const next =
+                      event.target.value;
+
+                    if (
+                      next
+                    ) {
+                      onBulkTransition(
+                        selected,
+                        [
+                          ...selectedRecordIds,
+                        ],
+                        selected.workflows[0]
+                          .field,
+                        next,
+                      );
+                    }
+                  }
+                }
+                className="h-9 rounded-xl border border-[var(--sami-border)] bg-transparent px-2 text-[10px] font-black"
+              >
+                <option value="">
+                  Bulk workflow
+                </option>
+                {
+                  selected.workflows[0]
+                    .databaseAllowedValues
+                    .map(
+                      state => (
+                        <option
+                          key={
+                            state
+                          }
+                          value={
+                            state
+                          }
+                        >
+                          {
+                            state.replaceAll(
+                              '_',
+                              ' ',
+                            )
+                          }
+                        </option>
+                      ),
+                    )
+                }
+              </select>
+            )
+          }
+
+          {
+            selectedRecordIds.size >
+              0 &&
+            canDelete &&
+            selected.supportsDelete &&
+            (
+              <button
+                type="button"
+                disabled={
+                  busy
+                }
+                onClick={
+                  () =>
+                    onBulkDelete(
+                      selected,
+                      [
+                        ...selectedRecordIds,
+                      ],
+                    )
+                }
+                className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-500/25 px-2.5 text-[10px] font-black text-red-600 disabled:opacity-60"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete selected
+              </button>
+            )
+          }
+        </div>
+      </div>
 
       <div className="sami-surface rounded-[22px] p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -2784,6 +3584,60 @@ function Records({
                                                       )
                                                     }
               
+                                                    {
+                                                      selected
+                                                        .recordKey &&
+                                                      (
+                                                        <input
+                                                          type="checkbox"
+                                                          aria-label="Select record"
+                                                          checked={
+                                                            selectedRecordIds.has(
+                                                              String(
+                                                                record[
+                                                                  selected.recordKey
+                                                                ] ||
+                                                                '',
+                                                              ),
+                                                            )
+                                                          }
+                                                          onChange={
+                                                            event => {
+                                                              const id =
+                                                                String(
+                                                                  record[
+                                                                    selected.recordKey!
+                                                                  ] ||
+                                                                  '',
+                                                                );
+
+                                                              const next =
+                                                                new Set(
+                                                                  selectedRecordIds,
+                                                                );
+
+                                                              if (
+                                                                event.target.checked
+                                                              ) {
+                                                                next.add(
+                                                                  id,
+                                                                );
+                                                              } else {
+                                                                next.delete(
+                                                                  id,
+                                                                );
+                                                              }
+
+                                                              setSelectedRecordIds(
+                                                                next,
+                                                              );
+                                                            }
+                                                          }
+                                                          className="mx-1"
+                                                        />
+                                                      )
+                                                    }
+
                                                     {
                                                       selected
                                                         .recordKey &&
