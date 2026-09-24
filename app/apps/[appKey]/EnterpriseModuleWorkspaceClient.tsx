@@ -9,8 +9,10 @@ import {
 } from 'react';
 
 import {
+  Activity,
   BarChart3,
   BookOpenCheck,
+  CircleCheckBig,
   Database,
   Download,
   LayoutDashboard,
@@ -21,6 +23,8 @@ import {
   Settings2,
   Table2,
   Trash2,
+  TriangleAlert,
+  Workflow,
   X,
 } from 'lucide-react';
 
@@ -156,6 +160,40 @@ function displayValue(
       ) +
       '...'
     : source;
+}
+
+
+function singularLabel(
+  value:
+    string,
+) {
+  if (
+    value.endsWith(
+      'ies',
+    )
+  ) {
+    return value.slice(
+      0,
+      -3,
+    ) +
+    'y';
+  }
+
+  if (
+    value.endsWith(
+      's',
+    ) &&
+    !value.endsWith(
+      'ss',
+    )
+  ) {
+    return value.slice(
+      0,
+      -1,
+    );
+  }
+
+  return value;
 }
 
 
@@ -887,7 +925,9 @@ export default function EnterpriseModuleWorkspaceClient({
         key:
           'records',
         label:
-          'Records',
+          initialData
+            .profile
+            .navigationLabel,
         icon:
           Table2,
         visible:
@@ -1644,7 +1684,11 @@ function Records({
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 text-xs font-black text-white disabled:opacity-60"
                 >
                   <Plus className="h-4 w-4" />
-                  New record
+                  New {
+                    singularLabel(
+                      selected.label,
+                    )
+                  }
                 </button>
               )
             }
@@ -2209,8 +2253,14 @@ function RecordEditor({
             <h2 className="mt-1 text-lg font-black">
               {
                 record
-                  ? 'Edit record'
-                  : 'New record'
+                  ? 'Edit ' +
+                    singularLabel(
+                      table.label,
+                    )
+                  : 'New ' +
+                    singularLabel(
+                      table.label,
+                    )
               }
             </h2>
           </div>
@@ -2344,7 +2394,10 @@ function RecordEditor({
                   {
                     record
                       ? 'Save changes'
-                      : 'Create record'
+                      : 'Create ' +
+                        singularLabel(
+                          table.label,
+                        )
                   }
                 </button>
               )
