@@ -571,6 +571,66 @@ test('enterprise completion layer provides scalable views reporting and personal
 });
 
 
+test('enterprise sensitive business fields require module-administration access', async () => {
+  const [
+    security,
+    service,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/field-security.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'employees:employees',
+      'salary',
+      'payroll:payroll_employees',
+      'basic_salary',
+      'marketplace:marketplace_sellers',
+      'payout_account',
+      '.record.settings',
+    ]
+  ) {
+    assert.ok(
+      security.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    security,
+    /context\.isOwner[\s\S]*permissionSet\.has/s,
+  );
+
+  assert.match(
+    service,
+    /filterEnterpriseFieldsForAccess/,
+  );
+
+  assert.match(
+    service,
+    /rowOutput\([\s\S]*fields\?/s,
+  );
+
+  assert.match(
+    service,
+    /rowOutput\([\s\S]*context\.fields/s,
+  );
+
+  assert.match(
+    service,
+    /filterEnterpriseFieldsForAccess\([\s\S]*context\.permissions/s,
+  );
+});
+
+
 test('enterprise search providers cover the code-owned module catalog', async () => {
   const [
     enterpriseSearch,
