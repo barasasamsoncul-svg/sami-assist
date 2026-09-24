@@ -594,30 +594,46 @@ test('Category 21: module APIs are code-owned, opt-in and fail closed when no ap
     /credentialBoundary\.length ===\s*0/s,
   );
 
-  const apiClosedCount =
-    (
-      firstParty.match(
-        /apiEndpoints: false/g,
-      ) ||
-      []
-    ).length +
-    (
-      additionalFirstParty.match(
-        /apiEndpoints:\s*false/g,
-      ) ||
-      []
-    ).length;
+  const salesManifest =
+    firstParty.match(
+      /defineSamiModule\(\{[\s\S]*?key:\s*"sales"[\s\S]*?\n\s*\}\),/m,
+    )?.[0] ||
+    '';
 
-  assert.equal(
-    apiClosedCount,
-    37,
-    'The original manifests plus the shared additional-module extension contract must fail closed for public API exposure.',
+  assert.match(
+    salesManifest,
+    /apiEndpoints:\s*true/,
+    'Sales v2 may expose developer endpoints only because its API surface is now implemented and code-owned.',
   );
 
   assert.doesNotMatch(
     additionalFirstParty,
     /apiEndpoints:\s*true/,
-    'None of the 44 additional app foundations may expose a public developer API before implementation.',
+    'Additional app foundations must remain fail-closed for public developer APIs until their endpoint contracts are implemented.',
+  );
+
+  const unimplementedOpenApis =
+    [
+      ...firstParty.matchAll(
+        /defineSamiModule\(\{[\s\S]*?key:\s*"([^"]+)"[\s\S]*?extensions:\s*\{[\s\S]*?apiEndpoints:\s*true[\s\S]*?\n\s*\}\),/gm,
+      ),
+    ]
+      .map(
+        match =>
+          match[1],
+      )
+      .filter(
+        key =>
+          key !==
+            'sales' &&
+          key !==
+            'invoicing',
+      );
+
+  assert.deepEqual(
+    unimplementedOpenApis,
+    [],
+    'Only modules with implemented, registered developer endpoint contracts may opt into public API exposure.',
   );
 });
 
