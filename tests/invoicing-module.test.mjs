@@ -185,8 +185,56 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /apiEndpoints:\s*false/,
-    'Authenticated workspace routes must not silently expose a public developer API.',
+    /apiEndpoints:\s*true/,
+    'Invoicing may expose developer reads only through the code-owned, company-scoped API registry.',
+  );
+
+  assert.match(
+    invoicing,
+    /dataExport:\s*true/,
+    'Invoicing account export is enabled only because the suite export handler is code-owned and company-scoped.',
+  );
+
+  const [
+    developerRoute,
+    developerRegistry,
+    suiteExport,
+  ] =
+    await Promise.all([
+      source(
+        'app/api/v1/apps/[appKey]/records/route.ts',
+      ),
+      source(
+        'lib/developer/registry.ts',
+      ),
+      source(
+        'lib/data-lifecycle/suite-export.ts',
+      ),
+    ]);
+
+  assert.match(
+    developerRoute,
+    /authenticateDeveloperRequest\([\s\S]*['"]apps\.read['"]/s,
+  );
+
+  assert.match(
+    developerRoute,
+    /context\.allowedAppKeys/,
+  );
+
+  assert.match(
+    developerRegistry,
+    /MODULE_DEVELOPER_ENDPOINTS/,
+  );
+
+  assert.match(
+    suiteExport,
+    /invoicing_invoices/,
+  );
+
+  assert.match(
+    suiteExport,
+    /company_id = \$1/,
   );
 });
 
