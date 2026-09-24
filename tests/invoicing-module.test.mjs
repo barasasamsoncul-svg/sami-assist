@@ -269,7 +269,26 @@ test('Invoicing server authority uses trusted workspace/company context and neve
 
   assert.doesNotMatch(
     commands,
-    /input\.tenantId|input\.companyId/,
+    /requireUuid\(\s*input\.(?:tenantId|companyId)/,
+    'Client payloads must never choose the workspace or company scope for an Invoicing action.',
+  );
+
+  assert.doesNotMatch(
+    commands,
+    /getTenantPoolByTenantId\(\s*input\.tenantId/,
+    'Client payloads must never select the tenant database.',
+  );
+
+  assert.match(
+    context,
+    /tenantId:\s*permissions\.tenantId/,
+    'Tenant scope must come from the authenticated permission context.',
+  );
+
+  assert.match(
+    context,
+    /companyId:\s*company\.currentCompanyId/,
+    'Company scope must come from the server-selected company context.',
   );
 
   assert.match(
