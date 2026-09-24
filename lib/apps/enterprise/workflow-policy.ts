@@ -708,6 +708,191 @@ const DOMAIN_GRAPH:
         'cancelled',
       ],
     },
+    'ads:ad_campaigns': {
+      draft: ['scheduled','active','cancelled'],
+      scheduled: ['active','paused','cancelled'],
+      active: ['paused','completed','cancelled'],
+      paused: ['active','cancelled'],
+    },
+    'calendar:calendar_events': {
+      draft: ['scheduled','cancelled'],
+      scheduled: ['active','completed','cancelled'],
+      active: ['completed','cancelled'],
+    },
+    'checkout:checkout_links': {
+      active: ['paused','expired','cancelled'],
+      paused: ['active','cancelled'],
+    },
+    'checkout:checkout_sessions': {
+      pending: ['processing','paid','failed','cancelled'],
+      processing: ['paid','failed','cancelled'],
+      failed: ['pending','cancelled'],
+    },
+    'commissions:commission_entries': {
+      pending: ['approved','rejected'],
+      approved: ['paid','cancelled'],
+    },
+    'customer_portal:portal_customers': {
+      active: ['suspended','expired','cancelled'],
+      suspended: ['active','cancelled'],
+    },
+    'demand_planning:demand_forecasts': {
+      draft: ['active','approved','cancelled'],
+      active: ['approved','completed','cancelled'],
+      approved: ['completed','cancelled'],
+    },
+    'demand_planning:replenishment_recommendations': {
+      pending: ['approved','rejected','cancelled'],
+      approved: ['completed','cancelled'],
+    },
+    'email_marketing:email_campaigns': {
+      draft: ['scheduled','sent','cancelled'],
+      scheduled: ['sent','cancelled'],
+    },
+    'events:events': {
+      draft: ['scheduled','active','cancelled'],
+      scheduled: ['active','completed','cancelled'],
+      active: ['completed','cancelled'],
+    },
+    'facilities:facility_requests': {
+      active: ['in_progress','completed','cancelled'],
+      open: ['in_progress','completed','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'gift_cards:gift_cards': {
+      active: ['redeemed','expired','cancelled'],
+    },
+    'inspections:inspections': {
+      active: ['scheduled','in_progress','completed','cancelled'],
+      scheduled: ['in_progress','completed','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'inspections:inspection_findings': {
+      active: ['in_progress','resolved','closed'],
+      in_progress: ['resolved','closed'],
+      resolved: ['closed','active'],
+    },
+    'landing_pages:landing_pages': {
+      draft: ['published','archived'],
+      active: ['published','archived'],
+      published: ['archived','draft'],
+    },
+    'lead_capture:lead_capture_entries': {
+      new: ['qualified','rejected','converted'],
+      active: ['qualified','rejected','converted'],
+      qualified: ['converted','rejected'],
+    },
+    'loyalty:loyalty_members': {
+      active: ['suspended','closed'],
+      suspended: ['active','closed'],
+    },
+    'mail:mail_threads': {
+      open: ['closed','archived'],
+      active: ['closed','archived'],
+      closed: ['open','archived'],
+    },
+    'marketing_automation:automation_workflows': {
+      draft: ['active','cancelled'],
+      active: ['paused','completed','cancelled'],
+      paused: ['active','cancelled'],
+    },
+    'marketing_automation:automation_runs': {
+      pending: ['in_progress','cancelled'],
+      in_progress: ['completed','failed','cancelled'],
+      failed: ['pending','cancelled'],
+    },
+    'marketplace:marketplace_listings': {
+      draft: ['active','paused','cancelled'],
+      active: ['paused','sold_out','cancelled'],
+      paused: ['active','cancelled'],
+    },
+    'marketplace:marketplace_orders': {
+      pending: ['confirmed','cancelled'],
+      confirmed: ['processing','cancelled'],
+      processing: ['shipped','cancelled'],
+      shipped: ['delivered','returned'],
+      delivered: ['completed','returned'],
+    },
+    'meetings:meetings': {
+      draft: ['scheduled','cancelled'],
+      scheduled: ['in_progress','completed','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'planning:planning_shifts': {
+      draft: ['scheduled','cancelled'],
+      scheduled: ['in_progress','completed','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'plm:engineering_changes': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','rejected','cancelled'],
+      approved: ['implemented','closed'],
+      rejected: ['draft','closed'],
+    },
+    'pos_restaurant:restaurant_orders': {
+      open: ['in_progress','ready','cancelled'],
+      in_progress: ['ready','completed','cancelled'],
+      ready: ['completed','cancelled'],
+    },
+    'pos_shop:shop_orders': {
+      open: ['processing','paid','cancelled'],
+      processing: ['paid','completed','cancelled'],
+      paid: ['completed','refunded'],
+    },
+    'referrals:referrals': {
+      new: ['screening','approved','rejected'],
+      active: ['approved','rejected'],
+      approved: ['rewarded','closed'],
+    },
+    'sales_inbox:sales_conversations': {
+      open: ['in_progress','closed'],
+      active: ['in_progress','closed'],
+      in_progress: ['closed','open'],
+      closed: ['open'],
+    },
+    'seo:seo_issues': {
+      open: ['in_progress','resolved','closed'],
+      active: ['in_progress','resolved','closed'],
+      in_progress: ['resolved','closed'],
+      resolved: ['closed','open'],
+    },
+    'sign:signature_requests': {
+      draft: ['sent','cancelled'],
+      sent: ['completed','expired','cancelled'],
+    },
+    'sms_marketing:sms_campaigns': {
+      draft: ['scheduled','sent','cancelled'],
+      scheduled: ['sent','cancelled'],
+    },
+    'social_marketing:social_posts': {
+      draft: ['scheduled','published','cancelled'],
+      scheduled: ['published','failed','cancelled'],
+      failed: ['scheduled','cancelled'],
+    },
+    'surveys:surveys': {
+      draft: ['active','cancelled'],
+      active: ['closed','completed','cancelled'],
+    },
+    'team_inbox:team_inbox_threads': {
+      open: ['in_progress','closed'],
+      active: ['in_progress','closed'],
+      in_progress: ['closed','open'],
+      closed: ['open'],
+    },
+    'vendor_portal:vendor_portal_accounts': {
+      active: ['suspended','expired','closed'],
+      suspended: ['active','closed'],
+    },
+    'warehouse:warehouse_operations': {
+      draft: ['scheduled','cancelled'],
+      active: ['scheduled','in_progress','completed','cancelled'],
+      scheduled: ['in_progress','completed','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'whiteboard:whiteboards': {
+      active: ['archived','closed'],
+      archived: ['active','closed'],
+    },
   };
 
 
