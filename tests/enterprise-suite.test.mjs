@@ -600,3 +600,134 @@ test('enterprise v2 hardening adds company and audit boundaries to legacy app sc
     /ENTERPRISE_SUITE_MIGRATIONS/,
   );
 });
+
+
+test('enterprise suite uses one audited workflow engine across business modules', async () => {
+  const [
+    service,
+    policy,
+    api,
+    client,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    ),
+    source(
+      'app/api/apps/[appKey]/records/route.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+  ]);
+
+  assert.match(
+    service,
+    /transitionEnterpriseModuleRecord/,
+  );
+
+  assert.match(
+    service,
+    /getDatabaseWorkflowValues/,
+  );
+
+  assert.match(
+    service,
+    /recordEnterpriseAudit/,
+  );
+
+  assert.match(
+    service,
+    /workflow\.transitioned/,
+  );
+
+  for (
+    const domain
+    of [
+      'accounting:journals',
+      'expenses:expenses',
+      'time_off:leave_requests',
+      'helpdesk:support_tickets',
+      'purchase:purchase_orders',
+      'manufacturing:manufacturing_orders',
+      'recruitment:applicants',
+      'shipping:shipments',
+      'ecommerce:storefront_orders',
+    ]
+  ) {
+    assert.ok(
+      policy.includes(
+        "'" +
+        domain +
+        "'",
+      ),
+      domain,
+    );
+  }
+
+  assert.match(
+    service,
+    /balanced debit and credit lines/,
+  );
+
+  assert.match(
+    service,
+    /Record produced quantity before completing a manufacturing order/,
+  );
+
+  assert.match(
+    api,
+    /'transition'/,
+  );
+
+  assert.match(
+    client,
+    /WorkflowActions/,
+  );
+
+  assert.match(
+    client,
+    /Change workflow state\?/,
+  );
+});
+
+
+test('enterprise record mutations are audited without turning audit failure into duplicate business writes', async () => {
+  const service =
+    await source(
+      'lib/apps/enterprise/service.ts',
+    );
+
+  assert.match(
+    service,
+    /async function recordEnterpriseAudit/,
+  );
+
+  assert.match(
+    service,
+    /audit write failed/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.created/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.updated/,
+  );
+
+  assert.match(
+    service,
+    /\.record\.deleted/,
+  );
+
+  assert.doesNotMatch(
+    service,
+    /await recordWorkspaceAuditEvent\(\{/,
+    'CRUD should use the non-fatal enterprise audit wrapper so a logging fault does not make a successful write look failed.',
+  );
+});

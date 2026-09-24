@@ -34,6 +34,15 @@ import {
   isEnterpriseModuleKey,
 } from '@/lib/apps/enterprise/catalog';
 
+import {
+  recordWorkspaceAuditEvent,
+} from '@/lib/services/workspace-activity';
+
+import {
+  getEnterpriseWorkflowTransitions,
+  type EnterpriseWorkflowTransition,
+} from '@/lib/apps/enterprise/workflow-policy';
+
 
 export type EnterpriseModuleOperation =
   | 'view'
@@ -65,6 +74,12 @@ export type EnterpriseField = {
 };
 
 
+export type EnterpriseWorkflowField = {
+  field: string;
+  label: string;
+  databaseAllowedValues: string[];
+};
+
 export type EnterpriseTable = {
   key: string;
   label: string;
@@ -76,6 +91,7 @@ export type EnterpriseTable = {
   supportsDelete: boolean;
   fields: EnterpriseField[];
   displayFields: string[];
+  workflows: EnterpriseWorkflowField[];
   count: number;
   records: Array<
     Record<
@@ -125,7 +141,9 @@ export type EnterpriseModuleErrorCode =
   | 'TABLE_NOT_READY'
   | 'RECORD_NOT_FOUND'
   | 'INVALID_INPUT'
-  | 'DELETE_NOT_SUPPORTED';
+  | 'DELETE_NOT_SUPPORTED'
+  | 'WORKFLOW_NOT_SUPPORTED'
+  | 'WORKFLOW_TRANSITION_INVALID';
 
 
 export class EnterpriseModuleError
@@ -234,7 +252,7 @@ function label(
       ' ',
     )
     .replace(
-      /w/g,
+      /\b\w/g,
       character =>
         character.toUpperCase(),
     );
@@ -504,6 +522,37 @@ function permissionAllows(
           ),
         ),
     );
+}
+
+
+async function recordEnterpriseAudit(
+  input:
+    Parameters<
+      typeof recordWorkspaceAuditEvent
+    >[0],
+) {
+  try {
+    await recordWorkspaceAuditEvent(
+      input,
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      '[SaMi Enterprise App] audit write failed:',
+      {
+        module:
+          input.module,
+        action:
+          input.action,
+        resourceType:
+          input.resourceType,
+        resourceId:
+          input.resourceId,
+        error,
+      },
+    );
+  }
 }
 
 
@@ -858,6 +907,135 @@ function rowOutput(
 }
 
 
+async function getDatabaseWorkflowValues(
+  pool:
+    Pick<
+      Pool,
+      'query'
+    >,
+  table:
+    string,
+  field:
+    string,
+) {
+  const result =
+    await pool.query(
+      `
+        SELECT
+          pg_get_constraintdef(
+            c.oid
+          )
+            AS definition
+        FROM pg_constraint c
+        INNER JOIN pg_class rel
+          ON rel.oid =
+             c.conrelid
+        INNER JOIN pg_namespace ns
+          ON ns.oid =
+             rel.relnamespace
+        WHERE ns.nspname =
+              'public'
+          AND rel.relname =
+              $1
+          AND c.contype =
+              'c'
+      `,
+      [
+        table,
+      ],
+    );
+
+  const values =
+    new Set<string>();
+
+  for (
+    const row
+    of result.rows
+  ) {
+    const definition =
+      String(
+        row.definition ||
+        '',
+      );
+
+    if (
+      !definition
+        .toLowerCase()
+        .includes(
+          field.toLowerCase(),
+        )
+    ) {
+      continue;
+    }
+
+    for (
+      const match
+      of definition.matchAll(
+        /'((?:''|[^'])+)'/g,
+      )
+    ) {
+      const value =
+        match[1]
+          .replaceAll(
+            "''",
+            "'",
+          )
+          .trim()
+          .toLowerCase();
+
+      if (
+        value
+      ) {
+        values.add(
+          value,
+        );
+      }
+    }
+  }
+
+  return [
+    ...values,
+  ];
+}
+
+
+async function workflowFieldsForTable(
+  pool:
+    Pool,
+  table:
+    string,
+  fields:
+    EnterpriseField[],
+): Promise<
+  EnterpriseWorkflowField[]
+> {
+  const statusFields =
+    fields.filter(
+      field =>
+        /(^|_)(status|state)$/.test(
+          field.key,
+        ),
+    );
+
+  return Promise.all(
+    statusFields.map(
+      async field => ({
+        field:
+          field.key,
+        label:
+          field.label,
+        databaseAllowedValues:
+          await getDatabaseWorkflowValues(
+            pool,
+            table,
+            field.key,
+          ),
+      }),
+    ),
+  );
+}
+
+
 async function readTable(
   pool:
     Pool,
@@ -982,6 +1160,13 @@ async function readTable(
       params,
     );
 
+  const workflows =
+    await workflowFieldsForTable(
+      pool,
+      table,
+      fields,
+    );
+
   const displayFields =
     fields
       .map(
@@ -1014,6 +1199,7 @@ async function readTable(
     recordKey,
     fields,
     displayFields,
+    workflows,
     count:
       Number(
         countResult.rows[0]
@@ -1494,10 +1680,58 @@ export async function createEnterpriseModuleRecord(
       ),
     );
 
-  return rowOutput(
-    result.rows[0] ||
-    {},
-  );
+  const created =
+    rowOutput(
+      result.rows[0] ||
+      {},
+    );
+
+  await recordEnterpriseAudit({
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    userId:
+      context.userId,
+    action:
+      context.moduleKey +
+      '.record.created',
+    eventType:
+      'record.created',
+    category:
+      'business',
+    severity:
+      'info',
+    summary:
+      context.manifest.name +
+      ' record created.',
+    resourceType:
+      context.table,
+    resourceId:
+      typeof result.rows[0]
+        ?.id ===
+        'string'
+        ? result.rows[0].id
+        : null,
+    entityType:
+      context.table,
+    entityId:
+      typeof result.rows[0]
+        ?.id ===
+        'string'
+        ? result.rows[0].id
+        : null,
+    module:
+      context.moduleKey,
+    result:
+      'success',
+    metadata: {
+      table:
+        context.table,
+    },
+  });
+
+  return created;
 }
 
 
@@ -1710,9 +1944,72 @@ export async function updateEnterpriseModuleRecord(
     );
   }
 
-  return rowOutput(
-    result.rows[0],
-  );
+  const updated =
+    rowOutput(
+      result.rows[0],
+    );
+
+  await recordEnterpriseAudit({
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    userId:
+      context.userId,
+    action:
+      context.moduleKey +
+      '.record.updated',
+    eventType:
+      'record.updated',
+    category:
+      'business',
+    severity:
+      'info',
+    summary:
+      context.manifest.name +
+      ' record updated.',
+    resourceType:
+      context.table,
+    resourceId:
+      String(
+        result.rows[0]
+          ?.id ||
+        recordId,
+      ),
+    entityType:
+      context.table,
+    entityId:
+      String(
+        result.rows[0]
+          ?.id ||
+        recordId,
+      ),
+    module:
+      context.moduleKey,
+    result:
+      'success',
+    metadata: {
+      table:
+        context.table,
+    },
+    changes:
+      Object.fromEntries(
+        entries.map(
+          ([
+            key,
+            value,
+          ]) => [
+            key,
+            {
+              to:
+                value,
+            },
+          ],
+        ),
+      ),
+  });
+
+  return updated;
 }
 
 
@@ -1850,14 +2147,632 @@ export async function deleteEnterpriseModuleRecord(
     );
   }
 
+  const deletedId =
+    String(
+      result.rows[0].id,
+    );
+
+  await recordEnterpriseAudit({
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    userId:
+      context.userId,
+    action:
+      context.moduleKey +
+      '.record.deleted',
+    eventType:
+      'record.deleted',
+    category:
+      'business',
+    severity:
+      'warning',
+    summary:
+      context.manifest.name +
+      ' record deleted.',
+    resourceType:
+      context.table,
+    resourceId:
+      deletedId,
+    entityType:
+      context.table,
+    entityId:
+      deletedId,
+    module:
+      context.moduleKey,
+    result:
+      'success',
+    metadata: {
+      table:
+        context.table,
+      softDelete:
+        true,
+    },
+  });
+
   return {
     deleted:
       true,
     id:
-      String(
-        result.rows[0].id,
-      ),
+      deletedId,
   };
+}
+
+
+async function validateEnterpriseTransition(
+  client:
+    import('pg').PoolClient,
+  context: {
+    moduleKey: string;
+    companyId: string;
+  },
+  table:
+    string,
+  recordId:
+    string,
+  next:
+    string,
+) {
+  if (
+    context.moduleKey ===
+      'accounting' &&
+    table ===
+      'journals' &&
+    next ===
+      'posted'
+  ) {
+    const balance =
+      await client.query(
+        `
+          SELECT
+            COUNT(*)::int
+              AS line_count,
+            COALESCE(
+              SUM(debit),
+              0
+            )
+              AS debit_total,
+            COALESCE(
+              SUM(credit),
+              0
+            )
+              AS credit_total
+          FROM journal_lines
+          WHERE journal_id =
+                $1
+            AND company_id =
+                $2
+            AND deleted_at
+                IS NULL
+        `,
+        [
+          recordId,
+          context.companyId,
+        ],
+      );
+
+    const row =
+      balance.rows[0] ||
+      {};
+
+    const debit =
+      Number(
+        row.debit_total ||
+        0,
+      );
+
+    const credit =
+      Number(
+        row.credit_total ||
+        0,
+      );
+
+    if (
+      Number(
+        row.line_count ||
+        0,
+      ) ===
+        0 ||
+      debit <=
+        0 ||
+      Math.abs(
+        debit -
+        credit,
+      ) >
+        0.005
+    ) {
+      throw new EnterpriseModuleError(
+        'WORKFLOW_TRANSITION_INVALID',
+        'A journal can only be posted when it has balanced debit and credit lines.',
+      );
+    }
+  }
+
+  if (
+    context.moduleKey ===
+      'purchase' &&
+    table ===
+      'purchase_orders' &&
+    [
+      'confirmed',
+      'received',
+      'closed',
+    ].includes(
+      next,
+    )
+  ) {
+    await client.query(
+      `
+        UPDATE purchase_orders po
+        SET
+          total_amount =
+            COALESCE(
+              (
+                SELECT
+                  SUM(
+                    quantity *
+                    unit_cost
+                  )
+                FROM purchase_order_items i
+                WHERE i.purchase_order_id =
+                      po.id
+                  AND i.company_id =
+                      po.company_id
+                  AND i.deleted_at
+                      IS NULL
+              ),
+              0
+            ),
+          updated_at =
+            NOW()
+        WHERE po.id =
+              $1
+          AND po.company_id =
+              $2
+      `,
+      [
+        recordId,
+        context.companyId,
+      ],
+    );
+  }
+
+  if (
+    context.moduleKey ===
+      'manufacturing' &&
+    table ===
+      'manufacturing_orders' &&
+    next ===
+      'completed'
+  ) {
+    const quantity =
+      await client.query(
+        `
+          SELECT
+            planned_quantity,
+            produced_quantity
+          FROM manufacturing_orders
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at
+                IS NULL
+          FOR UPDATE
+        `,
+        [
+          recordId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      quantity.rows.length !==
+        1 ||
+      Number(
+        quantity.rows[0]
+          .produced_quantity ||
+        0,
+      ) <=
+        0
+    ) {
+      throw new EnterpriseModuleError(
+        'WORKFLOW_TRANSITION_INVALID',
+        'Record produced quantity before completing a manufacturing order.',
+      );
+    }
+  }
+}
+
+
+export async function transitionEnterpriseModuleRecord(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    recordId?: unknown;
+    statusField?: unknown;
+    nextStatus?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'edit',
+    );
+
+  const field =
+    normalizeKey(
+      input.statusField,
+    );
+
+  const nextStatus =
+    normalizeKey(
+      input.nextStatus,
+    );
+
+  const recordId =
+    String(
+      input.recordId ||
+      '',
+    )
+      .trim();
+
+  if (
+    !recordId ||
+    !field ||
+    !nextStatus
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a record and workflow action.',
+    );
+  }
+
+  const names =
+    new Set(
+      context.fields.map(
+        item =>
+          item.key,
+      ),
+    );
+
+  if (
+    !names.has(
+      'id',
+    ) ||
+    !names.has(
+      field,
+    ) ||
+    !/(^|_)(status|state)$/.test(
+      field,
+    )
+  ) {
+    throw new EnterpriseModuleError(
+      'WORKFLOW_NOT_SUPPORTED',
+      'This record does not expose a managed SaMi workflow state.',
+    );
+  }
+
+  const databaseAllowedValues =
+    await getDatabaseWorkflowValues(
+      context.pool,
+      context.table,
+      field,
+    );
+
+  const client =
+    await context.pool.connect();
+
+  let currentStatus =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const conditions = [
+      'id = $1',
+    ];
+
+    const params:
+      unknown[] = [
+        recordId,
+      ];
+
+    if (
+      names.has(
+        'company_id',
+      )
+    ) {
+      params.push(
+        context.companyId,
+      );
+
+      conditions.push(
+        'company_id = $2',
+      );
+    }
+
+    if (
+      names.has(
+        'deleted_at',
+      )
+    ) {
+      conditions.push(
+        'deleted_at IS NULL',
+      );
+    }
+
+    const current =
+      await client.query(
+        'SELECT ' +
+        quoteIdentifier(
+          field,
+        ) +
+        ' AS workflow_state FROM ' +
+        quoteIdentifier(
+          context.table,
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' FOR UPDATE',
+        params,
+      );
+
+    if (
+      current.rows.length !==
+        1
+    ) {
+      throw new EnterpriseModuleError(
+        'RECORD_NOT_FOUND',
+        'The record was not found in the current company.',
+      );
+    }
+
+    currentStatus =
+      normalizeKey(
+        current.rows[0]
+          .workflow_state,
+      );
+
+    const transitions =
+      getEnterpriseWorkflowTransitions(
+        context.moduleKey,
+        context.table,
+        currentStatus,
+        databaseAllowedValues,
+      );
+
+    if (
+      !transitions.some(
+        transition =>
+          transition.value ===
+          nextStatus,
+      )
+    ) {
+      throw new EnterpriseModuleError(
+        'WORKFLOW_TRANSITION_INVALID',
+        'That workflow transition is not allowed from the current state.',
+        {
+          currentStatus,
+          allowedTransitions:
+            transitions.map(
+              transition =>
+                transition.value,
+            ),
+        },
+      );
+    }
+
+    await validateEnterpriseTransition(
+      client,
+      context,
+      context.table,
+      recordId,
+      nextStatus,
+    );
+
+    const setters = [
+      quoteIdentifier(
+        field,
+      ) +
+      ' = $' +
+      (
+        params.length +
+        1
+      ),
+    ];
+
+    params.push(
+      nextStatus,
+    );
+
+    if (
+      names.has(
+        'updated_by',
+      )
+    ) {
+      params.push(
+        context.userId,
+      );
+
+      setters.push(
+        'updated_by = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'updated_at',
+      )
+    ) {
+      setters.push(
+        'updated_at = NOW()',
+      );
+    }
+
+    if (
+      context.moduleKey ===
+        'time_off' &&
+      context.table ===
+        'leave_requests' &&
+      field ===
+        'status' &&
+      nextStatus ===
+        'approved' &&
+      names.has(
+        'approved_at',
+      )
+    ) {
+      setters.push(
+        'approved_at = NOW()',
+      );
+    }
+
+    if (
+      context.moduleKey ===
+        'manufacturing' &&
+      context.table ===
+        'manufacturing_orders'
+    ) {
+      if (
+        nextStatus ===
+          'in_progress' &&
+        names.has(
+          'actual_start_date',
+        )
+      ) {
+        setters.push(
+          'actual_start_date = COALESCE(actual_start_date, CURRENT_DATE)',
+        );
+      }
+
+      if (
+        nextStatus ===
+          'completed' &&
+        names.has(
+          'actual_end_date',
+        )
+      ) {
+        setters.push(
+          'actual_end_date = CURRENT_DATE',
+        );
+      }
+    }
+
+    const changed =
+      await client.query(
+        'UPDATE ' +
+        quoteIdentifier(
+          context.table,
+        ) +
+        ' SET ' +
+        setters.join(
+          ', ',
+        ) +
+        ' WHERE ' +
+        conditions.join(
+          ' AND ',
+        ) +
+        ' RETURNING *',
+        params,
+      );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    const output =
+      rowOutput(
+        changed.rows[0],
+      );
+
+    await recordEnterpriseAudit({
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      userId:
+        context.userId,
+      action:
+        context.moduleKey +
+        '.workflow.transitioned',
+      eventType:
+        'workflow.transitioned',
+      category:
+        'business',
+      severity:
+        [
+          'cancelled',
+          'rejected',
+          'failed',
+          'void',
+        ].includes(
+          nextStatus,
+        )
+          ? 'warning'
+          : 'info',
+      summary:
+        context.manifest.name +
+        ' workflow moved from ' +
+        currentStatus +
+        ' to ' +
+        nextStatus +
+        '.',
+      resourceType:
+        context.table,
+      resourceId:
+        recordId,
+      entityType:
+        context.table,
+      entityId:
+        recordId,
+      module:
+        context.moduleKey,
+      result:
+        'success',
+      metadata: {
+        table:
+          context.table,
+        statusField:
+          field,
+      },
+      changes: {
+        [
+          field
+        ]: {
+          from:
+            currentStatus,
+          to:
+            nextStatus,
+        },
+      },
+    });
+
+    return {
+      record:
+        output,
+      currentStatus:
+        nextStatus,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 

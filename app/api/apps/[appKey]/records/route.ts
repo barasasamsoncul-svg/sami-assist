@@ -8,6 +8,7 @@ import {
   createEnterpriseModuleRecord,
   deleteEnterpriseModuleRecord,
   getEnterpriseModuleWorkspace,
+  transitionEnterpriseModuleRecord,
   updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
 
@@ -112,7 +113,11 @@ function handleError(
               'RECORD_NOT_FOUND'
             ? 404
             : error.code ===
-                'DELETE_NOT_SUPPORTED'
+                'DELETE_NOT_SUPPORTED' ||
+              error.code ===
+                'WORKFLOW_NOT_SUPPORTED' ||
+              error.code ===
+                'WORKFLOW_TRANSITION_INVALID'
               ? 409
               : 400;
 
@@ -305,7 +310,13 @@ export async function POST(
                 appKey,
                 payload,
               )
-            : null;
+            : action ===
+                'transition'
+              ? await transitionEnterpriseModuleRecord(
+                  appKey,
+                  payload,
+                )
+              : null;
 
     if (
       !result

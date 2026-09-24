@@ -97,8 +97,7 @@ BEGIN
   INTO
     company_count,
     only_company
-  FROM public.companies
-  WHERE deleted_at IS NULL;
+  FROM public.companies;
 
   IF company_count = 1 THEN
     UPDATE public.${quoted}

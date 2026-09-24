@@ -44,6 +44,10 @@ import type {
   EnterpriseWorkspaceData,
 } from '@/lib/apps/enterprise/service';
 
+import {
+  getEnterpriseWorkflowTransitions,
+} from '@/lib/apps/enterprise/workflow-policy';
+
 
 type ViewKey =
   | 'overview'
@@ -765,6 +769,90 @@ export default function EnterpriseModuleWorkspaceClient({
     });
   }
 
+  function transitionRecord(
+    table:
+      EnterpriseTable,
+    record:
+      Record<
+        string,
+        unknown
+      >,
+    statusField:
+      string,
+    nextStatus:
+      string,
+  ) {
+    if (
+      !table.recordKey
+    ) {
+      return;
+    }
+
+    const recordId =
+      String(
+        record[
+          table.recordKey
+        ] ||
+        '',
+      );
+
+    if (
+      !recordId
+    ) {
+      return;
+    }
+
+    confirmAction({
+      title:
+        'Change workflow state?',
+      message:
+        'SaMi will validate the transition on the server, apply domain rules and add it to the audit history.',
+      confirmLabel:
+        'Change state',
+      onConfirm:
+        () => {
+          void (
+            async () => {
+              try {
+                await request({
+                  action:
+                    'transition',
+                  table:
+                    table.key,
+                  recordId,
+                  statusField,
+                  nextStatus,
+                });
+
+                showSuccess(
+                  'Workflow updated',
+                  table.label +
+                  ' moved to ' +
+                  nextStatus
+                    .replaceAll(
+                      '_',
+                      ' ',
+                    ) +
+                  '.',
+                );
+              } catch (
+                error
+              ) {
+                showError(
+                  'Workflow could not be updated',
+                  error instanceof
+                    Error
+                    ? error.message
+                    : 'SaMi could not change this workflow state.',
+                );
+              }
+            }
+          )();
+        },
+    });
+  }
+
+
   const nav:
     Array<{
       key:
@@ -1037,6 +1125,11 @@ export default function EnterpriseModuleWorkspaceClient({
           ) &&
           (
             <Records
+              moduleKey={
+                initialData
+                  .module
+                  .key
+              }
               tables={
                 view ===
                   'settings'
@@ -1101,6 +1194,9 @@ export default function EnterpriseModuleWorkspaceClient({
               }
               onDelete={
                 deleteRecord
+              }
+              onTransition={
+                transitionRecord
               }
               onExport={
                 table =>
@@ -1304,6 +1400,7 @@ function Overview({
 
 
 function Records({
+  moduleKey,
   tables,
   selected,
   search,
@@ -1317,8 +1414,11 @@ function Records({
   onCreate,
   onEdit,
   onDelete,
+  onTransition,
   onExport,
 }: {
+  moduleKey:
+    string;
   tables:
     EnterpriseTable[];
   selected:
@@ -1379,6 +1479,21 @@ function Records({
           string,
           unknown
         >,
+    ) =>
+      void;
+  onTransition:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+      statusField:
+        string,
+      nextStatus:
+        string,
     ) =>
       void;
   onExport:
@@ -1553,8 +1668,14 @@ function Records({
                 {
                   (
                     canEdit &&
-                    selected
-                      .supportsEdit
+                    (
+                      selected
+                        .supportsEdit ||
+                      selected
+                        .workflows
+                        .length >
+                        0
+                    )
                   ) ||
                   (
                     canDelete &&
@@ -1647,7 +1768,34 @@ function Records({
                             )
                               ? (
                                   <td className="px-4 py-3">
-                                    <div className="flex justify-end gap-1">
+                                    <div className="flex flex-wrap justify-end gap-1">
+                                      {
+                                        canEdit &&
+                                        selected
+                                          .workflows
+                                          .length >
+                                          0 &&
+                                        (
+                                          <WorkflowActions
+                                            moduleKey={
+                                              moduleKey
+                                            }
+                                            table={
+                                              selected
+                                            }
+                                            record={
+                                              record
+                                            }
+                                            disabled={
+                                              busy
+                                            }
+                                            onTransition={
+                                              onTransition
+                                            }
+                                          />
+                                        )
+                                      }
+
                                       {
                                         canEdit &&
                                         selected
@@ -1705,6 +1853,134 @@ function Records({
         </div>
       </div>
     </section>
+  );
+}
+
+
+function WorkflowActions({
+  moduleKey,
+  table,
+  record,
+  disabled,
+  onTransition,
+}: {
+  moduleKey:
+    string;
+  table:
+    EnterpriseTable;
+  record:
+    Record<
+      string,
+      unknown
+    >;
+  disabled:
+    boolean;
+  onTransition:
+    (
+      table:
+        EnterpriseTable,
+      record:
+        Record<
+          string,
+          unknown
+        >,
+      statusField:
+        string,
+      nextStatus:
+        string,
+    ) =>
+      void;
+}) {
+  const workflow =
+    table.workflows.find(
+      item =>
+        record[
+          item.field
+        ] !==
+          null &&
+        record[
+          item.field
+        ] !==
+          undefined,
+    );
+
+  if (
+    !workflow
+  ) {
+    return null;
+  }
+
+  const transitions =
+    getEnterpriseWorkflowTransitions(
+      moduleKey,
+      table.key,
+      record[
+        workflow.field
+      ],
+      workflow
+        .databaseAllowedValues,
+    );
+
+  if (
+    transitions.length ===
+      0
+  ) {
+    return null;
+  }
+
+  return (
+    <select
+      value=""
+      disabled={
+        disabled
+      }
+      aria-label={
+        workflow.label +
+        ' workflow'
+      }
+      onChange={
+        event => {
+          const next =
+            event.target
+              .value;
+
+          if (
+            next
+          ) {
+            onTransition(
+              table,
+              record,
+              workflow.field,
+              next,
+            );
+          }
+        }
+      }
+      className="h-9 max-w-36 rounded-lg border border-[var(--sami-border)] bg-transparent px-2 text-[11px] font-black"
+    >
+      <option value="">
+        Workflow
+      </option>
+
+      {
+        transitions.map(
+          transition => (
+            <option
+              key={
+                transition.value
+              }
+              value={
+                transition.value
+              }
+            >
+              {
+                transition.label
+              }
+            </option>
+          ),
+        )
+      }
+    </select>
   );
 }
 
