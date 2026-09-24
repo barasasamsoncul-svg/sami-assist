@@ -85,6 +85,7 @@ function statusClass(
       'cancelled',
       'void',
       'written_off',
+      'reversed',
     ].includes(
       status,
     )
@@ -106,6 +107,34 @@ function statusClass(
   }
 
   return 'bg-slate-500/10 text-slate-600 ring-slate-500/20 dark:text-slate-300';
+}
+
+
+function StatusPill({
+  value,
+}: {
+  value:
+    string;
+}) {
+  return (
+    <span
+      className={[
+        'inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.08em] ring-1 ring-inset',
+        statusClass(
+          value,
+        ),
+      ].join(
+        ' ',
+      )}
+    >
+      {
+        value.replaceAll(
+          '_',
+          ' ',
+        )
+      }
+    </span>
+  );
 }
 
 
@@ -1228,7 +1257,12 @@ export default function InvoiceDetailClient({
                   <input
                     name="amount"
                     type="number"
-                    min="0.01"
+                    min={
+                      data.settings
+                        .allowPartialPayments
+                        ? 0.01
+                        : invoice.balanceDue
+                    }
                     max={
                       invoice.balanceDue
                     }
@@ -1284,6 +1318,8 @@ export default function InvoiceDetailClient({
           {
             data.capabilities
               .canCredit &&
+            data.settings
+              .allowCreditNotes &&
             invoice.balanceDue >
               0 &&
             ![
@@ -1392,31 +1428,112 @@ export default function InvoiceDetailClient({
                 {
                   invoice.payments.map(
                     payment => (
-                      <TimelineRow
+                      <div
                         key={
                           payment.id
                         }
-                        title={
-                          payment.paymentNumber +
-                          ' · ' +
-                          formatMoney(
-                            payment.amount,
-                            invoice.currency,
-                          )
-                        }
-                        subtitle={
-                          payment.method +
+                        className="py-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-black">
+                            {
+                              payment.paymentNumber +
+                              ' · ' +
+                              formatMoney(
+                                payment.amount,
+                                invoice.currency,
+                              )
+                            }
+                          </p>
+
+                          <StatusPill
+                            value={
+                              payment.status
+                            }
+                          />
+                        </div>
+
+                        <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                          {
+                            payment.method +
+                            (
+                              payment.reference
+                                ? ' · ' +
+                                  payment.reference
+                                : ''
+                            )
+                          }
+                        </p>
+
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          {
+                            payment.paymentDate
+                          }
+                        </p>
+
+                        {
+                          data.capabilities
+                            .canRecordPayment &&
+                          payment.status ===
+                            'posted' &&
                           (
-                            payment.reference
-                              ? ' · ' +
-                                payment.reference
-                              : ''
+                            <form
+                              className="mt-3 flex flex-col gap-2"
+                              onSubmit={
+                                async event => {
+                                  event.preventDefault();
+                                  const element =
+                                    event.currentTarget;
+                                  const form =
+                                    new FormData(
+                                      element,
+                                    );
+                                  const saved =
+                                    await run(
+                                      {
+                                        action:
+                                          'reverse_payment',
+                                        paymentId:
+                                          payment.id,
+                                        reason:
+                                          form.get(
+                                            'reason',
+                                          ),
+                                      },
+                                      'Payment reversed and invoice balance recalculated.',
+                                    );
+
+                                  if (
+                                    saved
+                                  ) {
+                                    element.reset();
+                                  }
+                                }
+                              }
+                            >
+                              <input
+                                name="reason"
+                                required
+                                maxLength={
+                                  2000
+                                }
+                                placeholder="Reason for reversal"
+                                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
+                              />
+
+                              <button
+                                type="submit"
+                                disabled={
+                                  busy
+                                }
+                                className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                              >
+                                Reverse payment
+                              </button>
+                            </form>
                           )
                         }
-                        date={
-                          payment.paymentDate
-                        }
-                      />
+                      </div>
                     ),
                   )
                 }
@@ -1437,25 +1554,110 @@ export default function InvoiceDetailClient({
                 {
                   invoice.creditNotes.map(
                     credit => (
-                      <TimelineRow
+                      <div
                         key={
                           credit.id
                         }
-                        title={
-                          credit.creditNoteNumber +
-                          ' · ' +
-                          formatMoney(
-                            credit.amount,
-                            invoice.currency,
+                        className="py-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-black">
+                            {
+                              credit.creditNoteNumber +
+                              ' · ' +
+                              formatMoney(
+                                credit.amount,
+                                invoice.currency,
+                              )
+                            }
+                          </p>
+
+                          <StatusPill
+                            value={
+                              credit.status
+                            }
+                          />
+                        </div>
+
+                        <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                          {
+                            credit.reason
+                          }
+                        </p>
+
+                        <p className="mt-1 text-[10px] text-slate-400">
+                          {
+                            credit.issueDate
+                          }
+                        </p>
+
+                        {
+                          data.capabilities
+                            .canCredit &&
+                          [
+                            'issued',
+                            'applied',
+                          ].includes(
+                            credit.status,
+                          ) &&
+                          (
+                            <form
+                              className="mt-3 flex flex-col gap-2"
+                              onSubmit={
+                                async event => {
+                                  event.preventDefault();
+                                  const element =
+                                    event.currentTarget;
+                                  const form =
+                                    new FormData(
+                                      element,
+                                    );
+                                  const saved =
+                                    await run(
+                                      {
+                                        action:
+                                          'cancel_credit_note',
+                                        creditNoteId:
+                                          credit.id,
+                                        reason:
+                                          form.get(
+                                            'reason',
+                                          ),
+                                      },
+                                      'Credit note cancelled and invoice balance recalculated.',
+                                    );
+
+                                  if (
+                                    saved
+                                  ) {
+                                    element.reset();
+                                  }
+                                }
+                              }
+                            >
+                              <input
+                                name="reason"
+                                required
+                                maxLength={
+                                  2000
+                                }
+                                placeholder="Reason for cancellation"
+                                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
+                              />
+
+                              <button
+                                type="submit"
+                                disabled={
+                                  busy
+                                }
+                                className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-3 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                              >
+                                Cancel credit note
+                              </button>
+                            </form>
                           )
                         }
-                        subtitle={
-                          credit.reason
-                        }
-                        date={
-                          credit.issueDate
-                        }
-                      />
+                      </div>
                     ),
                   )
                 }

@@ -1037,3 +1037,54 @@ test('Invoicing v2.2 runs recurring generation and payment reminders through one
     /InvoiceAppearanceSettings/,
   );
 });
+
+
+test('Invoicing financial corrections are auditable and company settings are enforced server-side', async () => {
+  const [
+    context,
+    commands,
+    service,
+    route,
+    queries,
+    types,
+    workspace,
+    detail,
+    composer,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+  ]);
+
+  assert.match(context, /PAYMENT_NOT_FOUND/);
+  assert.match(context, /CREDIT_NOTE_NOT_FOUND/);
+  assert.match(commands, /export async function reverseInvoicePayment/);
+  assert.match(commands, /export async function cancelInvoiceCreditNote/);
+  assert.match(commands, /reconcileInvoiceSettlementStatus/);
+  assert.match(commands, /allow_partial_payments/);
+  assert.match(commands, /Partial payments are disabled for this company/);
+  assert.match(commands, /allow_credit_notes/);
+  assert.match(commands, /Credit notes are disabled for this company/);
+  assert.match(commands, /settings\.require_approval ===/);
+  assert.match(commands, /reversalReason/);
+  assert.match(commands, /cancellationReason/);
+  assert.match(service, /reverseInvoicePayment/);
+  assert.match(service, /cancelInvoiceCreditNote/);
+  assert.match(route, /case 'reverse_payment'/);
+  assert.match(route, /case 'cancel_credit_note'/);
+  assert.match(queries, /p\.status/);
+  assert.match(types, /paymentNumber: string;\n\s+status: string;/);
+  assert.match(workspace, /Reverse posted payment/);
+  assert.match(workspace, /payment\.status/);
+  assert.match(detail, /action:\s*'reverse_payment'/);
+  assert.match(detail, /action:\s*'cancel_credit_note'/);
+  assert.match(detail, /allowCreditNotes/);
+  assert.match(detail, /allowPartialPayments/);
+  assert.match(composer, /!data\.settings\.requireApproval/);
+});

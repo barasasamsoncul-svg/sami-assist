@@ -2508,10 +2508,15 @@ export async function createInvoice(
           .INVOICE_CONFIRM,
       );
 
+    const requiresApproval =
+      settings.require_approval ===
+        true;
+
     const status =
       input.confirm ===
         true &&
-      confirmAllowed
+      confirmAllowed &&
+      !requiresApproval
         ? 'confirmed'
         : 'draft';
 
@@ -3517,6 +3522,270 @@ export async function updateInvoiceDraft(
 }
 
 
+
+async function reconcileInvoiceSettlementStatus(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  userId:
+    string,
+  invoiceId:
+    string,
+  reason:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          i.status,
+          i.total_amount,
+          COALESCE(
+            (
+              SELECT SUM(a.amount)
+              FROM invoicing_payment_allocations a
+              INNER JOIN invoicing_payments p
+                ON p.id = a.payment_id
+              WHERE a.invoice_id = i.id
+                AND a.company_id = i.company_id
+                AND p.status = 'posted'
+                AND p.deleted_at IS NULL
+            ),
+            0
+          ) AS paid_amount,
+          COALESCE(
+            (
+              SELECT SUM(cn.total_amount)
+              FROM invoicing_credit_notes cn
+              WHERE cn.invoice_id = i.id
+                AND cn.company_id = i.company_id
+                AND cn.status IN (
+                  'issued',
+                  'applied',
+                  'refunded'
+                )
+                AND cn.deleted_at IS NULL
+            ),
+            0
+          ) AS credited_amount,
+          (
+            SELECT h.from_status
+            FROM invoicing_status_history h
+            WHERE h.invoice_id = i.id
+              AND h.company_id = i.company_id
+              AND h.to_status IN (
+                'partially_paid',
+                'paid'
+              )
+              AND h.from_status IS NOT NULL
+              AND h.from_status NOT IN (
+                'partially_paid',
+                'paid'
+              )
+            ORDER BY h.created_at DESC, h.id DESC
+            LIMIT 1
+          ) AS prior_open_status
+        FROM invoicing_invoices i
+        WHERE i.id = $1
+          AND i.company_id = $2
+          AND i.deleted_at IS NULL
+        FOR UPDATE
+      `,
+      [
+        invoiceId,
+        companyId,
+      ],
+    );
+
+  if (
+    result.rows.length !==
+      1
+  ) {
+    throw new InvoicingError(
+      'INVOICE_NOT_FOUND',
+      'Invoice was not found.',
+    );
+  }
+
+  const row =
+    result.rows[0];
+
+  const currentStatus =
+    String(
+      row.status,
+    );
+
+  const totalAmount =
+    money(
+      row.total_amount,
+    );
+
+  const paidAmount =
+    money(
+      row.paid_amount,
+    );
+
+  const creditedAmount =
+    money(
+      row.credited_amount,
+    );
+
+  const balanceDue =
+    money(
+      Math.max(
+        totalAmount -
+        paidAmount -
+        creditedAmount,
+        0,
+      ),
+    );
+
+  if (
+    [
+      'cancelled',
+      'void',
+      'written_off',
+    ].includes(
+      currentStatus,
+    )
+  ) {
+    return {
+      status:
+        currentStatus,
+      balanceDue,
+    };
+  }
+
+  const openStatuses = [
+    'confirmed',
+    'sent',
+    'viewed',
+    'overdue',
+  ];
+
+  const priorOpenStatus =
+    row.prior_open_status
+      ? String(
+          row.prior_open_status,
+        )
+      : '';
+
+  let nextStatus =
+    currentStatus;
+
+  if (
+    balanceDue <=
+      0.0001
+  ) {
+    nextStatus =
+      'paid';
+  } else if (
+    paidAmount >
+      0.0001
+  ) {
+    nextStatus =
+      'partially_paid';
+  } else if (
+    openStatuses.includes(
+      priorOpenStatus,
+    )
+  ) {
+    nextStatus =
+      priorOpenStatus;
+  } else if (
+    openStatuses.includes(
+      currentStatus,
+    )
+  ) {
+    nextStatus =
+      currentStatus;
+  } else {
+    nextStatus =
+      'confirmed';
+  }
+
+  const paidInFull =
+    paidAmount >=
+    totalAmount -
+      0.0001;
+
+  if (
+    nextStatus !==
+      currentStatus ||
+    (
+      currentStatus ===
+        'paid' &&
+      !paidInFull
+    )
+  ) {
+    await client.query(
+      `
+        UPDATE invoicing_invoices
+        SET
+          status = $3,
+          paid_at =
+            CASE
+              WHEN $3 = 'paid'
+                AND $5 = TRUE
+              THEN COALESCE(
+                paid_at,
+                NOW()
+              )
+              ELSE NULL
+            END,
+          updated_by = $4,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        invoiceId,
+        companyId,
+        nextStatus,
+        userId,
+        paidInFull,
+      ],
+    );
+  }
+
+  if (
+    nextStatus !==
+      currentStatus
+  ) {
+    await client.query(
+      `
+        INSERT INTO invoicing_status_history (
+          invoice_id,
+          company_id,
+          from_status,
+          to_status,
+          reason,
+          changed_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6
+        )
+      `,
+      [
+        invoiceId,
+        companyId,
+        currentStatus,
+        nextStatus,
+        reason,
+        userId,
+      ],
+    );
+  }
+
+  return {
+    status:
+      nextStatus,
+    balanceDue,
+  };
+}
+
+
 const ALLOWED_MANUAL_TRANSITIONS:
   Record<
     string,
@@ -3886,6 +4155,40 @@ export async function recordInvoicePayment(
         invoice.balance_due,
       );
 
+    const paymentSettings =
+      await client.query(
+        `
+          SELECT
+            allow_partial_payments
+          FROM invoicing_settings
+          WHERE company_id = $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+        ],
+      );
+
+    const allowPartialPayments =
+      paymentSettings.rows[0]
+        ?.allow_partial_payments !==
+      false;
+
+    if (
+      !allowPartialPayments &&
+      paymentAmount <
+        balance -
+          0.0001
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Partial payments are disabled for this company. Record the full outstanding balance.',
+        {
+          balance,
+        },
+      );
+    }
+
     if (
       paymentAmount >
       balance +
@@ -4202,6 +4505,287 @@ export async function recordInvoicePayment(
 }
 
 
+
+export async function reverseInvoicePayment(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .PAYMENT_RECORD,
+    );
+
+  const paymentId =
+    requireUuid(
+      input.paymentId,
+      'Payment',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A reversal reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const paymentResult =
+      await client.query(
+        `
+          SELECT
+            id,
+            payment_number,
+            amount,
+            currency,
+            status
+          FROM invoicing_payments
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      paymentResult.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'PAYMENT_NOT_FOUND',
+        'Payment was not found.',
+      );
+    }
+
+    const payment =
+      paymentResult.rows[0];
+
+    if (
+      String(
+        payment.status,
+      ) !==
+        'posted'
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        'Only a posted payment can be reversed.',
+      );
+    }
+
+    const allocations =
+      await client.query(
+        `
+          SELECT
+            invoice_id,
+            amount
+          FROM invoicing_payment_allocations
+          WHERE payment_id = $1
+            AND company_id = $2
+          ORDER BY
+            created_at,
+            id
+        `,
+        [
+          paymentId,
+          context.companyId,
+        ],
+      );
+
+    await client.query(
+      `
+        UPDATE invoicing_payments
+        SET
+          status = 'reversed',
+          metadata =
+            COALESCE(
+              metadata,
+              '{}'::jsonb
+            ) ||
+            jsonb_build_object(
+              'reversedAt',
+              NOW(),
+              'reversedBy',
+              $3::text,
+              'reversalReason',
+              $4::text
+            ),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        paymentId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    const invoiceIds =
+      [
+        ...new Set(
+          allocations.rows
+            .map(
+              row =>
+                row.invoice_id
+                  ? String(
+                      row.invoice_id,
+                    )
+                  : '',
+            )
+            .filter(
+              Boolean,
+            ),
+        ),
+      ];
+
+    const settlements:
+      Array<{
+        invoiceId: string;
+        status: string;
+        balanceDue: number;
+      }> =
+        [];
+
+    for (
+      const invoiceId
+      of invoiceIds
+    ) {
+      const settlement =
+        await reconcileInvoiceSettlementStatus(
+          client,
+          context.companyId,
+          context.userId,
+          invoiceId,
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' reversed: ' +
+          reason,
+        );
+
+      settlements.push({
+        invoiceId,
+        ...settlement,
+      });
+
+      await recordInvoicingActivity(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+          type:
+            'invoice.payment_reversed',
+          content:
+            'Payment ' +
+            String(
+              payment.payment_number,
+            ) +
+            ' reversed.',
+          metadata: {
+            paymentId,
+            paymentNumber:
+              String(
+                payment.payment_number,
+              ),
+            amount:
+              money(
+                payment.amount,
+              ),
+            reason,
+          },
+        },
+      );
+    }
+
+    if (
+      invoiceIds.length ===
+        0
+    ) {
+      await recordMasterDataActivity(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          model:
+            'invoicing.payment',
+          recordId:
+            paymentId,
+          type:
+            'invoicing.payment_reversed',
+          content:
+            'Payment ' +
+            String(
+              payment.payment_number,
+            ) +
+            ' reversed.',
+          metadata: {
+            amount:
+              money(
+                payment.amount,
+              ),
+            reason,
+          },
+        },
+      );
+    }
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      paymentId,
+      paymentNumber:
+        String(
+          payment.payment_number,
+        ),
+      status:
+        'reversed',
+      settlements,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
 export async function issueInvoiceCreditNote(
   input:
     Record<string, unknown>,
@@ -4250,6 +4834,31 @@ export async function issueInvoiceCreditNote(
     await client.query(
       'BEGIN',
     );
+
+    const creditSettings =
+      await client.query(
+        `
+          SELECT
+            allow_credit_notes
+          FROM invoicing_settings
+          WHERE company_id = $1
+          LIMIT 1
+        `,
+        [
+          context.companyId,
+        ],
+      );
+
+    if (
+      creditSettings.rows[0]
+        ?.allow_credit_notes ===
+      false
+    ) {
+      throw new InvoicingError(
+        'INVALID_INPUT',
+        'Credit notes are disabled for this company.',
+      );
+    }
 
     const locked =
       await client.query(
@@ -4411,6 +5020,17 @@ export async function issueInvoiceCreditNote(
       ],
     );
 
+    const settlement =
+      await reconcileInvoiceSettlementStatus(
+        client,
+        context.companyId,
+        context.userId,
+        invoiceId,
+        'Credit note ' +
+        creditNoteNumber +
+        ' issued.',
+      );
+
     await recordInvoicingActivity(
       client,
       {
@@ -4445,6 +5065,220 @@ export async function issueInvoiceCreditNote(
       creditNoteNumber,
       amount:
         creditAmount,
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
+    };
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+
+
+export async function cancelInvoiceCreditNote(
+  input:
+    Record<string, unknown>,
+) {
+  const context =
+    await requireInvoicingContext(
+      INVOICING_PERMISSIONS
+        .CREDIT_NOTE_MANAGE,
+    );
+
+  const creditNoteId =
+    requireUuid(
+      input.creditNoteId,
+      'Credit note',
+    );
+
+  const reason =
+    cleanText(
+      input.reason,
+      2000,
+    );
+
+  if (
+    !reason
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A cancellation reason is required.',
+    );
+  }
+
+  const client =
+    await context.pool.connect();
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const result =
+      await client.query(
+        `
+          SELECT
+            id,
+            invoice_id,
+            credit_note_number,
+            total_amount,
+            status
+          FROM invoicing_credit_notes
+          WHERE id = $1
+            AND company_id = $2
+            AND deleted_at IS NULL
+          FOR UPDATE
+        `,
+        [
+          creditNoteId,
+          context.companyId,
+        ],
+      );
+
+    if (
+      result.rows.length !==
+        1
+    ) {
+      throw new InvoicingError(
+        'CREDIT_NOTE_NOT_FOUND',
+        'Credit note was not found.',
+      );
+    }
+
+    const credit =
+      result.rows[0];
+
+    if (
+      ![
+        'issued',
+        'applied',
+      ].includes(
+        String(
+          credit.status,
+        ),
+      )
+    ) {
+      throw new InvoicingError(
+        'INVOICE_STATE_INVALID',
+        String(
+          credit.status,
+        ) ===
+          'refunded'
+          ? 'A refunded credit note cannot be cancelled.'
+          : 'Only an issued or applied credit note can be cancelled.',
+      );
+    }
+
+    await client.query(
+      `
+        UPDATE invoicing_credit_notes
+        SET
+          status = 'cancelled',
+          metadata =
+            COALESCE(
+              metadata,
+              '{}'::jsonb
+            ) ||
+            jsonb_build_object(
+              'cancelledAt',
+              NOW(),
+              'cancelledBy',
+              $3::text,
+              'cancellationReason',
+              $4::text
+            ),
+          updated_by = $3,
+          updated_at = NOW()
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        creditNoteId,
+        context.companyId,
+        context.userId,
+        reason,
+      ],
+    );
+
+    const invoiceId =
+      String(
+        credit.invoice_id,
+      );
+
+    const settlement =
+      await reconcileInvoiceSettlementStatus(
+        client,
+        context.companyId,
+        context.userId,
+        invoiceId,
+        'Credit note ' +
+        String(
+          credit.credit_note_number,
+        ) +
+        ' cancelled: ' +
+        reason,
+      );
+
+    await recordInvoicingActivity(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        invoiceId,
+        type:
+          'invoice.credit_note_cancelled',
+        content:
+          'Credit note ' +
+          String(
+            credit.credit_note_number,
+          ) +
+          ' cancelled.',
+        metadata: {
+          creditNoteId,
+          creditNoteNumber:
+            String(
+              credit.credit_note_number,
+            ),
+          amount:
+            money(
+              credit.total_amount,
+            ),
+          reason,
+        },
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+
+    return {
+      creditNoteId,
+      creditNoteNumber:
+        String(
+          credit.credit_note_number,
+        ),
+      status:
+        'cancelled',
+      invoiceId,
+      invoiceStatus:
+        settlement.status,
+      remainingBalance:
+        settlement.balanceDue,
     };
   } catch (
     error

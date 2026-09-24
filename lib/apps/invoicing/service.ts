@@ -10,6 +10,7 @@ export {
 } from '@/lib/apps/invoicing/queries';
 
 export {
+  cancelInvoiceCreditNote,
   changeInvoiceStatus,
   createInvoice,
   createInvoicingCatalogItem,
@@ -28,6 +29,7 @@ export {
   duplicateInvoice,
   issueInvoiceCreditNote,
   recordInvoicePayment,
+  reverseInvoicePayment,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   sendInvoiceToCustomer,

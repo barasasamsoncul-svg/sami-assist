@@ -304,6 +304,7 @@ function statusClass(
       'cancelled',
       'void',
       'written_off',
+      'reversed',
       'blocked',
     ].includes(
       status,
@@ -974,6 +975,12 @@ export default function InvoicingWorkspaceClient({
           <Payments
             data={
               initialData
+            }
+            pending={
+              busy
+            }
+            run={
+              run
             }
           />
         )
@@ -3652,9 +3659,24 @@ function Items({
 
 function Payments({
   data,
+  pending,
+  run,
 }: {
   data:
     InvoicingWorkspaceData;
+  pending:
+    boolean;
+  run:
+    (
+      payload:
+        Record<
+          string,
+          unknown
+        >,
+      message:
+        string,
+    ) =>
+      Promise<boolean>;
 }) {
   return (
     <div className="sami-surface overflow-hidden rounded-[24px]">
@@ -3664,28 +3686,36 @@ function Payments({
         </p>
 
         <p className="mt-1 text-xs text-slate-500">
-          Posted payments are allocated to invoices without mutating invoice totals.
+          Posted and reversed payments remain visible so the receivables ledger keeps a complete audit trail.
         </p>
       </div>
 
       <div className="divide-y divide-[var(--sami-border)]">
         {
-          data.payments
-            .map(
-              payment => (
-                <div
-                  key={
-                    payment.id
-                  }
-                  className="grid gap-3 p-4 md:grid-cols-[150px_minmax(0,1fr)_160px_160px]"
-                >
+          data.payments.map(
+            payment => (
+              <div
+                key={
+                  payment.id
+                }
+                className="p-4"
+              >
+                <div className="grid gap-3 md:grid-cols-[150px_minmax(0,1fr)_160px_160px]">
                   <div>
-                    <p className="font-black">
-                      {
-                        payment
-                          .paymentNumber
-                      }
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-black">
+                        {
+                          payment
+                            .paymentNumber
+                        }
+                      </p>
+
+                      <StatusPill
+                        value={
+                          payment.status
+                        }
+                      />
+                    </div>
 
                     <p className="mt-1 text-xs text-slate-500">
                       {
@@ -3740,13 +3770,86 @@ function Payments({
                     }
                   </div>
                 </div>
-              ),
-            )
+
+                {
+                  data.capabilities
+                    .canRecordPayment &&
+                  payment.status ===
+                    'posted' &&
+                  (
+                    <details className="mt-3 rounded-xl border border-[var(--sami-border)] p-3">
+                      <summary className="cursor-pointer text-xs font-black text-red-700 dark:text-red-300">
+                        Reverse payment
+                      </summary>
+
+                      <form
+                        className="mt-3 flex flex-col gap-2 sm:flex-row"
+                        onSubmit={
+                          async event => {
+                            event
+                              .preventDefault();
+
+                            const element =
+                              event.currentTarget;
+
+                            const form =
+                              new FormData(
+                                element,
+                              );
+
+                            const saved =
+                              await run(
+                                {
+                                  action:
+                                    'reverse_payment',
+                                  paymentId:
+                                    payment.id,
+                                  reason:
+                                    form.get(
+                                      'reason',
+                                    ),
+                                },
+                                'Payment reversed and invoice balances recalculated.',
+                              );
+
+                            if (
+                              saved
+                            ) {
+                              element.reset();
+                            }
+                          }
+                        }
+                      >
+                        <input
+                          name="reason"
+                          required
+                          maxLength={
+                            2000
+                          }
+                          placeholder="Reason for reversal"
+                          className="h-10 min-w-0 flex-1 rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-xs"
+                        />
+
+                        <button
+                          type="submit"
+                          disabled={
+                            pending
+                          }
+                          className="h-10 rounded-xl border border-red-500/30 bg-red-500/10 px-4 text-xs font-black text-red-700 disabled:opacity-60 dark:text-red-300"
+                        >
+                          Reverse posted payment
+                        </button>
+                      </form>
+                    </details>
+                  )
+                }
+              </div>
+            ),
+          )
         }
 
         {
-          data.payments
-            .length ===
+          data.payments.length ===
             0 &&
           (
             <p className="p-8 text-center text-sm text-slate-500">
@@ -3758,7 +3861,6 @@ function Payments({
     </div>
   );
 }
-
 
 function Recurring({
   data,

@@ -5,6 +5,7 @@ import {
 
 import {
   InvoicingError,
+  cancelInvoiceCreditNote,
   changeInvoiceStatus,
   createInvoice,
   createInvoicingCatalogItem,
@@ -25,6 +26,7 @@ import {
   getInvoicingWorkspaceData,
   issueInvoiceCreditNote,
   recordInvoicePayment,
+  reverseInvoicePayment,
   saveInvoicingTemplate,
   sendInvoiceReminder,
   sendInvoiceToCustomer,
@@ -124,7 +126,11 @@ function handleError(
             : error.code ===
                 'INVOICE_NOT_FOUND' ||
               error.code ===
-                'CUSTOMER_NOT_FOUND'
+                'CUSTOMER_NOT_FOUND' ||
+              error.code ===
+                'PAYMENT_NOT_FOUND' ||
+              error.code ===
+                'CREDIT_NOTE_NOT_FOUND'
               ? 404
               : error.code ===
                   'INVOICE_STATE_INVALID' ||
@@ -451,9 +457,23 @@ export async function POST(
           );
         break;
 
+      case 'reverse_payment':
+        result =
+          await reverseInvoicePayment(
+            payload,
+          );
+        break;
+
       case 'issue_credit_note':
         result =
           await issueInvoiceCreditNote(
+            payload,
+          );
+        break;
+
+      case 'cancel_credit_note':
+        result =
+          await cancelInvoiceCreditNote(
             payload,
           );
         break;

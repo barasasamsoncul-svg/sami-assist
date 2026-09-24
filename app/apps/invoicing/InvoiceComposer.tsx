@@ -1474,6 +1474,7 @@ export default function InvoiceComposer({
 
               {
                 data.capabilities.canConfirm &&
+                !data.settings.requireApproval &&
                 !editing &&
                 (
                   <button
@@ -1518,6 +1519,7 @@ export default function InvoiceComposer({
 
           {
             data.capabilities.canConfirm &&
+            !data.settings.requireApproval &&
             !editing &&
             (
               <button

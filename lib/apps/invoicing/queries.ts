@@ -444,6 +444,7 @@ export async function getInvoicingWorkspaceData():
           SELECT
             p.id,
             p.payment_number,
+            p.status,
             c.name
               AS customer_name,
             p.payment_date,
@@ -1056,6 +1057,10 @@ export async function getInvoicingWorkspaceData():
           paymentNumber:
             String(
               row.payment_number,
+            ),
+          status:
+            String(
+              row.status,
             ),
           customerName:
             row.customer_name
@@ -1722,6 +1727,7 @@ export async function getInvoicingInvoiceDetail(
           SELECT
             p.id,
             p.payment_number,
+            p.status,
             p.payment_date,
             a.amount,
             p.method,
@@ -1734,8 +1740,6 @@ export async function getInvoicingInvoiceDetail(
                 $1
             AND a.company_id =
                 $2
-            AND p.status =
-                'posted'
             AND p.deleted_at
                 IS NULL
           ORDER BY
@@ -2059,6 +2063,10 @@ export async function getInvoicingInvoiceDetail(
           paymentNumber:
             String(
               payment.payment_number,
+            ),
+          status:
+            String(
+              payment.status,
             ),
           paymentDate:
             String(

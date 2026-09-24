@@ -96,6 +96,7 @@ export type InvoicingTemplateSummary = {
 export type InvoicingPaymentSummary = {
   id: string;
   paymentNumber: string;
+  status: string;
   customerName: string | null;
   paymentDate: string;
   amount: number;
@@ -178,6 +179,7 @@ export type InvoicingInvoiceDetail = {
   payments: Array<{
     id: string;
     paymentNumber: string;
+    status: string;
     paymentDate: string;
     amount: number;
     method: string;
