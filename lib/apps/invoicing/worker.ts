@@ -1416,10 +1416,10 @@ async function processRemindersForTenant(
             UPDATE invoicing_reminders
             SET
               status =
-                $4,
+                $4::varchar(30),
               sent_at =
                 CASE
-                  WHEN $4 =
+                  WHEN $4::varchar(30) =
                        'sent'
                   THEN NOW()
                   ELSE sent_at

@@ -1150,3 +1150,44 @@ test('Workspace tutorials are reusable across modules and Invoicing ships comple
   assert.match(detail, /Use credit notes for commercial reductions/);
   assert.match(detail, /Use the audit trail/);
 });
+
+
+test('Invoicing SQL explicitly types reused status parameters to prevent Postgres 42P08 failures', async () => {
+  const [
+    commands,
+    worker,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/worker.ts'),
+  ]);
+
+  assert.match(
+    commands,
+    /\$12::varchar\(30\)[\s\S]*WHEN \$12::varchar\(30\) =[\s\S]*'confirmed'/,
+    'Invoice creation must type the reused status parameter explicitly.',
+  );
+
+  assert.match(
+    commands,
+    /status = \$3::varchar\(30\)[\s\S]*WHEN \$3::varchar\(30\) = 'paid'/,
+    'Settlement reconciliation must type status before reuse in CASE.',
+  );
+
+  assert.match(
+    commands,
+    /status =\s*\$3::varchar\(30\)[\s\S]*WHEN \$3::varchar\(30\) =[\s\S]*'confirmed'/,
+    'Manual status transitions must type the reused status parameter explicitly.',
+  );
+
+  assert.match(
+    commands,
+    /WHEN \$3::varchar\(30\) IN \([\s\S]*'cancelled',[\s\S]*'void'/,
+    'Cancellation transitions must keep one concrete PostgreSQL type.',
+  );
+
+  assert.match(
+    worker,
+    /status =\s*\$4::varchar\(30\)[\s\S]*WHEN \$4::varchar\(30\) =[\s\S]*'sent'/,
+    'Reminder delivery status must not rely on conflicting inferred parameter types.',
+  );
+});

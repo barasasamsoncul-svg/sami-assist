@@ -2556,10 +2556,10 @@ export async function createInvoice(
           )
           VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,
-            $12,$13,$14,$15,$16,$17,$18,$19,$20,
+            $12::varchar(30),$13,$14,$15,$16,$17,$18,$19,$20,
             $21,$22,$23,$24,$25,$26,
             CASE
-              WHEN $12 =
+              WHEN $12::varchar(30) =
                    'confirmed'
               THEN NOW()
               ELSE NULL
@@ -3723,10 +3723,10 @@ async function reconcileInvoiceSettlementStatus(
       `
         UPDATE invoicing_invoices
         SET
-          status = $3,
+          status = $3::varchar(30),
           paid_at =
             CASE
-              WHEN $3 = 'paid'
+              WHEN $3::varchar(30) = 'paid'
                 AND $5 = TRUE
               THEN COALESCE(
                 paid_at,
@@ -3916,10 +3916,10 @@ export async function changeInvoiceStatus(
         UPDATE invoicing_invoices
         SET
           status =
-            $3,
+            $3::varchar(30),
           confirmed_at =
             CASE
-              WHEN $3 =
+              WHEN $3::varchar(30) =
                    'confirmed'
               THEN COALESCE(
                 confirmed_at,
@@ -3929,7 +3929,7 @@ export async function changeInvoiceStatus(
             END,
           cancelled_at =
             CASE
-              WHEN $3 IN (
+              WHEN $3::varchar(30) IN (
                 'cancelled',
                 'void'
               )
@@ -4394,10 +4394,10 @@ export async function recordInvoicePayment(
         UPDATE invoicing_invoices
         SET
           status =
-            $3,
+            $3::varchar(30),
           paid_at =
             CASE
-              WHEN $3 =
+              WHEN $3::varchar(30) =
                    'paid'
               THEN NOW()
               ELSE NULL
