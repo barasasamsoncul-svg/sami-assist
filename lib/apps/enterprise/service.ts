@@ -58,6 +58,14 @@ import {
   validateEnterpriseRelationValues,
 } from '@/lib/apps/enterprise/relations';
 
+import {
+  EnterpriseIdempotencyConflictError,
+  completeEnterpriseCreateRequest,
+  hashEnterpriseCreateRequest,
+  normalizeEnterpriseIdempotencyKey,
+  reserveEnterpriseCreateRequest,
+} from '@/lib/apps/enterprise/idempotency';
+
 
 export type EnterpriseModuleOperation =
   | 'view'
@@ -1864,6 +1872,7 @@ export async function createEnterpriseModuleRecord(
   input: {
     table?: unknown;
     values?: unknown;
+    idempotencyKey?: unknown;
   },
 ) {
   const context =
@@ -1967,6 +1976,27 @@ export async function createEnterpriseModuleRecord(
     );
   }
 
+  const idempotencyKey =
+    normalizeEnterpriseIdempotencyKey(
+      input.idempotencyKey,
+    );
+
+  if (
+    !idempotencyKey
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'A valid create request key is required.',
+    );
+  }
+
+  const requestHash =
+    hashEnterpriseCreateRequest(
+      context.moduleKey,
+      context.table,
+      values,
+    );
+
   const entries =
     [
       ...values.entries(),
@@ -2017,13 +2047,70 @@ export async function createEnterpriseModuleRecord(
       unknown
     > = {};
 
+  let replayed =
+    false;
+
   try {
     await client.query(
       'BEGIN',
     );
 
-    const result =
+    let reservation:
+      Awaited<
+        ReturnType<
+          typeof reserveEnterpriseCreateRequest
+        >
+      >;
+
+    try {
+      reservation =
+        await reserveEnterpriseCreateRequest(
+          client,
+          {
+            companyId:
+              context.companyId,
+            userId:
+              context.userId,
+            moduleKey:
+              context.moduleKey,
+            table:
+              context.table,
+            idempotencyKey,
+            requestHash,
+          },
+        );
+    } catch (
+      error
+    ) {
+      if (
+        error instanceof
+          EnterpriseIdempotencyConflictError
+      ) {
+        throw new EnterpriseModuleError(
+          'INVALID_INPUT',
+          error.message,
+        );
+      }
+
+      throw error;
+    }
+
+    if (
+      reservation.replayed
+    ) {
+      createdRow =
+        reservation.response ||
+        {};
+
+      replayed =
+        true;
+
       await client.query(
+        'COMMIT',
+      );
+    } else {
+      const result =
+        await client.query(
         sql,
         entries.map(
           ([
@@ -2034,29 +2121,71 @@ export async function createEnterpriseModuleRecord(
         ),
       );
 
-    createdRow =
-      result.rows[0] ||
-      {};
+      createdRow =
+        result.rows[0] ||
+        {};
 
-    await runDomainSideEffects(
-      client,
-      {
-        moduleKey:
-          context.moduleKey,
-        table:
-          context.table,
-        companyId:
-          context.companyId,
-        operation:
-          'create',
-        row:
+      await runDomainSideEffects(
+        client,
+        {
+          moduleKey:
+            context.moduleKey,
+          table:
+            context.table,
+          companyId:
+            context.companyId,
+          operation:
+            'create',
+          row:
+            createdRow,
+        },
+      );
+
+      const response =
+        rowOutput(
           createdRow,
-      },
-    );
+        );
 
-    await client.query(
-      'COMMIT',
-    );
+      try {
+        await completeEnterpriseCreateRequest(
+          client,
+          {
+            companyId:
+              context.companyId,
+            idempotencyKey,
+            recordKey:
+              createdRow.id
+                ? String(
+                    createdRow.id,
+                  )
+                : createdRow.company_id
+                  ? String(
+                      createdRow.company_id,
+                    )
+                  : null,
+            response,
+          },
+        );
+      } catch (
+        error
+      ) {
+        if (
+          error instanceof
+            EnterpriseIdempotencyConflictError
+        ) {
+          throw new EnterpriseModuleError(
+            'INVALID_INPUT',
+            error.message,
+          );
+        }
+
+        throw error;
+      }
+
+      await client.query(
+        'COMMIT',
+      );
+    }
   } catch (
     error
   ) {
@@ -2072,9 +2201,17 @@ export async function createEnterpriseModuleRecord(
   }
 
   const created =
-    rowOutput(
-      createdRow,
-    );
+    replayed
+      ? createdRow
+      : rowOutput(
+          createdRow,
+        );
+
+  if (
+    replayed
+  ) {
+    return created;
+  }
 
   await recordEnterpriseAudit({
     tenantId:

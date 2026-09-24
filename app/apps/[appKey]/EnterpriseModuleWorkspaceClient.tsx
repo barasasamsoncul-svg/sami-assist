@@ -370,6 +370,9 @@ export default function EnterpriseModuleWorkspaceClient({
           unknown
         > |
         null;
+      idempotencyKey:
+        string |
+        null;
     } | null>(
       null,
     );
@@ -659,6 +662,11 @@ export default function EnterpriseModuleWorkspaceClient({
         table:
           table.key,
         recordId,
+        idempotencyKey:
+          record
+            ? undefined
+            : editor
+                ?.idempotencyKey,
         values,
       });
 
@@ -1180,6 +1188,9 @@ export default function EnterpriseModuleWorkspaceClient({
                       table.key,
                     record:
                       null,
+                    idempotencyKey:
+                      globalThis.crypto
+                        .randomUUID(),
                   })
               }
               onEdit={
@@ -1191,6 +1202,8 @@ export default function EnterpriseModuleWorkspaceClient({
                     tableKey:
                       table.key,
                     record,
+                    idempotencyKey:
+                      null,
                   })
               }
               onDelete={

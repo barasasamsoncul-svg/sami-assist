@@ -42,6 +42,43 @@ function q(
 }
 
 
+function enterpriseInfrastructureSql() {
+  return `
+CREATE TABLE IF NOT EXISTS public.sami_enterprise_idempotency (
+  company_id UUID NOT NULL
+    REFERENCES public.companies(id)
+    ON DELETE CASCADE,
+
+  idempotency_key UUID NOT NULL,
+  module_key VARCHAR(120) NOT NULL,
+  table_key VARCHAR(160) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+
+  record_key TEXT,
+  response_json JSONB,
+
+  created_by UUID NOT NULL,
+
+  created_at TIMESTAMPTZ
+    NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+    NOT NULL DEFAULT NOW(),
+
+  PRIMARY KEY (
+    company_id,
+    idempotency_key
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_sami_enterprise_idempotency_created
+  ON public.sami_enterprise_idempotency(
+    company_id,
+    created_at
+  );
+`;
+}
+
+
 function hardeningSqlForTable(
   table:
     string,
@@ -140,6 +177,8 @@ export function appendEnterpriseSchemaHardening(
 
   return (
     schema.trimEnd() +
+    '\n\n-- SaMi enterprise shared runtime infrastructure\n' +
+    enterpriseInfrastructureSql() +
     '\n\n-- SaMi enterprise company/audit boundary hardening\n' +
     tables
       .map(
@@ -194,6 +233,10 @@ async function hardenModule(
   moduleKey:
     EnterpriseModuleKey,
 ) {
+  await client.query(
+    enterpriseInfrastructureSql(),
+  );
+
   for (
     const table
     of enterpriseModuleTables(

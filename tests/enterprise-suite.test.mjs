@@ -1256,3 +1256,107 @@ test('enterprise relationships use searchable company-scoped selectors instead o
     'Automation must not bypass current-company relationship validation.',
   );
 });
+
+
+test('enterprise create retries are durably idempotent across generic apps', async () => {
+  const [
+    hardening,
+    idempotency,
+    service,
+    client,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/apps/enterprise/idempotency.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'sami_enterprise_idempotency',
+      'idempotency_key UUID NOT NULL',
+      'request_hash CHAR(64) NOT NULL',
+      'response_json JSONB',
+      'PRIMARY KEY',
+    ]
+  ) {
+    assert.ok(
+      hardening.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.ok(
+    idempotency.includes(
+      'ON CONFLICT ('
+    ),
+    'Create request reservation must use a durable unique conflict boundary.',
+  );
+
+  assert.ok(
+    idempotency.includes(
+      'hashEnterpriseCreateRequest'
+    ),
+  );
+
+  assert.ok(
+    idempotency.includes(
+      'This create request key was already used for different data.'
+    ),
+  );
+
+  assert.ok(
+    idempotency.includes(
+      "INTERVAL '14 days'"
+    ),
+    'Old idempotency receipts should be pruned by bounded retention.',
+  );
+
+  assert.ok(
+    service.includes(
+      'normalizeEnterpriseIdempotencyKey'
+    ),
+  );
+
+  assert.ok(
+    service.includes(
+      'reserveEnterpriseCreateRequest'
+    ),
+  );
+
+  assert.ok(
+    service.includes(
+      'completeEnterpriseCreateRequest'
+    ),
+  );
+
+  assert.ok(
+    service.includes(
+      'if (\n    replayed\n  ) {\n    return created;'
+    ),
+    'A replay must return the prior response without duplicating audit or automation events.',
+  );
+
+  assert.ok(
+    client.includes(
+      'randomUUID()'
+    ),
+  );
+
+  assert.ok(
+    client.includes(
+      'idempotencyKey:'
+    ),
+  );
+});
