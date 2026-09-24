@@ -11,7 +11,7 @@ import {
 
 import type {
   SamiDataLifecycleContext,
-  SamiDataLifecycleHandler,
+  SamiModuleDataLifecycleHandler,
   SamiModuleDataExportResult,
 } from '@/lib/data-lifecycle/registry';
 
@@ -449,7 +449,7 @@ const MODULE_KEYS = [
 
 
 export const SUITE_DATA_LIFECYCLE_HANDLERS:
-  readonly SamiDataLifecycleHandler[] =
+  readonly SamiModuleDataLifecycleHandler[] =
   MODULE_KEYS.map(
     moduleKey => ({
       moduleKey,
