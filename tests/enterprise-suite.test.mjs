@@ -429,6 +429,66 @@ test('generic app workspace is operational instead of an installed-app placehold
 });
 
 
+test('enterprise manifests expose every owned register as a first-class resource', async () => {
+  const [
+    contract,
+    catalog,
+  ] = await Promise.all([
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+    source(
+      'lib/apps/enterprise/catalog.ts',
+    ),
+  ]);
+
+  assert.match(
+    contract,
+    /enterpriseModuleTables/,
+  );
+
+  assert.match(
+    contract,
+    /resourceKeyForTable/,
+  );
+
+  assert.match(
+    contract,
+    /\.\.\.tables\.map/,
+  );
+
+  assert.match(
+    contract,
+    /table:\s*table/,
+  );
+
+  assert.match(
+    contract,
+    /\.list'/,
+  );
+
+  assert.match(
+    contract,
+    /\.form'/,
+  );
+
+  const moduleKeys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    moduleKeys.length,
+    78,
+  );
+});
+
+
 test('enterprise search providers cover the code-owned module catalog', async () => {
   const [
     enterpriseSearch,
