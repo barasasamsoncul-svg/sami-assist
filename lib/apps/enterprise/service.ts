@@ -2271,6 +2271,22 @@ async function assertTable(
 }
 
 
+export async function requireEnterpriseModuleTableContext(
+  moduleKey:
+    string,
+  tableInput:
+    unknown,
+  operation:
+    EnterpriseModuleOperation,
+) {
+  return assertTable(
+    moduleKey,
+    tableInput,
+    operation,
+  );
+}
+
+
 function writableValues(
   input:
     unknown,
