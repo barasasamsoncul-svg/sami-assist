@@ -1629,6 +1629,7 @@ export async function getInvoicingInvoiceDetail(
             )
               AS credited_amount,
             i.tax_calculation,
+            i.template_id,
             i.notes,
             i.terms,
             i.payment_instructions,
@@ -1916,6 +1917,12 @@ export async function getInvoicingInvoiceDetail(
         'inclusive'
         ? 'inclusive' as const
         : 'exclusive' as const,
+    templateId:
+      row.template_id
+        ? String(
+            row.template_id,
+          )
+        : null,
     notes:
       row.notes
         ? String(

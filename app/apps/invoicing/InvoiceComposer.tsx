@@ -192,6 +192,7 @@ export default function InvoiceComposer({
     templateId,
     setTemplateId,
   ] = useState(
+    invoice?.templateId ||
     data.settings.defaultTemplateId ||
     data.templates.find(
       template =>

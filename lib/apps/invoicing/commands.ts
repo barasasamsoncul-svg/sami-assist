@@ -1903,12 +1903,22 @@ export async function normalizeInvoicingLines(
         );
 
       if (
-        result.rows.length ===
+        result.rows.length !==
           1
       ) {
-        catalog =
-          result.rows[0];
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'Choose a valid active invoice item.',
+          {
+            line:
+              index +
+              1,
+          },
+        );
       }
+
+      catalog =
+        result.rows[0];
     }
 
     const description =
@@ -2048,19 +2058,26 @@ export async function normalizeInvoicingLines(
         taxResult.rows.length !==
           1
       ) {
-        taxRateId =
-          null;
-      } else {
-        taxName =
-          String(
-            taxResult.rows[0].name,
-          );
-
-        taxRate =
-          money(
-            taxResult.rows[0].rate,
-          );
+        throw new InvoicingError(
+          'INVALID_INPUT',
+          'Choose a valid active tax rate.',
+          {
+            line:
+              index +
+              1,
+          },
+        );
       }
+
+      taxName =
+        String(
+          taxResult.rows[0].name,
+        );
+
+      taxRate =
+        money(
+          taxResult.rows[0].rate,
+        );
     }
 
     taxRate =

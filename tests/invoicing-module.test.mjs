@@ -1191,3 +1191,47 @@ test('Invoicing SQL explicitly types reused status parameters to prevent Postgre
     'Reminder delivery status must not rely on conflicting inferred parameter types.',
   );
 });
+
+
+test('Invoicing rejects stale master-data references and preserves a draft invoice template while editing', async () => {
+  const [
+    commands,
+    queries,
+    types,
+    composer,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+  ]);
+
+  assert.match(
+    commands,
+    /Choose a valid active invoice item\./,
+    'A stale or cross-company catalog item must be rejected before invoice insert.',
+  );
+
+  assert.match(
+    commands,
+    /Choose a valid active tax rate\./,
+    'A stale or cross-company tax rate must be rejected before invoice insert.',
+  );
+
+  assert.match(
+    queries,
+    /i\.template_id/,
+    'Invoice detail must retain its selected appearance template.',
+  );
+
+  assert.match(
+    types,
+    /templateId: string \| null;/,
+  );
+
+  assert.match(
+    composer,
+    /invoice\?\.templateId \|\|/,
+    'Editing a draft must start with the invoice template that was originally saved.',
+  );
+});

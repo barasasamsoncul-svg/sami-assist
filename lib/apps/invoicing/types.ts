@@ -163,6 +163,7 @@ export type InvoicingInvoiceDetail = {
   creditedAmount: number;
   balanceDue: number;
   taxCalculation: 'exclusive' | 'inclusive';
+  templateId: string | null;
   notes: string | null;
   terms: string | null;
   paymentInstructions: string | null;
