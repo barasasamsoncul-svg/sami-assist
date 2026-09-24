@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -1243,6 +1244,11 @@ export default function EnterpriseModuleWorkspaceClient({
         editor &&
         (
           <RecordEditor
+            moduleKey={
+              initialData
+                .module
+                .key
+            }
             table={
               initialData.tables
                 .find(
@@ -2124,12 +2130,15 @@ function Reports({
 
 
 function RecordEditor({
+  moduleKey,
   table,
   record,
   busy,
   onClose,
   onSave,
 }: {
+  moduleKey:
+    string;
   table:
     EnterpriseTable |
     null;
@@ -2272,6 +2281,12 @@ function RecordEditor({
                             key={
                               field.key
                             }
+                            moduleKey={
+                              moduleKey
+                            }
+                            tableKey={
+                              table.key
+                            }
                             field={
                               field
                             }
@@ -2330,9 +2345,15 @@ function RecordEditor({
 
 
 function Field({
+  moduleKey,
+  tableKey,
   field,
   value,
 }: {
+  moduleKey:
+    string;
+  tableKey:
+    string;
   field:
     EnterpriseField;
   value:
@@ -2363,6 +2384,27 @@ function Field({
     required:
       field.required,
   };
+
+  if (
+    field.relation
+  ) {
+    return (
+      <RelationField
+        moduleKey={
+          moduleKey
+        }
+        tableKey={
+          tableKey
+        }
+        field={
+          field
+        }
+        initialValue={
+          initial
+        }
+      />
+    );
+  }
 
   if (
     field.inputType ===
@@ -2449,6 +2491,377 @@ function Field({
         }
         className="mt-1 h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
       />
+    </label>
+  );
+}
+
+
+type RelationOption = {
+  value:
+    string;
+  label:
+    string;
+  secondary:
+    string |
+    null;
+};
+
+
+function RelationField({
+  moduleKey,
+  tableKey,
+  field,
+  initialValue,
+}: {
+  moduleKey:
+    string;
+  tableKey:
+    string;
+  field:
+    EnterpriseField;
+  initialValue:
+    string;
+}) {
+  const [
+    selected,
+    setSelected,
+  ] =
+    useState(
+      initialValue,
+    );
+
+  const [
+    query,
+    setQuery,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    options,
+    setOptions,
+  ] =
+    useState<
+      RelationOption[]
+    >(
+      [],
+    );
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      true,
+    );
+
+  const [
+    failed,
+    setFailed,
+  ] =
+    useState(
+      false,
+    );
+
+  useEffect(
+    () => {
+      const controller =
+        new AbortController();
+
+      const timer =
+        window.setTimeout(
+          () => {
+            void (
+              async () => {
+                setLoading(
+                  true,
+                );
+
+                setFailed(
+                  false,
+                );
+
+                try {
+                  const params =
+                    new URLSearchParams({
+                      mode:
+                        'relation',
+                      table:
+                        tableKey,
+                      field:
+                        field.key,
+                    });
+
+                  if (
+                    query.trim()
+                  ) {
+                    params.set(
+                      'query',
+                      query.trim(),
+                    );
+                  }
+
+                  if (
+                    selected
+                  ) {
+                    params.set(
+                      'selected',
+                      selected,
+                    );
+                  }
+
+                  const response =
+                    await fetch(
+                      '/api/apps/' +
+                      encodeURIComponent(
+                        moduleKey,
+                      ) +
+                      '/records?' +
+                      params.toString(),
+                      {
+                        method:
+                          'GET',
+                        credentials:
+                          'same-origin',
+                        cache:
+                          'no-store',
+                        signal:
+                          controller.signal,
+                        headers: {
+                          Accept:
+                            'application/json',
+                        },
+                      },
+                    );
+
+                  const body =
+                    await response
+                      .json()
+                      .catch(
+                        () => ({}),
+                      ) as {
+                        success?:
+                          boolean;
+                        error?:
+                          string;
+                        relation?: {
+                          options?:
+                            RelationOption[];
+                        };
+                      };
+
+                  if (
+                    !response.ok ||
+                    body.success !==
+                      true
+                  ) {
+                    throw new Error(
+                      body.error ||
+                      'Related records could not be loaded.',
+                    );
+                  }
+
+                  const incoming =
+                    Array.isArray(
+                      body.relation
+                        ?.options,
+                    )
+                      ? body.relation
+                          ?.options ||
+                        []
+                      : [];
+
+                  setOptions(
+                    current => {
+                      const selectedOption =
+                        selected
+                          ? current.find(
+                              option =>
+                                option.value ===
+                                selected,
+                            )
+                          : undefined;
+
+                      if (
+                        !selectedOption ||
+                        incoming.some(
+                          option =>
+                            option.value ===
+                            selectedOption.value,
+                        )
+                      ) {
+                        return incoming;
+                      }
+
+                      return [
+                        selectedOption,
+                        ...incoming,
+                      ];
+                    },
+                  );
+                } catch (
+                  error
+                ) {
+                  if (
+                    error instanceof
+                      DOMException &&
+                    error.name ===
+                      'AbortError'
+                  ) {
+                    return;
+                  }
+
+                  setFailed(
+                    true,
+                  );
+                } finally {
+                  if (
+                    !controller
+                      .signal
+                      .aborted
+                  ) {
+                    setLoading(
+                      false,
+                    );
+                  }
+                }
+              }
+            )();
+          },
+          220,
+        );
+
+      return () => {
+        window.clearTimeout(
+          timer,
+        );
+
+        controller.abort();
+      };
+    },
+    [
+      field.key,
+      moduleKey,
+      query,
+      selected,
+      tableKey,
+    ],
+  );
+
+  return (
+    <label className="block sm:col-span-2">
+      <FieldLabel
+        field={
+          field
+        }
+      />
+
+      <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(220px,0.8fr)]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+
+          <input
+            type="search"
+            value={
+              query
+            }
+            onChange={
+              event =>
+                setQuery(
+                  event.target
+                    .value,
+                )
+            }
+            placeholder={
+              'Search ' +
+              (
+                field.relation
+                  ?.label ||
+                field.label
+              )
+            }
+            className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-sm"
+          />
+        </div>
+
+        <select
+          name={
+            field.key
+          }
+          required={
+            field.required
+          }
+          value={
+            selected
+          }
+          onChange={
+            event =>
+              setSelected(
+                event.target
+                  .value,
+              )
+          }
+          className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+        >
+          <option value="">
+            {
+              loading
+                ? 'Loading…'
+                : (
+                    'Choose ' +
+                    (
+                      field.relation
+                        ?.label ||
+                      field.label
+                    )
+                  )
+            }
+          </option>
+
+          {
+            options.map(
+              option => (
+                <option
+                  key={
+                    option.value
+                  }
+                  value={
+                    option.value
+                  }
+                >
+                  {
+                    option.label
+                  }
+                  {
+                    option.secondary
+                      ? (
+                          ' · ' +
+                          option.secondary
+                        )
+                      : ''
+                  }
+                </option>
+              ),
+            )
+          }
+        </select>
+      </div>
+
+      <p className={[
+        'mt-1 text-[10px]',
+        failed
+          ? 'text-red-500'
+          : 'text-slate-400',
+      ].join(
+        ' ',
+      )}>
+        {
+          failed
+            ? 'SaMi could not load related records. Retry by typing in the search box.'
+            : 'Choices are restricted to records available in the current company.'
+        }
+      </p>
     </label>
   );
 }

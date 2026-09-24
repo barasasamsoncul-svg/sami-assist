@@ -7,6 +7,7 @@ import {
   EnterpriseModuleError,
   createEnterpriseModuleRecord,
   deleteEnterpriseModuleRecord,
+  getEnterpriseModuleRelationOptions,
   getEnterpriseModuleWorkspace,
   transitionEnterpriseModuleRecord,
   updateEnterpriseModuleRecord,
@@ -155,7 +156,7 @@ function handleError(
 
 
 export async function GET(
-  _request:
+  request:
     NextRequest,
   {
     params,
@@ -172,6 +173,51 @@ export async function GET(
       appKey,
     } =
       await params;
+
+    if (
+      request.nextUrl
+        .searchParams
+        .get(
+          'mode',
+        ) ===
+        'relation'
+    ) {
+      return respond({
+        success:
+          true,
+        relation:
+          await getEnterpriseModuleRelationOptions(
+            appKey,
+            {
+              table:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'table',
+                  ),
+              field:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'field',
+                  ),
+              query:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'query',
+                  ) ||
+                '',
+              selected:
+                request.nextUrl
+                  .searchParams
+                  .get(
+                    'selected',
+                  ),
+            },
+          ),
+      });
+    }
 
     return respond({
       success:

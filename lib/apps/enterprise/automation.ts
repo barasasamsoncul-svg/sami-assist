@@ -32,6 +32,10 @@ import {
   recordWorkspaceAuditEvent,
 } from '@/lib/services/workspace-activity';
 
+import {
+  validateEnterpriseRelationValues,
+} from '@/lib/apps/enterprise/relations';
+
 
 const IDENTIFIER =
   /^[a-z_][a-z0-9_]*$/;
@@ -604,6 +608,13 @@ async function createRecord(
     values,
   );
 
+  await validateEnterpriseRelationValues(
+    pool,
+    table,
+    runtime.companyId,
+    values,
+  );
+
   values.set(
     'company_id',
     runtime.companyId,
@@ -855,6 +866,13 @@ async function updateRecord(
   normalizeEnterpriseDomainValues(
     moduleKey,
     table,
+    values,
+  );
+
+  await validateEnterpriseRelationValues(
+    pool,
+    table,
+    runtime.companyId,
     values,
   );
 

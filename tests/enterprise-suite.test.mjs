@@ -1151,3 +1151,159 @@ test('tutorial preference is durable across the full workspace suite', async () 
     /Workspace tutorials/,
   );
 });
+
+
+test('enterprise relationships use searchable company-scoped selectors instead of raw UUID entry', async () => {
+  const [
+    relations,
+    service,
+    route,
+    client,
+    automation,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/relations.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/api/apps/[appKey]/records/route.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'lib/apps/enterprise/automation.ts',
+    ),
+  ]);
+
+  assert.match(
+    relations,
+    /information_schema\.table_constraints/,
+  );
+
+  assert.match(
+    relations,
+    /constraint_type[\s\S]*FOREIGN KEY/s,
+  );
+
+  assert.match(
+    relations,
+    /SAFE_RELATION_TABLES/,
+  );
+
+  assert.match(
+    relations,
+    /companyScoped/,
+  );
+
+  assert.match(
+    relations,
+    /company_id = \
+
+  assert.match(
+    relations,
+    /deleted_at IS NULL/,
+  );
+
+  assert.match(
+    relations,
+    /validateEnterpriseRelationValues/,
+  );
+
+  assert.match(
+    service,
+    /relation:[\s\S]*label/s,
+  );
+
+  assert.match(
+    service,
+    /getEnterpriseModuleRelationOptions/,
+  );
+
+  assert.match(
+    service,
+    /await assertRelationValues\(/,
+  );
+
+  assert.match(
+    route,
+    /mode[\s\S]*relation/s,
+  );
+
+  assert.match(
+    client,
+    /function RelationField/,
+  );
+
+  assert.match(
+    client,
+    /Search [^]*current company/i,
+  );
+
+  assert.match(
+    client,
+    /URLSearchParams/,
+  );
+
+  assert.match(
+    automation,
+    /validateEnterpriseRelationValues/,
+    'Automation must not bypass current-company relationship validation.',
+  );
+});
+/,
+  );
+
+  assert.match(
+    relations,
+    /deleted_at IS NULL/,
+  );
+
+  assert.match(
+    relations,
+    /validateEnterpriseRelationValues/,
+  );
+
+  assert.match(
+    service,
+    /relation:[\s\S]*label/s,
+  );
+
+  assert.match(
+    service,
+    /getEnterpriseModuleRelationOptions/,
+  );
+
+  assert.match(
+    service,
+    /await assertRelationValues\(/,
+  );
+
+  assert.match(
+    route,
+    /mode[\s\S]*relation/s,
+  );
+
+  assert.match(
+    client,
+    /function RelationField/,
+  );
+
+  assert.match(
+    client,
+    /Search [^]*current company/i,
+  );
+
+  assert.match(
+    client,
+    /URLSearchParams/,
+  );
+
+  assert.match(
+    automation,
+    /validateEnterpriseRelationValues/,
+    'Automation must not bypass current-company relationship validation.',
+  );
+});

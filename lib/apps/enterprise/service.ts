@@ -52,6 +52,12 @@ import {
   normalizeEnterpriseDomainValues,
 } from '@/lib/apps/enterprise/domain-hooks';
 
+import {
+  getEnterpriseRelationDefinitions,
+  listEnterpriseRelationOptions,
+  validateEnterpriseRelationValues,
+} from '@/lib/apps/enterprise/relations';
+
 
 export type EnterpriseModuleOperation =
   | 'view'
@@ -72,6 +78,9 @@ export type EnterpriseField = {
   generated: boolean;
   required: boolean;
   writable: boolean;
+  relation: {
+    label: string;
+  } | null;
   inputType:
     | 'text'
     | 'textarea'
@@ -778,6 +787,40 @@ async function emitEnterpriseAutomationEvent(
 }
 
 
+async function assertRelationValues(
+  pool:
+    Pool,
+  table:
+    string,
+  companyId:
+    string,
+  values:
+    Map<
+      string,
+      unknown
+    >,
+) {
+  try {
+    await validateEnterpriseRelationValues(
+      pool,
+      table,
+      companyId,
+      values,
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      error instanceof
+        Error
+        ? error.message
+        : 'Choose a valid related business record.',
+    );
+  }
+}
+
+
 async function requireContext(
   moduleKeyInput:
     string,
@@ -1067,6 +1110,8 @@ async function tableMetadata(
           !/(^|_)(status|state)$/.test(
             row.column_name,
           ),
+        relation:
+          null,
         inputType:
           inputType(
             row.data_type,
@@ -1087,6 +1132,54 @@ async function tableMetadata(
     byTable.set(
       row.table_name,
       fields,
+    );
+  }
+
+  for (
+    const table
+    of allowedTables
+  ) {
+    const fields =
+      byTable.get(
+        table,
+      );
+
+    if (
+      !fields ||
+      fields.length ===
+        0
+    ) {
+      continue;
+    }
+
+    const relations =
+      await getEnterpriseRelationDefinitions(
+        pool,
+        table,
+      );
+
+    byTable.set(
+      table,
+      fields.map(
+        field => {
+          const relation =
+            relations.get(
+              field.key,
+            );
+
+          return relation
+            ? {
+                ...field,
+                label:
+                  relation.label,
+                relation: {
+                  label:
+                    relation.label,
+                },
+              }
+            : field;
+        },
+      ),
     );
   }
 
@@ -1798,6 +1891,13 @@ export async function createEnterpriseModuleRecord(
     values,
   );
 
+  await assertRelationValues(
+    context.pool,
+    context.table,
+    context.companyId,
+    values,
+  );
+
   const fieldNames =
     new Set(
       context.fields.map(
@@ -2129,6 +2229,13 @@ export async function updateEnterpriseModuleRecord(
   applyDomainValueRules(
     context.moduleKey,
     context.table,
+    values,
+  );
+
+  await assertRelationValues(
+    context.pool,
+    context.table,
+    context.companyId,
     values,
   );
 
@@ -3280,6 +3387,86 @@ export async function transitionEnterpriseModuleRecord(
   } finally {
     client.release();
   }
+}
+
+
+export async function getEnterpriseModuleRelationOptions(
+  moduleKey:
+    string,
+  input: {
+    table?: unknown;
+    field?: unknown;
+    query?: unknown;
+    selected?: unknown;
+  },
+) {
+  const context =
+    await assertTable(
+      moduleKey,
+      input.table,
+      'view',
+    );
+
+  const field =
+    normalizeKey(
+      input.field,
+    );
+
+  if (
+    !field
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'Choose a related field.',
+    );
+  }
+
+  const definitions =
+    await getEnterpriseRelationDefinitions(
+      context.pool,
+      context.table,
+    );
+
+  const definition =
+    definitions.get(
+      field,
+    );
+
+  if (
+    !definition
+  ) {
+    throw new EnterpriseModuleError(
+      'INVALID_INPUT',
+      'This field does not expose a selectable business relationship.',
+    );
+  }
+
+  const query =
+    typeof input.query ===
+      'string'
+      ? input.query
+      : '';
+
+  const selected =
+    typeof input.selected ===
+      'string'
+      ? input.selected
+      : null;
+
+  return {
+    field,
+    label:
+      definition.label,
+    options:
+      await listEnterpriseRelationOptions(
+        context.pool,
+        definition,
+        context.companyId,
+        query,
+        selected,
+        30,
+      ),
+  };
 }
 
 
