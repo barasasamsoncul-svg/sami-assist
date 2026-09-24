@@ -762,8 +762,6 @@ export default function EnterpriseModuleWorkspaceClient({
             }
           )();
         },
-      danger:
-        true,
     });
   }
 
