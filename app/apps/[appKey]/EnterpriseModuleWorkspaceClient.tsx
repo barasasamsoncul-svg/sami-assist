@@ -400,6 +400,35 @@ export default function EnterpriseModuleWorkspaceClient({
     );
 
   const [
+    recordPages,
+    setRecordPages,
+  ] =
+    useState<
+      Record<
+        string,
+        {
+          records:
+            Array<
+              Record<
+                string,
+                unknown
+              >
+            >;
+          total:
+            number;
+          page:
+            number;
+          hasMore:
+            boolean;
+          query:
+            string;
+        }
+      >
+    >(
+      {},
+    );
+
+  const [
     editor,
     setEditor,
   ] =
@@ -467,6 +496,13 @@ export default function EnterpriseModuleWorkspaceClient({
     initialData.tables[0] ||
     null;
 
+  const selectedPage =
+    selectedTable
+      ? recordPages[
+          selectedTable.key
+        ]
+      : undefined;
+
   const visibleRecords =
     useMemo(
       () => {
@@ -474,6 +510,13 @@ export default function EnterpriseModuleWorkspaceClient({
           !selectedTable
         ) {
           return [];
+        }
+
+        if (
+          selectedPage
+        ) {
+          return selectedPage
+            .records;
         }
 
         const query =
@@ -510,6 +553,7 @@ export default function EnterpriseModuleWorkspaceClient({
       },
       [
         search,
+        selectedPage,
         selectedTable,
       ],
     );
@@ -671,6 +715,107 @@ export default function EnterpriseModuleWorkspaceClient({
     }
   }
 
+  async function queryTableRecords(
+    table:
+      EnterpriseTable,
+    reset:
+      boolean,
+  ) {
+    try {
+      const current =
+        recordPages[
+          table.key
+        ];
+
+      const result =
+        await request({
+          action:
+            'list',
+          table:
+            table.key,
+          query:
+            search,
+          page:
+            reset
+              ? 1
+              : (
+                  current
+                    ?.page ||
+                  1
+                ) +
+                1,
+          pageSize:
+            50,
+        });
+
+      const records =
+        Array.isArray(
+          result.records,
+        )
+          ? result.records as
+              Array<
+                Record<
+                  string,
+                  unknown
+                >
+              >
+          : [];
+
+      setRecordPages(
+        previous => ({
+          ...previous,
+          [
+            table.key
+          ]: {
+            records:
+              reset
+                ? records
+                : [
+                    ...(
+                      previous[
+                        table.key
+                      ]
+                        ?.records ||
+                      []
+                    ),
+                    ...records,
+                  ],
+            total:
+              Number(
+                result.total ||
+                0,
+              ),
+            page:
+              Number(
+                result.page ||
+                1,
+              ),
+            hasMore:
+              Boolean(
+                result.hasMore,
+              ),
+            query:
+              String(
+                result.query ||
+                '',
+              ),
+          },
+        }),
+      );
+    } catch (
+      error
+    ) {
+      showError(
+        'Records could not be loaded',
+        error instanceof
+          Error
+          ? error.message
+          : 'SaMi could not load this register.',
+      );
+    }
+  }
+
+
   async function saveRecord(
     table:
       EnterpriseTable,
@@ -713,6 +858,21 @@ export default function EnterpriseModuleWorkspaceClient({
 
       setEditor(
         null,
+      );
+
+      setRecordPages(
+        previous => {
+          const nextPages =
+            {
+              ...previous,
+            };
+
+          delete nextPages[
+            table.key
+          ];
+
+          return nextPages;
+        },
       );
 
       showSuccess(
@@ -797,6 +957,21 @@ export default function EnterpriseModuleWorkspaceClient({
                   recordId,
                 });
 
+                setRecordPages(
+                  previous => {
+                    const nextPages =
+                      {
+                        ...previous,
+                      };
+
+                    delete nextPages[
+                      table.key
+                    ];
+
+                    return nextPages;
+                  },
+                );
+
                 showSuccess(
                   'Record deleted',
                   table.label +
@@ -873,6 +1048,21 @@ export default function EnterpriseModuleWorkspaceClient({
                   statusField,
                   nextStatus,
                 });
+
+                setRecordPages(
+                  previous => {
+                    const nextPages =
+                      {
+                        ...previous,
+                      };
+
+                    delete nextPages[
+                      table.key
+                    ];
+
+                    return nextPages;
+                  },
+                );
 
                 showSuccess(
                   'Workflow updated',
@@ -1200,6 +1390,18 @@ export default function EnterpriseModuleWorkspaceClient({
               records={
                 visibleRecords
               }
+              totalRecords={
+                selectedPage
+                  ?.total ||
+                selectedTable
+                  ?.count ||
+                0
+              }
+              hasMore={
+                selectedPage
+                  ?.hasMore ||
+                false
+              }
               busy={
                 busy
               }
@@ -1262,6 +1464,20 @@ export default function EnterpriseModuleWorkspaceClient({
                       .module
                       .name,
                     table,
+                  )
+              }
+              onSearchAll={
+                table =>
+                  void queryTableRecords(
+                    table,
+                    true,
+                  )
+              }
+              onLoadMore={
+                table =>
+                  void queryTableRecords(
+                    table,
+                    false,
                   )
               }
             />
@@ -1710,6 +1926,8 @@ function Records({
   search,
   setSearch,
   records,
+  totalRecords,
+  hasMore,
   busy,
   canCreate,
   canEdit,
@@ -1720,6 +1938,8 @@ function Records({
   onDelete,
   onTransition,
   onExport,
+  onSearchAll,
+  onLoadMore,
 }: {
   moduleKey:
     string;
@@ -1743,6 +1963,10 @@ function Records({
         unknown
       >
     >;
+  totalRecords:
+    number;
+  hasMore:
+    boolean;
   busy:
     boolean;
   canCreate:
@@ -1801,6 +2025,18 @@ function Records({
     ) =>
       void;
   onExport:
+    (
+      table:
+        EnterpriseTable,
+    ) =>
+      void;
+  onSearchAll:
+    (
+      table:
+        EnterpriseTable,
+    ) =>
+      void;
+  onLoadMore:
     (
       table:
         EnterpriseTable,
@@ -2163,10 +2399,39 @@ function Records({
                         .value,
                     )
                 }
-                placeholder="Search loaded records"
+                onKeyDown={
+                  event => {
+                    if (
+                      event.key ===
+                        'Enter'
+                    ) {
+                      onSearchAll(
+                        selected,
+                      );
+                    }
+                  }
+                }
+                placeholder="Search this register"
                 className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-xs sm:w-64"
               />
             </label>
+
+            <button
+              type="button"
+              disabled={
+                busy
+              }
+              onClick={
+                () =>
+                  onSearchAll(
+                    selected,
+                  )
+              }
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-[var(--sami-border)] px-3 text-xs font-black disabled:opacity-60"
+            >
+              <Search className="h-4 w-4" />
+              Search all
+            </button>
 
             <button
               type="button"
@@ -2683,6 +2948,37 @@ function Records({
                 </div>
               )
       }
+
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-500">
+          Showing {
+            records.length
+          } of {
+            totalRecords
+          } records
+        </p>
+
+        {
+          hasMore &&
+          (
+            <button
+              type="button"
+              disabled={
+                busy
+              }
+              onClick={
+                () =>
+                  onLoadMore(
+                    selected,
+                  )
+              }
+              className="inline-flex h-10 items-center justify-center rounded-xl border border-[var(--sami-border)] px-4 text-xs font-black disabled:opacity-60"
+            >
+              Load more records
+            </button>
+          )
+        }
+      </div>
     </section>
   );
 }
