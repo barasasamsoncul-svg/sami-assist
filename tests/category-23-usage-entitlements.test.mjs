@@ -216,21 +216,56 @@ test('Category 23: storage allowance is checked before issuing an upload intent'
   );
 });
 
-test('Category 23: optional Custom AI and storage guardrails are environment-driven', async () => {
-  const usage =
-    await source(
-      'lib/usage/entitlements.ts',
-    );
+test('Category 23: Custom AI has no monthly plan cap while storage guardrails remain environment-driven', async () => {
+  const [
+    usage,
+    policy,
+    summary,
+    env,
+  ] =
+    await Promise.all([
+      source(
+        'lib/usage/entitlements.ts',
+      ),
+      source(
+        'lib/billing/plan-policy.ts',
+      ),
+      source(
+        'app/components/ai/SamiAiUsageSummary.tsx',
+      ),
+      source(
+        'docs/platform-env.example',
+      ),
+    ]);
 
-  const env =
-    await source(
-      'docs/platform-env.example',
-    );
+  assert.match(
+    policy,
+    /custom:[\s\S]*monthlyQueriesPerUser:[\s\S]*cost_controlled[\s\S]*No monthly plan cap/s,
+  );
+
+  assert.match(
+    usage,
+    /quota\.mode ===[\s\S]*'cost_controlled'[\s\S]*limit:[\s\S]*null[\s\S]*enforced:[\s\S]*false/s,
+  );
+
+  assert.doesNotMatch(
+    usage,
+    /SAMI_USAGE_CUSTOM_AI_MONTHLY_QUERIES_PER_USER/,
+  );
+
+  assert.doesNotMatch(
+    env,
+    /SAMI_USAGE_CUSTOM_AI_MONTHLY_QUERIES_PER_USER/,
+  );
+
+  assert.match(
+    summary,
+    /no monthly cap/,
+  );
 
   for (
     const key
     of [
-      'SAMI_USAGE_CUSTOM_AI_MONTHLY_QUERIES_PER_USER',
       'SAMI_USAGE_FREE_STORAGE_BYTES',
       'SAMI_USAGE_STANDARD_STORAGE_BYTES',
       'SAMI_USAGE_CUSTOM_STORAGE_BYTES',
@@ -250,11 +285,6 @@ test('Category 23: optional Custom AI and storage guardrails are environment-dri
       ),
     );
   }
-
-  assert.match(
-    env,
-    /does NOT create a marketed[\s\S]*unlimited/s,
-  );
 });
 
 test('Category 23: internal seat limits cover invitations and member reactivation', async () => {

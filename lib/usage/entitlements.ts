@@ -183,21 +183,15 @@ function resolveAiQueryLimit(
     quota.mode ===
       'cost_controlled'
   ) {
-    const configured =
-      positiveIntegerEnv(
-        'SAMI_USAGE_CUSTOM_AI_MONTHLY_QUERIES_PER_USER',
-      );
-
     return {
       mode:
         'cost_controlled' as const,
       limit:
-        configured,
+        null,
       label:
         quota.label,
       enforced:
-        configured !==
-        null,
+        false,
     };
   }
 

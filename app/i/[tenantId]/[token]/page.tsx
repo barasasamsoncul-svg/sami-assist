@@ -334,6 +334,36 @@ export default async function PublicInvoicePage({
               {
                 invoice
                   .customer
+                  .phone &&
+                (
+                  <p className="mt-1 text-sm text-slate-500">
+                    {
+                      invoice
+                        .customer
+                        .phone
+                    }
+                  </p>
+                )
+              }
+
+              {
+                invoice
+                  .customer
+                  .taxId &&
+                (
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Tax / PIN: {
+                      invoice
+                        .customer
+                        .taxId
+                    }
+                  </p>
+                )
+              }
+
+              {
+                invoice
+                  .customer
                   .billingAddress &&
                 (
                   <p className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-500">
@@ -383,6 +413,36 @@ export default async function PublicInvoicePage({
                   </p>
                 )
               }
+
+              {
+                invoice
+                  .paymentTermsName &&
+                (
+                  <p className="mt-1 text-sm">
+                    <span className="text-slate-400">
+                      Payment terms:
+                    </span>{' '}
+                    <strong>
+                      {
+                        invoice
+                          .paymentTermsName
+                      }
+                    </strong>
+                  </p>
+                )
+              }
+
+              <p className="mt-1 text-sm">
+                <span className="text-slate-400">
+                  Tax mode:
+                </span>{' '}
+                <strong className="capitalize">
+                  {
+                    invoice
+                      .taxCalculation
+                  }
+                </strong>
+              </p>
             </div>
           </section>
 
@@ -557,6 +617,65 @@ export default async function PublicInvoicePage({
                       formatMoney(
                         invoice
                           .shippingTotal,
+                        invoice
+                          .currency,
+                      )
+                    }
+                  />
+                )
+              }
+
+              {
+                invoice
+                  .roundingAdjustment !==
+                  0 &&
+                (
+                  <TotalRow
+                    label="Rounding"
+                    value={
+                      formatMoney(
+                        invoice
+                          .roundingAdjustment,
+                        invoice
+                          .currency,
+                      )
+                    }
+                  />
+                )
+              }
+
+              {
+                invoice
+                  .paidAmount >
+                  0 &&
+                (
+                  <TotalRow
+                    label="Paid"
+                    value={
+                      '− ' +
+                      formatMoney(
+                        invoice
+                          .paidAmount,
+                        invoice
+                          .currency,
+                      )
+                    }
+                  />
+                )
+              }
+
+              {
+                invoice
+                  .creditedAmount >
+                  0 &&
+                (
+                  <TotalRow
+                    label="Credits"
+                    value={
+                      '− ' +
+                      formatMoney(
+                        invoice
+                          .creditedAmount,
                         invoice
                           .currency,
                       )

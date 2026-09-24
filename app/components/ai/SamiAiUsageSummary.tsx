@@ -96,6 +96,12 @@ function MonthlyCard({
   const limit =
     metric.limit;
 
+  const noMonthlyPlanCap =
+    metric.mode ===
+      'cost_controlled' &&
+    limit ===
+      null;
+
   return (
     <article className="rounded-2xl border border-slate-200 p-4 dark:border-white/10">
       <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400">
@@ -110,12 +116,14 @@ function MonthlyCard({
         </p>
 
         <p className="pb-1 text-[10px] font-semibold text-slate-400">
-          {limit ===
-            null
-            ? 'metered'
-            : `of ${formatNumber(
-                limit,
-              )}`}
+          {noMonthlyPlanCap
+            ? 'no monthly cap'
+            : limit ===
+                null
+              ? 'metered'
+              : `of ${formatNumber(
+                  limit,
+                )}`}
         </p>
       </div>
 
@@ -127,12 +135,14 @@ function MonthlyCard({
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[10px] text-slate-500 dark:text-slate-400">
         <span>
-          {metric.remaining ===
-            null
-            ? 'Allowance managed by your plan'
-            : `${formatNumber(
-                metric.remaining,
-              )} remaining`}
+          {noMonthlyPlanCap
+            ? 'Custom plan usage is tracked but not stopped by a monthly plan quota'
+            : metric.remaining ===
+                null
+              ? 'Allowance managed by your plan'
+              : `${formatNumber(
+                  metric.remaining,
+                )} remaining`}
         </span>
 
         {metric.resetAt && (

@@ -3,16 +3,22 @@ import 'server-only';
 
 type PdfInvoice = {
   invoiceNumber: string;
+  status: string;
   invoiceDate: string;
   dueDate: string;
   currency: string;
   reference: string | null;
   purchaseOrderNumber: string | null;
+  paymentTermsName: string | null;
+  taxCalculation: 'exclusive' | 'inclusive';
   subtotal: number;
   discountTotal: number;
   taxTotal: number;
   shippingTotal: number;
+  roundingAdjustment: number;
   totalAmount: number;
+  paidAmount: number;
+  creditedAmount: number;
   balanceDue: number;
   notes: string | null;
   terms: string | null;
@@ -34,6 +40,8 @@ type PdfInvoice = {
   customer: {
     name: string;
     email: string | null;
+    phone: string | null;
+    taxId: string | null;
     billingAddress: string | null;
   };
   company: {
@@ -57,6 +65,14 @@ type PdfInvoice = {
     lineTotal: number;
   }>;
 };
+
+
+type Rgb =
+  readonly [
+    number,
+    number,
+    number,
+  ];
 
 
 function ascii(
@@ -99,6 +115,21 @@ function pdfEscape(
 }
 
 
+function cleanLine(
+  value:
+    unknown,
+) {
+  return ascii(
+    value,
+  )
+    .replace(
+      /\s+/g,
+      ' ',
+    )
+    .trim();
+}
+
+
 function truncate(
   value:
     unknown,
@@ -106,7 +137,7 @@ function truncate(
     number,
 ) {
   const text =
-    ascii(
+    cleanLine(
       value,
     );
 
@@ -125,6 +156,109 @@ function truncate(
 }
 
 
+function wrap(
+  value:
+    unknown,
+  max:
+    number,
+) {
+  const source =
+    cleanLine(
+      value,
+    );
+
+  if (
+    !source
+  ) {
+    return [];
+  }
+
+  const words =
+    source.split(
+      ' ',
+    );
+
+  const lines:
+    string[] =
+      [];
+
+  let current =
+    '';
+
+  for (
+    const word
+    of words
+  ) {
+    if (
+      word.length >
+      max
+    ) {
+      if (
+        current
+      ) {
+        lines.push(
+          current,
+        );
+
+        current =
+          '';
+      }
+
+      for (
+        let offset =
+          0;
+        offset <
+          word.length;
+        offset +=
+          max
+      ) {
+        lines.push(
+          word.slice(
+            offset,
+            offset +
+              max,
+          ),
+        );
+      }
+
+      continue;
+    }
+
+    const candidate =
+      current
+        ? current +
+          ' ' +
+          word
+        : word;
+
+    if (
+      candidate.length >
+      max
+    ) {
+      lines.push(
+        current,
+      );
+
+      current =
+        word;
+    } else {
+      current =
+        candidate;
+    }
+  }
+
+  if (
+    current
+  ) {
+    lines.push(
+      current,
+    );
+  }
+
+  return lines;
+}
+
+
 function color(
   input:
     string |
@@ -132,7 +266,7 @@ function color(
     undefined,
   fallback:
     string,
-) {
+): Rgb {
   const value =
     /^#[0-9a-f]{6}$/i.test(
       input ||
@@ -143,7 +277,7 @@ function color(
         )
       : fallback;
 
-  const red =
+  return [
     Number.parseInt(
       value.slice(
         1,
@@ -151,9 +285,7 @@ function color(
       ),
       16,
     ) /
-    255;
-
-  const green =
+      255,
     Number.parseInt(
       value.slice(
         3,
@@ -161,9 +293,7 @@ function color(
       ),
       16,
     ) /
-    255;
-
-  const blue =
+      255,
     Number.parseInt(
       value.slice(
         5,
@@ -171,23 +301,14 @@ function color(
       ),
       16,
     ) /
-    255;
-
-  return [
-    red,
-    green,
-    blue,
-  ] as const;
+      255,
+  ];
 }
 
 
 function rgb(
   value:
-    readonly [
-      number,
-      number,
-      number,
-    ],
+    Rgb,
 ) {
   return value
     .map(
@@ -203,6 +324,26 @@ function rgb(
 }
 
 
+function amount(
+  value:
+    number,
+) {
+  return Number(
+    value ||
+    0,
+  )
+    .toLocaleString(
+      'en-US',
+      {
+        minimumFractionDigits:
+          2,
+        maximumFractionDigits:
+          2,
+      },
+    );
+}
+
+
 function money(
   value:
     number,
@@ -212,14 +353,23 @@ function money(
   return (
     currency +
     ' ' +
-    Number(
-      value ||
-      0,
+    amount(
+      value,
     )
-      .toFixed(
-        2,
-      )
   );
+}
+
+
+function statusLabel(
+  value:
+    string,
+) {
+  return value
+    .replaceAll(
+      '_',
+      ' ',
+    )
+    .toUpperCase();
 }
 
 
@@ -233,12 +383,7 @@ function textCommand(
   options: {
     size?: number;
     bold?: boolean;
-    color?:
-      readonly [
-        number,
-        number,
-        number,
-      ];
+    color?: Rgb;
   } = {},
 ) {
   const font =
@@ -286,9 +431,12 @@ function lineCommand(
     number,
   y2:
     number,
+  shade =
+    '0.88 0.90 0.93',
 ) {
   return (
-    '0.88 0.90 0.93 RG 0.7 w ' +
+    shade +
+    ' RG 0.7 w ' +
     x1 +
     ' ' +
     y1 +
@@ -301,13 +449,100 @@ function lineCommand(
 }
 
 
-function pageContent(
+function rectCommand(
+  x:
+    number,
+  y:
+    number,
+  width:
+    number,
+  height:
+    number,
+  fill:
+    Rgb,
+) {
+  return (
+    rgb(
+      fill,
+    ) +
+    ' rg ' +
+    x +
+    ' ' +
+    y +
+    ' ' +
+    width +
+    ' ' +
+    height +
+    ' re f\n'
+  );
+}
+
+
+function drawWrapped(
+  input: {
+    x: number;
+    y: number;
+    value: unknown;
+    maxChars: number;
+    lineHeight: number;
+    size?: number;
+    bold?: boolean;
+    color?: Rgb;
+    maxLines?: number;
+  },
+) {
+  const lines =
+    wrap(
+      input.value,
+      input.maxChars,
+    )
+      .slice(
+        0,
+        input.maxLines ??
+          Number.MAX_SAFE_INTEGER,
+      );
+
+  let content =
+    '';
+
+  let y =
+    input.y;
+
+  for (
+    const line
+    of lines
+  ) {
+    content +=
+      textCommand(
+        input.x,
+        y,
+        line,
+        {
+          size:
+            input.size,
+          bold:
+            input.bold,
+          color:
+            input.color,
+        },
+      );
+
+    y -=
+      input.lineHeight;
+  }
+
+  return {
+    content,
+    y,
+    count:
+      lines.length,
+  };
+}
+
+
+function documentHeader(
   invoice:
     PdfInvoice,
-  pageLines:
-    PdfInvoice[
-      'lines'
-    ],
   pageIndex:
     number,
   pageCount:
@@ -327,225 +562,132 @@ function pageContent(
       '#0f172a',
     );
 
-  const compact =
-    invoice.template
-      .layout ===
-      'compact';
-
-  const boldLayout =
-    invoice.template
-      .layout ===
-      'bold';
-
   let content =
     '';
 
-  if (
-    invoice.template
-      .layout !==
-      'classic'
-  ) {
-    content +=
-      rgb(
-        primary,
-      ) +
-      ' rg 0 742 595 100 re f\n';
-
-    content +=
-      textCommand(
-        36,
-        795,
-        truncate(
-          invoice.company
-            .name,
-          42,
-        ),
-        {
-          size:
-            boldLayout
-              ? 24
-              : 20,
-          bold:
-            true,
-          color: [
-            1,
-            1,
-            1,
-          ],
-        },
-      );
-
-    content +=
-      textCommand(
-        36,
-        770,
-        'INVOICE',
-        {
-          size:
-            9,
-          bold:
-            true,
-          color: [
-            1,
-            1,
-            1,
-          ],
-        },
-      );
-
-    content +=
-      textCommand(
-        410,
-        790,
-        invoice.invoiceNumber,
-        {
-          size:
-            15,
-          bold:
-            true,
-          color: [
-            1,
-            1,
-            1,
-          ],
-        },
-      );
-  } else {
-    content +=
-      textCommand(
-        36,
-        795,
-        truncate(
-          invoice.company
-            .name,
-          42,
-        ),
-        {
-          size:
-            21,
-          bold:
-            true,
-          color:
-            primary,
-        },
-      );
-
-    content +=
-      textCommand(
-        410,
-        795,
-        invoice.invoiceNumber,
-        {
-          size:
-            14,
-          bold:
-            true,
-          color:
-            secondary,
-        },
-      );
-
-    content +=
-      lineCommand(
-        36,
-        770,
-        559,
-        770,
-      );
-  }
-
   content +=
-    textCommand(
-      36,
-      720,
-      'Bill to',
-      {
-        size:
-          8,
-        bold:
-          true,
-        color:
-          primary,
-      },
+    rectCommand(
+      0,
+      742,
+      595,
+      100,
+      primary,
     );
 
   content +=
     textCommand(
       36,
-      701,
+      802,
       truncate(
-        invoice.customer
+        invoice.company
           .name,
-        48,
+        46,
       ),
       {
         size:
-          12,
+          invoice.template
+            .layout ===
+            'bold'
+            ? 23
+            : 20,
         bold:
           true,
-        color:
-          secondary,
+        color: [
+          1,
+          1,
+          1,
+        ],
       },
     );
 
-  let customerY =
-    684;
-
-  if (
-    invoice.customer
-      .email
-  ) {
-    content +=
-      textCommand(
-        36,
-        customerY,
-        truncate(
-          invoice.customer
-            .email,
-          58,
-        ),
-        {
-          size:
-            8,
-        },
-      );
-
-    customerY -=
-      13;
-  }
-
-  if (
-    invoice.customer
-      .billingAddress
-  ) {
-    content +=
-      textCommand(
-        36,
-        customerY,
-        truncate(
-          invoice.customer
-            .billingAddress
-            .replace(
-              /\s+/g,
-              ' ',
-            ),
-          65,
-        ),
-        {
-          size:
-            8,
-        },
-      );
-  }
+  content +=
+    textCommand(
+      36,
+      777,
+      'INVOICE',
+      {
+        size:
+          9,
+        bold:
+          true,
+        color: [
+          1,
+          1,
+          1,
+        ],
+      },
+    );
 
   content +=
     textCommand(
-      355,
-      720,
-      'Invoice details',
+      390,
+      802,
+      truncate(
+        invoice.invoiceNumber,
+        26,
+      ),
+      {
+        size:
+          15,
+        bold:
+          true,
+        color: [
+          1,
+          1,
+          1,
+        ],
+      },
+    );
+
+  content +=
+    textCommand(
+      390,
+      780,
+      statusLabel(
+        invoice.status,
+      ),
       {
         size:
           8,
+        bold:
+          true,
+        color: [
+          1,
+          1,
+          1,
+        ],
+      },
+    );
+
+  content +=
+    textCommand(
+      510,
+      758,
+      (
+        pageIndex +
+        1
+      ) +
+      ' / ' +
+      pageCount,
+      {
+        size:
+          6.5,
+        color: [
+          1,
+          1,
+          1,
+        ],
+      },
+    );
+
+  content +=
+    textCommand(
+      36,
+      719,
+      'FROM',
+      {
+        size:
+          7,
         bold:
           true,
         color:
@@ -553,72 +695,8 @@ function pageContent(
       },
     );
 
-  content +=
-    textCommand(
-      355,
-      701,
-      'Issued: ' +
-      invoice.invoiceDate,
-      {
-        size:
-          9,
-      },
-    );
-
-  content +=
-    textCommand(
-      355,
-      685,
-      'Due: ' +
-      invoice.dueDate,
-      {
-        size:
-          9,
-      },
-    );
-
-  if (
-    invoice.reference
-  ) {
-    content +=
-      textCommand(
-        355,
-        669,
-        'Reference: ' +
-        truncate(
-          invoice.reference,
-          28,
-        ),
-        {
-          size:
-            8,
-        },
-      );
-  }
-
-  if (
-    invoice
-      .purchaseOrderNumber
-  ) {
-    content +=
-      textCommand(
-        355,
-        653,
-        'PO: ' +
-        truncate(
-          invoice
-            .purchaseOrderNumber,
-          34,
-        ),
-        {
-          size:
-            8,
-        },
-      );
-  }
-
-  let companyY =
-    632;
+  let fromY =
+    704;
 
   if (
     invoice.template
@@ -626,23 +704,30 @@ function pageContent(
     invoice.company
       .address
   ) {
-    content +=
-      textCommand(
-        36,
-        companyY,
-        truncate(
+    const address =
+      drawWrapped({
+        x:
+          36,
+        y:
+          fromY,
+        value:
           invoice.company
             .address,
-          84,
-        ),
-        {
-          size:
-            7,
-        },
-      );
+        maxChars:
+          54,
+        lineHeight:
+          10,
+        size:
+          7,
+        maxLines:
+          2,
+      });
 
-    companyY -=
-      12;
+    content +=
+      address.content;
+
+    fromY =
+      address.y;
   }
 
   if (
@@ -669,10 +754,10 @@ function pageContent(
       content +=
         textCommand(
           36,
-          companyY,
+          fromY,
           truncate(
             contact,
-            84,
+            70,
           ),
           {
             size:
@@ -680,26 +765,47 @@ function pageContent(
           },
         );
 
-      companyY -=
-        12;
+      fromY -=
+        10;
     }
   }
 
+  const legalIdentity =
+    [
+      (
+        invoice.template
+          .showTaxId &&
+        invoice.company
+          .taxId
+      )
+        ? 'PIN ' +
+          invoice.company
+            .taxId
+        : '',
+      invoice.company
+        .registrationNumber
+        ? 'Reg ' +
+          invoice.company
+            .registrationNumber
+        : '',
+    ]
+      .filter(
+        Boolean,
+      )
+      .join(
+        ' | ',
+      );
+
   if (
-    invoice.template
-      .showTaxId &&
-    invoice.company
-      .taxId
+    legalIdentity
   ) {
     content +=
       textCommand(
         36,
-        companyY,
-        'Tax / PIN: ' +
+        fromY,
         truncate(
-          invoice.company
-            .taxId,
-          50,
+          legalIdentity,
+          72,
         ),
         {
           size:
@@ -708,100 +814,357 @@ function pageContent(
       );
   }
 
-  const tableTop =
-    compact
-      ? 610
-      : 600;
+  content +=
+    textCommand(
+      36,
+      645,
+      'BILL TO',
+      {
+        size:
+          7,
+        bold:
+          true,
+        color:
+          primary,
+      },
+    );
 
   content +=
-    rgb(
+    textCommand(
+      36,
+      629,
+      truncate(
+        invoice.customer
+          .name,
+        48,
+      ),
+      {
+        size:
+          11,
+        bold:
+          true,
+        color:
+          secondary,
+      },
+    );
+
+  let billY =
+    614;
+
+  for (
+    const customerLine
+    of [
+      invoice.customer
+        .email,
+      invoice.customer
+        .phone,
+      invoice.customer
+        .taxId
+        ? 'Tax / PIN: ' +
+          invoice.customer
+            .taxId
+        : null,
+    ]
+  ) {
+    if (
+      customerLine
+    ) {
+      content +=
+        textCommand(
+          36,
+          billY,
+          truncate(
+            customerLine,
+            56,
+          ),
+          {
+            size:
+              7.5,
+          },
+        );
+
+      billY -=
+        11;
+    }
+  }
+
+  if (
+    invoice.customer
+      .billingAddress
+  ) {
+    const billingAddress =
+      drawWrapped({
+        x:
+          36,
+        y:
+          billY,
+        value:
+          invoice.customer
+            .billingAddress,
+        maxChars:
+          58,
+        lineHeight:
+          10,
+        size:
+          7,
+        maxLines:
+          2,
+      });
+
+    content +=
+      billingAddress
+        .content;
+  }
+
+  content +=
+    textCommand(
+      350,
+      719,
+      'INVOICE DETAILS',
+      {
+        size:
+          7,
+        bold:
+          true,
+        color:
+          primary,
+      },
+    );
+
+  const detailRows:
+    Array<
+      [
+        string,
+        string | null,
+      ]
+    > = [
+      [
+        'Issued',
+        invoice.invoiceDate,
+      ],
+      [
+        'Due',
+        invoice.dueDate,
+      ],
+      [
+        'Currency',
+        invoice.currency,
+      ],
+      [
+        'Payment terms',
+        invoice.paymentTermsName,
+      ],
+      [
+        'Tax mode',
+        invoice.taxCalculation,
+      ],
+      [
+        'Reference',
+        invoice.reference,
+      ],
+      [
+        'PO',
+        invoice.purchaseOrderNumber,
+      ],
+    ];
+
+  let detailY =
+    704;
+
+  for (
+    const [
+      label,
+      value,
+    ]
+    of detailRows
+  ) {
+    if (
+      !value
+    ) {
+      continue;
+    }
+
+    content +=
+      textCommand(
+        350,
+        detailY,
+        label +
+        ':',
+        {
+          size:
+            7,
+          bold:
+            true,
+          color:
+            secondary,
+        },
+      );
+
+    content +=
+      textCommand(
+        418,
+        detailY,
+        truncate(
+          value,
+          28,
+        ),
+        {
+          size:
+            7,
+        },
+      );
+
+    detailY -=
+      13;
+  }
+
+  return content;
+}
+
+
+function tableHeader(
+  invoice:
+    PdfInvoice,
+  y:
+    number,
+) {
+  const secondary =
+    color(
+      invoice.template
+        .secondaryColor,
+      '#0f172a',
+    );
+
+  let content =
+    '';
+
+  content +=
+    rectCommand(
+      36,
+      y -
+        18,
+      523,
+      22,
       secondary,
-    ) +
-    ' rg 36 ' +
-    (
-      tableTop -
-      18
-    ) +
-    ' 523 22 re f\n';
+    );
 
-  const white: readonly [
+  const white:
+    Rgb = [
+      1,
+      1,
+      1,
+    ];
+
+  const headers:
+    Array<
+      [
+        number,
+        string,
+      ]
+    > = [
+      [
+        42,
+        'Description',
+      ],
+      [
+        282,
+        'Qty',
+      ],
+      [
+        314,
+        'Unit',
+      ],
+      [
+        351,
+        'Price',
+      ],
+      [
+        407,
+        'Disc.',
+      ],
+      [
+        454,
+        'Tax',
+      ],
+      [
+        505,
+        'Amount',
+      ],
+    ];
+
+  for (
+    const [
+      x,
+      label,
+    ]
+    of headers
+  ) {
+    content +=
+      textCommand(
+        x,
+        y -
+          11,
+        label,
+        {
+          size:
+            6.5,
+          bold:
+            true,
+          color:
+            white,
+        },
+      );
+  }
+
+  return content;
+}
+
+
+function renderItemPage(
+  invoice:
+    PdfInvoice,
+  pageLines:
+    PdfInvoice[
+      'lines'
+    ],
+  pageIndex:
     number,
+  pageCount:
     number,
-    number,
-  ] = [
-    1,
-    1,
-    1,
-  ];
-
-  content +=
-    textCommand(
-      43,
-      tableTop -
-      11,
-      'Description',
-      {
-        size:
-          8,
-        bold:
-          true,
-        color:
-          white,
-      },
+  includeSummary:
+    boolean,
+  detailEntries:
+    string[],
+) {
+  const primary =
+    color(
+      invoice.template
+        .primaryColor,
+      '#164a9f',
     );
 
-  content +=
-    textCommand(
-      318,
-      tableTop -
-      11,
-      'Qty',
-      {
-        size:
-          8,
-        bold:
-          true,
-        color:
-          white,
-      },
+  const secondary =
+    color(
+      invoice.template
+        .secondaryColor,
+      '#0f172a',
     );
 
-  content +=
-    textCommand(
-      370,
-      tableTop -
-      11,
-      'Price',
-      {
-        size:
-          8,
-        bold:
-          true,
-        color:
-          white,
-      },
+  let content =
+    documentHeader(
+      invoice,
+      pageIndex,
+      pageCount,
     );
 
-  content +=
-    textCommand(
-      458,
-      tableTop -
-      11,
-      'Amount',
-      {
-        size:
-          8,
-        bold:
-          true,
-        color:
-          white,
-      },
-    );
+  const tableTop =
+    535;
 
-  const rowHeight =
-    compact
-      ? 21
-      : 25;
+  content +=
+    tableHeader(
+      invoice,
+      tableTop,
+    );
 
   let y =
     tableTop -
@@ -813,15 +1176,15 @@ function pageContent(
   ) {
     content +=
       textCommand(
-        43,
+        42,
         y,
         truncate(
           line.description,
-          48,
+          35,
         ),
         {
           size:
-            8,
+            7.5,
           bold:
             true,
         },
@@ -829,46 +1192,93 @@ function pageContent(
 
     content +=
       textCommand(
-        318,
+        282,
         y,
-        line.quantity,
+        amount(
+          line.quantity,
+        ),
         {
           size:
-            8,
+            6.8,
         },
       );
 
     content +=
       textCommand(
-        370,
+        314,
         y,
-        money(
+        truncate(
+          line.unit,
+          8,
+        ),
+        {
+          size:
+            6.8,
+        },
+      );
+
+    content +=
+      textCommand(
+        351,
+        y,
+        amount(
           line.unitPrice,
-          invoice.currency,
         ),
         {
           size:
-            8,
+            6.8,
         },
       );
 
     content +=
       textCommand(
-        458,
+        407,
         y,
-        money(
+        line.discountAmount >
+          0
+          ? amount(
+              line.discountAmount,
+            )
+          : '-',
+        {
+          size:
+            6.8,
+        },
+      );
+
+    content +=
+      textCommand(
+        454,
+        y,
+        line.taxRate >
+          0
+          ? amount(
+              line.taxRate,
+            ) +
+            '%'
+          : '-',
+        {
+          size:
+            6.8,
+        },
+      );
+
+    content +=
+      textCommand(
+        505,
+        y,
+        amount(
           line.lineTotal,
-          invoice.currency,
         ),
         {
           size:
-            8,
+            6.8,
           bold:
             true,
         },
       );
 
-    const details =
+    const subline =
       [
         line.sku
           ? 'SKU ' +
@@ -876,29 +1286,16 @@ function pageContent(
           : '',
         (
           invoice.template
-            .showDiscount &&
-          line.discountAmount >
-            0
-        )
-          ? 'Discount ' +
-            money(
-              line.discountAmount,
-              invoice.currency,
-            )
-          : '',
-        (
-          invoice.template
             .showTaxBreakdown &&
-          line.taxRate >
-            0
+          line.taxName
         )
-          ? (
-              line.taxName ||
-              'Tax'
+          ? 'Tax ' +
+            line.taxName +
+            ' (' +
+            amount(
+              line.taxAmount,
             ) +
-            ' ' +
-            line.taxRate +
-            '%'
+            ')'
           : '',
       ]
         .filter(
@@ -909,25 +1306,24 @@ function pageContent(
         );
 
     if (
-      details &&
-      !compact
+      subline
     ) {
       content +=
         textCommand(
-          43,
+          42,
           y -
-          10,
+            11,
           truncate(
-            details,
-            72,
+            subline,
+            80,
           ),
           {
             size:
-              6.5,
+              5.8,
             color: [
-              0.38,
-              0.42,
-              0.48,
+              0.40,
+              0.44,
+              0.50,
             ],
           },
         );
@@ -937,38 +1333,44 @@ function pageContent(
       lineCommand(
         36,
         y -
-        (
-          compact
-            ? 8
-            : 13
-        ),
+          17,
         559,
         y -
-        (
-          compact
-            ? 8
-            : 13
-        ),
+          17,
       );
 
     y -=
-      rowHeight;
+      31;
   }
 
   if (
-    pageIndex ===
-      pageCount -
-      1
+    includeSummary
   ) {
-    const totalsY =
-      Math.max(
-        150,
+    const summaryTop =
+      Math.min(
+        250,
         y -
-        16,
+          4,
       );
 
-    let ty =
-      totalsY;
+    content +=
+      textCommand(
+        350,
+        summaryTop +
+          13,
+        'FINANCIAL SUMMARY',
+        {
+          size:
+            7,
+          bold:
+            true,
+          color:
+            primary,
+        },
+      );
+
+    let sy =
+      summaryTop;
 
     const totalRow =
       (
@@ -976,49 +1378,49 @@ function pageContent(
           string,
         value:
           string,
-        bold =
-          false,
+        options: {
+          bold?: boolean;
+          color?: Rgb;
+        } = {},
       ) => {
         content +=
           textCommand(
-            370,
-            ty,
+            350,
+            sy,
             label,
             {
               size:
-                bold
-                  ? 10
-                  : 8,
-              bold,
+                options.bold
+                  ? 8.5
+                  : 7,
+              bold:
+                options.bold,
               color:
-                bold
-                  ? secondary
-                  : undefined,
+                options.color,
             },
           );
 
         content +=
           textCommand(
-            458,
-            ty,
+            470,
+            sy,
             value,
             {
               size:
-                bold
-                  ? 10
-                  : 8,
-              bold,
+                options.bold
+                  ? 8.5
+                  : 7,
+              bold:
+                options.bold,
               color:
-                bold
-                  ? primary
-                  : undefined,
+                options.color,
             },
           );
 
-        ty -=
-          bold
-            ? 19
-            : 15;
+        sy -=
+          options.bold
+            ? 16
+            : 13;
       };
 
     totalRow(
@@ -1059,7 +1461,7 @@ function pageContent(
     }
 
     if (
-      invoice.shippingTotal >
+      invoice.shippingTotal !==
         0
     ) {
       totalRow(
@@ -1071,14 +1473,60 @@ function pageContent(
       );
     }
 
+    if (
+      invoice.roundingAdjustment !==
+        0
+    ) {
+      totalRow(
+        'Rounding',
+        money(
+          invoice.roundingAdjustment,
+          invoice.currency,
+        ),
+      );
+    }
+
     totalRow(
       'Total',
       money(
         invoice.totalAmount,
         invoice.currency,
       ),
-      true,
+      {
+        bold:
+          true,
+        color:
+          secondary,
+      },
     );
+
+    if (
+      invoice.paidAmount >
+        0
+    ) {
+      totalRow(
+        'Paid',
+        '- ' +
+        money(
+          invoice.paidAmount,
+          invoice.currency,
+        ),
+      );
+    }
+
+    if (
+      invoice.creditedAmount >
+        0
+    ) {
+      totalRow(
+        'Credits',
+        '- ' +
+        money(
+          invoice.creditedAmount,
+          invoice.currency,
+        ),
+      );
+    }
 
     totalRow(
       'Balance due',
@@ -1086,103 +1534,62 @@ function pageContent(
         invoice.balanceDue,
         invoice.currency,
       ),
-      true,
+      {
+        bold:
+          true,
+        color:
+          primary,
+      },
     );
 
-    let noteY =
-      Math.max(
-        76,
-        totalsY -
-        5,
-      );
-
     if (
-      invoice.template
-        .showPaymentInstructions &&
-      invoice
-        .paymentInstructions
+      detailEntries.length >
+        0
     ) {
-      content +=
-        textCommand(
-          36,
-          noteY,
-          'Payment instructions',
-          {
-            size:
-              7,
-            bold:
-              true,
-            color:
-              primary,
-          },
+      let dy =
+        Math.min(
+          118,
+          sy -
+            4,
         );
 
-      content +=
-        textCommand(
-          36,
-          noteY -
-          13,
-          truncate(
-            invoice
-              .paymentInstructions
-              .replace(
-                /\s+/g,
-                ' ',
-              ),
-            78,
-          ),
-          {
-            size:
-              6.5,
-          },
-        );
+      for (
+        const entry
+        of detailEntries
+      ) {
+        const heading =
+          entry.startsWith(
+            '# ',
+          );
 
-      noteY -=
-        30;
-    }
+        content +=
+          textCommand(
+            36,
+            dy,
+            heading
+              ? entry.slice(
+                  2,
+                )
+              : entry,
+            {
+              size:
+                heading
+                  ? 6.5
+                  : 6,
+              bold:
+                heading,
+              color:
+                heading
+                  ? primary
+                  : undefined,
+            },
+          );
 
-    const terms =
-      invoice.template
-        .termsText ||
-      invoice.terms;
-
-    if (
-      terms &&
-      noteY >
-        45
-    ) {
-      content +=
-        textCommand(
-          36,
-          noteY,
-          'Terms',
-          {
-            size:
-              7,
-            bold:
-              true,
-            color:
-              primary,
-          },
-        );
-
-      content +=
-        textCommand(
-          36,
-          noteY -
-          13,
-          truncate(
-            terms.replace(
-              /\s+/g,
-              ' ',
-            ),
-            78,
-          ),
-          {
-            size:
-              6.5,
-          },
-        );
+        dy -=
+          heading
+            ? 11
+            : 9;
+      }
     }
   }
 
@@ -1192,16 +1599,24 @@ function pageContent(
     'Generated securely through SaMi';
 
   content +=
+    lineCommand(
+      36,
+      38,
+      559,
+      38,
+    );
+
+  content +=
     textCommand(
       36,
       24,
       truncate(
         footer,
-        72,
+        76,
       ),
       {
         size:
-          6.5,
+          6.2,
         color: [
           0.45,
           0.49,
@@ -1210,19 +1625,173 @@ function pageContent(
       },
     );
 
+  return content;
+}
+
+
+function supplementaryEntries(
+  invoice:
+    PdfInvoice,
+) {
+  const entries:
+    string[] =
+      [];
+
+  function add(
+    title:
+      string,
+    value:
+      string |
+      null |
+      undefined,
+  ) {
+    if (
+      !value
+    ) {
+      return;
+    }
+
+    entries.push(
+      '# ' +
+      title,
+    );
+
+    entries.push(
+      ...wrap(
+        value,
+        92,
+      ),
+    );
+  }
+
+  if (
+    invoice.template
+      .showPaymentInstructions
+  ) {
+    add(
+      'PAYMENT INSTRUCTIONS',
+      invoice
+        .paymentInstructions,
+    );
+  }
+
+  add(
+    'NOTES',
+    invoice.notes,
+  );
+
+  add(
+    'TERMS & CONDITIONS',
+    invoice.template
+      .termsText ||
+    invoice.terms,
+  );
+
+  return entries;
+}
+
+
+function renderSupplementPage(
+  invoice:
+    PdfInvoice,
+  entries:
+    string[],
+  pageIndex:
+    number,
+  pageCount:
+    number,
+) {
+  const primary =
+    color(
+      invoice.template
+        .primaryColor,
+      '#164a9f',
+    );
+
+  let content =
+    documentHeader(
+      invoice,
+      pageIndex,
+      pageCount,
+    );
+
   content +=
     textCommand(
-      505,
-      24,
-      (
-        pageIndex +
-        1
-      ) +
-      ' / ' +
-      pageCount,
+      36,
+      535,
+      'INVOICE NOTES & TERMS',
       {
         size:
-          6.5,
+          9,
+        bold:
+          true,
+        color:
+          primary,
+      },
+    );
+
+  let y =
+    510;
+
+  for (
+    const entry
+    of entries
+  ) {
+    const heading =
+      entry.startsWith(
+        '# ',
+      );
+
+    content +=
+      textCommand(
+        36,
+        y,
+        heading
+          ? entry.slice(
+              2,
+            )
+          : entry,
+        {
+          size:
+            heading
+              ? 7.5
+              : 7,
+          bold:
+            heading,
+          color:
+            heading
+              ? primary
+              : undefined,
+        },
+      );
+
+    y -=
+      heading
+        ? 16
+        : 12;
+  }
+
+  content +=
+    lineCommand(
+      36,
+      38,
+      559,
+      38,
+    );
+
+  content +=
+    textCommand(
+      36,
+      24,
+      truncate(
+        invoice.template
+          .footerText ||
+        'Generated securely through SaMi',
+        76,
+      ),
+      {
+        size:
+          6.2,
         color: [
           0.45,
           0.49,
@@ -1239,18 +1808,14 @@ export function renderInvoicePdf(
   invoice:
     PdfInvoice,
 ) {
-  const perPage =
-    invoice.template
-      .layout ===
-      'compact'
-      ? 22
-      : 18;
-
-  const pages:
+  const itemChunks:
     PdfInvoice[
       'lines'
     ][] =
       [];
+
+  const perPage =
+    8;
 
   for (
     let index =
@@ -1260,23 +1825,115 @@ export function renderInvoicePdf(
     index +=
       perPage
   ) {
-    pages.push(
+    itemChunks.push(
       invoice.lines.slice(
         index,
         index +
-        perPage,
+          perPage,
       ),
     );
   }
 
   if (
-    pages.length ===
+    itemChunks.length ===
       0
   ) {
-    pages.push(
+    itemChunks.push(
       [],
     );
   }
+
+  const details =
+    supplementaryEntries(
+      invoice,
+    );
+
+  const inlineDetailLimit =
+    7;
+
+  const inlineDetails =
+    details.slice(
+      0,
+      inlineDetailLimit,
+    );
+
+  const remainingDetails =
+    details.slice(
+      inlineDetailLimit,
+    );
+
+  const detailChunks:
+    string[][] =
+      [];
+
+  const detailPerPage =
+    33;
+
+  for (
+    let index =
+      0;
+    index <
+      remainingDetails.length;
+    index +=
+      detailPerPage
+  ) {
+    detailChunks.push(
+      remainingDetails.slice(
+        index,
+        index +
+          detailPerPage,
+      ),
+    );
+  }
+
+  const pageCount =
+    itemChunks.length +
+    detailChunks.length;
+
+  const streams:
+    string[] =
+      [];
+
+  itemChunks.forEach(
+    (
+      lines,
+      index,
+    ) => {
+      streams.push(
+        renderItemPage(
+          invoice,
+          lines,
+          index,
+          pageCount,
+          index ===
+            itemChunks.length -
+              1,
+          index ===
+            itemChunks.length -
+              1
+            ? inlineDetails
+            : [],
+        ),
+      );
+    },
+  );
+
+  detailChunks.forEach(
+    (
+      entries,
+      index,
+    ) => {
+      streams.push(
+        renderSupplementPage(
+          invoice,
+          entries,
+          itemChunks.length +
+            index,
+          pageCount,
+        ),
+      );
+    },
+  );
 
   const objects =
     new Map<
@@ -1285,9 +1942,9 @@ export function renderInvoicePdf(
     >();
 
   const pageIds =
-    pages.map(
+    streams.map(
       (
-        _page,
+        _stream,
         index,
       ) =>
         5 +
@@ -1313,7 +1970,7 @@ export function renderInvoicePdf(
         ' ',
       ) +
     '] /Count ' +
-    pages.length +
+    streams.length +
     ' >>',
   );
 
@@ -1327,9 +1984,9 @@ export function renderInvoicePdf(
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>',
   );
 
-  pages.forEach(
+  streams.forEach(
     (
-      lines,
+      stream,
       index,
     ) => {
       const pageId =
@@ -1338,14 +1995,6 @@ export function renderInvoicePdf(
       const contentId =
         pageId +
         1;
-
-      const stream =
-        pageContent(
-          invoice,
-          lines,
-          index,
-          pages.length,
-        );
 
       objects.set(
         pageId,
@@ -1379,7 +2028,7 @@ export function renderInvoicePdf(
   const offsets =
     new Array<number>(
       maxId +
-      1,
+        1,
     )
       .fill(
         0,
@@ -1428,7 +2077,7 @@ export function renderInvoicePdf(
     'xref\n0 ' +
     (
       maxId +
-      1
+        1
     ) +
     '\n';
 
@@ -1458,7 +2107,7 @@ export function renderInvoicePdf(
     'trailer\n<< /Size ' +
     (
       maxId +
-      1
+        1
     ) +
     ' /Root 1 0 R >>\n' +
     'startxref\n' +

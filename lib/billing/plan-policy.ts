@@ -318,7 +318,7 @@ export const SAMI_PLAN_POLICIES:
           unit:
             'queries/user/month',
           label:
-            'Advanced AI allowance with cost controls.',
+            'No monthly plan cap. Usage is metered for service protection and cost visibility.',
         },
       },
       automation: {

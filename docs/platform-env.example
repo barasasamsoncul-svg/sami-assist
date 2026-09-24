@@ -70,11 +70,9 @@ CRON_SECRET=<generate-another-long-random-secret>
 # Free and Standard AI query allowances are fixed by the SaMi plan
 # policy (100 and 1,000 queries/user/month respectively).
 #
-# Custom AI is cost-controlled. Leave blank to meter usage without
-# imposing a fixed query ceiling, or set a positive integer as an
-# operational monthly guardrail.
-#
-SAMI_USAGE_CUSTOM_AI_MONTHLY_QUERIES_PER_USER=
+# Custom AI has no customer-facing monthly plan cap.
+# Usage is still metered for operational visibility and protected by
+# short-window service safeguards configured in the SaMi AI runtime.
 #
 # Cloud storage is always metered. These optional byte values add
 # hard workspace storage ceilings per plan. Blank means the resource

@@ -79,6 +79,8 @@ export async function getPublicInvoice(
           i.currency,
           i.reference,
           i.purchase_order_number,
+          i.payment_terms_name_snapshot,
+          i.tax_calculation,
           i.subtotal,
           i.discount_total,
           i.tax_total,
@@ -99,10 +101,20 @@ export async function getPublicInvoice(
           )
             AS customer_email,
           COALESCE(
+            i.bill_to_phone,
+            c.phone
+          )
+            AS customer_phone,
+          COALESCE(
             i.bill_to_address,
             c.billing_address
           )
             AS billing_address,
+          COALESCE(
+            i.bill_to_tax_id,
+            c.tax_id
+          )
+            AS customer_tax_id,
           company.name
             AS company_name,
           company.legal_name
@@ -182,7 +194,7 @@ export async function getPublicInvoice(
 
   const [
     lines,
-    balance,
+    settlement,
   ] =
     await Promise.all([
       pool.query(
@@ -213,9 +225,45 @@ export async function getPublicInvoice(
       pool.query(
         `
           SELECT
-            balance_due
-          FROM invoicing_aging
-          WHERE invoice_id =
+            a.balance_due,
+            COALESCE(
+              (
+                SELECT SUM(
+                  allocation.amount
+                )
+                FROM invoicing_payment_allocations allocation
+                INNER JOIN invoicing_payments payment
+                  ON payment.id =
+                     allocation.payment_id
+                WHERE allocation.invoice_id =
+                      a.invoice_id
+                  AND payment.status =
+                      'posted'
+                  AND payment.deleted_at
+                      IS NULL
+              ),
+              0
+            ) AS paid_amount,
+            COALESCE(
+              (
+                SELECT SUM(
+                  credit.total_amount
+                )
+                FROM invoicing_credit_notes credit
+                WHERE credit.invoice_id =
+                      a.invoice_id
+                  AND credit.status IN (
+                    'issued',
+                    'applied',
+                    'refunded'
+                  )
+                  AND credit.deleted_at
+                      IS NULL
+              ),
+              0
+            ) AS credited_amount
+          FROM invoicing_aging a
+          WHERE a.invoice_id =
                 $1
           LIMIT 1
         `,
@@ -299,6 +347,17 @@ export async function getPublicInvoice(
             invoice.purchase_order_number,
           )
         : null,
+    paymentTermsName:
+      invoice.payment_terms_name_snapshot
+        ? String(
+            invoice.payment_terms_name_snapshot,
+          )
+        : null,
+    taxCalculation:
+      invoice.tax_calculation ===
+        'inclusive'
+        ? 'inclusive'
+        : 'exclusive',
     subtotal:
       money(
         invoice.subtotal,
@@ -323,6 +382,16 @@ export async function getPublicInvoice(
       money(
         invoice.total_amount,
       ),
+    paidAmount:
+      money(
+        settlement.rows[0]
+          ?.paid_amount,
+      ),
+    creditedAmount:
+      money(
+        settlement.rows[0]
+          ?.credited_amount,
+      ),
     balanceDue:
       [
         'cancelled',
@@ -335,7 +404,7 @@ export async function getPublicInvoice(
       )
         ? 0
         : money(
-            balance.rows[0]
+            settlement.rows[0]
               ?.balance_due,
           ),
     notes:
@@ -366,6 +435,18 @@ export async function getPublicInvoice(
         invoice.customer_email
           ? String(
               invoice.customer_email,
+            )
+          : null,
+      phone:
+        invoice.customer_phone
+          ? String(
+              invoice.customer_phone,
+            )
+          : null,
+      taxId:
+        invoice.customer_tax_id
+          ? String(
+              invoice.customer_tax_id,
             )
           : null,
       billingAddress:

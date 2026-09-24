@@ -1324,3 +1324,92 @@ test('Invoicing financial correction SQL keeps actor IDs typed as UUID while sto
     'Credit-note cancellation must not infer the actor parameter as text before assigning it to updated_by UUID.',
   );
 });
+
+
+test('Invoice attachment PDF carries the complete billing and settlement snapshot with continuation-safe layout', async () => {
+  const [
+    publicInvoice,
+    pdf,
+    publicPage,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/public.ts'),
+    source('lib/apps/invoicing/pdf.ts'),
+    source('app/i/[tenantId]/[token]/page.tsx'),
+  ]);
+
+  for (const field of [
+    'payment_terms_name_snapshot',
+    'tax_calculation',
+    'customer_phone',
+    'customer_tax_id',
+    'paid_amount',
+    'credited_amount',
+    'rounding_adjustment',
+    'registration_number',
+  ]) {
+    assert.match(
+      publicInvoice,
+      new RegExp(field),
+      'Public invoice payload must include ' + field + '.',
+    );
+  }
+
+  for (const label of [
+    'INVOICE DETAILS',
+    'BILL TO',
+    'Payment terms',
+    'Tax mode',
+    'Disc.',
+    'FINANCIAL SUMMARY',
+    'Rounding',
+    'Paid',
+    'Credits',
+    'Balance due',
+    'PAYMENT INSTRUCTIONS',
+    'NOTES',
+    'TERMS & CONDITIONS',
+    'INVOICE NOTES & TERMS',
+  ]) {
+    assert.match(
+      pdf,
+      new RegExp(label.replace(/[.*+?^$\{\}()|[\]\\]/g, '\\$&')),
+      'PDF renderer must include ' + label + '.',
+    );
+  }
+
+  assert.match(
+    pdf,
+    /customer:[\s\S]*phone: string \| null;[\s\S]*taxId: string \| null;/s,
+  );
+
+  assert.match(
+    pdf,
+    /paidAmount: number;[\s\S]*creditedAmount: number;[\s\S]*balanceDue: number;/s,
+  );
+
+  assert.match(
+    pdf,
+    /detailChunks/,
+    'Long payment instructions, notes and terms must continue onto additional pages instead of being silently dropped.',
+  );
+
+  assert.match(
+    publicPage,
+    /Payment terms:/,
+  );
+
+  assert.match(
+    publicPage,
+    /Tax mode:/,
+  );
+
+  assert.match(
+    publicPage,
+    /label="Paid"/,
+  );
+
+  assert.match(
+    publicPage,
+    /label="Credits"/,
+  );
+});
