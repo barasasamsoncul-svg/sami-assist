@@ -103,10 +103,18 @@ test('responsive shell: common controls stay in the top bar and page actions ref
 });
 
 test('responsive shell: SaMi AI owns a dedicated collapsible chat sidebar instead of the workspace shell', async () => {
-  const [page, client, aiSidebar] = await Promise.all([
+  const [
+    page,
+    client,
+    aiSidebar,
+    usagePanel,
+    usageSummary,
+  ] = await Promise.all([
     source('app/ai/page.tsx'),
     source('app/components/workspace/WorkspaceAiClient.tsx'),
     source('app/components/ai/SamiAiSidebar.tsx'),
+    source('app/components/ai/SamiAiUsagePanel.tsx'),
+    source('app/components/ai/SamiAiUsageSummary.tsx'),
   ]);
 
   assert.doesNotMatch(
@@ -168,7 +176,20 @@ test('responsive shell: SaMi AI owns a dedicated collapsible chat sidebar instea
 
   assert.match(
     client,
-    /PerformancePanel/,
+    /SamiAiUsagePanel/,
+    'Usage, capabilities and service activity must remain available from the responsive SaMi AI workspace.',
+  );
+
+  assert.match(
+    usagePanel,
+    /max-h-\[78dvh\] overflow-y-auto/,
+    'The usage overlay must remain scrollable on short mobile viewports.',
+  );
+
+  assert.match(
+    usageSummary,
+    /grid grid-cols-2 gap-3 lg:grid-cols-4/,
+    'Service activity cards must reflow from two columns to four columns.',
   );
 
   assert.match(
