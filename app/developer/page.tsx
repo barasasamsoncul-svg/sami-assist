@@ -33,6 +33,7 @@ import {
   getWorkspaceDeveloperState,
 } from '@/lib/services/workspace-developer';
 
+import DeveloperApiOverview from './DeveloperApiOverview';
 import DeveloperClient from './DeveloperClient';
 
 export const runtime =
@@ -145,7 +146,7 @@ export default async function DeveloperPage() {
           true,
       }}
       title="Developer Access"
-      description="Create company-scoped API credentials, control their authority and review API usage without exposing SaMi infrastructure."
+      description="Connect approved external systems to SaMi with company-scoped API credentials, explicit scopes and auditable request boundaries."
       contextLabel={
         account.tenant
           ?.name ||
@@ -153,6 +154,8 @@ export default async function DeveloperPage() {
       }
       contentClassName="max-w-[1540px]"
     >
+      <DeveloperApiOverview />
+
       <DeveloperClient
         initialState={
           initialState
