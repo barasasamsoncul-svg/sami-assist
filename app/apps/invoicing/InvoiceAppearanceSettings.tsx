@@ -15,7 +15,7 @@ type Submitter = (
     Record<string, unknown>,
   message:
     string,
-) => Promise<void>;
+) => Promise<boolean>;
 
 
 function TemplateFields({
@@ -339,7 +339,7 @@ async function submitTemplate(
       form,
     );
 
-  await run(
+  return run(
     {
       action:
         'save_template',
@@ -468,14 +468,24 @@ export default function InvoiceAppearanceSettings({
         <form
           className="border-t border-[var(--sami-border)] p-4"
           onSubmit={
-            event => {
+            async event => {
               event.preventDefault();
 
-              void submitTemplate(
-                event.currentTarget,
-                run,
-                null,
-              );
+              const element =
+                event.currentTarget;
+
+              const saved =
+                await submitTemplate(
+                  element,
+                  run,
+                  null,
+                );
+
+              if (
+                saved
+              ) {
+                element.reset();
+              }
             }
           }
         >

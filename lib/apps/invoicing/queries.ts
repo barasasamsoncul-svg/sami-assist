@@ -366,14 +366,25 @@ export async function getInvoicingWorkspaceData():
         `
           SELECT
             c.id,
+            c.customer_type,
             c.name,
+            c.legal_name,
             c.contact_name,
             c.email,
             c.phone,
             c.billing_address,
+            c.shipping_address,
+            c.city,
+            c.state,
+            c.postal_code,
+            c.country,
+            c.country_code,
             c.tax_id,
+            c.registration_number,
             c.currency,
             c.payment_terms_id,
+            c.credit_limit,
+            c.notes,
             pt.name
               AS payment_terms_name,
             pt.due_days,
@@ -561,15 +572,15 @@ export async function getInvoicingWorkspaceData():
           SELECT
             id,
             name,
+            description,
             due_days,
-            is_default
+            is_default,
+            is_active
           FROM invoicing_payment_terms
           WHERE company_id =
                 $1
             AND deleted_at
                 IS NULL
-            AND is_active =
-                TRUE
           ORDER BY
             is_default DESC,
             sort_order ASC,
@@ -586,14 +597,15 @@ export async function getInvoicingWorkspaceData():
             id,
             name,
             rate,
-            is_default
+            tax_type,
+            country_code,
+            is_default,
+            is_active
           FROM invoicing_tax_rates
           WHERE company_id =
                 $1
             AND deleted_at
                 IS NULL
-            AND is_active =
-                TRUE
           ORDER BY
             is_default DESC,
             LOWER(name) ASC
@@ -614,6 +626,7 @@ export async function getInvoicingWorkspaceData():
             item.unit,
             item.unit_price,
             item.default_tax_rate_id,
+            item.is_active,
             tax.name
               AS tax_rate_name,
             COALESCE(
@@ -633,8 +646,6 @@ export async function getInvoicingWorkspaceData():
                 $1
             AND item.deleted_at
                 IS NULL
-            AND item.is_active =
-                TRUE
           ORDER BY
             LOWER(item.name) ASC
           LIMIT 500
@@ -883,10 +894,21 @@ export async function getInvoicingWorkspaceData():
             String(
               row.id,
             ),
+          customerType:
+            String(
+              row.customer_type ||
+              'company',
+            ),
           name:
             String(
               row.name,
             ),
+          legalName:
+            row.legal_name
+              ? String(
+                  row.legal_name,
+                )
+              : null,
           contactName:
             row.contact_name
               ? String(
@@ -911,10 +933,52 @@ export async function getInvoicingWorkspaceData():
                   row.billing_address,
                 )
               : null,
+          shippingAddress:
+            row.shipping_address
+              ? String(
+                  row.shipping_address,
+                )
+              : null,
+          city:
+            row.city
+              ? String(
+                  row.city,
+                )
+              : null,
+          state:
+            row.state
+              ? String(
+                  row.state,
+                )
+              : null,
+          postalCode:
+            row.postal_code
+              ? String(
+                  row.postal_code,
+                )
+              : null,
+          country:
+            row.country
+              ? String(
+                  row.country,
+                )
+              : null,
+          countryCode:
+            row.country_code
+              ? String(
+                  row.country_code,
+                )
+              : null,
           taxId:
             row.tax_id
               ? String(
                   row.tax_id,
+                )
+              : null,
+          registrationNumber:
+            row.registration_number
+              ? String(
+                  row.registration_number,
                 )
               : null,
           currency:
@@ -942,6 +1006,21 @@ export async function getInvoicingWorkspaceData():
               : Number(
                   row.due_days,
                 ),
+          creditLimit:
+            row.credit_limit ===
+              null ||
+            row.credit_limit ===
+              undefined
+              ? null
+              : money(
+                  row.credit_limit,
+                ),
+          notes:
+            row.notes
+              ? String(
+                  row.notes,
+                )
+              : null,
           status:
             String(
               row.status,
@@ -1170,6 +1249,12 @@ export async function getInvoicingWorkspaceData():
             String(
               row.name,
             ),
+          description:
+            row.description
+              ? String(
+                  row.description,
+                )
+              : null,
           dueDays:
             Number(
               row.due_days ||
@@ -1178,6 +1263,9 @@ export async function getInvoicingWorkspaceData():
           isDefault:
             row.is_default ===
             true,
+          isActive:
+            row.is_active !==
+            false,
         }),
       ),
 
@@ -1196,9 +1284,23 @@ export async function getInvoicingWorkspaceData():
             money(
               row.rate,
             ),
+          taxType:
+            String(
+              row.tax_type ||
+              'vat',
+            ),
+          countryCode:
+            row.country_code
+              ? String(
+                  row.country_code,
+                )
+              : null,
           isDefault:
             row.is_default ===
             true,
+          isActive:
+            row.is_active !==
+            false,
         }),
       ),
 
@@ -1255,6 +1357,9 @@ export async function getInvoicingWorkspaceData():
             money(
               row.tax_rate,
             ),
+          isActive:
+            row.is_active !==
+            false,
         }),
       ),
 

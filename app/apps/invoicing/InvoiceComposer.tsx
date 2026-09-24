@@ -36,7 +36,7 @@ type ComposerLine = {
 type Submitter = (
   payload: Record<string, unknown>,
   message: string,
-) => Promise<void>;
+) => Promise<boolean>;
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -82,7 +82,9 @@ function emptyLine(
 ): ComposerLine {
   const tax =
     data.taxRates.find(
-      item => item.isDefault,
+      item =>
+        item.isDefault &&
+        item.isActive,
     );
 
   return {
@@ -131,10 +133,12 @@ function detailLines(
 export default function InvoiceComposer({
   data,
   run,
+  pending = false,
   invoice = null,
 }: {
   data: InvoicingWorkspaceData;
   run: Submitter;
+  pending?: boolean;
   invoice?: InvoicingInvoiceDetail | null;
 }) {
   const editing = Boolean(invoice);
@@ -564,14 +568,80 @@ export default function InvoiceComposer({
         ),
     };
 
-    await run(
-      payload,
-      editing
-        ? 'Invoice draft updated.'
-        : confirm
-          ? 'Invoice created and confirmed.'
-          : 'Invoice draft created.',
-    );
+    const saved =
+      await run(
+        payload,
+        editing
+          ? 'Invoice draft updated.'
+          : confirm
+            ? 'Invoice created and confirmed.'
+            : 'Invoice draft created.',
+      );
+
+    if (
+      saved &&
+      !editing
+    ) {
+      const nextDate =
+        today();
+
+      setCustomerId(
+        '',
+      );
+      setInvoiceDate(
+        nextDate,
+      );
+      setDueDate(
+        plusDays(
+          nextDate,
+          data.settings
+            .defaultDueDays,
+        ),
+      );
+      setCurrency(
+        data.settings
+          .defaultCurrency ||
+        data.company
+          .currency,
+      );
+      setTemplateId(
+        data.settings
+          .defaultTemplateId ||
+        data.templates.find(
+          template =>
+            template.isDefault,
+        )?.id ||
+        data.templates[0]?.id ||
+        '',
+      );
+      setReference(
+        '',
+      );
+      setPurchaseOrderNumber(
+        '',
+      );
+      setShippingTotal(
+        0,
+      );
+      setRoundingAdjustment(
+        0,
+      );
+      setNotes(
+        '',
+      );
+      setTerms(
+        data.settings
+          .termsAndConditions ||
+        '',
+      );
+      setLines(
+        [
+          emptyLine(
+            data,
+          ),
+        ],
+      );
+    }
   }
 
   const invalid =
@@ -934,7 +1004,14 @@ export default function InvoiceComposer({
                                 Custom line
                               </option>
                               {
-                                data.catalogItems.map(
+                                data.catalogItems
+                                  .filter(
+                                    item =>
+                                      item.isActive ||
+                                      item.id ===
+                                        line.catalogItemId,
+                                  )
+                                  .map(
                                   item => (
                                     <option
                                       key={item.id}
@@ -1141,7 +1218,14 @@ export default function InvoiceComposer({
                                 No tax
                               </option>
                               {
-                                data.taxRates.map(
+                                data.taxRates
+                                  .filter(
+                                    tax =>
+                                      tax.isActive ||
+                                      tax.id ===
+                                        line.taxRateId,
+                                  )
+                                  .map(
                                   tax => (
                                     <option
                                       key={tax.id}
@@ -1370,7 +1454,10 @@ export default function InvoiceComposer({
             <div className="mt-4 grid gap-2">
               <button
                 type="button"
-                disabled={invalid}
+                disabled={
+                  invalid ||
+                  pending
+                }
                 onClick={
                   () =>
                     submit(false)
@@ -1391,7 +1478,10 @@ export default function InvoiceComposer({
                 (
                   <button
                     type="button"
-                    disabled={invalid}
+                    disabled={
+                  invalid ||
+                  pending
+                }
                     onClick={
                       () =>
                         submit(true)
@@ -1412,7 +1502,10 @@ export default function InvoiceComposer({
         <div className="mx-auto flex max-w-lg gap-2">
           <button
             type="button"
-            disabled={invalid}
+            disabled={
+                  invalid ||
+                  pending
+                }
             onClick={
               () =>
                 submit(false)
@@ -1429,7 +1522,10 @@ export default function InvoiceComposer({
             (
               <button
                 type="button"
-                disabled={invalid}
+                disabled={
+                  invalid ||
+                  pending
+                }
                 onClick={
                   () =>
                     submit(true)

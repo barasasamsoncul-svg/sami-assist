@@ -11,6 +11,14 @@ import {
   createInvoicingCustomer,
   createInvoicingPaymentTerm,
   createInvoicingTaxRate,
+  setInvoicingCatalogItemActive,
+  setInvoicingCustomerStatus,
+  setInvoicingPaymentTermActive,
+  setInvoicingTaxRateActive,
+  updateInvoicingCatalogItem,
+  updateInvoicingCustomer,
+  updateInvoicingPaymentTerm,
+  updateInvoicingTaxRate,
   createRecurringInvoiceTemplate,
   getInvoicingInvoiceDetail,
   getInvoicingWorkspaceData,
@@ -18,6 +26,7 @@ import {
   recordInvoicePayment,
   saveInvoicingTemplate,
   sendInvoiceToCustomer,
+  setRecurringInvoiceTemplateStatus,
   updateInvoiceDraft,
   updateInvoicingSettings,
 } from '@/lib/apps/invoicing/service';
@@ -117,7 +126,15 @@ function handleError(
               : error.code ===
                   'INVOICE_STATE_INVALID' ||
                 error.code ===
-                  'PAYMENT_EXCEEDS_BALANCE'
+                  'PAYMENT_EXCEEDS_BALANCE' ||
+                error.code ===
+                  'DUPLICATE_CUSTOMER' ||
+                error.code ===
+                  'DUPLICATE_CATALOG_ITEM' ||
+                error.code ===
+                  'DUPLICATE_PAYMENT_TERM' ||
+                error.code ===
+                  'DUPLICATE_TAX_RATE'
                 ? 409
                 : 400;
 
@@ -312,9 +329,37 @@ export async function POST(
           );
         break;
 
+      case 'update_customer':
+        result =
+          await updateInvoicingCustomer(
+            payload,
+          );
+        break;
+
+      case 'set_customer_status':
+        result =
+          await setInvoicingCustomerStatus(
+            payload,
+          );
+        break;
+
       case 'create_catalog_item':
         result =
           await createInvoicingCatalogItem(
+            payload,
+          );
+        break;
+
+      case 'update_catalog_item':
+        result =
+          await updateInvoicingCatalogItem(
+            payload,
+          );
+        break;
+
+      case 'set_catalog_item_active':
+        result =
+          await setInvoicingCatalogItemActive(
             payload,
           );
         break;
@@ -326,9 +371,37 @@ export async function POST(
           );
         break;
 
+      case 'update_payment_term':
+        result =
+          await updateInvoicingPaymentTerm(
+            payload,
+          );
+        break;
+
+      case 'set_payment_term_active':
+        result =
+          await setInvoicingPaymentTermActive(
+            payload,
+          );
+        break;
+
       case 'create_tax_rate':
         result =
           await createInvoicingTaxRate(
+            payload,
+          );
+        break;
+
+      case 'update_tax_rate':
+        result =
+          await updateInvoicingTaxRate(
+            payload,
+          );
+        break;
+
+      case 'set_tax_rate_active':
+        result =
+          await setInvoicingTaxRateActive(
             payload,
           );
         break;
@@ -385,6 +458,13 @@ export async function POST(
       case 'create_recurring':
         result =
           await createRecurringInvoiceTemplate(
+            payload,
+          );
+        break;
+
+      case 'set_recurring_status':
+        result =
+          await setRecurringInvoiceTemplateStatus(
             payload,
           );
         break;

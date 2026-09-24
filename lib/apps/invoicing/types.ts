@@ -30,16 +30,27 @@ export type InvoicingInvoiceSummary = {
 
 export type InvoicingCustomerSummary = {
   id: string;
+  customerType: string;
   name: string;
+  legalName: string | null;
   contactName: string | null;
   email: string | null;
   phone: string | null;
   billingAddress: string | null;
+  shippingAddress: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
+  countryCode: string | null;
   taxId: string | null;
+  registrationNumber: string | null;
   currency: string;
   paymentTermsId: string | null;
   paymentTermsName: string | null;
   dueDays: number | null;
+  creditLimit: number | null;
+  notes: string | null;
   status: string;
   invoiceCount: number;
   invoicedTotal: number;
@@ -58,6 +69,7 @@ export type InvoicingCatalogItemSummary = {
   taxRateId: string | null;
   taxRateName: string | null;
   taxRate: number;
+  isActive: boolean;
 };
 
 export type InvoicingTemplateSummary = {
@@ -226,8 +238,23 @@ export type InvoicingWorkspaceData = {
   payments: InvoicingPaymentSummary[];
   recurring: InvoicingRecurringSummary[];
   templates: InvoicingTemplateSummary[];
-  paymentTerms: Array<{ id: string; name: string; dueDays: number; isDefault: boolean }>;
-  taxRates: Array<{ id: string; name: string; rate: number; isDefault: boolean }>;
+  paymentTerms: Array<{
+    id: string;
+    name: string;
+    description: string | null;
+    dueDays: number;
+    isDefault: boolean;
+    isActive: boolean;
+  }>;
+  taxRates: Array<{
+    id: string;
+    name: string;
+    rate: number;
+    taxType: string;
+    countryCode: string | null;
+    isDefault: boolean;
+    isActive: boolean;
+  }>;
   catalogItems: InvoicingCatalogItemSummary[];
   settings: {
     defaultCurrency: string;

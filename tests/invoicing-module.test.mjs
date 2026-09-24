@@ -748,6 +748,111 @@ test('Invoicing v2.2 owns professional document appearance and delivery without 
 });
 
 
+test('Invoicing master data behaves like a product: duplicate-safe creates, edit lifecycle, form reset and financial double-submit protection', async () => {
+  const [
+    context,
+    commands,
+    service,
+    api,
+    workspace,
+    composer,
+    appearance,
+    detail,
+    queries,
+    types,
+  ] = await Promise.all([
+    source('lib/apps/invoicing/context.ts'),
+    source('lib/apps/invoicing/commands.ts'),
+    source('lib/apps/invoicing/service.ts'),
+    source('app/api/apps/invoicing/route.ts'),
+    source('app/apps/invoicing/InvoicingWorkspaceClient.tsx'),
+    source('app/apps/invoicing/InvoiceComposer.tsx'),
+    source('app/apps/invoicing/InvoiceAppearanceSettings.tsx'),
+    source('app/apps/invoicing/[invoiceId]/InvoiceDetailClient.tsx'),
+    source('lib/apps/invoicing/queries.ts'),
+    source('lib/apps/invoicing/types.ts'),
+  ]);
+
+  for (const code of [
+    'DUPLICATE_CUSTOMER',
+    'DUPLICATE_CATALOG_ITEM',
+    'DUPLICATE_PAYMENT_TERM',
+    'DUPLICATE_TAX_RATE',
+  ]) {
+    assert.match(context, new RegExp(code));
+    assert.match(api, new RegExp(code));
+  }
+
+  assert.match(commands, /pg_advisory_xact_lock/);
+  assert.match(commands, /This customer already exists/);
+  assert.match(commands, /This invoice item already exists/);
+  assert.match(commands, /This payment reference has already been posted/);
+  assert.match(commands, /updateInvoicingCustomer/);
+  assert.match(commands, /setInvoicingCustomerStatus/);
+  assert.match(commands, /updateInvoicingCatalogItem/);
+  assert.match(commands, /setInvoicingCatalogItemActive/);
+  assert.match(commands, /updateInvoicingPaymentTerm/);
+  assert.match(commands, /setInvoicingPaymentTermActive/);
+  assert.match(commands, /updateInvoicingTaxRate/);
+  assert.match(commands, /setInvoicingTaxRateActive/);
+  assert.match(commands, /setRecurringInvoiceTemplateStatus/);
+  assert.match(commands, /An invoice appearance template with this name already exists/);
+  assert.match(commands, /A recurring invoice schedule with this name already exists/);
+
+  for (const exported of [
+    'updateInvoicingCustomer',
+    'setInvoicingCustomerStatus',
+    'updateInvoicingCatalogItem',
+    'setInvoicingCatalogItemActive',
+    'updateInvoicingPaymentTerm',
+    'setInvoicingPaymentTermActive',
+    'updateInvoicingTaxRate',
+    'setInvoicingTaxRateActive',
+    'setRecurringInvoiceTemplateStatus',
+  ]) {
+    assert.match(service, new RegExp(exported));
+  }
+
+  for (const action of [
+    'update_customer',
+    'set_customer_status',
+    'update_catalog_item',
+    'set_catalog_item_active',
+    'update_payment_term',
+    'set_payment_term_active',
+    'update_tax_rate',
+    'set_tax_rate_active',
+    'set_recurring_status',
+  ]) {
+    assert.match(api, new RegExp(action));
+  }
+
+  assert.match(workspace, /requestInFlight/);
+  assert.match(workspace, /element\.reset\(\)/);
+  assert.match(workspace, /update_customer/);
+  assert.match(workspace, /set_customer_status/);
+  assert.match(workspace, /update_catalog_item/);
+  assert.match(workspace, /set_catalog_item_active/);
+  assert.match(workspace, /update_payment_term/);
+  assert.match(workspace, /update_tax_rate/);
+  assert.match(workspace, /set_recurring_status/);
+
+  assert.match(composer, /pending\?: boolean/);
+  assert.match(composer, /item\.isActive/);
+  assert.match(composer, /tax\.isActive/);
+
+  assert.match(appearance, /Promise<boolean>/);
+  assert.match(appearance, /element\.reset\(\)/);
+
+  assert.match(detail, /requestInFlight/);
+  assert.match(detail, /element\.reset\(\)/);
+
+  assert.match(queries, /c\.customer_type/);
+  assert.match(queries, /item\.is_active/);
+  assert.match(types, /customerType: string/);
+  assert.match(types, /isActive: boolean/);
+});
+
 test('Invoicing v2.2 runs recurring generation and payment reminders through one auditable worker', async () => {
   const [
     schema,

@@ -2,6 +2,7 @@
 
 import {
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from 'react';
@@ -445,6 +446,23 @@ export default function InvoicingWorkspaceClient({
   ] =
     useTransition();
 
+  const [
+    requestBusy,
+    setRequestBusy,
+  ] =
+    useState(
+      false,
+    );
+
+  const requestInFlight =
+    useRef(
+      false,
+    );
+
+  const busy =
+    pending ||
+    requestBusy;
+
 
 
   const filteredInvoices =
@@ -502,6 +520,23 @@ export default function InvoicingWorkspaceClient({
     successMessage:
       string,
   ) {
+    if (
+      requestInFlight
+        .current
+    ) {
+      throw new Error(
+        'Another Invoicing action is still being saved. Please wait for it to finish.',
+      );
+    }
+
+    requestInFlight
+      .current =
+      true;
+
+    setRequestBusy(
+      true,
+    );
+
     setNotice(
       null,
     );
@@ -510,63 +545,79 @@ export default function InvoicingWorkspaceClient({
       null,
     );
 
-    const response =
-      await fetch(
-        '/api/apps/invoicing',
-        {
-          method:
-            'POST',
-          headers: {
-            'Content-Type':
-              'application/json',
+    try {
+      const response =
+        await fetch(
+          '/api/apps/invoicing',
+          {
+            method:
+              'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
+            headers: {
+              'Content-Type':
+                'application/json',
+              Accept:
+                'application/json',
+            },
+            body:
+              JSON.stringify(
+                payload,
+              ),
           },
-          body:
-            JSON.stringify(
-              payload,
-            ),
+        );
+
+      const body =
+        await response
+          .json()
+          .catch(
+            () => ({}),
+          ) as {
+            success?:
+              boolean;
+            error?:
+              string;
+            result?:
+              Record<
+                string,
+                unknown
+              >;
+          };
+
+      if (
+        !response.ok ||
+        body.success !==
+          true
+      ) {
+        throw new Error(
+          body.error ||
+          'SaMi could not complete the Invoicing action.',
+        );
+      }
+
+      setNotice(
+        successMessage,
+      );
+
+      startTransition(
+        () => {
+          router.refresh();
         },
       );
 
-    const body =
-      await response
-        .json()
-        .catch(
-          () => ({}),
-        ) as {
-          success?:
-            boolean;
-          error?:
-            string;
-          result?:
-            Record<
-              string,
-              unknown
-            >;
-        };
+      return body.result ||
+        {};
+    } finally {
+      requestInFlight
+        .current =
+        false;
 
-    if (
-      !response.ok ||
-      body.success !==
-        true
-    ) {
-      throw new Error(
-        body.error ||
-        'SaMi could not complete the Invoicing action.',
+      setRequestBusy(
+        false,
       );
     }
-
-    setNotice(
-      successMessage,
-    );
-
-    startTransition(
-      () => {
-        router.refresh();
-      },
-    );
-
-    return body.result ||
-      {};
   }
 
   async function run(
@@ -583,6 +634,8 @@ export default function InvoicingWorkspaceClient({
         payload,
         successMessage,
       );
+
+      return true;
     } catch (
       caught
     ) {
@@ -592,6 +645,8 @@ export default function InvoicingWorkspaceClient({
           ? caught.message
           : 'SaMi could not complete the action.',
       );
+
+      return false;
     }
   }
 
@@ -641,6 +696,9 @@ export default function InvoicingWorkspaceClient({
 
             <button
               type="button"
+              disabled={
+                busy
+              }
               onClick={
                 () =>
                   startTransition(
@@ -649,7 +707,7 @@ export default function InvoicingWorkspaceClient({
                     },
                   )
               }
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-bold"
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 text-xs font-bold disabled:opacity-60"
             >
               <RefreshCw
                 className={[
@@ -764,7 +822,7 @@ export default function InvoicingWorkspaceClient({
               setSearch
             }
             pending={
-              pending
+              busy
             }
             run={
               run
@@ -782,7 +840,7 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             pending={
-              pending
+              busy
             }
             run={
               run
@@ -800,7 +858,7 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             pending={
-              pending
+              busy
             }
             run={
               run
@@ -830,7 +888,7 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             pending={
-              pending
+              busy
             }
             run={
               run
@@ -860,7 +918,7 @@ export default function InvoicingWorkspaceClient({
               initialData
             }
             pending={
-              pending
+              busy
             }
             run={
               run
@@ -1184,7 +1242,7 @@ function Invoices({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
   return (
     <div className="space-y-4">
@@ -1211,6 +1269,9 @@ function Invoices({
               <InvoiceComposer
                 data={
                   data
+                }
+                pending={
+                  pending
                 }
                 run={
                   run
@@ -1612,7 +1673,7 @@ function InvoiceActions({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
   return (
     <details className="relative">
@@ -1918,10 +1979,63 @@ function Customers({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
+  const [
+    query,
+    setQuery,
+  ] =
+    useState(
+      '',
+    );
+
+  const filtered =
+    useMemo(
+      () => {
+        const needle =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!needle) {
+          return data.customers;
+        }
+
+        return data.customers.filter(
+          customer =>
+            [
+              customer.name,
+              customer.legalName,
+              customer.contactName,
+              customer.email,
+              customer.phone,
+              customer.taxId,
+              customer.registrationNumber,
+              customer.status,
+            ]
+              .filter(
+                Boolean,
+              )
+              .some(
+                value =>
+                  String(
+                    value,
+                  )
+                    .toLowerCase()
+                    .includes(
+                      needle,
+                    ),
+              ),
+        );
+      },
+      [
+        data.customers,
+        query,
+      ],
+    );
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
       {
         data.capabilities
           .canManageCustomers &&
@@ -1933,51 +2047,104 @@ function Customers({
                 event
                   .preventDefault();
 
+                const element =
+                  event.currentTarget;
+
                 const form =
                   new FormData(
-                    event
-                      .currentTarget,
+                    element,
                   );
 
-                await run(
-                  {
-                    action:
-                      'create_customer',
-                    name:
-                      form.get(
-                        'name',
-                      ),
-                    contactName:
-                      form.get(
-                        'contactName',
-                      ),
-                    email:
-                      form.get(
-                        'email',
-                      ),
-                    phone:
-                      form.get(
-                        'phone',
-                      ),
-                    taxId:
-                      form.get(
-                        'taxId',
-                      ),
-                    currency:
-                      form.get(
-                        'currency',
-                      ),
-                    billingAddress:
-                      form.get(
-                        'billingAddress',
-                      ),
-                    paymentTermsId:
-                      form.get(
-                        'paymentTermsId',
-                      ),
-                  },
-                  'Customer created.',
-                );
+                const saved =
+                  await run(
+                    {
+                      action:
+                        'create_customer',
+                      customerType:
+                        form.get(
+                          'customerType',
+                        ),
+                      name:
+                        form.get(
+                          'name',
+                        ),
+                      legalName:
+                        form.get(
+                          'legalName',
+                        ),
+                      contactName:
+                        form.get(
+                          'contactName',
+                        ),
+                      email:
+                        form.get(
+                          'email',
+                        ),
+                      phone:
+                        form.get(
+                          'phone',
+                        ),
+                      taxId:
+                        form.get(
+                          'taxId',
+                        ),
+                      registrationNumber:
+                        form.get(
+                          'registrationNumber',
+                        ),
+                      currency:
+                        form.get(
+                          'currency',
+                        ),
+                      paymentTermsId:
+                        form.get(
+                          'paymentTermsId',
+                        ),
+                      creditLimit:
+                        form.get(
+                          'creditLimit',
+                        ),
+                      billingAddress:
+                        form.get(
+                          'billingAddress',
+                        ),
+                      shippingAddress:
+                        form.get(
+                          'shippingAddress',
+                        ),
+                      city:
+                        form.get(
+                          'city',
+                        ),
+                      state:
+                        form.get(
+                          'state',
+                        ),
+                      postalCode:
+                        form.get(
+                          'postalCode',
+                        ),
+                      country:
+                        form.get(
+                          'country',
+                        ),
+                      countryCode:
+                        form.get(
+                          'countryCode',
+                        ),
+                      notes:
+                        form.get(
+                          'notes',
+                        ),
+                    },
+                    'Customer created.',
+                  );
+
+                if (
+                  saved
+                ) {
+                  element.reset();
+                }
               }
             }
           >
@@ -1985,11 +2152,35 @@ function Customers({
               Add billing customer
             </p>
 
-            <p className="mt-1 text-xs text-slate-500">
-              CRM can integrate later without being required.
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Complete billing master data. Duplicate billing identities are rejected server-side.
             </p>
 
             <div className="mt-4 space-y-3">
+              <label className="block space-y-1">
+                <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                  Customer type
+                </span>
+                <select
+                  name="customerType"
+                  defaultValue="company"
+                  className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                >
+                  <option value="company">
+                    Company
+                  </option>
+                  <option value="individual">
+                    Individual
+                  </option>
+                  <option value="government">
+                    Government
+                  </option>
+                  <option value="non_profit">
+                    Non-profit
+                  </option>
+                </select>
+              </label>
+
               <Field
                 label="Customer name"
                 name="name"
@@ -1997,37 +2188,61 @@ function Customers({
               />
 
               <Field
+                label="Legal name"
+                name="legalName"
+              />
+
+              <Field
                 label="Contact person"
                 name="contactName"
               />
 
-              <Field
-                label="Email"
-                name="email"
-                type="email"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Email"
+                  name="email"
+                  type="email"
+                />
 
-              <Field
-                label="Phone"
-                name="phone"
-              />
+                <Field
+                  label="Phone"
+                  name="phone"
+                />
+              </div>
 
-              <Field
-                label="Tax / PIN"
-                name="taxId"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Tax / PIN"
+                  name="taxId"
+                />
 
-              <Field
-                label="Currency"
-                name="currency"
-                maxLength={
-                  3
-                }
-                defaultValue={
-                  data.company
-                    .currency
-                }
-              />
+                <Field
+                  label="Registration no."
+                  name="registrationNumber"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Currency"
+                  name="currency"
+                  maxLength={
+                    3
+                  }
+                  defaultValue={
+                    data.company
+                      .currency
+                  }
+                />
+
+                <Field
+                  label="Credit limit"
+                  name="creditLimit"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
 
               <label className="block space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
@@ -2043,24 +2258,29 @@ function Customers({
                   </option>
 
                   {
-                    data.paymentTerms.map(
-                      term => (
-                        <option
-                          key={
-                            term.id
-                          }
-                          value={
-                            term.id
-                          }
-                        >
-                          {
-                            term.name
-                          } · {
-                            term.dueDays
-                          } days
-                        </option>
-                      ),
-                    )
+                    data.paymentTerms
+                      .filter(
+                        term =>
+                          term.isActive,
+                      )
+                      .map(
+                        term => (
+                          <option
+                            key={
+                              term.id
+                            }
+                            value={
+                              term.id
+                            }
+                          >
+                            {
+                              term.name
+                            } · {
+                              term.dueDays
+                            } days
+                          </option>
+                        ),
+                      )
                   }
                 </select>
               </label>
@@ -2069,6 +2289,56 @@ function Customers({
                 label="Billing address"
                 name="billingAddress"
               />
+
+              <details className="rounded-xl border border-[var(--sami-border)]">
+                <summary className="cursor-pointer list-none px-3 py-3 text-xs font-black text-slate-500">
+                  More customer details
+                </summary>
+
+                <div className="grid gap-3 border-t border-[var(--sami-border)] p-3 sm:grid-cols-2">
+                  <div className="sm:col-span-2">
+                    <TextArea
+                      label="Shipping address"
+                      name="shippingAddress"
+                    />
+                  </div>
+
+                  <Field
+                    label="City"
+                    name="city"
+                  />
+
+                  <Field
+                    label="State / county"
+                    name="state"
+                  />
+
+                  <Field
+                    label="Postal code"
+                    name="postalCode"
+                  />
+
+                  <Field
+                    label="Country"
+                    name="country"
+                  />
+
+                  <Field
+                    label="Country code"
+                    name="countryCode"
+                    maxLength={
+                      2
+                    }
+                  />
+
+                  <div className="sm:col-span-2">
+                    <TextArea
+                      label="Internal notes"
+                      name="notes"
+                    />
+                  </div>
+                </div>
+              </details>
             </div>
 
             <button
@@ -2076,9 +2346,13 @@ function Customers({
               disabled={
                 pending
               }
-              className="mt-4 h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white"
+              className="mt-4 h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white disabled:opacity-60"
             >
-              Create customer
+              {
+                pending
+                  ? 'Saving…'
+                  : 'Create customer'
+              }
             </button>
           </form>
         )
@@ -2086,83 +2360,563 @@ function Customers({
 
       <div className="sami-surface overflow-hidden rounded-[24px]">
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
-          <p className="text-sm font-black">
-            Customers
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-black">
+                Customers
+              </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            Billing exposure and current receivable balance
-          </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Billing identity, status and receivable exposure
+              </p>
+            </div>
+
+            <label className="relative block sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={
+                  query
+                }
+                onChange={
+                  event =>
+                    setQuery(
+                      event.target.value,
+                    )
+                }
+                placeholder="Search customers"
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="divide-y divide-[var(--sami-border)]">
           {
-            data.customers
-              .map(
-                customer => (
-                  <div
-                    key={
-                      customer.id
-                    }
-                    className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_120px_180px]"
-                  >
-                    <div>
-                      <p className="font-black">
-                        {
-                          customer.name
-                        }
-                      </p>
+            filtered.map(
+              customer => (
+                <details
+                  key={
+                    customer.id
+                  }
+                  className="group"
+                >
+                  <summary className="cursor-pointer list-none p-4">
+                    <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_110px_160px_28px]">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-black">
+                            {
+                              customer.name
+                            }
+                          </p>
+                          <StatusPill
+                            value={
+                              customer.status
+                            }
+                          />
+                        </div>
 
-                      <p className="mt-1 text-xs text-slate-500">
-                        {
-                          customer.email ||
-                          customer.phone ||
-                          'No contact channel'
-                        }
-                      </p>
+                        <p className="mt-1 truncate text-xs text-slate-500">
+                          {
+                            customer.email ||
+                            customer.phone ||
+                            customer.taxId ||
+                            'No contact details'
+                          }
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                          Invoices
+                        </p>
+                        <p className="mt-1 text-sm font-black">
+                          {
+                            customer.invoiceCount
+                          }
+                        </p>
+                      </div>
+
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                          Outstanding
+                        </p>
+                        <p className="mt-1 text-sm font-black">
+                          {
+                            formatMoney(
+                              customer
+                                .outstandingTotal,
+                              customer
+                                .currency,
+                            )
+                          }
+                        </p>
+                      </div>
+
+                      <ChevronDown className="h-4 w-4 text-slate-400 transition group-open:rotate-180" />
                     </div>
+                  </summary>
 
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                        Invoices
-                      </p>
+                  {
+                    data.capabilities
+                      .canManageCustomers &&
+                    (
+                      <div className="border-t border-[var(--sami-border)] bg-slate-50/40 p-4 dark:bg-white/[0.02]">
+                        <form
+                          onSubmit={
+                            async event => {
+                              event
+                                .preventDefault();
 
-                      <p className="mt-1 text-sm font-black">
-                        {
-                          customer
-                            .invoiceCount
-                        }
-                      </p>
-                    </div>
+                              const form =
+                                new FormData(
+                                  event.currentTarget,
+                                );
 
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                        Outstanding
-                      </p>
+                              await run(
+                                {
+                                  action:
+                                    'update_customer',
+                                  customerId:
+                                    customer.id,
+                                  customerType:
+                                    form.get(
+                                      'customerType',
+                                    ),
+                                  name:
+                                    form.get(
+                                      'name',
+                                    ),
+                                  legalName:
+                                    form.get(
+                                      'legalName',
+                                    ),
+                                  contactName:
+                                    form.get(
+                                      'contactName',
+                                    ),
+                                  email:
+                                    form.get(
+                                      'email',
+                                    ),
+                                  phone:
+                                    form.get(
+                                      'phone',
+                                    ),
+                                  taxId:
+                                    form.get(
+                                      'taxId',
+                                    ),
+                                  registrationNumber:
+                                    form.get(
+                                      'registrationNumber',
+                                    ),
+                                  currency:
+                                    form.get(
+                                      'currency',
+                                    ),
+                                  paymentTermsId:
+                                    form.get(
+                                      'paymentTermsId',
+                                    ),
+                                  creditLimit:
+                                    form.get(
+                                      'creditLimit',
+                                    ),
+                                  billingAddress:
+                                    form.get(
+                                      'billingAddress',
+                                    ),
+                                  shippingAddress:
+                                    form.get(
+                                      'shippingAddress',
+                                    ),
+                                  city:
+                                    form.get(
+                                      'city',
+                                    ),
+                                  state:
+                                    form.get(
+                                      'state',
+                                    ),
+                                  postalCode:
+                                    form.get(
+                                      'postalCode',
+                                    ),
+                                  country:
+                                    form.get(
+                                      'country',
+                                    ),
+                                  countryCode:
+                                    form.get(
+                                      'countryCode',
+                                    ),
+                                  notes:
+                                    form.get(
+                                      'notes',
+                                    ),
+                                },
+                                'Customer updated.',
+                              );
+                            }
+                          }
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Type
+                              </span>
+                              <select
+                                name="customerType"
+                                defaultValue={
+                                  customer.customerType
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="company">Company</option>
+                                <option value="individual">Individual</option>
+                                <option value="government">Government</option>
+                                <option value="non_profit">Non-profit</option>
+                              </select>
+                            </label>
 
-                      <p className="mt-1 text-sm font-black">
-                        {
-                          formatMoney(
-                            customer
-                              .outstandingTotal,
-                            customer
-                              .currency,
-                          )
-                        }
-                      </p>
-                    </div>
-                  </div>
-                ),
-              )
+                            <Field
+                              label="Customer name"
+                              name="name"
+                              required
+                              defaultValue={
+                                customer.name
+                              }
+                            />
+
+                            <Field
+                              label="Legal name"
+                              name="legalName"
+                              defaultValue={
+                                customer.legalName ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Contact"
+                              name="contactName"
+                              defaultValue={
+                                customer.contactName ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Email"
+                              name="email"
+                              type="email"
+                              defaultValue={
+                                customer.email ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Phone"
+                              name="phone"
+                              defaultValue={
+                                customer.phone ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Tax / PIN"
+                              name="taxId"
+                              defaultValue={
+                                customer.taxId ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Registration no."
+                              name="registrationNumber"
+                              defaultValue={
+                                customer.registrationNumber ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Currency"
+                              name="currency"
+                              maxLength={
+                                3
+                              }
+                              defaultValue={
+                                customer.currency
+                              }
+                            />
+
+                            <Field
+                              label="Credit limit"
+                              name="creditLimit"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              defaultValue={
+                                customer.creditLimit ===
+                                  null
+                                  ? ''
+                                  : String(
+                                      customer.creditLimit,
+                                    )
+                              }
+                            />
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Payment terms
+                              </span>
+                              <select
+                                name="paymentTermsId"
+                                defaultValue={
+                                  customer.paymentTermsId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  Workspace default
+                                </option>
+                                {
+                                  data.paymentTerms
+                                    .filter(
+                                      term =>
+                                        term.isActive ||
+                                        term.id ===
+                                          customer.paymentTermsId,
+                                    )
+                                    .map(
+                                      term => (
+                                        <option
+                                          key={
+                                            term.id
+                                          }
+                                          value={
+                                            term.id
+                                          }
+                                        >
+                                          {
+                                            term.name
+                                          } · {
+                                            term.dueDays
+                                          } days
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <Field
+                              label="City"
+                              name="city"
+                              defaultValue={
+                                customer.city ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="State / county"
+                              name="state"
+                              defaultValue={
+                                customer.state ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Postal code"
+                              name="postalCode"
+                              defaultValue={
+                                customer.postalCode ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Country"
+                              name="country"
+                              defaultValue={
+                                customer.country ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Country code"
+                              name="countryCode"
+                              maxLength={
+                                2
+                              }
+                              defaultValue={
+                                customer.countryCode ||
+                                ''
+                              }
+                            />
+
+                            <div className="sm:col-span-2">
+                              <TextArea
+                                label="Billing address"
+                                name="billingAddress"
+                                defaultValue={
+                                  customer.billingAddress ||
+                                  ''
+                                }
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <TextArea
+                                label="Shipping address"
+                                name="shippingAddress"
+                                defaultValue={
+                                  customer.shippingAddress ||
+                                  ''
+                                }
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2 xl:col-span-4">
+                              <TextArea
+                                label="Internal notes"
+                                name="notes"
+                                defaultValue={
+                                  customer.notes ||
+                                  ''
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap gap-2">
+                              {
+                                customer.status !==
+                                  'active' &&
+                                (
+                                  <button
+                                    type="button"
+                                    disabled={
+                                      pending
+                                    }
+                                    onClick={
+                                      () =>
+                                        run(
+                                          {
+                                            action:
+                                              'set_customer_status',
+                                            customerId:
+                                              customer.id,
+                                            status:
+                                              'active',
+                                          },
+                                          'Customer activated.',
+                                        )
+                                    }
+                                    className="h-9 rounded-xl border border-emerald-500/30 px-3 text-[10px] font-black text-emerald-700 dark:text-emerald-300"
+                                  >
+                                    Activate
+                                  </button>
+                                )
+                              }
+
+                              {
+                                customer.status ===
+                                  'active' &&
+                                (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        pending
+                                      }
+                                      onClick={
+                                        () =>
+                                          run(
+                                            {
+                                              action:
+                                                'set_customer_status',
+                                              customerId:
+                                                customer.id,
+                                              status:
+                                                'inactive',
+                                            },
+                                            'Customer deactivated.',
+                                          )
+                                      }
+                                      className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+                                    >
+                                      Deactivate
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        pending
+                                      }
+                                      onClick={
+                                        () =>
+                                          run(
+                                            {
+                                              action:
+                                                'set_customer_status',
+                                              customerId:
+                                                customer.id,
+                                              status:
+                                                'blocked',
+                                            },
+                                            'Customer blocked.',
+                                          )
+                                      }
+                                      className="h-9 rounded-xl border border-red-500/30 px-3 text-[10px] font-black text-red-600"
+                                    >
+                                      Block
+                                    </button>
+                                  </>
+                                )
+                              }
+                            </div>
+
+                            <button
+                              type="submit"
+                              disabled={
+                                pending
+                              }
+                              className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
+                            >
+                              Save customer
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )
+                  }
+                </details>
+              ),
+            )
           }
 
           {
-            data.customers
-              .length ===
+            filtered.length ===
               0 &&
             (
               <p className="p-8 text-center text-sm text-slate-500">
-                No billing customers yet.
+                {
+                  data.customers.length ===
+                    0
+                    ? 'No billing customers yet.'
+                    : 'No customers match your search.'
+                }
               </p>
             )
           }
@@ -2192,10 +2946,63 @@ function Items({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
+  const [
+    query,
+    setQuery,
+  ] =
+    useState(
+      '',
+    );
+
+  const filtered =
+    useMemo(
+      () => {
+        const needle =
+          query
+            .trim()
+            .toLowerCase();
+
+        if (!needle) {
+          return data.catalogItems;
+        }
+
+        return data.catalogItems.filter(
+          item =>
+            [
+              item.name,
+              item.sku,
+              item.description,
+              item.unit,
+              item.itemType,
+              item.isActive
+                ? 'active'
+                : 'inactive',
+            ]
+              .filter(
+                Boolean,
+              )
+              .some(
+                value =>
+                  String(
+                    value,
+                  )
+                    .toLowerCase()
+                    .includes(
+                      needle,
+                    ),
+              ),
+        );
+      },
+      [
+        data.catalogItems,
+        query,
+      ],
+    );
+
   return (
-    <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="grid gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
       {
         data.capabilities
           .canManageCatalog &&
@@ -2207,47 +3014,56 @@ function Items({
                 event
                   .preventDefault();
 
+                const element =
+                  event.currentTarget;
+
                 const form =
                   new FormData(
-                    event
-                      .currentTarget,
+                    element,
                   );
 
-                await run(
-                  {
-                    action:
-                      'create_catalog_item',
-                    itemType:
-                      form.get(
-                        'itemType',
-                      ),
-                    name:
-                      form.get(
-                        'name',
-                      ),
-                    sku:
-                      form.get(
-                        'sku',
-                      ),
-                    unit:
-                      form.get(
-                        'unit',
-                      ),
-                    unitPrice:
-                      form.get(
-                        'unitPrice',
-                      ),
-                    taxRateId:
-                      form.get(
-                        'taxRateId',
-                      ),
-                    description:
-                      form.get(
-                        'description',
-                      ),
-                  },
-                  'Invoice item created.',
-                );
+                const saved =
+                  await run(
+                    {
+                      action:
+                        'create_catalog_item',
+                      itemType:
+                        form.get(
+                          'itemType',
+                        ),
+                      name:
+                        form.get(
+                          'name',
+                        ),
+                      sku:
+                        form.get(
+                          'sku',
+                        ),
+                      unit:
+                        form.get(
+                          'unit',
+                        ),
+                      unitPrice:
+                        form.get(
+                          'unitPrice',
+                        ),
+                      taxRateId:
+                        form.get(
+                          'taxRateId',
+                        ),
+                      description:
+                        form.get(
+                          'description',
+                        ),
+                    },
+                    'Invoice item created.',
+                  );
+
+                if (
+                  saved
+                ) {
+                  element.reset();
+                }
               }
             }
           >
@@ -2255,8 +3071,8 @@ function Items({
               Add invoice item
             </p>
 
-            <p className="mt-1 text-xs text-slate-500">
-              Standalone catalog now; Inventory/Products can link later.
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Reusable products and services. Duplicate SKUs or identical items are rejected.
             </p>
 
             <div className="mt-4 space-y-3">
@@ -2267,12 +3083,12 @@ function Items({
 
                 <select
                   name="itemType"
+                  defaultValue="service"
                   className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
                 >
                   <option value="service">
                     Service
                   </option>
-
                   <option value="product">
                     Product
                   </option>
@@ -2290,20 +3106,22 @@ function Items({
                 name="sku"
               />
 
-              <Field
-                label="Unit"
-                name="unit"
-                defaultValue="unit"
-              />
+              <div className="grid grid-cols-2 gap-2">
+                <Field
+                  label="Unit"
+                  name="unit"
+                  defaultValue="unit"
+                />
 
-              <Field
-                label="Unit price"
-                name="unitPrice"
-                type="number"
-                min="0"
-                step="0.01"
-                required
-              />
+                <Field
+                  label="Unit price"
+                  name="unitPrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                />
+              </div>
 
               <label className="block space-y-1">
                 <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
@@ -2320,6 +3138,10 @@ function Items({
 
                   {
                     data.taxRates
+                      .filter(
+                        tax =>
+                          tax.isActive,
+                      )
                       .map(
                         tax => (
                           <option
@@ -2351,9 +3173,13 @@ function Items({
               disabled={
                 pending
               }
-              className="mt-4 h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white"
+              className="mt-4 h-10 w-full rounded-xl bg-blue-600 text-xs font-black text-white disabled:opacity-60"
             >
-              Create item
+              {
+                pending
+                  ? 'Saving…'
+                  : 'Create item'
+              }
             </button>
           </form>
         )
@@ -2361,71 +3187,90 @@ function Items({
 
       <div className="sami-surface overflow-hidden rounded-[24px]">
         <div className="border-b border-[var(--sami-border)] p-4 sm:p-5">
-          <p className="text-sm font-black">
-            Products & services
-          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-black">
+                Products & services
+              </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            Reusable invoice lines
-          </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Reusable invoice lines with active/inactive lifecycle
+              </p>
+            </div>
+
+            <label className="relative block sm:w-72">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={
+                  query
+                }
+                onChange={
+                  event =>
+                    setQuery(
+                      event.target.value,
+                    )
+                }
+                placeholder="Search items"
+                className="h-10 w-full rounded-xl border border-[var(--sami-border)] bg-transparent pl-9 pr-3 text-xs outline-none focus:border-blue-500"
+              />
+            </label>
+          </div>
         </div>
 
         <div className="divide-y divide-[var(--sami-border)]">
           {
-            data.catalogItems
-              .map(
-                item => {
-                  const tax =
-                    data.taxRates
-                      .find(
-                        taxRate =>
-                          taxRate.id ===
-                          item.taxRateId,
-                      );
+            filtered.map(
+              item => (
+                <details
+                  key={
+                    item.id
+                  }
+                  className="group"
+                >
+                  <summary className="cursor-pointer list-none p-4">
+                    <div className="grid items-center gap-3 md:grid-cols-[minmax(0,1fr)_110px_140px_28px]">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="truncate font-black">
+                            {
+                              item.name
+                            }
+                          </p>
+                          <StatusPill
+                            value={
+                              item.isActive
+                                ? 'active'
+                                : 'inactive'
+                            }
+                          />
+                        </div>
 
-                  return (
-                    <div
-                      key={
-                        item.id
-                      }
-                      className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_160px]"
-                    >
-                      <div>
-                        <p className="font-black">
+                        <p className="mt-1 truncate text-xs text-slate-500">
                           {
-                            item.name
-                          }
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500">
-                          {
-                            item.sku ||
-                            'No SKU'
-                          } · {
-                            item.unit
+                            item.sku
+                              ? 'SKU ' +
+                                item.sku
+                              : item.description ||
+                                'No SKU'
                           }
                         </p>
                       </div>
 
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                          Tax
+                          Type
                         </p>
-
-                        <p className="mt-1 text-sm font-bold">
+                        <p className="mt-1 text-sm font-black capitalize">
                           {
-                            tax
-                              ? tax.name
-                              : 'No tax'
+                            item.itemType
                           }
                         </p>
                       </div>
 
-                      <div className="md:text-right">
+                      <div>
                         <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
                           Unit price
                         </p>
-
                         <p className="mt-1 text-sm font-black">
                           {
                             formatMoney(
@@ -2436,19 +3281,244 @@ function Items({
                           }
                         </p>
                       </div>
+
+                      <ChevronDown className="h-4 w-4 text-slate-400 transition group-open:rotate-180" />
                     </div>
-                  );
-                },
-              )
+                  </summary>
+
+                  {
+                    data.capabilities
+                      .canManageCatalog &&
+                    (
+                      <div className="border-t border-[var(--sami-border)] bg-slate-50/40 p-4 dark:bg-white/[0.02]">
+                        <form
+                          onSubmit={
+                            async event => {
+                              event
+                                .preventDefault();
+
+                              const form =
+                                new FormData(
+                                  event.currentTarget,
+                                );
+
+                              await run(
+                                {
+                                  action:
+                                    'update_catalog_item',
+                                  itemId:
+                                    item.id,
+                                  itemType:
+                                    form.get(
+                                      'itemType',
+                                    ),
+                                  name:
+                                    form.get(
+                                      'name',
+                                    ),
+                                  sku:
+                                    form.get(
+                                      'sku',
+                                    ),
+                                  unit:
+                                    form.get(
+                                      'unit',
+                                    ),
+                                  unitPrice:
+                                    form.get(
+                                      'unitPrice',
+                                    ),
+                                  taxRateId:
+                                    form.get(
+                                      'taxRateId',
+                                    ),
+                                  description:
+                                    form.get(
+                                      'description',
+                                    ),
+                                },
+                                'Invoice item updated.',
+                              );
+                            }
+                          }
+                        >
+                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Type
+                              </span>
+                              <select
+                                name="itemType"
+                                defaultValue={
+                                  item.itemType
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="service">
+                                  Service
+                                </option>
+                                <option value="product">
+                                  Product
+                                </option>
+                              </select>
+                            </label>
+
+                            <Field
+                              label="Name"
+                              name="name"
+                              required
+                              defaultValue={
+                                item.name
+                              }
+                            />
+
+                            <Field
+                              label="SKU"
+                              name="sku"
+                              defaultValue={
+                                item.sku ||
+                                ''
+                              }
+                            />
+
+                            <Field
+                              label="Unit"
+                              name="unit"
+                              defaultValue={
+                                item.unit
+                              }
+                            />
+
+                            <Field
+                              label="Unit price"
+                              name="unitPrice"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              required
+                              defaultValue={
+                                String(
+                                  item.unitPrice,
+                                )
+                              }
+                            />
+
+                            <label className="block space-y-1">
+                              <span className="text-[10px] font-black uppercase tracking-[0.11em] text-slate-400">
+                                Default tax
+                              </span>
+                              <select
+                                name="taxRateId"
+                                defaultValue={
+                                  item.taxRateId ||
+                                  ''
+                                }
+                                className="h-11 w-full rounded-xl border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                              >
+                                <option value="">
+                                  No default tax
+                                </option>
+                                {
+                                  data.taxRates
+                                    .filter(
+                                      tax =>
+                                        tax.isActive ||
+                                        tax.id ===
+                                          item.taxRateId,
+                                    )
+                                    .map(
+                                      tax => (
+                                        <option
+                                          key={
+                                            tax.id
+                                          }
+                                          value={
+                                            tax.id
+                                          }
+                                        >
+                                          {
+                                            tax.name
+                                          } ({tax.rate}%)
+                                        </option>
+                                      ),
+                                    )
+                                }
+                              </select>
+                            </label>
+
+                            <div className="sm:col-span-2">
+                              <TextArea
+                                label="Description"
+                                name="description"
+                                defaultValue={
+                                  item.description ||
+                                  ''
+                                }
+                              />
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              disabled={
+                                pending
+                              }
+                              onClick={
+                                () =>
+                                  run(
+                                    {
+                                      action:
+                                        'set_catalog_item_active',
+                                      itemId:
+                                        item.id,
+                                      isActive:
+                                        !item.isActive,
+                                    },
+                                    item.isActive
+                                      ? 'Invoice item deactivated.'
+                                      : 'Invoice item activated.',
+                                  )
+                              }
+                              className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black"
+                            >
+                              {
+                                item.isActive
+                                  ? 'Deactivate'
+                                  : 'Activate'
+                              }
+                            </button>
+
+                            <button
+                              type="submit"
+                              disabled={
+                                pending
+                              }
+                              className="h-10 rounded-xl bg-blue-600 px-4 text-xs font-black text-white disabled:opacity-60"
+                            >
+                              Save item
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    )
+                  }
+                </details>
+              ),
+            )
           }
 
           {
-            data.catalogItems
-              .length ===
+            filtered.length ===
               0 &&
             (
               <p className="p-8 text-center text-sm text-slate-500">
-                No reusable invoice items yet.
+                {
+                  data.catalogItems.length ===
+                    0
+                    ? 'No invoice items yet.'
+                    : 'No items match your search.'
+                }
               </p>
             )
           }
@@ -2588,7 +3658,7 @@ function Recurring({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
@@ -2603,13 +3673,16 @@ function Recurring({
                 event
                   .preventDefault();
 
+                const element =
+                  event.currentTarget;
+
                 const form =
                   new FormData(
-                    event
-                      .currentTarget,
+                    element,
                   );
 
-                await run(
+                const saved =
+                  await run(
                   {
                     action:
                       'create_recurring',
@@ -2664,6 +3737,12 @@ function Recurring({
                   },
                   'Recurring schedule created.',
                 );
+
+                if (
+                  saved
+                ) {
+                  element.reset();
+                }
               }
             }
           >
@@ -2869,18 +3948,89 @@ function Recurring({
                       </p>
                     </div>
 
-                    <div className="sm:text-right">
-                      <StatusPill
-                        value={
-                          item.status
-                        }
-                      />
+                    <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                      <div className="sm:text-right">
+                        <StatusPill
+                          value={
+                            item.status
+                          }
+                        />
 
-                      <p className="mt-1 text-[11px] text-slate-500">
-                        Next {
-                          item.nextRunAt
-                        }
-                      </p>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          Next {
+                            item.nextRunAt
+                          }
+                        </p>
+                      </div>
+
+                      {
+                        data.capabilities
+                          .canManageRecurring &&
+                        item.status !==
+                          'cancelled' &&
+                        (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              disabled={
+                                pending
+                              }
+                              onClick={
+                                () =>
+                                  run(
+                                    {
+                                      action:
+                                        'set_recurring_status',
+                                      recurringId:
+                                        item.id,
+                                      status:
+                                        item.status ===
+                                          'active'
+                                          ? 'paused'
+                                          : 'active',
+                                    },
+                                    item.status ===
+                                      'active'
+                                      ? 'Recurring schedule paused.'
+                                      : 'Recurring schedule resumed.',
+                                  )
+                              }
+                              className="h-8 rounded-lg border border-[var(--sami-border)] px-2.5 text-[9px] font-black disabled:opacity-50"
+                            >
+                              {
+                                item.status ===
+                                  'active'
+                                  ? 'Pause'
+                                  : 'Resume'
+                              }
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={
+                                pending
+                              }
+                              onClick={
+                                () =>
+                                  run(
+                                    {
+                                      action:
+                                        'set_recurring_status',
+                                      recurringId:
+                                        item.id,
+                                      status:
+                                        'cancelled',
+                                    },
+                                    'Recurring schedule cancelled.',
+                                  )
+                              }
+                              className="h-8 rounded-lg border border-red-500/30 px-2.5 text-[9px] font-black text-red-600 disabled:opacity-50"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )
+                      }
                     </div>
                   </div>
                 ),
@@ -3068,7 +4218,7 @@ function Settings({
       message:
         string,
     ) =>
-      Promise<void>;
+      Promise<boolean>;
 }) {
   if (
     !data.capabilities
@@ -3430,12 +4580,16 @@ function Settings({
             async event => {
               event.preventDefault();
 
+              const element =
+                event.currentTarget;
+
               const form =
                 new FormData(
-                  event.currentTarget,
+                  element,
                 );
 
-              await run(
+              const saved =
+                await run(
                 {
                   action:
                     'create_payment_term',
@@ -3459,6 +4613,12 @@ function Settings({
                 },
                 'Payment term created.',
               );
+
+              if (
+                saved
+              ) {
+                element.reset();
+              }
             }
           }
         >
@@ -3512,26 +4672,173 @@ function Settings({
             Add payment term
           </button>
 
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 space-y-2">
             {
               data.paymentTerms.map(
                 term => (
-                  <span
+                  <details
                     key={
                       term.id
                     }
-                    className="rounded-xl border border-[var(--sami-border)] px-3 py-2 text-xs font-bold"
+                    className="rounded-xl border border-[var(--sami-border)]"
                   >
-                    {
-                      term.name
-                    } · {
-                      term.dueDays
-                    } days{
-                      term.isDefault
-                        ? ' · default'
-                        : ''
-                    }
-                  </span>
+                    <summary className="cursor-pointer list-none px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black">
+                            {
+                              term.name
+                            } · {
+                              term.dueDays
+                            } days
+                          </p>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {
+                              term.isDefault
+                                ? 'Default'
+                                : term.isActive
+                                  ? 'Active'
+                                  : 'Inactive'
+                            }
+                          </p>
+                        </div>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                      </div>
+                    </summary>
+
+                    <form
+                      className="border-t border-[var(--sami-border)] p-3"
+                      onSubmit={
+                        async event => {
+                          event.preventDefault();
+
+                          const form =
+                            new FormData(
+                              event.currentTarget,
+                            );
+
+                          await run(
+                            {
+                              action:
+                                'update_payment_term',
+                              termId:
+                                term.id,
+                              name:
+                                form.get(
+                                  'name',
+                                ),
+                              dueDays:
+                                form.get(
+                                  'dueDays',
+                                ),
+                              description:
+                                form.get(
+                                  'description',
+                                ),
+                              isDefault:
+                                form.get(
+                                  'isDefault',
+                                ) ===
+                                'on',
+                            },
+                            'Payment term updated.',
+                          );
+                        }
+                      }
+                    >
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field
+                          label="Term name"
+                          name="name"
+                          required
+                          defaultValue={
+                            term.name
+                          }
+                        />
+                        <Field
+                          label="Due days"
+                          name="dueDays"
+                          type="number"
+                          min="0"
+                          max="3650"
+                          required
+                          defaultValue={
+                            String(
+                              term.dueDays,
+                            )
+                          }
+                        />
+                      </div>
+
+                      <div className="mt-3">
+                        <TextArea
+                          label="Description"
+                          name="description"
+                          defaultValue={
+                            term.description ||
+                            ''
+                          }
+                        />
+                      </div>
+
+                      <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
+                        <input
+                          type="checkbox"
+                          name="isDefault"
+                          defaultChecked={
+                            term.isDefault
+                          }
+                        />
+                        Workspace default
+                      </label>
+
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          disabled={
+                            pending ||
+                            (
+                              term.isDefault &&
+                              term.isActive
+                            )
+                          }
+                          onClick={
+                            () =>
+                              run(
+                                {
+                                  action:
+                                    'set_payment_term_active',
+                                  termId:
+                                    term.id,
+                                  isActive:
+                                    !term.isActive,
+                                },
+                                term.isActive
+                                  ? 'Payment term deactivated.'
+                                  : 'Payment term activated.',
+                              )
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
+                        >
+                          {
+                            term.isActive
+                              ? 'Deactivate'
+                              : 'Activate'
+                          }
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            pending
+                          }
+                          className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                        >
+                          Save term
+                        </button>
+                      </div>
+                    </form>
+                  </details>
                 ),
               )
             }
@@ -3544,12 +4851,16 @@ function Settings({
             async event => {
               event.preventDefault();
 
+              const element =
+                event.currentTarget;
+
               const form =
                 new FormData(
-                  event.currentTarget,
+                  element,
                 );
 
-              await run(
+              const saved =
+                await run(
                 {
                   action:
                     'create_tax_rate',
@@ -3577,6 +4888,12 @@ function Settings({
                 },
                 'Tax rate created.',
               );
+
+              if (
+                saved
+              ) {
+                element.reset();
+              }
             }
           }
         >
@@ -3638,26 +4955,185 @@ function Settings({
             Add tax rate
           </button>
 
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 space-y-2">
             {
               data.taxRates.map(
                 tax => (
-                  <span
+                  <details
                     key={
                       tax.id
                     }
-                    className="rounded-xl border border-[var(--sami-border)] px-3 py-2 text-xs font-bold"
+                    className="rounded-xl border border-[var(--sami-border)]"
                   >
-                    {
-                      tax.name
-                    } · {
-                      tax.rate
-                    }%{
-                      tax.isDefault
-                        ? ' · default'
-                        : ''
-                    }
-                  </span>
+                    <summary className="cursor-pointer list-none px-3 py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black">
+                            {
+                              tax.name
+                            } · {
+                              tax.rate
+                            }%
+                          </p>
+                          <p className="mt-1 text-[10px] text-slate-400">
+                            {
+                              tax.isDefault
+                                ? 'Default'
+                                : tax.isActive
+                                  ? 'Active'
+                                  : 'Inactive'
+                            }
+                          </p>
+                        </div>
+                        <ChevronDown className="h-4 w-4 shrink-0 text-slate-400" />
+                      </div>
+                    </summary>
+
+                    <form
+                      className="border-t border-[var(--sami-border)] p-3"
+                      onSubmit={
+                        async event => {
+                          event.preventDefault();
+
+                          const form =
+                            new FormData(
+                              event.currentTarget,
+                            );
+
+                          await run(
+                            {
+                              action:
+                                'update_tax_rate',
+                              taxId:
+                                tax.id,
+                              name:
+                                form.get(
+                                  'name',
+                                ),
+                              rate:
+                                form.get(
+                                  'rate',
+                                ),
+                              taxType:
+                                form.get(
+                                  'taxType',
+                                ),
+                              countryCode:
+                                form.get(
+                                  'countryCode',
+                                ),
+                              isDefault:
+                                form.get(
+                                  'isDefault',
+                                ) ===
+                                'on',
+                            },
+                            'Tax rate updated.',
+                          );
+                        }
+                      }
+                    >
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Field
+                          label="Tax name"
+                          name="name"
+                          required
+                          defaultValue={
+                            tax.name
+                          }
+                        />
+                        <Field
+                          label="Rate %"
+                          name="rate"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.0001"
+                          required
+                          defaultValue={
+                            String(
+                              tax.rate,
+                            )
+                          }
+                        />
+                        <Field
+                          label="Tax type"
+                          name="taxType"
+                          defaultValue={
+                            tax.taxType
+                          }
+                        />
+                        <Field
+                          label="Country code"
+                          name="countryCode"
+                          maxLength={
+                            2
+                          }
+                          defaultValue={
+                            tax.countryCode ||
+                            ''
+                          }
+                        />
+                      </div>
+
+                      <label className="mt-3 flex min-h-10 items-center gap-2 text-xs font-bold">
+                        <input
+                          type="checkbox"
+                          name="isDefault"
+                          defaultChecked={
+                            tax.isDefault
+                          }
+                        />
+                        Workspace default
+                      </label>
+
+                      <div className="mt-3 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          disabled={
+                            pending ||
+                            (
+                              tax.isDefault &&
+                              tax.isActive
+                            )
+                          }
+                          onClick={
+                            () =>
+                              run(
+                                {
+                                  action:
+                                    'set_tax_rate_active',
+                                  taxId:
+                                    tax.id,
+                                  isActive:
+                                    !tax.isActive,
+                                },
+                                tax.isActive
+                                  ? 'Tax rate deactivated.'
+                                  : 'Tax rate activated.',
+                              )
+                          }
+                          className="h-9 rounded-xl border border-[var(--sami-border)] px-3 text-[10px] font-black disabled:opacity-40"
+                        >
+                          {
+                            tax.isActive
+                              ? 'Deactivate'
+                              : 'Activate'
+                          }
+                        </button>
+
+                        <button
+                          type="submit"
+                          disabled={
+                            pending
+                          }
+                          className="h-9 rounded-xl bg-blue-600 px-3 text-[10px] font-black text-white disabled:opacity-60"
+                        >
+                          Save tax
+                        </button>
+                      </div>
+                    </form>
+                  </details>
                 ),
               )
             }

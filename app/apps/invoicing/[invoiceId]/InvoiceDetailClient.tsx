@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  useRef,
   useState,
   useTransition,
 } from 'react';
@@ -150,6 +151,23 @@ export default function InvoiceDetailClient({
   ] =
     useTransition();
 
+  const [
+    requestBusy,
+    setRequestBusy,
+  ] =
+    useState(
+      false,
+    );
+
+  const requestInFlight =
+    useRef(
+      false,
+    );
+
+  const busy =
+    pending ||
+    requestBusy;
+
   async function run(
     payload:
       Record<
@@ -159,6 +177,25 @@ export default function InvoiceDetailClient({
     message:
       string,
   ) {
+    if (
+      requestInFlight
+        .current
+    ) {
+      setError(
+        'Another invoice action is still being saved. Please wait for it to finish.',
+      );
+
+      return false;
+    }
+
+    requestInFlight
+      .current =
+      true;
+
+    setRequestBusy(
+      true,
+    );
+
     setNotice(
       null,
     );
@@ -174,8 +211,14 @@ export default function InvoiceDetailClient({
           {
             method:
               'POST',
+            credentials:
+              'same-origin',
+            cache:
+              'no-store',
             headers: {
               'Content-Type':
+                'application/json',
+              Accept:
                 'application/json',
             },
             body:
@@ -221,6 +264,8 @@ export default function InvoiceDetailClient({
           router.refresh();
         },
       );
+
+      return true;
     } catch (
       caught
     ) {
@@ -229,6 +274,16 @@ export default function InvoiceDetailClient({
           Error
           ? caught.message
           : 'SaMi could not complete the invoice action.',
+      );
+
+      return false;
+    } finally {
+      requestInFlight
+        .current =
+        false;
+
+      setRequestBusy(
+        false,
       );
     }
   }
@@ -260,6 +315,9 @@ export default function InvoiceDetailClient({
           }
           invoice={
             invoice
+          }
+          pending={
+            busy
           }
           run={
             run
@@ -372,7 +430,7 @@ export default function InvoiceDetailClient({
                 <button
                   type="button"
                   disabled={
-                    pending
+                    busy
                   }
                   onClick={
                     () =>
@@ -416,7 +474,7 @@ export default function InvoiceDetailClient({
                       <button
                         type="button"
                         disabled={
-                          pending
+                          busy
                         }
                         onClick={
                           () =>
@@ -448,7 +506,7 @@ export default function InvoiceDetailClient({
                       <button
                         type="button"
                         disabled={
-                          pending
+                          busy
                         }
                         onClick={
                           () =>
@@ -480,7 +538,7 @@ export default function InvoiceDetailClient({
                       <button
                         type="button"
                         disabled={
-                          pending
+                          busy
                         }
                         onClick={
                           () =>
@@ -1049,16 +1107,20 @@ export default function InvoiceDetailClient({
               <form
                 className="sami-surface rounded-[24px] p-4"
                 onSubmit={
-                  event => {
+                  async event => {
                     event
                       .preventDefault();
 
+                    const element =
+                      event.currentTarget;
+
                     const form =
                       new FormData(
-                        event.currentTarget,
+                        element,
                       );
 
-                    void run(
+                    const saved =
+                      await run(
                       {
                         action:
                           'record_payment',
@@ -1079,6 +1141,12 @@ export default function InvoiceDetailClient({
                       },
                       'Payment recorded.',
                     );
+
+                    if (
+                      saved
+                    ) {
+                      element.reset();
+                    }
                   }
                 }
               >
@@ -1135,7 +1203,7 @@ export default function InvoiceDetailClient({
                   <button
                     type="submit"
                     disabled={
-                      pending
+                      busy
                     }
                     className="h-11 w-full rounded-xl bg-blue-600 text-xs font-black text-white"
                   >
@@ -1163,16 +1231,20 @@ export default function InvoiceDetailClient({
               <form
                 className="sami-surface rounded-[24px] p-4"
                 onSubmit={
-                  event => {
+                  async event => {
                     event
                       .preventDefault();
 
+                    const element =
+                      event.currentTarget;
+
                     const form =
                       new FormData(
-                        event.currentTarget,
+                        element,
                       );
 
-                    void run(
+                    const saved =
+                      await run(
                       {
                         action:
                           'issue_credit_note',
@@ -1189,6 +1261,12 @@ export default function InvoiceDetailClient({
                       },
                       'Credit note issued.',
                     );
+
+                    if (
+                      saved
+                    ) {
+                      element.reset();
+                    }
                   }
                 }
               >
@@ -1223,7 +1301,7 @@ export default function InvoiceDetailClient({
                   <button
                     type="submit"
                     disabled={
-                      pending
+                      busy
                     }
                     className="h-11 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black"
                   >
