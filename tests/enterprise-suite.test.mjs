@@ -489,6 +489,88 @@ test('enterprise manifests expose every owned register as a first-class resource
 });
 
 
+test('enterprise completion layer provides scalable views reporting and personal activity', async () => {
+  const [
+    service,
+    api,
+    client,
+    contract,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'app/api/apps/[appKey]/records/route.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'queryEnterpriseModuleTable',
+      'pageSize',
+      'hasMore',
+      'numericMetrics',
+      'listWorkspaceActivity',
+    ]
+  ) {
+    assert.ok(
+      service.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    api,
+    /action ===[\s\S]*'list'[\s\S]*queryEnterpriseModuleTable/s,
+  );
+
+  for (
+    const marker
+    of [
+      'Kanban',
+      'Calendar',
+      'Search all',
+      'Load more records',
+      'Numeric performance',
+      'ModuleActivity',
+      'My activity in',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    contract,
+    /\.\.\.tables\.map/,
+  );
+
+  assert.match(
+    contract,
+    /recordPolicies:[\s\S]*resourceKeyForTable/s,
+  );
+
+  assert.doesNotMatch(
+    contract,
+    /resourceKey:\s*'record'/,
+    'Enterprise policies must not point back to the obsolete generic record resource.',
+  );
+});
+
+
 test('enterprise search providers cover the code-owned module catalog', async () => {
   const [
     enterpriseSearch,
@@ -1020,6 +1102,48 @@ test('enterprise suite uses one audited workflow engine across business modules'
     client,
     /Change workflow state\?/,
   );
+});
+
+
+test('remaining enterprise lifecycles use explicit domain state machines', async () => {
+  const policy =
+    await source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    );
+
+  for (
+    const key
+    of [
+      'ads:ad_campaigns',
+      'calendar:calendar_events',
+      'checkout:checkout_sessions',
+      'commissions:commission_entries',
+      'demand_planning:demand_forecasts',
+      'events:events',
+      'facilities:facility_requests',
+      'gift_cards:gift_cards',
+      'inspections:inspections',
+      'marketing_automation:automation_workflows',
+      'marketplace:marketplace_orders',
+      'meetings:meetings',
+      'plm:engineering_changes',
+      'pos_restaurant:restaurant_orders',
+      'pos_shop:shop_orders',
+      'seo:seo_issues',
+      'sign:signature_requests',
+      'surveys:surveys',
+      'warehouse:warehouse_operations',
+    ]
+  ) {
+    assert.ok(
+      policy.includes(
+        "'" +
+        key +
+        "'",
+      ),
+      key,
+    );
+  }
 });
 
 
