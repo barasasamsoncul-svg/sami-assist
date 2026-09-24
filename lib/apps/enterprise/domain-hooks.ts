@@ -1664,6 +1664,784 @@ function validateDomainRow(
       'Safety check',
     );
   }
+
+  if (
+    moduleKey ===
+      'ads' &&
+    table ===
+      'ad_campaigns'
+  ) {
+    assertNonNegative(
+      row.budget_amount,
+      'Ad campaign budget',
+    );
+
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Ad campaign',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'ads' &&
+    table ===
+      'ad_daily_metrics'
+  ) {
+    assertNonNegative(
+      row.impressions,
+      'Ad impressions',
+    );
+    assertNonNegative(
+      row.clicks,
+      'Ad clicks',
+    );
+    assertNonNegative(
+      row.conversions,
+      'Ad conversions',
+    );
+    assertNonNegative(
+      row.spend,
+      'Ad spend',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'calendar' &&
+    table ===
+      'calendar_events'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Calendar event',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'checkout' &&
+    table ===
+      'checkout_links'
+  ) {
+    assertNonNegative(
+      row.amount,
+      'Checkout link amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'checkout' &&
+    table ===
+      'checkout_sessions'
+  ) {
+    assertPositive(
+      row.amount,
+      'Checkout session amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'commissions' &&
+    table ===
+      'commission_plans'
+  ) {
+    assertPercentage(
+      row.rate,
+      'Commission rate',
+    );
+
+    assertDateOrder(
+      row.effective_from,
+      row.effective_to,
+      'Commission plan',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'commissions' &&
+    table ===
+      'commission_assignments'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Commission assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'commissions' &&
+    table ===
+      'commission_entries'
+  ) {
+    assertNonNegative(
+      row.base_amount,
+      'Commission base amount',
+    );
+
+    assertNonNegative(
+      row.commission_amount,
+      'Commission amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'demand_planning' &&
+    table ===
+      'demand_forecasts'
+  ) {
+    assertDateOrder(
+      row.horizon_start,
+      row.horizon_end,
+      'Demand forecast horizon',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'demand_planning' &&
+    table ===
+      'demand_forecast_lines'
+  ) {
+    assertNonNegative(
+      row.forecast_quantity,
+      'Forecast quantity',
+    );
+
+    assertPercentage(
+      row.confidence,
+      'Forecast confidence',
+    );
+
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'Demand forecast period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'demand_planning' &&
+    table ===
+      'replenishment_recommendations'
+  ) {
+    assertPositive(
+      row.recommended_quantity,
+      'Recommended replenishment quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'ecommerce' &&
+    table ===
+      'storefront_products'
+  ) {
+    assertNonNegative(
+      row.price,
+      'Storefront product price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'ecommerce' &&
+    table ===
+      'storefront_order_lines'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Storefront order quantity',
+    );
+
+    assertNonNegative(
+      row.unit_price,
+      'Storefront unit price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'events' &&
+    table ===
+      'events'
+  ) {
+    assertDateOrder(
+      row.start_at,
+      row.end_at,
+      'Event',
+    );
+
+    assertNonNegative(
+      row.capacity,
+      'Event capacity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'facilities' &&
+    (
+      table ===
+        'facilities' ||
+      table ===
+        'facility_spaces'
+    )
+  ) {
+    assertNonNegative(
+      row.capacity,
+      'Facility capacity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'gift_cards' &&
+    table ===
+      'gift_card_programs' &&
+    row.expires_after_days !==
+      null &&
+    row.expires_after_days !==
+      undefined
+  ) {
+    assertPositive(
+      row.expires_after_days,
+      'Gift-card expiry days',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'gift_cards' &&
+    table ===
+      'gift_cards'
+  ) {
+    assertNonNegative(
+      row.initial_value,
+      'Gift-card initial value',
+    );
+
+    assertNonNegative(
+      row.balance,
+      'Gift-card balance',
+    );
+
+    if (
+      numberValue(
+        row.balance,
+      ) >
+      numberValue(
+        row.initial_value,
+      )
+    ) {
+      throw new Error(
+        'Gift-card balance cannot exceed its initial value.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'gift_cards' &&
+    table ===
+      'gift_card_transactions'
+  ) {
+    assertPositive(
+      row.amount,
+      'Gift-card transaction amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'inspections' &&
+    table ===
+      'inspections'
+  ) {
+    assertDateOrder(
+      row.scheduled_at,
+      row.completed_at,
+      'Inspection',
+    );
+
+    if (
+      row.score !==
+        null &&
+      row.score !==
+        undefined
+    ) {
+      assertPercentage(
+        row.score,
+        'Inspection score',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'loyalty' &&
+    table ===
+      'loyalty_programs'
+  ) {
+    assertNonNegative(
+      row.earning_rate,
+      'Loyalty earning rate',
+    );
+
+    assertNonNegative(
+      row.redemption_rate,
+      'Loyalty redemption rate',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'loyalty' &&
+    table ===
+      'loyalty_members'
+  ) {
+    assertNonNegative(
+      row.points_balance,
+      'Loyalty points balance',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'maintenance' &&
+    table ===
+      'maintenance_requests'
+  ) {
+    assertDateOrder(
+      row.scheduled_date,
+      row.completed_date,
+      'Maintenance request',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'maintenance' &&
+    table ===
+      'maintenance_logs'
+  ) {
+    assertNonNegative(
+      row.cost,
+      'Maintenance cost',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'marketing_automation' &&
+    table ===
+      'automation_steps'
+  ) {
+    assertNonNegative(
+      row.step_order,
+      'Automation step order',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'marketing_automation' &&
+    table ===
+      'automation_runs'
+  ) {
+    assertDateOrder(
+      row.started_at,
+      row.completed_at,
+      'Marketing automation run',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'marketplace' &&
+    table ===
+      'marketplace_sellers'
+  ) {
+    assertPercentage(
+      row.commission_rate,
+      'Marketplace commission rate',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'marketplace' &&
+    table ===
+      'marketplace_listings'
+  ) {
+    assertNonNegative(
+      row.price,
+      'Marketplace listing price',
+    );
+
+    assertNonNegative(
+      row.stock_quantity,
+      'Marketplace stock quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'marketplace' &&
+    table ===
+      'marketplace_order_lines'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Marketplace order quantity',
+    );
+
+    assertNonNegative(
+      row.line_total,
+      'Marketplace line total',
+    );
+
+    assertNonNegative(
+      row.commission_amount,
+      'Marketplace commission amount',
+    );
+
+    if (
+      numberValue(
+        row.commission_amount,
+      ) >
+      numberValue(
+        row.line_total,
+      )
+    ) {
+      throw new Error(
+        'Marketplace commission cannot exceed the line total.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'meetings' &&
+    table ===
+      'meetings'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Meeting',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'org_chart' &&
+    table ===
+      'org_position_history'
+  ) {
+    assertDateOrder(
+      row.starts_at,
+      row.ends_at,
+      'Organization-position history',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'planning' &&
+    table ===
+      'planning_shifts'
+  ) {
+    assertDateOrder(
+      row.start_at,
+      row.end_at,
+      'Planning shift',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'pos_restaurant' &&
+    table ===
+      'menu_items'
+  ) {
+    assertNonNegative(
+      row.price,
+      'Menu item price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'pos_restaurant' &&
+    table ===
+      'restaurant_tables'
+  ) {
+    assertPositive(
+      row.seats,
+      'Restaurant table seats',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'pos_restaurant' &&
+    table ===
+      'restaurant_order_items'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Restaurant item quantity',
+    );
+
+    assertNonNegative(
+      row.unit_price,
+      'Restaurant item unit price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'pos_shop' &&
+    table ===
+      'shop_products'
+  ) {
+    assertNonNegative(
+      row.price,
+      'Shop product price',
+    );
+
+    assertPercentage(
+      row.tax_rate,
+      'Shop product tax rate',
+    );
+
+    assertNonNegative(
+      row.stock_quantity,
+      'Shop stock quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'pos_shop' &&
+    table ===
+      'shop_order_items'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Shop order quantity',
+    );
+
+    assertNonNegative(
+      row.unit_price,
+      'Shop order unit price',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'seo' &&
+    table ===
+      'seo_rankings'
+  ) {
+    assertNonNegative(
+      row.position,
+      'SEO ranking position',
+    );
+
+    assertNonNegative(
+      row.search_volume,
+      'SEO search volume',
+    );
+
+    assertNonNegative(
+      row.clicks,
+      'SEO clicks',
+    );
+
+    assertNonNegative(
+      row.impressions,
+      'SEO impressions',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shipping' &&
+    table ===
+      'shipments'
+  ) {
+    assertDateOrder(
+      row.shipped_at,
+      row.delivered_at,
+      'Shipment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'shipping' &&
+    table ===
+      'shipment_packages'
+  ) {
+    for (
+      const [
+        value,
+        label,
+      ]
+      of [
+        [
+          row.weight,
+          'Package weight',
+        ],
+        [
+          row.length,
+          'Package length',
+        ],
+        [
+          row.width,
+          'Package width',
+        ],
+        [
+          row.height,
+          'Package height',
+        ],
+      ] as const
+    ) {
+      assertNonNegative(
+        value,
+        label,
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'sign' &&
+    table ===
+      'signature_requests'
+  ) {
+    assertDateOrder(
+      row.sent_at,
+      row.completed_at,
+      'Signature request',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'sign' &&
+    table ===
+      'signers'
+  ) {
+    assertPositive(
+      row.signing_order,
+      'Signer order',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'surveys' &&
+    table ===
+      'surveys'
+  ) {
+    assertDateOrder(
+      row.opens_at,
+      row.closes_at,
+      'Survey',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'warehouse' &&
+    table ===
+      'warehouse_operations'
+  ) {
+    assertDateOrder(
+      row.scheduled_at,
+      row.completed_at,
+      'Warehouse operation',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'warehouse' &&
+    table ===
+      'warehouse_operation_lines'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Warehouse operation quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'web_analytics' &&
+    table ===
+      'analytics_sessions'
+  ) {
+    assertDateOrder(
+      row.started_at,
+      row.ended_at,
+      'Analytics session',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'web_analytics' &&
+    table ===
+      'analytics_conversions'
+  ) {
+    assertNonNegative(
+      row.value,
+      'Analytics conversion value',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'whiteboard' &&
+    table ===
+      'whiteboards'
+  ) {
+    assertPositive(
+      row.width,
+      'Whiteboard width',
+    );
+
+    assertPositive(
+      row.height,
+      'Whiteboard height',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'whiteboard' &&
+    table ===
+      'whiteboard_versions'
+  ) {
+    assertPositive(
+      row.version_number,
+      'Whiteboard version',
+    );
+  }
+
 }
 
 
