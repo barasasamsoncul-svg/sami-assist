@@ -9,6 +9,10 @@ import {
   searchEnterpriseModuleRecords,
 } from '@/lib/apps/enterprise/service';
 
+import {
+  getEnterpriseModuleExperience,
+} from '@/lib/apps/enterprise/suite-experience';
+
 import type {
   SamiAiToolDefinition,
 } from '@/lib/ai/types';
@@ -81,9 +85,49 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
               moduleKey,
             );
 
+          const experience =
+            getEnterpriseModuleExperience(
+              moduleKey,
+              data.tables.map(
+                table =>
+                  table.key,
+              ),
+            );
+
           return {
             module:
               data.module,
+            operatingExperience:
+              experience
+                ? {
+                    process:
+                      experience.process,
+                    zones:
+                      experience.zones,
+                    connectedApps:
+                      experience
+                        .integrations
+                        .filter(
+                          integration =>
+                            context
+                              .accessibleModuleKeys
+                              .includes(
+                                integration
+                                  .moduleKey,
+                              ),
+                        )
+                        .map(
+                          integration => ({
+                            moduleKey:
+                              integration
+                                .moduleKey,
+                            label:
+                              integration
+                                .label,
+                          }),
+                        ),
+                  }
+                : null,
             company:
               data.company,
             metrics:
