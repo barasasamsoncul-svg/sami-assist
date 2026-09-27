@@ -44,6 +44,15 @@ import {
 } from '@/lib/apps/enterprise/field-security';
 
 import {
+  ensureEnterpriseModuleRuntimeSchema,
+} from '@/lib/apps/enterprise/hardening';
+
+import {
+  upgradeInstalledModuleForTenant,
+} from '@/lib/services/module-upgrades';
+
+
+import {
   listWorkspaceActivity,
   recordWorkspaceAuditEvent,
   type WorkspaceActivityItem,
@@ -1258,6 +1267,153 @@ async function tableMetadata(
 }
 
 
+const enterpriseModuleUpgradeChecks =
+  new Map<
+    string,
+    Promise<void>
+  >();
+
+
+async function ensureInstalledEnterpriseModuleCurrent(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireContext
+      >
+    >,
+) {
+  const key =
+    context.tenantId +
+    ':' +
+    context.moduleKey;
+
+  let pending =
+    enterpriseModuleUpgradeChecks.get(
+      key,
+    );
+
+  if (
+    !pending
+  ) {
+    pending =
+      upgradeInstalledModuleForTenant(
+        context.tenantId,
+        context.moduleKey,
+      )
+        .then(
+          () =>
+            undefined,
+        )
+        .catch(
+          error => {
+            enterpriseModuleUpgradeChecks.delete(
+              key,
+            );
+
+            throw error;
+          },
+        );
+
+    enterpriseModuleUpgradeChecks.set(
+      key,
+      pending,
+    );
+  }
+
+  await pending;
+}
+
+
+async function reconciledTableMetadata(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireContext
+      >
+    >,
+  allowedTables:
+    string[],
+) {
+  await ensureInstalledEnterpriseModuleCurrent(
+    context,
+  );
+
+  let repaired =
+    false;
+
+  while (
+    true
+  ) {
+    try {
+      const metadata =
+        await tableMetadata(
+          context.pool,
+          allowedTables,
+        );
+
+      const missingTables =
+        allowedTables.filter(
+          table =>
+            !metadata.get(
+              table,
+            )
+              ?.length,
+        );
+
+      if (
+        missingTables.length ===
+          0 ||
+        repaired
+      ) {
+        return metadata;
+      }
+
+      await ensureEnterpriseModuleRuntimeSchema(
+        context.pool,
+        context.moduleKey,
+      );
+
+      repaired =
+        true;
+    } catch (
+      error
+    ) {
+      if (
+        !repaired &&
+        error instanceof
+          EnterpriseModuleError &&
+        error.code ===
+          'TABLE_NOT_READY'
+      ) {
+        console.warn(
+          '[SaMi Enterprise App] repairing stale runtime schema:',
+          {
+            tenantId:
+              context.tenantId,
+            moduleKey:
+              context.moduleKey,
+            details:
+              error.details,
+          },
+        );
+
+        await ensureEnterpriseModuleRuntimeSchema(
+          context.pool,
+          context.moduleKey,
+        );
+
+        repaired =
+          true;
+
+        continue;
+      }
+
+      throw error;
+    }
+  }
+}
+
+
 function rowOutput(
   row:
     Record<string, unknown>,
@@ -1896,8 +2052,8 @@ export async function getEnterpriseModuleWorkspace(
     );
 
   const metadata =
-    await tableMetadata(
-      context.pool,
+    await reconciledTableMetadata(
+      context,
       allowedTables,
     );
 
@@ -2237,8 +2393,8 @@ async function assertTable(
   }
 
   const metadata =
-    await tableMetadata(
-      context.pool,
+    await reconciledTableMetadata(
+      context,
       [
         table,
       ],
@@ -4824,8 +4980,8 @@ export async function searchEnterpriseModuleRecords(
       );
 
   const metadata =
-    await tableMetadata(
-      context.pool,
+    await reconciledTableMetadata(
+      context,
       tables,
     );
 

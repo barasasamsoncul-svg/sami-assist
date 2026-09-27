@@ -1583,6 +1583,74 @@ test('specialist execution transitions post operational business effects transac
 });
 
 
+test('enterprise runtime reconciles stale installed schemas before workspace reads', async () => {
+  const [
+    hardening,
+    upgrades,
+    service,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/services/module-upgrades.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+  ]);
+
+  assert.match(
+    hardening,
+    /ensureEnterpriseModuleRuntimeSchema/,
+  );
+
+  assert.match(
+    hardening,
+    /pg_advisory_lock/,
+  );
+
+  assert.match(
+    hardening,
+    /hardenModule\([\s\S]*completeModule\([\s\S]*deepenSpecialistModule/s,
+    'Runtime repair must restore company boundaries, completion tables and specialist depth under one guarded path.',
+  );
+
+  assert.match(
+    upgrades,
+    /upgradeInstalledModuleForTenant/,
+  );
+
+  assert.match(
+    upgrades,
+    /row\.version \|\|[\s\S]*'1\.0\.0'/s,
+    'Legacy installed modules without a recorded version must have a safe migration baseline.',
+  );
+
+  assert.match(
+    service,
+    /reconciledTableMetadata/,
+  );
+
+  assert.match(
+    service,
+    /upgradeInstalledModuleForTenant\([\s\S]*context\.tenantId[\s\S]*context\.moduleKey/s,
+  );
+
+  assert.match(
+    service,
+    /error\.code ===[\s\S]*'TABLE_NOT_READY'[\s\S]*ensureEnterpriseModuleRuntimeSchema/s,
+    'A stale schema should be repaired and retried instead of being rendered as App unavailable.',
+  );
+
+  assert.match(
+    service,
+    /missingTables[\s\S]*ensureEnterpriseModuleRuntimeSchema/s,
+    'Missing specialist/runtime tables should trigger one schema reconciliation pass.',
+  );
+});
+
+
 test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
   const service =
     await source(

@@ -116,6 +116,156 @@ async function listInstalledModules(
   );
 }
 
+async function upgradeInstalledModuleRow(
+  tenantId:
+    string,
+  pool:
+    Awaited<
+      ReturnType<
+        typeof getTenantPoolByTenantId
+      >
+    >,
+  row:
+    InstalledModuleRow,
+): Promise<
+  WorkspaceModuleUpgrade | null
+> {
+  const manifest =
+    getSamiModuleManifest(
+      row.module_key,
+    );
+
+  if (
+    !manifest
+  ) {
+    return null;
+  }
+
+  const currentVersion =
+    row.version ||
+    '1.0.0';
+
+  const targetVersion =
+    manifest.version;
+
+  await synchronizeModulePermissions({
+    moduleKey:
+      manifest.key,
+    permissions:
+      manifest.security
+        .permissions,
+  });
+
+  if (
+    compareSamiModuleVersions(
+      currentVersion,
+      targetVersion,
+    ) ===
+    0
+  ) {
+    return null;
+  }
+
+  const migrated =
+    await runSamiModuleMigrations({
+      tenantPool:
+        pool,
+      moduleKey:
+        row.module_key,
+      currentVersion,
+      targetVersion,
+    });
+
+  await queryControl(
+    `
+      UPDATE tenant_modules
+      SET
+        version = $3,
+        updated_at = NOW()
+      WHERE tenant_id = $1
+        AND module_id = $2
+    `,
+    [
+      tenantId,
+      row.module_id,
+      targetVersion,
+    ],
+  );
+
+  return {
+    tenantId,
+    moduleKey:
+      row.module_key,
+    previousVersion:
+      migrated
+        .previousVersion,
+    currentVersion:
+      migrated
+        .currentVersion,
+    targetVersion:
+      migrated
+        .targetVersion,
+    appliedMigrations:
+      migrated
+        .appliedMigrations,
+    changed:
+      migrated
+        .changed,
+  };
+}
+
+
+export async function upgradeInstalledModuleForTenant(
+  tenantId:
+    string,
+  moduleKeyInput:
+    string,
+): Promise<
+  WorkspaceModuleUpgrade | null
+> {
+  const moduleKey =
+    normalizeKey(
+      moduleKeyInput,
+    );
+
+  const installed =
+    await listInstalledModules(
+      tenantId,
+    );
+
+  const row =
+    installed.find(
+      candidate =>
+        candidate.module_key ===
+          moduleKey &&
+        [
+          'installed',
+          'active',
+          'enabled',
+        ].includes(
+          candidate.status,
+        ),
+    );
+
+  if (
+    !row
+  ) {
+    return null;
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      tenantId,
+    );
+
+  return upgradeInstalledModuleRow(
+    tenantId,
+    pool,
+    row,
+  );
+}
+
+
 export async function upgradeInstalledModulesForTenant(
   tenantId:
     string,
@@ -140,86 +290,20 @@ export async function upgradeInstalledModulesForTenant(
     const row
     of installed
   ) {
-    const manifest =
-      getSamiModuleManifest(
-        row.module_key,
+    const upgraded =
+      await upgradeInstalledModuleRow(
+        tenantId,
+        pool,
+        row,
       );
 
     if (
-      !manifest ||
-      !row.version
+      upgraded
     ) {
-      continue;
+      results.push(
+        upgraded,
+      );
     }
-
-    const targetVersion =
-      manifest.version;
-
-    await synchronizeModulePermissions({
-      moduleKey:
-        manifest.key,
-      permissions:
-        manifest.security
-          .permissions,
-    });
-
-    if (
-      compareSamiModuleVersions(
-        row.version,
-        targetVersion,
-      ) ===
-      0
-    ) {
-      continue;
-    }
-
-    const migrated =
-      await runSamiModuleMigrations({
-        tenantPool:
-          pool,
-        moduleKey:
-          row.module_key,
-        currentVersion:
-          row.version,
-        targetVersion,
-      });
-
-    await queryControl(
-      `
-        UPDATE tenant_modules
-        SET
-          version = $3,
-          updated_at = NOW()
-        WHERE tenant_id = $1
-          AND module_id = $2
-      `,
-      [
-        tenantId,
-        row.module_id,
-        targetVersion,
-      ],
-    );
-
-    results.push({
-      tenantId,
-      moduleKey:
-        row.module_key,
-      previousVersion:
-        migrated
-          .previousVersion,
-      currentVersion:
-        migrated
-          .currentVersion,
-      targetVersion:
-        migrated
-          .targetVersion,
-      appliedMigrations:
-        migrated
-          .appliedMigrations,
-      changed:
-        migrated
-          .changed,
-    });
   }
 
   return results;
