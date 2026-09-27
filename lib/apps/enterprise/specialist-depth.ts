@@ -19,6 +19,15 @@ import {
 } from '@/lib/apps/enterprise/specialist-breadth-depth';
 
 
+import {
+  commerceParityDepthSql,
+} from '@/lib/apps/enterprise/strict-parity-commerce-depth';
+
+import {
+  peopleMarketingParityDepthSql,
+} from '@/lib/apps/enterprise/strict-parity-people-marketing-depth';
+
+
 
 
 function accountingSql() {
@@ -802,6 +811,25 @@ export function specialistDepthSql(
   const key:
     SpecialistEnterpriseModuleKey =
     moduleKey;
+
+  const strictParitySql =
+    commerceParityDepthSql(
+      key,
+    ) +
+    peopleMarketingParityDepthSql(
+      key,
+    );
+
+  if (
+    strictParitySql.trim()
+  ) {
+    return (
+      strictParitySql +
+      specialistBreadthDepthSql(
+        key,
+      )
+    );
+  }
 
   const breadthSql =
     specialistBreadthDepthSql(
