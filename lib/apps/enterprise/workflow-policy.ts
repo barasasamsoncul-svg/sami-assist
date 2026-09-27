@@ -970,6 +970,96 @@ const DOMAIN_GRAPH:
       reserved: ['consumed','released','cancelled'],
       released: ['required','cancelled'],
     },
+    'purchase:purchase_requisitions': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','rejected','draft','cancelled'],
+      approved: ['converted','cancelled'],
+      rejected: ['draft','cancelled'],
+    },
+    'purchase:purchase_receipts': {
+      draft: ['received','cancelled'],
+      received: ['inspected','posted','cancelled'],
+      inspected: ['posted','received','cancelled'],
+    },
+    'expenses:expense_reports': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','rejected','draft','cancelled'],
+      approved: ['reimbursed','cancelled'],
+      rejected: ['draft','cancelled'],
+    },
+    'fixed_assets:asset_impairments': {
+      draft: ['approved','cancelled'],
+      approved: ['posted','cancelled'],
+    },
+    'fixed_assets:asset_insurance_policies': {
+      active: ['expired','cancelled'],
+      expired: ['active'],
+    },
+    'tax:withholding_certificates': {
+      draft: ['issued','void'],
+      issued: ['void'],
+    },
+    'budgeting:budget_scenarios': {
+      draft: ['active','archived'],
+      active: ['archived','draft'],
+      archived: ['draft'],
+    },
+    'budgeting:budget_approvals': {
+      pending: ['approved','rejected','cancelled'],
+      rejected: ['pending','cancelled'],
+    },
+    'cash_flow:cash_flow_scenarios': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'cash_flow:liquidity_alerts': {
+      open: ['acknowledged','resolved'],
+      acknowledged: ['open','resolved'],
+      resolved: ['open'],
+    },
+    'billing:billing_cycles': {
+      draft: ['running','cancelled'],
+      running: ['completed','failed','cancelled'],
+      failed: ['draft','running','cancelled'],
+    },
+    'billing:billing_dunning_cases': {
+      open: ['contacted','promise_to_pay','escalated','resolved','cancelled'],
+      contacted: ['promise_to_pay','escalated','resolved','cancelled'],
+      promise_to_pay: ['contacted','escalated','resolved','cancelled'],
+      escalated: ['contacted','promise_to_pay','resolved','cancelled'],
+    },
+    'subscriptions:subscription_changes': {
+      scheduled: ['applied','cancelled'],
+    },
+    'subscriptions:subscription_usage_charges': {
+      pending: ['billed','waived','cancelled'],
+    },
+    'subscriptions:subscription_renewals': {
+      pending: ['renewed','failed','cancelled'],
+      failed: ['pending','cancelled'],
+    },
+    'payments:payment_batches': {
+      draft: ['submitted','cancelled'],
+      submitted: ['processing','cancelled'],
+      processing: ['completed','failed','cancelled'],
+      failed: ['draft','submitted','cancelled'],
+    },
+    'payments:payment_refunds': {
+      requested: ['approved','rejected','cancelled'],
+      approved: ['processing','cancelled'],
+      processing: ['completed','rejected','cancelled'],
+    },
+    'payments:payment_disputes': {
+      open: ['under_review','cancelled'],
+      under_review: ['won','lost','closed','cancelled'],
+      won: ['closed'],
+      lost: ['closed'],
+    },
+    'commissions:commission_payouts': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','draft','cancelled'],
+      approved: ['paid','cancelled'],
+    },
     'whiteboard:whiteboards': {
       active: ['archived','closed'],
       archived: ['active','closed'],
