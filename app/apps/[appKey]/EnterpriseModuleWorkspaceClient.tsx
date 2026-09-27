@@ -481,11 +481,17 @@ function exportTable(
 export default function EnterpriseModuleWorkspaceClient({
   initialData,
   userId,
+  initialView,
+  initialTableKey,
 }: {
   initialData:
     EnterpriseWorkspaceData;
   userId:
     string;
+  initialView:
+    ViewKey;
+  initialTableKey:
+    string | null;
 }) {
   const router =
     useRouter();
@@ -495,7 +501,7 @@ export default function EnterpriseModuleWorkspaceClient({
     setView,
   ] =
     useState<ViewKey>(
-      'overview',
+      initialView,
     );
 
   const recordTables =
@@ -529,8 +535,15 @@ export default function EnterpriseModuleWorkspaceClient({
     setSelectedTableKey,
   ] =
     useState(
-      recordTables[0]
-        ?.key ||
+      initialTableKey ||
+      (
+        initialView ===
+          'settings'
+          ? settingTables[0]
+              ?.key
+          : recordTables[0]
+              ?.key
+      ) ||
       initialData.tables[0]
         ?.key ||
       '',
@@ -720,6 +733,174 @@ export default function EnterpriseModuleWorkspaceClient({
       ],
     );
 
+  const moduleBasePath =
+    '/apps/' +
+    encodeURIComponent(
+      initialData
+        .module
+        .key,
+    );
+
+  function routeForView(
+    target:
+      ViewKey,
+    tableKey?:
+      string | null,
+  ) {
+    if (
+      target ===
+        'overview'
+    ) {
+      return moduleBasePath;
+    }
+
+    if (
+      target ===
+        'records'
+    ) {
+      const key =
+        tableKey ||
+        recordTables[0]
+          ?.key;
+
+      return key
+        ? moduleBasePath +
+            '/' +
+            encodeURIComponent(
+              key,
+            )
+        : moduleBasePath;
+    }
+
+    return (
+      moduleBasePath +
+      '/' +
+      target
+    );
+  }
+
+  function navigateView(
+    target:
+      ViewKey,
+  ) {
+    let tableKey:
+      string | null =
+      null;
+
+    if (
+      target ===
+        'records'
+    ) {
+      tableKey =
+        recordTables[0]
+          ?.key ||
+        null;
+    }
+
+    if (
+      target ===
+        'settings'
+    ) {
+      tableKey =
+        settingTables[0]
+          ?.key ||
+        null;
+    }
+
+    setView(
+      target,
+    );
+
+    if (
+      tableKey
+    ) {
+      setSelectedTableKey(
+        tableKey,
+      );
+    }
+
+    setSearch(
+      '',
+    );
+
+    router.push(
+      routeForView(
+        target,
+        tableKey,
+      ),
+    );
+  }
+
+  function navigateTable(
+    table:
+      EnterpriseTable,
+  ) {
+    const target:
+      ViewKey =
+      table.settingTable
+        ? 'settings'
+        : 'records';
+
+    setView(
+      target,
+    );
+    setSelectedTableKey(
+      table.key,
+    );
+    setSearch(
+      '',
+    );
+
+    router.push(
+      moduleBasePath +
+      '/' +
+      encodeURIComponent(
+        table.key,
+      ),
+    );
+  }
+
+  useEffect(
+    () => {
+      setView(
+        initialView,
+      );
+
+      const nextTableKey =
+        initialTableKey ||
+        (
+          initialView ===
+            'settings'
+            ? settingTables[0]
+                ?.key
+            : initialView ===
+                'records'
+              ? recordTables[0]
+                  ?.key
+              : null
+        );
+
+      if (
+        nextTableKey
+      ) {
+        setSelectedTableKey(
+          nextTableKey,
+        );
+      }
+
+      setSearch(
+        '',
+      );
+    },
+    [
+      initialTableKey,
+      initialView,
+      recordTables,
+      settingTables,
+    ],
+  );
+
+
   const tutorialSteps =
     useMemo(
       () =>
@@ -748,31 +929,9 @@ export default function EnterpriseModuleWorkspaceClient({
       if (
         section
       ) {
-        setView(
+        navigateView(
           section,
         );
-
-        if (
-          section ===
-            'settings' &&
-          settingTables[0]
-        ) {
-          setSelectedTableKey(
-            settingTables[0]
-              .key,
-          );
-        }
-
-        if (
-          section ===
-            'records' &&
-          recordTables[0]
-        ) {
-          setSelectedTableKey(
-            recordTables[0]
-              .key,
-          );
-        }
       }
     };
 
@@ -1825,33 +1984,10 @@ export default function EnterpriseModuleWorkspaceClient({
                         }
                         type="button"
                         onClick={
-                          () => {
-                            setView(
+                          () =>
+                            navigateView(
                               item.key,
-                            );
-
-                            if (
-                              item.key ===
-                                'records' &&
-                              recordTables[0]
-                            ) {
-                              setSelectedTableKey(
-                                recordTables[0]
-                                  .key,
-                              );
-                            }
-
-                            if (
-                              item.key ===
-                                'settings' &&
-                              settingTables[0]
-                            ) {
-                              setSelectedTableKey(
-                                settingTables[0]
-                                  .key,
-                              );
-                            }
-                          }
+                            )
                         }
                         className={[
                           'inline-flex h-10 shrink-0 items-center gap-2 rounded-xl px-3 text-xs font-black',
@@ -1884,17 +2020,10 @@ export default function EnterpriseModuleWorkspaceClient({
                 initialData
               }
               onOpenTable={
-                table => {
-                  setSelectedTableKey(
-                    table.key,
-                  );
-
-                  setView(
-                    table.settingTable
-                      ? 'settings'
-                      : 'records',
-                  );
-                }
+                table =>
+                  navigateTable(
+                    table,
+                  )
               }
             />
           )
@@ -1964,8 +2093,8 @@ export default function EnterpriseModuleWorkspaceClient({
               }
               onSelect={
                 table =>
-                  setSelectedTableKey(
-                    table.key,
+                  navigateTable(
+                    table,
                   )
               }
               onCreate={
@@ -2058,16 +2187,10 @@ export default function EnterpriseModuleWorkspaceClient({
                 initialData
               }
               onOpen={
-                table => {
-                  setSelectedTableKey(
-                    table.key,
-                  );
-                  setView(
-                    table.settingTable
-                      ? 'settings'
-                      : 'records',
-                  );
-                }
+                table =>
+                  navigateTable(
+                    table,
+                  )
               }
             />
           )
