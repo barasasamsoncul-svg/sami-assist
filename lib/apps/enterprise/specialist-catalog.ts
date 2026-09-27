@@ -165,20 +165,24 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'appointment_reminders',
   ],
   assets: [
+    'operational_asset_assignments',
   ],
   barcode: [
+    'barcode_scan_sessions',
   ],
   bookings: [
   ],
   calendar: [
   ],
   chat: [
+    'chat_read_receipts',
   ],
   checkout: [
   ],
   cpq: [
   ],
   customer_portal: [
+    'portal_requests',
   ],
   demand_planning: [
   ],
@@ -191,6 +195,7 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   email_marketing: [
     'email_templates',
     'email_campaign_events',
+    'email_suppressions',
   ],
   events: [
     'event_sessions',
@@ -209,12 +214,15 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   inspections: [
   ],
   landing_pages: [
+    'landing_page_versions',
   ],
   lead_capture: [
+    'lead_routing_decisions',
   ],
   loyalty: [
   ],
   mail: [
+    'mail_rules',
   ],
   maintenance: [
     'preventive_maintenance_plans',
@@ -251,6 +259,7 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   safety: [
   ],
   sales_inbox: [
+    'sales_conversation_links',
   ],
   seo: [
   ],
@@ -263,18 +272,24 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   sms_marketing: [
     'sms_templates',
     'sms_delivery_events',
+    'sms_suppressions',
   ],
   social_marketing: [
     'social_campaigns',
     'social_post_metrics',
+    'social_publish_queue',
   ],
   spreadsheet: [
+    'spreadsheet_named_ranges',
+    'spreadsheet_data_sources',
   ],
   surveys: [
   ],
   team_inbox: [
+    'team_inbox_assignment_events',
   ],
   vendor_portal: [
+    'vendor_portal_acknowledgements',
   ],
   web_analytics: [
   ],
