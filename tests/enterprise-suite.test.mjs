@@ -1748,10 +1748,10 @@ test('shared app lifecycle policy is explicit wherever the schema exposes busine
     'Documents must expose an explicit approval lifecycle once document approvals are installed.',
   );
 
-  assert.doesNotMatch(
+  assert.match(
     workflow,
-    /'spreadsheet:/,
-    'Spreadsheet currently has no business status field to transition.',
+    /'spreadsheet:spreadsheet_data_sources'/,
+    'Spreadsheet must expose a governed lifecycle once external data sources are installed.',
   );
 });
 
