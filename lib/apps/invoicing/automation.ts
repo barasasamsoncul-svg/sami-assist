@@ -380,10 +380,9 @@ async function deliver(
     });
 
   return {
-    invoiceId,
+    ...result,
     purpose,
     channels,
-    ...result,
   } as
     Record<
       string,
