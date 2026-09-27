@@ -219,6 +219,7 @@ export const SALES_AI_TOOLS:
         properties: {
           quoteId: { type: 'string' },
           idempotencyKey: { type: 'string' },
+          exchangeRate: { type: 'number', minimum: 0.00000001 },
         },
         required: ['quoteId'],
       },
@@ -226,6 +227,7 @@ export const SALES_AI_TOOLS:
         convertSalesQuoteToInvoice({
           quoteId: input.quoteId,
           idempotencyKey: input.idempotencyKey,
+          exchangeRate: input.exchangeRate,
         }),
     },
   ];
