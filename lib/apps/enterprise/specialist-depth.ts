@@ -9,6 +9,11 @@ import {
   financeSpecialistDepthSql,
 } from '@/lib/apps/enterprise/specialist-finance-depth';
 
+import {
+  peopleSpecialistDepthSql,
+} from '@/lib/apps/enterprise/specialist-people-depth';
+
+
 
 
 function accountingSql() {
@@ -802,6 +807,17 @@ export function specialistDepthSql(
     financeSql
   ) {
     return financeSql;
+  }
+
+  const peopleSql =
+    peopleSpecialistDepthSql(
+      key,
+    );
+
+  if (
+    peopleSql
+  ) {
+    return peopleSql;
   }
 
   switch (

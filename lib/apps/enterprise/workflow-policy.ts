@@ -1060,6 +1060,113 @@ const DOMAIN_GRAPH:
       submitted: ['approved','draft','cancelled'],
       approved: ['paid','cancelled'],
     },
+    'employees:employee_contracts': {
+      draft: ['active','cancelled'],
+      active: ['expired','terminated','cancelled'],
+    },
+    'employees:employee_lifecycle_events': {
+      planned: ['effective','cancelled'],
+      effective: ['cancelled'],
+    },
+    'recruitment:recruitment_requisitions': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','rejected','draft','cancelled'],
+      approved: ['open','cancelled'],
+      open: ['filled','cancelled'],
+      rejected: ['draft','cancelled'],
+    },
+    'recruitment:job_offers': {
+      draft: ['approved','withdrawn'],
+      approved: ['sent','withdrawn'],
+      sent: ['accepted','rejected','expired','withdrawn'],
+    },
+    'attendance:attendance_exceptions': {
+      open: ['acknowledged','resolved','waived'],
+      acknowledged: ['resolved','waived','open'],
+    },
+    'attendance:attendance_corrections': {
+      pending: ['approved','rejected','cancelled'],
+      rejected: ['pending','cancelled'],
+    },
+    'attendance:attendance_overtime_requests': {
+      pending: ['approved','rejected','cancelled'],
+      rejected: ['pending','cancelled'],
+    },
+    'shifts:open_shifts': {
+      open: ['filled','cancelled'],
+      filled: ['open','cancelled'],
+    },
+    'shifts:shift_swap_requests': {
+      pending: ['accepted','approved','rejected','cancelled'],
+      accepted: ['approved','rejected','cancelled'],
+    },
+    'time_off:leave_balances': {
+      active: ['closed'],
+      closed: ['active'],
+    },
+    'time_off:leave_accruals': {
+      draft: ['posted','reversed'],
+      posted: ['reversed'],
+    },
+    'timesheets:timesheet_periods': {
+      open: ['submitted','locked','closed'],
+      submitted: ['open','locked','closed'],
+      locked: ['closed','open'],
+    },
+    'timesheets:timesheet_submissions': {
+      draft: ['submitted'],
+      submitted: ['approved','rejected','draft'],
+      approved: ['locked'],
+      rejected: ['draft'],
+    },
+    'timesheets:timesheet_approvals': {
+      pending: ['completed','cancelled'],
+    },
+    'benefits:benefit_claims': {
+      submitted: ['under_review','rejected','cancelled'],
+      under_review: ['approved','rejected','cancelled'],
+      approved: ['paid','cancelled'],
+    },
+    'benefits:benefit_contributions': {
+      draft: ['posted','reversed'],
+      posted: ['reversed'],
+    },
+    'appraisals:appraisal_feedback': {
+      draft: ['submitted','withdrawn'],
+      submitted: ['withdrawn'],
+    },
+    'appraisals:appraisal_calibrations': {
+      effective: ['reversed'],
+    },
+    'onboarding:onboarding_documents': {
+      pending: ['submitted','waived'],
+      submitted: ['verified','rejected','waived'],
+      rejected: ['submitted','waived'],
+    },
+    'onboarding:onboarding_checkins': {
+      scheduled: ['completed','cancelled'],
+    },
+    'onboarding:onboarding_equipment_assignments': {
+      pending: ['assigned','cancelled'],
+      assigned: ['returned','lost','cancelled'],
+      lost: ['returned'],
+    },
+    'learning:learning_assessment_attempts': {
+      in_progress: ['submitted','cancelled'],
+      submitted: ['graded','cancelled'],
+    },
+    'learning:learning_certificates': {
+      valid: ['expired','revoked'],
+      expired: ['revoked'],
+    },
+    'org_chart:succession_plans': {
+      active: ['closed','cancelled'],
+      closed: ['active'],
+    },
+    'org_chart:succession_candidates': {
+      active: ['selected','withdrawn'],
+      selected: ['active','withdrawn'],
+    },
     'whiteboard:whiteboards': {
       active: ['archived','closed'],
       archived: ['active','closed'],
