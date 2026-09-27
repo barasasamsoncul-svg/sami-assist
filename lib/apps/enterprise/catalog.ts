@@ -45,7 +45,7 @@ export const ENTERPRISE_MODULE_TABLES = {
   meetings: ['meetings_settings','meetings','meeting_participants','meeting_notes'],
   onboarding: ['onboarding_settings','onboarding_templates','onboarding_template_tasks','employee_onboardings','employee_onboarding_tasks'],
   org_chart: ['org_chart_settings','org_positions','org_position_history'],
-  payments: ['payments_settings','payment_accounts','business_payments','payment_allocations','payment_reconciliations','payment_batches','payment_refunds','payment_disputes'],
+  payments: ['payments_settings','payment_accounts','business_payments','payment_allocations','payment_reconciliations','payment_batches','payment_batch_items','payment_refunds','payment_disputes'],
   payroll: ['payroll_settings','payroll_periods','payroll_employees','payroll_runs','payroll_run_lines','payroll_components','payroll_employee_components','payslips','payslip_lines'],
   planning: ['planning_shifts','planning_assignments','planning_resources'],
   plm: ['product_versions','engineering_changes','change_items'],
