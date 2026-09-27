@@ -21,6 +21,33 @@ const SENSITIVE_BUSINESS_FIELDS:
   'payroll:payroll_employees':
     new Set([
       'basic_salary',
+      'tax_number',
+      'bank_details',
+    ]),
+  'payroll:payroll_components':
+    new Set([
+      'default_amount',
+      'percentage_rate',
+      'taxable',
+      'statutory',
+    ]),
+  'payroll:payroll_employee_components':
+    new Set([
+      'amount_override',
+      'percentage_override',
+    ]),
+  'payroll:payslips':
+    new Set([
+      'gross_amount',
+      'deduction_amount',
+      'employer_contribution_amount',
+      'net_amount',
+    ]),
+  'payroll:payslip_lines':
+    new Set([
+      'quantity',
+      'rate',
+      'amount',
     ]),
   'payroll:payroll_run_lines':
     new Set([
@@ -66,6 +93,31 @@ const SENSITIVE_BUSINESS_FIELDS:
       'account_number',
       'bank_account',
       'wallet_number',
+    ]),
+  'accounting:accounting_bank_accounts':
+    new Set([
+      'account_number_last4',
+      'opening_balance',
+    ]),
+  'accounting:accounting_bank_statement_lines':
+    new Set([
+      'amount',
+      'external_reference',
+    ]),
+  'projects:project_budgets':
+    new Set([
+      'budget_amount',
+      'approved_amount',
+    ]),
+  'projects:project_budget_lines':
+    new Set([
+      'planned_amount',
+      'actual_amount',
+      'committed_amount',
+    ]),
+  'projects:project_resources':
+    new Set([
+      'hourly_cost',
     ]),
 };
 
