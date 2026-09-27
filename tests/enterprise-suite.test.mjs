@@ -1073,6 +1073,212 @@ test('enterprise completion reuses private workspace storage and never invents a
 });
 
 
+test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk warehouse and manufacturing', async () => {
+  const [
+    specialistCatalog,
+    specialistDepth,
+    catalog,
+    hardening,
+    migrations,
+    contract,
+    workflow,
+    hooks,
+    fieldSecurity,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/specialist-catalog.ts',
+    ),
+    source(
+      'lib/apps/enterprise/specialist-depth.ts',
+    ),
+    source(
+      'lib/apps/enterprise/catalog.ts',
+    ),
+    source(
+      'lib/apps/enterprise/hardening.ts',
+    ),
+    source(
+      'lib/modules/migrations.ts',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+    source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    ),
+    source(
+      'lib/apps/enterprise/domain-hooks.ts',
+    ),
+    source(
+      'lib/apps/enterprise/field-security.ts',
+    ),
+  ]);
+
+  const specialistModules = [
+    'accounting',
+    'inventory',
+    'warehouse',
+    'payroll',
+    'crm',
+    'projects',
+    'helpdesk',
+    'manufacturing',
+  ];
+
+  for (
+    const moduleKey
+    of specialistModules
+  ) {
+    assert.match(
+      specialistCatalog,
+      new RegExp(
+        '^\\s{2}' +
+        moduleKey +
+        ': \\[',
+        'm',
+      ),
+      moduleKey,
+    );
+  }
+
+  for (
+    const table
+    of [
+      'accounting_fiscal_periods',
+      'accounting_bank_statement_lines',
+      'inventory_lots',
+      'stock_reservations',
+      'inventory_reorder_rules',
+      'warehouse_picking_batches',
+      'warehouse_putaway_rules',
+      'payroll_components',
+      'payslips',
+      'payslip_lines',
+      'crm_stages',
+      'crm_forecasts',
+      'task_dependencies',
+      'project_budgets',
+      'helpdesk_sla_policies',
+      'ticket_sla_tracking',
+      'knowledge_articles',
+      'work_centers',
+      'manufacturing_routings',
+      'manufacturing_material_reservations',
+    ]
+  ) {
+    assert.ok(
+      specialistDepth.includes(
+        'public.' +
+        table,
+      ),
+      table,
+    );
+
+    assert.ok(
+      catalog.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' catalog registration',
+    );
+  }
+
+  for (
+    const marker
+    of [
+      "fromVersion:\n        '2.1.0'",
+      "toVersion:\n        '2.2.0'",
+      'ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS',
+      'deepenSpecialistModule',
+      'specialistDepthSql',
+    ]
+  ) {
+    assert.ok(
+      hardening.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    migrations,
+    /ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS/,
+  );
+
+  assert.match(
+    contract,
+    /isSpecialistEnterpriseModuleKey[\s\S]*'2\.2\.0'/s,
+  );
+
+  for (
+    const workflowKey
+    of [
+      'accounting:accounting_fiscal_periods',
+      'inventory:inventory_adjustments',
+      'warehouse:warehouse_picking_batches',
+      'payroll:payslips',
+      'crm:crm_forecasts',
+      'projects:project_budgets',
+      'helpdesk:ticket_sla_tracking',
+      'helpdesk:knowledge_articles',
+      'manufacturing:manufacturing_routings',
+      'manufacturing:manufacturing_material_reservations',
+    ]
+  ) {
+    assert.ok(
+      workflow.includes(
+        "'" +
+        workflowKey +
+        "'",
+      ),
+      workflowKey,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'Inventory adjustment difference must equal counted quantity minus system quantity.',
+      'Posted inventory adjustments are immutable.',
+      'Paid payslips are immutable.',
+      'Closed fiscal periods must be reopened',
+      'Payslip deductions cannot exceed gross pay.',
+      'A task cannot depend on itself.',
+      'SLA first-response time',
+      'Reserved or consumed material cannot exceed the required quantity.',
+    ]
+  ) {
+    assert.ok(
+      hooks.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'payroll:payslips',
+      'payroll:payslip_lines',
+      'accounting:accounting_bank_statement_lines',
+      'projects:project_budgets',
+      'projects:project_resources',
+    ]
+  ) {
+    assert.ok(
+      fieldSecurity.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
+
 test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
   const service =
     await source(

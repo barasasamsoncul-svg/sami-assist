@@ -10,6 +10,11 @@ import {
   getEnterpriseDomainProfile,
 } from '@/lib/apps/enterprise/domain-profiles';
 
+import {
+  isSpecialistEnterpriseModuleKey,
+} from '@/lib/apps/enterprise/specialist-catalog';
+
+
 
 const GENERIC_ACTIONS =
   [
@@ -166,12 +171,16 @@ export function withEnterpriseModuleDefaults(
   return {
     ...manifest,
     version:
-      manifest.version ===
-        '1.0.0' ||
-      manifest.version ===
-        '2.0.0'
-        ? '2.1.0'
-        : manifest.version,
+      isSpecialistEnterpriseModuleKey(
+        key,
+      )
+        ? '2.2.0'
+        : manifest.version ===
+              '1.0.0' ||
+            manifest.version ===
+              '2.0.0'
+          ? '2.1.0'
+          : manifest.version,
 
     actions: [
       ...manifest.actions,

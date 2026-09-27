@@ -2442,6 +2442,576 @@ function validateDomainRow(
     );
   }
 
+
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'accounting_fiscal_periods'
+  ) {
+    assertDateOrder(
+      row.starts_on,
+      row.ends_on,
+      'Fiscal period',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'accounting_reconciliation_rules'
+  ) {
+    assertNonNegative(
+      row.priority,
+      'Reconciliation rule priority',
+    );
+
+    if (
+      row.min_amount !==
+        null &&
+      row.min_amount !==
+        undefined &&
+      row.max_amount !==
+        null &&
+      row.max_amount !==
+        undefined &&
+      numberValue(
+        row.max_amount,
+      ) <
+      numberValue(
+        row.min_amount,
+      )
+    ) {
+      throw new Error(
+        'Reconciliation maximum amount cannot be below the minimum amount.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table ===
+      'inventory_lots'
+  ) {
+    assertDateOrder(
+      row.manufactured_on,
+      row.expires_on,
+      'Inventory lot',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table ===
+      'stock_reservations'
+  ) {
+    assertPositive(
+      row.quantity,
+      'Reserved stock quantity',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table ===
+      'inventory_reorder_rules'
+  ) {
+    assertNonNegative(
+      row.min_quantity,
+      'Minimum stock quantity',
+    );
+
+    assertNonNegative(
+      row.max_quantity,
+      'Maximum stock quantity',
+    );
+
+    assertNonNegative(
+      row.reorder_quantity,
+      'Reorder quantity',
+    );
+
+    assertNonNegative(
+      row.lead_time_days,
+      'Reorder lead time',
+    );
+
+    if (
+      numberValue(
+        row.max_quantity,
+      ) <
+      numberValue(
+        row.min_quantity,
+      )
+    ) {
+      throw new Error(
+        'Maximum stock quantity cannot be below the minimum quantity.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table ===
+      'inventory_adjustments'
+  ) {
+    assertNonNegative(
+      row.counted_quantity,
+      'Counted quantity',
+    );
+
+    assertNonNegative(
+      row.system_quantity,
+      'System quantity',
+    );
+
+    const expectedDifference =
+      numberValue(
+        row.counted_quantity,
+      ) -
+      numberValue(
+        row.system_quantity,
+      );
+
+    if (
+      Math.abs(
+        expectedDifference -
+        numberValue(
+          row.difference_quantity,
+        ),
+      ) >
+      0.0001
+    ) {
+      throw new Error(
+        'Inventory adjustment difference must equal counted quantity minus system quantity.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'warehouse' &&
+    table ===
+      'warehouse_picking_batches'
+  ) {
+    assertDateOrder(
+      row.started_at,
+      row.completed_at,
+      'Warehouse picking batch',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'warehouse' &&
+    table ===
+      'warehouse_packages'
+  ) {
+    assertNonNegative(
+      row.weight,
+      'Warehouse package weight',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_components'
+  ) {
+    assertNonNegative(
+      row.default_amount,
+      'Payroll component amount',
+    );
+
+    assertPercentage(
+      row.percentage_rate,
+      'Payroll component percentage',
+    );
+
+    assertNonNegative(
+      row.sequence,
+      'Payroll component sequence',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payroll_employee_components'
+  ) {
+    assertDateOrder(
+      row.effective_from,
+      row.effective_to,
+      'Payroll component assignment',
+    );
+
+    if (
+      row.amount_override !==
+        null &&
+      row.amount_override !==
+        undefined
+    ) {
+      assertNonNegative(
+        row.amount_override,
+        'Payroll amount override',
+      );
+    }
+
+    if (
+      row.percentage_override !==
+        null &&
+      row.percentage_override !==
+        undefined
+    ) {
+      assertPercentage(
+        row.percentage_override,
+        'Payroll percentage override',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payslips'
+  ) {
+    assertNonNegative(
+      row.gross_amount,
+      'Payslip gross amount',
+    );
+
+    assertNonNegative(
+      row.deduction_amount,
+      'Payslip deductions',
+    );
+
+    assertNonNegative(
+      row.employer_contribution_amount,
+      'Employer contribution',
+    );
+
+    assertNonNegative(
+      row.net_amount,
+      'Payslip net amount',
+    );
+
+    if (
+      numberValue(
+        row.deduction_amount,
+      ) >
+      numberValue(
+        row.gross_amount,
+      )
+    ) {
+      throw new Error(
+        'Payslip deductions cannot exceed gross pay.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payslip_lines'
+  ) {
+    assertNonNegative(
+      row.quantity,
+      'Payslip line quantity',
+    );
+
+    assertNonNegative(
+      row.rate,
+      'Payslip line rate',
+    );
+
+    assertNonNegative(
+      row.amount,
+      'Payslip line amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'crm' &&
+    table ===
+      'crm_stages'
+  ) {
+    assertPercentage(
+      row.probability,
+      'CRM stage probability',
+    );
+
+    assertNonNegative(
+      row.sequence,
+      'CRM stage sequence',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'crm' &&
+    table ===
+      'crm_scoring_rules'
+  ) {
+    assertNonNegative(
+      row.priority,
+      'CRM scoring priority',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'crm' &&
+    table ===
+      'crm_forecasts'
+  ) {
+    assertDateOrder(
+      row.period_start,
+      row.period_end,
+      'CRM forecast period',
+    );
+
+    assertNonNegative(
+      row.target_amount,
+      'CRM forecast target',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'crm' &&
+    table ===
+      'crm_forecast_lines'
+  ) {
+    assertNonNegative(
+      row.amount,
+      'CRM forecast amount',
+    );
+
+    assertPercentage(
+      row.probability,
+      'CRM forecast probability',
+    );
+
+    assertNonNegative(
+      row.weighted_amount,
+      'CRM weighted amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'task_dependencies'
+  ) {
+    assertNonNegative(
+      row.lag_days,
+      'Task dependency lag',
+    );
+
+    if (
+      row.task_id &&
+      row.depends_on_task_id &&
+      String(
+        row.task_id,
+      ) ===
+      String(
+        row.depends_on_task_id,
+      )
+    ) {
+      throw new Error(
+        'A task cannot depend on itself.',
+      );
+    }
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'project_budgets'
+  ) {
+    assertNonNegative(
+      row.budget_amount,
+      'Project budget',
+    );
+
+    assertNonNegative(
+      row.approved_amount,
+      'Approved project budget',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'project_budget_lines'
+  ) {
+    assertNonNegative(
+      row.planned_amount,
+      'Planned project amount',
+    );
+
+    assertNonNegative(
+      row.actual_amount,
+      'Actual project amount',
+    );
+
+    assertNonNegative(
+      row.committed_amount,
+      'Committed project amount',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'projects' &&
+    table ===
+      'project_resources'
+  ) {
+    assertPercentage(
+      row.allocation_percent,
+      'Project resource allocation',
+    );
+
+    assertNonNegative(
+      row.hourly_cost,
+      'Project resource hourly cost',
+    );
+
+    assertDateOrder(
+      row.starts_on,
+      row.ends_on,
+      'Project resource assignment',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'helpdesk' &&
+    table ===
+      'helpdesk_sla_policies'
+  ) {
+    assertPositive(
+      row.first_response_minutes,
+      'SLA first-response time',
+    );
+
+    assertPositive(
+      row.resolution_minutes,
+      'SLA resolution time',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'helpdesk' &&
+    table ===
+      'ticket_escalations'
+  ) {
+    assertDateOrder(
+      row.escalated_at,
+      row.resolved_at,
+      'Ticket escalation',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    table ===
+      'work_centers'
+  ) {
+    assertPositive(
+      row.capacity,
+      'Work-center capacity',
+    );
+
+    assertNonNegative(
+      row.cost_per_hour,
+      'Work-center hourly cost',
+    );
+
+    assertPercentage(
+      row.efficiency_percent,
+      'Work-center efficiency',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    table ===
+      'manufacturing_routing_steps'
+  ) {
+    assertPositive(
+      row.sequence,
+      'Routing step sequence',
+    );
+
+    assertNonNegative(
+      row.setup_minutes,
+      'Routing setup minutes',
+    );
+
+    assertNonNegative(
+      row.run_minutes_per_unit,
+      'Routing run minutes',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'manufacturing' &&
+    table ===
+      'manufacturing_material_reservations'
+  ) {
+    assertPositive(
+      row.required_quantity,
+      'Required material quantity',
+    );
+
+    assertNonNegative(
+      row.reserved_quantity,
+      'Reserved material quantity',
+    );
+
+    assertNonNegative(
+      row.consumed_quantity,
+      'Consumed material quantity',
+    );
+
+    if (
+      numberValue(
+        row.reserved_quantity,
+      ) >
+      numberValue(
+        row.required_quantity,
+      ) ||
+      numberValue(
+        row.consumed_quantity,
+      ) >
+      numberValue(
+        row.required_quantity,
+      )
+    ) {
+      throw new Error(
+        'Reserved or consumed material cannot exceed the required quantity.',
+      );
+    }
+  }
+
 }
 
 
@@ -2597,6 +3167,64 @@ async function validateDomainLifecycleMutation(
       'Completed reconciliation history is immutable. Create a compensating reconciliation instead.',
     );
   }
+
+  if (
+    moduleKey ===
+      'inventory' &&
+    table ===
+      'inventory_adjustments' &&
+    operation !==
+      'create' &&
+    String(
+      row.status ||
+      '',
+    )
+      .toLowerCase() ===
+      'posted'
+  ) {
+    throw new Error(
+      'Posted inventory adjustments are immutable. Create a new adjustment to correct stock.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payslips' &&
+    operation !==
+      'create' &&
+    String(
+      row.status ||
+      '',
+    )
+      .toLowerCase() ===
+      'paid'
+  ) {
+    throw new Error(
+      'Paid payslips are immutable. Use a corrective payroll run instead.',
+    );
+  }
+
+  if (
+    moduleKey ===
+      'accounting' &&
+    table ===
+      'accounting_fiscal_periods' &&
+    operation !==
+      'create' &&
+    String(
+      row.status ||
+      '',
+    )
+      .toLowerCase() ===
+      'closed'
+  ) {
+    throw new Error(
+      'Closed fiscal periods must be reopened before they can be changed.',
+    );
+  }
+
 }
 
 

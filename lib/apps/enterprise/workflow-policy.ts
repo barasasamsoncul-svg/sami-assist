@@ -889,6 +889,87 @@ const DOMAIN_GRAPH:
       scheduled: ['in_progress','completed','cancelled'],
       in_progress: ['completed','cancelled'],
     },
+    'accounting:accounting_fiscal_periods': {
+      open: ['closing','closed'],
+      closing: ['open','closed'],
+      closed: ['open'],
+    },
+    'accounting:accounting_bank_statement_lines': {
+      unmatched: ['suggested','matched','excluded'],
+      suggested: ['unmatched','matched','excluded'],
+      matched: ['unmatched'],
+      excluded: ['unmatched'],
+    },
+    'inventory:inventory_lots': {
+      active: ['quarantined','expired','consumed'],
+      quarantined: ['active','expired','consumed'],
+      expired: ['quarantined'],
+    },
+    'inventory:stock_reservations': {
+      active: ['allocated','released','cancelled'],
+      allocated: ['consumed','released','cancelled'],
+      released: ['active','cancelled'],
+    },
+    'inventory:inventory_adjustments': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','draft','cancelled'],
+      approved: ['posted','cancelled'],
+    },
+    'warehouse:warehouse_picking_batches': {
+      draft: ['ready','cancelled'],
+      ready: ['in_progress','cancelled'],
+      in_progress: ['completed','cancelled'],
+    },
+    'warehouse:warehouse_packages': {
+      open: ['packed','cancelled'],
+      packed: ['in_transit','cancelled'],
+      in_transit: ['delivered','cancelled'],
+    },
+    'payroll:payslips': {
+      draft: ['computed','cancelled'],
+      computed: ['approved','draft','cancelled'],
+      approved: ['paid','cancelled'],
+    },
+    'crm:crm_forecasts': {
+      draft: ['active','cancelled'],
+      active: ['closed','cancelled'],
+    },
+    'projects:project_budgets': {
+      draft: ['submitted','cancelled'],
+      submitted: ['approved','draft','cancelled'],
+      approved: ['closed','cancelled'],
+    },
+    'helpdesk:ticket_sla_tracking': {
+      active: ['met','breached','paused','cancelled'],
+      paused: ['active','breached','cancelled'],
+      breached: ['met','cancelled'],
+    },
+    'helpdesk:knowledge_articles': {
+      draft: ['published','archived'],
+      published: ['draft','archived'],
+      archived: ['draft'],
+    },
+    'helpdesk:ticket_escalations': {
+      open: ['acknowledged','resolved','cancelled'],
+      acknowledged: ['resolved','cancelled'],
+      resolved: ['open'],
+    },
+    'manufacturing:work_centers': {
+      active: ['maintenance','inactive'],
+      maintenance: ['active','inactive'],
+      inactive: ['active','maintenance'],
+    },
+    'manufacturing:manufacturing_routings': {
+      draft: ['active','archived'],
+      active: ['draft','archived'],
+      archived: ['draft'],
+    },
+    'manufacturing:manufacturing_material_reservations': {
+      required: ['reserved','partially_reserved','released','cancelled'],
+      partially_reserved: ['reserved','released','cancelled'],
+      reserved: ['consumed','released','cancelled'],
+      released: ['required','cancelled'],
+    },
     'whiteboard:whiteboards': {
       active: ['archived','closed'],
       archived: ['active','closed'],
