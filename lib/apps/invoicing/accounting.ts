@@ -11,7 +11,8 @@ type AccountingLine = {
     'revenue' |
     'tax' |
     'cash' |
-    'returns';
+    'returns' |
+    'bad_debt';
   description:
     string;
   debit:
@@ -61,6 +62,14 @@ const ACCOUNT_BLUEPRINT = {
       'SaMi Sales Returns',
     accountType:
       'income_contra',
+  },
+  bad_debt: {
+    suffix:
+      'BAD',
+    name:
+      'SaMi Bad Debt Expense',
+    accountType:
+      'expense',
   },
 } as const;
 
@@ -797,6 +806,389 @@ export async function postInvoiceCreditToAccounting(
             'returns',
           description:
             'Sales returns',
+          debit:
+            amount,
+          credit:
+            0,
+        },
+        {
+          account:
+            'receivable',
+          description:
+            'Accounts receivable',
+          debit:
+            0,
+          credit:
+            amount,
+        },
+      ],
+    },
+  );
+}
+
+
+export async function reverseInvoicingAccountingEvent(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    originalEventKey:
+      string;
+    reversalEventKey:
+      string;
+    sourceType:
+      string;
+    sourceId:
+      string;
+    description:
+      string;
+  },
+) {
+  if (
+    !await accountingRuntimeReady(
+      client,
+    )
+  ) {
+    return {
+      integrated:
+        false,
+      reused:
+        false,
+      journalId:
+        null,
+    };
+  }
+
+  const existing =
+    await client.query(
+      `
+        SELECT journal_id
+        FROM invoicing_accounting_links
+        WHERE company_id = $1
+          AND event_key = $2
+        LIMIT 1
+      `,
+      [
+        input.companyId,
+        input.reversalEventKey,
+      ],
+    );
+
+  if (
+    existing.rows[0]
+      ?.journal_id
+  ) {
+    return {
+      integrated:
+        true,
+      reused:
+        true,
+      journalId:
+        String(
+          existing.rows[0]
+            .journal_id,
+        ),
+    };
+  }
+
+  const original =
+    await client.query(
+      `
+        SELECT
+          link.journal_id,
+          line.account_id,
+          line.description,
+          line.debit,
+          line.credit
+        FROM invoicing_accounting_links link
+        INNER JOIN journal_lines line
+          ON line.journal_id =
+             link.journal_id
+         AND line.company_id =
+             link.company_id
+         AND line.deleted_at
+             IS NULL
+        WHERE link.company_id = $1
+          AND link.event_key = $2
+        ORDER BY
+          line.created_at,
+          line.id
+      `,
+      [
+        input.companyId,
+        input.originalEventKey,
+      ],
+    );
+
+  if (
+    original.rows.length ===
+      0
+  ) {
+    return {
+      integrated:
+        true,
+      reused:
+        false,
+      journalId:
+        null,
+    };
+  }
+
+  const journal =
+    await client.query(
+      `
+        INSERT INTO journals (
+          company_id,
+          journal_number,
+          journal_date,
+          reference,
+          description,
+          status,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,
+          'SAMI-' ||
+          UPPER(
+            SUBSTRING(
+              MD5($2),
+              1,
+              16
+            )
+          ),
+          CURRENT_DATE,
+          $2,
+          $3,
+          'posted',
+          $4,
+          $4
+        )
+        RETURNING id
+      `,
+      [
+        input.companyId,
+        input.reversalEventKey,
+        input.description,
+        input.userId,
+      ],
+    );
+
+  const journalId =
+    String(
+      journal.rows[0].id,
+    );
+
+  for (
+    const line
+    of original.rows
+  ) {
+    await client.query(
+      `
+        INSERT INTO journal_lines (
+          company_id,
+          journal_id,
+          account_id,
+          description,
+          debit,
+          credit,
+          created_by,
+          updated_by
+        )
+        VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$7
+        )
+      `,
+      [
+        input.companyId,
+        journalId,
+        line.account_id,
+        'Reversal · ' +
+        String(
+          line.description ||
+          input.description,
+        ),
+        money(
+          line.credit,
+        ),
+        money(
+          line.debit,
+        ),
+        input.userId,
+      ],
+    );
+  }
+
+  await client.query(
+    `
+      INSERT INTO invoicing_accounting_links (
+        company_id,
+        event_key,
+        source_type,
+        source_id,
+        journal_id,
+        created_by
+      )
+      VALUES (
+        $1,$2,$3,$4,$5,$6
+      )
+      ON CONFLICT (
+        company_id,
+        event_key
+      )
+      DO NOTHING
+    `,
+    [
+      input.companyId,
+      input.reversalEventKey,
+      input.sourceType,
+      input.sourceId,
+      journalId,
+      input.userId,
+    ],
+  );
+
+  return {
+    integrated:
+      true,
+    reused:
+      false,
+    journalId,
+  };
+}
+
+
+export async function postInvoiceWriteOffToAccounting(
+  client:
+    PoolClient,
+  input: {
+    companyId:
+      string;
+    userId:
+      string;
+    invoiceId:
+      string;
+  },
+) {
+  if (
+    !await accountingRuntimeReady(
+      client,
+    )
+  ) {
+    return {
+      integrated:
+        false,
+      reused:
+        false,
+      journalId:
+        null,
+    };
+  }
+
+  const invoice =
+    await client.query(
+      `
+        SELECT
+          i.invoice_number,
+          i.exchange_rate,
+          aging.balance_due
+        FROM invoicing_invoices i
+        INNER JOIN invoicing_aging aging
+          ON aging.invoice_id =
+             i.id
+         AND aging.company_id =
+             i.company_id
+        WHERE i.id = $1
+          AND i.company_id = $2
+          AND i.deleted_at
+              IS NULL
+        LIMIT 1
+      `,
+      [
+        input.invoiceId,
+        input.companyId,
+      ],
+    );
+
+  if (
+    invoice.rows.length !==
+      1
+  ) {
+    return {
+      integrated:
+        false,
+      reused:
+        false,
+      journalId:
+        null,
+    };
+  }
+
+  const amount =
+    money(
+      Number(
+        invoice.rows[0]
+          .balance_due ||
+        0,
+      ) *
+      Number(
+        invoice.rows[0]
+          .exchange_rate ||
+        1,
+      ),
+    );
+
+  if (
+    amount <=
+      0
+  ) {
+    return {
+      integrated:
+        true,
+      reused:
+        false,
+      journalId:
+        null,
+    };
+  }
+
+  return postJournal(
+    client,
+    {
+      companyId:
+        input.companyId,
+      userId:
+        input.userId,
+      eventKey:
+        'invoice-writeoff:' +
+        input.invoiceId,
+      sourceType:
+        'invoice_writeoff',
+      sourceId:
+        input.invoiceId,
+      journalDate:
+        new Date()
+          .toISOString()
+          .slice(
+            0,
+            10,
+          ),
+      description:
+        'Invoice ' +
+        String(
+          invoice.rows[0]
+            .invoice_number,
+        ) +
+        ' written off',
+      lines: [
+        {
+          account:
+            'bad_debt',
+          description:
+            'Bad debt expense',
           debit:
             amount,
           credit:
