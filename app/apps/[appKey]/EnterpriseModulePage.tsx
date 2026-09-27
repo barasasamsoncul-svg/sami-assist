@@ -436,6 +436,14 @@ export default async function EnterpriseModulePage({
           initialTableKey={
             resolved.tableKey
           }
+          accessibleModuleKeys={
+            shell
+              .accessibleModules
+              .map(
+                module =>
+                  module.registryKey,
+              )
+          }
         />
       </div>
     </WorkspaceShell>

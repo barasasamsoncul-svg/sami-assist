@@ -1714,6 +1714,134 @@ test('shared enterprise apps expose real routed operational workspaces', async (
 });
 
 
+test('shared app lifecycle policy is explicit wherever the schema exposes business status', async () => {
+  const workflow =
+    await source(
+      'lib/apps/enterprise/workflow-policy.ts',
+    );
+
+  for (
+    const moduleKey
+    of [
+      'assets',
+      'barcode',
+      'chat',
+      'cpq',
+      'web_analytics',
+    ]
+  ) {
+    assert.match(
+      workflow,
+      new RegExp(
+        "'" +
+          moduleKey +
+          ":",
+      ),
+      moduleKey +
+        ' must not rely only on the generic workflow graph.',
+    );
+  }
+
+  assert.doesNotMatch(
+    workflow,
+    /'documents:/,
+    'Documents currently has no business status field to transition.',
+  );
+
+  assert.doesNotMatch(
+    workflow,
+    /'spreadsheet:/,
+    'Spreadsheet currently has no business status field to transition.',
+  );
+});
+
+
+test('suite-wide product depth gives every shared app a domain workspace and connected-app experience', async () => {
+  const [
+    experience,
+    serverPage,
+    client,
+    aiTools,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/suite-experience.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModulePage.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'lib/apps/enterprise/ai-tools.ts',
+    ),
+  ]);
+
+  assert.match(
+    experience,
+    /RELATED_MODULES[\s\S]*satisfies[\s\S]*Record<[\s\S]*EnterpriseModuleKey/s,
+    'Every shared enterprise app must participate in the connected-app map at compile time.',
+  );
+
+  assert.match(
+    experience,
+    /DOMAIN_PROCESS/,
+  );
+
+  assert.match(
+    experience,
+    /DOMAIN_ZONE_COPY/,
+  );
+
+  assert.match(
+    experience,
+    /getEnterpriseModuleExperience/,
+  );
+
+  assert.match(
+    serverPage,
+    /accessibleModuleKeys={[\s\S]*shell[\s\S]*accessibleModules/s,
+    'Connected-app presentation must derive from the same permission-resolved app boundary as the workspace shell.',
+  );
+
+  for (
+    const marker
+    of [
+      'getEnterpriseModuleExperience',
+      'Operating journey',
+      'Operational areas',
+      'Connected apps',
+      'accessibleModuleKeys',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    client,
+    /availableIntegrations[\s\S]*accessibleModuleKeys[\s\S]*includes/s,
+    'The client must not expose cross-app links for inaccessible modules.',
+  );
+
+  assert.match(
+    aiTools,
+    /operatingExperience/,
+    'SaMi AI should receive the same business operating model rather than raw register counts only.',
+  );
+
+  assert.match(
+    aiTools,
+    /connectedApps:[\s\S]*accessibleModuleKeys/s,
+    'SaMi AI connected-app context must stay permission filtered.',
+  );
+});
+
+
 test('enterprise runtime reconciles stale installed schemas before workspace reads', async () => {
   const [
     hardening,

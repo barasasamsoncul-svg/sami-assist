@@ -1167,6 +1167,40 @@ const DOMAIN_GRAPH:
       active: ['selected','withdrawn'],
       selected: ['active','withdrawn'],
     },
+    'assets:operational_assets': {
+      active: ['maintenance','inactive','retired'],
+      maintenance: ['active','inactive','retired'],
+      inactive: ['active','retired'],
+    },
+    'barcode:barcode_rules': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'barcode:barcode_identifiers': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'chat:chat_channels': {
+      active: ['archived','closed'],
+      archived: ['active','closed'],
+    },
+    'chat:chat_channel_members': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'cpq:cpq_quotes': {
+      active: ['sent','cancelled'],
+      sent: ['accepted','rejected','expired','cancelled'],
+      accepted: ['confirmed','completed','cancelled'],
+    },
+    'web_analytics:analytics_sites': {
+      active: ['inactive'],
+      inactive: ['active'],
+    },
+    'web_analytics:analytics_sessions': {
+      active: ['completed'],
+      completed: ['active'],
+    },
     'whiteboard:whiteboards': {
       active: ['archived','closed'],
       archived: ['active','closed'],
