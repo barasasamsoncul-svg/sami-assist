@@ -70,6 +70,47 @@ test('Category 2: personal account surfaces remain separate from workspace manag
   );
 });
 
+test('Category 2: tutorial preference remains forward-compatible during control schema rollout', async () => {
+  const [
+    account,
+    migration,
+  ] = await Promise.all([
+    source(
+      'lib/account/user-account.ts',
+    ),
+    source(
+      'lib/schema/control-migrations/008-user-tutorial-preferences.sql',
+    ),
+  ]);
+
+  assert.match(
+    migration,
+    /ADD COLUMN IF NOT EXISTS tutorials_enabled/i,
+  );
+
+  assert.match(
+    account,
+    /ensureTutorialPreferenceColumn/,
+  );
+
+  assert.match(
+    account,
+    /ALTER TABLE user_preferences[\s\S]*ADD COLUMN IF NOT EXISTS tutorials_enabled/s,
+  );
+
+  const calls =
+    account.match(
+      /await ensureTutorialPreferenceColumn\(\);/g,
+    ) || [];
+
+  assert.ok(
+    calls.length >=
+      2,
+    'Both preference reads and updates must tolerate an older Control DB until migration 008 is formally recorded.',
+  );
+});
+
+
 test('Category 3: sessions use opaque hashed tokens and secure cookies', async () => {
   const sessions = compact(await source('lib/auth/session.ts'));
 
