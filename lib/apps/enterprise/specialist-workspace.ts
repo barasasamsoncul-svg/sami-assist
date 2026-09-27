@@ -433,6 +433,16 @@ function generatedSpecialistLayout(
         ),
     );
 
+  const controlKeys =
+    new Set<string>(
+      controls,
+    );
+
+  const insightKeys =
+    new Set<string>(
+      insights,
+    );
+
   const preferredPrimary =
     [
       profile.primaryTable,
@@ -451,10 +461,10 @@ function generatedSpecialistLayout(
             table,
           ) ===
             index &&
-          !controls.includes(
+          !controlKeys.has(
             table,
           ) &&
-          !insights.includes(
+          !insightKeys.has(
             table,
           ),
       )
@@ -466,10 +476,10 @@ function generatedSpecialistLayout(
   const remainingOperational =
     tables.filter(
       table =>
-        !controls.includes(
+        !controlKeys.has(
           table,
         ) &&
-        !insights.includes(
+        !insightKeys.has(
           table,
         ) &&
         !preferredPrimary.includes(
