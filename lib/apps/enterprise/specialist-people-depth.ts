@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS public.employee_lifecycle_events (
   to_value JSONB NOT NULL DEFAULT '{}'::jsonb,
   reason TEXT,
   approved_by UUID,
-  status VARCHAR(30) NOT NULL DEFAULT 'effective',
+  status VARCHAR(30) NOT NULL DEFAULT 'planned',
   created_by UUID, updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
