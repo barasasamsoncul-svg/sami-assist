@@ -56,7 +56,7 @@ test(
 
     assert.equal(
       lock.moduleVersion,
-      '2.2.0',
+      '2.3.0',
     );
 
     assert.equal(
@@ -66,12 +66,12 @@ test(
 
     assert.equal(
       lock.baselineCommit,
-      'd42a1253c2cd694d7878ca040ce0113ee279aa7f',
+      'e3c63eeacb425db627b49a2c0c93fbe0034a00ad',
     );
 
     assert.equal(
       lock.baselineBranch,
-      'baseline/invoicing-v2.2.0',
+      'feat/odoo-zoho-parity-closure',
     );
 
     for (
