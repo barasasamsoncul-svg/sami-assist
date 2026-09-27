@@ -1087,7 +1087,7 @@ async function transitionRecord(
     runtime,
     moduleKey,
     moduleKey +
-      '.record.edit',
+      '.record.transition',
   );
 
   const table =
@@ -1571,7 +1571,7 @@ export const ENTERPRISE_AUTOMATION_ACTIONS:
           'record',
         requiredPermissions: [
           moduleKey +
-          '.record.edit',
+          '.record.transition',
         ],
         approvalPolicy:
           'always',
