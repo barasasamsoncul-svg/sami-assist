@@ -41,8 +41,8 @@ import {
 } from '@/lib/apps/enterprise/workflow-policy';
 
 import {
-  validateEnterpriseTransition,
-} from '@/lib/apps/enterprise/service';
+  applyEnterpriseTransitionEffects,
+} from '@/lib/apps/enterprise/transition-effects';
 
 
 const IDENTIFIER =
@@ -1232,7 +1232,7 @@ async function transitionRecord(
       );
     }
 
-    await validateEnterpriseTransition(
+    await applyEnterpriseTransitionEffects(
       client,
       {
         moduleKey,
