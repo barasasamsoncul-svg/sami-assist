@@ -195,6 +195,7 @@ test('ERP parity: Automation can execute specialist workflow transitions with ap
   const [
     automation,
     service,
+    effects,
   ] =
     await Promise.all([
       source(
@@ -202,6 +203,9 @@ test('ERP parity: Automation can execute specialist workflow transitions with ap
       ),
       source(
         'lib/apps/enterprise/service.ts',
+      ),
+      source(
+        'lib/apps/enterprise/transition-effects.ts',
       ),
     ]);
 
@@ -219,11 +223,24 @@ test('ERP parity: Automation can execute specialist workflow transitions with ap
   );
   assert.match(
     automation,
-    /validateEnterpriseTransition/,
+    /applyEnterpriseTransitionEffects/,
+  );
+  assert.doesNotMatch(
+    automation,
+    /from '@\/lib\/apps\/enterprise\/service'/,
+    'Automation must not create a circular dependency back into the enterprise service.',
   );
   assert.match(
     service,
-    /export async function validateEnterpriseTransition/,
+    /applyEnterpriseTransitionEffects/,
+  );
+  assert.match(
+    effects,
+    /applyFinanceSpecialistTransition/,
+  );
+  assert.match(
+    effects,
+    /applySpecialistExecutionTransition/,
   );
 });
 
