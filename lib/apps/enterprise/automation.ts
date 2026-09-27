@@ -1291,335 +1291,7 @@ async function transitionRecord(
       );
 
       setters.push(
-        'updated_by = 
-  Object.keys(
-    ENTERPRISE_MODULE_TABLES,
-  ) as
-    EnterpriseModuleKey[];
-
-
-export const ENTERPRISE_AUTOMATION_TRIGGERS:
-  SamiAutomationTriggerDefinition[] =
-  MODULE_KEYS.flatMap(
-    moduleKey => [
-      {
-        key:
-          moduleKey +
-          '.record.created',
-        name:
-          moduleKey +
-          ' record created',
-        description:
-          'Run when a ' +
-          moduleKey +
-          ' record is created in the current company.',
-        type:
-          'event',
-        moduleKey,
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.view',
-        ],
-        companyScoped:
-          true,
-      },
-      {
-        key:
-          moduleKey +
-          '.record.updated',
-        name:
-          moduleKey +
-          ' record updated',
-        description:
-          'Run when a ' +
-          moduleKey +
-          ' record is updated in the current company.',
-        type:
-          'event',
-        moduleKey,
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.view',
-        ],
-        companyScoped:
-          true,
-      },
-      {
-        key:
-          moduleKey +
-          '.record.deleted',
-        name:
-          moduleKey +
-          ' record deleted',
-        description:
-          'Run when a ' +
-          moduleKey +
-          ' record is safely deleted in the current company.',
-        type:
-          'event',
-        moduleKey,
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.view',
-        ],
-        companyScoped:
-          true,
-      },
-      {
-        key:
-          moduleKey +
-          '.workflow.transitioned',
-        name:
-          moduleKey +
-          ' workflow changed',
-        description:
-          'Run after a controlled ' +
-          moduleKey +
-          ' workflow transition.',
-        type:
-          'event',
-        moduleKey,
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.view',
-        ],
-        companyScoped:
-          true,
-      },
-    ],
-  );
-
-
-export const ENTERPRISE_AUTOMATION_ACTIONS:
-  SamiAutomationActionDefinition[] =
-  MODULE_KEYS.flatMap(
-    moduleKey => [
-      {
-        key:
-          moduleKey +
-          '.record.create',
-        name:
-          'Create ' +
-          moduleKey +
-          ' record',
-        description:
-          'Create a company-scoped ' +
-          moduleKey +
-          ' record through SaMi business rules.',
-        moduleKey,
-        operation:
-          'write',
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.create',
-        ],
-        approvalPolicy:
-          'always',
-        inputSchema: {
-          type:
-            'object',
-          additionalProperties:
-            false,
-          properties: {
-            table: {
-              type:
-                'string',
-            },
-            values: {
-              type:
-                'object',
-            },
-          },
-          required: [
-            'table',
-            'values',
-          ],
-        },
-      },
-
-      {
-        key:
-          moduleKey +
-          '.record.transition',
-        name:
-          'Run ' +
-          moduleKey +
-          ' workflow',
-        description:
-          'Move a company-scoped ' +
-          moduleKey +
-          ' record through an allowed business workflow transition.',
-        moduleKey,
-        operation:
-          'write',
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.transition',
-        ],
-        approvalPolicy:
-          'always',
-        inputSchema: {
-          type:
-            'object',
-          additionalProperties:
-            false,
-          properties: {
-            table: {
-              type:
-                'string',
-            },
-            recordId: {
-              type:
-                'string',
-            },
-            statusField: {
-              type:
-                'string',
-            },
-            nextStatus: {
-              type:
-                'string',
-            },
-          },
-          required: [
-            'table',
-            'recordId',
-            'statusField',
-            'nextStatus',
-          ],
-        },
-      },
-      {
-        key:
-          moduleKey +
-          '.record.update',
-        name:
-          'Update ' +
-          moduleKey +
-          ' record',
-        description:
-          'Update editable fields on a company-scoped ' +
-          moduleKey +
-          ' record through SaMi business rules.',
-        moduleKey,
-        operation:
-          'write',
-        resourceKey:
-          'record',
-        requiredPermissions: [
-          moduleKey +
-          '.record.edit',
-        ],
-        approvalPolicy:
-          'always',
-        inputSchema: {
-          type:
-            'object',
-          additionalProperties:
-            false,
-          properties: {
-            table: {
-              type:
-                'string',
-            },
-            recordId: {
-              type:
-                'string',
-            },
-            values: {
-              type:
-                'object',
-            },
-          },
-          required: [
-            'table',
-            'recordId',
-            'values',
-          ],
-        },
-      },
-    ],
-  );
-
-
-export const ENTERPRISE_AUTOMATION_ACTION_HANDLERS =
-  new Map<
-    string,
-    SamiAutomationActionHandler
-  >(
-    MODULE_KEYS.flatMap(
-      moduleKey => [
-        [
-          moduleKey +
-          '.record.create',
-          (
-            runtime:
-              SamiAutomationRuntimeContext,
-            input:
-              Record<
-                string,
-                unknown
-              >,
-          ) =>
-            createRecord(
-              runtime,
-              moduleKey,
-              input,
-            ),
-        ] as const,
-
-        [
-          moduleKey +
-          '.record.transition',
-          (
-            runtime:
-              SamiAutomationRuntimeContext,
-            input:
-              Record<
-                string,
-                unknown
-              >,
-          ) =>
-            transitionRecord(
-              runtime,
-              moduleKey,
-              input,
-            ),
-        ] as const,
-        [
-          moduleKey +
-          '.record.update',
-          (
-            runtime:
-              SamiAutomationRuntimeContext,
-            input:
-              Record<
-                string,
-                unknown
-              >,
-          ) =>
-            updateRecord(
-              runtime,
-              moduleKey,
-              input,
-            ),
-        ] as const,
-      ],
-    ),
-  );
- +
+        'updated_by = $' +
         params.length,
       );
     }
@@ -1878,6 +1550,60 @@ export const ENTERPRISE_AUTOMATION_ACTIONS:
       {
         key:
           moduleKey +
+          '.record.transition',
+        name:
+          'Run ' +
+          moduleKey +
+          ' workflow',
+        description:
+          'Move a company-scoped ' +
+          moduleKey +
+          ' record through an allowed business workflow transition.',
+        moduleKey,
+        operation:
+          'write',
+        resourceKey:
+          'record',
+        requiredPermissions: [
+          moduleKey +
+          '.record.transition',
+        ],
+        approvalPolicy:
+          'always',
+        inputSchema: {
+          type:
+            'object',
+          additionalProperties:
+            false,
+          properties: {
+            table: {
+              type:
+                'string',
+            },
+            recordId: {
+              type:
+                'string',
+            },
+            statusField: {
+              type:
+                'string',
+            },
+            nextStatus: {
+              type:
+                'string',
+            },
+          },
+          required: [
+            'table',
+            'recordId',
+            'statusField',
+            'nextStatus',
+          ],
+        },
+      },
+      {
+        key:
+          moduleKey +
           '.record.update',
         name:
           'Update ' +
@@ -1948,6 +1674,24 @@ export const ENTERPRISE_AUTOMATION_ACTION_HANDLERS =
               >,
           ) =>
             createRecord(
+              runtime,
+              moduleKey,
+              input,
+            ),
+        ] as const,
+        [
+          moduleKey +
+          '.record.transition',
+          (
+            runtime:
+              SamiAutomationRuntimeContext,
+            input:
+              Record<
+                string,
+                unknown
+              >,
+          ) =>
+            transitionRecord(
               runtime,
               moduleKey,
               input,
