@@ -1583,6 +1583,30 @@ test('specialist execution transitions post operational business effects transac
 });
 
 
+test('enterprise hardening supports UUID company keys during migration', async () => {
+  const hardening =
+    await source(
+      'lib/apps/enterprise/hardening.ts',
+    );
+
+  assert.doesNotMatch(
+    hardening,
+    /MIN\(id\)/i,
+    'PostgreSQL does not provide a built-in min(uuid) aggregate for company UUID keys.',
+  );
+
+  assert.match(
+    hardening,
+    /SELECT[\s\S]*COUNT\(\*\)::int[\s\S]*FROM public\.companies/s,
+  );
+
+  assert.match(
+    hardening,
+    /IF company_count = 1 THEN[\s\S]*SELECT[\s\S]*id[\s\S]*INTO[\s\S]*only_company[\s\S]*FROM public\.companies[\s\S]*LIMIT 1/s,
+  );
+});
+
+
 test('enterprise runtime reconciles stale installed schemas before workspace reads', async () => {
   const [
     hardening,

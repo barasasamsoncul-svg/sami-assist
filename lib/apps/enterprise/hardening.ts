@@ -320,14 +320,19 @@ DECLARE
   only_company UUID;
 BEGIN
   SELECT
-    COUNT(*)::int,
-    MIN(id)
+    COUNT(*)::int
   INTO
-    company_count,
-    only_company
+    company_count
   FROM public.companies;
 
   IF company_count = 1 THEN
+    SELECT
+      id
+    INTO
+      only_company
+    FROM public.companies
+    LIMIT 1;
+
     UPDATE public.${quoted}
     SET
       company_id =

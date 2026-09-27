@@ -770,9 +770,45 @@ export async function runSamiModuleMigrations(
           throw error;
         }
 
+        const databaseCode =
+          error &&
+          typeof error ===
+            'object' &&
+          'code' in
+            error
+            ? String(
+                (
+                  error as {
+                    code?: unknown;
+                  }
+                ).code ||
+                '',
+              )
+            : '';
+
+        const databaseMessage =
+          error instanceof
+            Error
+            ? error.message
+            : 'Unknown database migration error.';
+
+        console.error(
+          '[SaMi Module Migration] migration failed:',
+          {
+            moduleKey,
+            migrationKey:
+              migration.key,
+            databaseCode:
+              databaseCode ||
+              null,
+            message:
+              databaseMessage,
+          },
+        );
+
         throw new SamiModuleMigrationError(
           'MODULE_MIGRATION_FAILED',
-          `Migration "${migration.key}" failed for module "${moduleKey}".`,
+          `Migration "${migration.key}" failed for module "${moduleKey}": ${databaseMessage}`,
         );
       }
     }
