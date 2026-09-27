@@ -22,6 +22,9 @@ const GENERIC_ACTIONS =
     'create',
     'edit',
     'transition',
+    'execute',
+    'approve',
+    'close',
     'delete',
     'report',
     'settings',
@@ -154,6 +157,21 @@ export function withEnterpriseModuleDefaults(
                     manifest.name +
                     ' workflows'
                   : action ===
+                      'execute'
+                    ? 'Execute ' +
+                      manifest.name +
+                      ' operations'
+                    : action ===
+                        'approve'
+                      ? 'Approve ' +
+                        manifest.name +
+                        ' workflow decisions'
+                      : action ===
+                          'close'
+                        ? 'Close or post ' +
+                          manifest.name +
+                          ' business records'
+                        : action ===
                       'delete'
                   ? 'Delete ' +
                     manifest.name +
@@ -187,6 +205,8 @@ export function withEnterpriseModuleDefaults(
             'edit' ||
           action ===
             'transition' ||
+          action ===
+            'execute' ||
           action ===
             'report'
             ? [

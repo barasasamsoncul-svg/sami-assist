@@ -14,6 +14,11 @@ import {
 } from '@/lib/apps/enterprise/specialist-people-depth';
 
 
+import {
+  specialistBreadthDepthSql,
+} from '@/lib/apps/enterprise/specialist-breadth-depth';
+
+
 
 
 function accountingSql() {
@@ -797,6 +802,17 @@ export function specialistDepthSql(
   const key:
     SpecialistEnterpriseModuleKey =
     moduleKey;
+
+  const breadthSql =
+    specialistBreadthDepthSql(
+      key,
+    );
+
+  if (
+    breadthSql
+  ) {
+    return breadthSql;
+  }
 
   const financeSql =
     financeSpecialistDepthSql(

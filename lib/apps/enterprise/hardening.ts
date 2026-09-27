@@ -477,11 +477,18 @@ async function deepenSpecialistModule(
   moduleKey:
     SpecialistEnterpriseModuleKey,
 ) {
-  await client.query(
+  const depthSql =
     specialistDepthSql(
       moduleKey,
-    ),
-  );
+    );
+
+  if (
+    depthSql.trim()
+  ) {
+    await client.query(
+      depthSql,
+    );
+  }
 
   for (
     const table

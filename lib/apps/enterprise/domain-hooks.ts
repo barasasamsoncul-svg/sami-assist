@@ -15,6 +15,11 @@ import {
 } from '@/lib/apps/enterprise/specialist-execution';
 
 
+import {
+  assertSpecialistBreadthMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-breadth-execution';
+
+
 
 
 type MutationOperation =
@@ -3205,6 +3210,13 @@ async function validateDomainLifecycleMutation(
   );
 
   assertSpecialistExecutionMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
+  assertSpecialistBreadthMutationAllowed(
     moduleKey,
     table,
     operation,

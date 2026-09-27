@@ -158,6 +158,130 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'succession_candidates',
     'position_requirements',
   ],
+  ads: [
+  ],
+  appointments: [
+    'appointment_availability_blocks',
+    'appointment_reminders',
+  ],
+  assets: [
+  ],
+  barcode: [
+  ],
+  bookings: [
+  ],
+  calendar: [
+  ],
+  chat: [
+  ],
+  checkout: [
+  ],
+  cpq: [
+  ],
+  customer_portal: [
+  ],
+  demand_planning: [
+  ],
+  documents: [
+    'document_versions',
+    'document_approvals',
+  ],
+  ecommerce: [
+  ],
+  email_marketing: [
+    'email_templates',
+    'email_campaign_events',
+  ],
+  events: [
+    'event_sessions',
+    'event_tickets',
+  ],
+  facilities: [
+  ],
+  field_services: [
+    'service_checklists',
+  ],
+  fleet: [
+    'vehicle_fuel_logs',
+  ],
+  gift_cards: [
+  ],
+  inspections: [
+  ],
+  landing_pages: [
+  ],
+  lead_capture: [
+  ],
+  loyalty: [
+  ],
+  mail: [
+  ],
+  maintenance: [
+    'preventive_maintenance_plans',
+  ],
+  marketing_automation: [
+    'automation_segments',
+  ],
+  marketplace: [
+  ],
+  meetings: [
+  ],
+  planning: [
+    'planning_capacity',
+  ],
+  plm: [
+    'engineering_change_approvals',
+  ],
+  pos_restaurant: [
+  ],
+  pos_shop: [
+    'shop_returns',
+  ],
+  quality: [
+    'quality_corrective_actions',
+  ],
+  referrals: [
+    'referral_conversions',
+    'referral_rewards',
+  ],
+  rentals: [
+    'rental_reservations',
+    'rental_charges',
+  ],
+  safety: [
+  ],
+  sales_inbox: [
+  ],
+  seo: [
+  ],
+  shipping: [
+  ],
+  sign: [
+    'signature_templates',
+    'signature_audit_events',
+  ],
+  sms_marketing: [
+    'sms_templates',
+    'sms_delivery_events',
+  ],
+  social_marketing: [
+    'social_campaigns',
+    'social_post_metrics',
+  ],
+  spreadsheet: [
+  ],
+  surveys: [
+  ],
+  team_inbox: [
+  ],
+  vendor_portal: [
+  ],
+  web_analytics: [
+  ],
+  whiteboard: [
+  ],
+  work_orders: [
+  ],
 } as const;
 
 export type SpecialistEnterpriseModuleKey =
