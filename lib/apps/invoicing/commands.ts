@@ -22,6 +22,8 @@ import {
   postInvoiceConfirmationToAccounting,
   postInvoiceCreditToAccounting,
   postInvoicePaymentToAccounting,
+  postInvoiceWriteOffToAccounting,
+  reverseInvoicingAccountingEvent,
 } from '@/lib/apps/invoicing/accounting';
 
 import {
@@ -4265,6 +4267,61 @@ export async function changeInvoiceStatus(
       );
     }
 
+    if (
+      [
+        'cancelled',
+        'void',
+      ].includes(
+        next,
+      )
+    ) {
+      await reverseInvoicingAccountingEvent(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          originalEventKey:
+            'invoice-confirmed:' +
+            invoiceId,
+          reversalEventKey:
+            'invoice-reversal:' +
+            invoiceId +
+            ':' +
+            next,
+          sourceType:
+            'invoice_reversal',
+          sourceId:
+            invoiceId,
+          description:
+            'Invoice ' +
+            String(
+              current.rows[0]
+                .invoice_number,
+            ) +
+            ' ' +
+            next,
+        },
+      );
+    }
+
+    if (
+      next ===
+        'written_off'
+    ) {
+      await postInvoiceWriteOffToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+        },
+      );
+    }
+
     await recordInvoicingActivity(
       client,
       {
@@ -4952,6 +5009,32 @@ export async function reverseInvoicePayment(
       ],
     );
 
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'invoice-payment:' +
+          paymentId,
+        reversalEventKey:
+          'invoice-payment-reversal:' +
+          paymentId,
+        sourceType:
+          'payment_reversal',
+        sourceId:
+          paymentId,
+        description:
+          'Payment ' +
+          String(
+            payment.payment_number,
+          ) +
+          ' reversed',
+      },
+    );
+
     const invoiceIds =
       [
         ...new Set(
@@ -5552,6 +5635,32 @@ export async function cancelInvoiceCreditNote(
       String(
         credit.invoice_id,
       );
+
+    await reverseInvoicingAccountingEvent(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        originalEventKey:
+          'invoice-credit:' +
+          creditNoteId,
+        reversalEventKey:
+          'invoice-credit-reversal:' +
+          creditNoteId,
+        sourceType:
+          'credit_note_reversal',
+        sourceId:
+          creditNoteId,
+        description:
+          'Credit note ' +
+          String(
+            credit.credit_note_number,
+          ) +
+          ' cancelled',
+      },
+    );
 
     const settlement =
       await reconcileInvoiceSettlementStatus(
