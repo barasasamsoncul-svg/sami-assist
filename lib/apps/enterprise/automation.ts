@@ -731,6 +731,8 @@ async function createRecord(
         table,
         companyId:
           runtime.companyId,
+        userId:
+          runtime.userId,
         operation:
           'create',
         row,
@@ -1017,6 +1019,8 @@ async function updateRecord(
         table,
         companyId:
           runtime.companyId,
+        userId:
+          runtime.userId,
         operation:
           'update',
         row,
