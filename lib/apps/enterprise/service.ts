@@ -90,6 +90,12 @@ import {
 } from '@/lib/apps/enterprise/specialist-breadth-execution';
 
 
+import {
+  specialistTransitionPermissionKey,
+  specialistTransitionPrivilege,
+} from '@/lib/apps/enterprise/specialist-permissions';
+
+
 
 import {
   getEnterpriseRelationDefinitions,
@@ -196,6 +202,9 @@ export type EnterpriseWorkspaceData = {
     canCreate: boolean;
     canEdit: boolean;
     canTransition: boolean;
+    canExecute: boolean;
+    canApprove: boolean;
+    canClose: boolean;
     canDelete: boolean;
     canReport: boolean;
     canManageSettings: boolean;
@@ -2252,6 +2261,33 @@ export async function getEnterpriseModuleWorkspace(
         context.moduleKey,
         'transition',
       ),
+    canExecute:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.execute',
+        ),
+    canApprove:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.approve',
+        ),
+    canClose:
+      context.permissions
+        .isOwner ||
+      context.permissions
+        .permissionSet
+        .has(
+          context.moduleKey +
+          '.record.close',
+        ),
     canDelete:
       permissionAllows(
         context.permissions,
@@ -3921,6 +3957,42 @@ export async function transitionEnterpriseModuleRecord(
     throw new EnterpriseModuleError(
       'INVALID_INPUT',
       'Choose a record and workflow action.',
+    );
+  }
+
+  const specialistPermission =
+    specialistTransitionPermissionKey(
+      context.moduleKey,
+      nextStatus,
+    );
+
+  if (
+    !context.permissions
+      .isOwner &&
+    !context.permissions
+      .permissionSet
+      .has(
+        specialistPermission,
+      )
+  ) {
+    const privilege =
+      specialistTransitionPrivilege(
+        nextStatus,
+      );
+
+    throw new EnterpriseModuleError(
+      'MODULE_PERMISSION_REQUIRED',
+      privilege ===
+        'approve'
+        ? 'You do not have permission to approve or reject this business workflow.'
+        : privilege ===
+            'close'
+          ? 'You do not have permission to close, post or finalize this business workflow.'
+          : 'You do not have permission to execute this business workflow.',
+      {
+        permission:
+          specialistPermission,
+      },
     );
   }
 
