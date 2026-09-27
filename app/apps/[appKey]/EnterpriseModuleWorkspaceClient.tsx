@@ -2085,6 +2085,9 @@ export default function EnterpriseModuleWorkspaceClient({
                   .module
                   .key
               }
+              experience={
+                experience
+              }
               tables={
                 view ===
                   'settings'
@@ -2959,6 +2962,7 @@ function Overview({
 
 function Records({
   moduleKey,
+  experience,
   tables,
   selected,
   search,
@@ -2985,6 +2989,9 @@ function Records({
 }: {
   moduleKey:
     string;
+  experience:
+    EnterpriseModuleExperience |
+    null;
   tables:
     EnterpriseTable[];
   selected:
@@ -3336,6 +3343,57 @@ function Records({
           )
       : [];
 
+  const tableGroups =
+    experience
+      ? experience
+          .zones
+          .map(
+            zone => ({
+              key:
+                zone.key,
+              label:
+                zone.label,
+              description:
+                zone.description,
+              tables:
+                zone.tables
+                  .map(
+                    tableKey =>
+                      tables.find(
+                        table =>
+                          table.key ===
+                          tableKey,
+                      ),
+                  )
+                  .filter(
+                    (
+                      table,
+                    ): table is
+                      EnterpriseTable =>
+                      Boolean(
+                        table,
+                      ),
+                  ),
+            }),
+          )
+          .filter(
+            group =>
+              group.tables
+                .length >
+              0,
+          )
+      : [
+          {
+            key:
+              'operate',
+            label:
+              'Registers',
+            description:
+              'Business records for this app.',
+            tables,
+          },
+        ];
+
   if (
     !selected
   ) {
@@ -3348,40 +3406,78 @@ function Records({
 
   return (
     <section className="space-y-4">
-      <div className="sami-surface rounded-[22px] p-3">
-        <div className="flex gap-2 overflow-x-auto">
+      <div className="sami-surface rounded-[24px] p-3 sm:p-4">
+        <div className="space-y-3">
           {
-            tables.map(
-              table => (
-                <button
+            tableGroups.map(
+              group => (
+                <div
                   key={
-                    table.key
+                    group.key
                   }
-                  type="button"
-                  onClick={
-                    () =>
-                      onSelect(
-                        table,
-                      )
-                  }
-                  className={[
-                    'shrink-0 rounded-xl px-3 py-2 text-xs font-black',
-                    selected.key ===
-                      table.key
-                      ? 'bg-slate-950 text-white dark:bg-white dark:text-slate-950'
-                      : 'border border-[var(--sami-border)]',
-                  ].join(
-                    ' ',
-                  )}
+                  className="rounded-2xl border border-[var(--sami-border)] bg-slate-500/[0.018] p-3"
                 >
-                  {
-                    table.label
-                  }
-                  {' · '}
-                  {
-                    table.count
-                  }
-                </button>
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                        {
+                          group.label
+                        }
+                      </p>
+                      <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                        {
+                          group.description
+                        }
+                      </p>
+                    </div>
+                    <span className="text-[10px] font-black text-slate-400">
+                      {
+                        group.tables
+                          .length
+                      }
+                      {' areas'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                    {
+                      group.tables
+                        .map(
+                          table => (
+                            <button
+                              key={
+                                table.key
+                              }
+                              type="button"
+                              onClick={
+                                () =>
+                                  onSelect(
+                                    table,
+                                  )
+                              }
+                              className={[
+                                'shrink-0 rounded-xl px-3 py-2 text-xs font-black transition',
+                                selected.key ===
+                                  table.key
+                                  ? 'bg-slate-950 text-white shadow-sm dark:bg-white dark:text-slate-950'
+                                  : 'border border-[var(--sami-border)] hover:-translate-y-px hover:bg-blue-500/[0.04]',
+                              ].join(
+                                ' ',
+                              )}
+                            >
+                              {
+                                table.label
+                              }
+                              {' · '}
+                              {
+                                table.count
+                              }
+                            </button>
+                          ),
+                        )
+                    }
+                  </div>
+                </div>
               ),
             )
           }
