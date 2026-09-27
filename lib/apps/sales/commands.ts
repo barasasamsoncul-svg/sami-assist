@@ -17,6 +17,12 @@ import {
 } from '@/lib/apps/sales/delivery';
 
 import {
+  postSalesFulfillmentToInventory,
+  releaseSalesOrderReservations,
+  reserveSalesOrderInventory,
+} from '@/lib/apps/sales/inventory';
+
+import {
   cleanText,
   datePlusDays,
   ensureSalesDefaults,
@@ -40,6 +46,8 @@ import type {
 
 type NormalizedQuoteLine = {
   catalogItemId:
+    string | null;
+  externalProductId:
     string | null;
   sortOrder:
     number;
@@ -488,6 +496,7 @@ async function normalizeQuoteLines(
               item.description,
               item.unit,
               item.unit_price,
+              item.external_product_id,
               tax.name
                 AS tax_name,
               COALESCE(
@@ -659,6 +668,12 @@ async function normalizeQuoteLines(
 
     lines.push({
       catalogItemId,
+      externalProductId:
+        catalog?.external_product_id
+          ? String(
+              catalog.external_product_id,
+            )
+          : null,
       sortOrder:
         index,
       description,
@@ -721,6 +736,7 @@ async function insertQuoteLines(
           quote_id,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -737,14 +753,15 @@ async function insertQuoteLines(
           line_total
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,
-          $10,$11,$12,$13,$14,$15,$16,$17
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18
         )
       `,
       [
         quoteId,
         companyId,
         line.catalogItemId,
+        line.externalProductId,
         line.sortOrder,
         line.description,
         line.sku,
@@ -2698,6 +2715,7 @@ export async function createSalesOrderFromQuote(
           sales_order_id,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -2717,6 +2735,7 @@ export async function createSalesOrderFromQuote(
           $3,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -2743,6 +2762,17 @@ export async function createSalesOrderFromQuote(
         context.companyId,
         orderId,
       ],
+    );
+
+    await reserveSalesOrderInventory(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
     );
 
     await client.query(
@@ -3047,35 +3077,101 @@ export async function updateSalesOrderFulfillment(
           },
         );
 
-      const changed =
+      const existingLine =
         await client.query(
           `
-            UPDATE sales_order_items_v2
-            SET
-              delivered_quantity = $4
+            SELECT
+              quantity,
+              delivered_quantity,
+              external_product_id,
+              stock_reservation_id
+            FROM sales_order_items_v2
             WHERE id = $1
               AND sales_order_id = $2
               AND company_id = $3
-              AND $4 <= quantity
-            RETURNING id
+            FOR UPDATE
           `,
           [
             lineId,
             orderId,
             context.companyId,
-            deliveredQuantity,
           ],
         );
 
       if (
-        changed.rows.length !==
-          1
+        existingLine.rows.length !==
+          1 ||
+        deliveredQuantity >
+          Number(
+            existingLine.rows[0]
+              .quantity ||
+            0,
+          )
       ) {
         throw new SalesError(
           'INVALID_INPUT',
           'Delivered quantity cannot exceed the ordered quantity.',
         );
       }
+
+      await postSalesFulfillmentToInventory(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          orderId,
+          lineId,
+          orderedQuantity:
+            Number(
+              existingLine.rows[0]
+                .quantity ||
+              0,
+            ),
+          previousDeliveredQuantity:
+            Number(
+              existingLine.rows[0]
+                .delivered_quantity ||
+              0,
+            ),
+          nextDeliveredQuantity:
+            deliveredQuantity,
+          externalProductId:
+            existingLine.rows[0]
+              .external_product_id
+              ? String(
+                  existingLine.rows[0]
+                    .external_product_id,
+                )
+              : null,
+          reservationId:
+            existingLine.rows[0]
+              .stock_reservation_id
+              ? String(
+                  existingLine.rows[0]
+                    .stock_reservation_id,
+                )
+              : null,
+        },
+      );
+
+      await client.query(
+        `
+          UPDATE sales_order_items_v2
+          SET
+            delivered_quantity = $4
+          WHERE id = $1
+            AND sales_order_id = $2
+            AND company_id = $3
+        `,
+        [
+          lineId,
+          orderId,
+          context.companyId,
+          deliveredQuantity,
+        ],
+      );
     }
 
     const totals =
@@ -3332,6 +3428,17 @@ export async function cancelSalesOrder(
         'This order already has invoiced quantities. Correct the related invoice before cancelling the order.',
       );
     }
+
+    await releaseSalesOrderReservations(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
+    );
 
     await client.query(
       `
