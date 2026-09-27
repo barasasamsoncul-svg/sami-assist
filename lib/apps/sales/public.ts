@@ -623,6 +623,12 @@ export async function respondToPublicSalesQuote(
       'reject';
     reason?:
       unknown;
+    signerName?:
+      unknown;
+    signerEmail?:
+      unknown;
+    acceptanceNote?:
+      unknown;
   },
 ) {
   assertToken(
@@ -800,6 +806,44 @@ export async function respondToPublicSalesQuote(
           )
         : null;
 
+    const signerName =
+      input.action ===
+        'accept'
+        ? nullableText(
+            input.signerName,
+            255,
+          )
+        : null;
+
+    const signerEmail =
+      input.action ===
+        'accept'
+        ? nullableText(
+            input.signerEmail,
+            320,
+          )
+        : null;
+
+    const acceptanceNote =
+      input.action ===
+        'accept'
+        ? nullableText(
+            input.acceptanceNote,
+            2000,
+          )
+        : null;
+
+    if (
+      input.action ===
+        'accept' &&
+      !signerName
+    ) {
+      throw new SalesError(
+        'INVALID_INPUT',
+        'Enter the name of the person accepting this quotation.',
+      );
+    }
+
     await client.query(
       `
         UPDATE sales_quotes
@@ -819,6 +863,27 @@ export async function respondToPublicSalesQuote(
               THEN NOW()
               ELSE rejected_at
             END,
+          accepted_by_name =
+            CASE
+              WHEN $3::varchar(30) =
+                   'accepted'
+              THEN $4
+              ELSE accepted_by_name
+            END,
+          accepted_by_email =
+            CASE
+              WHEN $3::varchar(30) =
+                   'accepted'
+              THEN $5
+              ELSE accepted_by_email
+            END,
+          acceptance_note =
+            CASE
+              WHEN $3::varchar(30) =
+                   'accepted'
+              THEN $6
+              ELSE acceptance_note
+            END,
           public_enabled =
             FALSE,
           updated_at =
@@ -830,6 +895,9 @@ export async function respondToPublicSalesQuote(
         quote.id,
         quote.company_id,
         next,
+        signerName,
+        signerEmail,
+        acceptanceNote,
       ],
     );
 
