@@ -9,6 +9,12 @@ import {
   validateFinanceSpecialistRow,
 } from '@/lib/apps/enterprise/specialist-finance-rules';
 
+import {
+  applySpecialistExecutionRecordSideEffects,
+  assertSpecialistExecutionMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-execution';
+
+
 
 
 type MutationOperation =
@@ -3198,6 +3204,13 @@ async function validateDomainLifecycleMutation(
     row,
   );
 
+  assertSpecialistExecutionMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3538,6 +3551,7 @@ export async function applyEnterpriseDomainSideEffects(
     moduleKey: string;
     table: string;
     companyId: string;
+    userId: string;
     operation: MutationOperation;
     row:
       Record<
@@ -3550,6 +3564,7 @@ export async function applyEnterpriseDomainSideEffects(
     moduleKey,
     table,
     companyId,
+    userId,
     operation,
     row,
   } =
@@ -3588,6 +3603,18 @@ export async function applyEnterpriseDomainSideEffects(
       companyId,
     );
   }
+
+  await applySpecialistExecutionRecordSideEffects(
+    client,
+    {
+      moduleKey,
+      table,
+      companyId,
+      userId,
+      operation,
+      row,
+    },
+  );
 
   if (
     moduleKey ===

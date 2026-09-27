@@ -67,6 +67,11 @@ import {
   applyFinanceSpecialistTransition,
 } from '@/lib/apps/enterprise/specialist-finance-transitions';
 
+import {
+  applySpecialistExecutionTransition,
+} from '@/lib/apps/enterprise/specialist-execution';
+
+
 
 import {
   getEnterpriseRelationDefinitions,
@@ -2637,6 +2642,8 @@ export async function createEnterpriseModuleRecord(
             context.table,
           companyId:
             context.companyId,
+          userId:
+            context.userId,
           operation:
             'create',
           row:
@@ -3044,6 +3051,8 @@ export async function updateEnterpriseModuleRecord(
           context.table,
         companyId:
           context.companyId,
+        userId:
+          context.userId,
         operation:
           'update',
         row:
@@ -3332,6 +3341,8 @@ export async function deleteEnterpriseModuleRecord(
           context.table,
         companyId:
           context.companyId,
+        userId:
+          context.userId,
         operation:
           'delete',
         row:
@@ -3613,6 +3624,22 @@ async function validateEnterpriseTransition(
 
   try {
     await applyFinanceSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applySpecialistExecutionTransition(
       client,
       {
         moduleKey:

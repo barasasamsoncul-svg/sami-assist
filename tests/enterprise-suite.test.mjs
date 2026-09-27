@@ -1493,6 +1493,96 @@ test('finance and procurement specialist depth adds controlled settlement procur
 });
 
 
+test('specialist execution transitions post operational business effects transactionally', async () => {
+  const [
+    execution,
+    service,
+    hooks,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/specialist-execution.ts',
+    ),
+    source(
+      'lib/apps/enterprise/service.ts',
+    ),
+    source(
+      'lib/apps/enterprise/domain-hooks.ts',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      'inventory_adjustment:',
+      'adjustment_in',
+      'adjustment_out',
+      'stock_levels',
+      'stock_movements',
+      'Add payslip lines before computing the payslip.',
+      'gross_amount',
+      'deduction_amount',
+      'employer_contribution_amount',
+      'Complete or cancel every picking operation before completing the batch.',
+      'Reserve all required manufacturing materials before starting production.',
+      'Record consumption of all required materials before completing production.',
+      'Approved project budget must be greater than zero and cannot exceed the budget amount.',
+      'breached_at',
+      'resolved_at',
+      'helpdesk_sla_policies',
+      'first_response_due_at',
+      'resolution_due_at',
+      'first_response_at',
+    ]
+  ) {
+    assert.ok(
+      execution.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    execution,
+    /inventory_adjustment:[\s\S]*FROM stock_movements[\s\S]*reference = \$2[\s\S]*existing\.rows\.length[\s\S]*0/s,
+    'Inventory adjustment posting must remain idempotent.',
+  );
+
+  assert.match(
+    service,
+    /applySpecialistExecutionTransition\([\s\S]*client/s,
+  );
+
+  assert.match(
+    hooks,
+    /applySpecialistExecutionRecordSideEffects\([\s\S]*userId/s,
+  );
+
+  assert.match(
+    hooks,
+    /crm[\s\S]*crm_forecast_lines[\s\S]*weighted_amount/s,
+  );
+
+  for (
+    const marker
+    of [
+      'Posted inventory adjustments are immutable',
+      'Completed warehouse picking batches are immutable',
+      'Paid payslips are immutable',
+      'Closed project budgets are immutable',
+      'Consumed manufacturing reservations are immutable',
+    ]
+  ) {
+    assert.ok(
+      execution.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
+
 test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
   const service =
     await source(
