@@ -15,6 +15,11 @@ import {
 } from '@/lib/apps/enterprise/specialist-catalog';
 
 
+import {
+  suiteDependencyProfile,
+} from '@/lib/modules/suite-dependencies';
+
+
 
 const GENERIC_ACTIONS =
   [
@@ -35,6 +40,54 @@ export function withEnterpriseModuleDefaults(
   manifest:
     SamiModuleManifest,
 ): SamiModuleManifest {
+  const dependencyProfile =
+    suiteDependencyProfile(
+      manifest.key,
+    );
+
+  const requiredDependencies =
+    [
+      ...new Set([
+        ...manifest.depends,
+        ...dependencyProfile
+          .required,
+      ]),
+    ]
+      .filter(
+        dependency =>
+          dependency !==
+          manifest.key,
+      );
+
+  const requiredDependencySet =
+    new Set(
+      requiredDependencies,
+    );
+
+  manifest = {
+    ...manifest,
+    depends:
+      requiredDependencies,
+    optionalDepends:
+      [
+        ...new Set([
+          ...manifest
+            .optionalDepends,
+          ...dependencyProfile
+            .optional,
+        ]),
+      ]
+        .filter(
+          dependency =>
+            dependency !==
+              manifest.key &&
+            !requiredDependencySet
+              .has(
+                dependency,
+              ),
+        ),
+  };
+
   if (
     manifest.key ===
       'invoicing' ||
