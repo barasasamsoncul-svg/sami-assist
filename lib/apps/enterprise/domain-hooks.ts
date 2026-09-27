@@ -19,6 +19,11 @@ import {
   assertSpecialistBreadthMutationAllowed,
 } from '@/lib/apps/enterprise/specialist-breadth-execution';
 
+import {
+  applySuiteSpecialistRecordSideEffects,
+  assertSuiteSpecialistMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-suite-execution';
+
 
 
 
@@ -3223,6 +3228,13 @@ async function validateDomainLifecycleMutation(
     row,
   );
 
+  assertSuiteSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3617,6 +3629,18 @@ export async function applyEnterpriseDomainSideEffects(
   }
 
   await applySpecialistExecutionRecordSideEffects(
+    client,
+    {
+      moduleKey,
+      table,
+      companyId,
+      userId,
+      operation,
+      row,
+    },
+  );
+
+  await applySuiteSpecialistRecordSideEffects(
     client,
     {
       moduleKey,
