@@ -31,6 +31,16 @@ import {
 } from '../lib/apps/enterprise/specialist-suite-execution';
 
 
+import {
+  specialistProductDepthSql,
+} from '../lib/apps/enterprise/specialist-product-depth';
+
+import {
+  applyProductSpecialistRecordSideEffects,
+  applyProductSpecialistTransition,
+} from '../lib/apps/enterprise/specialist-product-execution';
+
+
 const DATABASE_URL =
   process.env
     .TEST_DATABASE_URL ||
@@ -1309,6 +1319,569 @@ integration(
             .quantity,
         ),
         4,
+      );
+
+      await client.query(
+        'ROLLBACK',
+      );
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+integration(
+  'ERP parity: product-grade depth schemas execute in PostgreSQL',
+  async () => {
+    const pool =
+      new Pool({
+        connectionString:
+          DATABASE_URL,
+      });
+
+    const client =
+      await pool.connect();
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await client.query(
+        `
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+          CREATE TABLE companies (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE shop_products (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE shop_orders (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE menu_items (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE restaurant_tables (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE restaurant_orders (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE signature_requests (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE signers (
+            id UUID PRIMARY KEY,
+            request_id UUID NOT NULL REFERENCES signature_requests(id) ON DELETE CASCADE
+          );
+
+          CREATE TABLE appointment_services (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE appointments (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE calendars (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE calendar_events (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE documents (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE surveys (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE survey_questions (
+            id UUID PRIMARY KEY,
+            survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE
+          );
+          CREATE TABLE survey_responses (
+            id UUID PRIMARY KEY,
+            survey_id UUID NOT NULL REFERENCES surveys(id) ON DELETE CASCADE
+          );
+
+          CREATE TABLE workbooks (
+            id UUID PRIMARY KEY
+          );
+          CREATE TABLE sheets (
+            id UUID PRIMARY KEY,
+            workbook_id UUID NOT NULL REFERENCES workbooks(id) ON DELETE CASCADE
+          );
+        `,
+      );
+
+      await client.query(
+        specialistSuiteDepthSql(
+          'spreadsheet',
+        ),
+      );
+
+      for (
+        const moduleKey
+        of [
+          'pos_shop',
+          'pos_restaurant',
+          'sign',
+          'appointments',
+          'calendar',
+          'documents',
+          'surveys',
+          'spreadsheet',
+        ]
+      ) {
+        const sql =
+          specialistProductDepthSql(
+            moduleKey,
+          );
+
+        assert.ok(
+          sql.trim(),
+          moduleKey +
+          ' should expose product-grade depth SQL',
+        );
+
+        await client.query(
+          sql,
+        );
+      }
+
+      for (
+        const table
+        of [
+          'shop_sessions',
+          'shop_payments',
+          'shop_offline_batches',
+          'shop_inventory_postings',
+          'restaurant_floors',
+          'restaurant_payments',
+          'restaurant_kitchen_tickets',
+          'restaurant_inventory_postings',
+          'signature_envelopes',
+          'signature_fields',
+          'signature_auth_challenges',
+          'signature_completion_certificates',
+          'appointment_resources',
+          'appointment_resource_assignments',
+          'appointment_questions',
+          'appointment_answers',
+          'external_calendar_connections',
+          'calendar_sync_mappings',
+          'calendar_event_reminders',
+          'document_tags',
+          'document_share_links',
+          'survey_question_logic',
+          'survey_invitations',
+          'survey_response_scores',
+          'spreadsheet_charts',
+          'spreadsheet_filters',
+          'spreadsheet_snapshots',
+          'spreadsheet_refresh_runs',
+        ]
+      ) {
+        const exists =
+          await client.query(
+            'SELECT to_regclass($1) AS relation',
+            [
+              'public.' +
+              table,
+            ],
+          );
+
+        assert.equal(
+          exists.rows[0]
+            ?.relation,
+          table,
+          table +
+          ' should be created by product-grade specialist SQL',
+        );
+      }
+
+      await client.query(
+        'ROLLBACK',
+      );
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
+
+integration(
+  'ERP parity: POS payment posts to Payments and completed sale posts Inventory once',
+  async () => {
+    const pool =
+      new Pool({
+        connectionString:
+          DATABASE_URL,
+      });
+
+    const client =
+      await pool.connect();
+
+    const companyId =
+      '11111111-1111-4111-8111-111111111111';
+    const userId =
+      '22222222-2222-4222-8222-222222222222';
+    const orderId =
+      '33333333-3333-4333-8333-333333333333';
+    const itemId =
+      '44444444-4444-4444-8444-444444444444';
+    const shopProductId =
+      '55555555-5555-4555-8555-555555555555';
+    const inventoryProductId =
+      '66666666-6666-4666-8666-666666666666';
+    const warehouseId =
+      '77777777-7777-4777-8777-777777777777';
+    const paymentId =
+      '88888888-8888-4888-8888-888888888888';
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await client.query(
+        `
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+          CREATE TABLE companies (
+            id UUID PRIMARY KEY
+          );
+
+          CREATE TABLE shop_products (
+            id UUID PRIMARY KEY,
+            company_id UUID NOT NULL,
+            deleted_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE shop_orders (
+            id UUID PRIMARY KEY,
+            company_id UUID NOT NULL,
+            total_amount NUMERIC NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            deleted_at TIMESTAMPTZ,
+            updated_by UUID,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE shop_order_items (
+            id UUID PRIMARY KEY,
+            company_id UUID NOT NULL,
+            order_id UUID NOT NULL,
+            product_id UUID NOT NULL,
+            quantity NUMERIC NOT NULL,
+            deleted_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE stock_levels (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID NOT NULL,
+            product_id UUID NOT NULL,
+            warehouse_id UUID NOT NULL,
+            quantity NUMERIC NOT NULL DEFAULT 0,
+            reorder_level NUMERIC NOT NULL DEFAULT 0,
+            updated_by UUID,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE stock_movements (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID NOT NULL,
+            product_id UUID NOT NULL,
+            warehouse_id UUID NOT NULL,
+            movement_type TEXT NOT NULL,
+            quantity NUMERIC NOT NULL,
+            reference TEXT,
+            created_by UUID,
+            updated_by UUID,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+
+          CREATE TABLE business_payments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID NOT NULL,
+            direction TEXT NOT NULL,
+            amount NUMERIC NOT NULL,
+            currency TEXT NOT NULL,
+            paid_at TIMESTAMPTZ,
+            external_reference TEXT,
+            counterparty_name TEXT,
+            status TEXT NOT NULL,
+            created_by UUID,
+            updated_by UUID,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            deleted_at TIMESTAMPTZ
+          );
+
+          CREATE TABLE payment_allocations (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID NOT NULL,
+            payment_id UUID NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id UUID NOT NULL,
+            amount NUMERIC NOT NULL,
+            status TEXT NOT NULL,
+            created_by UUID,
+            updated_by UUID,
+            deleted_at TIMESTAMPTZ
+          );
+        `,
+      );
+
+      await client.query(
+        specialistProductDepthSql(
+          'pos_shop',
+        ),
+      );
+
+      await client.query(
+        'INSERT INTO companies (id) VALUES ($1)',
+        [
+          companyId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO shop_products (
+            id,
+            company_id,
+            inventory_product_id
+          )
+          VALUES ($1,$2,$3)
+        `,
+        [
+          shopProductId,
+          companyId,
+          inventoryProductId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO shop_orders (
+            id,
+            company_id,
+            total_amount,
+            inventory_warehouse_id
+          )
+          VALUES ($1,$2,100,$3)
+        `,
+        [
+          orderId,
+          companyId,
+          warehouseId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO shop_order_items (
+            id,
+            company_id,
+            order_id,
+            product_id,
+            quantity
+          )
+          VALUES ($1,$2,$3,$4,2)
+        `,
+        [
+          itemId,
+          companyId,
+          orderId,
+          shopProductId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO stock_levels (
+            company_id,
+            product_id,
+            warehouse_id,
+            quantity
+          )
+          VALUES ($1,$2,$3,5)
+        `,
+        [
+          companyId,
+          inventoryProductId,
+          warehouseId,
+        ],
+      );
+
+      await client.query(
+        `
+          INSERT INTO shop_payments (
+            id,
+            company_id,
+            order_id,
+            method,
+            amount,
+            currency,
+            provider_reference,
+            paid_at,
+            status
+          )
+          VALUES (
+            $1,$2,$3,'mobile_money',100,'KES',
+            'POS-PAY-1',NOW(),'captured'
+          )
+        `,
+        [
+          paymentId,
+          companyId,
+          orderId,
+        ],
+      );
+
+      await applyProductSpecialistRecordSideEffects(
+        client,
+        {
+          moduleKey:
+            'pos_shop',
+          table:
+            'shop_payments',
+          companyId,
+          userId,
+          operation:
+            'create',
+          row: {
+            id:
+              paymentId,
+            order_id:
+              orderId,
+            method:
+              'mobile_money',
+            amount:
+              100,
+            currency:
+              'KES',
+            provider_reference:
+              'POS-PAY-1',
+            paid_at:
+              new Date(
+                '2026-09-27T12:00:00Z',
+              ),
+            status:
+              'captured',
+          },
+        },
+      );
+
+      await applyProductSpecialistTransition(
+        client,
+        {
+          moduleKey:
+            'pos_shop',
+          table:
+            'shop_orders',
+          companyId,
+          userId,
+          recordId:
+            orderId,
+          nextStatus:
+            'paid',
+        },
+      );
+
+      await applyProductSpecialistTransition(
+        client,
+        {
+          moduleKey:
+            'pos_shop',
+          table:
+            'shop_orders',
+          companyId,
+          userId,
+          recordId:
+            orderId,
+          nextStatus:
+            'completed',
+        },
+      );
+
+      const stock =
+        await client.query(
+          `
+            SELECT quantity
+            FROM stock_levels
+            WHERE company_id = $1
+              AND product_id = $2
+              AND warehouse_id = $3
+          `,
+          [
+            companyId,
+            inventoryProductId,
+            warehouseId,
+          ],
+        );
+
+      assert.equal(
+        Number(
+          stock.rows[0]
+            .quantity,
+        ),
+        3,
+      );
+
+      const movements =
+        await client.query(
+          `
+            SELECT COUNT(*)::int AS count
+            FROM stock_movements
+            WHERE company_id = $1
+              AND reference = $2
+          `,
+          [
+            companyId,
+            'pos_shop_sale:' +
+              orderId,
+          ],
+        );
+
+      assert.equal(
+        Number(
+          movements.rows[0]
+            .count,
+        ),
+        1,
+        'inventory posting must be idempotent across paid -> completed',
+      );
+
+      const mirrored =
+        await client.query(
+          `
+            SELECT COUNT(*)::int AS count
+            FROM business_payments
+            WHERE company_id = $1
+              AND external_reference = 'POS-PAY-1'
+          `,
+          [
+            companyId,
+          ],
+        );
+
+      assert.equal(
+        Number(
+          mirrored.rows[0]
+            .count,
+        ),
+        1,
       );
 
       await client.query(
