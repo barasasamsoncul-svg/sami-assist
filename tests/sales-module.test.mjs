@@ -663,3 +663,37 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
     /SALES_AI_TOOLS/,
   );
 });
+
+test('Sales 2.2 captures signed customer quotation acceptance as auditable commercial evidence', async () => {
+  const [
+    schema,
+    migration,
+    publicQuote,
+    publicActions,
+    publicRoute,
+  ] = await Promise.all([
+    source('lib/apps/sales/schema.sql'),
+    source('lib/apps/sales/migrations/2.1.0-to-2.2.0.ts'),
+    source('lib/apps/sales/public.ts'),
+    source('app/q/[tenantId]/[token]/PublicSalesQuoteActions.tsx'),
+    source('app/api/public/sales/[tenantId]/[token]/route.ts'),
+  ]);
+
+  for (const field of [
+    'accepted_by_name',
+    'accepted_by_email',
+    'acceptance_note',
+  ]) {
+    assert.match(schema, new RegExp(field));
+    assert.match(migration, new RegExp(field));
+    assert.match(publicQuote, new RegExp(field));
+  }
+
+  assert.match(publicQuote, /Enter the name of the person accepting this quotation/);
+  assert.match(publicActions, /Accepted by/);
+  assert.match(publicActions, /Acceptance note/);
+  assert.match(publicActions, /signerName/);
+  assert.match(publicRoute, /signerName/);
+  assert.match(publicRoute, /acceptanceNote/);
+});
+
