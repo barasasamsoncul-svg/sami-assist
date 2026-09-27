@@ -5,9 +5,11 @@ import type {
 } from '@/lib/ai/types';
 
 import {
+  changeInvoiceStatus,
   createInvoice,
   getInvoicingWorkspaceData,
   INVOICING_PERMISSIONS,
+  recordInvoicePayment,
   searchInvoicingRecords,
 } from '@/lib/apps/invoicing/service';
 
@@ -199,6 +201,99 @@ export const INVOICING_AI_TOOLS:
           lines:
             input.lines,
           confirm: false,
+        }),
+    },
+    {
+      key: 'invoicing_confirm_invoice',
+      name: 'Confirm invoice',
+      description:
+        'Confirm a draft invoice. When Accounting is installed this also posts the receivable, revenue and tax journal atomically.',
+      moduleKey: 'invoicing',
+      operation: 'write',
+      riskLevel: 'high',
+      confirmationRequired: true,
+      requiredAllPermissions: [
+        INVOICING_PERMISSIONS
+          .INVOICE_CONFIRM,
+      ],
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          invoiceId: {
+            type: 'string',
+          },
+        },
+        required: [
+          'invoiceId',
+        ],
+      },
+      execute: async (
+        _context,
+        input,
+      ) =>
+        changeInvoiceStatus({
+          invoiceId:
+            input.invoiceId,
+          status:
+            'confirmed',
+        }),
+    },
+    {
+      key: 'invoicing_record_payment',
+      name: 'Record invoice payment',
+      description:
+        'Post a payment against an open invoice. This updates invoice settlement and posts cash/receivable accounting when Accounting is installed.',
+      moduleKey: 'invoicing',
+      operation: 'write',
+      riskLevel: 'high',
+      confirmationRequired: true,
+      requiredAllPermissions: [
+        INVOICING_PERMISSIONS
+          .PAYMENT_RECORD,
+      ],
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          invoiceId: {
+            type: 'string',
+          },
+          amount: {
+            type: 'number',
+            minimum:
+              0.0001,
+          },
+          method: {
+            type: 'string',
+          },
+          reference: {
+            type: 'string',
+          },
+          paymentDate: {
+            type: 'string',
+          },
+        },
+        required: [
+          'invoiceId',
+          'amount',
+        ],
+      },
+      execute: async (
+        _context,
+        input,
+      ) =>
+        recordInvoicePayment({
+          invoiceId:
+            input.invoiceId,
+          amount:
+            input.amount,
+          method:
+            input.method,
+          reference:
+            input.reference,
+          paymentDate:
+            input.paymentDate,
         }),
     },
   ];
