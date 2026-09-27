@@ -91,6 +91,16 @@ import {
 
 
 import {
+  applySuiteSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-suite-execution';
+
+
+import {
+  applyProductSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-product-execution';
+
+
+import {
   specialistTransitionPermissionKey,
   specialistTransitionPrivilege,
 } from '@/lib/apps/enterprise/specialist-permissions';
@@ -3887,6 +3897,38 @@ async function validateEnterpriseTransition(
     );
 
     await applySpecialistBreadthTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applySuiteSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applyProductSpecialistTransition(
       client,
       {
         moduleKey:
