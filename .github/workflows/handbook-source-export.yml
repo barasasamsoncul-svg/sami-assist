@@ -1,0 +1,31 @@
+name: Handbook Source Export
+
+on:
+  push:
+    branches:
+      - docs/complete-sami-engineering-handbook
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout handbook baseline
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Record exact source commit
+        run: |
+          git rev-parse HEAD > HANDBOOK_EXPORT_COMMIT.txt
+          git ls-files > HANDBOOK_EXPORT_FILES.txt
+      - name: Upload repository source
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-handbook-source
+          path: |
+            .
+            !.git/**
+          include-hidden-files: true
+          retention-days: 1
