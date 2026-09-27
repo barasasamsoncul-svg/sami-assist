@@ -64,6 +64,11 @@ import {
 } from '@/lib/apps/enterprise/domain-hooks';
 
 import {
+  applyFinanceSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-finance-transitions';
+
+
+import {
   getEnterpriseRelationDefinitions,
   listEnterpriseRelationOptions,
   validateEnterpriseRelationValues,
@@ -3429,6 +3434,7 @@ async function validateEnterpriseTransition(
   context: {
     moduleKey: string;
     companyId: string;
+    userId: string;
   },
   table:
     string,
@@ -3603,6 +3609,34 @@ async function validateEnterpriseTransition(
         'Record produced quantity before completing a manufacturing order.',
       );
     }
+  }
+
+  try {
+    await applyFinanceSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'WORKFLOW_TRANSITION_INVALID',
+      error instanceof
+        Error
+        ? error.message
+        : 'SaMi could not apply this business workflow action.',
+    );
   }
 }
 

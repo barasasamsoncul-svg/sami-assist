@@ -119,6 +119,84 @@ const SENSITIVE_BUSINESS_FIELDS:
     new Set([
       'hourly_cost',
     ]),
+  'purchase:purchase_requisitions':
+    new Set([
+      'estimated_total',
+    ]),
+  'purchase:purchase_requisition_lines':
+    new Set([
+      'estimated_unit_cost',
+    ]),
+  'expenses:expense_policies':
+    new Set([
+      'daily_limit',
+      'per_claim_limit',
+      'receipt_required_above',
+    ]),
+  'expenses:expense_reports':
+    new Set([
+      'total_amount',
+    ]),
+  'expenses:expense_report_lines':
+    new Set([
+      'amount',
+    ]),
+  'fixed_assets:asset_impairments':
+    new Set([
+      'previous_book_value',
+      'impairment_amount',
+      'new_book_value',
+    ]),
+  'fixed_assets:asset_insurance_policies':
+    new Set([
+      'insured_value',
+      'premium_amount',
+    ]),
+  'tax:withholding_certificates':
+    new Set([
+      'gross_amount',
+      'withheld_amount',
+    ]),
+  'billing:billing_account_balances':
+    new Set([
+      'invoiced_amount',
+      'paid_amount',
+      'credit_amount',
+      'outstanding_amount',
+      'overdue_amount',
+    ]),
+  'billing:billing_dunning_cases':
+    new Set([
+      'overdue_amount',
+    ]),
+  'payments:payment_batches':
+    new Set([
+      'total_amount',
+    ]),
+  'payments:payment_batch_items':
+    new Set([
+      'amount',
+    ]),
+  'payments:payment_refunds':
+    new Set([
+      'amount',
+      'external_reference',
+    ]),
+  'payments:payment_disputes':
+    new Set([
+      'disputed_amount',
+    ]),
+  'commissions:commission_payouts':
+    new Set([
+      'gross_commission',
+      'adjustments',
+      'payable_amount',
+    ]),
+  'commissions:commission_payout_lines':
+    new Set([
+      'amount',
+      'adjustment_amount',
+    ]),
 };
 
 

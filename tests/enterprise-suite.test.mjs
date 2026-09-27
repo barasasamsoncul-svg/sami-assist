@@ -1279,6 +1279,220 @@ test('specialist ERP 2.2 deepens finance inventory payroll CRM projects helpdesk
 });
 
 
+test('finance and procurement specialist depth adds controlled settlement procurement and planning workflows', async () => {
+  const [
+    specialistCatalog,
+    financeDepth,
+    catalog,
+    workflows,
+    hooks,
+    financeRules,
+    financeTransitions,
+    service,
+    security,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-finance-depth.ts'),
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/workflow-policy.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-finance-rules.ts'),
+    source('lib/apps/enterprise/specialist-finance-transitions.ts'),
+    source('lib/apps/enterprise/service.ts'),
+    source('lib/apps/enterprise/field-security.ts'),
+  ]);
+
+  for (
+    const moduleKey
+    of [
+      'purchase',
+      'expenses',
+      'fixed_assets',
+      'tax',
+      'budgeting',
+      'cash_flow',
+      'billing',
+      'subscriptions',
+      'payments',
+      'commissions',
+    ]
+  ) {
+    assert.match(
+      specialistCatalog,
+      new RegExp(
+        '^\\s{2}' +
+        moduleKey +
+        ': \\[',
+        'm',
+      ),
+      moduleKey,
+    );
+  }
+
+  for (
+    const table
+    of [
+      'purchase_requisitions',
+      'purchase_receipts',
+      'expense_policies',
+      'expense_reports',
+      'asset_impairments',
+      'tax_codes',
+      'withholding_certificates',
+      'budget_scenarios',
+      'budget_approvals',
+      'cash_flow_scenarios',
+      'liquidity_alerts',
+      'billing_cycles',
+      'billing_dunning_cases',
+      'subscription_changes',
+      'subscription_usage_charges',
+      'payment_batches',
+      'payment_batch_items',
+      'payment_refunds',
+      'payment_disputes',
+      'commission_tiers',
+      'commission_payouts',
+    ]
+  ) {
+    assert.ok(
+      financeDepth.includes(
+        'public.' +
+        table,
+      ),
+      table,
+    );
+
+    assert.ok(
+      catalog.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' registration',
+    );
+  }
+
+  for (
+    const workflowKey
+    of [
+      'purchase:purchase_requisitions',
+      'purchase:purchase_receipts',
+      'expenses:expense_reports',
+      'fixed_assets:asset_impairments',
+      'tax:withholding_certificates',
+      'budgeting:budget_approvals',
+      'cash_flow:liquidity_alerts',
+      'billing:billing_cycles',
+      'billing:billing_dunning_cases',
+      'subscriptions:subscription_changes',
+      'payments:payment_batches',
+      'payments:payment_refunds',
+      'payments:payment_disputes',
+      'commissions:commission_payouts',
+    ]
+  ) {
+    assert.ok(
+      workflows.includes(
+        "'" +
+        workflowKey +
+        "'",
+      ),
+      workflowKey,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'recalculateExpenseReport',
+      'recalculatePaymentBatch',
+      'recalculateCommissionPayout',
+      'validateFinanceSpecialistRow',
+      'assertFinanceSpecialistMutationAllowed',
+    ]
+  ) {
+    assert.ok(
+      hooks.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'Rejected quantity cannot exceed received quantity.',
+      'New book value must equal previous book value minus impairment.',
+      'Withheld amount cannot exceed gross amount.',
+      'Overdue amount cannot exceed the outstanding balance.',
+      'Commission tier upper threshold cannot be below its lower threshold.',
+      'Posted purchase receipts are immutable.',
+      'Completed refunds are immutable.',
+      'Paid commission payouts are immutable.',
+    ]
+  ) {
+    assert.ok(
+      financeRules.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'postPurchaseReceiptToInventory',
+      'reimburseExpenseReport',
+      'applySubscriptionChange',
+      'completeRefund',
+      'closeCommissionEntries',
+      'approveBudget',
+      'stock_movements',
+      'stock_levels',
+    ]
+  ) {
+    assert.ok(
+      financeTransitions.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    service,
+    /applyFinanceSpecialistTransition/,
+  );
+
+  assert.match(
+    service,
+    /WORKFLOW_TRANSITION_INVALID/,
+  );
+
+  for (
+    const marker
+    of [
+      'expenses:expense_reports',
+      'fixed_assets:asset_impairments',
+      'billing:billing_account_balances',
+      'payments:payment_refunds',
+      'commissions:commission_payouts',
+    ]
+  ) {
+    assert.ok(
+      security.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
+
 test('enterprise runtime fails closed until every business table has completed boundary hardening', async () => {
   const service =
     await source(

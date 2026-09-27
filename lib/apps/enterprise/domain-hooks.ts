@@ -4,6 +4,12 @@ import type {
   PoolClient,
 } from 'pg';
 
+import {
+  assertFinanceSpecialistMutationAllowed,
+  validateFinanceSpecialistRow,
+} from '@/lib/apps/enterprise/specialist-finance-rules';
+
+
 
 type MutationOperation =
   | 'create'
@@ -573,6 +579,159 @@ async function recalculatePayrollRun(
     `,
     [
       runId,
+      companyId,
+    ],
+  );
+}
+
+
+async function recalculateExpenseReport(
+  client:
+    PoolClient,
+  reportId:
+    string,
+  companyId:
+    string,
+) {
+  await client.query(
+    `
+      UPDATE expense_reports r
+      SET
+        total_amount =
+          COALESCE(
+            (
+              SELECT
+                SUM(amount)
+              FROM expense_report_lines l
+              WHERE l.report_id = r.id
+                AND l.company_id = r.company_id
+                AND l.deleted_at IS NULL
+            ),
+            0
+          ),
+        updated_at = NOW()
+      WHERE r.id = $1
+        AND r.company_id = $2
+        AND r.deleted_at IS NULL
+    `,
+    [
+      reportId,
+      companyId,
+    ],
+  );
+}
+
+
+async function recalculatePaymentBatch(
+  client:
+    PoolClient,
+  batchId:
+    string,
+  companyId:
+    string,
+) {
+  await client.query(
+    `
+      UPDATE payment_batches b
+      SET
+        payment_count =
+          COALESCE(
+            (
+              SELECT
+                COUNT(*)::int
+              FROM payment_batch_items i
+              WHERE i.batch_id = b.id
+                AND i.company_id = b.company_id
+                AND i.deleted_at IS NULL
+            ),
+            0
+          ),
+        total_amount =
+          COALESCE(
+            (
+              SELECT
+                SUM(amount)
+              FROM payment_batch_items i
+              WHERE i.batch_id = b.id
+                AND i.company_id = b.company_id
+                AND i.deleted_at IS NULL
+            ),
+            0
+          ),
+        updated_at = NOW()
+      WHERE b.id = $1
+        AND b.company_id = $2
+        AND b.deleted_at IS NULL
+    `,
+    [
+      batchId,
+      companyId,
+    ],
+  );
+}
+
+
+async function recalculateCommissionPayout(
+  client:
+    PoolClient,
+  payoutId:
+    string,
+  companyId:
+    string,
+) {
+  await client.query(
+    `
+      UPDATE commission_payouts p
+      SET
+        gross_commission =
+          COALESCE(
+            (
+              SELECT
+                SUM(amount)
+              FROM commission_payout_lines l
+              WHERE l.payout_id = p.id
+                AND l.company_id = p.company_id
+                AND l.deleted_at IS NULL
+            ),
+            0
+          ),
+        adjustments =
+          COALESCE(
+            (
+              SELECT
+                SUM(adjustment_amount)
+              FROM commission_payout_lines l
+              WHERE l.payout_id = p.id
+                AND l.company_id = p.company_id
+                AND l.deleted_at IS NULL
+            ),
+            0
+          ),
+        payable_amount =
+          GREATEST(
+            0,
+            COALESCE(
+              (
+                SELECT
+                  SUM(
+                    amount +
+                    adjustment_amount
+                  )
+                FROM commission_payout_lines l
+                WHERE l.payout_id = p.id
+                  AND l.company_id = p.company_id
+                  AND l.deleted_at IS NULL
+              ),
+              0
+            )
+          ),
+        updated_at = NOW()
+      WHERE p.id = $1
+        AND p.company_id = $2
+        AND p.deleted_at IS NULL
+    `,
+    [
+      payoutId,
       companyId,
     ],
   );
@@ -3032,6 +3191,13 @@ async function validateDomainLifecycleMutation(
       unknown
     >,
 ) {
+  assertFinanceSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3408,6 +3574,12 @@ export async function applyEnterpriseDomainSideEffects(
       row,
     );
 
+    validateFinanceSpecialistRow(
+      moduleKey,
+      table,
+      row,
+    );
+
     await synchronizeDerivedLineValues(
       client,
       moduleKey,
@@ -3523,6 +3695,54 @@ export async function applyEnterpriseDomainSideEffects(
       client,
       String(
         row.payroll_run_id,
+      ),
+      companyId,
+    );
+  }
+
+  if (
+    moduleKey ===
+      'expenses' &&
+    table ===
+      'expense_report_lines' &&
+    row.report_id
+  ) {
+    await recalculateExpenseReport(
+      client,
+      String(
+        row.report_id,
+      ),
+      companyId,
+    );
+  }
+
+  if (
+    moduleKey ===
+      'payments' &&
+    table ===
+      'payment_batch_items' &&
+    row.batch_id
+  ) {
+    await recalculatePaymentBatch(
+      client,
+      String(
+        row.batch_id,
+      ),
+      companyId,
+    );
+  }
+
+  if (
+    moduleKey ===
+      'commissions' &&
+    table ===
+      'commission_payout_lines' &&
+    row.payout_id
+  ) {
+    await recalculateCommissionPayout(
+      client,
+      String(
+        row.payout_id,
       ),
       companyId,
     );

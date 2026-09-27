@@ -5,6 +5,11 @@ import {
   type SpecialistEnterpriseModuleKey,
 } from '@/lib/apps/enterprise/specialist-catalog';
 
+import {
+  financeSpecialistDepthSql,
+} from '@/lib/apps/enterprise/specialist-finance-depth';
+
+
 
 function accountingSql() {
   return `
@@ -787,6 +792,17 @@ export function specialistDepthSql(
   const key:
     SpecialistEnterpriseModuleKey =
     moduleKey;
+
+  const financeSql =
+    financeSpecialistDepthSql(
+      key,
+    );
+
+  if (
+    financeSql
+  ) {
+    return financeSql;
+  }
 
   switch (
     key
