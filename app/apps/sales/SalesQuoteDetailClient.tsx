@@ -664,6 +664,60 @@ export default function SalesQuoteDetailClient({
               </div>
             </div>
 
+            {
+              quote.acceptedAt &&
+              (
+                <div className="sami-surface rounded-[24px] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-600 dark:text-emerald-300">
+                        Customer acceptance
+                      </p>
+                      <h2 className="mt-1 text-sm font-black">
+                        Signed commercial commitment
+                      </h2>
+                    </div>
+                    <Check className="h-5 w-5 text-emerald-600" />
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <TextCard
+                      title="Accepted by"
+                      value={
+                        quote.acceptedByName
+                      }
+                    />
+                    <TextCard
+                      title="Signer email"
+                      value={
+                        quote.acceptedByEmail
+                      }
+                    />
+                  </div>
+
+                  <p className="mt-3 text-[11px] leading-5 text-slate-500">
+                    Accepted {
+                      quote.acceptedAt
+                    }. This evidence is stored with the quotation lifecycle and remains available after conversion.
+                  </p>
+
+                  {
+                    quote.acceptanceNote &&
+                    (
+                      <div className="mt-3">
+                        <TextCard
+                          title="Acceptance note"
+                          value={
+                            quote.acceptanceNote
+                          }
+                        />
+                      </div>
+                    )
+                  }
+                </div>
+              )
+            }
+
             <div className="sami-surface rounded-[24px] p-4">
               <h2 className="text-sm font-black">
                 Delivery log
