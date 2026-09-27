@@ -1,6 +1,10 @@
 import 'server-only';
 
 import {
+  randomUUID,
+} from 'node:crypto';
+
+import {
   isEnterpriseModuleKey,
 } from '@/lib/apps/enterprise/catalog';
 
@@ -324,7 +328,7 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
               values:
                 input.values,
               idempotencyKey:
-                crypto.randomUUID(),
+                randomUUID(),
             },
           );
         },
