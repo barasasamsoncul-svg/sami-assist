@@ -101,6 +101,7 @@ export type EnterpriseModuleOperation =
   | 'view'
   | 'create'
   | 'edit'
+  | 'transition'
   | 'delete'
   | 'report'
   | 'settings';
@@ -185,6 +186,7 @@ export type EnterpriseWorkspaceData = {
     canView: boolean;
     canCreate: boolean;
     canEdit: boolean;
+    canTransition: boolean;
     canDelete: boolean;
     canReport: boolean;
     canManageSettings: boolean;
@@ -578,6 +580,12 @@ function permissionAllows(
               'manage',
             ])
           : operation ===
+              'transition'
+            ? new Set([
+                'transition',
+                'manage',
+              ])
+          : operation ===
               'delete'
             ? new Set([
                 'delete',
@@ -913,14 +921,11 @@ async function requireContext(
     );
   }
 
-  const [
-    permissions,
-    company,
-  ] =
-    await Promise.all([
-      getPermissionContext(),
-      requireCompanyContext(),
-    ]);
+  let permissions =
+    await getPermissionContext();
+
+  const company =
+    await requireCompanyContext();
 
   if (
     permissions.tenantId !==
@@ -999,6 +1004,24 @@ async function requireContext(
       manifest.name +
       ' is not installed in this workspace.',
     );
+  }
+
+  if (
+    operation ===
+      'transition' &&
+    !permissionAllows(
+      permissions,
+      moduleKey,
+      operation,
+    )
+  ) {
+    await upgradeInstalledModuleForTenant(
+      permissions.tenantId,
+      moduleKey,
+    );
+
+    permissions =
+      await getPermissionContext();
   }
 
   if (
@@ -2228,6 +2251,12 @@ export async function getEnterpriseModuleWorkspace(
         context.permissions,
         context.moduleKey,
         'edit',
+      ),
+    canTransition:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'transition',
       ),
     canDelete:
       permissionAllows(
@@ -3838,7 +3867,7 @@ export async function transitionEnterpriseModuleRecord(
     await assertTable(
       moduleKey,
       input.table,
-      'edit',
+      'transition',
     );
 
   const field =
