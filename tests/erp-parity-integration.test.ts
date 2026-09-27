@@ -17,6 +17,11 @@ import {
 } from '../lib/apps/invoicing/accounting';
 
 
+import {
+  specialistBreadthDepthSql,
+} from '../lib/apps/enterprise/specialist-breadth-depth';
+
+
 const DATABASE_URL =
   process.env
     .TEST_DATABASE_URL ||
@@ -578,3 +583,174 @@ integration(
     }
   },
 );
+
+integration(
+  'ERP parity: remaining specialist depth schemas execute in PostgreSQL',
+  async () => {
+    const pool =
+      new Pool({
+        connectionString:
+          DATABASE_URL,
+      });
+
+    const client =
+      await pool.connect();
+
+    const baseTables =
+      [
+        'appointment_services',
+        'appointments',
+        'documents',
+        'email_campaigns',
+        'email_recipients',
+        'events',
+        'event_registrations',
+        'service_orders',
+        'service_visits',
+        'vehicles',
+        'equipment',
+        'planning_resources',
+        'engineering_changes',
+        'shop_orders',
+        'quality_issues',
+        'referrals',
+        'rental_items',
+        'rental_contracts',
+        'signature_requests',
+        'signers',
+        'sms_campaigns',
+        'sms_recipients',
+        'social_posts',
+      ];
+
+    const specialistModules =
+      [
+        'appointments',
+        'documents',
+        'email_marketing',
+        'events',
+        'field_services',
+        'fleet',
+        'maintenance',
+        'marketing_automation',
+        'planning',
+        'plm',
+        'pos_shop',
+        'quality',
+        'referrals',
+        'rentals',
+        'sign',
+        'sms_marketing',
+        'social_marketing',
+      ];
+
+    const expectedTables =
+      [
+        'appointment_availability_blocks',
+        'appointment_reminders',
+        'document_versions',
+        'document_approvals',
+        'email_templates',
+        'email_campaign_events',
+        'event_sessions',
+        'event_tickets',
+        'service_checklists',
+        'vehicle_fuel_logs',
+        'preventive_maintenance_plans',
+        'automation_segments',
+        'planning_capacity',
+        'engineering_change_approvals',
+        'shop_returns',
+        'quality_corrective_actions',
+        'referral_conversions',
+        'referral_rewards',
+        'rental_reservations',
+        'rental_charges',
+        'signature_templates',
+        'signature_audit_events',
+        'sms_templates',
+        'sms_delivery_events',
+        'social_campaigns',
+        'social_post_metrics',
+      ];
+
+    try {
+      await client.query(
+        'BEGIN',
+      );
+
+      await client.query(
+        'CREATE EXTENSION IF NOT EXISTS pgcrypto',
+      );
+
+      await client.query(
+        `
+          CREATE TABLE companies (
+            id UUID PRIMARY KEY
+          )
+        `,
+      );
+
+      for (
+        const table
+        of baseTables
+      ) {
+        await client.query(
+          'CREATE TABLE ' +
+          table +
+          ' (id UUID PRIMARY KEY)',
+        );
+      }
+
+      for (
+        const moduleKey
+        of specialistModules
+      ) {
+        const sql =
+          specialistBreadthDepthSql(
+            moduleKey,
+          );
+
+        assert.ok(
+          sql.trim(),
+          moduleKey +
+          ' should expose additive specialist depth SQL',
+        );
+
+        await client.query(
+          sql,
+        );
+      }
+
+      for (
+        const table
+        of expectedTables
+      ) {
+        const exists =
+          await client.query(
+            'SELECT to_regclass($1) AS relation',
+            [
+              'public.' +
+              table,
+            ],
+          );
+
+        assert.equal(
+          exists.rows[0]
+            ?.relation,
+          table,
+          table +
+          ' should be created by the specialist parity migration',
+        );
+      }
+
+      await client.query(
+        'ROLLBACK',
+      );
+    } finally {
+      client.release();
+      await pool.end();
+    }
+  },
+);
+
