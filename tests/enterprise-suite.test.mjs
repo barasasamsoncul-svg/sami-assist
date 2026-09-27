@@ -1742,10 +1742,10 @@ test('shared app lifecycle policy is explicit wherever the schema exposes busine
     );
   }
 
-  assert.doesNotMatch(
+  assert.match(
     workflow,
-    /'documents:/,
-    'Documents currently has no business status field to transition.',
+    /'documents:document_approvals'/,
+    'Documents must expose an explicit approval lifecycle once document approvals are installed.',
   );
 
   assert.doesNotMatch(
