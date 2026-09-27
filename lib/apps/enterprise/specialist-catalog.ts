@@ -10,6 +10,14 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'stock_reservations',
     'inventory_reorder_rules',
     'inventory_adjustments',
+    'inventory_item_groups',
+    'inventory_composite_items',
+    'inventory_composite_components',
+    'inventory_price_lists',
+    'inventory_price_list_items',
+    'inventory_transfer_orders',
+    'inventory_transfer_order_lines',
+    'inventory_cycle_counts',
   ],
   warehouse: [
     'warehouse_putaway_rules',
@@ -22,12 +30,20 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'payroll_employee_components',
     'payslips',
     'payslip_lines',
+    'payroll_salary_rules',
+    'payroll_work_entries',
+    'payroll_salary_attachments',
+    'payroll_payment_batches',
   ],
   crm: [
     'crm_stages',
     'crm_scoring_rules',
     'crm_forecasts',
     'crm_forecast_lines',
+    'crm_assignment_rules',
+    'crm_blueprints',
+    'crm_blueprint_transitions',
+    'crm_approval_requests',
   ],
   projects: [
     'task_dependencies',
@@ -52,6 +68,10 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'purchase_requisition_lines',
     'purchase_receipts',
     'purchase_receipt_lines',
+    'supplier_price_lists',
+    'supplier_price_list_items',
+    'supplier_rfqs',
+    'supplier_rfq_responses',
   ],
   expenses: [
     'expense_policies',
@@ -105,6 +125,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'employee_contracts',
     'employee_emergency_contacts',
     'employee_lifecycle_events',
+    'employee_departments',
+    'employee_certifications',
+    'employee_equipment_assignments',
   ],
   recruitment: [
     'recruitment_requisitions',
@@ -116,6 +139,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'attendance_exceptions',
     'attendance_corrections',
     'attendance_overtime_requests',
+    'attendance_devices',
+    'attendance_geofences',
+    'attendance_kiosk_sessions',
   ],
   shifts: [
     'open_shifts',
@@ -163,6 +189,10 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   appointments: [
     'appointment_availability_blocks',
     'appointment_reminders',
+    'appointment_questions',
+    'appointment_answers',
+    'appointment_calendar_links',
+    'appointment_payment_requests',
   ],
   assets: [
   ],
@@ -179,18 +209,25 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   cpq: [
   ],
   customer_portal: [
+    'portal_requests',
+    'portal_document_views',
   ],
   demand_planning: [
   ],
   documents: [
     'document_versions',
     'document_approvals',
+    'document_shares',
+    'document_access_events',
   ],
   ecommerce: [
   ],
   email_marketing: [
     'email_templates',
     'email_campaign_events',
+    'email_segments',
+    'email_segment_members',
+    'email_suppressions',
   ],
   events: [
     'event_sessions',
@@ -233,12 +270,23 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'engineering_change_approvals',
   ],
   pos_restaurant: [
+    'restaurant_floors',
+    'restaurant_sessions',
+    'restaurant_payments',
+    'restaurant_preparation_tickets',
+    'restaurant_self_order_sessions',
   ],
   pos_shop: [
     'shop_returns',
+    'pos_shop_sessions',
+    'pos_shop_payments',
+    'pos_shop_cash_movements',
+    'pos_shop_devices',
   ],
   quality: [
     'quality_corrective_actions',
+    'quality_control_points',
+    'quality_alerts',
   ],
   referrals: [
     'referral_conversions',
@@ -255,26 +303,42 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   seo: [
   ],
   shipping: [
+    'shipping_rate_quotes',
+    'shipping_labels',
   ],
   sign: [
     'signature_templates',
     'signature_audit_events',
+    'signature_documents',
+    'signature_fields',
+    'signature_auth_challenges',
+    'signature_completion_certificates',
   ],
   sms_marketing: [
     'sms_templates',
     'sms_delivery_events',
+    'sms_segments',
+    'sms_segment_members',
+    'sms_opt_outs',
   ],
   social_marketing: [
     'social_campaigns',
     'social_post_metrics',
+    'social_inbox_items',
+    'social_audiences',
   ],
   spreadsheet: [
+    'workbook_data_sources',
+    'workbook_versions',
+    'dashboard_widgets',
   ],
   surveys: [
   ],
   team_inbox: [
   ],
   vendor_portal: [
+    'vendor_portal_rfqs',
+    'vendor_portal_rfq_responses',
   ],
   web_analytics: [
   ],

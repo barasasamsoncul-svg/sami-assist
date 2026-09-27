@@ -58,6 +58,10 @@ import {
 } from '@/lib/apps/enterprise/specialist-breadth-execution';
 
 import {
+  applyIntegratedSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-integration-execution';
+
+import {
   specialistTransitionPermissionKey,
 } from '@/lib/apps/enterprise/specialist-permissions';
 
@@ -1314,6 +1318,20 @@ async function transitionRecord(
     );
 
     await applySpecialistBreadthTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    await applyIntegratedSpecialistTransition(
       client,
       {
         moduleKey,

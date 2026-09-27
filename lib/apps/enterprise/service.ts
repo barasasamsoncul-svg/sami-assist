@@ -91,6 +91,11 @@ import {
 
 
 import {
+  applyIntegratedSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-integration-execution';
+
+
+import {
   specialistTransitionPermissionKey,
   specialistTransitionPrivilege,
 } from '@/lib/apps/enterprise/specialist-permissions';
@@ -3887,6 +3892,22 @@ async function validateEnterpriseTransition(
     );
 
     await applySpecialistBreadthTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applyIntegratedSpecialistTransition(
       client,
       {
         moduleKey:

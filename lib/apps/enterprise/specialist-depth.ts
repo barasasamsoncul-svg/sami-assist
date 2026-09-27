@@ -19,6 +19,15 @@ import {
 } from '@/lib/apps/enterprise/specialist-breadth-depth';
 
 
+import {
+  commerceParityDepthSql,
+} from '@/lib/apps/enterprise/strict-parity-commerce-depth';
+
+import {
+  peopleMarketingParityDepthSql,
+} from '@/lib/apps/enterprise/strict-parity-people-marketing-depth';
+
+
 
 
 function accountingSql() {
@@ -803,59 +812,69 @@ export function specialistDepthSql(
     SpecialistEnterpriseModuleKey =
     moduleKey;
 
-  const breadthSql =
-    specialistBreadthDepthSql(
-      key,
-    );
-
-  if (
-    breadthSql
-  ) {
-    return breadthSql;
-  }
-
-  const financeSql =
-    financeSpecialistDepthSql(
-      key,
-    );
-
-  if (
-    financeSql
-  ) {
-    return financeSql;
-  }
-
-  const peopleSql =
-    peopleSpecialistDepthSql(
-      key,
-    );
-
-  if (
-    peopleSql
-  ) {
-    return peopleSql;
-  }
+  let coreSql =
+    '';
 
   switch (
     key
   ) {
     case 'accounting':
-      return accountingSql();
+      coreSql =
+        accountingSql();
+      break;
     case 'inventory':
-      return inventorySql();
+      coreSql =
+        inventorySql();
+      break;
     case 'warehouse':
-      return warehouseSql();
+      coreSql =
+        warehouseSql();
+      break;
     case 'payroll':
-      return payrollSql();
+      coreSql =
+        payrollSql();
+      break;
     case 'crm':
-      return crmSql();
+      coreSql =
+        crmSql();
+      break;
     case 'projects':
-      return projectsSql();
+      coreSql =
+        projectsSql();
+      break;
     case 'helpdesk':
-      return helpdeskSql();
+      coreSql =
+        helpdeskSql();
+      break;
     case 'manufacturing':
-      return manufacturingSql();
+      coreSql =
+        manufacturingSql();
+      break;
   }
 
-  return '';
+  return [
+    coreSql,
+    financeSpecialistDepthSql(
+      key,
+    ),
+    peopleSpecialistDepthSql(
+      key,
+    ),
+    specialistBreadthDepthSql(
+      key,
+    ),
+    commerceParityDepthSql(
+      key,
+    ),
+    peopleMarketingParityDepthSql(
+      key,
+    ),
+  ]
+    .filter(
+      sql =>
+        sql.trim(),
+    )
+    .join(
+      '\n',
+    );
 }

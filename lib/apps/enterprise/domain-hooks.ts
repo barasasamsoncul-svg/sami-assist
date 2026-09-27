@@ -20,6 +20,12 @@ import {
 } from '@/lib/apps/enterprise/specialist-breadth-execution';
 
 
+import {
+  applyIntegratedSpecialistRecordSideEffects,
+  assertIntegratedSpecialistMutationAllowed,
+} from '@/lib/apps/enterprise/specialist-integration-execution';
+
+
 
 
 type MutationOperation =
@@ -3223,6 +3229,13 @@ async function validateDomainLifecycleMutation(
     row,
   );
 
+  assertIntegratedSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3617,6 +3630,18 @@ export async function applyEnterpriseDomainSideEffects(
   }
 
   await applySpecialistExecutionRecordSideEffects(
+    client,
+    {
+      moduleKey,
+      table,
+      companyId,
+      userId,
+      operation,
+      row,
+    },
+  );
+
+  await applyIntegratedSpecialistRecordSideEffects(
     client,
     {
       moduleKey,

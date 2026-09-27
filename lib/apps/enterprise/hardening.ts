@@ -695,3 +695,33 @@ export const ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS:
         },
     }),
   );
+
+
+export const ENTERPRISE_STRICT_PARITY_MIGRATIONS:
+  readonly SamiModuleMigrationDefinition[] =
+  (
+    Object.keys(
+      SPECIALIST_ENTERPRISE_TABLES,
+    ) as
+      SpecialistEnterpriseModuleKey[]
+  ).map(
+    moduleKey => ({
+      key:
+        moduleKey +
+        '-2.2.0-to-2.3.0',
+      moduleKey,
+      namespace:
+        moduleKey,
+      fromVersion:
+        '2.2.0',
+      toVersion:
+        '2.3.0',
+      run:
+        async client => {
+          await deepenSpecialistModule(
+            client,
+            moduleKey,
+          );
+        },
+    }),
+  );
