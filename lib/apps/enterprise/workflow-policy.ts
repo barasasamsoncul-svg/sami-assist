@@ -1304,6 +1304,77 @@ const DOMAIN_GRAPH:
     'social_marketing:social_post_metrics': {
       recorded: ['estimated'],
     },
+    'assets:operational_asset_assignments': {
+      active: ['returned','lost','cancelled'],
+      lost: ['returned'],
+    },
+    'barcode:barcode_scan_sessions': {
+      open: ['completed','cancelled'],
+    },
+    'customer_portal:portal_customers': {
+      active: ['inactive','expired','closed'],
+      inactive: ['active','closed'],
+    },
+    'customer_portal:portal_access_grants': {
+      active: ['inactive','revoked'],
+      inactive: ['active','revoked'],
+    },
+    'customer_portal:portal_requests': {
+      open: ['in_progress','resolved','cancelled'],
+      in_progress: ['resolved','cancelled'],
+      resolved: ['closed','open'],
+    },
+    'email_marketing:email_suppressions': {
+      active: ['released'],
+      released: ['active'],
+    },
+    'employees:employees': {
+      active: ['inactive','terminated'],
+      inactive: ['active','terminated'],
+      terminated: ['active'],
+    },
+    'landing_pages:landing_page_versions': {
+      draft: ['published','archived'],
+      published: ['archived'],
+      archived: ['draft'],
+    },
+    'lead_capture:lead_routing_decisions': {
+      applied: ['overridden','failed'],
+      failed: ['overridden'],
+    },
+    'mail:mail_rules': {
+      active: ['paused','archived'],
+      paused: ['active','archived'],
+    },
+    'sales_inbox:sales_conversation_links': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'sms_marketing:sms_suppressions': {
+      active: ['released'],
+      released: ['active'],
+    },
+    'social_marketing:social_publish_queue': {
+      queued: ['processing','cancelled'],
+      processing: ['published','failed','cancelled'],
+      failed: ['queued','cancelled'],
+    },
+    'spreadsheet:spreadsheet_named_ranges': {
+      active: ['archived'],
+      archived: ['active'],
+    },
+    'spreadsheet:spreadsheet_data_sources': {
+      active: ['paused','error','archived'],
+      paused: ['active','archived'],
+      error: ['active','paused','archived'],
+    },
+    'team_inbox:team_inbox_assignment_events': {
+      recorded: ['reversed'],
+    },
+    'vendor_portal:vendor_portal_acknowledgements': {
+      accepted: ['withdrawn'],
+      rejected: ['withdrawn'],
+    },
   };
 
 
