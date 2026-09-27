@@ -72,6 +72,10 @@ import {
   getEnterpriseSpecialistLayout,
 } from '@/lib/apps/enterprise/specialist-workspace';
 
+import {
+  specialistTransitionPrivilege,
+} from '@/lib/apps/enterprise/specialist-permissions';
+
 
 type ViewKey =
   | 'overview'
@@ -2140,6 +2144,21 @@ export default function EnterpriseModuleWorkspaceClient({
                   .capabilities
                   .canTransition
               }
+              canExecute={
+                initialData
+                  .capabilities
+                  .canExecute
+              }
+              canApprove={
+                initialData
+                  .capabilities
+                  .canApprove
+              }
+              canClose={
+                initialData
+                  .capabilities
+                  .canClose
+              }
               canDelete={
                 initialData
                   .capabilities
@@ -3196,6 +3215,9 @@ function Records({
   canCreate,
   canEdit,
   canTransition,
+  canExecute,
+  canApprove,
+  canClose,
   canDelete,
   onSelect,
   onCreate,
@@ -3246,6 +3268,12 @@ function Records({
   canEdit:
     boolean;
   canTransition:
+    boolean;
+  canExecute:
+    boolean;
+  canApprove:
+    boolean;
+  canClose:
     boolean;
   canDelete:
     boolean;
@@ -4335,6 +4363,15 @@ function Records({
                                                           disabled={
                                                             busy
                                                           }
+                                                          canExecute={
+                                                            canExecute
+                                                          }
+                                                          canApprove={
+                                                            canApprove
+                                                          }
+                                                          canClose={
+                                                            canClose
+                                                          }
                                                           onTransition={
                                                             onTransition
                                                           }
@@ -4759,6 +4796,9 @@ function WorkflowActions({
   table,
   record,
   disabled,
+  canExecute,
+  canApprove,
+  canClose,
   onTransition,
 }: {
   moduleKey:
@@ -4771,6 +4811,12 @@ function WorkflowActions({
       unknown
     >;
   disabled:
+    boolean;
+  canExecute:
+    boolean;
+  canApprove:
+    boolean;
+  canClose:
     boolean;
   onTransition:
     (
@@ -4816,7 +4862,23 @@ function WorkflowActions({
       ],
       workflow
         .databaseAllowedValues,
-    );
+    )
+      .filter(
+        transition => {
+          const privilege =
+            specialistTransitionPrivilege(
+              transition.value,
+            );
+
+          return privilege ===
+            'approve'
+            ? canApprove
+            : privilege ===
+                'close'
+              ? canClose
+              : canExecute;
+        },
+      );
 
   if (
     transitions.length ===
