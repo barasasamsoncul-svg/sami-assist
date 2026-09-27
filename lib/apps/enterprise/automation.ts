@@ -53,6 +53,15 @@ import {
 } from '@/lib/apps/enterprise/specialist-people-transitions';
 
 
+import {
+  applySpecialistBreadthTransition,
+} from '@/lib/apps/enterprise/specialist-breadth-execution';
+
+import {
+  specialistTransitionPermissionKey,
+} from '@/lib/apps/enterprise/specialist-permissions';
+
+
 const IDENTIFIER =
   /^[a-z_][a-z0-9_]*$/;
 
@@ -1122,6 +1131,24 @@ async function transitionRecord(
       input.nextStatus,
     );
 
+  const specialistPermission =
+    specialistTransitionPermissionKey(
+      moduleKey,
+      nextStatus,
+    );
+
+  if (
+    !runtime.isOwner &&
+    !runtime.permissionSet
+      .has(
+        specialistPermission,
+      )
+  ) {
+    throw new Error(
+      'The automation runner no longer has permission for this specialist workflow action.',
+    );
+  }
+
   if (
     !recordId ||
     !statusField ||
@@ -1273,6 +1300,20 @@ async function transitionRecord(
     );
 
     await applyPeopleSpecialistTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    await applySpecialistBreadthTransition(
       client,
       {
         moduleKey,
