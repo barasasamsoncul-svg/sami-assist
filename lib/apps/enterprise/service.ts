@@ -2642,6 +2642,8 @@ export async function createEnterpriseModuleRecord(
             context.table,
           companyId:
             context.companyId,
+          userId:
+            context.userId,
           operation:
             'create',
           row:
@@ -3049,6 +3051,8 @@ export async function updateEnterpriseModuleRecord(
           context.table,
         companyId:
           context.companyId,
+        userId:
+          context.userId,
         operation:
           'update',
         row:
@@ -3337,6 +3341,8 @@ export async function deleteEnterpriseModuleRecord(
           context.table,
         companyId:
           context.companyId,
+        userId:
+          context.userId,
         operation:
           'delete',
         row:
