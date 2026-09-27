@@ -67,6 +67,11 @@ import {
   applyFinanceSpecialistTransition,
 } from '@/lib/apps/enterprise/specialist-finance-transitions';
 
+import {
+  applySpecialistExecutionTransition,
+} from '@/lib/apps/enterprise/specialist-execution';
+
+
 
 import {
   getEnterpriseRelationDefinitions,
@@ -3613,6 +3618,22 @@ async function validateEnterpriseTransition(
 
   try {
     await applyFinanceSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applySpecialistExecutionTransition(
       client,
       {
         moduleKey:
