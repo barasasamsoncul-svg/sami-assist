@@ -595,7 +595,7 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
 
   assert.match(
     manifest,
-    /key: "sales",[\s\S]*version: '2\.0\.0'/s,
+    /key: "sales",[\s\S]*version: '2\.1\.0'/s,
   );
 
   assert.match(
@@ -611,6 +611,46 @@ test('Sales v2 is registered into manifests, migrations, Search and SaMi AI', as
   assert.match(
     migrations,
     /SALES_1_0_0_TO_2_0_0/,
+  );
+
+  assert.match(
+    migrations,
+    /SALES_2_0_0_TO_2_1_0/,
+  );
+
+  const inventoryBridge =
+    await source(
+      'lib/apps/sales/inventory.ts',
+    );
+
+  assert.match(
+    inventoryBridge,
+    /stock_reservations/,
+  );
+
+  assert.match(
+    inventoryBridge,
+    /stock_movements/,
+  );
+
+  assert.match(
+    inventoryBridge,
+    /Insufficient available stock/,
+  );
+
+  const salesAi =
+    await source(
+      'lib/apps/sales/ai-tools.ts',
+    );
+
+  assert.match(
+    salesAi,
+    /sales_quote_to_order/,
+  );
+
+  assert.match(
+    salesAi,
+    /sales_quote_to_invoice/,
   );
 
   assert.match(
