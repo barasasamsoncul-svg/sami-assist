@@ -80,6 +80,10 @@ import {
   applySpecialistExecutionTransition,
 } from '@/lib/apps/enterprise/specialist-execution';
 
+import {
+  applyPeopleSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-people-transitions';
+
 
 
 import {
@@ -3810,6 +3814,22 @@ async function validateEnterpriseTransition(
     );
 
     await applySpecialistExecutionTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applyPeopleSpecialistTransition(
       client,
       {
         moduleKey:
