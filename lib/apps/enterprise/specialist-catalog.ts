@@ -163,6 +163,10 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   appointments: [
     'appointment_availability_blocks',
     'appointment_reminders',
+    'appointment_resources',
+    'appointment_resource_assignments',
+    'appointment_questions',
+    'appointment_answers',
   ],
   assets: [
     'operational_asset_assignments',
@@ -173,6 +177,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   bookings: [
   ],
   calendar: [
+    'external_calendar_connections',
+    'calendar_sync_mappings',
+    'calendar_event_reminders',
   ],
   chat: [
     'chat_read_receipts',
@@ -189,6 +196,9 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   documents: [
     'document_versions',
     'document_approvals',
+    'document_tags',
+    'document_tag_links',
+    'document_share_links',
   ],
   ecommerce: [
   ],
@@ -241,9 +251,17 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'engineering_change_approvals',
   ],
   pos_restaurant: [
+    'restaurant_floors',
+    'restaurant_payments',
+    'restaurant_kitchen_tickets',
+    'restaurant_inventory_postings',
   ],
   pos_shop: [
     'shop_returns',
+    'shop_sessions',
+    'shop_payments',
+    'shop_offline_batches',
+    'shop_inventory_postings',
   ],
   quality: [
     'quality_corrective_actions',
@@ -268,6 +286,11 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   sign: [
     'signature_templates',
     'signature_audit_events',
+    'signature_envelopes',
+    'signature_envelope_requests',
+    'signature_fields',
+    'signature_auth_challenges',
+    'signature_completion_certificates',
   ],
   sms_marketing: [
     'sms_templates',
@@ -282,8 +305,15 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   spreadsheet: [
     'spreadsheet_named_ranges',
     'spreadsheet_data_sources',
+    'spreadsheet_charts',
+    'spreadsheet_filters',
+    'spreadsheet_snapshots',
+    'spreadsheet_refresh_runs',
   ],
   surveys: [
+    'survey_question_logic',
+    'survey_invitations',
+    'survey_response_scores',
   ],
   team_inbox: [
     'team_inbox_assignment_events',
