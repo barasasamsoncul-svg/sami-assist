@@ -29,6 +29,14 @@ import {
   ENTERPRISE_AUTOMATION_TRIGGERS,
 } from '@/lib/apps/enterprise/automation';
 
+import {
+  SALES_AUTOMATION_TRIGGERS,
+} from '@/lib/apps/sales/automation';
+
+import {
+  INVOICING_AUTOMATION_TRIGGERS,
+} from '@/lib/apps/invoicing/automation';
+
 export const CORE_AUTOMATION_TRIGGERS:
   SamiAutomationTriggerDefinition[] = [
     {
@@ -139,8 +147,11 @@ export const CORE_AUTOMATION_TRIGGERS:
  * registry until their trusted ingress/emitter paths are implemented.
  */
 export const APP_AUTOMATION_TRIGGERS:
-  SamiAutomationTriggerDefinition[] =
-  ENTERPRISE_AUTOMATION_TRIGGERS;
+  SamiAutomationTriggerDefinition[] = [
+    ...ENTERPRISE_AUTOMATION_TRIGGERS,
+    ...SALES_AUTOMATION_TRIGGERS,
+    ...INVOICING_AUTOMATION_TRIGGERS,
+  ];
 
 export const CORE_AUTOMATION_ACTIONS:
   SamiAutomationActionDefinition[] = [
