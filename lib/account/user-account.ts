@@ -182,6 +182,41 @@ const DEFAULT_PREFERENCES:
       true,
   };
 
+let tutorialPreferenceColumnReady:
+  Promise<void> | null =
+  null;
+
+
+async function ensureTutorialPreferenceColumn() {
+  if (
+    !tutorialPreferenceColumnReady
+  ) {
+    tutorialPreferenceColumnReady =
+      queryControl(
+        `
+          ALTER TABLE user_preferences
+            ADD COLUMN IF NOT EXISTS tutorials_enabled
+              BOOLEAN NOT NULL DEFAULT TRUE
+        `,
+      )
+        .then(
+          () =>
+            undefined,
+        )
+        .catch(
+          error => {
+            tutorialPreferenceColumnReady =
+              null;
+
+            throw error;
+          },
+        );
+  }
+
+  await tutorialPreferenceColumnReady;
+}
+
+
 /* ============================================================
    ERRORS
    ============================================================ */
@@ -931,6 +966,8 @@ export async function getUserPreferences(
       userId
     );
 
+  await ensureTutorialPreferenceColumn();
+
   /*
    * Validate the account and read preferences without
    * performing a write during an ordinary GET.
@@ -1017,6 +1054,8 @@ export async function updateUserPreferences(
     assertUserId(
       userId
     );
+
+  await ensureTutorialPreferenceColumn();
 
   const patch =
     validatePreferencePatch(
