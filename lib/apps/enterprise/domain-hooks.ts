@@ -4,6 +4,12 @@ import type {
   PoolClient,
 } from 'pg';
 
+import {
+  assertFinanceSpecialistMutationAllowed,
+  validateFinanceSpecialistRow,
+} from '@/lib/apps/enterprise/specialist-finance-rules';
+
+
 
 type MutationOperation =
   | 'create'
@@ -3185,6 +3191,13 @@ async function validateDomainLifecycleMutation(
       unknown
     >,
 ) {
+  assertFinanceSpecialistMutationAllowed(
+    moduleKey,
+    table,
+    operation,
+    row,
+  );
+
   if (
     moduleKey ===
       'accounting' &&
@@ -3556,6 +3569,12 @@ export async function applyEnterpriseDomainSideEffects(
       'delete'
   ) {
     validateDomainRow(
+      moduleKey,
+      table,
+      row,
+    );
+
+    validateFinanceSpecialistRow(
       moduleKey,
       table,
       row,
