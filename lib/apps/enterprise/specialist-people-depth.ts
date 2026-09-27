@@ -322,6 +322,13 @@ CREATE INDEX IF NOT EXISTS idx_shift_availability_employee
 
     case 'time_off':
       return `
+ALTER TABLE public.leave_requests
+  ADD COLUMN IF NOT EXISTS employee_reference UUID;
+
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee_reference
+  ON public.leave_requests(company_id, employee_reference, start_date)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.leave_balances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -390,6 +397,13 @@ CREATE INDEX IF NOT EXISTS idx_leave_blackout_periods
 
     case 'timesheets':
       return `
+ALTER TABLE public.time_entries
+  ADD COLUMN IF NOT EXISTS employee_reference UUID;
+
+CREATE INDEX IF NOT EXISTS idx_time_entries_employee_reference
+  ON public.time_entries(company_id, employee_reference, work_date)
+  WHERE deleted_at IS NULL;
+
 CREATE TABLE IF NOT EXISTS public.timesheet_periods (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
