@@ -1104,13 +1104,17 @@ export default function SalesQuoteDetailClient({
                     Create sales order
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={
-                      isBusy
-                    }
-                    onClick={
-                      () =>
+                  <form
+                    className="mt-2 space-y-2"
+                    onSubmit={
+                      event => {
+                        event.preventDefault();
+
+                        const form =
+                          new FormData(
+                            event.currentTarget,
+                          );
+
                         confirmAction({
                           title:
                             'Create draft invoice?',
@@ -1126,16 +1130,60 @@ export default function SalesQuoteDetailClient({
                                     'quote_to_invoice',
                                   quoteId:
                                     quote.id,
+                                  exchangeRate:
+                                    quote.currency ===
+                                      workspace.company.currency
+                                      ? 1
+                                      : Number(
+                                          form.get(
+                                            'exchangeRate',
+                                          ) ||
+                                          0,
+                                        ),
                                 },
                                 'Draft invoice created.',
                               );
                             },
-                        })
+                        });
+                      }
                     }
-                    className="mt-2 h-11 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
                   >
-                    Create draft invoice
-                  </button>
+                    {
+                      quote.currency !==
+                        workspace.company.currency &&
+                      (
+                        <label className="block rounded-xl border border-[var(--sami-border)] p-3">
+                          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                            Exchange rate
+                          </span>
+                          <input
+                            name="exchangeRate"
+                            type="number"
+                            min="0.00000001"
+                            step="0.00000001"
+                            required
+                            placeholder={
+                              '1 ' +
+                              quote.currency +
+                              ' in ' +
+                              workspace.company.currency
+                            }
+                            className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                          />
+                        </label>
+                      )
+                    }
+
+                    <button
+                      type="submit"
+                      disabled={
+                        isBusy
+                      }
+                      className="h-11 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
+                    >
+                      Create draft invoice
+                    </button>
+                  </form>
                 </ActionCard>
               )
             }
