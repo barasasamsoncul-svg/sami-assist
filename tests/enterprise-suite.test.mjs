@@ -3314,3 +3314,293 @@ test('all 78 shared apps are specialist-grade backend contracts with journeys pe
   );
 });
 
+test('all 80 business apps have canonical dependency contracts with no orphan references', async () => {
+  const [
+    catalog,
+    dependencies,
+    contract,
+    lifecycle,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/modules/suite-dependencies.ts'),
+    source('lib/modules/enterprise-contract.ts'),
+    source('lib/services/workspace-app-lifecycle.ts'),
+  ]);
+
+  const sharedKeys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  const dependencyKeys =
+    [
+      ...dependencies.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \{$/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    sharedKeys.length,
+    78,
+  );
+
+  assert.equal(
+    dependencyKeys.length,
+    80,
+    'The dependency graph must include 78 shared apps plus Sales and Invoicing.',
+  );
+
+  const allowed =
+    new Set([
+      ...sharedKeys,
+      'sales',
+      'invoicing',
+    ]);
+
+  for (
+    const key
+    of dependencyKeys
+  ) {
+    assert.ok(
+      allowed.has(
+        key,
+      ),
+      key +
+      ' dependency profile must belong to the canonical app catalog.',
+    );
+  }
+
+  for (
+    const dependency
+    of [
+      ...dependencies.matchAll(
+        /['"]([a-z][a-z0-9_]*)['"]/g,
+      ),
+    ].map(
+      match =>
+        match[1],
+    )
+  ) {
+    if (
+      [
+        'required',
+        'optional',
+      ].includes(
+        dependency,
+      )
+    ) {
+      continue;
+    }
+
+    assert.ok(
+      allowed.has(
+        dependency,
+      ),
+      dependency +
+      ' dependency target must be a registered business app.',
+    );
+  }
+
+  for (
+    const marker
+    of [
+      "sign: {\n    required: ['documents']",
+      "manufacturing: {\n    required: ['inventory']",
+      "timesheets: {\n    required: ['employees','projects']",
+      "vendor_portal: {\n    required: ['purchase']",
+      "barcode: {\n    required: ['inventory']",
+      "lead_capture: {\n    required: ['crm']",
+    ]
+  ) {
+    assert.ok(
+      dependencies.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    contract,
+    /suiteDependencyProfile/,
+  );
+
+  assert.match(
+    lifecycle,
+    /resolveRequiredDependencyPlan/,
+  );
+
+  assert.match(
+    lifecycle,
+    /APP_DEPENDENCY_BLOCKED/,
+  );
+});
+
+
+test('every shared module has explicit consequence-bearing domain execution coverage', async () => {
+  const [
+    catalog,
+    domainHooks,
+    specialistExecution,
+    financeTransitions,
+    peopleTransitions,
+    breadthExecution,
+    suiteExecution,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/domain-hooks.ts'),
+    source('lib/apps/enterprise/specialist-execution.ts'),
+    source('lib/apps/enterprise/specialist-finance-transitions.ts'),
+    source('lib/apps/enterprise/specialist-people-transitions.ts'),
+    source('lib/apps/enterprise/specialist-breadth-execution.ts'),
+    source('lib/apps/enterprise/specialist-suite-execution.ts'),
+  ]);
+
+  const moduleKeys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  const executionSource =
+    [
+      domainHooks,
+      specialistExecution,
+      financeTransitions,
+      peopleTransitions,
+      breadthExecution,
+      suiteExecution,
+    ].join(
+      '\n',
+    );
+
+  for (
+    const moduleKey
+    of moduleKeys
+  ) {
+    assert.match(
+      executionSource,
+      new RegExp(
+        "moduleKey\\s*===\\s*['\"]" +
+        moduleKey +
+        "['\"]",
+      ),
+      moduleKey +
+      ' must have explicit domain execution coverage.',
+    );
+  }
+});
+
+
+test('isolated specialist modules gain operational depth beyond generic CRUD', async () => {
+  const [
+    catalog,
+    depth,
+    execution,
+    workflow,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-suite-depth.ts'),
+    source('lib/apps/enterprise/specialist-suite-execution.ts'),
+    source('lib/apps/enterprise/workflow-policy.ts'),
+  ]);
+
+  const tables = [
+    'operational_asset_assignments',
+    'barcode_scan_sessions',
+    'chat_read_receipts',
+    'portal_requests',
+    'email_suppressions',
+    'landing_page_versions',
+    'lead_routing_decisions',
+    'mail_rules',
+    'sales_conversation_links',
+    'sms_suppressions',
+    'social_publish_queue',
+    'spreadsheet_named_ranges',
+    'spreadsheet_data_sources',
+    'team_inbox_assignment_events',
+    'vendor_portal_acknowledgements',
+  ];
+
+  for (
+    const table
+    of tables
+  ) {
+    assert.ok(
+      catalog.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' must be registered in the runtime catalog.',
+    );
+
+    assert.ok(
+      depth.includes(
+        'public.' +
+        table,
+      ),
+      table +
+      ' must have an executable specialist schema.',
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'applyBarcodeInventoryScan',
+      'ensureCrmLead',
+      'validatePortalResource',
+      'email_suppressions',
+      'sms_suppressions',
+      'employee_lifecycle_events',
+      'quality_corrective_actions',
+      'sales_conversation_links',
+      'spreadsheet_data_sources',
+      'vendor_portal_accounts',
+    ]
+  ) {
+    assert.ok(
+      execution.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const workflowKey
+    of [
+      'assets:operational_asset_assignments',
+      'barcode:barcode_scan_sessions',
+      'customer_portal:portal_requests',
+      'employees:employees',
+      'spreadsheet:spreadsheet_data_sources',
+      'vendor_portal:vendor_portal_acknowledgements',
+    ]
+  ) {
+    assert.ok(
+      workflow.includes(
+        "'" +
+        workflowKey +
+        "'",
+      ),
+      workflowKey,
+    );
+  }
+});
+
