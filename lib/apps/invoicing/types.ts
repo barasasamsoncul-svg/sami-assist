@@ -151,6 +151,7 @@ export type InvoicingInvoiceDetail = {
   invoiceDate: string;
   dueDate: string;
   currency: string;
+  exchangeRate: number;
   reference: string | null;
   purchaseOrderNumber: string | null;
   subtotal: number;
@@ -309,6 +310,7 @@ export type CreateInvoiceInput = {
   invoiceDate?: unknown;
   dueDate?: unknown;
   currency?: unknown;
+  exchangeRate?: unknown;
   templateId?: unknown;
   reference?: unknown;
   purchaseOrderNumber?: unknown;
