@@ -1544,7 +1544,7 @@ test('specialist execution transitions post operational business effects transac
 
   assert.match(
     execution,
-    /existing\.rows\.length[\s\S]*inventory_adjustment:/s,
+    /inventory_adjustment:[\s\S]*FROM stock_movements[\s\S]*reference = \$2[\s\S]*existing\.rows\.length[\s\S]*0/s,
     'Inventory adjustment posting must remain idempotent.',
   );
 
