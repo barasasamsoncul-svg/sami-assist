@@ -1,7 +1,13 @@
 import {
+  ENTERPRISE_MODULE_TABLES,
   isEnterpriseModuleKey,
   type EnterpriseModuleKey,
 } from '@/lib/apps/enterprise/catalog';
+
+import {
+  getEnterpriseDomainProfile,
+  type EnterpriseDomainKey,
+} from '@/lib/apps/enterprise/domain-profiles';
 
 export type EnterpriseSpecialistLayout = {
   moduleKey: EnterpriseModuleKey;
@@ -13,13 +19,18 @@ export type EnterpriseSpecialistLayout = {
     | 'manufacturing'
     | 'people'
     | 'project'
-    | 'support';
+    | 'support'
+    | 'commerce'
+    | 'marketing'
+    | 'collaboration'
+    | 'analytics';
   eyebrow: string;
   headline: string;
   description: string;
   primaryTables: readonly string[];
   workQueueTables: readonly string[];
   controlTables: readonly string[];
+  insightTables?: readonly string[];
   preferredRecordView:
     | 'list'
     | 'kanban'
@@ -277,6 +288,306 @@ const SPECIALIST_LAYOUTS:
   },
 };
 
+const SPECIALIST_STYLE:
+  Record<
+    EnterpriseDomainKey,
+    EnterpriseSpecialistLayout['style']
+  > = {
+  finance: 'ledger',
+  revenue: 'pipeline',
+  operations: 'logistics',
+  people: 'people',
+  service: 'support',
+  commerce: 'commerce',
+  marketing: 'marketing',
+  collaboration: 'collaboration',
+  analytics: 'analytics',
+};
+
+
+const SPECIALIST_EYEBROW:
+  Record<
+    EnterpriseDomainKey,
+    string
+  > = {
+  finance: 'Financial operations',
+  revenue: 'Revenue operations',
+  operations: 'Operations control',
+  people: 'People operations',
+  service: 'Service operations',
+  commerce: 'Commerce operations',
+  marketing: 'Growth operations',
+  collaboration: 'Collaboration workspace',
+  analytics: 'Analytics workspace',
+};
+
+
+const CALENDAR_FIRST =
+  new Set<
+    EnterpriseModuleKey
+  >([
+    'appointments',
+    'bookings',
+    'calendar',
+    'events',
+    'field_services',
+    'meetings',
+    'planning',
+    'shifts',
+  ]);
+
+
+const KANBAN_FIRST =
+  new Set<
+    EnterpriseModuleKey
+  >([
+    'ads',
+    'cpq',
+    'crm',
+    'ecommerce',
+    'email_marketing',
+    'helpdesk',
+    'maintenance',
+    'manufacturing',
+    'marketing_automation',
+    'marketplace',
+    'projects',
+    'quality',
+    'recruitment',
+    'safety',
+    'sales_inbox',
+    'social_marketing',
+    'team_inbox',
+    'work_orders',
+  ]);
+
+
+const CONTROL_TABLE =
+  /(settings|rules?|polic(?:y|ies)|templates?|stages?|config|plans?|accounts?|carriers?|categories?)$/;
+
+
+const INSIGHT_TABLE =
+  /(metrics?|analytics?|events?|forecasts?|history|logs?|rankings?|results?|responses?|sessions?|snapshots?|conversions?|transactions?|tracking)$/;
+
+
+function label(
+  value:
+    string,
+) {
+  return value
+    .replaceAll(
+      '_',
+      ' ',
+    )
+    .replace(
+      /\b\w/g,
+      character =>
+        character
+          .toUpperCase(),
+    );
+}
+
+
+function generatedSpecialistLayout(
+  moduleKey:
+    EnterpriseModuleKey,
+): EnterpriseSpecialistLayout {
+  const tables =
+    [
+      ...ENTERPRISE_MODULE_TABLES[
+        moduleKey
+      ],
+    ];
+
+  const profile =
+    getEnterpriseDomainProfile(
+      moduleKey,
+    );
+
+  if (
+    !profile
+  ) {
+    throw new Error(
+      'SaMi specialist workspace profile is missing for ' +
+      moduleKey +
+      '.',
+    );
+  }
+
+  const controls =
+    tables.filter(
+      table =>
+        CONTROL_TABLE.test(
+          table,
+        ),
+    );
+
+  const insights =
+    tables.filter(
+      table =>
+        !controls.includes(
+          table,
+        ) &&
+        INSIGHT_TABLE.test(
+          table,
+        ),
+    );
+
+  const preferredPrimary =
+    [
+      profile.primaryTable,
+      ...profile.quickStartTables,
+    ]
+      .filter(
+        (
+          table,
+          index,
+          values,
+        ) =>
+          tables.includes(
+            table as never,
+          ) &&
+          values.indexOf(
+            table,
+          ) ===
+            index &&
+          !controls.includes(
+            table,
+          ) &&
+          !insights.includes(
+            table,
+          ),
+      )
+      .slice(
+        0,
+        3,
+      );
+
+  const remainingOperational =
+    tables.filter(
+      table =>
+        !controls.includes(
+          table,
+        ) &&
+        !insights.includes(
+          table,
+        ) &&
+        !preferredPrimary.includes(
+          table,
+        ),
+    );
+
+  const primaryTables =
+    preferredPrimary.length >
+      0
+      ? preferredPrimary
+      : remainingOperational
+          .slice(
+            0,
+            2,
+          );
+
+  const workQueueTables =
+    remainingOperational
+      .filter(
+        table =>
+          !primaryTables.includes(
+            table,
+          ),
+      );
+
+  const preferredRecordView:
+    EnterpriseSpecialistLayout['preferredRecordView'] =
+      CALENDAR_FIRST.has(
+        moduleKey,
+      )
+        ? 'calendar'
+        : KANBAN_FIRST.has(
+            moduleKey,
+          )
+          ? 'kanban'
+          : 'list';
+
+  return {
+    moduleKey,
+    style:
+      SPECIALIST_STYLE[
+        profile.domain
+      ],
+    eyebrow:
+      SPECIALIST_EYEBROW[
+        profile.domain
+      ],
+    headline:
+      profile.focus,
+    description:
+      profile.operatingModel,
+    primaryTables,
+    workQueueTables,
+    controlTables:
+      controls,
+    insightTables:
+      insights,
+    preferredRecordView,
+    crossAppNarrative:
+      label(
+        moduleKey,
+      ) +
+      ' operates inside the same company-scoped workflow, permission, automation and SaMi AI boundary so downstream apps receive governed business context rather than copied records.',
+  };
+}
+
+
+function completeLayout(
+  moduleKey:
+    EnterpriseModuleKey,
+  explicit:
+    EnterpriseSpecialistLayout |
+    undefined,
+) {
+  const generated =
+    generatedSpecialistLayout(
+      moduleKey,
+    );
+
+  if (
+    !explicit
+  ) {
+    return generated;
+  }
+
+  const used =
+    new Set([
+      ...explicit.primaryTables,
+      ...explicit.workQueueTables,
+      ...explicit.controlTables,
+      ...(
+        explicit.insightTables ||
+        []
+      ),
+    ]);
+
+  const remaining =
+    ENTERPRISE_MODULE_TABLES[
+      moduleKey
+    ]
+      .filter(
+        table =>
+          !used.has(
+            table,
+          ),
+      );
+
+  return {
+    ...generated,
+    ...explicit,
+    insightTables:
+      explicit.insightTables ||
+      remaining,
+  };
+}
+
+
 export function getEnterpriseSpecialistLayout(
   moduleKeyInput: string,
 ): EnterpriseSpecialistLayout | null {
@@ -293,10 +604,10 @@ export function getEnterpriseSpecialistLayout(
     return null;
   }
 
-  return (
+  return completeLayout(
+    moduleKey,
     SPECIALIST_LAYOUTS[
       moduleKey
-    ] ||
-    null
+    ],
   );
 }
