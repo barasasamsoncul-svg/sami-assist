@@ -1210,6 +1210,9 @@ export async function getSalesQuoteDetail(
             sent_at,
             viewed_at,
             accepted_at,
+            accepted_by_name,
+            accepted_by_email,
+            acceptance_note,
             rejected_at,
             converted_at,
             created_at
@@ -1485,6 +1488,24 @@ export async function getSalesQuoteDetail(
         ? new Date(
             row.accepted_at,
           ).toISOString()
+        : null,
+    acceptedByName:
+      row.accepted_by_name
+        ? String(
+            row.accepted_by_name,
+          )
+        : null,
+    acceptedByEmail:
+      row.accepted_by_email
+        ? String(
+            row.accepted_by_email,
+          )
+        : null,
+    acceptanceNote:
+      row.acceptance_note
+        ? String(
+            row.acceptance_note,
+          )
         : null,
     rejectedAt:
       row.rejected_at

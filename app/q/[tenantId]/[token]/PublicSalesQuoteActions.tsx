@@ -44,6 +44,30 @@ export default function PublicSalesQuoteActions({
       null,
     );
 
+  const [
+    signerName,
+    setSignerName,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    signerEmail,
+    setSignerEmail,
+  ] =
+    useState(
+      '',
+    );
+
+  const [
+    acceptanceNote,
+    setAcceptanceNote,
+  ] =
+    useState(
+      '',
+    );
+
   async function respond(
     action:
       'accept' |
@@ -59,6 +83,17 @@ export default function PublicSalesQuoteActions({
             undefined
           )
         : undefined;
+
+    if (
+      action ===
+        'accept' &&
+      !signerName.trim()
+    ) {
+      setMessage(
+        'Enter the name of the person accepting this quotation.',
+      );
+      return;
+    }
 
     setBusy(
       true,
@@ -92,6 +127,21 @@ export default function PublicSalesQuoteActions({
               JSON.stringify({
                 action,
                 reason,
+                signerName:
+                  action ===
+                    'accept'
+                    ? signerName
+                    : undefined,
+                signerEmail:
+                  action ===
+                    'accept'
+                    ? signerEmail
+                    : undefined,
+                acceptanceNote:
+                  action ===
+                    'accept'
+                    ? acceptanceNote
+                    : undefined,
               }),
           },
         );
@@ -165,6 +215,87 @@ export default function PublicSalesQuoteActions({
       <p className="mt-1 text-xs leading-5 text-slate-500">
         Your response is recorded securely against this quotation.
       </p>
+
+      {
+        allowAcceptance &&
+        (
+          <div className="mt-4 space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                Accepted by
+              </label>
+              <input
+                value={
+                  signerName
+                }
+                onChange={
+                  event =>
+                    setSignerName(
+                      event.target.value,
+                    )
+                }
+                maxLength={
+                  255
+                }
+                placeholder="Full name"
+                className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                Email
+              </label>
+              <input
+                type="email"
+                value={
+                  signerEmail
+                }
+                onChange={
+                  event =>
+                    setSignerEmail(
+                      event.target.value,
+                    )
+                }
+                maxLength={
+                  320
+                }
+                placeholder="name@company.com"
+                className="mt-1.5 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-500">
+                Acceptance note
+              </label>
+              <textarea
+                value={
+                  acceptanceNote
+                }
+                onChange={
+                  event =>
+                    setAcceptanceNote(
+                      event.target.value,
+                    )
+                }
+                maxLength={
+                  2000
+                }
+                rows={
+                  3
+                }
+                placeholder="Optional purchase instruction or acceptance note"
+                className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <p className="text-[10px] leading-4 text-slate-500">
+              Accepting records this name, email and note with the quotation acceptance timestamp as commercial evidence.
+            </p>
+          </div>
+        )
+      }
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {

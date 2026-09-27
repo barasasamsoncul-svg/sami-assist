@@ -80,6 +80,10 @@ import {
   applySpecialistExecutionTransition,
 } from '@/lib/apps/enterprise/specialist-execution';
 
+import {
+  applyPeopleSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-people-transitions';
+
 
 
 import {
@@ -101,6 +105,7 @@ export type EnterpriseModuleOperation =
   | 'view'
   | 'create'
   | 'edit'
+  | 'transition'
   | 'delete'
   | 'report'
   | 'settings';
@@ -185,6 +190,7 @@ export type EnterpriseWorkspaceData = {
     canView: boolean;
     canCreate: boolean;
     canEdit: boolean;
+    canTransition: boolean;
     canDelete: boolean;
     canReport: boolean;
     canManageSettings: boolean;
@@ -578,11 +584,17 @@ function permissionAllows(
               'manage',
             ])
           : operation ===
-              'delete'
+              'transition'
             ? new Set([
-                'delete',
+                'transition',
                 'manage',
               ])
+            : operation ===
+                'delete'
+              ? new Set([
+                  'delete',
+                  'manage',
+                ])
             : operation ===
                 'report'
               ? new Set([
@@ -2229,6 +2241,12 @@ export async function getEnterpriseModuleWorkspace(
         context.moduleKey,
         'edit',
       ),
+    canTransition:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'transition',
+      ),
     canDelete:
       permissionAllows(
         context.permissions,
@@ -3810,6 +3828,22 @@ async function validateEnterpriseTransition(
           next,
       },
     );
+
+    await applyPeopleSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
   } catch (
     error
   ) {
@@ -3838,7 +3872,7 @@ export async function transitionEnterpriseModuleRecord(
     await assertTable(
       moduleKey,
       input.table,
-      'edit',
+      'transition',
     );
 
   const field =

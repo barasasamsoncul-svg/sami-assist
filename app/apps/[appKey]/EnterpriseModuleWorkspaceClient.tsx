@@ -68,6 +68,10 @@ import {
   type EnterpriseModuleExperience,
 } from '@/lib/apps/enterprise/suite-experience';
 
+import {
+  getEnterpriseSpecialistLayout,
+} from '@/lib/apps/enterprise/specialist-workspace';
+
 
 type ViewKey =
   | 'overview'
@@ -2131,6 +2135,11 @@ export default function EnterpriseModuleWorkspaceClient({
                   .capabilities
                   .canEdit
               }
+              canTransition={
+                initialData
+                  .capabilities
+                  .canTransition
+              }
               canDelete={
                 initialData
                   .capabilities
@@ -2415,6 +2424,44 @@ function Overview({
       ) ||
     [];
 
+  const specialistLayout =
+    getEnterpriseSpecialistLayout(
+      data.module.key,
+    );
+
+  const specialistGroups =
+    specialistLayout
+      ? [
+          {
+            key: 'primary',
+            label: 'Run now',
+            description:
+              'Primary operating work for this specialist app.',
+            tableKeys:
+              specialistLayout
+                .primaryTables,
+          },
+          {
+            key: 'queue',
+            label: 'Work queue',
+            description:
+              'Exceptions, supporting work and records that need operator attention.',
+            tableKeys:
+              specialistLayout
+                .workQueueTables,
+          },
+          {
+            key: 'control',
+            label: 'Control',
+            description:
+              'Master data, policy and configuration that govern execution.',
+            tableKeys:
+              specialistLayout
+                .controlTables,
+          },
+        ]
+      : [];
+
   return (
     <section className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -2487,6 +2534,171 @@ function Overview({
           }
         />
       </div>
+
+      {
+        specialistLayout &&
+        (
+          <div className="sami-surface overflow-hidden rounded-[28px] border border-[var(--sami-border)]">
+            <div className="grid gap-0 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="p-4 sm:p-5 lg:p-6">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600 dark:text-blue-300">
+                  {
+                    specialistLayout
+                      .eyebrow
+                  }
+                </p>
+
+                <h2 className="mt-2 max-w-3xl text-xl font-black tracking-[-0.03em] sm:text-2xl">
+                  {
+                    specialistLayout
+                      .headline
+                  }
+                </h2>
+
+                <p className="mt-3 max-w-3xl text-xs leading-5 text-slate-500 dark:text-slate-400 sm:text-sm sm:leading-6">
+                  {
+                    specialistLayout
+                      .description
+                  }
+                </p>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  {
+                    specialistGroups
+                      .map(
+                        group => {
+                          const tables =
+                            group
+                              .tableKeys
+                              .map(
+                                tableKey =>
+                                  data.tables
+                                    .find(
+                                      table =>
+                                        table.key ===
+                                        tableKey,
+                                    ),
+                              )
+                              .filter(
+                                (
+                                  table,
+                                ): table is
+                                  EnterpriseTable =>
+                                  Boolean(
+                                    table,
+                                  ),
+                              );
+
+                          return (
+                            <div
+                              key={
+                                group.key
+                              }
+                              className="rounded-[22px] border border-[var(--sami-border)] bg-slate-500/[0.025] p-3.5"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-black">
+                                    {
+                                      group.label
+                                    }
+                                  </p>
+                                  <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                                    {
+                                      group.description
+                                    }
+                                  </p>
+                                </div>
+                                <span className="rounded-full bg-blue-500/10 px-2 py-1 text-[10px] font-black text-blue-700 dark:text-blue-300">
+                                  {
+                                    tables
+                                      .reduce(
+                                        (
+                                          total,
+                                          table,
+                                        ) =>
+                                          total +
+                                          table.count,
+                                        0,
+                                      )
+                                  }
+                                </span>
+                              </div>
+
+                              <div className="mt-3 space-y-2">
+                                {
+                                  tables
+                                    .map(
+                                      table => (
+                                        <button
+                                          key={
+                                            table.key
+                                          }
+                                          type="button"
+                                          onClick={
+                                            () =>
+                                              onOpenTable(
+                                                table,
+                                              )
+                                          }
+                                          className="flex w-full items-center justify-between gap-3 rounded-xl border border-[var(--sami-border)] bg-[var(--sami-surface)] px-3 py-2.5 text-left transition hover:-translate-y-px hover:bg-blue-500/[0.04]"
+                                        >
+                                          <span className="min-w-0 truncate text-[11px] font-black">
+                                            {
+                                              table.label
+                                            }
+                                          </span>
+                                          <span className="shrink-0 text-[10px] font-black text-slate-400">
+                                            {
+                                              table.count
+                                            }
+                                          </span>
+                                        </button>
+                                      ),
+                                    )
+                                }
+                              </div>
+                            </div>
+                          );
+                        },
+                      )
+                  }
+                </div>
+              </div>
+
+              <div className="border-t border-[var(--sami-border)] bg-slate-500/[0.025] p-4 sm:p-5 lg:p-6 xl:border-l xl:border-t-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  ERP chain
+                </p>
+                <p className="mt-2 text-sm font-black">
+                  Connected execution, not isolated records
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {
+                    specialistLayout
+                      .crossAppNarrative
+                  }
+                </p>
+
+                <div className="mt-5 rounded-[20px] border border-[var(--sami-border)] bg-[var(--sami-surface)] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.1em] text-blue-600 dark:text-blue-300">
+                    Default operating view
+                  </p>
+                  <p className="mt-1 text-sm font-black capitalize">
+                    {
+                      specialistLayout
+                        .preferredRecordView
+                    }
+                  </p>
+                  <p className="mt-2 text-[11px] leading-4 text-slate-500">
+                    The register opens in the view that best matches this domain while retaining list, kanban and calendar alternatives whenever the data supports them.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
 
       {
         experience &&
@@ -2973,6 +3185,7 @@ function Records({
   busy,
   canCreate,
   canEdit,
+  canTransition,
   canDelete,
   onSelect,
   onCreate,
@@ -3021,6 +3234,8 @@ function Records({
   canCreate:
     boolean;
   canEdit:
+    boolean;
+  canTransition:
     boolean;
   canDelete:
     boolean;
@@ -3149,6 +3364,11 @@ function Records({
     );
 
 
+  const specialistLayout =
+    getEnterpriseSpecialistLayout(
+      moduleKey,
+    );
+
   const [
     recordView,
     setRecordView,
@@ -3158,12 +3378,16 @@ function Records({
       'kanban' |
       'calendar'
     >(
+      specialistLayout
+        ?.preferredRecordView ||
       'list',
     );
 
   useEffect(
     () => {
       setRecordView(
+        specialistLayout
+          ?.preferredRecordView ||
         'list',
       );
       setSelectedRecordIds(
@@ -3172,6 +3396,8 @@ function Records({
     },
     [
       selected?.key,
+      specialistLayout
+        ?.preferredRecordView,
     ],
   );
 
@@ -3970,14 +4196,15 @@ function Records({
                               {
                                 (
                                   canEdit &&
-                                  (
-                                    selected
-                                      .supportsEdit ||
-                                    selected
-                                      .workflows
-                                      .length >
-                                      0
-                                  )
+                                  selected
+                                    .supportsEdit
+                                ) ||
+                                (
+                                  canTransition &&
+                                  selected
+                                    .workflows
+                                    .length >
+                                    0
                                 ) ||
                                 (
                                   canDelete &&
@@ -4064,6 +4291,13 @@ function Records({
                                               .supportsEdit
                                           ) ||
                                           (
+                                            canTransition &&
+                                            selected
+                                              .workflows
+                                              .length >
+                                              0
+                                          ) ||
+                                          (
                                             canDelete &&
                                             selected
                                               .supportsDelete
@@ -4072,7 +4306,7 @@ function Records({
                                                 <td className="px-4 py-3">
                                                   <div className="flex flex-wrap justify-end gap-1">
                                                     {
-                                                      canEdit &&
+                                                      canTransition &&
                                                       selected
                                                         .workflows
                                                         .length >

@@ -474,6 +474,20 @@ CREATE TABLE IF NOT EXISTS public.invoicing_events (
 CREATE INDEX IF NOT EXISTS idx_invoicing_events_invoice
   ON public.invoicing_events(invoice_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS public.invoicing_accounting_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  event_key VARCHAR(220) NOT NULL,
+  source_type VARCHAR(60) NOT NULL,
+  source_id UUID NOT NULL,
+  journal_id UUID NOT NULL,
+  created_by UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(company_id, event_key)
+);
+CREATE INDEX IF NOT EXISTS idx_invoicing_accounting_links_source
+  ON public.invoicing_accounting_links(company_id, source_type, source_id);
+
 CREATE OR REPLACE FUNCTION public.validate_invoice_status_transition()
 RETURNS TRIGGER
 LANGUAGE plpgsql

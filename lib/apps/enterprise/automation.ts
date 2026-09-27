@@ -36,6 +36,22 @@ import {
   validateEnterpriseRelationValues,
 } from '@/lib/apps/enterprise/relations';
 
+import {
+  getEnterpriseWorkflowTransitions,
+} from '@/lib/apps/enterprise/workflow-policy';
+
+import {
+  applyFinanceSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-finance-transitions';
+
+import {
+  applySpecialistExecutionTransition,
+} from '@/lib/apps/enterprise/specialist-execution';
+
+import {
+  applyPeopleSpecialistTransition,
+} from '@/lib/apps/enterprise/specialist-people-transitions';
+
 
 const IDENTIFIER =
   /^[a-z_][a-z0-9_]*$/;
@@ -472,7 +488,8 @@ async function auditAutomationMutation(
       null;
     operation:
       'created' |
-      'updated';
+      'updated' |
+      'workflow.transitioned';
   },
 ) {
   try {
@@ -1062,6 +1079,338 @@ async function updateRecord(
 }
 
 
+async function transitionRecord(
+  runtime:
+    SamiAutomationRuntimeContext,
+  moduleKey:
+    string,
+  input:
+    Record<
+      string,
+      unknown
+    >,
+) {
+  assertModuleAccess(
+    runtime,
+    moduleKey,
+    moduleKey +
+      '.record.transition',
+  );
+
+  const table =
+    assertTable(
+      moduleKey,
+      input.table,
+    );
+
+  const recordId =
+    typeof input.recordId ===
+      'string' &&
+    UUID_RE.test(
+      input.recordId,
+    )
+      ? input.recordId
+      : '';
+
+  const statusField =
+    normalizeKey(
+      input.statusField,
+    );
+
+  const nextStatus =
+    normalizeKey(
+      input.nextStatus,
+    );
+
+  if (
+    !recordId ||
+    !statusField ||
+    !nextStatus ||
+    !IDENTIFIER.test(
+      statusField,
+    ) ||
+    !/(^|_)(status|state|stage)$/.test(
+      statusField,
+    )
+  ) {
+    throw new Error(
+      'A valid record and workflow transition are required.',
+    );
+  }
+
+  const pool =
+    await getTenantPoolByTenantId(
+      runtime.tenantId,
+    );
+
+  const columns =
+    await columnsForTable(
+      pool,
+      table,
+    );
+
+  const names =
+    new Set(
+      columns.map(
+        column =>
+          column.column_name,
+      ),
+    );
+
+  if (
+    !names.has(
+      'id',
+    ) ||
+    !names.has(
+      'company_id',
+    ) ||
+    !names.has(
+      statusField,
+    )
+  ) {
+    throw new Error(
+      'This app table does not expose a safe company-scoped workflow.',
+    );
+  }
+
+  const client =
+    await pool.connect();
+
+  let currentStatus =
+    '';
+
+  try {
+    await client.query(
+      'BEGIN',
+    );
+
+    const current =
+      await client.query(
+        'SELECT ' +
+        quoteIdentifier(
+          statusField,
+        ) +
+        ' AS workflow_state FROM ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' WHERE id = $1 AND company_id = $2' +
+        (
+          names.has(
+            'deleted_at',
+          )
+            ? ' AND deleted_at IS NULL'
+            : ''
+        ) +
+        ' FOR UPDATE',
+        [
+          recordId,
+          runtime.companyId,
+        ],
+      );
+
+    if (
+      current.rows.length !==
+        1
+    ) {
+      throw new Error(
+        'The record was not found in the automation company boundary.',
+      );
+    }
+
+    currentStatus =
+      normalizeKey(
+        current.rows[0]
+          .workflow_state,
+      );
+
+    const transitions =
+      getEnterpriseWorkflowTransitions(
+        moduleKey,
+        table,
+        currentStatus,
+        [],
+      );
+
+    if (
+      !transitions.some(
+        transition =>
+          transition.value ===
+          nextStatus,
+      )
+    ) {
+      throw new Error(
+        'That workflow transition is not allowed from the current state.',
+      );
+    }
+
+    await applyFinanceSpecialistTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    await applySpecialistExecutionTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    await applyPeopleSpecialistTransition(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        recordId,
+        nextStatus,
+      },
+    );
+
+    const setters = [
+      quoteIdentifier(
+        statusField,
+      ) +
+      ' = $3',
+    ];
+
+    const params:
+      unknown[] = [
+        recordId,
+        runtime.companyId,
+        nextStatus,
+      ];
+
+    if (
+      names.has(
+        'updated_by',
+      )
+    ) {
+      params.push(
+        runtime.userId,
+      );
+
+      setters.push(
+        'updated_by = $' +
+        params.length,
+      );
+    }
+
+    if (
+      names.has(
+        'updated_at',
+      )
+    ) {
+      setters.push(
+        'updated_at = NOW()',
+      );
+    }
+
+    const changed =
+      await client.query(
+        'UPDATE ' +
+        quoteIdentifier(
+          table,
+        ) +
+        ' SET ' +
+        setters.join(
+          ', ',
+        ) +
+        ' WHERE id = $1 AND company_id = $2' +
+        (
+          names.has(
+            'deleted_at',
+          )
+            ? ' AND deleted_at IS NULL'
+            : ''
+        ) +
+        ' RETURNING *',
+        params,
+      );
+
+    if (
+      changed.rows.length !==
+        1
+    ) {
+      throw new Error(
+        'The record could not be transitioned.',
+      );
+    }
+
+    await applyEnterpriseDomainSideEffects(
+      client,
+      {
+        moduleKey,
+        table,
+        companyId:
+          runtime.companyId,
+        userId:
+          runtime.userId,
+        operation:
+          'update',
+        row:
+          changed.rows[0],
+      },
+    );
+
+    await client.query(
+      'COMMIT',
+    );
+  } catch (
+    error
+  ) {
+    try {
+      await client.query(
+        'ROLLBACK',
+      );
+    } catch {}
+
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  await auditAutomationMutation(
+    runtime,
+    {
+      moduleKey,
+      table,
+      recordId,
+      operation:
+        'workflow.transitioned',
+    },
+  );
+
+  return {
+    table,
+    recordId,
+    fromStatus:
+      currentStatus,
+    toStatus:
+      nextStatus,
+  };
+}
+
+
 const MODULE_KEYS =
   Object.keys(
     ENTERPRISE_MODULE_TABLES,
@@ -1220,6 +1569,60 @@ export const ENTERPRISE_AUTOMATION_ACTIONS:
       {
         key:
           moduleKey +
+          '.record.transition',
+        name:
+          'Run ' +
+          moduleKey +
+          ' workflow',
+        description:
+          'Move a company-scoped ' +
+          moduleKey +
+          ' record through an allowed business workflow transition.',
+        moduleKey,
+        operation:
+          'write',
+        resourceKey:
+          'record',
+        requiredPermissions: [
+          moduleKey +
+          '.record.transition',
+        ],
+        approvalPolicy:
+          'always',
+        inputSchema: {
+          type:
+            'object',
+          additionalProperties:
+            false,
+          properties: {
+            table: {
+              type:
+                'string',
+            },
+            recordId: {
+              type:
+                'string',
+            },
+            statusField: {
+              type:
+                'string',
+            },
+            nextStatus: {
+              type:
+                'string',
+            },
+          },
+          required: [
+            'table',
+            'recordId',
+            'statusField',
+            'nextStatus',
+          ],
+        },
+      },
+      {
+        key:
+          moduleKey +
           '.record.update',
         name:
           'Update ' +
@@ -1290,6 +1693,24 @@ export const ENTERPRISE_AUTOMATION_ACTION_HANDLERS =
               >,
           ) =>
             createRecord(
+              runtime,
+              moduleKey,
+              input,
+            ),
+        ] as const,
+        [
+          moduleKey +
+          '.record.transition',
+          (
+            runtime:
+              SamiAutomationRuntimeContext,
+            input:
+              Record<
+                string,
+                unknown
+              >,
+          ) =>
+            transitionRecord(
               runtime,
               moduleKey,
               input,

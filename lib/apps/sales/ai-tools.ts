@@ -6,8 +6,11 @@ import type {
 
 import {
   SALES_PERMISSIONS,
+  convertSalesQuoteToInvoice,
+  createSalesOrderFromQuote,
   getSalesWorkspaceData,
   searchSalesRecords,
+  sendSalesQuote,
 } from '@/lib/apps/sales/service';
 
 
@@ -118,5 +121,113 @@ export const SALES_AI_TOOLS:
                 : [],
           };
         },
+    },
+
+    {
+      key:
+        'sales_send_quote',
+      name:
+        'Send sales quotation',
+      description:
+        'Send an approved quotation through configured delivery channels. Requires explicit confirmation.',
+      moduleKey:
+        'sales',
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      requiredAllPermissions: [
+        SALES_PERMISSIONS.QUOTE_SEND,
+      ],
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          quoteId: { type: 'string' },
+          channels: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['email','sms','whatsapp'],
+            },
+            minItems: 1,
+            maxItems: 3,
+          },
+        },
+        required: ['quoteId','channels'],
+      },
+      execute: async (_context, input) =>
+        sendSalesQuote({
+          quoteId: input.quoteId,
+          channels: input.channels,
+        }),
+    },
+    {
+      key:
+        'sales_quote_to_order',
+      name:
+        'Convert quotation to sales order',
+      description:
+        'Convert an accepted quotation into a governed sales order. Requires explicit confirmation.',
+      moduleKey:
+        'sales',
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      requiredAllPermissions: [
+        SALES_PERMISSIONS.QUOTE_CONVERT,
+      ],
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          quoteId: { type: 'string' },
+        },
+        required: ['quoteId'],
+      },
+      execute: async (_context, input) =>
+        createSalesOrderFromQuote({
+          quoteId: input.quoteId,
+        }),
+    },
+    {
+      key:
+        'sales_quote_to_invoice',
+      name:
+        'Convert quotation to invoice',
+      description:
+        'Convert an accepted quotation through Sales order creation into a controlled invoice. Requires explicit confirmation.',
+      moduleKey:
+        'sales',
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      requiredAllPermissions: [
+        SALES_PERMISSIONS.QUOTE_CONVERT,
+      ],
+      inputSchema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          quoteId: { type: 'string' },
+          idempotencyKey: { type: 'string' },
+          exchangeRate: { type: 'number', minimum: 0.00000001 },
+        },
+        required: ['quoteId'],
+      },
+      execute: async (_context, input) =>
+        convertSalesQuoteToInvoice({
+          quoteId: input.quoteId,
+          idempotencyKey: input.idempotencyKey,
+          exchangeRate: input.exchangeRate,
+        }),
     },
   ];

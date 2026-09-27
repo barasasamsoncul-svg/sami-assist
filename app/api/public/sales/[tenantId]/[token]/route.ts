@@ -96,6 +96,12 @@ export async function POST(
             action,
             reason:
               payload.reason,
+            signerName:
+              payload.signerName,
+            signerEmail:
+              payload.signerEmail,
+            acceptanceNote:
+              payload.acceptanceNote,
           },
         ),
     });

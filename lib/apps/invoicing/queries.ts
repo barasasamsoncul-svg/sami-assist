@@ -1650,6 +1650,7 @@ export async function getInvoicingInvoiceDetail(
             i.invoice_date,
             i.due_date,
             i.currency,
+            i.exchange_rate,
             i.reference,
             i.purchase_order_number,
             i.subtotal,
@@ -1943,6 +1944,11 @@ export async function getInvoicingInvoiceDetail(
     currency:
       String(
         row.currency,
+      ),
+    exchangeRate:
+      Number(
+        row.exchange_rate ||
+        1,
       ),
     reference:
       row.reference

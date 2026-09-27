@@ -697,6 +697,16 @@ export default function SalesOrderDetailClient({
                             globalThis
                               .crypto
                               ?.randomUUID?.(),
+                          exchangeRate:
+                            order.currency ===
+                              workspace.company.currency
+                              ? 1
+                              : Number(
+                                  form.get(
+                                    'exchangeRate',
+                                  ) ||
+                                  0,
+                                ),
                           lines,
                         },
                         'Draft invoice created from the sales order.',
@@ -765,6 +775,35 @@ export default function SalesOrderDetailClient({
                         )
                     }
                   </div>
+
+                  {
+                    order.currency !==
+                      workspace.company.currency &&
+                    (
+                      <label className="mt-3 block rounded-xl border border-[var(--sami-border)] p-3">
+                        <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                          Exchange rate
+                        </span>
+                        <input
+                          name="exchangeRate"
+                          type="number"
+                          min="0.00000001"
+                          step="0.00000001"
+                          required
+                          placeholder={
+                            '1 ' +
+                            order.currency +
+                            ' in ' +
+                            workspace.company.currency
+                          }
+                          className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                        />
+                        <span className="mt-1 block text-[10px] leading-4 text-slate-400">
+                          The rate is snapshotted on the invoice and used for accounting postings.
+                        </span>
+                      </label>
+                    )
+                  }
 
                   <button
                     type="submit"

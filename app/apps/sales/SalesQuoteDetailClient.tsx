@@ -664,6 +664,60 @@ export default function SalesQuoteDetailClient({
               </div>
             </div>
 
+            {
+              quote.acceptedAt &&
+              (
+                <div className="sami-surface rounded-[24px] p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-600 dark:text-emerald-300">
+                        Customer acceptance
+                      </p>
+                      <h2 className="mt-1 text-sm font-black">
+                        Signed commercial commitment
+                      </h2>
+                    </div>
+                    <Check className="h-5 w-5 text-emerald-600" />
+                  </div>
+
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <TextCard
+                      title="Accepted by"
+                      value={
+                        quote.acceptedByName
+                      }
+                    />
+                    <TextCard
+                      title="Signer email"
+                      value={
+                        quote.acceptedByEmail
+                      }
+                    />
+                  </div>
+
+                  <p className="mt-3 text-[11px] leading-5 text-slate-500">
+                    Accepted {
+                      quote.acceptedAt
+                    }. This evidence is stored with the quotation lifecycle and remains available after conversion.
+                  </p>
+
+                  {
+                    quote.acceptanceNote &&
+                    (
+                      <div className="mt-3">
+                        <TextCard
+                          title="Acceptance note"
+                          value={
+                            quote.acceptanceNote
+                          }
+                        />
+                      </div>
+                    )
+                  }
+                </div>
+              )
+            }
+
             <div className="sami-surface rounded-[24px] p-4">
               <h2 className="text-sm font-black">
                 Delivery log
@@ -1104,13 +1158,17 @@ export default function SalesQuoteDetailClient({
                     Create sales order
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={
-                      isBusy
-                    }
-                    onClick={
-                      () =>
+                  <form
+                    className="mt-2 space-y-2"
+                    onSubmit={
+                      event => {
+                        event.preventDefault();
+
+                        const form =
+                          new FormData(
+                            event.currentTarget,
+                          );
+
                         confirmAction({
                           title:
                             'Create draft invoice?',
@@ -1126,16 +1184,60 @@ export default function SalesQuoteDetailClient({
                                     'quote_to_invoice',
                                   quoteId:
                                     quote.id,
+                                  exchangeRate:
+                                    quote.currency ===
+                                      workspace.company.currency
+                                      ? 1
+                                      : Number(
+                                          form.get(
+                                            'exchangeRate',
+                                          ) ||
+                                          0,
+                                        ),
                                 },
                                 'Draft invoice created.',
                               );
                             },
-                        })
+                        });
+                      }
                     }
-                    className="mt-2 h-11 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
                   >
-                    Create draft invoice
-                  </button>
+                    {
+                      quote.currency !==
+                        workspace.company.currency &&
+                      (
+                        <label className="block rounded-xl border border-[var(--sami-border)] p-3">
+                          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-slate-400">
+                            Exchange rate
+                          </span>
+                          <input
+                            name="exchangeRate"
+                            type="number"
+                            min="0.00000001"
+                            step="0.00000001"
+                            required
+                            placeholder={
+                              '1 ' +
+                              quote.currency +
+                              ' in ' +
+                              workspace.company.currency
+                            }
+                            className="mt-2 h-10 w-full rounded-lg border border-[var(--sami-border)] bg-transparent px-3 text-sm"
+                          />
+                        </label>
+                      )
+                    }
+
+                    <button
+                      type="submit"
+                      disabled={
+                        isBusy
+                      }
+                      className="h-11 w-full rounded-xl border border-[var(--sami-border)] text-xs font-black disabled:opacity-60"
+                    >
+                      Create draft invoice
+                    </button>
+                  </form>
                 </ActionCard>
               )
             }

@@ -101,6 +101,9 @@ export type SalesQuoteDetail =
     sentAt: string | null;
     viewedAt: string | null;
     acceptedAt: string | null;
+    acceptedByName: string | null;
+    acceptedByEmail: string | null;
+    acceptanceNote: string | null;
     rejectedAt: string | null;
     convertedAt: string | null;
     lines: SalesQuoteLine[];

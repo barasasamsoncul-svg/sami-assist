@@ -17,6 +17,16 @@ import {
 } from '@/lib/apps/sales/delivery';
 
 import {
+  postSalesFulfillmentToInventory,
+  releaseSalesOrderReservations,
+  reserveSalesOrderInventory,
+} from '@/lib/apps/sales/inventory';
+
+import {
+  dispatchBusinessAutomationEventSafely,
+} from '@/lib/automation/business-events';
+
+import {
   cleanText,
   datePlusDays,
   ensureSalesDefaults,
@@ -40,6 +50,8 @@ import type {
 
 type NormalizedQuoteLine = {
   catalogItemId:
+    string | null;
+  externalProductId:
     string | null;
   sortOrder:
     number;
@@ -71,6 +83,96 @@ type NormalizedQuoteLine = {
   lineTotal:
     number;
 };
+
+
+function salesAutomationRuntime(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireSalesContext
+      >
+    >,
+) {
+  return {
+    userId:
+      context.userId,
+    sessionId:
+      context.permissions
+        .sessionId,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    accessibleModuleKeys: [
+      ...new Set([
+        'sales',
+        ...context.permissions
+          .permissions
+          .map(
+            permission =>
+              permission.moduleKey
+                ?.trim()
+                .toLowerCase() ||
+              '',
+          )
+          .filter(
+            Boolean,
+          ),
+      ]),
+    ],
+    permissionSet:
+      context.permissions
+        .permissionSet,
+    isOwner:
+      context.permissions
+        .isOwner,
+  };
+}
+
+
+async function emitSalesAutomationEvent(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireSalesContext
+      >
+    >,
+  input: {
+    triggerKey:
+      string;
+    recordType:
+      string;
+    recordId:
+      string;
+    idempotencySeed:
+      string;
+    payload?:
+      Record<
+        string,
+        unknown
+      >;
+  },
+) {
+  await dispatchBusinessAutomationEventSafely({
+    runtime:
+      salesAutomationRuntime(
+        context,
+      ),
+    moduleKey:
+      'sales',
+    triggerKey:
+      input.triggerKey,
+    recordType:
+      input.recordType,
+    recordId:
+      input.recordId,
+    payload:
+      input.payload ||
+      {},
+    idempotencySeed:
+      input.idempotencySeed,
+  });
+}
 
 
 function crossPermission(
@@ -488,6 +590,7 @@ async function normalizeQuoteLines(
               item.description,
               item.unit,
               item.unit_price,
+              item.external_product_id,
               tax.name
                 AS tax_name,
               COALESCE(
@@ -659,6 +762,12 @@ async function normalizeQuoteLines(
 
     lines.push({
       catalogItemId,
+      externalProductId:
+        catalog?.external_product_id
+          ? String(
+              catalog.external_product_id,
+            )
+          : null,
       sortOrder:
         index,
       description,
@@ -721,6 +830,7 @@ async function insertQuoteLines(
           quote_id,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -737,14 +847,15 @@ async function insertQuoteLines(
           line_total
         )
         VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,$9,
-          $10,$11,$12,$13,$14,$15,$16,$17
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+          $11,$12,$13,$14,$15,$16,$17,$18
         )
       `,
       [
         quoteId,
         companyId,
         line.catalogItemId,
+        line.externalProductId,
         line.sortOrder,
         line.description,
         line.sku,
@@ -1126,6 +1237,27 @@ export async function createSalesQuote(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.quote.created',
+        recordType:
+          'sales_quote',
+        recordId:
+          quoteId,
+        idempotencySeed:
+          'created:' +
+          quoteId,
+        payload: {
+          quoteNumber,
+          totalAmount:
+            calculated.totalAmount,
+          currency,
+        },
+      },
     );
 
     return {
@@ -1934,6 +2066,30 @@ export async function changeSalesQuoteStatus(
       'COMMIT',
     );
 
+    if (
+      nextStatus ===
+        'accepted'
+    ) {
+      await emitSalesAutomationEvent(
+        context,
+        {
+          triggerKey:
+            'sales.quote.accepted',
+          recordType:
+            'sales_quote',
+          recordId:
+            quoteId,
+          idempotencySeed:
+            'accepted:' +
+            quoteId,
+          payload: {
+            status:
+              nextStatus,
+          },
+        },
+      );
+    }
+
     return {
       id:
         quoteId,
@@ -2424,24 +2580,49 @@ export async function sendSalesQuote(
       'Quote',
     );
 
-  return deliverSalesQuote({
-    pool:
-      context.pool,
-    tenantId:
-      context.tenantId,
-    companyId:
-      context.companyId,
-    companyName:
-      context.company
-        .currentCompany.name,
-    userId:
-      context.userId,
-    quoteId,
-    channels:
-      normalizeSalesQuoteDeliveryChannels(
-        input.channels,
-      ),
-  });
+  const channels =
+    normalizeSalesQuoteDeliveryChannels(
+      input.channels,
+    );
+
+  const result =
+    await deliverSalesQuote({
+      pool:
+        context.pool,
+      tenantId:
+        context.tenantId,
+      companyId:
+        context.companyId,
+      companyName:
+        context.company
+          .currentCompany.name,
+      userId:
+        context.userId,
+      quoteId,
+      channels,
+    });
+
+  await emitSalesAutomationEvent(
+    context,
+    {
+      triggerKey:
+        'sales.quote.sent',
+      recordType:
+        'sales_quote',
+      recordId:
+        quoteId,
+      idempotencySeed:
+        'sent:' +
+        quoteId +
+        ':' +
+        Date.now(),
+      payload: {
+        channels,
+      },
+    },
+  );
+
+  return result;
 }
 
 
@@ -2698,6 +2879,7 @@ export async function createSalesOrderFromQuote(
           sales_order_id,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -2717,6 +2899,7 @@ export async function createSalesOrderFromQuote(
           $3,
           company_id,
           catalog_item_id,
+          external_product_id,
           sort_order,
           description,
           sku_snapshot,
@@ -2743,6 +2926,17 @@ export async function createSalesOrderFromQuote(
         context.companyId,
         orderId,
       ],
+    );
+
+    await reserveSalesOrderInventory(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
     );
 
     await client.query(
@@ -2830,6 +3024,25 @@ export async function createSalesOrderFromQuote(
       'COMMIT',
     );
 
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.order.created',
+        recordType:
+          'sales_order',
+        recordId:
+          orderId,
+        idempotencySeed:
+          'created:' +
+          orderId,
+        payload: {
+          quoteId,
+          orderNumber,
+        },
+      },
+    );
+
     return {
       id:
         orderId,
@@ -2883,6 +3096,8 @@ export async function convertSalesQuoteToInvoice(
           'quote-' +
           quoteId
         ),
+      exchangeRate:
+        input.exchangeRate,
     });
 
   return {
@@ -3047,35 +3262,101 @@ export async function updateSalesOrderFulfillment(
           },
         );
 
-      const changed =
+      const existingLine =
         await client.query(
           `
-            UPDATE sales_order_items_v2
-            SET
-              delivered_quantity = $4
+            SELECT
+              quantity,
+              delivered_quantity,
+              external_product_id,
+              stock_reservation_id
+            FROM sales_order_items_v2
             WHERE id = $1
               AND sales_order_id = $2
               AND company_id = $3
-              AND $4 <= quantity
-            RETURNING id
+            FOR UPDATE
           `,
           [
             lineId,
             orderId,
             context.companyId,
-            deliveredQuantity,
           ],
         );
 
       if (
-        changed.rows.length !==
-          1
+        existingLine.rows.length !==
+          1 ||
+        deliveredQuantity >
+          Number(
+            existingLine.rows[0]
+              .quantity ||
+            0,
+          )
       ) {
         throw new SalesError(
           'INVALID_INPUT',
           'Delivered quantity cannot exceed the ordered quantity.',
         );
       }
+
+      await postSalesFulfillmentToInventory(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          orderId,
+          lineId,
+          orderedQuantity:
+            Number(
+              existingLine.rows[0]
+                .quantity ||
+              0,
+            ),
+          previousDeliveredQuantity:
+            Number(
+              existingLine.rows[0]
+                .delivered_quantity ||
+              0,
+            ),
+          nextDeliveredQuantity:
+            deliveredQuantity,
+          externalProductId:
+            existingLine.rows[0]
+              .external_product_id
+              ? String(
+                  existingLine.rows[0]
+                    .external_product_id,
+                )
+              : null,
+          reservationId:
+            existingLine.rows[0]
+              .stock_reservation_id
+              ? String(
+                  existingLine.rows[0]
+                    .stock_reservation_id,
+                )
+              : null,
+        },
+      );
+
+      await client.query(
+        `
+          UPDATE sales_order_items_v2
+          SET
+            delivered_quantity = $4
+          WHERE id = $1
+            AND sales_order_id = $2
+            AND company_id = $3
+        `,
+        [
+          lineId,
+          orderId,
+          context.companyId,
+          deliveredQuantity,
+        ],
+      );
     }
 
     const totals =
@@ -3186,6 +3467,33 @@ export async function updateSalesOrderFulfillment(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.order.fulfillment.changed',
+        recordType:
+          'sales_order',
+        recordId:
+          orderId,
+        idempotencySeed:
+          'fulfillment:' +
+          orderId +
+          ':' +
+          nextFulfillment +
+          ':' +
+          delivered,
+        payload: {
+          fulfillmentStatus:
+            nextFulfillment,
+          orderedQuantity:
+            ordered,
+          deliveredQuantity:
+            delivered,
+        },
+      },
     );
 
     return {
@@ -3332,6 +3640,17 @@ export async function cancelSalesOrder(
         'This order already has invoiced quantities. Correct the related invoice before cancelling the order.',
       );
     }
+
+    await releaseSalesOrderReservations(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
+    );
 
     await client.query(
       `
@@ -3989,6 +4308,8 @@ export async function createSalesOrderInvoice(
             ),
           currency:
             orderRow.currency,
+          exchangeRate:
+            input.exchangeRate,
           reference:
             sourceReference,
           notes:
@@ -4246,6 +4567,27 @@ export async function createSalesOrderInvoice(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitSalesAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'sales.invoice.created',
+        recordType:
+          'sales_order',
+        recordId:
+          orderId,
+        idempotencySeed:
+          'invoice:' +
+          invoiceId,
+        payload: {
+          invoiceId,
+          batchId,
+          invoiceStatus:
+            nextInvoiceStatus,
+        },
+      },
     );
 
     return {
