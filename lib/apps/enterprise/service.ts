@@ -101,6 +101,7 @@ export type EnterpriseModuleOperation =
   | 'view'
   | 'create'
   | 'edit'
+  | 'transition'
   | 'delete'
   | 'report'
   | 'settings';
@@ -185,6 +186,7 @@ export type EnterpriseWorkspaceData = {
     canView: boolean;
     canCreate: boolean;
     canEdit: boolean;
+    canTransition: boolean;
     canDelete: boolean;
     canReport: boolean;
     canManageSettings: boolean;
@@ -578,11 +580,17 @@ function permissionAllows(
               'manage',
             ])
           : operation ===
-              'delete'
+              'transition'
             ? new Set([
-                'delete',
+                'transition',
                 'manage',
               ])
+            : operation ===
+                'delete'
+              ? new Set([
+                  'delete',
+                  'manage',
+                ])
             : operation ===
                 'report'
               ? new Set([
@@ -2229,6 +2237,12 @@ export async function getEnterpriseModuleWorkspace(
         context.moduleKey,
         'edit',
       ),
+    canTransition:
+      permissionAllows(
+        context.permissions,
+        context.moduleKey,
+        'transition',
+      ),
     canDelete:
       permissionAllows(
         context.permissions,
@@ -3838,7 +3852,7 @@ export async function transitionEnterpriseModuleRecord(
     await assertTable(
       moduleKey,
       input.table,
-      'edit',
+      'transition',
     );
 
   const field =
