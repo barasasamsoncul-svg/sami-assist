@@ -1607,6 +1607,95 @@ test('enterprise hardening supports UUID company keys during migration', async (
 });
 
 
+test('shared enterprise apps expose real routed operational workspaces', async () => {
+  const [
+    rootPage,
+    sectionPage,
+    serverPage,
+    client,
+    contract,
+  ] = await Promise.all([
+    source(
+      'app/apps/[appKey]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/[section]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModulePage.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+    source(
+      'lib/modules/enterprise-contract.ts',
+    ),
+  ]);
+
+  assert.match(
+    rootPage,
+    /EnterpriseModulePage/,
+  );
+
+  assert.match(
+    sectionPage,
+    /section/,
+  );
+
+  assert.match(
+    serverPage,
+    /resolveWorkspaceSection/,
+  );
+
+  assert.match(
+    serverPage,
+    /canonicalKey ===[\s\S]*'sales'[\s\S]*'invoicing'/s,
+    'Dedicated Sales and Invoicing route trees must not fall into the shared workspace.',
+  );
+
+  for (
+    const marker
+    of [
+      'initialView',
+      'initialTableKey',
+      'moduleBasePath',
+      'navigateView',
+      'navigateTable',
+      'router.push',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  assert.match(
+    contract,
+    /href:[\s\S]*'\/apps\/'[\s\S]*key[\s\S]*'\/'[\s\S]*table/s,
+    'Generated business actions must point to table-specific module pages.',
+  );
+
+  assert.match(
+    contract,
+    /'\/reports'/,
+  );
+
+  assert.match(
+    contract,
+    /'\/settings'/,
+  );
+
+  assert.match(
+    contract,
+    /navigation:[\s\S]*recordTables\.map/s,
+    'Every shared module manifest should expose child navigation for its business registers.',
+  );
+});
+
+
 test('enterprise runtime reconciles stale installed schemas before workspace reads', async () => {
   const [
     hardening,
