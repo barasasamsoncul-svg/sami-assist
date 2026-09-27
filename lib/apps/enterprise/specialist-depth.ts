@@ -22,6 +22,10 @@ import {
   specialistSuiteDepthSql,
 } from '@/lib/apps/enterprise/specialist-suite-depth';
 
+import {
+  specialistProductDepthSql,
+} from '@/lib/apps/enterprise/specialist-product-depth';
+
 
 
 
@@ -808,6 +812,9 @@ export function specialistDepthSql(
     moduleKey;
 
   const parts = [
+    specialistProductDepthSql(
+      key,
+    ),
     specialistSuiteDepthSql(
       key,
     ),
