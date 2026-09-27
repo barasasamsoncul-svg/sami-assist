@@ -3611,21 +3611,33 @@ async function validateEnterpriseTransition(
     }
   }
 
-  await applyFinanceSpecialistTransition(
-    client,
-    {
-      moduleKey:
-        context.moduleKey,
-      table,
-      companyId:
-        context.companyId,
-      userId:
-        context.userId,
-      recordId,
-      nextStatus:
-        next,
-    },
-  );
+  try {
+    await applyFinanceSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+  } catch (
+    error
+  ) {
+    throw new EnterpriseModuleError(
+      'WORKFLOW_TRANSITION_INVALID',
+      error instanceof
+        Error
+        ? error.message
+        : 'SaMi could not apply this business workflow action.',
+    );
+  }
 }
 
 
