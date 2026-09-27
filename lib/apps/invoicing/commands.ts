@@ -2329,6 +2329,51 @@ async function resolveInvoiceTemplateId(
 }
 
 
+function invoiceExchangeRate(
+  currency:
+    string,
+  baseCurrency:
+    string,
+  input:
+    unknown,
+) {
+  if (
+    currency ===
+    baseCurrency
+  ) {
+    return 1;
+  }
+
+  const rate =
+    Number(
+      input,
+    );
+
+  if (
+    !Number.isFinite(
+      rate,
+    ) ||
+    rate <=
+      0
+  ) {
+    throw new InvoicingError(
+      'INVALID_INPUT',
+      'A positive exchange rate is required when invoice currency differs from the company currency.',
+      {
+        currency,
+        baseCurrency,
+      },
+    );
+  }
+
+  return Math.round(
+    rate *
+    100000000,
+  ) /
+    100000000;
+}
+
+
 export async function createInvoice(
   input:
     CreateInvoiceInput,
@@ -2625,6 +2670,22 @@ export async function createInvoice(
       );
     }
 
+    const baseCurrency =
+      cleanText(
+        context.company
+          .currentCompany.currency ||
+        settings.default_currency ||
+        'KES',
+        3,
+      ).toUpperCase();
+
+    const exchangeRate =
+      invoiceExchangeRate(
+        currency,
+        baseCurrency,
+        input.exchangeRate,
+      );
+
     const confirmAllowed =
       context.permissions.isOwner ||
       permissionContextHas(
@@ -2766,6 +2827,21 @@ export async function createInvoice(
         invoiceResult.rows[0].id,
       );
 
+    await client.query(
+      `
+        UPDATE invoicing_invoices
+        SET
+          exchange_rate = $3
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        invoiceId,
+        context.companyId,
+        exchangeRate,
+      ],
+    );
+
     for (
       const line
       of lines
@@ -2844,6 +2920,22 @@ export async function createInvoice(
       ],
     );
 
+    if (
+      status ===
+        'confirmed'
+    ) {
+      await postInvoiceConfirmationToAccounting(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          invoiceId,
+        },
+      );
+    }
+
     await recordInvoicingActivity(
       client,
       {
@@ -2877,6 +2969,7 @@ export async function createInvoice(
       status,
       totalAmount,
       currency,
+      exchangeRate,
     };
   } catch (
     error
@@ -3402,6 +3495,22 @@ export async function updateInvoiceDraft(
       );
     }
 
+    const baseCurrency =
+      cleanText(
+        context.company
+          .currentCompany.currency ||
+        settings.default_currency ||
+        'KES',
+        3,
+      ).toUpperCase();
+
+    const exchangeRate =
+      invoiceExchangeRate(
+        currency,
+        baseCurrency,
+        input.exchangeRate,
+      );
+
     await client.query(
       `
         UPDATE invoicing_invoices
@@ -3529,6 +3638,21 @@ export async function updateInvoiceDraft(
 
     await client.query(
       `
+        UPDATE invoicing_invoices
+        SET
+          exchange_rate = $3
+        WHERE id = $1
+          AND company_id = $2
+      `,
+      [
+        invoiceId,
+        context.companyId,
+        exchangeRate,
+      ],
+    );
+
+    await client.query(
+      `
         DELETE FROM invoicing_invoice_items
         WHERE invoice_id =
               $1
@@ -3635,6 +3759,7 @@ export async function updateInvoiceDraft(
         'draft',
       totalAmount,
       currency,
+      exchangeRate,
     };
   } catch (
     error
