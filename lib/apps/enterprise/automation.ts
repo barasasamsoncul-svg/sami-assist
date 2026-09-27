@@ -488,7 +488,8 @@ async function auditAutomationMutation(
       null;
     operation:
       'created' |
-      'updated';
+      'updated' |
+      'workflow.transitioned';
   },
 ) {
   try {
