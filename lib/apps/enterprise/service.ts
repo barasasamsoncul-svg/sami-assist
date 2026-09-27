@@ -3595,7 +3595,7 @@ export async function deleteEnterpriseModuleRecord(
 }
 
 
-async function validateEnterpriseTransition(
+export async function validateEnterpriseTransition(
   client:
     import('pg').PoolClient,
   context: {
