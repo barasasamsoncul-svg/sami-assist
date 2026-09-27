@@ -135,6 +135,42 @@ test('ERP parity: Invoicing posts financial lifecycle into Accounting when insta
   );
 });
 
+test('ERP parity: Automation can execute specialist workflow transitions with approval and live rules', async () => {
+  const [
+    automation,
+    service,
+  ] =
+    await Promise.all([
+      source(
+        'lib/apps/enterprise/automation.ts',
+      ),
+      source(
+        'lib/apps/enterprise/service.ts',
+      ),
+    ]);
+
+  assert.match(
+    automation,
+    /\.workflow\.transition/,
+  );
+  assert.match(
+    automation,
+    /approvalPolicy:[\s\S]*'always'/,
+  );
+  assert.match(
+    automation,
+    /getEnterpriseWorkflowTransitions/,
+  );
+  assert.match(
+    automation,
+    /validateEnterpriseTransition/,
+  );
+  assert.match(
+    service,
+    /export async function validateEnterpriseTransition/,
+  );
+});
+
 test('ERP parity: SaMi AI can execute confirmed business actions instead of read-only app summaries', async () => {
   const [
     enterprise,
