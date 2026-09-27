@@ -221,25 +221,48 @@ integration(
           VALUES (
             $1,
             'ERP Integration Co'
-          );
+          )
+        `,
+        [
+          companyId,
+        ],
+      );
 
+      await client.query(
+        `
           INSERT INTO products (
             id,
             company_id,
             product_type
           )
           VALUES (
-            $2,$1,'stockable'
-          );
+            $1,$2,'stockable'
+          )
+        `,
+        [
+          productId,
+          companyId,
+        ],
+      );
 
+      await client.query(
+        `
           INSERT INTO warehouses (
             id,
             company_id
           )
           VALUES (
-            $3,$1
-          );
+            $1,$2
+          )
+        `,
+        [
+          warehouseId,
+          companyId,
+        ],
+      );
 
+      await client.query(
+        `
           INSERT INTO stock_levels (
             company_id,
             product_id,
@@ -250,8 +273,18 @@ integration(
           )
           VALUES (
             $1,$2,$3,10,$4,$4
-          );
+          )
+        `,
+        [
+          companyId,
+          productId,
+          warehouseId,
+          userId,
+        ],
+      );
 
+      await client.query(
+        `
           INSERT INTO sales_order_items_v2 (
             id,
             company_id,
@@ -260,9 +293,19 @@ integration(
             external_product_id
           )
           VALUES (
-            $5,$1,$6,5,$2
-          );
+            $1,$2,$3,5,$4
+          )
+        `,
+        [
+          lineId,
+          companyId,
+          orderId,
+          productId,
+        ],
+      );
 
+      await client.query(
+        `
           INSERT INTO invoicing_invoices (
             id,
             company_id,
@@ -273,22 +316,17 @@ integration(
             exchange_rate
           )
           VALUES (
-            $7,$1,
+            $1,$2,
             'INV-TEST-1',
             CURRENT_DATE,
             116,
             16,
             1
-          );
+          )
         `,
         [
-          companyId,
-          productId,
-          warehouseId,
-          userId,
-          lineId,
-          orderId,
           invoiceId,
+          companyId,
         ],
       );
 
