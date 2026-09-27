@@ -5,9 +5,11 @@ import {
 } from '@/lib/apps/enterprise/catalog';
 
 import {
+  createEnterpriseModuleRecord,
   getEnterpriseModuleWorkspace,
   searchEnterpriseModuleRecords,
   transitionEnterpriseModuleRecord,
+  updateEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
 
 import {
@@ -244,6 +246,204 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
                   )
                 : [],
           };
+        },
+    },
+
+    {
+      key:
+        'workspace_app_create',
+      name:
+        'Create business app record',
+      description:
+        'Create a permitted company-scoped record in a shared SaMi business app through the authoritative domain rules. Requires explicit confirmation.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          values: {
+            type:
+              'object',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'values',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          if (
+            !context.isOwner &&
+            !context.permissionContext
+              .permissionSet
+              .has(
+                moduleKey +
+                '.record.create',
+              )
+          ) {
+            throw new Error(
+              'You do not have permission to create records in this app.',
+            );
+          }
+
+          return createEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              values:
+                input.values,
+              idempotencyKey:
+                globalThis.crypto
+                  .randomUUID(),
+            },
+          );
+        },
+    },
+
+    {
+      key:
+        'workspace_app_update',
+      name:
+        'Update business app record',
+      description:
+        'Update editable fields on a permitted shared-app record through the authoritative domain rules. Workflow fields still require the dedicated workflow tool. Requires explicit confirmation.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          recordId: {
+            type:
+              'string',
+          },
+          values: {
+            type:
+              'object',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'recordId',
+          'values',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          if (
+            !context.isOwner &&
+            !context.permissionContext
+              .permissionSet
+              .has(
+                moduleKey +
+                '.record.edit',
+              )
+          ) {
+            throw new Error(
+              'You do not have permission to update records in this app.',
+            );
+          }
+
+          return updateEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              recordId:
+                input.recordId,
+              values:
+                input.values,
+            },
+          );
         },
     },
 
