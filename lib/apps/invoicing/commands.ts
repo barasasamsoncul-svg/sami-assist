@@ -28,6 +28,10 @@ import type {
 } from '@/lib/apps/invoicing/types';
 
 import {
+  dispatchBusinessAutomationEventSafely,
+} from '@/lib/automation/business-events';
+
+import {
   cleanText,
   datePlusDays,
   ensureCompanyDefaults,
@@ -43,6 +47,94 @@ import {
   requireInvoicingContext,
   requireUuid,
 } from '@/lib/apps/invoicing/context';
+
+
+function invoicingAutomationRuntime(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireInvoicingContext
+      >
+    >,
+) {
+  return {
+    userId:
+      context.userId,
+    sessionId:
+      context.permissions
+        .sessionId,
+    tenantId:
+      context.tenantId,
+    companyId:
+      context.companyId,
+    accessibleModuleKeys: [
+      ...new Set([
+        'invoicing',
+        ...context.permissions
+          .permissions
+          .map(
+            permission =>
+              permission.moduleKey
+                ?.trim()
+                .toLowerCase() ||
+              '',
+          )
+          .filter(
+            Boolean,
+          ),
+      ]),
+    ],
+    permissionSet:
+      context.permissions
+        .permissionSet,
+    isOwner:
+      context.permissions
+        .isOwner,
+  };
+}
+
+
+async function emitInvoicingAutomationEvent(
+  context:
+    Awaited<
+      ReturnType<
+        typeof requireInvoicingContext
+      >
+    >,
+  input: {
+    triggerKey: string;
+    recordType: string;
+    recordId: string;
+    idempotencySeed: string;
+    payload?:
+      Record<string, unknown>;
+  },
+) {
+  await dispatchBusinessAutomationEventSafely({
+    runtime:
+      invoicingAutomationRuntime(
+        context,
+      ),
+    moduleKey:
+      'invoicing',
+    triggerKey:
+      input.triggerKey,
+    recordType:
+      input.recordType,
+    recordId:
+      input.recordId,
+    payload: {
+      recordId:
+        input.recordId,
+      ...(
+        input.payload ||
+        {}
+      ),
+    },
+    idempotencySeed:
+      input.idempotencySeed,
+  });
+}
 
 
 function assertInvoiceCompositionAccess(
@@ -2887,6 +2979,54 @@ export async function createInvoice(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.invoice.created',
+        recordType:
+          'invoicing_invoices',
+        recordId:
+          invoiceId,
+        idempotencySeed:
+          invoiceId +
+          ':created',
+        payload: {
+          invoiceId,
+          invoiceNumber,
+          status,
+          totalAmount,
+          currency,
+        },
+      },
+    );
+
+    if (
+      status ===
+        'confirmed'
+    ) {
+      await emitInvoicingAutomationEvent(
+        context,
+        {
+          triggerKey:
+            'invoicing.invoice.confirmed',
+          recordType:
+            'invoicing_invoices',
+          recordId:
+            invoiceId,
+          idempotencySeed:
+            invoiceId +
+            ':confirmed',
+          payload: {
+            invoiceId,
+            invoiceNumber,
+            totalAmount,
+            currency,
+          },
+        },
+      );
+    }
+
     return {
       id:
         invoiceId,
@@ -4203,6 +4343,33 @@ export async function changeInvoiceStatus(
       'COMMIT',
     );
 
+    if (
+      next ===
+        'confirmed'
+    ) {
+      await emitInvoicingAutomationEvent(
+        context,
+        {
+          triggerKey:
+            'invoicing.invoice.confirmed',
+          recordType:
+            'invoicing_invoices',
+          recordId:
+            invoiceId,
+          idempotencySeed:
+            invoiceId +
+            ':confirmed',
+          payload: {
+            invoiceId,
+            previousStatus:
+              oldStatus,
+            status:
+              next,
+          },
+        },
+      );
+    }
+
     return {
       id:
         invoiceId,
@@ -4683,6 +4850,32 @@ export async function recordInvoicePayment(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.posted',
+        recordType:
+          'invoicing_payments',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          paymentId +
+          ':posted',
+        payload: {
+          paymentId,
+          paymentNumber,
+          invoiceId,
+          amount:
+            paymentAmount,
+          remainingBalance:
+            remaining,
+          invoiceStatus:
+            nextStatus,
+        },
+      },
+    );
+
     return {
       paymentId,
       paymentNumber,
@@ -4971,6 +5164,30 @@ export async function reverseInvoicePayment(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.payment.reversed',
+        recordType:
+          'invoicing_payments',
+        recordId:
+          paymentId,
+        idempotencySeed:
+          paymentId +
+          ':reversed',
+        payload: {
+          paymentId,
+          paymentNumber:
+            String(
+              payment.payment_number,
+            ),
+          reason,
+          settlements,
+        },
+      },
     );
 
     return {
@@ -5284,6 +5501,30 @@ export async function issueInvoiceCreditNote(
       'COMMIT',
     );
 
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.credit_note.issued',
+        recordType:
+          'invoicing_credit_notes',
+        recordId:
+          creditNoteId,
+        idempotencySeed:
+          creditNoteId +
+          ':issued',
+        payload: {
+          creditNoteId,
+          creditNoteNumber,
+          invoiceId,
+          amount:
+            creditAmount,
+          invoiceStatus:
+            settlement.status,
+        },
+      },
+    );
+
     return {
       id:
         creditNoteId,
@@ -5499,6 +5740,32 @@ export async function cancelInvoiceCreditNote(
 
     await client.query(
       'COMMIT',
+    );
+
+    await emitInvoicingAutomationEvent(
+      context,
+      {
+        triggerKey:
+          'invoicing.credit_note.cancelled',
+        recordType:
+          'invoicing_credit_notes',
+        recordId:
+          creditNoteId,
+        idempotencySeed:
+          creditNoteId +
+          ':cancelled',
+        payload: {
+          creditNoteId,
+          creditNoteNumber:
+            String(
+              credit.credit_note_number,
+            ),
+          invoiceId,
+          reason,
+          invoiceStatus:
+            settlement.status,
+        },
+      },
     );
 
     return {
