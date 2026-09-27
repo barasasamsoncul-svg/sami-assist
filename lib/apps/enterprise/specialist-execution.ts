@@ -264,6 +264,299 @@ async function postInventoryAdjustment(
 }
 
 
+async function recalculatePayslipFromLines(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  payslipId:
+    string,
+) {
+  const result =
+    await client.query(
+      `
+        SELECT
+          COALESCE(
+            SUM(
+              CASE
+                WHEN line_type = 'earning'
+                THEN amount
+                ELSE 0
+              END
+            ),
+            0
+          ) AS gross,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN line_type = 'deduction'
+                THEN amount
+                ELSE 0
+              END
+            ),
+            0
+          ) AS deductions,
+          COALESCE(
+            SUM(
+              CASE
+                WHEN line_type = 'employer_contribution'
+                THEN amount
+                ELSE 0
+              END
+            ),
+            0
+          ) AS employer
+        FROM payslip_lines
+        WHERE payslip_id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+      `,
+      [
+        payslipId,
+        companyId,
+      ],
+    );
+
+  const gross =
+    Number(
+      result.rows[0]
+        ?.gross ||
+      0,
+    );
+
+  const deductions =
+    Number(
+      result.rows[0]
+        ?.deductions ||
+      0,
+    );
+
+  if (
+    deductions >
+      gross
+  ) {
+    throw new Error(
+      'Payslip deductions cannot exceed gross earnings.',
+    );
+  }
+
+  await client.query(
+    `
+      UPDATE payslips
+      SET
+        gross_amount = $3,
+        deduction_amount = $4,
+        employer_contribution_amount = $5,
+        net_amount = $3 - $4,
+        updated_at = NOW()
+      WHERE id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+        AND status IN (
+          'draft',
+          'computed'
+        )
+    `,
+    [
+      payslipId,
+      companyId,
+      gross,
+      deductions,
+      Number(
+        result.rows[0]
+          ?.employer ||
+        0,
+      ),
+    ],
+  );
+}
+
+
+async function ensureHelpdeskSlaTracking(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  userId:
+    string,
+  ticketId:
+    string,
+  priority:
+    string,
+) {
+  if (
+    !await tableExists(
+      client,
+      'ticket_sla_tracking',
+    ) ||
+    !await tableExists(
+      client,
+      'helpdesk_sla_policies',
+    )
+  ) {
+    return;
+  }
+
+  const existing =
+    await client.query(
+      `
+        SELECT id
+        FROM ticket_sla_tracking
+        WHERE ticket_id = $1
+          AND company_id = $2
+          AND deleted_at IS NULL
+        LIMIT 1
+      `,
+      [
+        ticketId,
+        companyId,
+      ],
+    );
+
+  if (
+    existing.rows.length >
+      0
+  ) {
+    return;
+  }
+
+  const policy =
+    await client.query(
+      `
+        SELECT
+          id,
+          first_response_minutes,
+          resolution_minutes
+        FROM helpdesk_sla_policies
+        WHERE company_id = $1
+          AND deleted_at IS NULL
+          AND status = 'active'
+          AND (
+            priority IS NULL OR
+            LOWER(priority) = LOWER($2)
+          )
+        ORDER BY
+          CASE
+            WHEN priority IS NULL
+            THEN 1
+            ELSE 0
+          END,
+          created_at
+        LIMIT 1
+      `,
+      [
+        companyId,
+        priority,
+      ],
+    );
+
+  if (
+    policy.rows.length !==
+      1
+  ) {
+    return;
+  }
+
+  await client.query(
+    `
+      INSERT INTO ticket_sla_tracking (
+        company_id,
+        ticket_id,
+        sla_policy_id,
+        first_response_due_at,
+        resolution_due_at,
+        status,
+        created_by,
+        updated_by,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        $1,
+        $2,
+        $3,
+        NOW() +
+          ($4::text || ' minutes')::interval,
+        NOW() +
+          ($5::text || ' minutes')::interval,
+        'active',
+        $6,
+        $6,
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (
+        company_id,
+        ticket_id
+      )
+      DO NOTHING
+    `,
+    [
+      companyId,
+      ticketId,
+      policy.rows[0]
+        .id,
+      Number(
+        policy.rows[0]
+          .first_response_minutes ||
+        60,
+      ),
+      Number(
+        policy.rows[0]
+          .resolution_minutes ||
+        480,
+      ),
+      userId,
+    ],
+  );
+}
+
+
+async function captureHelpdeskFirstResponse(
+  client:
+    PoolClient,
+  companyId:
+    string,
+  ticketId:
+    string,
+) {
+  if (
+    !await tableExists(
+      client,
+      'ticket_sla_tracking',
+    )
+  ) {
+    return;
+  }
+
+  await client.query(
+    `
+      UPDATE ticket_sla_tracking
+      SET
+        first_response_at =
+          COALESCE(
+            first_response_at,
+            NOW()
+          ),
+        updated_at =
+          NOW()
+      WHERE ticket_id = $1
+        AND company_id = $2
+        AND deleted_at IS NULL
+        AND status IN (
+          'active',
+          'paused',
+          'breached'
+        )
+    `,
+    [
+      ticketId,
+      companyId,
+    ],
+  );
+}
+
+
 async function computePayslip(
   client:
     PoolClient,
@@ -960,6 +1253,103 @@ export async function applySpecialistExecutionTransition(
       companyId,
       recordId,
       nextStatus,
+    );
+  }
+}
+
+
+export async function applySpecialistExecutionRecordSideEffects(
+  client:
+    PoolClient,
+  input: {
+    moduleKey: string;
+    table: string;
+    companyId: string;
+    userId: string;
+    operation:
+      'create' |
+      'update' |
+      'delete';
+    row:
+      Record<
+        string,
+        unknown
+      >;
+  },
+) {
+  const {
+    moduleKey,
+    table,
+    companyId,
+    userId,
+    operation,
+    row,
+  } =
+    input;
+
+  if (
+    operation !==
+      'delete' &&
+    moduleKey ===
+      'payroll' &&
+    table ===
+      'payslip_lines' &&
+    row.payslip_id
+  ) {
+    await recalculatePayslipFromLines(
+      client,
+      companyId,
+      String(
+        row.payslip_id,
+      ),
+    );
+  }
+
+  if (
+    operation ===
+      'create' &&
+    moduleKey ===
+      'helpdesk' &&
+    table ===
+      'support_tickets' &&
+    row.id
+  ) {
+    await ensureHelpdeskSlaTracking(
+      client,
+      companyId,
+      userId,
+      String(
+        row.id,
+      ),
+      String(
+        row.priority ||
+        'normal',
+      ),
+    );
+  }
+
+  if (
+    operation ===
+      'create' &&
+    moduleKey ===
+      'helpdesk' &&
+    table ===
+      'ticket_messages' &&
+    row.ticket_id &&
+    String(
+      row.sender_type ||
+      '',
+    )
+      .trim()
+      .toLowerCase() ===
+      'agent'
+  ) {
+    await captureHelpdeskFirstResponse(
+      client,
+      companyId,
+      String(
+        row.ticket_id,
+      ),
     );
   }
 }
