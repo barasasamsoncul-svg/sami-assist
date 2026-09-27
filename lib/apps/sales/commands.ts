@@ -17,6 +17,11 @@ import {
 } from '@/lib/apps/sales/delivery';
 
 import {
+  postSalesOrderDelivery,
+  reserveSalesOrderInventory,
+} from '@/lib/apps/erp/sales-inventory-integration';
+
+import {
   cleanText,
   datePlusDays,
   ensureSalesDefaults,
@@ -2745,6 +2750,17 @@ export async function createSalesOrderFromQuote(
       ],
     );
 
+    await reserveSalesOrderInventory(
+      client,
+      {
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        orderId,
+      },
+    );
+
     await client.query(
       `
         UPDATE sales_quotes
@@ -3046,6 +3062,19 @@ export async function updateSalesOrderFulfillment(
               1_000_000,
           },
         );
+
+      await postSalesOrderDelivery(
+        client,
+        {
+          companyId:
+            context.companyId,
+          userId:
+            context.userId,
+          orderId,
+          lineId,
+          deliveredQuantity,
+        },
+      );
 
       const changed =
         await client.query(
