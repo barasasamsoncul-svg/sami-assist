@@ -15,6 +15,17 @@ import type {
   SamiModuleMigrationDefinition,
 } from '@/lib/modules/migrations';
 
+import {
+  SPECIALIST_ENTERPRISE_TABLES,
+  specialistEnterpriseTables,
+  type SpecialistEnterpriseModuleKey,
+} from '@/lib/apps/enterprise/specialist-catalog';
+
+import {
+  specialistDepthSql,
+} from '@/lib/apps/enterprise/specialist-depth';
+
+
 
 const IDENTIFIER =
   /^[a-z_][a-z0-9_]*$/;
@@ -359,6 +370,18 @@ export function appendEnterpriseSchemaHardening(
     enterpriseInfrastructureSql() +
     '\n\n-- SaMi enterprise completion collaboration infrastructure\n' +
     enterpriseCompletionSql() +
+    (
+      specialistDepthSql(
+        moduleKey,
+      )
+        ? (
+            '\n\n-- SaMi specialist ERP depth\n' +
+            specialistDepthSql(
+              moduleKey,
+            )
+          )
+        : ''
+    ) +
     '\n\n-- SaMi enterprise company/audit boundary hardening\n' +
     tables
       .map(
@@ -441,6 +464,32 @@ async function completeModule(
 }
 
 
+async function deepenSpecialistModule(
+  client:
+    PoolClient,
+  moduleKey:
+    SpecialistEnterpriseModuleKey,
+) {
+  await client.query(
+    specialistDepthSql(
+      moduleKey,
+    ),
+  );
+
+  for (
+    const table
+    of specialistEnterpriseTables(
+      moduleKey,
+    )
+  ) {
+    await hardenExistingTable(
+      client,
+      table,
+    );
+  }
+}
+
+
 export const ENTERPRISE_SUITE_MIGRATIONS:
   readonly SamiModuleMigrationDefinition[] =
   (
@@ -494,6 +543,36 @@ export const ENTERPRISE_SUITE_COMPLETION_MIGRATIONS:
         async client => {
           await completeModule(
             client,
+          );
+        },
+    }),
+  );
+
+
+export const ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS:
+  readonly SamiModuleMigrationDefinition[] =
+  (
+    Object.keys(
+      SPECIALIST_ENTERPRISE_TABLES,
+    ) as
+      SpecialistEnterpriseModuleKey[]
+  ).map(
+    moduleKey => ({
+      key:
+        moduleKey +
+        '-2.1.0-to-2.2.0',
+      moduleKey,
+      namespace:
+        moduleKey,
+      fromVersion:
+        '2.1.0',
+      toVersion:
+        '2.2.0',
+      run:
+        async client => {
+          await deepenSpecialistModule(
+            client,
+            moduleKey,
           );
         },
     }),
