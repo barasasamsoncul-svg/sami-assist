@@ -121,11 +121,19 @@ test('developer API remains versioned, credential-scoped and app-bounded', async
 
 test('shared enterprise workspaces keep a contextual desktop rail and focused work canvas', async () => {
   const [
-    page,
+    rootPage,
+    sectionPage,
+    serverPage,
     layout,
   ] = await Promise.all([
     source(
       'app/apps/[appKey]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/[section]/page.tsx',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModulePage.tsx',
     ),
     source(
       'app/apps/[appKey]/EnterpriseModuleWorkspaceShell.module.css',
@@ -133,12 +141,22 @@ test('shared enterprise workspaces keep a contextual desktop rail and focused wo
   ]);
 
   assert.match(
-    page,
+    rootPage,
+    /EnterpriseModulePage/,
+  );
+
+  assert.match(
+    sectionPage,
+    /EnterpriseModulePage/,
+  );
+
+  assert.match(
+    serverPage,
     /EnterpriseModuleWorkspaceShell\.module\.css/,
   );
 
   assert.match(
-    page,
+    serverPage,
     /styles\.enterpriseWorkspace/,
   );
 
