@@ -32,6 +32,10 @@ CREATE INDEX IF NOT EXISTS idx_shop_sessions_company
   ON public.shop_sessions(company_id, status, opened_at DESC)
   WHERE deleted_at IS NULL;
 
+ALTER TABLE public.shop_orders
+  ADD COLUMN IF NOT EXISTS session_id UUID REFERENCES public.shop_sessions(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS inventory_warehouse_id UUID;
+
 CREATE TABLE IF NOT EXISTS public.shop_payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
@@ -120,6 +124,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_restaurant_floor_name
 
 ALTER TABLE public.restaurant_tables
   ADD COLUMN IF NOT EXISTS floor_id UUID REFERENCES public.restaurant_floors(id) ON DELETE SET NULL;
+
+ALTER TABLE public.restaurant_orders
+  ADD COLUMN IF NOT EXISTS inventory_warehouse_id UUID;
 
 CREATE TABLE IF NOT EXISTS public.restaurant_payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
