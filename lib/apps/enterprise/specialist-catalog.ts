@@ -101,6 +101,63 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
     'commission_payouts',
     'commission_payout_lines',
   ],
+  employees: [
+    'employee_contracts',
+    'employee_emergency_contacts',
+    'employee_lifecycle_events',
+  ],
+  recruitment: [
+    'recruitment_requisitions',
+    'applicant_sources',
+    'interview_scorecards',
+    'job_offers',
+  ],
+  attendance: [
+    'attendance_exceptions',
+    'attendance_corrections',
+    'attendance_overtime_requests',
+  ],
+  shifts: [
+    'open_shifts',
+    'shift_swap_requests',
+    'shift_availability',
+  ],
+  time_off: [
+    'leave_balances',
+    'leave_accruals',
+    'leave_blackout_periods',
+  ],
+  timesheets: [
+    'timesheet_periods',
+    'timesheet_submissions',
+    'timesheet_approvals',
+  ],
+  benefits: [
+    'benefit_claims',
+    'benefit_dependents',
+    'benefit_contributions',
+  ],
+  appraisals: [
+    'appraisal_competencies',
+    'appraisal_competency_scores',
+    'appraisal_feedback',
+    'appraisal_calibrations',
+  ],
+  onboarding: [
+    'onboarding_documents',
+    'onboarding_checkins',
+    'onboarding_equipment_assignments',
+  ],
+  learning: [
+    'learning_assessments',
+    'learning_assessment_attempts',
+    'learning_certificates',
+  ],
+  org_chart: [
+    'succession_plans',
+    'succession_candidates',
+    'position_requirements',
+  ],
 } as const;
 
 export type SpecialistEnterpriseModuleKey =
