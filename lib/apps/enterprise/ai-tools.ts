@@ -7,6 +7,7 @@ import {
 import {
   getEnterpriseModuleWorkspace,
   searchEnterpriseModuleRecords,
+  transitionEnterpriseModuleRecord,
 } from '@/lib/apps/enterprise/service';
 
 import {
@@ -243,6 +244,117 @@ export const ENTERPRISE_SUITE_AI_TOOLS:
                   )
                 : [],
           };
+        },
+    },
+
+    {
+      key:
+        'workspace_app_transition',
+      name:
+        'Run business workflow action',
+      description:
+        'Move a permitted shared-app business record through one server-governed workflow transition. This uses the same domain validation, side effects, audit and automation pipeline as the workspace UI.',
+      moduleKey:
+        null,
+      operation:
+        'write',
+      riskLevel:
+        'high',
+      confirmationRequired:
+        true,
+      inputSchema: {
+        type:
+          'object',
+        additionalProperties:
+          false,
+        properties: {
+          moduleKey: {
+            type:
+              'string',
+          },
+          table: {
+            type:
+              'string',
+          },
+          recordId: {
+            type:
+              'string',
+          },
+          statusField: {
+            type:
+              'string',
+          },
+          nextStatus: {
+            type:
+              'string',
+          },
+        },
+        required: [
+          'moduleKey',
+          'table',
+          'recordId',
+          'statusField',
+          'nextStatus',
+        ],
+      },
+      execute:
+        async (
+          context,
+          input,
+        ) => {
+          const moduleKey =
+            typeof input.moduleKey ===
+              'string'
+              ? input.moduleKey
+                  .trim()
+                  .toLowerCase()
+              : '';
+
+          if (
+            !isEnterpriseModuleKey(
+              moduleKey,
+            ) ||
+            !context
+              .accessibleModuleKeys
+              .includes(
+                moduleKey,
+              )
+          ) {
+            throw new Error(
+              'That SaMi app is not available in the current workspace.',
+            );
+          }
+
+          const transitionPermission =
+            moduleKey +
+            '.record.transition';
+
+          if (
+            !context.isOwner &&
+            !context.permissionContext
+              .permissionSet
+              .has(
+                transitionPermission,
+              )
+          ) {
+            throw new Error(
+              'You do not have permission to run this app workflow.',
+            );
+          }
+
+          return transitionEnterpriseModuleRecord(
+            moduleKey,
+            {
+              table:
+                input.table,
+              recordId:
+                input.recordId,
+              statusField:
+                input.statusField,
+              nextStatus:
+                input.nextStatus,
+            },
+          );
         },
     },
   ];
