@@ -117,6 +117,13 @@ export function withEnterpriseModuleDefaults(
         : 'record.' +
           table;
 
+  const settingsResourceKey =
+    settingsTables[0]
+      ? resourceKeyForTable(
+          settingsTables[0],
+        )
+      : null;
+
   const permissions =
     GENERIC_ACTIONS.map(
       action => ({
@@ -265,8 +272,7 @@ export function withEnterpriseModuleDefaults(
           900,
       },
       ...(
-        settingsTables.length >
-          0
+        settingsResourceKey
           ? [
               {
                 key:
@@ -369,8 +375,7 @@ export function withEnterpriseModuleDefaults(
           },
         ),
       ...(
-        settingsTables.length >
-          0
+        settingsResourceKey
           ? [
               {
                 key:
@@ -383,7 +388,7 @@ export function withEnterpriseModuleDefaults(
                 type:
                   'route' as const,
                 resourceKey:
-                  'settings',
+                  settingsResourceKey,
                 href:
                   '/apps/' +
                   key +
@@ -513,8 +518,7 @@ export function withEnterpriseModuleDefaults(
           },
         ),
       ...(
-        settingsTables.length >
-          0
+        settingsResourceKey
           ? [
               {
                 key:
@@ -526,7 +530,7 @@ export function withEnterpriseModuleDefaults(
                 type:
                   'workspace' as const,
                 resourceKey:
-                  'settings',
+                  settingsResourceKey,
                 route:
                   '/apps/' +
                   key +
