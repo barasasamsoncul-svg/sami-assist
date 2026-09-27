@@ -92,6 +92,7 @@ export const SPECIALIST_ENTERPRISE_TABLES = {
   ],
   payments: [
     'payment_batches',
+    'payment_batch_items',
     'payment_refunds',
     'payment_disputes',
   ],
