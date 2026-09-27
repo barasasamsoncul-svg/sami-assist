@@ -85,6 +85,11 @@ import {
 } from '@/lib/apps/enterprise/specialist-people-transitions';
 
 
+import {
+  applySpecialistBreadthTransition,
+} from '@/lib/apps/enterprise/specialist-breadth-execution';
+
+
 
 import {
   getEnterpriseRelationDefinitions,
@@ -3830,6 +3835,22 @@ async function validateEnterpriseTransition(
     );
 
     await applyPeopleSpecialistTransition(
+      client,
+      {
+        moduleKey:
+          context.moduleKey,
+        table,
+        companyId:
+          context.companyId,
+        userId:
+          context.userId,
+        recordId,
+        nextStatus:
+          next,
+      },
+    );
+
+    await applySpecialistBreadthTransition(
       client,
       {
         moduleKey:
