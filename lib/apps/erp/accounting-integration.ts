@@ -146,6 +146,15 @@ async function ensureAccount(
         VALUES (
           $1,$2,$3,TRUE,$4
         )
+        ON CONFLICT (code)
+        DO UPDATE
+        SET
+          name =
+            EXCLUDED.name,
+          account_type =
+            EXCLUDED.account_type,
+          is_active =
+            TRUE
         RETURNING id
       `,
       [
