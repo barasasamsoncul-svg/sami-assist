@@ -3551,6 +3551,7 @@ export async function applyEnterpriseDomainSideEffects(
     moduleKey: string;
     table: string;
     companyId: string;
+    userId: string;
     operation: MutationOperation;
     row:
       Record<
@@ -3563,6 +3564,7 @@ export async function applyEnterpriseDomainSideEffects(
     moduleKey,
     table,
     companyId,
+    userId,
     operation,
     row,
   } =
@@ -3608,12 +3610,7 @@ export async function applyEnterpriseDomainSideEffects(
       moduleKey,
       table,
       companyId,
-      userId:
-        String(
-          row.updated_by ||
-          row.created_by ||
-          '',
-        ),
+      userId,
       operation,
       row,
     },
