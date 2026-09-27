@@ -171,6 +171,139 @@ test('ERP parity: Automation can execute specialist workflow transitions with ap
   );
 });
 
+test('ERP parity: Sales and Invoicing publish trusted post-commit domain automation events', async () => {
+  const [
+    salesAutomation,
+    invoicingAutomation,
+    registry,
+    manifests,
+    salesCommands,
+    invoicingCommands,
+  ] =
+    await Promise.all([
+      source(
+        'lib/apps/sales/automation.ts',
+      ),
+      source(
+        'lib/apps/invoicing/automation.ts',
+      ),
+      source(
+        'lib/automation/registry.ts',
+      ),
+      source(
+        'lib/modules/first-party.ts',
+      ),
+      source(
+        'lib/apps/sales/commands.ts',
+      ),
+      source(
+        'lib/apps/invoicing/commands.ts',
+      ),
+    ]);
+
+  for (
+    const marker
+    of [
+      'sales.quote.sent',
+      'sales.order.created',
+      'sales.order.fulfilled',
+      'sales.invoice.created',
+    ]
+  ) {
+    assert.ok(
+      salesAutomation.includes(
+        marker,
+      ),
+      marker,
+    );
+    assert.ok(
+      salesCommands.includes(
+        marker,
+      ),
+      marker + ' emitter',
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'invoicing.invoice.created',
+      'invoicing.invoice.confirmed',
+      'invoicing.payment.posted',
+      'invoicing.payment.reversed',
+      'invoicing.credit_note.issued',
+      'invoicing.credit_note.cancelled',
+    ]
+  ) {
+    assert.ok(
+      invoicingAutomation.includes(
+        marker,
+      ),
+      marker,
+    );
+    assert.ok(
+      invoicingCommands.includes(
+        marker,
+      ),
+      marker + ' emitter',
+    );
+  }
+
+  assert.match(
+    registry,
+    /SALES_AUTOMATION_TRIGGERS/,
+  );
+  assert.match(
+    registry,
+    /INVOICING_AUTOMATION_TRIGGERS/,
+  );
+
+  const invoicingStart =
+    manifests.indexOf(
+      'key: "invoicing"',
+    );
+  const invoicingEnd =
+    manifests.indexOf(
+      'key: "expenses"',
+      invoicingStart,
+    );
+  const salesStart =
+    manifests.indexOf(
+      'key: "sales"',
+    );
+  const salesEnd =
+    manifests.indexOf(
+      'key: "subscriptions"',
+      salesStart,
+    );
+
+  assert.match(
+    manifests.slice(
+      invoicingStart,
+      invoicingEnd,
+    ),
+    /automationTriggers:\s*true/,
+  );
+  assert.match(
+    manifests.slice(
+      salesStart,
+      salesEnd,
+    ),
+    /automationTriggers:\s*true/,
+  );
+
+  assert.match(
+    salesCommands,
+    /await client\.query\([\s\S]*'COMMIT'[\s\S]*await emitSalesAutomationEvent/s,
+    'Sales domain events must be emitted only after committed writes.',
+  );
+  assert.match(
+    invoicingCommands,
+    /await client\.query\([\s\S]*'COMMIT'[\s\S]*await emitInvoicingAutomationEvent/s,
+    'Invoicing domain events must be emitted only after committed writes.',
+  );
+});
+
 test('ERP parity: SaMi AI can execute confirmed business actions instead of read-only app summaries', async () => {
   const [
     enterprise,
