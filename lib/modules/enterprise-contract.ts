@@ -88,6 +88,22 @@ export function withEnterpriseModuleDefaults(
       key,
     );
 
+  const recordTables =
+    tables.filter(
+      table =>
+        !table.endsWith(
+          '_settings',
+        ),
+    );
+
+  const settingsTables =
+    tables.filter(
+      table =>
+        table.endsWith(
+          '_settings',
+        ),
+    );
+
   const resourceKeyForTable =
     (
       table:
@@ -100,6 +116,13 @@ export function withEnterpriseModuleDefaults(
           table
         : 'record.' +
           table;
+
+  const settingsResourceKey =
+    settingsTables[0]
+      ? resourceKeyForTable(
+          settingsTables[0],
+        )
+      : null;
 
   const permissions =
     GENERIC_ACTIONS.map(
@@ -182,15 +205,104 @@ export function withEnterpriseModuleDefaults(
           ? '2.1.0'
           : manifest.version,
 
+    navigation: [
+      ...manifest.navigation,
+      ...recordTables.map(
+        (
+          table,
+          index,
+        ) => ({
+          key:
+            key +
+            '.' +
+            table,
+          label:
+            table
+              .replaceAll(
+                '_',
+                ' ',
+              )
+              .replace(
+                /\b\w/g,
+                character =>
+                  character.toUpperCase(),
+              ),
+          href:
+            '/apps/' +
+            key +
+            '/' +
+            table,
+          iconKey:
+            manifest.icon,
+          parentKey:
+            key +
+            '.root',
+          actionKey:
+            key +
+            '.' +
+            table +
+            '.open',
+          order:
+            20 +
+            index *
+              10,
+        }),
+      ),
+      {
+        key:
+          key +
+          '.reports',
+        label:
+          profile
+            ?.reportsLabel ||
+          'Reports',
+        href:
+          '/apps/' +
+          key +
+          '/reports',
+        iconKey:
+          'bar-chart',
+        parentKey:
+          key +
+          '.root',
+        actionKey:
+          key +
+          '.report.open',
+        order:
+          900,
+      },
+      ...(
+        settingsResourceKey
+          ? [
+              {
+                key:
+                  key +
+                  '.settings',
+                label:
+                  'Settings',
+                href:
+                  '/apps/' +
+                  key +
+                  '/settings',
+                iconKey:
+                  'settings',
+                parentKey:
+                  key +
+                  '.root',
+                actionKey:
+                  key +
+                  '.settings.open',
+                order:
+                  950,
+              },
+            ]
+          : []
+      ),
+    ],
+
     actions: [
       ...manifest.actions,
-      ...tables
-        .filter(
-          table =>
-            !table.endsWith(
-              '_settings',
-            ),
-        )
+      ...recordTables
         .flatMap(
           table => {
             const resourceKey =
@@ -217,7 +329,9 @@ export function withEnterpriseModuleDefaults(
                 resourceKey,
                 href:
                   '/apps/' +
-                  key,
+                  key +
+                  '/' +
+                  table,
                 viewKeys: [
                   key +
                   '.' +
@@ -245,7 +359,9 @@ export function withEnterpriseModuleDefaults(
                 resourceKey,
                 href:
                   '/apps/' +
-                  key,
+                  key +
+                  '/' +
+                  table,
                 viewKeys: [
                   key +
                   '.' +
@@ -258,6 +374,35 @@ export function withEnterpriseModuleDefaults(
             ];
           },
         ),
+      ...(
+        settingsResourceKey
+          ? [
+              {
+                key:
+                  key +
+                  '.settings.open',
+                name:
+                  'Open ' +
+                  manifest.name +
+                  ' settings',
+                type:
+                  'route' as const,
+                resourceKey:
+                  settingsResourceKey,
+                href:
+                  '/apps/' +
+                  key +
+                  '/settings',
+                viewKeys: [
+                  key +
+                  '.settings',
+                ],
+                target:
+                  'current' as const,
+              },
+            ]
+          : []
+      ),
       {
         key:
           key +
@@ -276,7 +421,8 @@ export function withEnterpriseModuleDefaults(
           'report',
         href:
           '/apps/' +
-          key,
+          key +
+          '/reports',
         viewKeys: [
           key +
           '.report',
@@ -305,13 +451,7 @@ export function withEnterpriseModuleDefaults(
         priority:
           10,
       },
-      ...tables
-        .filter(
-          table =>
-            !table.endsWith(
-              '_settings',
-            ),
-        )
+      ...recordTables
         .flatMap(
           (
             table,
@@ -340,7 +480,9 @@ export function withEnterpriseModuleDefaults(
                 resourceKey,
                 route:
                   '/apps/' +
-                  key,
+                  key +
+                  '/' +
+                  table,
                 priority:
                   20 +
                   index *
@@ -364,7 +506,9 @@ export function withEnterpriseModuleDefaults(
                 resourceKey,
                 route:
                   '/apps/' +
-                  key,
+                  key +
+                  '/' +
+                  table,
                 priority:
                   21 +
                   index *
@@ -373,6 +517,30 @@ export function withEnterpriseModuleDefaults(
             ];
           },
         ),
+      ...(
+        settingsResourceKey
+          ? [
+              {
+                key:
+                  key +
+                  '.settings',
+                name:
+                  manifest.name +
+                  ' settings',
+                type:
+                  'workspace' as const,
+                resourceKey:
+                  settingsResourceKey,
+                route:
+                  '/apps/' +
+                  key +
+                  '/settings',
+                priority:
+                  850,
+              },
+            ]
+          : []
+      ),
       {
         key:
           key +
@@ -390,7 +558,8 @@ export function withEnterpriseModuleDefaults(
           'report',
         route:
           '/apps/' +
-          key,
+          key +
+          '/reports',
         priority:
           900,
       },

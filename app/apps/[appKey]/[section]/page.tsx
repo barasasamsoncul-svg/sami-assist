@@ -8,17 +8,20 @@ export const dynamic =
   'force-dynamic';
 
 
-export default async function AppEntryPage({
+export default async function EnterpriseModuleSectionPage({
   params,
 }: {
   params:
     Promise<{
       appKey:
         string;
+      section:
+        string;
     }>;
 }) {
   const {
     appKey,
+    section,
   } =
     await params;
 
@@ -26,6 +29,9 @@ export default async function AppEntryPage({
     <EnterpriseModulePage
       appKey={
         appKey
+      }
+      section={
+        section
       }
     />
   );
