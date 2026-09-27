@@ -523,6 +523,8 @@ test('Category 12: app launcher is server-fed and filters instantly without a cl
 test('Category 12: deep app routes re-authorize access and do not disclose inaccessible apps', async () => {
   const [
     entry,
+    section,
+    serverPage,
     notFound,
   ] =
     await Promise.all([
@@ -530,37 +532,61 @@ test('Category 12: deep app routes re-authorize access and do not disclose inacc
         'app/apps/[appKey]/page.tsx',
       ),
       source(
+        'app/apps/[appKey]/[section]/page.tsx',
+      ),
+      source(
+        'app/apps/[appKey]/EnterpriseModulePage.tsx',
+      ),
+      source(
         'app/apps/[appKey]/not-found.tsx',
       ),
     ]);
 
-  const compactEntry =
+  const compactServerPage =
     compact(
-      entry,
+      serverPage,
     );
 
   assert.match(
-    compactEntry,
+    entry,
+    /EnterpriseModulePage/,
+    'The app root must delegate to the same protected server page as routed module sections.',
+  );
+
+  assert.match(
+    section,
+    /EnterpriseModulePage/,
+    'Deep module sections must reuse the protected enterprise server page.',
+  );
+
+  assert.match(
+    compactServerPage,
     /requirePageSession/,
   );
 
   assert.match(
-    compactEntry,
+    compactServerPage,
     /shell\.accessibleModules/,
   );
 
   assert.match(
-    compactEntry,
+    compactServerPage,
     /notFound\(\)/,
   );
 
   assert.match(
-    compactEntry,
-    /redirect\( app\.href, \)/,
+    compactServerPage,
+    /redirect\(/,
+  );
+
+  assert.match(
+    compactServerPage,
+    /resolveWorkspaceSection/,
+    'A deep section must be validated server-side before the shared workspace renders.',
   );
 
   assert.doesNotMatch(
-    entry,
+    serverPage,
     /Category 12|module framework/i,
     'Ordinary users must never see internal architecture terminology.',
   );
@@ -700,7 +726,7 @@ test('Category 12: shared app visuals stay registry-driven across shell, dashboa
     sidebar,
     dashboard,
     launcher,
-    entry,
+    serverPage,
   ] = await Promise.all([
     source('lib/apps/visual-registry.ts'),
     source('app/components/apps/SamiAppIconTile.tsx'),
@@ -708,7 +734,7 @@ test('Category 12: shared app visuals stay registry-driven across shell, dashboa
     source('app/components/workspace/WorkspaceSidebar.tsx'),
     source('app/dashboard/DashboardClient.tsx'),
     source('app/apps/AppsLauncherClient.tsx'),
-    source('app/apps/[appKey]/page.tsx'),
+    source('app/apps/[appKey]/EnterpriseModulePage.tsx'),
   ]);
 
   assert.match(
@@ -748,7 +774,7 @@ test('Category 12: shared app visuals stay registry-driven across shell, dashboa
   );
 
   assert.match(
-    entry,
+    serverPage,
     /getSaMiAppVisual/,
   );
 
