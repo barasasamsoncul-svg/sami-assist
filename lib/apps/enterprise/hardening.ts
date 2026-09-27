@@ -695,3 +695,38 @@ export const ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS:
         },
     }),
   );
+
+
+export const ENTERPRISE_SPECIALIST_INTEGRATION_MIGRATIONS:
+  readonly SamiModuleMigrationDefinition[] =
+  (
+    Object.keys(
+      SPECIALIST_ENTERPRISE_TABLES,
+    ) as
+      SpecialistEnterpriseModuleKey[]
+  ).map(
+    moduleKey => ({
+      key:
+        moduleKey +
+        '-2.2.0-to-2.3.0',
+      moduleKey,
+      namespace:
+        moduleKey,
+      fromVersion:
+        '2.2.0',
+      toVersion:
+        '2.3.0',
+      run:
+        async client => {
+          /*
+           * The 2.3 specialist contract composes every additive depth layer.
+           * Running the same idempotent specialist schema reconciler upgrades
+           * existing tenant databases without destructive replacement.
+           */
+          await deepenSpecialistModule(
+            client,
+            moduleKey,
+          );
+        },
+    }),
+  );
