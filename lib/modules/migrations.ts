@@ -22,6 +22,10 @@ import {
 } from '@/lib/apps/invoicing/migrations/2.1.0-to-2.2.0';
 
 import {
+  INVOICING_2_2_0_TO_2_3_0,
+} from '@/lib/apps/invoicing/migrations/2.2.0-to-2.3.0';
+
+import {
   ENTERPRISE_SPECIALIST_DEPTH_MIGRATIONS,
   ENTERPRISE_SUITE_COMPLETION_MIGRATIONS,
   ENTERPRISE_SUITE_MIGRATIONS,
@@ -113,6 +117,7 @@ export const APP_MODULE_MIGRATIONS:
     INVOICING_1_0_0_TO_2_0_0,
     INVOICING_2_0_0_TO_2_1_0,
     INVOICING_2_1_0_TO_2_2_0,
+    INVOICING_2_2_0_TO_2_3_0,
     SALES_1_0_0_TO_2_0_0,
     SALES_2_0_0_TO_2_1_0,
     ...ENTERPRISE_SUITE_MIGRATIONS,
