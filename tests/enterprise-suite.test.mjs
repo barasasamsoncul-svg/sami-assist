@@ -2973,3 +2973,68 @@ test('enterprise create retries are durably idempotent across generic apps', asy
     ),
   );
 });
+
+test('specialist ERP apps use domain-native operating layouts instead of one flat register experience', async () => {
+  const [
+    specialistWorkspace,
+    client,
+  ] = await Promise.all([
+    source(
+      'lib/apps/enterprise/specialist-workspace.ts',
+    ),
+    source(
+      'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+    ),
+  ]);
+
+  for (
+    const marker
+    of [
+      "accounting: {",
+      "crm: {",
+      "inventory: {",
+      "warehouse: {",
+      "purchase: {",
+      "manufacturing: {",
+      "payroll: {",
+      "employees: {",
+      "projects: {",
+      "helpdesk: {",
+      "style: 'ledger'",
+      "style: 'pipeline'",
+      "style: 'logistics'",
+      "style: 'procurement'",
+      "style: 'manufacturing'",
+      "style: 'people'",
+      "style: 'project'",
+      "style: 'support'",
+      "preferredRecordView: 'kanban'",
+    ]
+  ) {
+    assert.ok(
+      specialistWorkspace.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+
+  for (
+    const marker
+    of [
+      'getEnterpriseSpecialistLayout',
+      'ERP chain',
+      'Connected execution, not isolated records',
+      'specialistLayout',
+      'preferredRecordView',
+    ]
+  ) {
+    assert.ok(
+      client.includes(
+        marker,
+      ),
+      marker,
+    );
+  }
+});
+
