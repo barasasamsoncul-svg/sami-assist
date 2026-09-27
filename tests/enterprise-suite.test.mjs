@@ -3097,3 +3097,220 @@ test('enterprise backend contract remains presentation-independent so module UIs
   );
 });
 
+test('all 78 shared apps are specialist-grade backend contracts with journeys permissions automation AI and replaceable UI', async () => {
+  const [
+    catalog,
+    specialistCatalog,
+    specialistDepth,
+    breadthDepth,
+    specialistWorkspace,
+    workflow,
+    contract,
+    service,
+    automation,
+    aiTools,
+    experience,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/catalog.ts'),
+    source('lib/apps/enterprise/specialist-catalog.ts'),
+    source('lib/apps/enterprise/specialist-depth.ts'),
+    source('lib/apps/enterprise/specialist-breadth-depth.ts'),
+    source('lib/apps/enterprise/specialist-workspace.ts'),
+    source('lib/apps/enterprise/workflow-policy.ts'),
+    source('lib/modules/enterprise-contract.ts'),
+    source('lib/apps/enterprise/service.ts'),
+    source('lib/apps/enterprise/automation.ts'),
+    source('lib/apps/enterprise/ai-tools.ts'),
+    source('lib/apps/enterprise/suite-experience.ts'),
+  ]);
+
+  const moduleKeys =
+    [
+      ...catalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  const specialistKeys =
+    [
+      ...specialistCatalog.matchAll(
+        /^\s{2}([a-z][a-z0-9_]*): \[/gm,
+      ),
+    ].map(
+      match =>
+        match[1],
+    );
+
+  assert.equal(
+    moduleKeys.length,
+    78,
+  );
+
+  assert.equal(
+    specialistKeys.length,
+    78,
+  );
+
+  assert.deepEqual(
+    [
+      ...specialistKeys,
+    ].sort(),
+    [
+      ...moduleKeys,
+    ].sort(),
+    'Every shared app must be classified as a specialist app.',
+  );
+
+  for (
+    const table
+    of [
+      'appointment_availability_blocks',
+      'appointment_reminders',
+      'document_versions',
+      'document_approvals',
+      'email_templates',
+      'email_campaign_events',
+      'event_sessions',
+      'event_tickets',
+      'service_checklists',
+      'vehicle_fuel_logs',
+      'preventive_maintenance_plans',
+      'automation_segments',
+      'planning_capacity',
+      'engineering_change_approvals',
+      'shop_returns',
+      'quality_corrective_actions',
+      'referral_conversions',
+      'referral_rewards',
+      'rental_reservations',
+      'rental_charges',
+      'signature_templates',
+      'signature_audit_events',
+      'sms_templates',
+      'sms_delivery_events',
+      'social_campaigns',
+      'social_post_metrics',
+    ]
+  ) {
+    assert.ok(
+      catalog.includes(
+        "'" +
+        table +
+        "'",
+      ),
+      table +
+      ' catalog registration',
+    );
+
+    assert.ok(
+      breadthDepth.includes(
+        'public.' +
+        table,
+      ),
+      table +
+      ' specialist schema',
+    );
+  }
+
+  assert.match(
+    specialistDepth,
+    /specialistBreadthDepthSql/,
+  );
+
+  assert.match(
+    specialistWorkspace,
+    /generatedSpecialistLayout/,
+  );
+
+  assert.match(
+    specialistWorkspace,
+    /getEnterpriseDomainProfile/,
+  );
+
+  assert.match(
+    specialistWorkspace,
+    /preferredRecordView/,
+  );
+
+  assert.match(
+    specialistWorkspace,
+    /insightTables/,
+  );
+
+  assert.match(
+    contract,
+    /'execute'/,
+  );
+
+  assert.match(
+    contract,
+    /'approve'/,
+  );
+
+  assert.match(
+    contract,
+    /'close'/,
+  );
+
+  assert.match(
+    service,
+    /specialistTransitionPermissionKey/,
+  );
+
+  assert.match(
+    service,
+    /applySpecialistBreadthTransition/,
+  );
+
+  assert.match(
+    automation,
+    /MODULE_KEYS\.flatMap/,
+    'Automation must generate triggers/actions for the whole shared-app catalog.',
+  );
+
+  assert.match(
+    automation,
+    /specialistTransitionPermissionKey/,
+  );
+
+  assert.match(
+    automation,
+    /applySpecialistBreadthTransition/,
+  );
+
+  for (
+    const tool
+    of [
+      'workspace_app_summary',
+      'workspace_app_search',
+      'workspace_app_create',
+      'workspace_app_update',
+      'workspace_app_transition',
+    ]
+  ) {
+    assert.ok(
+      aiTools.includes(
+        "'" +
+        tool +
+        "'",
+      ),
+      tool,
+    );
+  }
+
+  assert.match(
+    experience,
+    /satisfies[\s\S]*Record<[\s\S]*EnterpriseModuleKey/s,
+    'Connected-app journeys must cover every shared app at compile time.',
+  );
+
+  assert.match(
+    workflow,
+    /GENERIC_GRAPH/,
+    'Every status-aware app must retain a safe workflow fallback when no stricter domain graph is defined.',
+  );
+});
+
