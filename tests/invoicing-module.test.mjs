@@ -113,7 +113,7 @@ test('Invoicing manifest is a real first-party module with permissions, resource
 
   assert.match(
     invoicing,
-    /version:\s*['"]2\.2\.0['"]/,
+    /version:\s*['"]2\.3\.0['"]/,
   );
 
   assert.match(
@@ -571,6 +571,56 @@ test('Invoicing has a forward-only v1 to v2 migration and CI includes module reg
   assert.match(
     registry,
     /INVOICING_2_1_0_TO_2_2_0/,
+  );
+
+  const accountingMigration =
+    await source(
+      'lib/apps/invoicing/migrations/2.2.0-to-2.3.0.ts',
+    );
+
+  assert.match(
+    accountingMigration,
+    /fromVersion:\s*['"]2\.2\.0['"]/,
+  );
+
+  assert.match(
+    accountingMigration,
+    /toVersion:\s*['"]2\.3\.0['"]/,
+  );
+
+  assert.match(
+    accountingMigration,
+    /invoicing_accounting_links/,
+  );
+
+  assert.match(
+    registry,
+    /INVOICING_2_2_0_TO_2_3_0/,
+  );
+
+  const accounting =
+    await source(
+      'lib/apps/invoicing/accounting.ts',
+    );
+
+  assert.match(
+    accounting,
+    /postInvoiceConfirmationToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /postInvoicePaymentToAccounting/,
+  );
+
+  assert.match(
+    accounting,
+    /reverseInvoicingAccountingEvent/,
+  );
+
+  assert.match(
+    accounting,
+    /postInvoiceWriteOffToAccounting/,
   );
 
   assert.match(
