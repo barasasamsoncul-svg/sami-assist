@@ -18,6 +18,10 @@ import {
   specialistBreadthDepthSql,
 } from '@/lib/apps/enterprise/specialist-breadth-depth';
 
+import {
+  specialistSuiteDepthSql,
+} from '@/lib/apps/enterprise/specialist-suite-depth';
+
 
 
 
@@ -803,59 +807,72 @@ export function specialistDepthSql(
     SpecialistEnterpriseModuleKey =
     moduleKey;
 
-  const breadthSql =
+  const parts = [
+    specialistSuiteDepthSql(
+      key,
+    ),
     specialistBreadthDepthSql(
       key,
-    );
-
-  if (
-    breadthSql
-  ) {
-    return breadthSql;
-  }
-
-  const financeSql =
+    ),
     financeSpecialistDepthSql(
       key,
-    );
-
-  if (
-    financeSql
-  ) {
-    return financeSql;
-  }
-
-  const peopleSql =
+    ),
     peopleSpecialistDepthSql(
       key,
-    );
-
-  if (
-    peopleSql
-  ) {
-    return peopleSql;
-  }
+    ),
+  ];
 
   switch (
     key
   ) {
     case 'accounting':
-      return accountingSql();
+      parts.push(
+        accountingSql(),
+      );
+      break;
     case 'inventory':
-      return inventorySql();
+      parts.push(
+        inventorySql(),
+      );
+      break;
     case 'warehouse':
-      return warehouseSql();
+      parts.push(
+        warehouseSql(),
+      );
+      break;
     case 'payroll':
-      return payrollSql();
+      parts.push(
+        payrollSql(),
+      );
+      break;
     case 'crm':
-      return crmSql();
+      parts.push(
+        crmSql(),
+      );
+      break;
     case 'projects':
-      return projectsSql();
+      parts.push(
+        projectsSql(),
+      );
+      break;
     case 'helpdesk':
-      return helpdeskSql();
+      parts.push(
+        helpdeskSql(),
+      );
+      break;
     case 'manufacturing':
-      return manufacturingSql();
+      parts.push(
+        manufacturingSql(),
+      );
+      break;
   }
 
-  return '';
+  return parts
+    .filter(
+      part =>
+        part.trim(),
+    )
+    .join(
+      '\n',
+    );
 }
