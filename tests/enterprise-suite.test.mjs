@@ -3038,3 +3038,62 @@ test('specialist ERP apps use domain-native operating layouts instead of one fla
   }
 });
 
+test('enterprise backend contract remains presentation-independent so module UIs can be replaced safely', async () => {
+  const [
+    service,
+    api,
+    page,
+    client,
+    specialistWorkspace,
+  ] = await Promise.all([
+    source('lib/apps/enterprise/service.ts'),
+    source('app/api/apps/[appKey]/records/route.ts'),
+    source('app/apps/[appKey]/EnterpriseModulePage.tsx'),
+    source('app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx'),
+    source('lib/apps/enterprise/specialist-workspace.ts'),
+  ]);
+
+  assert.match(
+    service,
+    /^import 'server-only';/m,
+    'Business execution must remain server-only.',
+  );
+
+  for (const marker of [
+    'createEnterpriseModuleRecord',
+    'updateEnterpriseModuleRecord',
+    'deleteEnterpriseModuleRecord',
+    'transitionEnterpriseModuleRecord',
+    'queryEnterpriseModuleTable',
+  ]) {
+    assert.ok(
+      api.includes(marker),
+      marker + ' API delegation',
+    );
+  }
+
+  assert.match(
+    page,
+    /getEnterpriseModuleWorkspace/,
+    'Pages should consume the backend workspace contract.',
+  );
+
+  assert.doesNotMatch(
+    client,
+    /getTenantPoolByTenantId|queryControl|from ['"]pg['"]|\.query\(/,
+    'Client layouts must never own direct database access.',
+  );
+
+  assert.doesNotMatch(
+    specialistWorkspace,
+    /getTenantPoolByTenantId|queryControl|from ['"]pg['"]|\.query\(/,
+    'Specialist layout definitions must remain presentation metadata only.',
+  );
+
+  assert.match(
+    page,
+    /Sales and Invoicing own dedicated route trees/,
+    'Dedicated app UIs must be able to coexist with the shared backend suite.',
+  );
+});
+
