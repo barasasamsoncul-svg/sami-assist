@@ -135,6 +135,62 @@ test('ERP parity: Invoicing posts financial lifecycle into Accounting when insta
   );
 });
 
+test('ERP parity: shared-app lifecycle authority is separate from ordinary record editing', async () => {
+  const [
+    contract,
+    service,
+    automation,
+    workspace,
+  ] =
+    await Promise.all([
+      source(
+        'lib/modules/enterprise-contract.ts',
+      ),
+      source(
+        'lib/apps/enterprise/service.ts',
+      ),
+      source(
+        'lib/apps/enterprise/automation.ts',
+      ),
+      source(
+        'app/apps/[appKey]/EnterpriseModuleWorkspaceClient.tsx',
+      ),
+    ]);
+
+  assert.match(
+    contract,
+    /'transition'/,
+  );
+  assert.match(
+    contract,
+    /workflow actions/,
+  );
+  assert.match(
+    service,
+    /\| 'transition'/,
+  );
+  assert.match(
+    service,
+    /'record\.transition'|operation ===[\s\S]*'transition'/,
+  );
+  assert.match(
+    service,
+    /canTransition/,
+  );
+  assert.match(
+    service,
+    /input\.table,[\s\S]*'transition'/,
+  );
+  assert.match(
+    automation,
+    /\.record\.transition/,
+  );
+  assert.match(
+    workspace,
+    /canTransition/,
+  );
+});
+
 test('ERP parity: Automation can execute specialist workflow transitions with approval and live rules', async () => {
   const [
     automation,
